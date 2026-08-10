@@ -1,0 +1,16 @@
+{
+  "name": "story-writer",
+  "version": "0.1.0",
+  "description": "A story-writer agent that consults character agents when it needs to know how someone would behave.",
+  "type": "module",
+  "license": "ISC",
+  "scripts": {
+    "test": "npx tsx --test tests/writer.test.ts",
+    "preflight": "npx tsx story-writer.ts --preflight",
+    "typecheck": "npx tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2"
+  }
+}
