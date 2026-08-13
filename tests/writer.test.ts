@@ -25,7 +25,7 @@ import {
   parseStoryMd, splitMeaning, resolveSkills, SKILL_CATALOG,
   num, bool, enumOf, extractJson, balancedObjectEnd, salvageProse, topLevelObjects,
   loadStory, discoverStories, chooseStory, NEW_STORY, consult, wrapCharacter, wrapWriter, Agent,
-  normalizeSpec, loadDefaults, applyEdits, renderStory, slugify,
+  normalizeSpec, loadDefaults, applyEdits, directEdit, renderStory, slugify,
   RUN, stopRun, armRun, StoppedError, complete, selectableStory, ScaffoldSession,
   normalizeConsult, canonWants, CONSULT_WANTS, runDirs, retainedRuns,
   type Skill, type ConsultEvent, type ConsultRequest, type Defaults,
@@ -688,6 +688,40 @@ describe("applyEdits", () => {
       const r = quietSync(() => applyEdits(spec, raw));
       assert.deepEqual(r.spec, spec);
     }
+  });
+
+  // The browser sets a scene's length directly rather than spending a model call on a number
+  // (GUI-SPEC §6.1). The point of the test is the CLOSED LIST: everything else stays the
+  // architect's, and a value the engine cannot use is refused rather than silently substituted.
+  describe("directEdit", () => {
+    it("sets the one field it is allowed to, through applyEdits", () => {
+      const r = quietSync(() => directEdit(spec, "scene.length", 1200));
+      assert.ok(r.ok);
+      assert.equal(r.spec.scene.length, 1200);
+      assert.deepEqual(r.applied, ["scene.length"]);
+      assert.equal(spec.scene.length, 700, "the input spec must not be mutated");
+    });
+
+    it("rounds what it is given", () => {
+      const r = quietSync(() => directEdit(spec, "scene.length", "850.6"));
+      assert.ok(r.ok);
+      assert.equal(r.spec.scene.length, 851);
+    });
+
+    it("refuses every other field, however well-formed", () => {
+      for (const f of ["premise", "title", "scene.place", "characters.RIVEN.persona", "scene.mood", ""]) {
+        const r = quietSync(() => directEdit(spec, f, "anything"));
+        assert.equal(r.ok, false, f);
+      }
+    });
+
+    it("refuses a length it cannot use instead of silently substituting 700", () => {
+      for (const v of [0, 12, 99, 10001, "", "soon", NaN, null, undefined]) {
+        const r = quietSync(() => directEdit(spec, "scene.length", v));
+        assert.equal(r.ok, false, String(v));
+        if (!r.ok) assert.match(r.reason, /100/);
+      }
+    });
   });
 });
 

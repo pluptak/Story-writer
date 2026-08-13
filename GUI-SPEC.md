@@ -97,15 +97,16 @@ run it was opened for.
 | `POST /stop` | end the current run (§4.2); 400 when none is in progress |
 | `POST /consult-me` | arm the reader-consult flag (§4.3); 400 when no run is in progress; a second arm before the first fires is a no-op |
 | `POST /reader-answer` | `{answer}` — resolve the pending `[ASK READER]` (§4.3); 400 when nothing is waiting |
-| `GET /models` | `{ ids, reachable, current }` — the model ids LM Studio has loaded (§4.4), memoized the same way pre-flight's ping is |
+| `GET /models` | `{ ids, reachable, current, architect }` — the model ids LM Studio has loaded (§4.4), memoized the same way pre-flight's ping is; `architect` is the resolved default an interview would use if you chose nothing (§6.1) |
 | `POST /pause` | request a pause at the run's next boundary (§4.4); 400 when none is in progress; a second request before the first takes effect is a no-op |
 | `POST /resume` | clear a pause, requested or in effect (§4.4); 400 when neither is true |
 | `POST /model` | `{model}` — set the model override; `""` clears it. Idle: applies to the next run. Paused: swaps every live agent immediately. Running-and-not-paused: 400 (§4.4) |
 | `GET /stories` | every discovered story, pre-flighted, as picker cards (§6) |
 | `POST /select` | `{dir}` — choose the next story (§6); 400 when the session is not waiting, or the story was not discovered |
 | `GET /scaffold` | the open interview, or `{active:false}` (§6.1) |
-| `POST /scaffold/start` | `{idea}` — open an interview and propose |
+| `POST /scaffold/start` | `{idea, model?}` — open an interview and propose. `model` outranks `--model=` and defaults.md; an id LM Studio does not have loaded is 400 here rather than a failure a minute in (§6.1) |
 | `POST /scaffold/say` | `{text}` — a change, or an answer to what it asked |
+| `POST /scaffold/set` | `{field, value}` — the one change made without the architect: `scene.length`, through `applyEdits` (§6.1). 400 for any other field, for a length outside 100–10000, or before a story exists |
 | `POST /scaffold/accept` | `{folder?}` — write it; on success this resolves the parked pick |
 | `POST /scaffold/abandon` | drop the interview, back to the shelf |
 | `GET /log.jsonl` | the current run's saved log; 404 until one exists |
@@ -130,7 +131,11 @@ When `max_steps` is spent without the scene finishing, `askMoreSteps` asks, in t
 3. **nobody** — the run stops, which is honest rather than blocking forever
 
 The pending state is exposed on `GET /run`, so a viewer that connects *while* a prompt is
-outstanding still learns about it. Without that, a reload would strand a blocked run.
+outstanding still learns about it. Without that, a reload would strand a blocked run. It also rides
+on **every `run_state` frame** (`awaitingContinue`), which is the other half of the same problem:
+`continue_prompt` is one-shot, so a viewer that did not answer it — because the console did, or
+because a stop cleared it — went on showing a live-looking prompt whose buttons could only 400. A
+frame saying nobody is waiting takes the prompt down.
 
 ### 4.2 Stopping
 
@@ -217,6 +222,22 @@ Two edges, both handled the same way the reader consult's are — in the loop, n
 
 ---
 
+### 4.5 When the engine says no
+
+Every control on this page posts, and the engine refuses for reasons the page cannot see from its own
+state: a run that has already stopped, a session no longer waiting on a choice, a model LM Studio
+does not have loaded, a round already in flight. All of it used to land in `catch {}` — the click did
+nothing at all, which reads as a broken page rather than as an answered question.
+
+So there is **one error line, in the source bar**, carrying the engine's own `reason` and clearing
+itself after a few seconds. Two refusals need more than a message, because the page has already moved
+ahead of the server: a refused `POST /model` **puts the dropdown back** (a wrong id fails every call,
+so a silently-wrong label is expensive), and a refused `POST /select` releases the pick so the shelf
+is clickable again. The interview keeps its own copy inside the modal (§6.1), where the refusal is
+about what you are looking at rather than about the session.
+
+---
+
 ## 5. Rendering
 
 Events are flat and ordered; the page is not. `build()` groups a `consult` and everything it
@@ -247,6 +268,19 @@ than starting a new one. That grouping is the whole renderer; everything else is
   rule and adds a third label for the request-vs-effective gap (§4.4): *"pause" → "pausing…" →
   "resume"*. The **model dropdown** is disabled whenever the run is going and not paused — enabled
   exactly when a choice would do something, never when it would 400.
+
+- **A pending reader consult is scrolled to** when it arrives, and its buttons disable on the click
+  that answers it. The run is blocked on you at that moment, reading further up the scene is the
+  normal thing to be doing when it appears, and a question nobody scrolls to is a run that looks
+  hung. One answer per consult: a second click is not a second choice.
+- **The run controls hide while nothing is running**, rather than sitting there disabled — the idle
+  screen belongs to the picker, and three greyed buttons on it are furniture, not information. The
+  model dropdown is the exception and stays: idle is exactly when it picks the model the next run
+  loads with. The chosen **theme is kept** across reloads, which a page watched across reconnects
+  otherwise forgets every time.
+- **Two consecutive drafts are separated like paragraphs**, because they are. At 6px the seam between
+  drafts read *tighter* than the paragraphs inside one, which is backwards on a page whose whole
+  point is that the scene reads straight down.
 
 **Re-render is whole, debounced on a timer.** A scene is a few dozen events; rebuilding is far
 cheaper than keeping incremental DOM state correct across retries and late-arriving verdicts. Open
@@ -327,7 +361,26 @@ run's view; hiding the modal loses nothing because the interview was never the p
 The server holds **one `ScaffoldSession`** and nothing else. Every decision is the session's
 (SPEC-S §4.2); these are the wires. It is **conversation only**: each change is a patch through the
 architect, the same round the console sends, because both drive the same object. Direct field
-editing is deliberately not here (§8).
+editing is deliberately not here (§8) — with **one exception, a closed list of one**.
+
+**Two dials, because neither is a design decision.**
+
+- **`built by`**, on the idea screen: which model builds the story, and — since the engine writes the
+  same id into the new story's `## Models` — which one then writes it. Before a story exists there is
+  only one model in play (SPEC-S §2), so it is one choice and not two. It is offered *only* before
+  the interview starts: the architect agent is built at `start`, and swapping it mid-interview would
+  mean a new agent with none of the history that "it kept the parts I liked" rests on. Once one is
+  open the model is **reported** in the modal's subtitle, not offered — and reported from
+  `scaffoldState()`, so a reloaded tab learns it too.
+- **Scene length**, typed over in the proposal card, sent as `POST /scaffold/set` and applied through
+  `applyEdits` — so the closed vocabulary still has exactly one enforcement point, and the next round
+  sends the *engine's* spec, meaning the architect sees the new number rather than the one it
+  proposed. A word count is a dial, not a design decision, and spending a minute-long round on one is
+  how you end up never changing it. `directEdit()` refuses anything outside 100–10000 rather than
+  letting `normalizeSpec` silently substitute 700 — right for a model's reply, wrong for a person
+  watching the number change under them. Same busy guard as a round, because `say()` serializes the
+  spec before its call and patches it after, so an edit landing in between would be invisible to the
+  architect for that round.
 
 The load-bearing detail: **the session stays parked in `awaitPick()` for the whole interview**, so
 accepting simply resolves that pick with the directory it just wrote. There is no second parking
@@ -347,19 +400,48 @@ checked before the state guards — a typo'd route name reported as a state prob
 debugging the wrong thing.
 
 In the page: the proposal renders as a card with the premise, the scene question and each character's
-can / cannot / knows / persona; `personas in full` is the `?` of the console loop; accepting over a
-flagged problem takes a **second, confirming click**, as it takes a second keypress at the console.
+can / cannot / knows / persona; `personas in full` is the `?` of the console loop.
 Because re-render is whole, what you are typing is kept in a draft outside the DOM and written back,
 and focus is read off the document *as the render begins* — tracking it through focus/blur fails,
-since removing a focused node does not reliably fire blur.
+since removing a focused node does not reliably fire blur. When nothing had focus, it goes to the box
+the interview is currently asking about (the folder question if one is open, else the say box): a
+modal that opens with focus on the page behind it makes the keyboard useless until you click.
+
+**Nothing may silently discard what you wrote.** This is one rule with four halves, and every one of
+them was a way to lose a change:
+
+- **`↵` sends** (`⇧↵` is a newline; on the idea box, which is a paragraph, it is the other way round
+  and `ctrl/⌘↵` proposes). There was no keyboard path to *send* at all, which is what made the
+  primary-styled button the apparent default for a box whose entire purpose is a change.
+- **The draft is cleared only once the round lands.** Clearing before the POST lost the text to a
+  409 or a dropped connection, with nothing said.
+- **Accepting over unsent text arms first**, the same confirming second click accepting over a
+  flagged problem takes (and a keypress at the console) — the story is written from the *spec*, so
+  anything still in the box is thrown away by it. The armed label says which of the two it is.
+- **Every refusal is shown.** `/scaffold/*` answers either the whole session state or a refusal, and
+  a refusal is a state the page cannot infer from its own optimism: a round already in flight, a
+  session no longer waiting for a story, a story written that will not load. A refused `start` also
+  drops the optimistic "thinking…" back to the idea box, or the modal hangs there until a reload.
+
+The row is ordered by what a button costs you — `send · accept & write it · personas in full`, then a
+gap, then **`abandon`, which arms too**: it throws away every round of an interview at once and the
+server keeps no copy. Mid-round only the two that are safe there remain (`personas` is local, and the
+server allows abandoning a round in flight). The **folder question is a question, not a mode**: the
+ordinary row still renders under it, so "actually, change one more thing first" and "abandon" stay
+reachable — at the console a blank answer goes back to refining, and the browser had no equivalent.
 
 ---
 
 ## 7. Sources
 
-`?src=URL` → `/run` + SSE (live) → `/log.jsonl` → drag-drop / **load run** → empty state. Works from
-`file://` too, where only drag-drop and `?src=` apply. A past run's **read** button (§6) is this same
-chain's `ingest()`, fed by `GET /runs/log` instead of a dropped file.
+`?src=URL` → `/run` + SSE (live) → `/log.jsonl` → drag-drop / **open a saved log** → empty state.
+Works from `file://` too. A past run's **read** button (§6) is this same chain's `ingest()`, fed by
+`GET /runs/log` instead of a dropped file.
+
+**"open a saved log" lives in the empty state, not the topbar.** As `load run` it sat one button from
+`stop run`, reading like a run control while duplicating drag-drop, and since a story's retained runs
+became `read ·` buttons on its card (§6) the topbar slot bought nothing. The empty state is where
+someone with nothing loaded is already looking.
 
 ---
 
@@ -370,10 +452,14 @@ chain's `ingest()`, fed by `GET /runs/log` instead of a dropped file.
   wanted. Nothing in the engine needs to change for it; that is why the events carry the situation
   verbatim rather than a summary.
 - **Direct editing of a proposal's fields** — forms bound to `applyEdits`' closed vocabulary, so a
-  single word in a persona could be fixed without spending a model call. Deliberately deferred: the
-  browser interview (§6.1) is conversation-only precisely so the console and the browser stay the
-  same interview over one `ScaffoldSession`. Worth revisiting once the browser one has been used in
-  anger; the field vocabulary a form would need already exists.
+  single word in a persona could be fixed without spending a model call. Still deferred for the
+  *prose* fields: the browser interview (§6.1) is conversation-only precisely so the console and the
+  browser stay the same interview over one `ScaffoldSession`, and a persona edited behind the
+  architect's back is a persona it will contradict on the next round. **`scene.length` is the
+  exception and is now direct** (§6.1) — it is a dial rather than a design decision, nothing else in
+  the spec has to agree with it, and it still goes through `applyEdits`, so the closed vocabulary
+  keeps one enforcement point. That is the line for anything proposed next: if the architect would
+  have to be told about it to keep the story coherent, it stays a conversation.
   *(The interview itself stayed at the console for a while, on the reasoning that a two-way design
   chat is a different UI from watching a run — until the browser started driving the session, at
   which point "now go back to the terminal to make one" was the seam that moved it here.)*
