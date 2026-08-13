@@ -175,7 +175,19 @@
   .card.new .name { color:var(--good); }
   .card.new .q { color:var(--muted); }
 
-  /* the interview: same slot as the picker, because it is the same question — what do we write? */
+  /* the interview: a modal over whatever is already on the page, not a slot inside it -- a scene (or
+     the picker) stays visible, dimmed, underneath. Closing it (Escape, a click on the backdrop, or
+     the "new story…" card again) only HIDES it; the session stays parked exactly as it was, same as
+     what already happened on a reload mid-interview. Only "abandon" actually ends it. */
+  .modal-backdrop { position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.55);
+                     display:flex; align-items:flex-start; justify-content:center;
+                     overflow-y:auto; padding:6vh 16px; }
+  .modal-backdrop .picker.iv { max-width:640px; width:100%; margin:0;
+                                background:var(--panel); border:1px solid var(--line);
+                                border-radius:14px; padding:22px 24px; box-shadow:var(--shadow); }
+  .iv-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .iv-head h2 { margin:0 0 3px; }
+  #iv-hide { font-family:var(--mono); font-size:16px; line-height:1; padding:4px 8px; flex:none; }
   .iv .lead { font-family:var(--serif); font-size:15.5px; margin:0 0 12px; color:var(--muted); }
   .iv .said { font-family:var(--mono); font-size:11px; color:var(--faint); margin:10px 0 0; }
   .iv .said.bad { color:var(--bad); } .iv .said.good { color:var(--good); }
@@ -283,6 +295,8 @@
   let picked = "";            // a choice already sent; keeps a double-click from being two picks
   let scaffold = { active:false };   // the interview, from /scaffold and its SSE frames
   let ideaOpen = false;       // "new story…" clicked; no interview on the server yet
+  let ivHidden = false;       // the interview modal is closed WITHOUT abandoning it (F2) -- reopened
+                               // by the same "new story…" card, which relabels itself while it is true
   let personasFull = false;
   let acceptArmed = 0;        // timer id: accepting over a complaint wants a second click
   // Re-render is whole, which would otherwise eat what you are typing mid-round. Drafts live out
@@ -452,8 +466,8 @@
       <p class="sub">${picked ? "starting…" : "the run begins as soon as you pick one"}${clear}</p>
       <div class="cards">${cards}
         <button class="card new" data-new="1"${picked ? " disabled" : ""}>
-          <div class="name">new story…</div>
-          <p class="q">describe an idea and have one built — the interview is still at the console</p>
+          <div class="name">${scaffold.active ? "continue new story…" : "new story…"}</div>
+          <p class="q">${scaffold.active ? `back to "${esc(scaffold.idea || "")}"` : "describe an idea and have one built"}</p>
         </button>
       </div>
     </section>`;
@@ -474,7 +488,12 @@
     for (const b of page.querySelectorAll(".card[data-dir]"))
       b.addEventListener("click", () => choose({ dir: b.dataset.dir }));
     for (const b of page.querySelectorAll(".card[data-new]"))
-      b.addEventListener("click", () => { ideaOpen = true; render(); });
+      b.addEventListener("click", () => {
+        // Already going server-side (one ScaffoldSession, GUI-SPEC §6.1) -- this reopens the modal
+        // rather than starting a second interview.
+        if (scaffold.active) ivHidden = false; else ideaOpen = true;
+        render();
+      });
     const clear = page.querySelector("#clear-scene");
     if (clear) clear.addEventListener("click", e => {
       e.preventDefault();
@@ -580,7 +599,8 @@
     }
 
     return `<section class="picker iv">
-      <h2>${s.haveStory ? "Does this look right?" : "A new story"}</h2>
+      <div class="iv-head"><h2>${s.haveStory ? "Does this look right?" : "A new story"}</h2>
+        <button class="btn" id="iv-hide" title="close — keeps the interview going, reopen from the shelf">×</button></div>
       <p class="sub">${esc(s.idea)}</p>
       ${body.join("")}
     </section>`;
@@ -606,6 +626,7 @@
       if (el) el.addEventListener("input", () => { draft[key] = el.value; });
     }
     on("iv-back", () => { ideaOpen = false; render(); });
+    on("iv-hide", () => { ivHidden = true; render(); });
     on("iv-start", async () => {
       if (!draft.idea.trim()) return;
       scaffold = { active:true, busy:true, idea:draft.idea.trim(), problems:[], haveStory:false };
@@ -620,7 +641,7 @@
     on("iv-full", () => { personasFull = !personasFull; render(); });
     on("iv-abandon", async () => {
       await postScaffold("abandon", {});
-      scaffold = { active:false }; ideaOpen = false; draft.idea = draft.say = draft.folder = "";
+      scaffold = { active:false }; ideaOpen = false; ivHidden = false; draft.idea = draft.say = draft.folder = "";
       render();
     });
     on("iv-folder", async () => {
@@ -652,16 +673,18 @@
     const page = $("page");
     const active = document.activeElement;
     const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";
-    // The interview and the picker are the same question — what do we write next — so they share
-    // one slot at the top of the reading column, above whatever scene is already there.
-    const chrome = (scaffold.active || ideaOpen) ? interviewHtml()
-                 : session.picking ? pickerHtml() : "";
+    // The picker sits at the top of the reading column, above whatever scene is already there (§1's
+    // principle). The interview (F2) is a MODAL over either one, not a slot inside them, so closing
+    // it without abandoning never costs the page underneath.
+    const chrome = session.picking ? pickerHtml() : "";
+    const modal = (scaffold.active || ideaOpen) && !ivHidden
+      ? `<div class="modal-backdrop" id="iv-backdrop">${interviewHtml()}</div>` : "";
     if (!blocks.length) {
-      page.innerHTML = chrome || `<div class="empty"><h2>Nothing loaded yet</h2>
+      page.innerHTML = (chrome || `<div class="empty"><h2>Nothing loaded yet</h2>
         <p>Run the engine with <code>--serve</code> to watch a scene as it is written, or drop a
-        saved <code>out/writing-log.jsonl</code> onto this page.</p></div>`;
+        saved <code>out/writing-log.jsonl</code> onto this page.</p></div>`) + modal;
       $("rail").innerHTML = "";
-      wirePicker(page); wireInterview(page); restoreFocus(page, keepFocus);
+      wirePicker(page); wireInterview(page); wireModal(page); restoreFocus(page, keepFocus);
       return;
     }
     page.innerHTML = chrome + `<div class="prose">` + blocks.map(b => {
@@ -674,7 +697,7 @@
         b.stopped ? "stopped by request" : b.done ? "scene finished" : "stopped early"}
         · ${b.words} words · ${b.steps} steps</div>`;
       return "";
-    }).join("") + `</div>`;
+    }).join("") + `</div>` + modal;
 
     for (const d of page.querySelectorAll("details.consult")) {
       d.addEventListener("toggle", () => {
@@ -682,8 +705,14 @@
         d.open ? open.add(s) : open.delete(s);
       });
     }
-    wirePicker(page); wireInterview(page); wireReader(page); restoreFocus(page, keepFocus);
+    wirePicker(page); wireInterview(page); wireReader(page); wireModal(page); restoreFocus(page, keepFocus);
     renderRail(blocks);
+  }
+
+  /** Backdrop click closes (hides) the modal, same as the × button — never abandons. */
+  function wireModal(page) {
+    const bd = page.querySelector("#iv-backdrop");
+    if (bd) bd.addEventListener("click", e => { if (e.target === bd) { ivHidden = true; render(); } });
   }
 
   function renderRail(blocks) {
@@ -759,6 +788,11 @@
       ms.value = session.model || cur || "";
     } catch {}
   }
+
+  // Escape closes the interview modal the same way the backdrop and × do — hides, never abandons.
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && (scaffold.active || ideaOpen) && !ivHidden) { ivHidden = true; render(); }
+  });
 
   /** Fetch the shelf when the session starts waiting on a choice, and drop it when it stops — the
    *  pre-flight behind it goes stale the moment a story is edited on disk. */

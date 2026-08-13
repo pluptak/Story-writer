@@ -305,9 +305,13 @@ touched by a reading pane.
 
 ### 6.1 The interview
 
-`new story…` opens the interview **in the same slot** — it is the same question the picker asks, so
-it replaces the picker rather than stacking with it, and still sits above whatever scene is already
-on the page.
+`new story…` opens the interview as a **modal** over whatever is already on the page — the picker, a
+finished scene, or both. Closing it (the × in its corner, a click on the backdrop, or Escape) only
+**hides** it; the `ScaffoldSession` on the server does not know it happened, so reopening it (the same
+"new story…" card, now reading *"continue new story…"*) lands exactly where you left it — the same
+guarantee a reload already gave you (below). Only **abandon** actually ends the interview. This is
+deliberately not the picker's own escape hatch (clear the last scene, above): that clears a *finished*
+run's view; hiding the modal loses nothing because the interview was never the page under it.
 
 The server holds **one `ScaffoldSession`** and nothing else. Every decision is the session's
 (SPEC-S §4.2); these are the wires. It is **conversation only**: each change is a patch through the
