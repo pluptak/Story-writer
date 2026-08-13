@@ -239,6 +239,8 @@
 <div class="topbar">
   <div class="brand"><h1 id="title">story-writer</h1><div class="q" id="question"></div></div>
   <div class="cast" id="cast"></div>
+  <select class="btn" id="modelSelect" hidden><option value="">story default</option></select>
+  <button class="btn" id="pause" hidden>pause</button>
   <button class="btn" id="consultMe" hidden>consult me</button>
   <button class="btn" id="stop" hidden>stop run</button>
   <button class="btn" id="expand">expand all</button>
@@ -274,7 +276,8 @@
   let seen = new Set();
   let meta = null;            // from /run, when serving
   let composing = null;       // ephemeral: {who, secs, chars}
-  let session = { running:false, stopping:false, where:"", picking:false, armed:false };  // the process, not the story
+  let session = { running:false, stopping:false, where:"", picking:false, armed:false,
+                  paused:false, pausing:false, model:null };  // the process, not the story
   let armed = 0;              // timer id: the stop button is waiting for its confirming second click
   let stories = null;         // story cards from /stories, while the session waits for a choice
   let picked = "";            // a choice already sent; keeps a double-click from being two picks
@@ -324,6 +327,7 @@
           break;
         }
         case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
+        case "model_changed": blocks.push({ kind:"note", seq:e.seq, text:`model switched to ${e.model}` }); break;
         case "scene_end": blocks.push({ kind:"end", seq:e.seq, ...e }); break;
       }
     }
@@ -731,8 +735,30 @@
     const cm = $("consultMe");
     cm.disabled = !session.running || session.stopping || session.armed;
     cm.textContent = session.armed ? "consulting…" : "consult me";
+    const p = $("pause");
+    p.disabled = !session.running || session.stopping;
+    p.textContent = session.paused ? "resume" : session.pausing ? "pausing…" : "pause";
+    // Enabled when idle (picks the model for the NEXT run) or actually paused (swaps the one
+    // running) -- NOT while merely "pausing", since the loop has not reached the boundary yet and
+    // the server would 400 the same change (GUI-SPEC §4.4).
+    const ms = $("modelSelect");
+    ms.disabled = session.running && !session.paused;
+    if (document.activeElement !== ms) ms.value = session.model || "";
   }
   const disarm = () => { clearTimeout(armed); armed = 0; renderSession(); };
+
+  /** The model ids LM Studio has loaded, fetched once and reused -- the dropdown that lets you pick
+   *  one before a run starts, or swap it while paused (GUI-SPEC §4.4). */
+  async function loadModels() {
+    try {
+      const j = await (await fetch("/models")).json();
+      const ms = $("modelSelect");
+      const cur = ms.value;
+      ms.innerHTML = '<option value="">story default</option>'
+        + (j.ids || []).map(id => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
+      ms.value = session.model || cur || "";
+    } catch {}
+  }
 
   /** Fetch the shelf when the session starts waiting on a choice, and drop it when it stops — the
    *  pre-flight behind it goes stale the moment a story is edited on disk. */
@@ -756,6 +782,15 @@
     if (!session.running || session.stopping || session.armed) return;
     try { await fetch("/consult-me", { method:"POST" }); } catch {}
   };
+  $("pause").onclick = async () => {
+    if (!session.running || session.stopping) return;
+    try { await fetch(session.paused || session.pausing ? "/resume" : "/pause", { method:"POST" }); } catch {}
+  };
+  $("modelSelect").onchange = async () => {
+    const model = $("modelSelect").value;   // "" == "story default", clears the override
+    try { await fetch("/model", { method:"POST", headers:{ "Content-Type":"application/json" },
+                                   body: JSON.stringify({ model }) }); } catch {}
+  };
 
   function ingest(text) {
     events = text.split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
@@ -768,7 +803,9 @@
       const r = await fetch("/run"); if (!r.ok) throw 0;
       const j = await r.json();
       if (j.run) { meta = j.run; renderHeader(); }
-      session = { running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking, armed: !!j.armed };
+      session = { running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking, armed: !!j.armed,
+                  paused: !!j.paused, pausing: !!j.pausing, model: j.model || null };
+      loadModels();
       if (j.awaitingContinue) showPrompt(j.awaitingContinue);
       if (j.picking) loadStories();          // a reload while the session waits must not strand it
       // An interview may already be open — a reload in the middle of one must land back in it.
@@ -784,6 +821,8 @@
     setSrc("live", true);
     $("stop").hidden = false;          // the run can only be stopped where there is one to stop
     $("consultMe").hidden = false;
+    $("pause").hidden = false;
+    $("modelSelect").hidden = false;
     renderSession();
     let pending = null;
     es.onmessage = m => {
@@ -793,7 +832,8 @@
       if (f.t === "continue_prompt") { showPrompt(f); return; }
       if (f.t === "run_state") {
         const was = session.picking;
-        session = { running: !!f.running, stopping: !!f.stopping, where: f.where || "", picking: !!f.picking, armed: !!f.armed };
+        session = { running: !!f.running, stopping: !!f.stopping, where: f.where || "", picking: !!f.picking, armed: !!f.armed,
+                    paused: !!f.paused, pausing: !!f.pausing, model: f.model || null };
         if (!session.running) disarm();
         if (session.picking !== was) loadStories();
         renderSession();

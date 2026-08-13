@@ -72,7 +72,7 @@ interface StorySpec {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
   writerStyle: string;
-  characters: Array<{ name: string; persona: string; knows: string; skills: string[]; lacks: string[] }>;
+  characters: Array<{ name: string; persona: string; knows: string; goal: string; skills: string[]; lacks: string[] }>;
 }
 ```
 
@@ -158,7 +158,7 @@ Refinement is a **patch**, against a closed vocabulary of field paths:
 ```
 title · premise · writer_style
 scene.place · scene.question · scene.pov · scene.length
-characters.<NAME>.persona · .knows · .skills · .lacks
+characters.<NAME>.persona · .knows · .goal · .skills · .lacks
 add_character · remove_character
 ```
 

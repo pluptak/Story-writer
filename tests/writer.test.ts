@@ -762,6 +762,51 @@ describe("renderStory round trip", () => {
   });
 });
 
+// -- MODEL OVERRIDE (the GUI's dropdown/pause feature, GUI-SPEC §4.4) ------
+// loadStory()'s only new surface: an override applied BEFORE models.default's fallbacks resolve, so
+// it reaches a character or role that would otherwise have inherited the default, and nothing that
+// named its own model. This is the one piece of that feature pure enough to unit test; pause/resume
+// and the live-agent swap are server wiring, exercised by hand like the reader consult's is.
+describe("loadStory model override", () => {
+  async function withStory(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    await writeFile(join(dir, "story.md"), [
+      "## Premise", "A premise.", "",
+      "## Characters", "", "### A", "file: a.md", "", "### B", "file: b.md", "model: b-own-model", "",
+      "## Models", "default: story-default",
+    ].join("\n"), "utf8");
+    await writeFile(join(dir, "a.md"), "A's persona.", "utf8");
+    await writeFile(join(dir, "b.md"), "B's persona.", "utf8");
+    return dir;
+  }
+
+  it("beats the story's own default when given", async () => {
+    const dir = await withStory();
+    try {
+      const sc = await quiet(() => loadStory(dir, "gui-override"));
+      assert.equal(sc.models.default, "gui-override");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("reaches a character with no model: of its own, never one that names its own", async () => {
+    const dir = await withStory();
+    try {
+      const sc = await quiet(() => loadStory(dir, "gui-override"));
+      const a = sc.characters.find(c => c.name === "A")!, b = sc.characters.find(c => c.name === "B")!;
+      assert.equal(a.model, "gui-override", "A has no model: of its own — it inherits the override");
+      assert.equal(b.model, "b-own-model", "B named its own model — the override must not touch it");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("leaves the story's own default in force when none is given", async () => {
+    const dir = await withStory();
+    try {
+      const sc = await quiet(() => loadStory(dir));
+      assert.equal(sc.models.default, "story-default");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe("loadDefaults", () => {
   it("reads defaults.md, and --model overrides everything in it", async () => {
     const d = await quiet(() => loadDefaults());

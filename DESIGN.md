@@ -274,6 +274,12 @@ when no story is loaded yet — see §7 and SPEC-S §2. It is optional.
 Inline `# comments` are stripped after `key: value` in the structured sections **only** — never
 inside a character block, where `knows:` and `skills:` are prose.
 
+`loadStory()` takes an optional model override beating `default` above, for exactly one run — the
+viewer's model dropdown (§6.1) is what sets it; nothing in the story format itself can. It applies
+the same way whether the story was authored by hand or just scaffolded: `renderStory()` writes
+`## Models → default:` from whatever S1's own resolution chose (SPEC-S §2), untouched, and the
+override is layered on top of that file the moment it is loaded to run.
+
 ### 5.2 Sharp edges
 
 - A model id is the one field a structural load cannot check. `--preflight` asks LM Studio's
@@ -291,7 +297,7 @@ inside a character block, where `knows:` and `skills:` are prose.
 - `scene.md` — the prose alone, rewritten after every draft that produces any.
 - `writing-log.jsonl` — one JSON object per line, `seq`-stamped: `scene_start, draft, bad_consult,
   consult, need, clarify, forced, repair, skill_flag, answer, judge, retry, accept, budget,
-  reader_ask, reader_answer, scene_end`. This is the
+  reader_ask, reader_answer, model_changed, scene_end`. This is the
   record of *why* the scene reads the way it does — which questions were asked, what was clarified,
   what was rejected and re-asked.
 
@@ -318,6 +324,19 @@ named on the command line still runs once and exits. A stop also resolves any pe
 The topbar's **consult me** button (browser-only) arms the one-shot flag `[ASK READER]` checks — see
 §3.1, §4. Arming with nobody attached by the time it would fire is dropped silently rather than left
 to block forever, the same principle as losing the viewer never costing a scene.
+
+**Pausing** (browser-only, GUI-SPEC §4.4) is a second flag checked at the same loop boundary as
+`RUN.stopped`, but it never aborts the call in flight — the point is to let the piece already being
+generated finish before the model underneath it changes, not to cut it short. While actually paused
+(not merely requested — the loop has to reach the boundary first, which can take as long as the call
+in flight), the viewer's model dropdown becomes live-editable and `POST /model` swaps the model on
+**every already-instantiated agent**, writer and every character, even one authored with its own
+`model:` — pausing is a live override of what is running, not a rewrite of how the story was
+authored. The swap is logged (`model_changed`) so the record says when and to what, the same reason a
+stop or a reader consult is logged rather than left as UI trivia. The same override, picked before a
+run starts, instead beats the story's own `## Models → default:` for that run only (§5.1) — it is
+applied before per-character and per-role fallbacks resolve, so it reaches exactly the agents that
+would otherwise have inherited the default, and nothing that named its own model explicitly.
 
 The console itself prints a **status line rather than the model's raw draft** — one rewritten line
 with elapsed time and characters received, nothing at all when output is not a TTY. Streaming raw

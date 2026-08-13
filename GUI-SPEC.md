@@ -53,6 +53,10 @@ otherwise like a run that simply consulted less.
 prompt — a reader consult is part of the story. A `reader_ask` with no matching `reader_answer` yet
 is the block that is still waiting on you; see §4.3 and §5.
 
+`model_changed` (DESIGN.md §6.1) is a real event for the same reason — a swap made while paused
+changes what the rest of the scene sounds like, so it belongs in the record rather than only
+flashing over SSE. See §4.4.
+
 ### 2.1 SSE-only frames
 
 Never written to the log, because they are UI state rather than record:
@@ -62,7 +66,7 @@ Never written to the log, because they are UI state rather than record:
 | `{t:"composing", who, secs, chars}` | an agent is generating; drives the indicator |
 | `{t:"idle"}` | it stopped |
 | `{t:"continue_prompt", steps, budget, suggested}` | the step budget is spent (§4.1) |
-| `{t:"run_state", running, stopping, where, picking, armed}` | what the **session** is doing (§4.2, §6); `armed` is the reader-consult flag (§4.3) |
+| `{t:"run_state", running, stopping, where, picking, armed, paused, pausing, model}` | what the **session** is doing (§4.2, §6); `armed` is the reader-consult flag (§4.3), `paused`/`pausing`/`model` are the pause and model-override state (§4.4) |
 | `{t:"run_reset"}` | a new run is starting in this process; drop what you are holding |
 
 A run's log must stay the record of what happened, not of what a browser happened to be showing.
@@ -88,11 +92,15 @@ run it was opened for.
 |---|---|
 | `GET /` | the viewer, `no-cache` |
 | `GET /events` | SSE. **Replays `liveHistory` first, then attaches** — a viewer opened halfway through sees the whole scene, not the rest of it — then one `run_state` for what is happening now |
-| `GET /run` | `{ run: {story, characters, target, question}, awaitingContinue, events, running, stopping, where, picking, armed }` |
+| `GET /run` | `{ run: {story, characters, target, question}, awaitingContinue, events, running, stopping, where, picking, armed, paused, pausing, model }` |
 | `POST /continue` | `{steps}` — grants budget (§4.1); 400 when nothing is waiting |
 | `POST /stop` | end the current run (§4.2); 400 when none is in progress |
 | `POST /consult-me` | arm the reader-consult flag (§4.3); 400 when no run is in progress; a second arm before the first fires is a no-op |
 | `POST /reader-answer` | `{answer}` — resolve the pending `[ASK READER]` (§4.3); 400 when nothing is waiting |
+| `GET /models` | `{ ids, reachable, current }` — the model ids LM Studio has loaded (§4.4), memoized the same way pre-flight's ping is |
+| `POST /pause` | request a pause at the run's next boundary (§4.4); 400 when none is in progress; a second request before the first takes effect is a no-op |
+| `POST /resume` | clear a pause, requested or in effect (§4.4); 400 when neither is true |
+| `POST /model` | `{model}` — set the model override; `""` clears it. Idle: applies to the next run. Paused: swaps every live agent immediately. Running-and-not-paused: 400 (§4.4) |
 | `GET /stories` | every discovered story, pre-flighted, as picker cards (§6) |
 | `POST /select` | `{dir}` — choose the next story (§6); 400 when the session is not waiting, or the story was not discovered |
 | `GET /scaffold` | the open interview, or `{active:false}` (§6.1) |
@@ -172,6 +180,40 @@ Two edges, both already covered by the loop rather than the viewer:
 - **The run is stopped while a reader consult is outstanding.** `POST /stop` resolves it with an
   empty answer, which the loop discards rather than folding in — see §4.2.
 
+### 4.4 Pausing and changing the model
+
+The topbar carries a model dropdown (populated from `GET /models`) and a **pause** button, browser-
+only like the reader consult — there is no console equivalent for either.
+
+**Picking a model while idle** sets the override for the *next* run (`POST /model`); it has no effect
+on one already in progress. **Picking one while running-and-not-paused is refused** (400) — the
+dropdown is disabled for exactly that state, so the refusal should never actually be seen, only
+guarded against a stale tab or a race.
+
+**Pause** is a request, not an instant: `POST /pause` sets a flag the loop checks at its next
+boundary, same as everything else in §4, and — unlike stop — it never aborts the call already in
+flight. The point is to let the piece being generated finish cleanly before the model underneath it
+changes. Between the click and the loop actually reaching that boundary the button reads
+*"pausing…"*; only once it is actually sitting there (`paused`, not merely `pausing`) does the model
+dropdown become editable, because that is also exactly what the server enforces on `POST /model`.
+
+**Picking a model while paused swaps it immediately**, on the writer and on every character agent
+already in the scene — including one authored with its own `model:` line, since pausing is a live
+override of what is actually running, not a rewrite of how the story was authored (DESIGN.md §6.1).
+Existing history and persona on each agent are untouched; only which model answers their next call
+changes. The swap becomes a `model_changed` event — real record, not UI trivia, per §2.
+
+**Resuming** (`POST /resume`) clears the pause, requested or in effect, and lets the loop continue
+from wherever it was blocked.
+
+Two edges, both handled the same way the reader consult's are — in the loop, not the viewer:
+
+- **The run is stopped while paused.** `POST /stop` releases the pause gate too, so a stop can never
+  leave the loop blocked on a promise nobody will resolve.
+- **"Story default" is picked while paused.** Clearing the override changes what the *next* run
+  starts from; it cannot revert the agents already swapped, since nothing records what they were
+  before — there is no "back" to a live swap, only forward to another one.
+
 ---
 
 ## 5. Rendering
@@ -198,6 +240,12 @@ than starting a new one. That grouping is the whole renderer; everything else is
   free-text box; answered, it collapses to the framing and what was chosen. The **consult me** button
   mirrors stop's live-only, disabled-when-nothing-running rule, plus a third state — disabled and
   relabelled while the one it just armed is still pending.
+- **A model swap** (§4.4) renders as a plain note in the gap where it happened, the same treatment as
+  `bad_consult`/`budget` — it is a fact about how the rest of the scene was produced, not something
+  worth a whole block. The **pause** button follows stop's live-only/disabled-when-nothing-running
+  rule and adds a third label for the request-vs-effective gap (§4.4): *"pause" → "pausing…" →
+  "resume"*. The **model dropdown** is disabled whenever the run is going and not paused — enabled
+  exactly when a choice would do something, never when it would 400.
 
 **Re-render is whole, debounced on a timer.** A scene is a few dozen events; rebuilding is far
 cheaper than keeping incremental DOM state correct across retries and late-arriving verdicts. Open

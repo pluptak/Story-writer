@@ -631,7 +631,7 @@ export interface StoryConfig {
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolvePath(ROOT, dir));
 
-export async function loadStory(dir: string): Promise<StoryConfig> {
+export async function loadStory(dir: string, modelOverride?: string): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
   const read = (file: string) => readFile(joinPath(base, file), "utf8");
   const parsed = parseStoryMd(await read("story.md"));
@@ -659,7 +659,10 @@ export async function loadStory(dir: string): Promise<StoryConfig> {
   const stream         = bool(kv, "config.stream", true);
   const debug          = bool(kv, "config.debug", false);
 
-  const defaultModel = kv["models.default"] ?? "qwen3.6-35b-a3b";
+  // A GUI-selected override beats the story's own authored default, same relationship `--model=` has
+  // to `defaults.md` (SPEC-S §2) -- it only reaches characters and roles that fall back to the
+  // default, since it is applied before that fallback resolves, not after.
+  const defaultModel = modelOverride || kv["models.default"] || "qwen3.6-35b-a3b";
   const models = {
     default: defaultModel,
     writer:  kv["models.writer"]  ?? defaultModel,
@@ -1955,6 +1958,7 @@ export type RunEvent =
   | { t: "budget"; added: number; budget: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[] }
   | { t: "reader_answer"; answer: string }
+  | { t: "model_changed"; model: string }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean };
 
 // -- LIVE EVENT BUS --------------------------------------------------------
@@ -1970,7 +1974,8 @@ export type LiveFrame =
   | { t: "composing"; who: string; secs: number; chars: number }
   | { t: "idle" }
   | { t: "continue_prompt"; steps: number; budget: number; suggested: number }
-  | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean }
+  | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean;
+      paused: boolean; pausing: boolean; model: string | null }
   | { t: "run_reset" }
   | { t: "scaffold"; state: unknown };
 
@@ -2009,6 +2014,28 @@ let RUN_META: RunMeta | null = null;
 let awaitingContinue: { steps: number; budget: number } | null = null;
 let continueResolve: ((n: number) => void) | null = null;
 
+// The model the viewer has picked for the NEXT `loadStory()` call (idle) or the run in progress
+// (paused) -- see the `/model` route. Null means "whatever the story authors". No console
+// equivalent, same as the reader consult below: picking requires a viewer.
+let MODEL_OVERRIDE: string | null = null;
+
+// Paused via the viewer's "pause" button so the running model can be swapped without losing the
+// piece already being generated -- unlike a stop, this never aborts a call in flight, it only stops
+// the loop from STARTING its next one. `pausing` is true from the click until the loop actually
+// reaches a boundary and blocks; `paused` is true only once it is actually sitting there, which is
+// what the `/model` route checks before it will touch a live agent. Mirrors `stopping`/`RUN.stopped`.
+let pausing = false;
+let paused = false;
+let pauseResolve: (() => void) | null = null;
+// The writer and character agents of the run currently in progress, exposed so the `/model` route
+// can reach them while `paused` -- `writeScene()` sets these at the top and clears them at the end.
+let LIVE_WRITER: Agent | null = null;
+let LIVE_AGENTS: Map<string, Agent> | null = null;
+// The same `log` callback `writeScene()` was called with -- writes to the run's own JSONL and fans
+// out live, exactly like every event the loop itself produces. Lets `/model` log a swap as part of
+// the run's record rather than only flashing it over SSE.
+let LIVE_LOG: ((e: RunEvent) => void) | null = null;
+
 // Armed by the viewer's "consult me" button: fires once, on the next [WRITE] step, then clears
 // itself. `reader_ask`/`reader_answer` are real RunEvents rather than UI state like `continue_prompt`
 // -- a reader consult is part of the story, so a late viewer gets it from replay rather than GET /run.
@@ -2031,6 +2058,7 @@ function runState(): LiveFrame {
   return {
     t: "run_state", running: RUNNING, stopping: RUN.stopped && RUNNING,
     where: WHERE, picking: awaitingPick, armed: readerArmed,
+    paused, pausing: pausing && !paused, model: MODEL_OVERRIDE,
   };
 }
 /** Announce what the session is doing. Never logged — a run's log is the record of the story, not of
@@ -2078,6 +2106,8 @@ function resetLive() {
   liveSeq = 0;
   awaitingContinue = null; continueResolve = null;
   readerArmed = false; readerResolve = null;
+  pausing = false; paused = false; pauseResolve = null;
+  LIVE_WRITER = null; LIVE_AGENTS = null; LIVE_LOG = null;
   armRun();
   sseWrite({ t: "run_reset" });
 }
@@ -2119,7 +2149,7 @@ export function startServer(port = PORT) {
       json(res, 200, {
         run: RUN_META, awaitingContinue, events: liveHistory.length,
         running: RUNNING, stopping: RUN.stopped && RUNNING, where: WHERE, picking: awaitingPick,
-        armed: readerArmed,
+        armed: readerArmed, paused, pausing: pausing && !paused, model: MODEL_OVERRIDE,
       });
 
     } else if (path === "/stories") {
@@ -2154,6 +2184,10 @@ export function startServer(port = PORT) {
       // resolve anymore — the same reason the budget question above gets unstuck too.
       if (readerResolve) { const r = readerResolve; readerResolve = null; r(""); }
       readerArmed = false;
+      // Same for a pause: stopped-while-paused must not leave the loop blocked on a gate nobody will
+      // ever open.
+      if (pauseResolve) { const r = pauseResolve; pauseResolve = null; r(); }
+      pausing = false; paused = false;
       if (first) console.log(`\n${C.yellow}Stop requested from the viewer — ending the scene.${C.reset}`);
       sseWrite(runState());
       json(res, 200, { ok: true, already: !first });
@@ -2177,6 +2211,55 @@ export function startServer(port = PORT) {
         json(res, 200, { ok: true });
         r(answer);
       });
+
+    } else if (path === "/models" && req.method === "GET") {
+      // The same memoized LM Studio ping preflight uses — this route is hit once per picker load and
+      // once per pause, not once per story, so the 5s memoization matters here too.
+      const ids = await loadedModelIds();
+      json(res, 200, { ids: ids ?? [], reachable: ids !== null, current: MODEL_OVERRIDE });
+
+    } else if (path === "/model" && req.method === "POST") {
+      let body = ""; req.on("data", c => (body += c));
+      req.on("end", async () => {
+        if (RUNNING && !paused) { json(res, 400, { ok: false, reason: "pause the run before changing its model" }); return; }
+        let o: any = {}; try { o = JSON.parse(body || "{}"); } catch {}
+        const model = String(o.model ?? "").trim();
+        // Empty clears the override back to "whatever the story authors" (§7 of SPEC-S). It only
+        // ever affects the NEXT `loadStory()` -- a paused run's live agents keep whatever model they
+        // were last explicitly swapped to, since there is nothing recorded to revert them TO.
+        if (!model) { MODEL_OVERRIDE = null; json(res, 200, { ok: true }); return; }
+        // A wrong id fails on every single call at runtime (CLAUDE.md) — worth the round trip to LM
+        // Studio to reject it here instead. An unreachable server can't say no, so it is let through.
+        const ids = await loadedModelIds();
+        if (ids !== null && !ids.includes(model)) {
+          json(res, 400, { ok: false, reason: `"${model}" is not loaded in LM Studio` }); return;
+        }
+        MODEL_OVERRIDE = model;
+        if (paused && LIVE_WRITER && LIVE_AGENTS) {
+          // "All live agents": every character already in the scene switches too, even one authored
+          // with its own `model:` — pausing is a live override of what is actually running, not a
+          // rewrite of how the story was authored. See DESIGN.md §4.4.
+          LIVE_WRITER.model = model;
+          for (const a of LIVE_AGENTS.values()) a.model = model;
+          LIVE_LOG?.({ t: "model_changed", model });
+        }
+        sseWrite(runState());
+        json(res, 200, { ok: true });
+      });
+
+    } else if (path === "/pause" && req.method === "POST") {
+      if (!RUNNING) { json(res, 400, { ok: false, reason: "no run in progress" }); return; }
+      if (pausing || paused) { json(res, 200, { ok: true, already: true }); return; }
+      pausing = true;
+      sseWrite(runState());
+      json(res, 200, { ok: true });
+
+    } else if (path === "/resume" && req.method === "POST") {
+      if (!pausing && !paused) { json(res, 400, { ok: false, reason: "not paused" }); return; }
+      pausing = false;
+      if (pauseResolve) { const r = pauseResolve; pauseResolve = null; paused = false; r(); }
+      sseWrite(runState());
+      json(res, 200, { ok: true });
 
     } else if (path === "/continue" && req.method === "POST") {
       let body = ""; req.on("data", c => (body += c));
@@ -2336,6 +2419,9 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
   writer.think = sc.thinking.writer;
   const agents = buildCharacterAgents(sc);
   const defOf = (name: string) => sc.characters.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+  // Exposed for the `/model` route (GUI-SPEC §4.4): the only way it can reach a live agent to swap
+  // its model while paused. Cleared at the end so a route hit between runs finds nothing to touch.
+  LIVE_WRITER = writer; LIVE_AGENTS = agents; LIVE_LOG = log;
 
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
@@ -2352,6 +2438,19 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     // The cheap half of stopping: every boundary in the loop is a place it can end without losing
     // anything. The expensive half — cutting the call in flight — is in the transport.
     if (RUN.stopped) break;
+
+    // -- PAUSE (GUI-SPEC §4.4): requested via the viewer's "pause" button, checked at the same
+    // boundary as everything else here. Unlike a stop this never aborts a call in flight — the
+    // point is to let the piece already being generated finish before the model underneath it
+    // changes — it only keeps the loop from STARTING its next one.
+    if (pausing) {
+      paused = true;
+      sseWrite(runState());
+      await new Promise<void>(res => { pauseResolve = res; });
+      if (RUN.stopped) break;
+      continue;
+    }
+
     if (steps >= budget) {
       const extra = await askMoreSteps(steps, budget);
       if (!extra) break;
@@ -2590,6 +2689,7 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
   }
 
   log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped });
+  LIVE_WRITER = null; LIVE_AGENTS = null; LIVE_LOG = null;
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
 }
 
@@ -2770,7 +2870,7 @@ async function runScaffoldCli() {
         const dir = await acceptAtConsole(session, rl2);
         if (!dir) continue;                       // could not settle on a folder; back to refining
         rl2.close();
-        const sc = await loadStory(dir);
+        const sc = await loadStory(dir, MODEL_OVERRIDE ?? undefined);
         STREAM = sc.stream; DEBUG = sc.debug;
         NET.timeoutMs = sc.requestTimeout * 1000;
         NET.retries = sc.attempts - 1;
@@ -2791,7 +2891,7 @@ async function runScaffoldCli() {
 
 /** Load one story, apply the debug flags, and either write its scene or answer one consult. */
 async function runOne(dir: string) {
-  const sc = await loadStory(dir);
+  const sc = await loadStory(dir, MODEL_OVERRIDE ?? undefined);
   STREAM = sc.stream; DEBUG = sc.debug;
   NET.timeoutMs = sc.requestTimeout * 1000;
   NET.retries = sc.attempts - 1;
