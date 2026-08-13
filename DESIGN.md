@@ -292,7 +292,8 @@ override is layered on top of that file the moment it is loaded to run.
 
 ## 6. Outputs
 
-`<story dir>/out/`, written **as the run goes** so an interrupted run leaves both artifacts:
+`<story dir>/out/<run id>/`, one folder per run, written **as the run goes** so an interrupted run
+leaves both artifacts:
 
 - `scene.md` — the prose alone, rewritten after every draft that produces any.
 - `writing-log.jsonl` — one JSON object per line, `seq`-stamped: `scene_start, draft, bad_consult,
@@ -304,6 +305,18 @@ override is layered on top of that file the moment it is loaded to run.
 `publish()` fans every event to three places at once — the file, an in-memory history, and any
 attached SSE client — under **one `seq`**. So a saved log and a live run are the same data in the
 same order, and the viewer renders both identically. See [GUI-SPEC.md](GUI-SPEC.md).
+
+**A story keeps its last `MAX_RUNS` (3) runs**, not just its last one. `<run id>` is the run's start
+time as an ISO timestamp (`:`/`.` swapped for `-`, filesystem-safe and still sort order = chronological
+order), so `runDirs()` — every run folder under a story's `out/`, oldest first — is a plain directory
+listing needing no metadata file of its own. Rotation runs once, after a run finishes writing: list,
+and delete whatever is oldest beyond the last `MAX_RUNS`. A story that predates this (a flat
+`out/scene.md` + `out/writing-log.jsonl`, no run folder) is left alone — `runDirs()` only counts
+directories, so those files are neither migrated nor rotated away, just ignored. `retainedRuns()`
+reads each kept run's own `scene_end` line for its outcome (`steps`, `words`, `done`, `stopped`); a
+run killed mid-scene has no such line and is listed with those fields simply absent, the same
+"absent, not guessed at" rule `scene_end` already follows for `stopped` above. See GUI-SPEC §6 for how
+the picker surfaces this.
 
 ### 6.1 Watching a run
 

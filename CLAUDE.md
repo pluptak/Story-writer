@@ -104,9 +104,11 @@ npx tsx story-writer.ts stories/doorway
   `story-writer.ts` only runs when it is the entry point (`IS_MAIN`); importing it must never start
   a run.
 - `npx tsc` typechecks (`noEmit`, `include` is just `story-writer.ts`).
-- Outputs land in `<story dir>/out/`: `scene.md` (prose alone) and `writing-log.jsonl` (every
-  consult, clarification, repair, flag, retry and acceptance). Both are written as the run goes, so
-  an interrupted run still leaves readable artifacts.
+- Outputs land in `<story dir>/out/<run id>/`, one folder per run: `scene.md` (prose alone) and
+  `writing-log.jsonl` (every consult, clarification, repair, flag, retry and acceptance). Both are
+  written as the run goes, so an interrupted run still leaves readable artifacts. A story keeps its
+  last 3 runs, oldest pruned once the newest finishes writing (DESIGN.md §6); the browser picker lets
+  you **read** any of them, read-only, alongside starting a new one (GUI-SPEC.md §6).
 
 ## Architecture
 

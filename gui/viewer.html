@@ -174,6 +174,9 @@
   .card.new { border-style:dashed; }
   .card.new .name { color:var(--good); }
   .card.new .q { color:var(--muted); }
+  .cardwrap { display:flex; flex-direction:column; gap:6px; }
+  .runs { display:flex; flex-wrap:wrap; gap:6px; }
+  .runbtn { font-size:10px; padding:4px 8px; }
 
   /* the interview: a modal over whatever is already on the page, not a slot inside it -- a scene (or
      the picker) stays visible, dimmed, underneath. Closing it (Escape, a click on the backdrop, or
@@ -280,6 +283,14 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+  // A retained run (§F3), as one line on its story's card: when it happened, how far it got, and
+  // how it ended -- "done"/"stopped" cover the two clean endings; anything else was killed mid-scene.
+  const fmtRun = r => {
+    const when = new Date(r.mtimeMs).toLocaleString(undefined,
+      { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
+    const status = r.stopped ? "stopped" : r.done ? "finished" : r.words != null ? "unfinished" : "no output";
+    return [when, r.words != null ? `${r.words}w` : "", status].filter(Boolean).join(" · ");
+  };
 
   let events = [];            // every RunEvent seen, in seq order
   // /events REPLAYS the whole run before it attaches, and EventSource reconnects on its own after
@@ -446,7 +457,7 @@
       // A story that does not load says so here, and cannot be chosen — the same pre-flight the CLI
       // runs, so the card cannot disagree with what a run would do.
       const dead = !s.ok || !!picked;
-      return `<button class="card" data-dir="${esc(s.dir)}"${dead ? " disabled" : ""}>
+      const card = `<button class="card" data-dir="${esc(s.dir)}"${dead ? " disabled" : ""}>
         <div class="name">${esc(s.name)}</div>
         ${s.ok ? `<p class="q">${esc(s.scene?.question || "(no scene question)")}</p>
                   <p class="pre">${esc(s.premise || "")}</p>
@@ -455,6 +466,12 @@
                 : `<div class="bad">does not load — ${esc(s.error || "unknown error")}</div>`}
         ${(s.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}
       </button>`;
+      // Retained runs sit BESIDE the card, not inside it -- a <button> cannot nest another button,
+      // and each past run needs its own click target ("read", not "start a new run").
+      const runs = (s.runs || []).length
+        ? `<div class="runs">${s.runs.map(r => `<button class="btn runbtn" data-dir="${esc(s.dir)}"
+             data-run="${esc(r.id)}">read · ${esc(fmtRun(r))}</button>`).join("")}</div>` : "";
+      return `<div class="cardwrap">${card}${runs}</div>`;
     }).join("");
 
     // A finished scene stays on the page under the picker — §1's principle. But it has to be
@@ -503,6 +520,18 @@
       $("cast").innerHTML = ""; $("question").textContent = ""; $("title").textContent = "story-writer";
       render();
     });
+    for (const b of page.querySelectorAll(".runbtn"))
+      b.addEventListener("click", async () => {
+        const dir = b.dataset.dir, id = b.dataset.run;
+        try {
+          const r = await fetch(`/runs/log?dir=${encodeURIComponent(dir)}&id=${encodeURIComponent(id)}`);
+          if (!r.ok) return;
+          // Same view-only load as picking a saved file off disk (§7) -- the log on disk stays the
+          // record, this only ever changes what the reading pane shows.
+          setSrc(`${dir.replace(/^stories\//, "")} · saved run`, false);
+          ingest(await r.text());
+        } catch {}
+      });
   }
 
   // ---- the interview ------------------------------------------------------

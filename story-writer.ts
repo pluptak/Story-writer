@@ -15,7 +15,7 @@
  * DESIGN.md is the authoritative spec; §5.1 is the normative field reference.
  */
 
-import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, mkdir, rm, stat } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { createServer } from "node:http";
 import { createInterface } from "node:readline/promises";
@@ -1451,7 +1451,39 @@ export interface StoryCard {
   scene?: { place: string; question: string; pov: string; length: number };
   characters?: { name: string; can: string[]; cannot: string[] }[];
   maxSteps?: number;
+  runs: RunSummary[];
 }
+
+/** One retained run (§F3), newest first for display. `steps`/`words`/`done`/`stopped` come from the
+ *  run's own `scene_end` line — a run killed mid-scene has none, and is listed without them rather
+ *  than guessed at. */
+export interface RunSummary {
+  id: string; mtimeMs: number;
+  steps?: number; words?: number; done?: boolean; stopped?: boolean;
+}
+export async function retainedRuns(storyDir: string): Promise<RunSummary[]> {
+  const ids = await runDirs(storyDir);
+  const out: RunSummary[] = [];
+  for (const id of ids) {
+    const runPath = joinPath(storyDir, "out", id);
+    let mtimeMs: number;
+    try { mtimeMs = (await stat(runPath)).mtimeMs; } catch { continue; }
+    const summary: RunSummary = { id, mtimeMs };
+    try {
+      const lines = (await readFile(joinPath(runPath, "writing-log.jsonl"), "utf8")).trim().split("\n");
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const ev = JSON.parse(lines[i]);
+        if (ev.t === "scene_end") {
+          summary.steps = ev.steps; summary.words = ev.words; summary.done = ev.done; summary.stopped = ev.stopped;
+          break;
+        }
+      }
+    } catch { /* no log yet, or one still being written -- outcome fields stay absent */ }
+    out.push(summary);
+  }
+  return out.reverse();   // newest first, the order a picker wants
+}
+
 export async function storyCards(): Promise<StoryCard[]> {
   const dirs = await discoverStories();
   const out: StoryCard[] = [];
@@ -1461,6 +1493,7 @@ export async function storyCards(): Promise<StoryCard[]> {
     out.push({
       dir, name: dir.replace(/^stories\//, ""), ok: r.ok, error: r.error,
       warnings: r.warnings.map(w => w.trim()),
+      runs: await retainedRuns(resolveStoryDir(dir)),
       ...(s ? {
         premise: s.premise,
         scene: s.scene,
@@ -2365,6 +2398,22 @@ export function startServer(port = PORT) {
         res.end(await readFile(joinPath(OUT_DIR, "writing-log.jsonl"), "utf8"));
       } catch { res.writeHead(404); res.end(""); }
 
+    } else if (path === "/runs/log") {
+      // A past run's saved log, read-only (§F3) -- same shape as /log.jsonl, one story's retained
+      // history instead of the live one. `dir` is a request to read a story, never a path
+      // (selectableStory, same guard /select uses); `id` is checked against that story's own
+      // runDirs() rather than pattern-matched, for the same reason.
+      const query = new URLSearchParams((req.url || "").split("?")[1] || "");
+      const storyDir = await selectableStory(query.get("dir") || "");
+      if (!storyDir) { res.writeHead(400); res.end("no such story"); return; }
+      const base = resolveStoryDir(storyDir);
+      const id = query.get("id") || "";
+      if (!(await runDirs(base)).includes(id)) { res.writeHead(404); res.end("no such run"); return; }
+      try {
+        res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+        res.end(await readFile(joinPath(base, "out", id, "writing-log.jsonl"), "utf8"));
+      } catch { res.writeHead(404); res.end(""); }
+
     } else { res.writeHead(404); res.end("not found"); }
   });
 
@@ -2973,6 +3022,19 @@ async function main() {
   }
 }
 
+// Retained runs per story (§F3). Old flat `out/scene.md` / `out/writing-log.jsonl` from before runs
+// were split into per-run folders are files, not directories, so listing directories alone ignores
+// them — nothing migrates them and nothing deletes them.
+export const MAX_RUNS = 3;
+
+/** Every retained run folder under `<story dir>/out/`, oldest first. */
+export async function runDirs(storyDir: string): Promise<string[]> {
+  try {
+    const ents = await readdir(joinPath(storyDir, "out"), { withFileTypes: true });
+    return ents.filter(e => e.isDirectory()).map(e => e.name).sort();
+  } catch { return []; }
+}
+
 /** Run a loaded story and write its artifacts. Shared by the ordinary path and the scaffolder, so a
  *  story that was just built runs exactly like one that was authored by hand. */
 async function runAndSave(sc: StoryConfig, dir: string) {
@@ -2994,10 +3056,11 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   if (SERVE) startServer();
   setWhere(`writing ${dir}`, true);
 
-  // Outputs land in `<story dir>/out/`, so each story keeps its own and a run is only overwritten by
-  // the next run of the SAME story. Both files are written as the run goes: an interrupted run still
-  // leaves readable prose and a complete log of how far it got.
-  OUT_DIR = joinPath(sc.dir, "out");
+  // Outputs land in `<story dir>/out/<run id>/`, one folder per run, so a story keeps its last
+  // MAX_RUNS runs instead of the previous run being overwritten. Both files are written as the run
+  // goes: an interrupted run still leaves readable prose and a complete log of how far it got.
+  const runId = new Date().toISOString().replace(/[:.]/g, "-");
+  OUT_DIR = joinPath(sc.dir, "out", runId);
   await mkdir(OUT_DIR, { recursive: true });
   const scenePath = joinPath(OUT_DIR, "scene.md");
   const logPath = joinPath(OUT_DIR, "writing-log.jsonl");
@@ -3019,6 +3082,13 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   });
   await sceneWrites;
   await new Promise<void>(res => logStream.end(res));
+
+  // Rotate: keep only the last MAX_RUNS folders, including the one just written.
+  const kept = await runDirs(sc.dir);
+  for (const stale of kept.slice(0, Math.max(0, kept.length - MAX_RUNS))) {
+    await rm(joinPath(sc.dir, "out", stale), { recursive: true, force: true }).catch(() => {});
+  }
+
   setWhere(r.stopped ? `stopped ${dir}` : `finished ${dir}`, false);
 
   console.log(`\n${C.bold}${"=".repeat(60)}${C.reset}`);

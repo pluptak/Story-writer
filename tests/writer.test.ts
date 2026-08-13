@@ -17,7 +17,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,7 +27,7 @@ import {
   loadStory, discoverStories, chooseStory, NEW_STORY, consult, wrapCharacter, wrapWriter, Agent,
   normalizeSpec, loadDefaults, applyEdits, renderStory, slugify,
   RUN, stopRun, armRun, StoppedError, complete, selectableStory, ScaffoldSession,
-  normalizeConsult, canonWants, CONSULT_WANTS,
+  normalizeConsult, canonWants, CONSULT_WANTS, runDirs, retainedRuns,
   type Skill, type ConsultEvent, type ConsultRequest, type Defaults,
 } from "../story-writer.ts";
 
@@ -803,6 +803,65 @@ describe("loadStory model override", () => {
     try {
       const sc = await quiet(() => loadStory(dir));
       assert.equal(sc.models.default, "story-default");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- RETAINED RUNS (§F3) ----------------------------------------------------
+describe("runDirs / retainedRuns", () => {
+  async function withOut(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    await mkdir(join(dir, "out"), { recursive: true });
+    return dir;
+  }
+  async function addRun(storyDir: string, id: string, log?: object[]): Promise<void> {
+    const runPath = join(storyDir, "out", id);
+    await mkdir(runPath, { recursive: true });
+    if (log) await writeFile(runPath + "/writing-log.jsonl", log.map(e => JSON.stringify(e)).join("\n"), "utf8");
+  }
+
+  it("returns nothing for a story with no out/ yet", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      assert.deepEqual(await runDirs(dir), []);
+      assert.deepEqual(await retainedRuns(dir), []);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("ignores flat legacy out/scene.md and out/writing-log.jsonl -- only directories count", async () => {
+    const dir = await withOut();
+    try {
+      await writeFile(join(dir, "out", "scene.md"), "old prose", "utf8");
+      await writeFile(join(dir, "out", "writing-log.jsonl"), "{}", "utf8");
+      assert.deepEqual(await runDirs(dir), []);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("lists runs newest first, reading outcome off each run's own scene_end line", async () => {
+    const dir = await withOut();
+    try {
+      await addRun(dir, "2026-01-01T00-00-00-000Z", [
+        { t: "scene_start" }, { t: "scene_end", steps: 4, words: 900, done: true, stopped: false },
+      ]);
+      await addRun(dir, "2026-01-02T00-00-00-000Z", [
+        { t: "scene_start" }, { t: "scene_end", steps: 2, words: 300, done: false, stopped: true },
+      ]);
+      const runs = await retainedRuns(dir);
+      assert.deepEqual(runs.map(r => r.id), ["2026-01-02T00-00-00-000Z", "2026-01-01T00-00-00-000Z"]);
+      assert.equal(runs[0].stopped, true);
+      assert.equal(runs[1].done, true);
+      assert.equal(runs[1].words, 900);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("still lists a run killed mid-scene, with its outcome fields simply absent", async () => {
+    const dir = await withOut();
+    try {
+      await addRun(dir, "2026-01-01T00-00-00-000Z", [{ t: "scene_start" }, { t: "draft", step: 1 }]);
+      const runs = await retainedRuns(dir);
+      assert.equal(runs.length, 1);
+      assert.equal(runs[0].done, undefined);
+      assert.equal(runs[0].stopped, undefined);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

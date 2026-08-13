@@ -109,6 +109,7 @@ run it was opened for.
 | `POST /scaffold/accept` | `{folder?}` — write it; on success this resolves the parked pick |
 | `POST /scaffold/abandon` | drop the interview, back to the shelf |
 | `GET /log.jsonl` | the current run's saved log; 404 until one exists |
+| `GET /runs/log?dir=&id=` | a past run's saved log, read-only (§6); `dir` is checked against `discoverStories()` (`selectableStory`), `id` against that story's own `runDirs()` — 400/404 rather than trusted as a path |
 
 A failed `listen` (port in use) **warns and lets the run continue** rather than killing it. Losing
 the viewer should never cost a scene. The message names the next port to try.
@@ -303,6 +304,16 @@ brings it straight back, because the server still holds it. So the picker offers
 scene**, and it clears the *view* only: the log on disk and `/log.jsonl` are the record and are never
 touched by a reading pane.
 
+**Each story keeps its last three runs** (DESIGN.md §6), and `GET /stories`' cards carry them as
+`runs`, newest first — when it happened, how far it got (`words`/`steps`), and how it ended
+(`done`/`stopped`, or neither for one killed mid-scene). A story's card is itself a `<button>` that
+starts a NEW run, so its retained runs render as a row of small `read ·` buttons *beside* the card, not
+inside it — a button cannot nest another button, and each past run needs its own click target rather
+than the card's. Clicking one is the same view-only load `?src=` and drag-drop already are (§7): a
+fetch of `GET /runs/log`, straight into the same `ingest()` that reads a dropped file, changing only
+what the reading pane shows. It is not a form of picking — the session stays wherever it already was
+(waiting on a choice, mid-interview, whatever), and reading a past run never touches `/select`.
+
 ### 6.1 The interview
 
 `new story…` opens the interview as a **modal** over whatever is already on the page — the picker, a
@@ -347,7 +358,8 @@ since removing a focused node does not reliably fire blur.
 ## 7. Sources
 
 `?src=URL` → `/run` + SSE (live) → `/log.jsonl` → drag-drop / **load run** → empty state. Works from
-`file://` too, where only drag-drop and `?src=` apply.
+`file://` too, where only drag-drop and `?src=` apply. A past run's **read** button (§6) is this same
+chain's `ingest()`, fed by `GET /runs/log` instead of a dropped file.
 
 ---
 
