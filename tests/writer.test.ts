@@ -27,6 +27,7 @@ import {
   loadStory, discoverStories, chooseStory, NEW_STORY, consult, wrapCharacter, wrapWriter, Agent,
   normalizeSpec, loadDefaults, applyEdits, renderStory, slugify,
   RUN, stopRun, armRun, StoppedError, complete, selectableStory, ScaffoldSession,
+  normalizeConsult, canonWants, CONSULT_WANTS,
   type Skill, type ConsultEvent, type ConsultRequest, type Defaults,
 } from "../story-writer.ts";
 
@@ -427,6 +428,102 @@ describe("consult", () => {
   });
 });
 
+// -- WHAT A CONSULT MUST CONTAIN ------------------------------------------
+// The gate in front of `consult()`. A malformed request costs a character call, up to
+// `clarifications` more and a judge call, and buys filler — so it is refused before anyone is asked.
+// Every rejected shape here was logged verbatim in a real run under `stories/*/out/`.
+describe("canonWants", () => {
+  it("takes the four exactly", () => {
+    for (const w of CONSULT_WANTS) assert.equal(canonWants(w), w);
+    assert.equal(canonWants("  Speech "), "speech");
+  });
+
+  // Near-miss recovery, not a paraphrase engine: the writer is told to send one of the four words,
+  // and these are the shapes it sends instead when it does not.
+  it("canonicalizes what a writer actually writes", () => {
+    assert.equal(canonWants("what they do next"), "action");        // 4 of 5 logged consults
+    assert.equal(canonWants("what they say"), "speech");
+    assert.equal(canonWants("whether they move aside"), "decision", "a fork beats the verb in it");
+    assert.equal(canonWants("how she reacts"), "reaction");
+  });
+
+  it("returns null rather than guessing when there is no shape in it", () => {
+    assert.equal(canonWants(""), null);
+    assert.equal(canonWants("   "), null);
+    assert.equal(canonWants(undefined), null);
+    assert.equal(canonWants("please"), null);
+    assert.equal(canonWants("how she takes it"), null, "a paraphrase with no keyword is refused, not guessed at");
+  });
+});
+
+describe("normalizeConsult", () => {
+  const good = { character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
+                 question: "Do you turn it, or ease off?", wants: "decision" };
+
+  it("passes a real consult through, canonicalizing wants", () => {
+    const r = normalizeConsult({ ...good, wants: "what they decide" });
+    assert.ok(r.ok);
+    assert.equal(r.req.wants, "decision");
+    assert.equal(r.req.question, good.question);
+    assert.equal(r.req.character, "RIVEN");
+  });
+
+  // The observed bug: stories/glass-womb sent a consult with a zero-character situation. The
+  // character — whose only world IS the situation — answered with filler, and the exchange was spent.
+  it("refuses an empty situation", () => {
+    const r = normalizeConsult({ ...good, situation: "" });
+    assert.ok(!r.ok);
+    assert.match(r.why, /only world/);
+  });
+
+  it("refuses a situation too thin to answer from", () => {
+    const r = normalizeConsult({ ...good, situation: "It is dark." });
+    assert.ok(!r.ok);
+    assert.match(r.why, /3 words/);
+  });
+
+  it("refuses an empty question", () => {
+    assert.ok(!normalizeConsult({ ...good, question: "" }).ok);
+  });
+
+  // "What do you do?" names no fork and no stake, so the safest answer is always correct — and the
+  // safest answer is the one that does not move the scene. All four were logged.
+  it("refuses the questions that ask for nothing", () => {
+    for (const q of ["What do you do?", "What does Elara do?", "What does Riven do next with the pick?",
+                     "What happens next?", "Your move?"]) {
+      const r = normalizeConsult({ ...good, question: q });
+      assert.ok(!r.ok, `"${q}" should have been refused`);
+      assert.match(r.why, /fork|stake/);
+    }
+  });
+
+  it("keeps the questions that name a fork or a cost", () => {
+    for (const q of ["Do you type the abort command?",
+                     "Do you wake him or let him sleep?",
+                     "Do you shift to get more comfortable, or stay perfectly still?",
+                     "What do you say when he asks you directly?",
+                     "Do you say the name, knowing what it admits?"]) {
+      assert.ok(normalizeConsult({ ...good, question: q }).ok, `"${q}" should have been allowed`);
+    }
+  });
+
+  it("refuses a wants it cannot make sense of, and names the four", () => {
+    const r = normalizeConsult({ ...good, wants: "" });
+    assert.ok(!r.ok);
+    for (const w of CONSULT_WANTS) assert.match(r.why, new RegExp(w));
+  });
+
+  it("says what is wrong in terms the writer can act on", () => {
+    // The rejection goes straight back into the writer's history. One it cannot act on is one it
+    // repeats, and three sterile steps in a row end the scene.
+    for (const bad of [{ situation: "" }, { situation: "Dark." }, { question: "What do you do?" }, { wants: "" }]) {
+      const r = normalizeConsult({ ...good, ...bad });
+      assert.ok(!r.ok);
+      assert.ok(r.why.length > 60, "a one-word complaint teaches nothing");
+    }
+  });
+});
+
 // -- STORY SPEC (scaffolding, SPEC-S §3) -----------------------------------
 describe("normalizeSpec", () => {
   const base = {
@@ -694,6 +791,40 @@ describe("prompt construction", () => {
     assert.match(p, /MERRITT[\s\S]{0,200}CANNOT: sight/);
     assert.ok(!p.includes("night porter at Kessel's for nine years"),
               "the writer must not be handed the personas");
+  });
+
+  // THE ONE RULE's two blind spots, both found in the logs under `stories/*/out/`. Neither is
+  // machine-checkable in the prose the writer returns — the guarantee the code CAN give is that the
+  // contract states them, so a run that stalls this way was not a run that was never told.
+  it("the writer is told that stillness is a choice and that pressure may not be resolved first", async () => {
+    const p = wrapWriter(await quiet(() => loadStory("stories/doorway")));
+    assert.match(p, /HOLDING STILL IS A CHOICE/);
+    assert.match(p, /YOU MAY NOT RESOLVE THE PRESSURE BEFORE YOU ASK ABOUT IT/);
+  });
+
+  it("the writer is given the closed `wants` vocabulary, not an invitation to phrase one", async () => {
+    const p = wrapWriter(await quiet(() => loadStory("stories/doorway")));
+    for (const w of CONSULT_WANTS) assert.match(p, new RegExp(`\\b${w}\\b`));
+    assert.match(p, /EXACTLY ONE of these four words/);
+  });
+});
+
+// -- PACING ----------------------------------------------------------------
+// A scene has a fixed word budget and two things to spend it on: narration and consults. Four
+// measured runs averaged ~300 words of prose per draft and bought 4 character decisions out of 1119
+// words. The cap is the dial that converts the same budget into more choices.
+describe("max_prose_words", () => {
+  it("defaults to a real ceiling — several pieces inside one scene's length", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    assert.equal(sc.maxProseWords, 140);
+    assert.ok(sc.maxProseWords * 3 <= sc.scene.length,
+              "a cap that a scene fits into in one or two pieces is not a cap");
+  });
+
+  it("is read from the story, and holds the same line every other config value does", () => {
+    assert.equal(num({ "config.max_prose_words": "90" }, "config.max_prose_words", 140), 90);
+    assert.equal(warnings(() => num({ "config.max_prose_words": "0" }, "config.max_prose_words", 140)).length, 1);
+    assert.equal(num({ "config.max_prose_words": "lots" }, "config.max_prose_words", 140), 140);
   });
 });
 

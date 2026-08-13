@@ -12,8 +12,7 @@
  * the transport, JSON extraction, agent/history windowing, markdown parsing and config-validation
  * policy are carried over as source; the Director/Warden/Ledger/WorldState machinery is not.
  *
- * BLOCK W1 — this file currently holds the salvaged infrastructure only. The story format, the
- * consult protocol and the scene loop land in W2-W5.
+ * DESIGN.md is the authoritative spec; §5.1 is the normative field reference.
  */
 
 import { readFile, writeFile, readdir, mkdir } from "node:fs/promises";
@@ -29,14 +28,11 @@ const LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions";
 // what LM Studio actually has loaded — a wrong id otherwise fails on every single call at runtime,
 // which is the most expensive way possible to learn about a typo.
 const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$/, "/models");
-// Shared by the reasoning pass and the reply on thinking models: a budget that only just fits the
-// answer yields an empty `content` whenever the model thinks for a while. Overridable per story
-// (`config.max_tokens`). See requestBody() for the measurements.
-//
-// 2000 rather than the 1200 this was forked with, because here one reply carries PROSE: a draft of
-// 250 words plus a consult block is 600-800 tokens before the model has thought at all, and a draft
-// truncated at the cap is a JSON object that never closes. Observed: ~200 written words lost to a
-// mid-string cut-off. `salvageProse()` is the safety net; this is the fix.
+// Shared by the reasoning pass and the reply on thinking models: too tight a budget yields an empty
+// `content` whenever the model thinks for a while. Overridable per story (`config.max_tokens`).
+// 2000 rather than the 1200 this was forked with, because a reply here carries PROSE (a 250-word
+// draft plus a consult block is 600-800 tokens before any thinking) and a draft truncated mid-object
+// never closes as JSON — observed ~200 written words lost to a cut-off. `salvageProse()` is the net.
 let MAX_TOKENS = 2000;
 const WINDOW = { cap: 24, keepRecent: 14 };
 
@@ -90,27 +86,20 @@ export type ThinkLevel = (typeof THINK_LEVELS)[number];
 
 // Request body shared by both transports.
 //
-// THINKING — measured against `gemma-4-12b-it-qat-uncensored-heretic`, max_tokens 800, and
-// the numbers are the reason this looks the way it does:
+// THINKING — measured against `gemma-4-12b-it-qat-uncensored-heretic`, max_tokens 800:
+//   thinking:{type:"disabled"}            ~59s   usable content in 1/2 samples
+//   thinking:{type:"disabled"} + kwargs   ~44s   usable content in 0/2 samples
+//   reasoning_effort                      ~25-36s  usable content in 4/4 samples
+// The OpenAI-standard `reasoning_effort` is what actually works; the alternatives left the reasoning
+// pass eating the whole token budget and `content` EMPTY — a wasted call that just looked like a
+// slow one. No setting tested switches thinking off on this finetune; `off` sends
+// `reasoning_effort:"none"`, and a model that can't honour it clamps to "low" with a warning (LM
+// Studio: *"'minimal' reasoning effort is not directly supported. Mapping to 'low'"*) — hence `low`
+// rather than `minimal` as the default, to skip the warning without pretending there's a difference.
 //
-//   thinking:{type:"disabled"}                 ~59s   usable content in 1 of 2 samples
-//   thinking:{type:"disabled"} + kwargs        ~44s   usable content in 0 of 2 samples
-//   reasoning_effort                           ~25-36s  usable content in 4 of 4 samples
-//
-// So the OpenAI-standard `reasoning_effort` is what actually works here, and the two alternatives
-// are worse than doing nothing: on this model the reasoning pass routinely ate the whole token
-// budget, leaving `content` EMPTY and the call wasted. That silent failure is most of why runs felt
-// slow — the time was spent and then thrown away.
-//
-// What this cannot do is switch thinking OFF. No setting tested reached reasoning=0; this finetune
-// always thinks. `off` asks for `reasoning_effort:"none"` and a model that cannot honour it will
-// warn and clamp (LM Studio logs *"'minimal' reasoning effort is not directly supported. Mapping to
-// 'low'"* for exactly this reason) — hence `low`, not `minimal`, as the default: same result on such
-// models, without the warning spam or the pretence of a distinction.
-//
-// Deliberately NOT sent: `chat_template_kwargs.enable_thinking` (measured actively harmful above),
-// the Anthropic-shaped `thinking` field (measured worse than nothing), and `/no_think` in the
-// prompt — a Qwen-only soft switch that reaches a non-Qwen model as literal text.
+// Deliberately NOT sent: `chat_template_kwargs.enable_thinking` (measured harmful above), the
+// Anthropic-shaped `thinking` field (measured worse than nothing), `/no_think` in the prompt
+// (Qwen-only, reaches other models as literal text).
 function requestBody(model: string, messages: Msg[], temperature: number, stream: boolean, think: ThinkLevel) {
   const body: Record<string, unknown> = { model, messages, temperature, max_tokens: MAX_TOKENS, stream };
   if (think !== "default") body.reasoning_effort = think === "off" ? "none" : think;
@@ -121,20 +110,19 @@ class LmError extends Error {
   constructor(message: string, public status?: number, public retryable = false) { super(message); }
 }
 
-// Transport resilience. LM Studio will occasionally accept a request and never answer — most often
-// when it decides to swap or unload a model underneath us — and with no timeout that hangs the run
-// forever. Every call gets a deadline, and is retried on the failures that are worth retrying.
+// Transport resilience. LM Studio occasionally accepts a request and never answers — most often
+// when it swaps or unloads a model underneath us — so every call gets a deadline and is retried on
+// the failures worth retrying.
 export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };
 
 // -- STOPPING A RUN --------------------------------------------------------
-// A run is abandonable from outside it: the viewer's stop button, or anything else that calls
-// `stopRun()`. Two halves, because a run spends nearly all of its wall time inside ONE model call:
-// the flag is what the loop checks at each boundary, and the AbortController is what cuts the call
-// already in flight. Without the second, "stop" would mean "stop in up to request_timeout seconds"
-// on a run that is not doing anything you want to wait for.
+// A run is abandonable from outside it: the viewer's stop button, or anything else calling
+// `stopRun()`. Two halves, since a run spends nearly all its wall time inside ONE model call: the
+// flag is what the loop checks at each boundary, the AbortController cuts the call in flight.
+// Without the second, "stop" would mean "stop in up to request_timeout seconds."
 //
-// A stop is NOT a failure. It must never be retried, never salvaged into a half-draft, and never
-// reported as the model having gone wrong — hence its own error type rather than a message string.
+// A stop is NOT a failure — never retried, never salvaged into a half-draft, never reported as the
+// model having gone wrong — hence its own error type rather than a message string.
 export class StoppedError extends Error {
   constructor() { super("stopped"); this.name = "StoppedError"; }
 }
@@ -255,15 +243,13 @@ export async function completeStream(model: string, messages: Msg[], temperature
         }
       }
     } catch (e) {
-      // The stream broke — usually our own deadline on a long reply. If what arrived before it broke
-      // already contains a COMPLETE object, that reply is finished in every way that matters and
-      // retrying would only regenerate it. Measured: an architect proposal that had closed its brace
-      // was discarded twice this way, costing six minutes and losing the better of three stories.
-      //
-      // Deliberately checked with topLevelObjects and not extractJson: the prose fallback would call
-      // a half-written reply "complete" on the strength of one labelled line.
-      // ...unless the break was a stop. Keeping a reply then would hand the loop one more usable
-      // draft and buy another consult out of a run the author has already abandoned.
+      // The stream broke — usually our own deadline on a long reply. If what arrived already
+      // contains a COMPLETE object, that reply is finished and retrying would only regenerate it.
+      // Measured: a closed-brace architect proposal was discarded twice this way, costing six
+      // minutes and the best of three stories. Checked with topLevelObjects, not extractJson — the
+      // prose fallback would call a half-written reply "complete" on one labelled line alone.
+      // Unless the break was a stop: keeping that reply would buy another consult out of a run the
+      // author already abandoned.
       if (RUN.stopped) throw e;
       const sofar = full.trim();
       if (sofar && topLevelObjects(sofar).length) {
@@ -336,13 +322,10 @@ export function extractJson(raw: string): Record<string, any> {
     ? stripped.slice(stripped.lastIndexOf("</think>") + 8).trim()
     : stripped;
 
-  // Collect every TOP-LEVEL balanced object, in order, then take the LAST one. Both halves matter:
-  //   - top-level: after a candidate parses we skip past it, so a nested `{"b":1}` inside the real
-  //     object is never itself a candidate (a plain "last object wins" search would return it);
-  //   - last: models routinely emit a worked example, a retry, or a preamble before the real reply,
-  //     and the real one is the final one.
-  // A "{" that never closes — a stray brace in prose, or output truncated mid-object — simply fails
-  // and the scan moves to the next one.
+  // Collect every TOP-LEVEL balanced object, in order, then take the LAST one: top-level so a
+  // nested `{"b":1}` is never itself a candidate, last because models routinely emit a worked
+  // example or preamble before the real reply. A "{" that never closes just fails and the scan
+  // moves on.
   const found = topLevelObjects(afterThink);
   if (found.length) return found[found.length - 1];
 
@@ -364,10 +347,9 @@ export function extractJson(raw: string): Record<string, any> {
 
 /**
  * Last-ditch recovery of a draft whose JSON never closed — nearly always output truncated at the
- * token cap partway through the `prose` string. `extractJson` correctly finds no object and the
- * whole draft is lost, which is the single most expensive way this can fail: the words were
- * written, and the only thing missing is a closing brace. Cuts back to the last finished sentence
- * so a half-line never reaches the page, and returns "" when there is nothing worth keeping.
+ * token cap partway through the `prose` string, where `extractJson` finds no object and the whole
+ * draft is lost even though the words were actually written. Cuts back to the last finished
+ * sentence so a half-line never reaches the page; returns "" when nothing is worth keeping.
  */
 export function salvageProse(raw: string): string {
   const m = raw.match(/"?prose"?\s*:\s*"/);
@@ -385,15 +367,12 @@ export function salvageProse(raw: string): string {
 }
 
 // -- CONFIG VALIDATION -----------------------------------------------------
-// Config values are validated rather than coerced. The policy across all three helpers is
-// warn-and-use-the-documented-default (never throw) — the same policy pre-flight is built around, so
-// every rejection shows up in `--preflight` output. What they must NOT do is accept a value
-// silently: a typo changing runtime semantics with no trace is the failure mode being prevented.
-//   - num:  the whole value must be an integer. parseInt would accept any numeric *prefix*
-//           ("16garbage" -> 16, "10.9" -> 10), and a NaN that reaches a loop bound poisons it
-//           silently (`n >= NaN` is always false).
-//   - bool: "flase"/"ture" must not land on the default silently.
-//   - enumOf: an unknown value must not become the default silently.
+// Config values are validated, not coerced. Policy across all three: warn-and-use-the-documented-
+// default, never throw — what pre-flight is built around, so every rejection shows up there. What
+// they must never do is accept a bad value silently (a typo changing runtime semantics with no
+// trace): `num` requires a whole-number value, since parseInt would accept a numeric *prefix*
+// ("16garbage" -> 16) and a NaN reaching a loop bound poisons it silently (`n >= NaN` is always
+// false); `bool`/`enumOf` reject anything not in their allowed set rather than defaulting quietly.
 const configLabel = (key: string) => key.replace(/^config\./, "");
 
 export function num(kv: Record<string, string>, key: string, def: number): number {
@@ -454,10 +433,9 @@ export class Agent {
 
   // Generate a reply. buildMessages appends `{`, so we re-prepend it.
   //
-  // When STREAM is on the terminal gets a PROGRESS line, not the raw draft. Dumping the model's
-  // JSON live — escaped newlines, the whole consult block, and the same object emitted twice —
-  // buried the formatted output it was interleaved with and made a run genuinely hard to follow.
-  // The text is still buffered and returned exactly as before; only the display changed.
+  // When STREAM is on the terminal gets a PROGRESS line, not the raw draft — dumping the model's
+  // live JSON (escaped newlines, the whole consult block, duplicated objects) buried the formatted
+  // output it was interleaved with. The text is still buffered and returned exactly as before.
   async generate(label: string, extra: Msg[] = []): Promise<string> {
     const msgs = this.buildMessages(extra);
     const prepend = "{";
@@ -508,12 +486,12 @@ export async function trimHistory(agent: Agent, summarizerModel: string, summari
 
 // -- SKILL CATALOG ---------------------------------------------------------
 // The general skills every character starts with. A character's EFFECTIVE set is this catalog minus
-// its `lacks:` plus its `skills:`, and that set is the menu rendered into its prompt and the list
-// its `skills_used` is checked against.
+// `lacks:` plus `skills:` — the menu rendered into its prompt and what `skills_used` is checked
+// against.
 //
-// These are deliberately senses and plain bodily acts rather than story-specific abilities: they are
-// what makes "can I reach the door handle?" a question a character knows it is entitled to ask. A
-// story adds what it needs (`lockpicking`, `piloting`) and removes what a character lacks (`sight`).
+// Deliberately senses and plain bodily acts, not story-specific abilities: what makes "can I reach
+// the door handle?" a question a character knows it may ask. A story adds what it needs
+// (`lockpicking`, `piloting`) and removes what a character lacks (`sight`).
 export const SKILL_CATALOG: Readonly<Record<string, string>> = Object.freeze({
   movement: "moving your own body through the space you are in",
   speech:   "saying things aloud",
@@ -610,7 +588,7 @@ export function parseStoryMd(src: string): ParsedStory {
     if (!kvm) continue;
     const key = kvm[1].trim().toLowerCase();
     const val = kvm[2].trim();
-    // A character's `knows`/`skills` are free-text prose; leave them untouched. For the structured
+    // A character's `knows`/`goal`/`skills` are free-text prose; leave them untouched. For the structured
     // sections (scene/config/models/writer) strip a trailing inline "# comment" so
     // `key: value   # note` parses as just `value`.
     if (section === "characters" && character) character[key] = val;
@@ -625,6 +603,7 @@ export interface CharacterDef {
   model: string;
   persona: string;      // raw persona markdown
   knows: string;        // what they know entering the scene
+  goal: string;         // what they want tonight — theirs alone to weigh progress against
   skills: Skill[];      // effective set (catalog − lacks + skills)
 }
 export interface StoryConfig {
@@ -635,6 +614,7 @@ export interface StoryConfig {
   retries: number;                 // writer rewrites per consult
   clarifications: number;          // questions a character may ask before it must answer
   maxSteps: number;                // soft budget of writer draft calls
+  maxProseWords: number;           // ceiling on ONE draft's prose — the scene's pacing dial
   stream: boolean;
   debug: boolean;
   thinking: { writer: ThinkLevel; character: ThinkLevel; summary: ThinkLevel };
@@ -671,6 +651,11 @@ export async function loadStory(dir: string): Promise<StoryConfig> {
   const retries        = num(kv, "config.retries", 2);
   const clarifications = num(kv, "config.clarifications", 2);
   const maxSteps       = num(kv, "config.max_steps", 24);
+  // The pacing dial. A scene has a fixed word budget and only two things to spend it on: narration
+  // and consults. Uncapped, the writer spends it on narration — four measured runs averaged ~300
+  // words of prose per draft and bought four character decisions out of 1119 words. A ceiling per
+  // piece converts the same budget into more choices.
+  const maxProseWords  = num(kv, "config.max_prose_words", 140);
   const stream         = bool(kv, "config.stream", true);
   const debug          = bool(kv, "config.debug", false);
 
@@ -719,6 +704,7 @@ export async function loadStory(dir: string): Promise<StoryConfig> {
       model: c.model ?? models.default,
       persona,
       knows: (c.knows ?? "").trim(),
+      goal: (c.goal ?? "").trim(),
       skills: resolveSkills(name, c.skills ?? "", c.lacks ?? ""),
     });
   }
@@ -728,7 +714,7 @@ export async function loadStory(dir: string): Promise<StoryConfig> {
 
   return {
     dir: base, premise, scene, writerStyle,
-    retries, clarifications, maxSteps, stream, debug, thinking,
+    retries, clarifications, maxSteps, maxProseWords, stream, debug, thinking,
     requestTimeout, attempts, maxTokens, models, characters,
   };
 }
@@ -778,9 +764,9 @@ export async function chooseStory(arg: string): Promise<string> {
  * Resolve a story directory that came from OUTSIDE the process — the browser picker — to one the
  * engine actually discovered, or null.
  *
- * A path from a client is not a path: it is a request to read one. The engine owns which directories
- * exist for the same reason `slugify()` owns which ones may be written, and a match against the
- * discovered list is the whole check — no normalizing, no prefix test, nothing a `..` can survive.
+ * A path from a client is a request to read one, not a path. The engine owns which directories
+ * exist, the same way `slugify()` owns which may be written: a match against the discovered list is
+ * the whole check — no normalizing, no prefix test, nothing a `..` can survive.
  */
 export async function selectableStory(dir: string): Promise<string | null> {
   const want = String(dir ?? "").trim().replace(/\\/g, "/").replace(/\/+$/, "");
@@ -825,7 +811,7 @@ export interface StorySpec {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
   writerStyle: string;
-  characters: Array<{ name: string; persona: string; knows: string; skills: string[]; lacks: string[] }>;
+  characters: Array<{ name: string; persona: string; knows: string; goal: string; skills: string[]; lacks: string[] }>;
 }
 
 const asStrings = (v: unknown): string[] =>
@@ -857,15 +843,15 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     });
     characters.push({
       name, persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
-      skills: asStrings(c?.skills), lacks,
+      goal: String(c?.goal ?? "").trim(), skills: asStrings(c?.skills), lacks,
     });
     if (!c?.persona) problems.push(`${name} has no persona`);
     // Observed: the architect writes "LACKS: none" / "KNOWS: ..." into the persona prose. The engine
     // renders those fields itself from the structured data, so a persona that also states them puts
     // a contradiction inside the character's own prompt — it is told it lacks nothing while being
     // handed a skill list with something missing.
-    else if (/\b(LACKS|KNOWS|SKILLS)\s*:/.test(String(c.persona)))
-      problems.push(`${name}'s persona restates knows/skills/lacks — the engine renders those, and the persona will contradict them`);
+    else if (/\b(LACKS|KNOWS|SKILLS|GOAL)\s*:/.test(String(c.persona)))
+      problems.push(`${name}'s persona restates knows/goal/skills/lacks — the engine renders those, and the persona will contradict them`);
   }
   if (!characters.length) problems.push("no characters at all");
   if (characters.length > 4) { problems.push(`${characters.length} characters — keeping the first 4`); characters.length = 4; }
@@ -901,10 +887,10 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
 
 /**
  * Apply the architect's edits to a spec (SPEC-S §4.2). A refinement round is a PATCH against a
- * closed list of field paths, not a fresh proposal: re-proposing the whole story each round would
- * make "it kept the parts I liked" a hope, and this makes it a property of the code. Unknown paths
- * are reported, never guessed at. Pure — the result is re-normalized, so a removed character takes
- * a stale `pov` with it and a bad `lacks:` is caught in the round that introduced it.
+ * closed list of field paths, not a fresh proposal — re-proposing the whole story each round would
+ * make "it kept the parts I liked" a hope rather than a property of the code. Unknown paths are
+ * reported, never guessed at. Pure — the result is re-normalized, so a removed character takes a
+ * stale `pov` with it and a bad `lacks:` is caught in the round that introduced it.
  */
 export function applyEdits(spec: StorySpec, raw: any): {
   spec: StorySpec; applied: string[]; ignored: string[]; problems: string[];
@@ -948,7 +934,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
-    const cm = field.match(/^characters\.(.+)\.(persona|knows|skills|lacks)$/);
+    const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|skills|lacks)$/);
     if (cm) {
       const c = findChar(cm[1]);
       if (!c) { ignored.push(`${field} — no character called "${cm[1]}"`); continue; }
@@ -1004,6 +990,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
       c.skills.length ? `skills: ${c.skills.map(oneLine).join(" | ")}` : "",
       c.lacks.length ? `lacks: ${c.lacks.map(oneLine).join(" | ")}` : "",
       c.knows ? `knows: ${oneLine(c.knows)}` : "",
+      c.goal  ? `goal: ${oneLine(c.goal)}` : "",
     ].filter(Boolean).join("\n");
   });
 
@@ -1062,7 +1049,7 @@ Reply with ONE JSON object and nothing else:
  "premise": "...",
  "scene": {"place": "...", "question": "...", "pov": "NAME", "length": 700},
  "writer_style": "...",
- "characters": [{"name": "NAME", "persona": "...", "knows": "...",
+ "characters": [{"name": "NAME", "persona": "...", "knows": "...", "goal": "...",
                  "skills": ["lockpicking :: opening a mechanical lock without its key"],
                  "lacks": ["sight"]}],
  "ask": "",
@@ -1081,14 +1068,18 @@ writer_style -- house style: person, tense, what to do with dialogue, what to le
 characters   -- TWO is the sweet spot; four is the maximum. For each:
   name       -- one word, capitalised, how the writer will refer to them.
   persona    -- who they are: history in a line or two, then VOICE (how they talk), then how they
-                are UNDER PRESSURE, then what they want tonight. Concrete and particular. Around
-                150 words. Write it addressed to them ("You have...") or about them, either way,
-                but never as a summary of their arc -- they must be able to act from it, not
-                perform it. PROSE ONLY: do not restate knows, skills or lacks inside it. Those are
-                separate fields and the engine renders them itself; a persona that also says
-                "LACKS: none" contradicts the skill list the character is actually given.
+                are UNDER PRESSURE. Concrete and particular. Around 150 words. Write it addressed
+                to them ("You have...") or about them, either way, but never as a summary of their
+                arc -- they must be able to act from it, not perform it. PROSE ONLY: do not restate
+                knows, goal, skills or lacks inside it. Those are separate fields and the engine
+                renders them itself; a persona that also says "LACKS: none" contradicts the skill
+                list the character is actually given.
   knows      -- what they know walking in that the other characters do not. This is where a scene
                 gets its friction.
+  goal       -- what they want tonight, in their own terms. Only the character themself ever weighs
+                whether they are closer to it or further away -- this is never shown to the writer
+                or evaluated by anyone outside the character's own agent. What makes a scene work is
+                two characters' goals genuinely colliding, not just being different.
   skills     -- abilities BEYOND the general list below. "name :: what it means". Give someone
                 something the other cannot do. Do NOT restate a general skill under a new name:
                 "watching :: seeing the lens turn" is just sight, and adds nothing.
@@ -1111,7 +1102,7 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
 
     title · premise · writer_style
     scene.place · scene.question · scene.pov · scene.length
-    characters.<NAME>.persona · characters.<NAME>.knows
+    characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.skills · characters.<NAME>.lacks     (value is a list)
     add_character      (value is a whole character object, as above)
     remove_character   (value is the name)
@@ -1121,7 +1112,8 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
 
 DESIGN FOR ASYMMETRY. Two people who can both see, both move and both talk, who want compatible
 things, produce a scene where nothing has to be asked. Give them different senses, different
-authority, different information, or different stakes. At least one real imbalance.
+authority, different information, or different stakes. At least one real imbalance -- and where you
+can, make their goals actually collide: what one of them needs is what stands in the other's way.
 
 Do not write the scene. Do not write dialogue. You are designing the people and the pressure; the
 writer and the characters do the rest.
@@ -1167,6 +1159,7 @@ export function renderSpec(spec: StorySpec, full = false): string {
     if (c.skills.length) lines.push(`  ${C.green}can also:${C.reset} ${c.skills.map(s => splitMeaning(s).text).join(", ")}`);
     if (c.lacks.length)  lines.push(`  ${C.red}cannot:${C.reset}   ${c.lacks.join(", ")}`);
     if (c.knows)         lines.push(`  ${C.dim}knows:${C.reset}    ${c.knows}`);
+    if (c.goal)          lines.push(`  ${C.dim}wants:${C.reset}    ${c.goal}`);
     lines.push(full ? `\n${c.persona}\n` : `  ${C.dim}${c.persona.replace(/\s+/g, " ").slice(0, 140)}…${C.reset}`);
     return lines.join("\n");
   }).join("\n");
@@ -1180,7 +1173,7 @@ export function specView(spec: StorySpec) {
   return {
     title: spec.title, premise: spec.premise, scene: spec.scene, writerStyle: spec.writerStyle,
     characters: spec.characters.map(c => ({
-      name: c.name, persona: c.persona, knows: c.knows,
+      name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
       skills: c.skills.map(s => splitMeaning(s)),
       lacks: c.lacks,
     })),
@@ -1188,13 +1181,12 @@ export function specView(spec: StorySpec) {
 }
 
 // -- SCAFFOLD SESSION ------------------------------------------------------
-// The interview (SPEC-S §4) with no console in it. Everything the loop actually decides lives here;
-// the caller only reads state and renders. That split is what lets one implementation serve both the
-// terminal and the browser, and — more useful day to day — it is what makes the state machine
-// testable: the proposal-vs-patch rule and the ask budget were previously welded to readline, so the
-// bug §4.2 documents could only ever be caught by hand.
+// The interview (SPEC-S §4) with no console in it. Everything the loop decides lives here; the
+// caller only reads state and renders. That split lets one implementation serve both the terminal
+// and the browser, and makes the state machine testable — the proposal-vs-patch rule and the ask
+// budget were previously welded to readline, so the bug §4.2 documents could only be caught by hand.
 //
-// The architect is injected rather than built, so a scripted agent drives the whole thing.
+// The architect is injected rather than built, so a scripted agent can drive the whole thing.
 
 /** What one round of the interview did. `spec` and `problems` are read off the session afterwards. */
 export type ScaffoldRound =
@@ -1214,12 +1206,11 @@ export type ScaffoldAccept =
 /**
  * The note for a round, with any question the architect asked *alongside* its answer folded in.
  *
- * The format tells it to ask INSTEAD of proposing, and it often does both anyway — a whole story
- * plus the question it would have liked answered. Read strictly, that question was being dropped on
- * the floor: `ask` is only honoured when nothing else came back. Dropped is the one thing it must
- * not be. It cannot become `pendingAsk` either, because an outstanding question blocks accepting,
- * and there is a perfectly good story sitting there — so it rides along as a note the author can
- * answer as an ordinary change, or ignore.
+ * The format says ask INSTEAD of proposing, but it often does both — a whole story plus the
+ * question it would have liked answered. Read strictly, `ask` is only honoured when nothing else
+ * came back, so that question would be dropped. It can't become `pendingAsk` either, since an
+ * outstanding question blocks accepting and there is a perfectly good story sitting there — so it
+ * rides along as a note the author can answer as an ordinary change, or ignore.
  */
 function withAsk(out: Record<string, any>): string {
   const note = String(out.note ?? "").trim();
@@ -1243,12 +1234,12 @@ export class ScaffoldSession {
   haveStory(): boolean { return this.spec.characters.length > 0; }
 
   /**
-   * The message for this round. **A round is a PROPOSAL or a PATCH, and which one depends on whether
-   * a story exists yet — not on whether this is the first call.** That distinction is the whole fix
-   * for an ambiguous idea: the architect is told to ask a question INSTEAD of proposing when the idea
-   * is underdetermined, so a vague prompt legitimately produces no story on the first call. Asking it
-   * to "reply with edits only" against an empty spec after that is incoherent, and every later round
-   * inherited the same emptiness — the scaffolder patched a void and never recovered.
+   * The message for this round. **A round is a PROPOSAL or a PATCH, depending on whether a story
+   * exists yet — not on whether this is the first call.** That distinction is the fix for an
+   * ambiguous idea: the architect may ask a question INSTEAD of proposing, so a vague prompt can
+   * legitimately produce no story on the first call. Asking for "edits only" against an empty spec
+   * was incoherent, and every later round inherited the same emptiness — the scaffolder patched a
+   * void and never recovered.
    */
   request(userText: string): string {
     if (!userText) return `[THE IDEA]\n${this.idea}`;
@@ -1368,7 +1359,7 @@ export interface PreflightResult {
     premise: string;
     characters: { name: string; skills: number; added: string[]; lacking: string[] }[];
     scene: { place: string; question: string; pov: string; length: number };
-    maxSteps: number; retries: number; clarifications: number;
+    maxSteps: number; retries: number; clarifications: number; maxProseWords: number;
     models: { default: string; writer: string; summary: string };
     modelCheck: "ok" | "missing" | "unreachable";
     missingModels: string[];
@@ -1376,12 +1367,10 @@ export interface PreflightResult {
 }
 
 /** The model ids LM Studio currently has loaded, or null when it can't be reached. Pre-flight only —
- *  never called on the run path, and never fatal: an unreachable server downgrades to a "couldn't
- *  check" warning rather than blocking a story.
- *
- *  Memoized for a few seconds because pre-flight is now run over EVERY story at once (the browser
- *  picker, `--preflight` with no argument). The loaded set cannot change inside one such sweep, and
- *  without this an unreachable server costs the full timeout once per story. */
+ *  never fatal: an unreachable server downgrades to a "couldn't check" warning rather than blocking
+ *  a story. Memoized for a few seconds because pre-flight runs over EVERY story at once (the browser
+ *  picker, `--preflight` with no argument) — without this an unreachable server costs the full
+ *  timeout once per story. */
 let modelIdCache: { at: number; ids: Promise<string[] | null> } | null = null;
 async function loadedModelIds(timeoutMs = 1500): Promise<string[] | null> {
   if (modelIdCache && Date.now() - modelIdCache.at < 5000) return modelIdCache.ids;
@@ -1438,6 +1427,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
           })),
           scene: sc.scene,
           maxSteps: sc.maxSteps, retries: sc.retries, clarifications: sc.clarifications,
+          maxProseWords: sc.maxProseWords,
           models: sc.models, modelCheck, missingModels,
         },
       };
@@ -1497,6 +1487,7 @@ async function runPreflightCli() {
           + (c.added.length ? ` (+${c.added.join(", ")})` : "")
           + (c.lacking.length ? ` ${C.dim}(no ${c.lacking.join(", ")})${C.reset}` : ""));
       console.log(`   steps ${s.maxSteps} · retries ${s.retries} · clarifications ${s.clarifications}`
+        + ` · ≤${s.maxProseWords} words/piece`
         + (s.scene.pov ? ` · pov ${s.scene.pov}` : "")
         + ` · ~${s.scene.length} words · models ${s.modelCheck}`);
     }
@@ -1549,16 +1540,18 @@ Answer at the length the moment deserves. One breath is a complete answer.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
-/** A character's system prompt: the contract, their persona, where they are, their skill menu, and
- *  what they knew walking in. Deliberately NOT the premise — authorial direction and the shape of
- *  the scene are the writer's, and a character that has read them stops being a source of
- *  independent evidence about itself. */
+/** A character's system prompt: the contract, their persona, where they are, their skill menu, what
+ *  they knew walking in, and what they want. Deliberately NOT the premise — authorial direction and
+ *  the shape of the scene are the writer's, and a character that has read them stops being a source
+ *  of independent evidence about itself. `goal` stays here for the same reason: only the character
+ *  can weigh their own progress toward it, so it is never shown to the writer or the architect. */
 export function wrapCharacter(def: CharacterDef, place: string): string {
   const menu = def.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n");
   const extras = [
     place ? `WHERE YOU ARE: ${place}` : "",
     `YOUR SKILLS (all of what you can do; nothing else):\n${menu}`,
     def.knows ? `WHAT YOU KNOW COMING INTO THIS: ${def.knows}` : "",
+    def.goal  ? `WHAT YOU WANT TONIGHT: ${def.goal}` : "",
   ].filter(Boolean).join("\n\n");
   return `${CHARACTER_FORMAT}\n\n${def.persona.trim()}\n\n${extras}`;
 }
@@ -1578,7 +1571,97 @@ export interface ConsultRequest {
   character: string;
   situation: string;    // what the character can perceive right now, in the author's words
   question: string;     // what the author needs to know
-  wants: string;        // optional shape of the answer: "speech" | "action" | "reaction" | "decision"
+  wants: ConsultWants | "";   // shape of the answer; "" only on the `--consult` debug path
+}
+
+// -- WHAT A CONSULT MUST CONTAIN TO BE WORTH SENDING -----------------------
+// A consult costs one character call, up to `clarifications` more, and a judge call. A malformed one
+// costs all of that and buys filler, so it is checked BEFORE anybody is asked. This is bookkeeping,
+// which is the engine's half of the split: whether a question is *good* stays a judgement, but
+// whether it is a question at all is decidable here.
+//
+// Observed, in `stories/glass-womb`: a consult went out with a ZERO-CHARACTER situation and an empty
+// `wants`. The character — whose only world is the situation — answered "I lean closer to the glass,
+// my breath fogging a small circle". A whole exchange spent on nothing.
+
+/** The four shapes of answer a consult may ask for. A closed set because free text degenerated: over
+ *  four runs `wants` was "what they do next" in four of five consults, which names no shape at all.
+ *  It is also why nobody spoke — one answer in seven carried any `speech`, and a question that never
+ *  asks for words never gets any. */
+export const CONSULT_WANTS = ["speech", "action", "decision", "reaction"] as const;
+export type ConsultWants = (typeof CONSULT_WANTS)[number];
+
+// Generous on purpose: the point is to canonicalize what a writer actually says, not to make it
+// guess a password. "whether they move aside" is a decision, "what they do next" is an action.
+// Ordered — `whether` must beat `move`, and `say` must beat `do`.
+const WANTS_HINTS: [RegExp, ConsultWants][] = [
+  [/\b(speech|speak|say|says|said|tell|tells|reply|replies|answer|answers|word|words|aloud)\b/i, "speech"],
+  [/\b(decision|decide|decides|choose|chooses|choice|whether|refuse|refuses|agree|agrees|allow)\b/i, "decision"],
+  [/\b(reaction|react|reacts|respond|responds)\b/i, "reaction"],
+  [/\b(action|act|acts|do|does|doing|move|moves)\b/i, "action"],
+];
+
+/** Canonicalize the writer's `wants` to one of the four, or null when it carries no shape. */
+export function canonWants(raw: unknown): ConsultWants | null {
+  const v = String(raw ?? "").trim();
+  if (!v) return null;
+  const exact = CONSULT_WANTS.find(w => w === v.toLowerCase());
+  if (exact) return exact;
+  for (const [re, w] of WANTS_HINTS) if (re.test(v)) return w;
+  return null;
+}
+
+// "What do you do?" is the degenerate consult: it names no fork and no stake, so the safest possible
+// answer is always correct, and the safest possible answer is the one that does not move the scene.
+// Every one of these was logged verbatim in a real run.
+const DEGENERATE_QUESTIONS = [
+  /^what (do|does|will|would|should|is|are)\s+\S+(\s+\S+)?\s+(do|doing|going to do)\b/i,
+  /^what happens?\b/i,
+  /^what next\b/i,
+  /^(your|their|his|her)\s+(move|turn|call)\b/i,
+];
+
+/** The situation is the character's ENTIRE world for this exchange (DESIGN §1). Fewer words than
+ *  this and there is nothing to answer from — it is the empty-situation bug with a fig leaf. */
+const MIN_SITUATION_WORDS = 5;
+
+export type ConsultCheck = { ok: true; req: ConsultRequest } | { ok: false; why: string };
+
+/**
+ * Decide whether a consult the writer asked for is worth sending, and canonicalize it if so.
+ *
+ * Pure. `why` is written to be handed straight back to the writer, so it must say what was wrong AND
+ * what a good one looks like — a rejection the writer cannot act on just gets repeated.
+ */
+export function normalizeConsult(raw: {
+  character: string; situation?: unknown; question?: unknown; wants?: unknown;
+}): ConsultCheck {
+  const character = String(raw.character ?? "").trim();
+  const situation = String(raw.situation ?? "").trim();
+  const question  = String(raw.question ?? "").trim();
+  const words = situation.split(/\s+/).filter(Boolean).length;
+
+  if (!situation)
+    return { ok: false, why: `You asked ${character} something with an empty "situation". The situation is `
+      + `the only world they get — they cannot see the scene you have written. Describe what they can `
+      + `perceive right now.` };
+  if (words < MIN_SITUATION_WORDS)
+    return { ok: false, why: `The "situation" you gave ${character} was ${words} word${words === 1 ? "" : "s"} `
+      + `long. That is their whole world for this question. Say where they are, what is happening to `
+      + `them, and what they can perceive of it.` };
+  if (!question)
+    return { ok: false, why: `You asked ${character} nothing — "question" was empty.` };
+  if (DEGENERATE_QUESTIONS.some(re => re.test(question)))
+    return { ok: false, why: `"${question}" names no fork and no stake, so the safest answer is always `
+      + `the right one and the scene stops moving. Ask about the choice actually in front of them: `
+      + `"Do you hold the door, or let go?" — name the options, or name what it costs.` };
+
+  const wants = canonWants(raw.wants);
+  if (!wants)
+    return { ok: false, why: `"wants" must be exactly one of: ${CONSULT_WANTS.join(", ")}. `
+      + `You sent ${JSON.stringify(String(raw.wants ?? ""))}.` };
+
+  return { ok: true, req: { character, situation, question, wants } };
 }
 export interface ConsultReply {
   character: string;
@@ -1734,16 +1817,27 @@ WHEN ASKED TO WRITE -- [WRITE]:
   {"prose": "...", "consult": {"character": "NAME", "situation": "...", "question": "...", "wants": "..."}, "scene_done": false}
 
   prose      -- the next piece of the scene, ready for the page. "" if you are only consulting.
-                Bound by THE ONE RULE below.
+                SHORT. Every [WRITE] gives you a word ceiling; treat it as real. A scene has a fixed
+                number of words and only two things to spend them on -- your narration and their
+                choices -- and narration is how a scene runs out of words before it runs out of
+                story. Bound by THE ONE RULE below.
   consult    -- omit the field entirely when you do not need one.
     character  -- who you are asking.
     situation  -- what THEY can perceive right now, in your words. They know nothing you do not put
                   here: not the scene so far, not what anyone else thought, not what you are steering
                   toward. Give them enough to answer honestly, and no nudge toward the answer you
-                  would prefer.
-    question   -- what you need to know.
-    wants      -- the shape of answer you need: "what they say", "what they do next", "whether they
-                  move aside".
+                  would prefer. A situation of a few words is not a situation; it will be rejected.
+    question   -- what you need to know. NAME THE FORK OR NAME THE COST: "Do you hold the door, or
+                  let go?", "Do you say the name, knowing what it admits?". "What do you do?" is not
+                  a question -- it names nothing at stake, so the safest possible answer is always
+                  correct, and the safest possible answer is the one that stops the scene. It will
+                  be rejected and you will have spent a step on nothing.
+    wants      -- EXACTLY ONE of these four words, and nothing else:
+                    speech    -- the words they say
+                    action    -- what they physically do
+                    decision  -- which way they go, when there are two ways
+                    reaction  -- what this lands on them as
+                  If you never ask for "speech", nobody in your scene will ever speak.
   scene_done -- true only when the scene's question has been answered and the last line is written.
 
   Consult when a choice is being made. Do not consult for scenery, for a gesture that carries
@@ -1761,12 +1855,42 @@ THE ONE RULE
   answered, in any character's case.
   NOT YOURS -- what anyone says, what anyone decides to do, what anyone is thinking or feeling.
 
+  HOLDING STILL IS A CHOICE. Staying silent, not moving, keeping quiet, waiting, deciding it is not
+  worth it, letting the moment pass -- these are decisions, and they are theirs, not yours. "He does
+  not move." "She says nothing." "They wait." You may not write those unless you asked. Stillness is
+  the easiest thing to award someone by accident and the one that stops a scene deadest.
+
+  YOU MAY NOT RESOLVE THE PRESSURE BEFORE YOU ASK ABOUT IT. If a danger arrives, a deadline lands, a
+  door opens, someone demands an answer -- STOP THERE, while it is still live, and consult. Writing
+  through it to the other side is legal by the letters above (a threat leaving is just time passing)
+  and it destroys the scene, because by the time anyone is asked there is nothing left to decide.
+
+  Observed: a writer wrote a searcher arriving at a hiding place, testing the door, waiting, and
+  walking away -- all in one piece, asking nobody anything -- and then asked the person hiding what
+  they did next, in a situation that began "it is quiet now, he has passed". They answered that they
+  got comfortable. There had been four choices in that paragraph and it asked for none of them.
+
   So write up to the moment of choice and stop there. Send the prose you have and the consult you
   need in the same reply: you will be handed the answer before you are asked to write again, and the
   NEXT piece of prose is where it belongs.
 
   Writing someone's choice and then asking about it is the one mistake that wastes an answer. You
   will be told they did something else, and the page will already say otherwise.
+
+WHEN ASKED FOR DIRECTIONS -- [ASK READER]:
+
+  {"framing": "...", "options": ["...", "...", "..."]}
+
+  The reader has asked to choose the direction this round instead of you deciding alone. Do not
+  write prose.
+  framing  -- a sentence or two: where the scene stands right now, in plain terms, for someone who
+              has been reading along.
+  options  -- exactly three different directions the scene could take from here. Real forks, not the
+              same beat worded three ways, and none of them a line or a choice already decided for a
+              character -- those are still theirs to give, not yours to hand the reader.
+
+  Whatever comes back is the direction the scene takes from here. Write it the way you would any
+  other answer you were given.
 
 WHEN A CHARACTER ASKS YOU SOMETHING -- [<NAME> ASKS]:
 
@@ -1824,26 +1948,29 @@ export type RunEvent =
   | ConsultEvent
   | { t: "scene_start"; story: string; characters: string[]; target: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean }
+  | { t: "bad_consult"; character: string; why: string }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number }
   | { t: "accept"; character: string; attempt: number; speech: string; action: string }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string }
   | { t: "budget"; added: number; budget: number }
+  | { t: "reader_ask"; step: number; framing: string; options: string[] }
+  | { t: "reader_answer"; answer: string }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean };
 
 // -- LIVE EVENT BUS --------------------------------------------------------
-// Every RunEvent is stamped with `seq` and fanned out to three places: the JSONL file, an in-memory
-// history (so a viewer that connects late gets the whole run replayed before going live), and any
-// attached SSE clients. V2 hangs the HTTP server off this; with nothing attached it is inert.
+// Every RunEvent is stamped with `seq` and fanned out three ways: the JSONL file, an in-memory
+// history (so a viewer connecting late gets the whole run replayed before going live), and any
+// attached SSE clients. The HTTP server hangs off this; with nothing attached it is inert.
 //
-// Frames that are UI state rather than record — `composing`, and V4's out-of-budget prompt — go to
-// SSE only and are NEVER written to the log. A run's log has to stay the record of what happened,
-// not of what a browser was showing at the time.
+// Frames that are UI state rather than record — `composing`, the out-of-budget prompt — go to SSE
+// only and are never written to the log, which stays the record of what happened, not of what a
+// browser was showing at the time.
 export type LiveFrame =
   | ({ seq: number } & RunEvent)
   | { t: "composing"; who: string; secs: number; chars: number }
   | { t: "idle" }
   | { t: "continue_prompt"; steps: number; budget: number; suggested: number }
-  | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean }
+  | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean }
   | { t: "run_reset" }
   | { t: "scaffold"; state: unknown };
 
@@ -1877,10 +2004,16 @@ interface RunMeta {
   question: string;
 }
 let RUN_META: RunMeta | null = null;
-// V4 hangs the out-of-budget prompt here. A viewer that connects *while* one is pending learns of
+// The out-of-budget prompt (GUI-SPEC §4.1) hangs here. A viewer that connects *while* one is pending learns of
 // it from GET /run rather than from the ephemeral frame it missed.
 let awaitingContinue: { steps: number; budget: number } | null = null;
 let continueResolve: ((n: number) => void) | null = null;
+
+// Armed by the viewer's "consult me" button: fires once, on the next [WRITE] step, then clears
+// itself. `reader_ask`/`reader_answer` are real RunEvents rather than UI state like `continue_prompt`
+// -- a reader consult is part of the story, so a late viewer gets it from replay rather than GET /run.
+let readerArmed = false;
+let readerResolve: ((answer: string) => void) | null = null;
 
 // Whether a scene is being written right now, and what the process is doing when one is not. Both
 // are UI state, not record: they say what the *session* is doing, which is a different question from
@@ -1888,7 +2021,7 @@ let continueResolve: ((n: number) => void) | null = null;
 let RUNNING = false;
 let WHERE = "idle";                     // human-readable: what the session is doing between runs
 
-// Set while the session is parked waiting for the browser to choose the next story (§W2). Exposed
+// Set while the session is parked waiting for the browser to choose the next story (GUI-SPEC §6). Exposed
 // the same way the budget prompt is, and for the same reason: a viewer that connects — or reloads —
 // while one is outstanding has to learn about it, or a reload strands the session.
 let awaitingPick = false;
@@ -1897,7 +2030,7 @@ let pickResolve: ((dir: string) => void) | null = null;
 function runState(): LiveFrame {
   return {
     t: "run_state", running: RUNNING, stopping: RUN.stopped && RUNNING,
-    where: WHERE, picking: awaitingPick,
+    where: WHERE, picking: awaitingPick, armed: readerArmed,
   };
 }
 /** Announce what the session is doing. Never logged — a run's log is the record of the story, not of
@@ -1908,10 +2041,10 @@ export function setWhere(where: string, running = RUNNING) {
 }
 
 // -- THE INTERVIEW, SERVER SIDE --------------------------------------------
-// The browser's half of SPEC-S §4. It holds one `ScaffoldSession` and nothing else: every decision
-// is the session's, and these are the wires. Note what it does NOT do — the session stays parked in
-// `awaitPick()` for the whole interview, so accepting simply resolves that pick with the directory
-// it just wrote. The main loop never learns an interview happened; it asked for a story and got one.
+// The browser's half of SPEC-S §4. Holds one `ScaffoldSession` and nothing else — every decision is
+// the session's, this is just the wiring. The session stays parked in `awaitPick()` for the whole
+// interview, so accepting simply resolves that pick with the directory it just wrote; the main loop
+// never learns an interview happened, it just asked for a story and got one.
 let SCAFFOLD: ScaffoldSession | null = null;
 let scaffoldBusy = false;                  // one architect at a time
 let scaffoldLast: ScaffoldRound | null = null;
@@ -1944,6 +2077,7 @@ function resetLive() {
   liveHistory.length = 0;
   liveSeq = 0;
   awaitingContinue = null; continueResolve = null;
+  readerArmed = false; readerResolve = null;
   armRun();
   sseWrite({ t: "run_reset" });
 }
@@ -1985,6 +2119,7 @@ export function startServer(port = PORT) {
       json(res, 200, {
         run: RUN_META, awaitingContinue, events: liveHistory.length,
         running: RUNNING, stopping: RUN.stopped && RUNNING, where: WHERE, picking: awaitingPick,
+        armed: readerArmed,
       });
 
     } else if (path === "/stories") {
@@ -2015,9 +2150,33 @@ export function startServer(port = PORT) {
       if (awaitingContinue && continueResolve) {
         const r = continueResolve; continueResolve = null; awaitingContinue = null; r(0);
       }
+      // A reader consult left hanging on a stopped run would park the loop on a promise nobody can
+      // resolve anymore — the same reason the budget question above gets unstuck too.
+      if (readerResolve) { const r = readerResolve; readerResolve = null; r(""); }
+      readerArmed = false;
       if (first) console.log(`\n${C.yellow}Stop requested from the viewer — ending the scene.${C.reset}`);
       sseWrite(runState());
       json(res, 200, { ok: true, already: !first });
+
+    } else if (path === "/consult-me" && req.method === "POST") {
+      // One armed request at a time; a second click before the first has fired changes nothing.
+      if (!RUNNING) { json(res, 400, { ok: false, reason: "no run in progress" }); return; }
+      if (readerArmed || readerResolve) { json(res, 200, { ok: true, already: true }); return; }
+      readerArmed = true;
+      sseWrite(runState());
+      json(res, 200, { ok: true });
+
+    } else if (path === "/reader-answer" && req.method === "POST") {
+      let body = ""; req.on("data", c => (body += c));
+      req.on("end", () => {
+        if (!readerResolve) { json(res, 400, { ok: false, reason: "no reader prompt pending" }); return; }
+        let o: any = {}; try { o = JSON.parse(body || "{}"); } catch {}
+        const answer = String(o.answer ?? "").trim();
+        if (!answer) { json(res, 400, { ok: false, reason: "empty answer" }); return; }
+        const r = readerResolve; readerResolve = null;
+        json(res, 200, { ok: true });
+        r(answer);
+      });
 
     } else if (path === "/continue" && req.method === "POST") {
       let body = ""; req.on("data", c => (body += c));
@@ -2140,12 +2299,12 @@ export function startServer(port = PORT) {
 
 /**
  * The step budget is soft: spending it asks for more rather than ending the scene. Asked in the
- * VIEWER when one is attached, else at the console, else nobody is there and the run stops — which
- * is the honest thing to do rather than blocking forever.
+ * VIEWER when one is attached, else at the console, else the run stops — the honest thing to do
+ * rather than blocking forever.
  *
- * The prompt is deliberately not a RunEvent: it is UI state, not something that happened in the
- * story, so it never reaches the log. A viewer that connects while one is pending learns of it from
- * `GET /run` instead, so a reload cannot strand a blocked run.
+ * Deliberately not a RunEvent: it's UI state, not something that happened in the story, so it never
+ * reaches the log. A viewer that connects while one is pending learns of it from `GET /run` instead,
+ * so a reload can't strand a blocked run.
  */
 async function askMoreSteps(steps: number, budget: number): Promise<number> {
   if (RUN.stopped) return 0;              // already abandoned; do not ask for more of it
@@ -2169,6 +2328,9 @@ async function askMoreSteps(steps: number, budget: number): Promise<number> {
   return Number.isInteger(n) && n > 0 ? n : 0;
 }
 
+/** How far past `max_prose_words` a draft may go before the next [WRITE] mentions it. */
+const OVERRUN_SLACK = 1.5;
+
 export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
   const writer = new Agent("WRITER", sc.models.writer, wrapWriter(sc), 0.8);
   writer.think = sc.thinking.writer;
@@ -2178,6 +2340,11 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   let steps = 0, budget = sc.maxSteps, done = false, empties = 0;
+  // The cap is an instruction, never a truncation — cutting prose at a word count would throw away
+  // words that were actually written, which is the one thing this loop is built not to do. What the
+  // code does instead is NOTICE, and say so on the next request. Slack because a model told 140 will
+  // return 160, and nagging about 20 words is noise that teaches nothing.
+  let overran = 0;
 
   log({ t: "scene_start", story: sc.dir, characters: sc.characters.map(c => c.name), target: sc.scene.length });
 
@@ -2192,6 +2359,41 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
       log({ t: "budget", added: extra, budget });
     }
 
+    // -- READER CONSULT (armed via the viewer's "consult me" button; fires once, browser-only — an
+    // arm with nobody attached by the time it would fire is dropped rather than left to block forever)
+    if (readerArmed && sseClients.size) {
+      readerArmed = false;
+      sseWrite(runState());
+      writer.hear(`[ASK READER] ${wordCount()} words so far. The reader wants to choose the `
+        + `direction this round, not you. Propose three different directions and do not write prose.`);
+      let askRaw = "";
+      try {
+        askRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`);
+      } catch (e) {
+        if (e instanceof StoppedError || RUN.stopped) break;
+        console.log(`\n${C.red}Reader-consult call failed (${(e as Error).message}) — `
+          + `writing normally instead.${C.reset}`);
+      }
+      if (askRaw) {
+        steps++;
+        const ask = extractJson(askRaw);
+        const framing = String(ask.framing ?? "").trim();
+        const options = Array.isArray(ask.options)
+          ? ask.options.map((o: unknown) => String(o).trim()).filter(Boolean).slice(0, 3) : [];
+        writer.said(JSON.stringify({ framing, options }));
+        log({ t: "reader_ask", step: steps, framing, options });
+        console.log(`\n${C.cyan}(waiting on the reader — ${options.length} direction(s) offered)${C.reset}`);
+
+        const answer = await new Promise<string>(resolve => { readerResolve = resolve; });
+        if (RUN.stopped) break;
+        if (answer) {
+          log({ t: "reader_answer", answer });
+          writer.hear(`[READER CHOSE] ${answer}\n\nThat is the direction the scene takes from here. Write it.`);
+        }
+      }
+      continue;
+    }
+
     // -- WRITE
     // The instruction goes into HISTORY rather than being passed as an ephemeral extra, so the
     // writer's transcript alternates user/assistant from the start. A history that opened with the
@@ -2202,7 +2404,9 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     // and the failure it guards against — writing a character's choice and then asking about it —
     // is the one that wastes a whole consult.
     writer.hear(`[WRITE] ${words} words so far, aiming at about ${sc.scene.length}.`
-      + ` Write up to the next choice, then stop and ask for it.`
+      + ` At most ${sc.maxProseWords} words in this piece.`
+      + (overran ? ` Your last piece ran to ${overran} words — far past that. Keep this one short.` : "")
+      + ` Write up to the next choice and stop while the pressure is still live, then ask for it.`
       + (words >= sc.scene.length ? ` You are at length — bring the scene to its end.` : ""));
     let draftRaw: string;
     try {
@@ -2231,6 +2435,8 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     const c = (d.consult && typeof d.consult === "object") ? d.consult as Record<string, unknown> : null;
     const who = c ? String(c.character ?? "").trim() : "";
 
+    const proseWords = prose ? prose.split(/\s+/).filter(Boolean).length : 0;
+    overran = proseWords > sc.maxProseWords * OVERRUN_SLACK ? proseWords : 0;
     if (prose) pieces.push(prose);
     // What it said, normalized: the model routinely emits the same object twice, and the raw reply
     // carries the whole consult block. This keeps the history JSON-shaped without the noise.
@@ -2238,26 +2444,28 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     log({ t: "draft", step: steps, prose, words: wordCount(), consulting: who, salvaged });
     if (prose) console.log(`\n${prose}\n`);
 
-    if (!prose && !who) {
-      // A draft that neither wrote nor asked. Once is a hiccup; three in a row is a stuck writer,
-      // and burning the whole budget on empty calls helps nobody.
-      if (++empties >= 3) { console.log(`${C.red}Writer returned nothing three times — stopping.${C.reset}`); break; }
-    } else empties = 0;
-
     // -- CONSULT (with accept / retry)
+    let asked = false;                   // did anyone actually get consulted this step?
     if (who) {
       const def = defOf(who);
       const persistent = agents.get(who.toLowerCase());
+      // `character` LAST: the raw reply carries one too, and the cast's spelling is the engine's to
+      // decide — it is what reaches askBlock, the character's memory and the log.
+      const check = def ? normalizeConsult({ ...c!, character: def.name }) : null;
       if (!def || !persistent) {
         writer.hear(`[NO SUCH CHARACTER] There is no "${who}" in this scene. The cast is: `
           + `${sc.characters.map(x => x.name).join(", ")}.`);
+      } else if (!check!.ok) {
+        // Refused before anyone is asked. A malformed consult costs a character call, up to
+        // `clarifications` more and a judge call, and buys filler — see `normalizeConsult`. The
+        // writer is told what was wrong in terms it can act on, and the step is otherwise ordinary.
+        log({ t: "bad_consult", character: def.name, why: check!.why });
+        console.log(`${C.yellow}(not sent to ${def.name} — ${check!.why.split(". ")[0]}.)${C.reset}`);
+        writer.hear(`[CONSULT NOT SENT] ${check!.why}\n\n`
+          + `${def.name} was not asked and nobody answered. Nothing about the scene has changed.`);
       } else {
-        let req: ConsultRequest = {
-          character: def.name,
-          situation: String(c!.situation ?? "").trim(),
-          question: String(c!.question ?? "").trim(),
-          wants: String(c!.wants ?? "").trim(),
-        };
+        asked = true;
+        let req: ConsultRequest = check!.req;
         let reply: ConsultReply | null = null;
         let usedAttempt = 1;
         let failed = "";
@@ -2323,11 +2531,14 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
             break;
           }
           const rev = (j.revised && typeof j.revised === "object") ? j.revised as Record<string, unknown> : {};
+          // Lenient where the first consult was strict: every field falls back to one already
+          // checked, so a revision cannot smuggle in an empty situation. There is nothing to gain by
+          // refusing a retry outright — an answer is already in hand.
           req = {
             character: def.name,
             situation: String(rev.situation ?? "").trim() || req.situation,
             question: String(rev.question ?? "").trim() || req.question,
-            wants: String(rev.wants ?? "").trim() || req.wants,
+            wants: canonWants(rev.wants) ?? req.wants,
           };
           console.log(`${C.yellow}retry ${attempt}/${sc.retries} — ${def.name}${C.reset}${note ? ` ${C.dim}(${note})${C.reset}` : ""}`);
           log({ t: "retry", character: def.name, attempt, situation: req.situation, question: req.question });
@@ -2364,6 +2575,14 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
       }
     }
 
+    // A step that neither wrote nor asked anybody anything. Once is a hiccup; three in a row is a
+    // stuck writer, and burning the whole budget on empty calls helps nobody. A consult REFUSED by
+    // `normalizeConsult` counts as nothing achieved — otherwise a writer that keeps sending "what do
+    // you do?" and no prose would spin here for as long as the budget lasts.
+    if (!prose && !asked) {
+      if (++empties >= 3) { console.log(`${C.red}Writer wrote nothing and asked nobody, three times — stopping.${C.reset}`); break; }
+    } else empties = 0;
+
     if (sceneDone) done = true;
     if (RUN.stopped) break;              // don't spend summary calls on a run that is over
     await trimHistory(writer, sc.models.summary, sc.thinking.summary);
@@ -2398,7 +2617,9 @@ async function runConsultCli(sc: StoryConfig, who: string) {
   };
   const situation = await ask("Situation", flag("situation"));
   const question  = await ask("Question", flag("question"));
-  const wants     = flag("wants") ?? "";
+  // Deliberately NOT run through `normalizeConsult`: this path exists to poke the character half
+  // with whatever you like, including a question the writer would not be allowed to ask.
+  const wants     = canonWants(flag("wants")) ?? "";
   const req: ConsultRequest = { character: def.name, situation, question, wants };
 
   console.log(`\n${C.bold}${def.name}${C.reset} ${C.dim}(${def.skills.length} skills, ${def.model})${C.reset}`);
@@ -2596,16 +2817,15 @@ async function runOne(dir: string) {
 
 // True when the BROWSER owns the session: `--serve`, and nothing on the command line has already
 // decided what to run. The console then prints status and never blocks on stdin — one driver, not
-// two racing for the same answer. A non-TTY run is never browser-driven: "no terminal means run once
-// and exit" is a guarantee scripts already depend on, and a headless session that parks forever
-// waiting for a browser nobody opened would break it.
+// two racing for the same answer. Never true for a non-TTY run: "no terminal means run once and
+// exit" is a guarantee scripts depend on, and a headless session parked waiting for a browser nobody
+// opened would break it.
 let BROWSER_DRIVES = false;
 
 /**
  * Park the session until a client chooses — the browser's half of the picker, resolved by
- * `POST /select`. Deliberately has no console fallback and no timeout: in a browser-driven session
- * there is nothing else to fall back TO, and quietly picking a story for you would be worse than
- * waiting. Ctrl-C is the way out.
+ * `POST /select`. Deliberately no console fallback and no timeout: there is nothing else to fall
+ * back to, and quietly picking a story for you would be worse than waiting. Ctrl-C is the way out.
  */
 export function awaitPick(): Promise<string> {
   awaitingPick = true;
@@ -2626,21 +2846,22 @@ async function pickStory(): Promise<string> {
 }
 
 /**
- * A SESSION, not a run. Stopping a scene — or finishing one — returns to the picker rather than
- * killing the process, so abandoning a story costs you the scene and nothing else: the viewer stays
- * up, the models stay loaded, and the next story starts from where you left off.
+ * A SESSION, not a run. Stopping or finishing a scene returns to the picker rather than killing the
+ * process, so abandoning a story costs the scene and nothing else: the viewer stays up, the models
+ * stay loaded, and the next story starts from where you left off.
  *
- * One-shot is preserved exactly where it was already load-bearing: a story named on the command
- * line, `--consult`, and any run with no terminal behave as they always did. A scripted `--steps=3`
- * must still exit on its own.
+ * One-shot is preserved wherever it was already load-bearing: a story named on the command line,
+ * `--consult`, and any run with no terminal behave as they always did, so a scripted `--steps=3`
+ * still exits on its own.
  */
 async function main() {
   if (SERVE) startServer();      // before the picker, so the viewer is up while you are still choosing
   const oneShot = !!STORY_DIR || !process.stdin.isTTY || flag("consult") !== undefined;
   BROWSER_DRIVES = SERVE && !oneShot;
 
-  // `--new` says where this session starts, not who drives it: the interview is still at the console
-  // (W4 moves it), and every choice after it belongs to whoever is driving.
+  // `--new` says where this session starts, not who drives it: the interview it launches is always
+  // at the console (the browser's own interview is the separate /scaffold/* path), and every choice
+  // after it belongs to whoever is driving.
   let next: string = CLI.includes("--new") ? NEW_STORY
                    : STORY_DIR ? STORY_DIR
                    : await pickStory();

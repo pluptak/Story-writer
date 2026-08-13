@@ -44,6 +44,15 @@ and the live stream are the same data, and `publish()` stamps one `seq` used by 
 and a live run therefore render identically, which is what makes the renderer debuggable against a
 finished run.
 
+`bad_consult` (DESIGN.md §4.3 — a consult the engine refused to send) has no answer and no attempts
+to fold, so it renders as a standalone note in the gap where it happened, the way `budget` does. It
+is deliberately visible rather than silent: a run whose writer keeps asking *"what do you do?"* looks
+otherwise like a run that simply consulted less.
+
+`reader_ask`/`reader_answer` (DESIGN.md §3.1, §6.1) are real events too, unlike the out-of-budget
+prompt — a reader consult is part of the story. A `reader_ask` with no matching `reader_answer` yet
+is the block that is still waiting on you; see §4.3 and §5.
+
 ### 2.1 SSE-only frames
 
 Never written to the log, because they are UI state rather than record:
@@ -53,7 +62,7 @@ Never written to the log, because they are UI state rather than record:
 | `{t:"composing", who, secs, chars}` | an agent is generating; drives the indicator |
 | `{t:"idle"}` | it stopped |
 | `{t:"continue_prompt", steps, budget, suggested}` | the step budget is spent (§4.1) |
-| `{t:"run_state", running, stopping, where, picking}` | what the **session** is doing (§4.2, §6) |
+| `{t:"run_state", running, stopping, where, picking, armed}` | what the **session** is doing (§4.2, §6); `armed` is the reader-consult flag (§4.3) |
 | `{t:"run_reset"}` | a new run is starting in this process; drop what you are holding |
 
 A run's log must stay the record of what happened, not of what a browser happened to be showing.
@@ -79,9 +88,11 @@ run it was opened for.
 |---|---|
 | `GET /` | the viewer, `no-cache` |
 | `GET /events` | SSE. **Replays `liveHistory` first, then attaches** — a viewer opened halfway through sees the whole scene, not the rest of it — then one `run_state` for what is happening now |
-| `GET /run` | `{ run: {story, characters, target, question}, awaitingContinue, events, running, stopping, where, picking }` |
+| `GET /run` | `{ run: {story, characters, target, question}, awaitingContinue, events, running, stopping, where, picking, armed }` |
 | `POST /continue` | `{steps}` — grants budget (§4.1); 400 when nothing is waiting |
 | `POST /stop` | end the current run (§4.2); 400 when none is in progress |
+| `POST /consult-me` | arm the reader-consult flag (§4.3); 400 when no run is in progress; a second arm before the first fires is a no-op |
+| `POST /reader-answer` | `{answer}` — resolve the pending `[ASK READER]` (§4.3); 400 when nothing is waiting |
 | `GET /stories` | every discovered story, pre-flighted, as picker cards (§6) |
 | `POST /select` | `{dir}` — choose the next story (§6); 400 when the session is not waiting, or the story was not discovered |
 | `GET /scaffold` | the open interview, or `{active:false}` (§6.1) |
@@ -140,6 +151,27 @@ loaded, and the next story starts from the same prompt. One-shot invocations are
 named on the command line, `--consult`, or any run without a terminal still runs once and exits, so
 `--steps=3` remains a scripted smoke test.
 
+### 4.3 The reader consult
+
+The topbar's **consult me** button is a one-shot arm, not a mode: `POST /consult-me` sets a flag the
+loop checks once, at the top of its next step, then clears whether or not anything came of it. There
+is no console equivalent — arming requires a viewer, and DESIGN.md §4/§6.1 has the reasoning.
+
+When it fires, the writer is sent `[ASK READER]` (DESIGN.md §3.1) instead of `[WRITE]` for that step:
+no prose, three proposed directions instead. That becomes a `reader_ask` event, rendered as an open
+question with a button per option and a free-text box under it — the same either-or-your-own choice
+the scaffolding interview already offers. Picking one, or typing your own, is `POST /reader-answer`
+`{answer}`; the resulting `reader_answer` event closes the block and the writer continues informed by
+whatever was sent, verbatim.
+
+Two edges, both already covered by the loop rather than the viewer:
+
+- **The viewer disconnects between arming and firing.** The flag is only acted on while a client is
+  attached; an arm that goes stale is dropped silently, same principle as a lost viewer never costing
+  a scene (§3).
+- **The run is stopped while a reader consult is outstanding.** `POST /stop` resolves it with an
+  empty answer, which the loop discards rather than folding in — see §4.2.
+
 ---
 
 ## 5. Rendering
@@ -161,6 +193,11 @@ than starting a new one. That grouping is the whole renderer; everything else is
 - **The stop button** appears only on a live source, is disabled when nothing is running, and takes
   a **second, confirming click** — the same deliberate-second-keypress rule the scaffolder uses for
   accepting over a complaint (SPEC-S §4.2). It disarms itself after four seconds.
+- **A reader consult** (§4.3) renders as its own block, not a collapsed one — it is a question aimed
+  at you, not a record to fold away. Pending, it shows the framing, a button per option, and a
+  free-text box; answered, it collapses to the framing and what was chosen. The **consult me** button
+  mirrors stop's live-only, disabled-when-nothing-running rule, plus a third state — disabled and
+  relabelled while the one it just armed is still pending.
 
 **Re-render is whole, debounced on a timer.** A scene is a few dozen events; rebuilding is far
 cheaper than keeping incremental DOM state correct across retries and late-arriving verdicts. Open
@@ -273,8 +310,7 @@ since removing a focused node does not reliably fire blur.
   browser interview (§6.1) is conversation-only precisely so the console and the browser stay the
   same interview over one `ScaffoldSession`. Worth revisiting once the browser one has been used in
   anger; the field vocabulary a form would need already exists.
-  *(The interview itself was "not built" here until W4. It stayed at the console on the reasoning
-  that a two-way design chat is a different UI from watching a run — which held until the browser
-  started driving the session, at which point "now go back to the terminal to make one" was the
-  seam.)*
+  *(The interview itself stayed at the console for a while, on the reasoning that a two-way design
+  chat is a different UI from watching a run — until the browser started driving the session, at
+  which point "now go back to the terminal to make one" was the seam that moved it here.)*
 - Per-step timing, cost, and any editing of the scene from the page. This is a viewer.

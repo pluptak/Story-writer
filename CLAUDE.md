@@ -142,6 +142,16 @@ step budget runs out. DESIGN.md §4.
   block and the echo on every `[WRITE]` exist for that, and the POV character is deliberately not
   exempt. It is LLM-judged, so check a run's log for consults whose answers the prose pre-empted
   before loosening any of it.
+- **A scene stalls by spending its words on narration.** The budget buys narration or choices, and
+  uncapped the writer buys narration: measured, ~300 words of prose per draft and four decisions out
+  of 1119 words, with 1 answer in 7 carrying any speech. Three things push back, all in DESIGN.md
+  §4.3 — `config.max_prose_words`, `normalizeConsult()` refusing a request before it costs a
+  character call, and `wants` as a closed set so "ask for words" is expressible. If a story wants
+  long unbroken prose, raise `max_prose_words` for that story rather than removing the cap.
+- **THE ONE RULE has two clauses that were added late, and both look redundant until you read a
+  stalled log.** Stillness is a choice (inaction reads as absence and escapes a rule about acts), and
+  the pressure may not be resolved before the consult that turns on it (a threat leaving is "time
+  passing", which the rule grants). DESIGN.md §3.1 records the run each came from.
 - **A draft carries prose, so it is the reply most likely to hit the token cap.** Truncated JSON
   parses to nothing, which would throw away words that were actually written — hence `max_tokens`
   defaulting to 2000 here rather than the 1200 this forked with, and `salvageProse()` as the net.

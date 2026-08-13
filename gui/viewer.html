@@ -136,6 +136,19 @@
   .composing i { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--accent);
                  margin-right:5px; animation:pulse 1.2s ease-in-out infinite; }
 
+  /* a reader consult: the writer stopped to ask you which way the scene goes */
+  .reader { background:var(--panel); border:1px solid var(--accent); border-radius:12px;
+            padding:14px 16px; box-shadow:var(--shadow); margin:18px 0; font-size:13.5px; }
+  .reader.answered { border-color:var(--line); }
+  .reader .rlabel { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+                    color:var(--accent); margin-bottom:6px; }
+  .reader.answered .rlabel { color:var(--faint); }
+  .reader .rframing { font-family:var(--serif); font-size:15px; margin-bottom:12px; }
+  .reader .rchosen { font-size:13px; color:var(--muted); }
+  .reader .rchosen b { color:var(--ink); font-weight:600; }
+  .reader .btns { flex-direction:column; align-items:stretch; }
+  .reader .readerOpt { text-align:left; white-space:normal; }
+
   /* the picker: a panel at the TOP of the reading column, never a replacement for it. A session
      that has just finished a scene must not have that scene shoved off the page by the question
      of what to write next. */
@@ -226,6 +239,7 @@
 <div class="topbar">
   <div class="brand"><h1 id="title">story-writer</h1><div class="q" id="question"></div></div>
   <div class="cast" id="cast"></div>
+  <button class="btn" id="consultMe" hidden>consult me</button>
   <button class="btn" id="stop" hidden>stop run</button>
   <button class="btn" id="expand">expand all</button>
   <button class="btn" id="theme">theme</button>
@@ -260,7 +274,7 @@
   let seen = new Set();
   let meta = null;            // from /run, when serving
   let composing = null;       // ephemeral: {who, secs, chars}
-  let session = { running:false, stopping:false, where:"", picking:false };  // the process, not the story
+  let session = { running:false, stopping:false, where:"", picking:false, armed:false };  // the process, not the story
   let armed = 0;              // timer id: the stop button is waiting for its confirming second click
   let stories = null;         // story cards from /stories, while the session waits for a choice
   let picked = "";            // a choice already sent; keeps a double-click from being two picks
@@ -303,6 +317,13 @@
         case "judge":     if (last(cur)) last(cur).judge = e; break;
         case "accept":    if (cur) { cur.accepted = e; cur = null; } break;
         case "budget":    blocks.push({ kind:"note", seq:e.seq, text:`+${e.added} steps (budget now ${e.budget})` }); break;
+        case "reader_ask": blocks.push({ kind:"reader", seq:e.seq, framing:e.framing, options:e.options||[], answer:null }); break;
+        case "reader_answer": {
+          const rb = [...blocks].reverse().find(b => b.kind === "reader" && b.answer === null);
+          if (rb) rb.answer = e.answer;
+          break;
+        }
+        case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
         case "scene_end": blocks.push({ kind:"end", seq:e.seq, ...e }); break;
       }
     }
@@ -349,6 +370,43 @@
       <summary><span class="who">${esc(b.who)}</span><span class="qs">${esc(q)}</span>${tags}</summary>
       <div class="body">${attempts}</div>
     </details>`;
+  }
+
+  function renderReader(b) {
+    if (b.answer !== null) {
+      return `<div class="reader answered">
+        <div class="rlabel">you were asked</div>
+        <div class="rframing">${esc(b.framing)}</div>
+        <div class="rchosen">chose: <b>${esc(b.answer)}</b></div>
+      </div>`;
+    }
+    const opts = b.options.map((o, i) =>
+      `<button class="btn readerOpt" data-seq="${b.seq}" data-i="${i}">${esc(o)}</button>`).join("");
+    return `<div class="reader pending" data-seq="${b.seq}">
+      <div class="rlabel">the writer wants your call</div>
+      <div class="rframing">${esc(b.framing)}</div>
+      <div class="btns">${opts}</div>
+      <div class="field"><textarea class="readerOwn" data-seq="${b.seq}" rows="2"
+                placeholder="or write your own"></textarea></div>
+      <div class="btns"><button class="btn primary readerSend" data-seq="${b.seq}">send</button></div>
+    </div>`;
+  }
+
+  function wireReader(page) {
+    for (const b of page.querySelectorAll(".readerOpt"))
+      b.addEventListener("click", () => sendReaderAnswer(b.textContent));
+    for (const b of page.querySelectorAll(".readerSend"))
+      b.addEventListener("click", () => {
+        const ta = page.querySelector(`.readerOwn[data-seq="${b.dataset.seq}"]`);
+        const text = (ta?.value || "").trim();
+        if (text) sendReaderAnswer(text);
+      });
+  }
+  async function sendReaderAnswer(answer) {
+    try {
+      await fetch("/reader-answer", { method:"POST", headers:{ "Content-Type":"application/json" },
+                                      body: JSON.stringify({ answer }) });
+    } catch {}
   }
 
   // ---- the picker ---------------------------------------------------------
@@ -606,6 +664,7 @@
       if (b.kind === "prose") return `<div class="piece${b.salvaged ? " salvaged" : ""}">${
         b.salvaged ? `<div class="salvnote">recovered from a truncated draft</div>` : ""}${paras(b.text)}</div>`;
       if (b.kind === "consult") return renderConsult(b);
+      if (b.kind === "reader") return renderReader(b);
       if (b.kind === "note") return `<div class="note">${esc(b.text)}</div>`;
       if (b.kind === "end") return `<div class="note end">${
         b.stopped ? "stopped by request" : b.done ? "scene finished" : "stopped early"}
@@ -619,7 +678,7 @@
         d.open ? open.add(s) : open.delete(s);
       });
     }
-    wirePicker(page); wireInterview(page); restoreFocus(page, keepFocus);
+    wirePicker(page); wireInterview(page); wireReader(page); restoreFocus(page, keepFocus);
     renderRail(blocks);
   }
 
@@ -669,6 +728,9 @@
     b.classList.toggle("armed", !!armed);
     b.textContent = session.stopping ? "stopping…" : armed ? "confirm stop" : "stop run";
     $("where").textContent = session.where ? "· " + session.where : "";
+    const cm = $("consultMe");
+    cm.disabled = !session.running || session.stopping || session.armed;
+    cm.textContent = session.armed ? "consulting…" : "consult me";
   }
   const disarm = () => { clearTimeout(armed); armed = 0; renderSession(); };
 
@@ -690,6 +752,10 @@
     session.stopping = true; renderSession();
     try { await fetch("/stop", { method:"POST" }); } catch {}
   };
+  $("consultMe").onclick = async () => {
+    if (!session.running || session.stopping || session.armed) return;
+    try { await fetch("/consult-me", { method:"POST" }); } catch {}
+  };
 
   function ingest(text) {
     events = text.split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
@@ -702,7 +768,7 @@
       const r = await fetch("/run"); if (!r.ok) throw 0;
       const j = await r.json();
       if (j.run) { meta = j.run; renderHeader(); }
-      session = { running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking };
+      session = { running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking, armed: !!j.armed };
       if (j.awaitingContinue) showPrompt(j.awaitingContinue);
       if (j.picking) loadStories();          // a reload while the session waits must not strand it
       // An interview may already be open — a reload in the middle of one must land back in it.
@@ -717,6 +783,7 @@
     const es = new EventSource("/events");
     setSrc("live", true);
     $("stop").hidden = false;          // the run can only be stopped where there is one to stop
+    $("consultMe").hidden = false;
     renderSession();
     let pending = null;
     es.onmessage = m => {
@@ -726,7 +793,7 @@
       if (f.t === "continue_prompt") { showPrompt(f); return; }
       if (f.t === "run_state") {
         const was = session.picking;
-        session = { running: !!f.running, stopping: !!f.stopping, where: f.where || "", picking: !!f.picking };
+        session = { running: !!f.running, stopping: !!f.stopping, where: f.where || "", picking: !!f.picking, armed: !!f.armed };
         if (!session.running) disarm();
         if (session.picking !== was) loadStories();
         renderSession();

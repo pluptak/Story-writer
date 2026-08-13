@@ -23,11 +23,17 @@ What makes this more than prompt-chaining is what each side is *denied*:
 | party | is given | is NOT given |
 |---|---|---|
 | writer | premise, scene, house style, cast names + **capabilities** | any character's persona, memory or interiority |
-| character | own persona, own skills, own `knows:`, the situation the writer wrote, its own accepted answers | the premise, the draft, the scene's purpose, anyone else's replies |
+| character | own persona, own skills, own `knows:`, own `goal:`, the situation the writer wrote, its own accepted answers | the premise, the draft, the scene's purpose, anyone else's replies |
 
 A writer holding everyone's interiority writes them from the inside and stops asking; a character
 holding the draft answers the story instead of the moment. Both directions are enforced by what
 `wrapWriter()` and `wrapCharacter()` put in the prompt, and by `consult()` never seeing the draft.
+
+`goal` follows the same rule as persona: it shapes the character's own agent and nothing else. Only
+the character can weigh whether they are closer to what they want or further from it, so `goal` is
+never shown to the writer or the architect, and no code scores progress toward it. Where it earns its
+keep is at *design* time — two characters whose goals genuinely collide (what one needs is what
+blocks the other) produce friction a scene doesn't have to be told to have.
 
 ---
 
@@ -51,8 +57,8 @@ someone.
 **Enforcement is a check, not a gate.** A reply names `skills_used`; unknown names trigger one
 re-ask naming the actual set. If the second reply still claims them, the answer reaches the writer
 **flagged** (`[FLAGGED] They used "x", which they cannot do.`) — never silently accepted, never
-silently dropped. This is best-effort by design: the deterministic version is a rule layer with
-world-state predicates, which this v1 does not have.
+silently dropped. Best-effort by design: a deterministic gate would need a rule layer with
+world-state predicates, which this does not have.
 
 ---
 
@@ -64,17 +70,32 @@ emit examples and preambles first) and falls back to labelled prose.
 Two agents run during a scene — the writer and each character. The **architect**, which only runs
 before a scene exists, has its own contracts in [SPEC-S-scaffold.md](SPEC-S-scaffold.md) §3–4.
 
-### 3.1 Writer — three modes
+### 3.1 Writer — four modes
 
 The mode is set by the leading tag on the user message.
 
 | tag | returns |
 |---|---|
 | `[WRITE]` | `{ prose, consult?: { character, situation, question, wants }, scene_done }` |
+| `[ASK READER]` | `{ framing, options }` |
 | `[<NAME> ASKS]` | `{ answer }` |
 | `[<NAME> ANSWERED]` | `{ verdict: "accept" \| "retry", note, revised?: { situation, question } }` |
 
-- `prose` may be `""` on a step that only consults; `consult` is omitted when none is needed.
+`[ASK READER]` replaces one `[WRITE]` step in place, sent only when the viewer's "consult me" button
+has armed a one-shot flag (§4, §6.1) — there is no console path and no way for the writer to trigger
+it itself. `options` is meant to be exactly three real forks; the person at the browser picks one or
+types their own, and whatever comes back is folded into the writer's history as `[READER CHOSE] ...`
+before the next `[WRITE]`. Unlike the out-of-budget prompt, both the ask and the answer are real
+`RunEvent`s (`reader_ask`, `reader_answer`) — a reader consult is part of the story, not UI state, so
+it is logged and replayed like any other event rather than living only in `GET /run`.
+
+- `prose` may be `""` on a step that only consults; `consult` is omitted when none is needed. Each
+  piece is capped at `config.max_prose_words` — §4.3.
+- `wants` is **one of four words**: `speech · action · decision · reaction`. It was free text, and
+  degenerated: across four runs it was "what they do next" in four of five consults, which names no
+  shape at all. It is also why nobody spoke — one answer in seven carried any `speech`, because a
+  question that never asks for words never gets any. `canonWants()` recovers near misses ("whether
+  they move aside" ⇒ `decision`); anything with no shape in it is refused rather than guessed.
 - **The one rule**, stated as its own block in `WRITER_FORMAT`: dialogue and deliberate acts may
   reach the page only from an answer already received. The place, the light, involuntary body and
   anything already answered are the writer's. **The POV character is not exempt** — the point of
@@ -82,8 +103,25 @@ The mode is set by the leading tag on the user message.
   doesn't reach for the package yet… waiting"*, then consulted, and was told *"I take the package
   with both hands"* — an answer wasted against a page that already said otherwise. The `[WRITE]`
   instruction carries a one-line echo of the rule on every step.
+
+  Two clauses were added after the rule was observed holding while scenes stalled anyway. Both are
+  cases where the *letter* of it permits what the point of it forbids:
+
+  - **Stillness is a choice.** "He does not move." "She says nothing." "They wait." Inaction reads
+    as absence and so escaped a rule written about acts, and it is the one thing the writer can
+    award unasked that stops a scene deadest.
+  - **The pressure may not be resolved before the consult that turns on it.** A threat leaving is
+    just time passing, which the rule explicitly grants — so a writer could build a beat and
+    dissolve it inside one piece, legally, and then ask into the calm. Observed in
+    `stories/three-in-a-cupboard`: a searcher arrived at the hiding place, tested the door and
+    walked away in 167 words with no consult; the next `situation` opened *"The cupboard is quiet.
+    Dudley has passed without hearing them"* and asked what the hider did next. They got
+    comfortable. There had been four choices in that paragraph and none was asked for.
+
+  Both are LLM-judged, like the rest of the rule. What the code guarantees is that the contract
+  states them; check a run's log before loosening either.
 - `situation` is the only world the character gets. The contract tells the writer to put no steer
-  toward the answer it wants in there.
+  toward the answer it wants in there. Below `MIN_SITUATION_WORDS` it is refused — §4.3.
 - `answer` decides a fact: if the writer had not decided yet, its answer becomes true for the scene.
   The Q&A is pushed into the writer's history, so it must live with what it decided.
 - `retry` is reserved for an unusable answer — wrong question answered, a situation too thin to
@@ -118,8 +156,10 @@ event is marked `salvaged: true`, so the log says when a piece of the scene arri
 ```
 while not done:
   budget spent?           -> ask the console for more steps, or stop
+  reader-consult armed?   -> [ASK READER] instead of [WRITE] this step, wait for the browser's answer
   [WRITE]                 -> prose (appended, written to out/scene.md) + optional consult + scene_done
   consult requested?
+      normalizeConsult()  -> refused: writer told why, NOBODY is asked, step is otherwise ordinary
       attempt = 1: the character's OWN agent (remembers the scene)
       attempt > 1: agent.fork() — same persona, empty history, revised question only
       inside consult():
@@ -153,13 +193,43 @@ A single bad model call must not destroy a run that has written 600 words.
 | clarification | `"(no answer)"` — the character answers with what it has |
 | judge | **accept** — the character did answer; discarding it over a meta-call is the wrong way to fail |
 | a whole consult | writer told `[NO ANSWER]`, scene continues |
-| three drafts with no prose and no consult | stop — a stuck writer should not eat the budget |
+| three steps that neither wrote nor asked anybody | stop — a stuck writer should not eat the budget. A consult **refused** by `normalizeConsult` counts as nothing achieved, so a writer repeating a malformed one cannot spin here |
 
 ### 4.2 Budget
 
 `config.max_steps` is **soft**: spending it prompts at the console for more (default 8, `0` stops).
 A non-interactive run stops instead — there is nobody to ask. `--steps=N` overrides it, which makes
 `--steps=3` a cheap smoke test of the whole loop.
+
+### 4.3 Pacing
+
+A scene has a fixed word budget and exactly two things to spend it on: the writer's narration and
+the characters' choices. Left alone the writer spends it on narration. Measured across the four runs
+in `stories/*/out/`: **~300 words of prose per draft, at most one consult each — 1119 words bought
+four decisions**, and 1 of 7 answers carried any speech at all. A scene that runs out of words
+before it runs out of story reads as a stall, and that is the mechanism.
+
+Three things push against it, and none of them is a truncation — cutting prose at a word count would
+throw away words that were actually written, which is the one thing this loop is built not to do.
+
+- **`config.max_prose_words`** (default 140) is stated in `WRITER_FORMAT` and repeated in every
+  `[WRITE]`. When a piece overruns it by more than `OVERRUN_SLACK` (×1.5 — a model told 140 returns
+  160, and nagging about 20 words teaches nothing) the **next** `[WRITE]` says so and by how much.
+  At the default a 700-word scene is at least five pieces rather than two.
+- **`normalizeConsult()`** refuses a request that is not worth sending, *before* any character call.
+  It is pure, and it is the engine's half of the split: whether a question is **good** stays a
+  judgement, but whether it is a question at all is decidable here. It refuses an empty situation
+  (observed in `stories/glass-womb` — a consult went out with a **zero-character** situation, and
+  the character, whose only world is that field, answered with filler), a situation under
+  `MIN_SITUATION_WORDS`, an empty question, a `wants` with no shape in it, and the **degenerate
+  question**: `"What do you do?"`, `"What does Elara do?"`, `"What happens next?"`. Those name no
+  fork and no stake, so the safest possible answer is always correct — and the safest possible
+  answer is the one that does not move the scene. Four of the seven consults on record were that
+  shape. The `why` is written to be handed straight back to the writer, so it says what a good one
+  looks like: a rejection the writer cannot act on is one it repeats.
+- **`wants` as a closed set** (§3.1), so "ask for words" is a thing the writer can actually do.
+
+A refused consult is logged as `bad_consult` and counts toward the stuck-writer guard in §4.1.
 
 ---
 
@@ -190,6 +260,7 @@ when no story is loaded yet — see §7 and SPEC-S §2. It is optional.
 | `## Config` | `retries` | `2` | every value: warns and uses the default, never throws |
 | | `clarifications` | `2` | |
 | | `max_steps` | `24` | |
+| | `max_prose_words` | `140` | ceiling on ONE draft's prose — the pacing dial, §4.3 |
 | | `stream` | `true` | only `true`/`false` |
 | | `debug` | `false` | |
 | | `thinking` | `low` | `off/low/medium/high/default` |
@@ -218,8 +289,9 @@ inside a character block, where `knows:` and `skills:` are prose.
 `<story dir>/out/`, written **as the run goes** so an interrupted run leaves both artifacts:
 
 - `scene.md` — the prose alone, rewritten after every draft that produces any.
-- `writing-log.jsonl` — one JSON object per line, `seq`-stamped: `scene_start, draft, consult, need,
-  clarify, forced, repair, skill_flag, answer, judge, retry, accept, budget, scene_end`. This is the
+- `writing-log.jsonl` — one JSON object per line, `seq`-stamped: `scene_start, draft, bad_consult,
+  consult, need, clarify, forced, repair, skill_flag, answer, judge, retry, accept, budget,
+  reader_ask, reader_answer, scene_end`. This is the
   record of *why* the scene reads the way it does — which questions were asked, what was clarified,
   what was rejected and re-asked.
 
@@ -236,15 +308,20 @@ otherwise), and `run_state`/`run_reset` (whether a scene is being written right 
 one has begun). Without `--serve` the whole surface is inert.
 
 A run can also be **stopped** from the viewer — GUI-SPEC §4.2. It sets a flag the loop checks at
-every boundary *and* aborts the model call in flight, because a run spends nearly all of its time
-inside one call. A stop is not a failure: it is never retried, never salvaged into a half-draft, and
-never written into a character's memory. `scene_end` carries `stopped` so the log distinguishes the
-three ways a scene can end. Stopping returns the session to the picker rather than ending the
-process; a story named on the command line still runs once and exits.
+every boundary *and* aborts the model call in flight, since a run spends nearly all its time inside
+one call. A stop is not a failure: never retried, never salvaged into a half-draft, never written
+into a character's memory. `scene_end` carries `stopped` so the log distinguishes the three ways a
+scene can end. Stopping returns the session to the picker rather than ending the process; a story
+named on the command line still runs once and exits. A stop also resolves any pending reader consult
+(with an empty answer, discarded rather than folded in) so it cannot leave the loop parked.
+
+The topbar's **consult me** button (browser-only) arms the one-shot flag `[ASK READER]` checks — see
+§3.1, §4. Arming with nobody attached by the time it would fire is dropped silently rather than left
+to block forever, the same principle as losing the viewer never costing a scene.
 
 The console itself prints a **status line rather than the model's raw draft** — one rewritten line
-with elapsed time and characters received, and nothing at all when output is not a TTY. Streaming
-raw JSON into the terminal buried the formatted output it was interleaved with; the text is still
+with elapsed time and characters received, nothing at all when output is not a TTY. Streaming raw
+JSON into the terminal buried the formatted output it was interleaved with; the text is still
 buffered and parsed exactly as before, only the display changed.
 
 ---
@@ -275,8 +352,8 @@ afterwards and can be edited by hand — there is no second kind of story.
 
 ## 8. What is deliberately not here
 
-Multi-scene stories and outlining · a live viewer / SSE server · a declarative rule layer gating
-skills on world state and possessions · any dependency on the roleplay engine this was forked from.
+Multi-scene stories and outlining · a declarative rule layer gating skills on world state and
+possessions · any dependency on the roleplay engine this was forked from.
 
 Tests cover code-enforced invariants only ([tests/writer.test.ts](tests/writer.test.ts)): story and
 spec parsing, skill resolution, config rejection, JSON extraction, the consult protocol's control

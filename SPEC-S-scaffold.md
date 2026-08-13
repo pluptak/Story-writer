@@ -1,9 +1,10 @@
 # SPEC S — scaffolding a story from an idea
 
-**Status:** complete (S1–S4), with the interview extracted into `ScaffoldSession` in W3 (§4.2) ahead
-of moving it into the browser. The loop from idea to running scene is closed, and the deterministic
-tests in §5 all pass. [DESIGN.md](DESIGN.md) §7 summarises this; §5 there covers the story format it
-writes. This document stays authoritative for the scaffolder's own contracts and decisions.
+**Status:** complete (S1–S4, W3, W4 — see §6). The interview lives in `ScaffoldSession` (§4.2) and
+runs from both the console and the browser over one implementation. The loop from idea to running
+scene is closed, and the deterministic tests in §5 all pass. [DESIGN.md](DESIGN.md) §7 summarises
+this; §5 there covers the story format it writes. This document stays authoritative for the
+scaffolder's own contracts and decisions.
 
 **Scope.** Let a run start from an *idea* instead of an authored folder. You type what you want, an
 **architect** agent proposes a complete story, you refine it by saying what to change, and on
