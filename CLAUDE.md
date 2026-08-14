@@ -58,15 +58,20 @@ Full flag reference in [CLI.md](CLI.md).
 
 ## Architecture
 
-Five modules, dependency arrows pointing one way only — `story-writer.ts` → `server.ts` → `live.ts`
-→ (nothing). Nothing imports `story-writer.ts` at run time; where a module needs one of its types it
-uses `import type`, which is erased. **There are no import cycles here. Keep it that way.**
+Dependency arrows point one way only — `story-writer.ts` → `server.ts` → {`run-control-routes.ts`,
+`scaffold-routes.ts`} → {`http-util.ts`, `live.ts`} → (nothing). Nothing imports `story-writer.ts` at
+run time; where a module needs one of its types it uses `import type`, which is erased — that is also
+how the two route modules take a `ServerHost` from `server.ts` without creating a runtime cycle back
+into it. **There are no import cycles here. Keep it that way.**
 
 | file | what is in it |
 | --- | --- |
 | [story-writer.ts](story-writer.ts) | the engine: parsing, agents, the consult, the scene loop, the CLI |
 | [prompts.ts](prompts.ts) | every word said to a model |
-| [server.ts](server.ts) | the `--serve` viewer's HTTP routes |
+| [server.ts](server.ts) | the `--serve` viewer's HTTP surface: static files, SSE, and dispatch to the route modules |
+| [run-control-routes.ts](run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
+| [scaffold-routes.ts](scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
+| [http-util.ts](http-util.ts) | the `json()` response helper and `readJsonBody()`, shared by server.ts and the route modules |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
 | [ansi.ts](ansi.ts) | terminal colours |
 
@@ -82,9 +87,9 @@ The one invariant to hold while editing the engine: **`consult()` never touches 
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean
 retry.
 
-**`server.ts` never imports the engine.** Everything its routes need arrives as a `ServerHost` object
-built in `story-writer.ts` (`HOST`). Adding a route that needs something new means adding a host
-method, not an import.
+**`server.ts` and the route modules never import the engine.** Everything a route needs arrives as a
+`ServerHost` object built in `story-writer.ts` (`HOST`). Adding a route that needs something new means
+adding a host method, not an import.
 
 **`live.ts` exists because the two halves genuinely write the same variables** — `/pause` sets
 `pausing`, the loop reads it at its next boundary; `writeScene()` sets `writer`/`agents` and `/model`
