@@ -527,7 +527,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
   // TOTAL attempts rather than retries, because `num` rejects 0 and "never retry" must be sayable.
   const requestTimeout = num(kv, "config.request_timeout", 120);   // seconds
   const attempts       = num(kv, "config.attempts", 3);
-  const maxTokens      = num(kv, "config.max_tokens", 1200);
+  const maxTokens      = num(kv, "config.max_tokens", 2000);
   const retries        = num(kv, "config.retries", 2);
   const clarifications = num(kv, "config.clarifications", 2);
   const maxSteps       = num(kv, "config.max_steps", 24);
