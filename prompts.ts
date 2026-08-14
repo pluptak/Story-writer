@@ -419,8 +419,7 @@ export function writerSystem(p: {
 
 // -- WHAT THE WRITER IS SENT, TURN BY TURN ---------------------------------
 
-// The stop-before-the-choice reminder rides on every [WRITE] because this is the message closest to
-// the act of writing, and the failure it guards against wastes a whole consult. DESIGN.md §4.3.
+// Why the stop-before-the-choice reminder rides on every [WRITE]: LOOP.md, Pacing.
 export const writeInstruction = (p: {
   words: number; target: number; maxProseWords: number; overran: number;
 }) =>

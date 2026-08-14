@@ -14,9 +14,7 @@ architect: gemma-4-12b-it-qat-uncensored-heretic
 thinking: low
 thinking_architect: low
 max_tokens: 2000
-# 300, not the 120 a story turn uses: one architect reply is a whole story — premise, scene, and a
-# ~150-word persona per character. Measured at 120 it timed out twice on a two-character proposal
-# and threw away a finished one each time.
+# 300, not the 120 a story turn uses: one architect reply is a whole story. SPEC-S §2 has the numbers.
 request_timeout: 300
 attempts: 3
 stream: true

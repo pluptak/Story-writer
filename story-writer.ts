@@ -3,7 +3,7 @@
  * their characters make. A character answers from its own persona and only what the writer told it;
  * a rejected answer is re-asked of a FRESH instance that never learns it was rejected.
  *
- * DESIGN.md is the authoritative spec; §5.1 is the normative field reference.
+ * DESIGN.md maps the specs; STORY-FORMAT.md is the normative field reference.
  */
 
 import { readFile, writeFile, readdir, mkdir, rm, stat } from "node:fs/promises";
