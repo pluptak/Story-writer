@@ -9,22 +9,27 @@
     return [when, r.words != null ? `${r.words}w` : "", status].filter(Boolean).join(" · ");
   };
 
-  let events = [];            // every RunEvent seen, in seq order
-  // /events REPLAYS the whole run before it attaches, and EventSource reconnects on its own after
-  // any blip. Without this the replay appends a second copy of the scene, and the page grows one
-  // whole scene per reconnect — which reads as "the story will not close".
-  let seen = new Set();
-  let meta = null;            // from /run, when serving
-  let composing = null;       // ephemeral: {who, secs, chars}
+  // ---- the two stores -------------------------------------------------------
+  // A live run and a saved run being read are different scenes shown in different places, so they
+  // keep their OWN events/seen/meta/open-consults. One shared store used to mean reading an old run
+  // silently overwrote whatever the live scene was showing — the same fetch that reads a past run
+  // now only ever touches READV.
+  const newStore = () => ({ events: [], seen: new Set(), meta: null, open: new Set(), source: "", isLive: false, label: "" });
+  const LIVEV = newStore();          // the running (or just-finished) scene
+  const READV = newStore();          // a saved run, loaded read-only
+
+  let composing = null;       // ephemeral: {who, secs, chars} -- live only
   let session = { running:false, stopping:false, where:"", picking:false, armed:false,
                   paused:false, pausing:false, model:null, interactive:true };  // the process, not the story
-  let live = false;           // attached to a running engine, as opposed to reading a saved log
+  let live = false;           // attached to a running engine, as opposed to a static/file:// load
   let armed = 0;              // timer id: the stop button is waiting for its confirming second click
-  let stories = null;         // story cards from /stories, while the session waits for a choice
+  let stories = null;         // story cards from /stories -- feeds both the shelf and the saved-run browser
   let picked = "";            // a choice already sent; keeps a double-click from being two picks
+  let confirmDir = "";        // a story card was clicked; the play modal is up for this dir
+  let confirmError = "";      // the last refusal of /select, said out loud in the play modal
   let scaffold = { active:false };   // the interview, from /scaffold and its SSE frames
   let ideaOpen = false;       // "new story…" clicked; no interview on the server yet
-  let ivHidden = false;       // the interview modal is closed WITHOUT abandoning it (F2) -- reopened
+  let ivHidden = false;       // the interview modal is closed WITHOUT abandoning it -- reopened
                                // by the same "new story…" card, which relabels itself while it is true
   let personasFull = false;
   let acceptArmed = 0;        // timer id: accepting over a complaint (or over unsent text) wants a second click
@@ -32,26 +37,80 @@
   let scaffoldError = "";     // the last refusal from /scaffold/*, said out loud in the modal
   // Re-render is whole, which would otherwise eat what you are typing mid-round. Drafts live out
   // here and are written back in; focus is read off the document as the render begins, rather than
-  // tracked through focus/blur — removing a focused node does not reliably fire blur, and a click on
+  // tracked through focus/blur -- removing a focused node does not reliably fire blur, and a click on
   // any button would clear a tracked value before the re-render it triggered.
   const draft = { idea:"", say:"", folder:"", model:"", length:"" };
   const FIELDS = /^f-(idea|say|folder|model|length)$/;
   let modelIds = [];          // what LM Studio has loaded; fetched once, used by both dropdowns
   let modelDefault = "";      // the model an interview would use if you chose nothing
-  const open = new Set();     // which consults are expanded, by seq — survives re-render
   let expandAll = false;
-  let wantReaderView = false; // a reader consult just arrived: scroll to it once it is rendered
+  let wantReaderView = false; // a reader consult just arrived: scroll to it once the run page is showing
+
+  // ---- pages and navigation --------------------------------------------------
+  // Three pages, one hash each. Auto-switching happens on EDGES only (picking starts, a run starts)
+  // -- never on every run_state frame, or a page you deliberately navigated to gets yanked out from
+  // under you mid-run. Manual navigation (tabs, the hash) is locked while a scene is actively
+  // generating: leaving the run page always means a deliberate pause or stop first.
+  let view = "live";
+
+  const navLocked = () => live && session.running && !session.paused;
+
+  const parseHash = () => {
+    const path = location.hash.replace(/^#\/?/, "").split("?")[0];
+    return /^(shelf|live|read)$/.test(path) ? path : null;
+  };
+  const parseHashParams = () => {
+    const qs = location.hash.replace(/^#\/?/, "").split("?")[1] || "";
+    return new URLSearchParams(qs);
+  };
+  /** Only replaces the hash when the PATH is out of date -- a `#/read?dir=&id=` deep link that
+   *  already names the current view keeps its query string, so reloading or bookmarking it lands
+   *  back on the same saved run rather than the bare saved-run browser. */
+  const syncHash = () => {
+    if (parseHash() === view) return;
+    history.replaceState(null, "", "#/" + view);
+  };
+
+  /** Programmatic navigation -- always applied, used for the edge-triggered auto-switches and for the
+   *  boot sequence. Falls back rather than landing somewhere nonsensical: no engine attached means
+   *  only the read page means anything, and the shelf is never shown except while parked on a pick. */
+  function go(v) {
+    if (!live) v = "read";
+    else if (v === "shelf" && !session.picking) v = "live";
+    view = v;
+    // Both the shelf and the saved-run browser read the same `/stories`, and both go stale the
+    // moment a story is edited on disk -- refetch on every arrival rather than trusting a cache from
+    // whenever the tab was last open.
+    if (v === "read" || v === "shelf") loadStories();
+    syncHash();
+    render();
+    if (v === "live" && wantReaderView) {
+      wantReaderView = false;
+      const q = document.querySelector(".reader.pending");
+      if (q) q.scrollIntoView({ block:"center", behavior:"smooth" });
+    }
+  }
+  /** A click on a tab, or the hash changing under the user's hand. Refuses to move while a scene is
+   *  generating -- the same one-sentence reason the tab's own tooltip already gives. */
+  function userNav(v) {
+    if (navLocked()) { notify("pause or stop the run to leave"); return; }
+    go(v);
+  }
+  addEventListener("hashchange", () => {
+    const v = parseHash();
+    if (v && v !== view) userNav(v);
+  });
 
   // ---- grouping -----------------------------------------------------------
   // Events are flat and in order; the page is not. A consult and everything it produced (questions
   // back, repairs, retries, the answer, the verdict) becomes ONE foldable block sitting where it
   // happened. A retry arrives as another `consult` with attempt > 1, so it joins the block it
   // belongs to rather than starting a new one.
-  function build() {
+  function build(store) {
     const blocks = []; let cur = null;
-    for (const e of events) {
+    for (const e of store.events) {
       switch (e.t) {
-        case "scene_start": if (!meta) meta = { story:e.story, target:e.target, characters:(e.characters||[]).map(n=>({name:n,skills:[],lacks:[]})) }; break;
+        case "scene_start": if (!store.meta) store.meta = { story:e.story, target:e.target, characters:(e.characters||[]).map(n=>({name:n,skills:[],lacks:[]})) }; break;
         case "draft":
           if (e.prose) { blocks.push({ kind:"prose", seq:e.seq, text:e.prose, salvaged:!!e.salvaged }); }
           break;
@@ -124,12 +183,15 @@
     </details>`;
   }
 
-  function renderReader(b) {
-    if (b.answer !== null) {
+  /** `interactive` is false for a reader consult read off a saved run -- there is no live loop on the
+   *  other end of `/reader-answer` for it to reach, so it renders as a fact about how the run went
+   *  rather than as a question with working buttons. */
+  function renderReader(b, interactive) {
+    if (b.answer !== null || !interactive) {
       return `<div class="reader answered">
-        <div class="rlabel">you were asked</div>
+        <div class="rlabel">${b.answer !== null ? "you were asked" : "the writer asked — left unanswered in this run"}</div>
         <div class="rframing">${esc(b.framing)}</div>
-        <div class="rchosen">chose: <b>${esc(b.answer)}</b></div>
+        ${b.answer !== null ? `<div class="rchosen">chose: <b>${esc(b.answer)}</b></div>` : ""}
       </div>`;
     }
     const opts = b.options.map((o, i) =>
@@ -166,49 +228,54 @@
     if (!j || j.ok === false) render();          // put the buttons back; `post` has said why
   }
 
-  // ---- the picker ---------------------------------------------------------
-  // Shown while the session is parked waiting for a story, and rendered ABOVE the prose rather than
-  // instead of it: a scene that has just finished must not be shoved off the page by the question of
-  // what to write next.
+  /** A block, rendered for whichever page is showing it. `interactive` gates the one thing that
+   *  differs: a saved run's reader consult (if any) is a record, not a live question. */
+  function renderBlock(b, interactive) {
+    if (b.kind === "prose") return `<div class="piece${b.salvaged ? " salvaged" : ""}">${
+      b.salvaged ? `<div class="salvnote">recovered from a truncated draft</div>` : ""}${paras(b.text)}</div>`;
+    if (b.kind === "consult") return renderConsult(b);
+    if (b.kind === "reader") return renderReader(b, interactive);
+    if (b.kind === "note") return `<div class="note">${esc(b.text)}</div>`;
+    if (b.kind === "end") return `<div class="note end">${
+      b.stopped ? "stopped by request" : b.done ? "scene finished" : "stopped early"}
+      · ${b.words} words · ${b.steps} steps</div>`;
+    return "";
+  }
+
+  // ---- the shelf ------------------------------------------------------------
+  // Shown only while the session is parked waiting for a pick -- it is now a page of its own, not a
+  // panel stacked over whatever scene was already on screen, so there is no longer a finished scene
+  // for it to crowd out and nothing here to dismiss.
+  const castChips = list => (list || []).map(c => {
+    const bits = [];
+    if (c.can?.length) bits.push(`<span class="yes">+${esc(c.can.join(", "))}</span>`);
+    if (c.cannot?.length) bits.push(`<span class="no">no ${esc(c.cannot.join(", "))}</span>`);
+    return `<span class="chip"><b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
+  }).join("");
+
   function pickerHtml() {
     if (!stories) return `<section class="picker"><h2>Choose a story</h2>
       <p class="sub">reading the shelf…</p></section>`;
 
-    const cast = s => (s.characters || []).map(c => {
-      const bits = [];
-      if (c.can?.length) bits.push(`<span class="yes">+${esc(c.can.join(", "))}</span>`);
-      if (c.cannot?.length) bits.push(`<span class="no">no ${esc(c.cannot.join(", "))}</span>`);
-      return `<span class="chip"><b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
-    }).join("");
-
     const cards = stories.map(s => {
-      // A story that does not load says so here, and cannot be chosen — the same pre-flight the CLI
+      // A story that does not load says so here, and cannot be chosen -- the same pre-flight the CLI
       // runs, so the card cannot disagree with what a run would do.
       const dead = !s.ok || !!picked;
       const card = `<button class="card" data-dir="${esc(s.dir)}"${dead ? " disabled" : ""}>
         <div class="name">${esc(s.name)}</div>
         ${s.ok ? `<p class="q">${esc(s.scene?.question || "(no scene question)")}</p>
                   <p class="pre">${esc(s.premise || "")}</p>
-                  <div class="row">${cast(s)}<span class="meta">~${s.scene?.length ?? "?"} words
+                  <div class="row">${castChips(s.characters)}<span class="meta">~${s.scene?.length ?? "?"} words
                     · ${s.maxSteps ?? "?"} steps${s.scene?.pov ? " · pov " + esc(s.scene.pov) : ""}</span></div>`
                 : `<div class="bad">does not load — ${esc(s.error || "unknown error")}</div>`}
         ${(s.warnings || []).map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}
       </button>`;
-      // Retained runs sit BESIDE the card, not inside it -- a <button> cannot nest another button,
-      // and each past run needs its own click target ("read", not "start a new run").
-      const runs = (s.runs || []).length
-        ? `<div class="runs">${s.runs.map(r => `<button class="btn runbtn" data-dir="${esc(s.dir)}"
-             data-run="${esc(r.id)}">read · ${esc(fmtRun(r))}</button>`).join("")}</div>` : "";
-      return `<div class="cardwrap">${card}${runs}</div>`;
+      return `<div class="cardwrap">${card}</div>`;
     }).join("");
 
-    // A finished scene stays on the page under the picker — §1's principle. But it has to be
-    // dismissible, or the only way back to a clean shelf is a reload, and a reload brings it back.
-    const clear = events.length
-      ? ` · <a href="#" id="clear-scene" style="color:var(--accent)">clear the last scene</a>` : "";
     return `<section class="picker">
       <h2>Choose a story</h2>
-      <p class="sub">${picked ? "starting…" : "the run begins as soon as you pick one"}${clear}</p>
+      <p class="sub">${picked ? "starting…" : "pick one to see what it's about"}</p>
       <div class="cards">${cards}
         <button class="card new" data-new="1"${picked ? " disabled" : ""}>
           <div class="name">${scaffold.active ? "continue new story…" : "new story…"}</div>
@@ -218,45 +285,113 @@
     </section>`;
   }
 
-  async function choose(payload) {
-    if (picked) return;                       // a double-click is one choice, not two
-    picked = payload.new ? "new" : payload.dir;
-    render();
-    const j = await post("/select", payload);
-    if (!j || j.ok === false) { picked = ""; render(); }   // `post` has already said why
-  }
-
   function wirePicker(page) {
     for (const b of page.querySelectorAll(".card[data-dir]"))
-      b.addEventListener("click", () => choose({ dir: b.dataset.dir }));
+      b.addEventListener("click", () => { if (!picked) { confirmDir = b.dataset.dir; confirmError = ""; render(); } });
     for (const b of page.querySelectorAll(".card[data-new]"))
       b.addEventListener("click", () => {
-        // Already going server-side (one ScaffoldSession, GUI-SPEC §6.1) -- this reopens the modal
+        // Already going server-side (one ScaffoldSession, GUI-SPEC §5.1) -- this reopens the modal
         // rather than starting a second interview.
         if (scaffold.active) ivHidden = false; else ideaOpen = true;
         render();
       });
-    const clear = page.querySelector("#clear-scene");
-    if (clear) clear.addEventListener("click", e => {
-      e.preventDefault();
-      // The VIEW only. The run's log stays on disk and at /log.jsonl, because that is the record and
-      // this is a reading pane.
-      events = []; seen = new Set(); meta = null; composing = null; open.clear();
-      $("cast").innerHTML = ""; $("question").textContent = ""; $("title").textContent = "story-writer";
-      render();
-    });
+  }
+
+  // ---- the play confirmation -------------------------------------------------
+  // A card click no longer starts a run by itself -- it opens this, showing exactly what the shelf's
+  // card already showed, plus the two ways forward: play it, or (not yet built) edit it first.
+  function confirmModalHtml() {
+    if (!confirmDir) return "";
+    const s = (stories || []).find(x => x.dir === confirmDir);
+    if (!s) { confirmDir = ""; return ""; }   // the shelf refreshed under us; nothing to confirm anymore
+    return `<div class="modal-backdrop" id="confirm-backdrop" role="dialog" aria-modal="true"
+                 aria-label="play ${esc(s.name)}">
+      <section class="picker iv confirm">
+        <div class="iv-head"><h2>${esc(s.name)}</h2>
+          <button class="btn" id="confirm-close" title="cancel">×</button></div>
+        ${s.ok ? `<p class="q">${esc(s.scene?.question || "(no scene question)")}</p>
+                  <p class="premise">${esc(s.premise || "")}</p>
+                  <div class="row">${castChips(s.characters)}<span class="meta">~${s.scene?.length ?? "?"} words
+                    · ${s.maxSteps ?? "?"} steps${s.scene?.pov ? " · pov " + esc(s.scene.pov) : ""}</span></div>`
+              : `<div class="said bad">does not load — ${esc(s.error || "unknown error")}</div>`}
+        ${(s.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
+        ${confirmError ? `<div class="said bad">${esc(confirmError)}</div>` : ""}
+        <div class="btns" style="margin-top:14px">
+          <button class="btn primary" id="confirm-play"${picked || !s.ok ? " disabled" : ""}>play</button>
+          <button class="btn" id="confirm-edit" disabled title="not built yet">edit scenario</button>
+          <span class="spacer"></span>
+          <button class="btn" id="confirm-cancel">cancel</button>
+        </div>
+      </section>
+    </div>`;
+  }
+
+  function wireConfirm(page) {
+    const bd = page.querySelector("#confirm-backdrop");
+    if (!bd) return;
+    const close = () => { confirmDir = ""; confirmError = ""; render(); };
+    bd.addEventListener("click", e => { if (e.target === bd) close(); });
+    const on = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("click", fn); };
+    on("confirm-close", close);
+    on("confirm-cancel", close);
+    on("confirm-play", () => choose({ dir: confirmDir }));
+  }
+
+  async function choose(payload) {
+    if (picked) return;                       // a double-click is one choice, not two
+    picked = payload.dir;
+    confirmError = "";
+    render();
+    const j = await post("/select", payload);
+    if (!j || j.ok === false) { picked = ""; confirmError = (j && j.reason) || "that did not go through"; render(); }
+    else { confirmDir = ""; render(); }        // the run starting flips the view to `live` on its own
+  }
+
+  // ---- the saved-run browser -------------------------------------------------
+  // Lives on the read page now, not hung off the shelf's cards -- the shelf is purely "what gets
+  // written next"; this is purely "what has already been written". Same data (`stories[].runs`),
+  // same read-only fetch, different page.
+  function savedRunsHtml() {
+    if (!stories) return `<section class="picker"><h2>Saved runs</h2><p class="sub">reading the shelf…</p></section>`;
+    const rows = stories.map(s => {
+      const runs = (s.runs || []).length
+        ? `<div class="runs">${s.runs.map(r => `<button class="btn runbtn" data-dir="${esc(s.dir)}"
+             data-run="${esc(r.id)}">read · ${esc(fmtRun(r))}</button>`).join("")}</div>`
+        : `<span class="hint">no retained runs</span>`;
+      return `<div class="cardwrap"><div class="storyrow">${esc(s.name)}</div>${runs}</div>`;
+    }).join("");
+    return `<section class="picker">
+      <h2>Saved runs</h2>
+      <p class="sub">a story's retained runs, newest first — or open one from disk</p>
+      <div class="cards">${rows}</div>
+      <div class="btns" style="margin-top:14px"><button class="btn" id="open-log">open a saved log</button></div>
+    </section>`;
+  }
+
+  function wireSavedRuns(page) {
+    const ol = page.querySelector("#open-log");
+    if (ol) ol.addEventListener("click", () => $("file").click());
     for (const b of page.querySelectorAll(".runbtn"))
       b.addEventListener("click", async () => {
         const dir = b.dataset.dir, id = b.dataset.run;
         try {
           const r = await fetch(`/runs/log?dir=${encodeURIComponent(dir)}&id=${encodeURIComponent(id)}`);
           if (!r.ok) return;
-          // Same view-only load as picking a saved file off disk (§7) -- the log on disk stays the
-          // record, this only ever changes what the reading pane shows.
-          setSrc(`${dir.replace(/^stories\//, "")} · saved run`, false);
-          ingest(await r.text());
+          setSrc(READV, `${dir.replace(/^stories\//, "")} · saved run`, false);
+          READV.label = fmtRun((stories.find(s => s.dir === dir)?.runs || []).find(x => x.id === id) || {});
+          ingest(await r.text(), READV);
         } catch {}
       });
+  }
+
+  /** Fetch the shelf's cards. Feeds both the shelf (while picking) and the saved-run browser (while
+   *  reading) -- called on the picking edge and every time the read page is opened, since the
+   *  pre-flight behind it goes stale the moment a story is edited on disk. */
+  async function loadStories() {
+    stories = null; render();
+    try { stories = (await (await fetch("/stories")).json()).stories || []; }
+    catch { stories = []; }
+    render();
   }
 
   // ---- the interview ------------------------------------------------------
@@ -299,7 +434,7 @@
   }
 
   /** How long the scene should be, as a number you can type over. The only field edited DIRECTLY
-   *  rather than through the architect (GUI-SPEC §6.1): it is a dial, not a design decision, and
+   *  rather than through the architect (GUI-SPEC §5.1): it is a dial, not a design decision, and
    *  spending a minute-long round on a word count is how you end up never changing it. `draft.length`
    *  holds what is being typed and is dropped once the engine answers, so a frame arriving mid-edit
    *  cannot yank the number back. */
@@ -403,7 +538,12 @@
     </section>`;
   }
 
-  
+  function interviewModalHtml() {
+    return (scaffold.active || ideaOpen) && !ivHidden
+      ? `<div class="modal-backdrop" id="iv-backdrop" role="dialog" aria-modal="true"
+              aria-label="new story">${interviewHtml()}</div>` : "";
+  }
+
   async function postScaffold(what, payload) {
     let j = null;
     try {
@@ -460,7 +600,7 @@
     const model = page.querySelector("#f-model");
     if (model) model.addEventListener("change", () => { draft.model = model.value; });
     const len = page.querySelector("#f-length");
-    if (len) len.addEventListener("change", async () => {      
+    if (len) len.addEventListener("change", async () => {
       const j = await postScaffold("set", { field:"scene.length", value:Math.round(Number(len.value)) });
       if (j && j.active !== undefined) draft.length = "";
       render();
@@ -530,75 +670,128 @@
     if (first) first.focus();
   }
 
-  function render() {
-    const blocks = build();
-    const page = $("page");
-    const active = document.activeElement;
-    const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";
-    // The picker sits at the top of the reading column, above whatever scene is already there (§1's
-    // principle). The interview (F2) is a MODAL over either one, not a slot inside them, so closing
-    // it without abandoning never costs the page underneath.
-    const chrome = session.picking ? pickerHtml() : "";
-    const modal = (scaffold.active || ideaOpen) && !ivHidden
-      ? `<div class="modal-backdrop" id="iv-backdrop" role="dialog" aria-modal="true"
-              aria-label="new story">${interviewHtml()}</div>` : "";
+  /** Which consults are expanded, by seq — shared across pages on purpose: it is a reading
+   *  preference ("I like things opened up"), not a fact tied to one particular run. */
+  const open = new Set();
+
+  // ---- the three pages --------------------------------------------------------
+  function renderNav() {
+    document.body.dataset.view = view;
+    const shelfTab = $("tab-shelf"), liveTab = $("tab-live"), readTab = $("tab-read");
+    shelfTab.hidden = !live || !session.picking;
+    liveTab.hidden = !live;
+    readTab.hidden = false;
+    for (const t of [shelfTab, liveTab, readTab]) {
+      const isCurrent = t.dataset.view === view;
+      t.classList.toggle("current", isCurrent);
+      t.setAttribute("aria-current", isCurrent ? "page" : "false");
+    }
+    const locked = navLocked();
+    for (const t of [shelfTab, liveTab, readTab]) {
+      t.disabled = locked && t.dataset.view !== view;
+      t.title = t.disabled ? "pause or stop the run to leave" : "";
+    }
+    $("tabdot").hidden = !(live && session.running && !session.paused);
+  }
+
+  function renderHeader() {
+    const m = view === "live" ? LIVEV.meta : view === "read" ? READV.meta : null;
+    if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; return; }
+    $("title").textContent = (m.story || "").replace(/^.*[\\/]/, "") || "story-writer";
+    $("question").textContent = m.question || "";
+    $("cast").innerHTML = (m.characters || []).map(c => {
+      const bits = [];
+      if (c.skills?.length) bits.push(`<span class="yes">+${c.skills.join(", ")}</span>`);
+      if (c.lacks?.length)  bits.push(`<span class="no">no ${c.lacks.join(", ")}</span>`);
+      return `<span class="chip"><b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
+    }).join("");
+  }
+
+  function paintRibbon() {
+    const el = $("ribbon");
+    if (view !== "read" || !READV.meta) { el.hidden = true; el.textContent = ""; return; }
+    const who = (READV.meta.story || "").replace(/^.*[\\/]/, "") || "saved run";
+    el.hidden = false;
+    el.textContent = `reading a saved run · ${who}${READV.label ? " · " + READV.label : ""}`;
+  }
+
+  function paintSrcbar() {
+    if (view === "shelf") { $("src").textContent = "choosing a story"; $("dot").className = "dot"; return; }
+    const store = view === "read" ? READV : LIVEV;
+    $("src").textContent = store.source || "nothing loaded";
+    $("dot").className = "dot" + (store.isLive ? " live" : "");
+  }
+  function setSrc(store, text, isLive) { store.source = text; store.isLive = isLive; paintSrcbar(); }
+
+  function renderShelf(page, keepFocus) {
+    const modal = interviewModalHtml() || confirmModalHtml();
+    page.innerHTML = pickerHtml() + modal;
+    $("rail").innerHTML = "";
+    wirePicker(page); wireInterview(page); wireConfirm(page); wireModal(page);
+    restoreFocus(page, keepFocus);
+    setFoldable(false);
+  }
+
+  function renderLive(page, blocks) {
     if (!blocks.length) {
-      // Opening a saved log lives HERE rather than in the topbar, where "load run" sat one button
-      // from "stop run" reading like a run control and duplicating drag-drop. This is where someone
-      // with nothing loaded is already looking.
-      page.innerHTML = (chrome || `<div class="empty"><h2>Nothing loaded yet</h2>
-        <p>Run the engine with <code>--serve</code> to watch a scene as it is written, or drop a
-        saved <code>out/writing-log.jsonl</code> onto this page.</p>
-        <div class="btns" style="justify-content:center"><button class="btn" id="open-log">open a saved log</button></div>
-        </div>`) + modal;
+      page.innerHTML = `<div class="empty"><h2>Nothing written yet</h2>
+        <p>${live ? "The scene will appear here as soon as the engine starts writing."
+                   : "Run the engine with <code>--serve</code> to watch a scene as it is written."}</p>
+        ${live && session.picking ? `<div class="btns" style="justify-content:center">
+          <button class="btn" id="go-shelf">choose a story</button></div>` : ""}
+        </div>`;
       $("rail").innerHTML = "";
-      const ol = page.querySelector("#open-log");
-      if (ol) ol.addEventListener("click", () => $("file").click());
-      wirePicker(page); wireInterview(page); wireModal(page); restoreFocus(page, keepFocus);
+      const gb = page.querySelector("#go-shelf");
+      if (gb) gb.addEventListener("click", () => userNav("shelf"));
       setFoldable(false);
       return;
     }
-    page.innerHTML = chrome + `<div class="prose">` + blocks.map(b => {
-      if (b.kind === "prose") return `<div class="piece${b.salvaged ? " salvaged" : ""}">${
-        b.salvaged ? `<div class="salvnote">recovered from a truncated draft</div>` : ""}${paras(b.text)}</div>`;
-      if (b.kind === "consult") return renderConsult(b);
-      if (b.kind === "reader") return renderReader(b);
-      if (b.kind === "note") return `<div class="note">${esc(b.text)}</div>`;
-      if (b.kind === "end") return `<div class="note end">${
-        b.stopped ? "stopped by request" : b.done ? "scene finished" : "stopped early"}
-        · ${b.words} words · ${b.steps} steps</div>`;
-      return "";
-    }).join("") + `</div>` + modal;
-
+    page.innerHTML = `<div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>`;
     for (const d of page.querySelectorAll("details.consult")) {
       d.addEventListener("toggle", () => {
         const s = Number(d.dataset.seq);
         d.open ? open.add(s) : open.delete(s);
       });
     }
-    wirePicker(page); wireInterview(page); wireReader(page); wireModal(page); restoreFocus(page, keepFocus);
+    wireReader(page);
     setFoldable(blocks.some(b => b.kind === "consult"));
-    renderRail(blocks);
+    renderRail(LIVEV, blocks);
   }
 
-  /** A run whose drafts were all salvaged has no consults in it at all, and "expand all" over a page
-   *  with nothing foldable looks like a broken button rather than an empty run. Say which it is. */
-  function setFoldable(foldable) {
-    $("expand").disabled = !foldable;
-    $("expand").title = foldable ? "" : "nothing to expand — no consults in this run";
+  function renderRead(page, blocks) {
+    const chrome = savedRunsHtml();
+    if (!blocks.length) {
+      page.innerHTML = chrome + `<div class="empty"><h2>Nothing loaded</h2>
+        <p>Pick a retained run above, drop a saved <code>out/writing-log.jsonl</code> onto this page,
+        or open one from disk.</p></div>`;
+      $("rail").innerHTML = "";
+      wireSavedRuns(page);
+      setFoldable(false);
+      return;
+    }
+    page.innerHTML = chrome + `<div class="prose">` + blocks.map(b => renderBlock(b, false)).join("") + `</div>`;
+    for (const d of page.querySelectorAll("details.consult")) {
+      d.addEventListener("toggle", () => {
+        const s = Number(d.dataset.seq);
+        d.open ? open.add(s) : open.delete(s);
+      });
+    }
+    wireSavedRuns(page);
+    setFoldable(blocks.some(b => b.kind === "consult"));
+    renderRail(READV, blocks);
   }
 
-  /** Backdrop click closes (hides) the modal, same as the × button — never abandons. */
+  /** Backdrop click closes (hides) the interview modal, same as the × button — never abandons. */
   function wireModal(page) {
     const bd = page.querySelector("#iv-backdrop");
     if (bd) bd.addEventListener("click", e => { if (e.target === bd) { ivHidden = true; render(); } });
   }
 
-  function renderRail(blocks) {
-    const words = events.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);
-    const target = meta?.target || 0;
+  function renderRail(store, blocks) {
+    const words = store.events.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);
+    const target = store.meta?.target || 0;
     const consults = blocks.filter(b => b.kind === "consult");
-    const count = t => events.filter(e => e.t === t).length;
+    const count = t => store.events.filter(e => e.t === t).length;
     const pct = target ? Math.min(100, Math.round(words / target * 100)) : 0;
     const stat = (k, v, cls) => `<div class="stat"><span>${k}</span><span class="n ${cls||""}">${v}</span></div>`;
     const flags = count("skill_flag"), retries = count("retry");
@@ -611,25 +804,34 @@
       ${stat("asked back", count("clarify"))}
       ${stat("retries", retries, retries ? "warn" : "")}
       ${stat("skill flags", flags, flags ? "bad" : "")}
-      ${composing ? `<div class="composing"><i></i><span class="who">${esc(composing.who)}</span>
+      ${store === LIVEV && composing ? `<div class="composing"><i></i><span class="who">${esc(composing.who)}</span>
          composing… ${composing.secs}s</div>` : ""}`;
   }
 
-  function renderHeader() {
-    if (!meta) return;
-    $("title").textContent = (meta.story || "").replace(/^.*[\\/]/, "") || "story-writer";
-    $("question").textContent = meta.question || "";
-    $("cast").innerHTML = (meta.characters || []).map(c => {
-      const bits = [];
-      if (c.skills?.length) bits.push(`<span class="yes">+${c.skills.join(", ")}</span>`);
-      if (c.lacks?.length)  bits.push(`<span class="no">no ${c.lacks.join(", ")}</span>`);
-      return `<span class="chip"><b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
-    }).join("");
+  /** A run whose drafts were all salvaged has no consults in it at all, and "expand all" over a page
+   *  with nothing foldable looks like a broken button rather than an empty run. Say which it is. */
+  function setFoldable(foldable) {
+    $("expand").disabled = !foldable;
+    $("expand").title = foldable ? "" : "nothing to expand — no consults in this run";
+  }
+
+  function render() {
+    renderNav();
+    const store = view === "live" ? LIVEV : view === "read" ? READV : null;
+    const blocks = store ? build(store) : [];
+    renderHeader();
+    renderSession();
+    paintSrcbar();
+    paintRibbon();
+    const page = $("page");
+    const active = document.activeElement;
+    const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";
+    if (view === "shelf") renderShelf(page, keepFocus);
+    else if (view === "read") renderRead(page, blocks);
+    else renderLive(page, blocks);
   }
 
   // ---- sources ------------------------------------------------------------
-  const setSrc = (text, isLive) => { $("src").textContent = text; $("dot").className = "dot" + (isLive ? " live" : ""); };
-
   let noticeTimer = 0;
   function notify(text) {
     $("notice").textContent = text || "";
@@ -653,17 +855,17 @@
   // saved log and a run that stopped ten seconds ago contain exactly the same thing. So the engine
   // reports it separately, over `run_state` and `GET /run`, and it never reaches the log.
   function renderSession() {
+    const onLive = view === "live";
     // The idle screen belongs to the picker; three permanently-disabled run controls on it are
-    // furniture, not information. The model dropdown stays visible, because idle is exactly when it
-    // picks the model the NEXT run will load with (§4.4). `interactive` joins it — off before a run
-    // starts is the main use, since that is what keeps the NEXT run from ever waiting on you.
-    for (const id of ["stop", "consultMe", "pause"]) $(id).hidden = !live || !session.running;
-    $("interactive").hidden = !live;
+    // furniture, not information. They are also session controls, so they never show on the read
+    // page either -- on a page about a finished run they would read as if they act on it.
+    for (const id of ["stop", "consultMe", "pause"]) $(id).hidden = !onLive || !live || !session.running;
+    $("interactive").hidden = !onLive || !live;
     const b = $("stop");
     b.disabled = !session.running || session.stopping;
     b.classList.toggle("armed", !!armed);
     b.textContent = session.stopping ? "stopping…" : armed ? "confirm stop" : "stop run";
-    $("where").textContent = session.where ? "· " + session.where : "";
+    $("where").textContent = (onLive && session.where) ? "· " + session.where : "";
     const iv = $("interactive");
     iv.classList.toggle("off", !session.interactive);
     iv.textContent = session.interactive ? "interactive" : "hands off";
@@ -677,6 +879,7 @@
     // running) -- NOT while merely "pausing", since the loop has not reached the boundary yet and
     // the server would 400 the same change (GUI-SPEC §4.4).
     const ms = $("modelSelect");
+    ms.hidden = !onLive || !live;
     ms.disabled = session.running && !session.paused;
     if (document.activeElement !== ms) ms.value = session.model || "";
   }
@@ -705,15 +908,9 @@
     if (e.key === "Escape" && (scaffold.active || ideaOpen) && !ivHidden) { ivHidden = true; render(); }
   });
 
-  /** Fetch the shelf when the session starts waiting on a choice, and drop it when it stops — the
-   *  pre-flight behind it goes stale the moment a story is edited on disk. */
-  async function loadStories() {
-    if (!session.picking) { stories = null; picked = ""; return; }
-    stories = null;
-    try { stories = (await (await fetch("/stories")).json()).stories || []; }
-    catch { stories = []; }
-    render();
-  }
+  for (const t of document.querySelectorAll(".tab"))
+    t.addEventListener("click", () => userNav(t.dataset.view));
+
   $("stop").onclick = async () => {
     if (!session.running || session.stopping) return;
     // Ending a scene part-written is deliberate, so it takes a second click — the same reason the
@@ -747,25 +944,48 @@
     if (!j || j.ok === false) ms.value = session.model || "";
   };
 
-  function ingest(text) {
-    events = text.split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-    seen = new Set(events.map(e => e.seq).filter(s => s !== undefined));
-    renderHeader(); render();
+  function ingest(text, store) {
+    store.events = text.split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    store.seen = new Set(store.events.map(e => e.seq).filter(s => s !== undefined));
+    store.meta = null; store.open = new Set();
+    render();
   }
+
+  async function loadDeepLinkedRun() {
+    const params = parseHashParams();
+    const dir = params.get("dir"), id = params.get("id");
+    if (!dir || !id) return false;
+    try {
+      const r = await fetch(`/runs/log?dir=${encodeURIComponent(dir)}&id=${encodeURIComponent(id)}`);
+      if (!r.ok) return false;
+      setSrc(READV, `${dir.replace(/^stories\//, "")} · saved run`, false);
+      ingest(await r.text(), READV);
+      return true;
+    } catch { return false; }
+  }
+
+  const sessionFrom = j => ({ running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking,
+    armed: !!j.armed, paused: !!j.paused, pausing: !!j.pausing, model: j.model || null, interactive: j.interactive !== false });
 
   async function tryHttp() {
     try {
       const r = await fetch("/run"); if (!r.ok) throw 0;
       const j = await r.json();
-      if (j.run) { meta = j.run; renderHeader(); }
-      session = { running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking, armed: !!j.armed,
-                  paused: !!j.paused, pausing: !!j.pausing, model: j.model || null, interactive: j.interactive !== false };
+      if (j.run) { LIVEV.meta = j.run; }
+      session = sessionFrom(j);
+      live = true;
       loadModels();
       if (j.awaitingContinue) showPrompt(j.awaitingContinue);
-      if (j.picking) loadStories();          // a reload while the session waits must not strand it
       // An interview may already be open — a reload in the middle of one must land back in it.
       try { scaffold = await (await fetch("/scaffold")).json(); } catch {}
-      render();                              // a session with nothing written yet still has a page
+      // Respect an explicit hash (a reload, a bookmark) unless it names the shelf and nothing is
+      // actually waiting on a pick -- otherwise land wherever the session itself is.
+      const wanted = parseHash();
+      view = (wanted && (wanted !== "shelf" || session.picking)) ? wanted : (session.picking ? "shelf" : "live");
+      if (view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
+      if (view === "read" || view === "shelf") loadStories();
+      syncHash();
+      render();
       startSSE();
       return true;
     } catch { return false; }
@@ -773,31 +993,32 @@
 
   function startSSE() {
     const es = new EventSource("/events");
-    setSrc("live", true);
+    setSrc(LIVEV, "live", true);
     live = true;                       // a session to control: renderSession decides which controls
-    $("modelSelect").hidden = false;
     renderSession();
     let pending = null;
     es.onmessage = m => {
       let f; try { f = JSON.parse(m.data); } catch { return; }
-      if (f.t === "composing") { composing = f; renderRail(build()); return; }
-      if (f.t === "idle") { composing = null; renderRail(build()); return; }
+      if (f.t === "composing") { composing = f; if (view === "live") renderRail(LIVEV, build(LIVEV)); return; }
+      if (f.t === "idle") { composing = null; if (view === "live") renderRail(LIVEV, build(LIVEV)); return; }
       if (f.t === "continue_prompt") { showPrompt(f); return; }
       if (f.t === "run_state") {
-        const was = session.picking;
-        session = { running: !!f.running, stopping: !!f.stopping, where: f.where || "", picking: !!f.picking, armed: !!f.armed,
-                    paused: !!f.paused, pausing: !!f.pausing, model: f.model || null, interactive: f.interactive !== false };
+        const wasPicking = session.picking, wasRunning = session.running;
+        session = sessionFrom(f);
         // The budget question can be answered somewhere else — the console, a second tab, or a stop
         // that clears it. Every frame carries whether it is still outstanding, so a prompt nobody is
         // waiting on comes down instead of sitting there with buttons that only 400.
         if (!f.awaitingContinue) $("prompt").classList.remove("on");
         if (!session.running) disarm();
-        if (session.picking !== was) loadStories();
-        renderSession();
-        // Always, not only on the picking edge: a frame arrives at most a few times per run, and
-        // rendering on every one costs nothing next to being one missed transition away from a page
-        // with no way back to the shelf.
-        render();
+        // Edges only -- a page you navigated to on purpose must not get yanked out from under you
+        // by a frame that arrives several times a run for reasons that have nothing to do with it
+        // (VIEWER-UI.md: run_state always re-renders, not only on a picking edge -- the SAME frame
+        // still means "leave this page" only the first time each condition becomes true). `go()`
+        // already renders, so the plain `render()` below only runs when neither edge fired.
+        let moved = false;
+        if (!wasPicking && session.picking) { picked = ""; confirmDir = ""; confirmError = ""; go("shelf"); moved = true; }
+        if (!wasRunning && session.running) { go("live"); moved = true; }
+        if (!moved) render();
         return;
       }
       if (f.t === "scaffold") {
@@ -811,28 +1032,29 @@
       if (f.t === "run_reset") {
         // A new story in the same session. Replay only helps clients that connect after it; one
         // already attached has to be told, or the next scene renders glued onto the last one.
-        events = []; seen = new Set(); meta = null; composing = null; open.clear();
-        $("cast").innerHTML = ""; $("question").textContent = "";
-        fetch("/run").then(r => r.json()).then(j => { if (j.run) { meta = j.run; renderHeader(); } }).catch(() => {});
-        render();
+        LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.open = new Set(); composing = null;
+        fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (view === "live") render(); } }).catch(() => {});
+        go("live");
         return;
       }
       // A replayed event is one we already have. `seq` is stamped once by publish(), so it is the
       // identity of the event in both the log and the stream.
-      if (f.seq !== undefined) { if (seen.has(f.seq)) return; seen.add(f.seq); }
-      events.push(f);
+      if (f.seq !== undefined) { if (LIVEV.seen.has(f.seq)) return; LIVEV.seen.add(f.seq); }
+      LIVEV.events.push(f);
+      if (f.t === "reader_ask") wantReaderView = true;
       // Re-render whole, debounced: a scene is a few dozen events, and rebuilding is far cheaper
-      // than keeping incremental DOM state correct across retries and late-arriving verdicts.
+      // than keeping incremental DOM state correct across retries and late-arriving verdicts. Only
+      // when the run page is actually showing -- otherwise the events just accumulate in LIVEV and
+      // render in full the next time it is.
       //
       // A TIMER, not requestAnimationFrame. rAF does not fire in a hidden or non-compositing tab, so
       // a run watched in a background tab stopped updating entirely — and because the handle latched
       // in `pending`, nothing rescheduled either. A scene is a few dozen events; frame alignment was
       // never worth that.
-      if (f.t === "reader_ask") wantReaderView = true;
       if (!pending) pending = setTimeout(() => {
         pending = null;
+        if (view !== "live") return;
         const nearBottom = window.scrollY + innerHeight > document.body.scrollHeight - 220;
-        if (!meta) renderHeader();
         render();
         if (nearBottom) window.scrollTo(0, document.body.scrollHeight);
         // The run is now blocked on you. Reading further up the scene is the normal thing to be
@@ -844,7 +1066,7 @@
         }
       });
     };
-    es.onerror = () => setSrc("live (reconnecting…)", false);
+    es.onerror = () => setSrc(LIVEV, "live (reconnecting…)", false);
   }
 
   // ---- the out-of-budget prompt (live only) -------------------------------
@@ -878,26 +1100,46 @@
   };
   $("file").onchange = e => {
     const f = e.target.files[0]; if (!f) return;
-    f.text().then(t => { setSrc(f.name, false); ingest(t); });
+    if (navLocked()) { notify("pause or stop the run to leave"); e.target.value = ""; return; }
+    f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; ingest(t, READV); go("read"); });
   };
-  addEventListener("dragover", e => { e.preventDefault(); $("drop").classList.add("on"); });
+  addEventListener("dragover", e => { e.preventDefault(); if (!navLocked()) $("drop").classList.add("on"); });
   addEventListener("dragleave", e => { if (e.relatedTarget === null) $("drop").classList.remove("on"); });
   addEventListener("drop", e => {
     e.preventDefault(); $("drop").classList.remove("on");
+    if (navLocked()) { notify("pause or stop the run to leave"); return; }
     const f = e.dataTransfer.files[0]; if (!f) return;
-    f.text().then(t => { setSrc(f.name, false); ingest(t); });
+    f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; ingest(t, READV); go("read"); });
   });
 
   // ---- boot ---------------------------------------------------------------
   (async () => {
     const src = new URLSearchParams(location.search).get("src");
     if (src) {
-      try { const r = await fetch(src); setSrc(src, false); ingest(await r.text()); return; } catch {}
+      try {
+        const r = await fetch(src);
+        setSrc(READV, src, false);
+        ingest(await r.text(), READV);
+        go("read");
+        return;
+      } catch {}
     }
     if (location.protocol.startsWith("http")) {
       if (await tryHttp()) return;
-      try { const r = await fetch("/log.jsonl"); if (r.ok) { setSrc("/log.jsonl", false); ingest(await r.text()); return; } } catch {}
+      try {
+        const r = await fetch("/log.jsonl");
+        if (r.ok) {
+          setSrc(READV, "/log.jsonl", false);
+          ingest(await r.text(), READV);
+          go("read");
+          return;
+        }
+      } catch {}
     }
-    render();
+    // No engine, nothing at ?src=, no /log.jsonl -- a static or file:// load. Only the read page
+    // means anything without a server behind it; honour a #/read?dir=&id= deep link if there is one,
+    // read BEFORE go("read") can touch the hash.
+    await loadDeepLinkedRun();
+    go("read");
   })();
 })();

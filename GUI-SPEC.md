@@ -263,14 +263,19 @@ for you would be worse than waiting. Ctrl-C is the way out.
 **`GET /stories` is pre-flighted** — the same real `loadStory()` check `--preflight` runs, so a story
 that cannot load says so on its card instead of failing after you pick it, and the card can never
 disagree with what a run would do. The model-id ping behind it is memoized for a few seconds, or an
-unreachable LM Studio would cost the full timeout once per story.
+unreachable LM Studio would cost the full timeout once per story. The route is answered whether or not
+the session is picking — the browser's saved-run page reads the same cards for their retained runs,
+which is not a form of picking and never touches `awaitPick()`
+([VIEWER-UI.md](VIEWER-UI.md#saved-runs)).
 
 **A directory that arrives over HTTP is a request to read one, not a path.** `selectableStory()`
 resolves it against what `discoverStories()` actually found and returns null otherwise — no
 normalizing, no prefix test, nothing a `..` survives. This is the read-side twin of `slugify()` owning
 where scaffolds may be written (SPEC-S §4.3).
 
-How the shelf and its cards render: [VIEWER-UI.md](VIEWER-UI.md#the-picker).
+The browser's own picking screen is one page among three, shown only for the span this section
+describes (`awaitPick()` parked, until `POST /select` or an accepted interview resolves it) — how it
+and the play confirmation in front of it render: [VIEWER-UI.md](VIEWER-UI.md#the-shelf).
 
 ### 5.1 The interview's server side
 

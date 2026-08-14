@@ -79,5 +79,5 @@ Three things worth knowing before you pass the flag:
 request/response for every model call, one file per agent identity — see
 [RUN-RECORD.md](RUN-RECORD.md)). All of it is written as the run goes, so an interrupted run still
 leaves readable artifacts. A story keeps its last 3 runs, oldest pruned once the newest finishes
-writing ([RUN-RECORD.md](RUN-RECORD.md)); the browser picker can **read** any of them
-([VIEWER-UI.md](VIEWER-UI.md#the-picker)).
+writing ([RUN-RECORD.md](RUN-RECORD.md)); the browser's saved-run page can **read** any of them
+([VIEWER-UI.md](VIEWER-UI.md#saved-runs)).

@@ -4,6 +4,46 @@ The browser half of the viewer ([gui/viewer.js](gui/viewer.js)). What the contro
 every route they post to, is [GUI-SPEC.md](GUI-SPEC.md); this file is what you read when the page
 looks wrong.
 
+## Pages and navigation
+
+Three pages, one file, no build step, no framework router — just a hash and a `view` variable that
+picks which of three render functions fills `#page`.
+
+| page | hash | shown when | is |
+|---|---|---|---|
+| **story** | `#/shelf` | the session is parked waiting for a pick (`session.picking`) | the shelf: story cards, `new story…`, the interview modal, the play confirmation |
+| **run** | `#/live` | always offered while an engine is attached | the scene itself — prose, consults, the rail, the run controls |
+| **saved runs** | `#/read` | always offered | a story's retained runs, or a dropped/opened `writing-log.jsonl` |
+
+**The shelf tab only exists while picking.** It is not a page you navigate to so much as a page the
+session parks you on — there is nothing to choose outside that window, so showing the tab the rest of
+the time would be an invitation to a 400. **Both other tabs are hidden entirely when no engine is
+attached** (`live === false` — a `file://` load, a plain static host, or `?src=` mode): the run page
+has nothing to show and the shelf has no session to pick for, so only **saved runs** — the one page
+that never needed a server behind it — is offered.
+
+**Auto-switching happens on edges only**, never on every `run_state` frame that merely repeats
+something already true — VIEWER-UI's own [rendering traps](#rendering) below list why a frame that
+fires several times a run must not carry a side effect that only makes sense the first time:
+
+- picking starts (`false → true`) → the shelf.
+- a run starts (`run_reset`, or `running: false → true`) → the run page.
+
+Anything else leaves `view` exactly where the user put it. A page you deliberately navigated to must
+not get yanked out from under you by a frame that arrives for reasons that have nothing to do with
+where you are looking.
+
+**Navigation locks to the run page while a scene is actively generating** (`running && !paused`) —
+the tabs disable, with a tooltip naming why, and a drag-drop or `open a saved log` while locked is
+refused the same way. Leaving always means a deliberate pause or stop first, never an accidental page
+flip mid-sentence; pausing (GUI-SPEC §4.4) unlocks navigation without touching the run.
+
+**The hash survives a reload**, via `history.replaceState` rather than `location.hash =`, so normal
+navigation never fires a synthetic `hashchange` for the page's own transitions to chase. A `#/read`
+hash that already carries `?dir=&id=` for a specific saved run keeps that query string across a
+reload — the path is only ever replaced when it names a *different* page than the one about to render,
+so a bookmarked or reloaded deep link lands back on the same run rather than the bare browser.
+
 ## Rendering
 
 Events are flat and ordered; the page is not. `build()` groups a `consult` and everything it produced
@@ -27,6 +67,9 @@ starting a new one. That grouping is the whole renderer; everything else is pres
   and its buttons disable on the click that answers it: the run is blocked on you at that moment,
   reading further up the scene is the normal thing to be doing when it appears, and a question nobody
   scrolls to is a run that looks hung. One answer per consult — a second click is not a second choice.
+  On the **saved runs** page a still-pending one renders with no buttons at all — there is no live loop
+  on the other end of `POST /reader-answer` for a saved log's questions to reach, so it shows as a fact
+  about how the run went (*"left unanswered in this run"*) rather than as a live control that would 400.
 - **A model swap** renders as a plain note in the gap where it happened, like `bad_consult` and
   `budget` — a fact about how the rest of the scene was produced, not a whole block.
 - **The rail** carries progress and the counts that indicate trouble: retries amber, skill flags red.
@@ -37,7 +80,8 @@ are remembered by `seq` across renders, and the view sticks to the bottom only i
 it. The chosen **theme is kept** across reloads, which a page watched across reconnects otherwise
 forgets every time.
 
-Three traps, all found by driving a real stopped run, all of which a rewrite would fall into again:
+Five traps, all found by driving a real stopped run or a real page split, all of which a rewrite would
+fall into again:
 
 - **A timer, not `requestAnimationFrame`.** rAF does not fire in a hidden or non-compositing tab, so a
   run watched in a background tab stopped updating entirely — and because the handle latched in
@@ -49,55 +93,86 @@ Three traps, all found by driving a real stopped run, all of which a rewrite wou
 - **`run_state` always re-renders**, not only when `picking` changes value. Rendering on a state
   *edge* is one missed transition away from a page with no route back to the shelf; these frames
   arrive a handful of times per run, so rendering on all of them costs nothing.
+- **One event store per page, not one shared between them.** `LIVEV` and `READV` each keep their own
+  `events`/`seen`/`meta` ([Pages and navigation](#pages-and-navigation)) precisely because a single
+  shared store used to mean that opening a past run's log overwrote the live scene's own copy of the
+  data — reading something finished silently destroyed the view of something still being written.
+- **Auto-switching a page is an edge, not a level.** The same `run_state`/`run_reset` frames that must
+  always re-render (above) must *not* always renavigate — `wasPicking`/`wasRunning` are compared
+  against the incoming frame precisely so a page you chose on purpose survives every frame that
+  repeats a fact you already knew.
 
 ## Control states
 
-**The run controls hide while nothing is running**, rather than sitting there disabled — the idle
-screen belongs to the picker, and three greyed buttons on it are furniture, not information. What each
-one *does* is [GUI-SPEC.md](GUI-SPEC.md#4-ending-a-run-early); this is only how it presents.
+**The run controls only render on the run page**, and hide there too while nothing is running, rather
+than sitting disabled — the idle run page belongs to whatever prose is already on it, and three greyed
+buttons on the shelf or the saved-run browser would be furniture that also lies about what they act
+on. What each one *does* is [GUI-SPEC.md](GUI-SPEC.md#4-ending-a-run-early); this is only how it
+presents.
 
-| control | live-only | extra state |
-|---|---|---|
-| **stop** | yes | **a second, confirming click** — the same deliberate-second-press rule the scaffolder uses for accepting over a complaint (SPEC-S §4.2); disarms after four seconds |
-| **consult me** | yes | disabled and relabelled while the one it just armed is still pending |
-| **pause** | yes | a third label for the request-vs-effective gap: *"pause" → "pausing…" → "resume"* |
-| **model dropdown** | no — idle is exactly when it picks what the next run loads with | disabled whenever the run is going and not paused: enabled exactly when a choice would do something, never when it would 400 |
-| **interactive** | no — same reason as the model dropdown: idle is when you set it for the run about to start | never disabled, since the route never refuses; relabels `interactive` ↔ `hands off` and switches amber while off. **consult me** disables alongside it |
+| control | run-page-only | live-only | extra state |
+|---|---|---|---|
+| **stop** | yes | yes | **a second, confirming click** — the same deliberate-second-press rule the scaffolder uses for accepting over a complaint (SPEC-S §4.2); disarms after four seconds |
+| **consult me** | yes | yes | disabled and relabelled while the one it just armed is still pending |
+| **pause** | yes | yes | a third label for the request-vs-effective gap: *"pause" → "pausing…" → "resume"* |
+| **model dropdown** | yes | no — idle is exactly when it picks what the next run loads with | disabled whenever the run is going and not paused: enabled exactly when a choice would do something, never when it would 400 |
+| **interactive** | yes | no — same reason as the model dropdown: idle is when you set it for the run about to start | never disabled, since the route never refuses; relabels `interactive` ↔ `hands off` and switches amber while off. **consult me** disables alongside it |
+
+Navigating to the shelf or the saved-run browser while a control is mid-state (`armed`, `pausing…`)
+does not cancel it — the state lives on `session`/`armed`, not on whether the run page happens to be
+showing, so switching back to it mid-run shows exactly where things were left.
 
 A refusal from the engine surfaces as **one error line in the source bar**, clearing itself after a few
-seconds. Two of them need more, because the page has already moved ahead of the server: a refused
+seconds. Three of them need more, because the page has already moved ahead of the server: a refused
 `POST /model` **puts the dropdown back** (a wrong id fails every call, so a silently-wrong label is
-expensive), and a refused `POST /select` releases the pick so the shelf is clickable again. The
-interview keeps its own copy inside the modal, where the refusal is about what you are looking at
-rather than about the session.
+expensive), a refused `POST /select` releases the pick so the shelf is clickable again, and a refused
+`POST /select` sent from the play confirmation **also shows the reason inside the modal** rather than
+only in the source bar — the same reason the interview keeps its own copy, below. Closing and
+reopening the confirmation clears it.
 
-## The picker
+## The shelf
 
-**The picker is a panel at the top of the reading column, not a screen that replaces it.** A session
-that has just finished a scene must not have that scene shoved off the page by the question of what to
-write next — the guiding principle applies to the chrome as much as to the machinery. With nothing
-written yet, the panel is simply the whole page.
+**Choosing what gets written next is its own page**, shown only while the session is actually parked
+waiting for a pick ([Pages and navigation](#pages-and-navigation)). It used to be a panel stacked over
+whatever scene was already on screen, with its own **clear the last scene** escape hatch and each
+card's own retained-run buttons — both existed only because the panel and the reading column were the
+same piece of DOM. Once picking has its own page, there is no scene under it to protect and no reason
+for a run-browsing feature to live on a page about starting the next one; both moved off.
 
-Keeping the scene needs an escape hatch, though, or the only way to a clean shelf is a reload — which
-brings it straight back, because the server still holds it. So the picker offers **clear the last
-scene**, and it clears the *view* only: the log on disk and `/log.jsonl` are the record and are never
-touched by a reading pane.
+A card shows a story's premise, scene question, cast, and rough length — the same pre-flighted check
+`--preflight` runs, so a story that cannot load says so on its card instead of failing after it is
+picked, and the card can never disagree with what a run would do. Clicking a live card does not start
+anything by itself; it opens **the play confirmation**.
 
-A card carries the story's **retained runs** ([RUN-RECORD.md](RUN-RECORD.md)) as `runs`, newest first
-— when it happened, how far it got, how it ended. The card itself is a `<button>` that starts a NEW
-run, so those render as a row of small `read ·` buttons *beside* it: a button cannot nest another
-button, and each past run needs its own click target. Clicking one is the same view-only load `?src=`
-and drag-drop already are — a fetch of `GET /runs/log` straight into `ingest()`. It is not a form of
-picking: the session stays wherever it already was, and reading a past run never touches `/select`.
+### The play confirmation
+
+A modal showing exactly what the card already showed — premise, scene question, cast, length, any
+pre-flight warnings — with three ways forward: **play**, which is the actual `POST /select` and
+therefore where a refusal shows up (above); **edit scenario**, rendered disabled with a tooltip, not
+built yet; and **cancel**, which sends nothing. The × button, a backdrop click, and cancel all do the
+same thing. `play` starting the run flips the session to `running`, which is what carries the page
+itself over to `#/live` ([Pages and navigation](#pages-and-navigation)) — the modal does not navigate
+on its own.
+
+## Saved runs
+
+**A story's retained runs** ([RUN-RECORD.md](RUN-RECORD.md)) live here now, not hung off the shelf's
+cards — one row per discovered story, its runs newest-first as small `read ·` buttons naming when it
+happened, how far it got, how it ended. Clicking one is a view-only fetch of `GET /runs/log` straight
+into `ingest()`, exactly like `?src=` and drag-drop are; it is **never** a form of picking, and the
+live scene (if one is running) is untouched — reading something finished must not cost the view of
+something still being written, which is the whole reason this page keeps its own event store
+([rendering traps](#rendering)). `open a saved log` and the drag-drop target live here too now, since
+this is where someone with something to read is already looking, whether or not something is loaded
+already.
 
 ## The interview screen
 
-`new story…` opens the interview as a **modal** over whatever is already on the page. Closing it (the
-×, a backdrop click, or Escape) only **hides** it; the `ScaffoldSession` on the server does not know it
-happened, so reopening it (the same card, now reading *"continue new story…"*) lands exactly where you
-left it — the same guarantee a reload gives. Only **abandon** ends the interview. This is deliberately
-not the picker's own escape hatch (clear the last scene, above): that clears a *finished* run's view,
-while hiding the modal loses nothing, because the interview was never the page under it.
+`new story…` opens the interview as a **modal** over the shelf, the same way the play confirmation
+does. Closing it (the ×, a backdrop click, or Escape) only **hides** it; the `ScaffoldSession` on the
+server does not know it happened, so reopening it (the same card, now reading *"continue new
+story…"*) lands exactly where you left it — the same guarantee a reload gives. Only **abandon** ends
+the interview.
 
 It is **conversation only**: each change is a patch through the architect, the same round the console
 sends, because both drive the same object. Every decision is the session's (SPEC-S §4.2); the page is
@@ -155,12 +230,15 @@ reachable — at the console a blank answer goes back to refining, and the brows
 ## Sources
 
 `?src=URL` → `/run` + SSE (live) → `/log.jsonl` → drag-drop / **open a saved log** → empty state.
-Works from `file://` too. A past run's **read** button is this same chain's `ingest()`, fed by
-`GET /runs/log` instead of a dropped file.
+Works from `file://` too — every one of these lands on the **saved runs** page, since none of them
+are a live run. A story's retained-run **read ·** button is this same chain's `ingest()`, fed by
+`GET /runs/log` instead of a dropped file — all four write into `READV`, never `LIVEV`
+([rendering traps](#rendering)), so none of them can cost the live scene's own view.
 
-**"open a saved log" lives in the empty state, not the topbar** — beside `stop run` it read as a run
-control while duplicating drag-drop, and a story's retained runs already have `read ·` buttons on
-their cards. The empty state is where someone with nothing loaded is already looking.
+**"open a saved log" and drag-drop both live on the saved-run page**, not the topbar — beside
+`stop run` a topbar button read as a run control, and a story's retained runs already have `read ·`
+buttons right there beside it. This is where someone with something to read is already looking,
+loaded or not.
 
 ## Not built
 
@@ -175,4 +253,7 @@ their cards. The empty state is where someone with nothing loaded is already loo
   the next round. `scene.length` is the standing exception (above). **That is the line for anything
   proposed next: if the architect would have to be told about it to keep the story coherent, it stays
   a conversation.**
+- **The play confirmation's "edit scenario"** — renders disabled with a tooltip. Same open question as
+  a proposal's prose fields, above, one level earlier: a story already on disk edited from the play
+  modal is a story the architect never saw change.
 - Per-step timing, cost, and any editing of the scene from the page. This is a viewer.

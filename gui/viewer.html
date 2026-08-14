@@ -8,11 +8,16 @@
   paragraphs it came between. Open one to see exactly what that character was told, what it asked
   back, what it answered, and whether the writer took it.
 
-  Two ways in:
-    • LIVE   — engine run with `--serve`; this file is served at / and streams from /events.
-               Late joiners get the whole run replayed, then live.
-    • REPLAY — drop a saved out/writing-log.jsonl on the page, or ?src=URL. Over http the current
-               run's log is at /log.jsonl and loads automatically.
+  Three pages, one flat file, no router but a hash for each (see ../VIEWER-UI.md#pages-and-navigation):
+    • story        (#/shelf) — choosing what gets written next. Shown only while the session is
+                                actually parked waiting for a pick.
+    • run          (#/live)  — the live (or just-finished) scene, streamed from /events. Late
+                                joiners get the whole run replayed, then live.
+    • saved runs   (#/read)  — a story's retained runs, or a dropped/opened writing-log.jsonl.
+                                Never touches the live scene's own copy of the data.
+
+  Navigation locks to the run page while a scene is actively generating, so leaving it always means
+  a deliberate pause or stop first, never an accidental page flip mid-sentence.
 
   Dependency-free, no build step. Everything below is one file on purpose.
 -->
@@ -24,6 +29,11 @@
 
 <div class="topbar">
   <div class="brand"><h1 id="title">story-writer</h1><div class="q" id="question"></div></div>
+  <nav class="tabs" id="tabs">
+    <button class="tab" id="tab-shelf" data-view="shelf" hidden>story</button>
+    <button class="tab" id="tab-live" data-view="live" hidden>run<span class="tabdot" id="tabdot" hidden></span></button>
+    <button class="tab" id="tab-read" data-view="read" hidden>saved runs</button>
+  </nav>
   <div class="cast" id="cast"></div>
   <select class="btn" id="modelSelect" hidden><option value="">story default</option></select>
   <button class="btn" id="interactive" hidden>interactive</button>
@@ -33,6 +43,7 @@
   <button class="btn" id="expand">expand all</button>
   <button class="btn" id="theme">theme</button>
 </div>
+<div class="ribbon" id="ribbon" hidden></div>
 <div class="srcbar"><span class="dot" id="dot"></span><span id="src">nothing loaded</span><span id="where"></span>
   <span id="notice"></span></div>
 
