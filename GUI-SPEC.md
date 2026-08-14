@@ -1,7 +1,8 @@
 # GUI-SPEC — the run viewer
 
-Spec for [gui/viewer.html](gui/viewer.html) and the `--serve` server in
-[story-writer.ts](story-writer.ts). [DESIGN.md](DESIGN.md) remains authoritative for the engine.
+Spec for [gui/viewer.html](gui/viewer.html) and the `--serve` server in [server.ts](server.ts),
+whose shared session state lives in [live.ts](live.ts). [DESIGN.md](DESIGN.md) remains authoritative
+for the engine.
 
 ---
 

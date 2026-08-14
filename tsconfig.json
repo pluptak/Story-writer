@@ -7,7 +7,8 @@
     "typeRoots": ["./node_modules/@types"],
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["story-writer.ts"]
+  "include": ["story-writer.ts", "prompts.ts", "live.ts", "server.ts", "ansi.ts"]
 }

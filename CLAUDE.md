@@ -19,7 +19,7 @@ once. When implementing:
 
 ## What this is
 
-A single-file **story writer** engine. A writer agent drafts one scene from a premise and, whenever
+A **story writer** engine. A writer agent drafts one scene from a premise and, whenever
 what happens next turns on a choice a character makes, **consults** that character's agent. The
 character may ask for a fact it was not given before answering; the writer accepts the answer or
 rewrites the question and asks a **fresh instance** that never learns it was rejected. Everything
@@ -103,7 +103,9 @@ npx tsx story-writer.ts stories/doorway
   writer asks *good* questions is judgement, not a gate. Because the tests import the engine,
   `story-writer.ts` only runs when it is the entry point (`IS_MAIN`); importing it must never start
   a run.
-- `npx tsc` typechecks (`noEmit`, `include` is just `story-writer.ts`).
+- `npx tsc` typechecks (`noEmit`; `include` lists all five modules — add new ones there). Imports
+  carry the `.ts` extension, the way the tests already write them, hence
+  `allowImportingTsExtensions`.
 - Outputs land in `<story dir>/out/<run id>/`, one folder per run: `scene.md` (prose alone) and
   `writing-log.jsonl` (every consult, clarification, repair, flag, retry and acceptance). Both are
   written as the run goes, so an interrupted run still leaves readable artifacts. A story keeps its
@@ -112,9 +114,38 @@ npx tsx story-writer.ts stories/doorway
 
 ## Architecture
 
-Everything is in [story-writer.ts](story-writer.ts). **Agents** are all the same generic `Agent`
-class (windowed history + rolling `digest`), differing only by system prompt, model and temperature:
-**writer** (0.8) and one **character** per `### NAME` (0.9).
+Five modules, and the dependency arrows only ever point one way — `story-writer.ts` → `server.ts` →
+`live.ts` → (nothing). Nothing imports `story-writer.ts` at run time; where a module needs one of its
+types it uses `import type`, which is erased. **There are no import cycles here. Keep it that way.**
+
+| file | what is in it |
+| --- | --- |
+| [story-writer.ts](story-writer.ts) | the engine: parsing, agents, the consult, the scene loop, the CLI |
+| [prompts.ts](prompts.ts) | every word said to a model |
+| [server.ts](server.ts) | the `--serve` viewer's HTTP routes |
+| [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
+| [ansi.ts](ansi.ts) | terminal colours |
+
+**Agents** are all the same generic `Agent` class (windowed history + rolling `digest`), differing
+only by system prompt, model and temperature: **writer** (0.8) and one **character** per
+`### NAME` (0.9).
+
+**`server.ts` never imports the engine.** Everything its routes need arrives as a `ServerHost` object
+built in `story-writer.ts` (`HOST`) — ten methods, `storyCards` / `selectableStory` / `outDir` and so
+on. Adding a route that needs something new means adding a host method, not an import.
+
+**`live.ts` exists because the two halves genuinely write the same variables** — `/pause` sets
+`pausing`, the loop reads it at its next boundary; `writeScene()` sets `writer`/`agents` and `/model`
+reaches through them to swap a model mid-run. ESM cannot share a writable `let` across modules, so
+they are fields on one exported `LIVE` object. `RUN`/`stopRun`/`armRun`/`StoppedError` live there too
+and are re-exported from `story-writer.ts` for the tests.
+
+**Every word said to a model lives in [prompts.ts](prompts.ts), and nothing else does.** The test is
+whether a model ever sees the string; console output, log lines and warnings are not prompts and
+stay in the engine. It imports **nothing** from `story-writer.ts` — each function takes plain
+strings, numbers and lists, so shapes like a character's capabilities arrive already flattened by
+the engine. Keep both halves of that: no prompt text outside `prompts.ts`, no engine imports inside
+it.
 
 **The asymmetry is the product.** The writer is given the premise, the scene, the house style, and
 the cast as names + capabilities — never anyone's persona. Each character is given its own persona,
