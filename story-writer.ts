@@ -7,7 +7,7 @@
  */
 
 import { readFile, writeFile, readdir, mkdir, rm, stat } from "node:fs/promises";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, type WriteStream } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath, relative as relativePath } from "node:path";
@@ -38,6 +38,8 @@ const PORT = Number(CLI.find(a => a.startsWith("--port="))?.slice(7)) || 8080;
 let STORY_DIR = CLI.find(a => !a.startsWith("--")) ?? "";
 
 let OUT_DIR = "";
+let LLM_STREAMS: Map<string, WriteStream> = new Map();   // agent name -> this run's open stream
+let LLM_FILENAMES: Set<string> = new Set();               // filenames already claimed this run
 
 // Set by the story loader before the loop runs
 let STREAM = true;
@@ -340,8 +342,13 @@ export class Agent {
   // than the raw draft, whose live JSON buried the formatted output it was interleaved with.
   async generate(label: string, extra: Msg[] = []): Promise<string> {
     const msgs = this.buildMessages(extra);
+    const ts = new Date().toISOString();
     const prepend = "{";
-    if (!STREAM) return prepend + await complete(this.model, msgs, this.temperature, this.think);
+    if (!STREAM) {
+      const raw = await complete(this.model, msgs, this.temperature, this.think);
+      writeLlmRecord(this, ts, msgs, raw);
+      return prepend + raw;
+    }
     const started = Date.now();
     let chars = 0, lastPaint = 0;
     const paint = () => {
@@ -356,8 +363,40 @@ export class Agent {
     }, this.think);
     progressDone();
     sseWrite({ t: "idle" });
+    writeLlmRecord(this, ts, msgs, rest);
     return prepend + rest;
   }
+}
+
+// -- LLM INTERACTION LOG -----------------------------------------------------
+// One file per agent identity under out/<run id>/llm/, one JSON line per model call — the writer's
+// drafts and judge calls, and every character's consult/clarify/repair turn, including attempts a
+// retry later discarded (fork() keeps the same name, so it keeps writing to the same file). The
+// scaffolding interview's ARCHITECT agent is excluded: it runs before any run directory exists.
+export function llmFilenameFor(name: string, used: Set<string>): string {
+  const base = slugify(name) || "agent";
+  let f = `${base}.jsonl`, n = 2;
+  while (used.has(f)) f = `${base}-${n++}.jsonl`;
+  used.add(f);
+  return f;
+}
+
+export function llmLogEntry(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string) {
+  return { ts, role: agent.name === "WRITER" ? "writer" : "character", agent: agent.name, model: agent.model, prompt, response };
+}
+
+function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: string) {
+  if (!OUT_DIR || agent.name === "ARCHITECT") return;
+  try {
+    let stream = LLM_STREAMS.get(agent.name);
+    if (!stream) {
+      const file = llmFilenameFor(agent.name, LLM_FILENAMES);
+      stream = createWriteStream(joinPath(OUT_DIR, "llm", file), { flags: "w" });
+      stream.on("error", () => {});   // an async write failure must never crash the run
+      LLM_STREAMS.set(agent.name, stream);
+    }
+    stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response)) + "\n");
+  } catch { }
 }
 
 // -- HISTORY WINDOWING -----------------------------------------------------
@@ -2125,11 +2164,14 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   setWhere(`writing ${dir}`, true);
 
   // Outputs land in `<story dir>/out/<run id>/`, one folder per run, so a story keeps its last
-  // MAX_RUNS runs instead of the previous run being overwritten. Both files are written as the run
+  // MAX_RUNS runs instead of the previous run being overwritten. All of it is written as the run
   // goes: an interrupted run still leaves readable prose and a complete log of how far it got.
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
   OUT_DIR = joinPath(sc.dir, "out", runId);
   await mkdir(OUT_DIR, { recursive: true });
+  await mkdir(joinPath(OUT_DIR, "llm"), { recursive: true });
+  LLM_STREAMS = new Map();
+  LLM_FILENAMES = new Set();
   const scenePath = joinPath(OUT_DIR, "scene.md");
   const logPath = joinPath(OUT_DIR, "writing-log.jsonl");
   const logStream = createWriteStream(logPath, { flags: "w" });
@@ -2150,6 +2192,7 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   });
   await sceneWrites;
   await new Promise<void>(res => logStream.end(res));
+  await Promise.all([...LLM_STREAMS.values()].map(s => new Promise<void>(res => s.end(res))));
 
   // Rotate: keep only the last MAX_RUNS folders, including the one just written.
   const kept = await runDirs(sc.dir);

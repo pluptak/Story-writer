@@ -20,8 +20,8 @@ it. Read the relevant entry — and a fresh run's log — before loosening one.
 - **Model calls are heavy.** A step is 1 draft + 1 judge + 1–3 character calls + any clarifications,
   each tens of seconds locally. A full scene takes a while — expect to interrupt; both output files
   survive it.
-- `LMSTUDIO_URL`, `MAX_TOKENS`, `STREAM`, `DEBUG`, `OUT_DIR` are module-level mutable globals set by
-  `main()` from the loaded story.
+- `LMSTUDIO_URL`, `MAX_TOKENS`, `STREAM`, `DEBUG`, `OUT_DIR`, `LLM_STREAMS`, `LLM_FILENAMES` are
+  module-level mutable globals set by `main()` from the loaded story.
 
 ## THE ONE RULE ([PROTOCOL.md](PROTOCOL.md))
 

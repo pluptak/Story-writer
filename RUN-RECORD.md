@@ -1,13 +1,19 @@
 # RUN RECORD — what a run leaves behind
 
 `<story dir>/out/<run id>/`, one folder per run, written **as the run goes** so an interrupted run
-leaves both artifacts:
+leaves its artifacts:
 
 - `scene.md` — the prose alone, rewritten after every draft that produces any.
 - `writing-log.jsonl` — one JSON object per line, `seq`-stamped: `scene_start, draft, bad_consult,
   consult, need, clarify, forced, repair, skill_flag, answer, judge, retry, accept, budget,
   reader_ask, reader_answer, model_changed, scene_end`. This is the record of *why* the scene reads
   the way it does — which questions were asked, what was clarified, what was rejected and re-asked.
+- `llm/<agent>.jsonl` — one file per agent identity (`writer`, each character), one JSON object per
+  model call: `ts`, `role`, `agent`, `model`, `prompt` (the exact `messages` array sent — system,
+  digest, history, the trailing `"{"` priming turn) and `response` (the model's raw reply text,
+  before `extractJson`). A rejected/retried attempt is just another line: `fork()` keeps the same
+  name, so it keeps writing to the same file. File-only — never routed through `publish()`, never
+  `seq`-stamped, never reaches the SSE viewer.
 
 `publish()` fans every event to three places at once — the file, an in-memory history, and any
 attached SSE client — under **one `seq`**. A saved log and a live run are therefore the same data in

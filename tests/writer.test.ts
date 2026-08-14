@@ -27,7 +27,7 @@ import {
   loadStory, discoverStories, chooseStory, NEW_STORY, consult, wrapCharacter, wrapWriter, Agent,
   normalizeSpec, loadDefaults, applyEdits, directEdit, renderStory, slugify,
   RUN, stopRun, armRun, StoppedError, complete, selectableStory, ScaffoldSession,
-  normalizeConsult, canonWants, CONSULT_WANTS, runDirs, retainedRuns,
+  normalizeConsult, canonWants, CONSULT_WANTS, runDirs, retainedRuns, llmFilenameFor, llmLogEntry,
   type Skill, type ConsultEvent, type ConsultRequest, type Defaults,
 } from "../story-writer.ts";
 
@@ -897,6 +897,41 @@ describe("runDirs / retainedRuns", () => {
       assert.equal(runs[0].done, undefined);
       assert.equal(runs[0].stopped, undefined);
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("LLM interaction log", () => {
+  it("llmLogEntry: WRITER gets role writer, anyone else gets role character", () => {
+    const w = llmLogEntry({ name: "WRITER", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp");
+    assert.equal(w.role, "writer");
+    const c = llmLogEntry({ name: "Anne", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp");
+    assert.equal(c.role, "character");
+  });
+
+  it("llmLogEntry: fields pass through unchanged", () => {
+    const prompt = [{ role: "system" as const, content: "sys" }];
+    const e = llmLogEntry({ name: "Anne", model: "some-model" }, "2026-01-01T00-00-00.000Z", prompt, "raw reply");
+    assert.equal(e.ts, "2026-01-01T00-00-00.000Z");
+    assert.equal(e.agent, "Anne");
+    assert.equal(e.model, "some-model");
+    assert.deepEqual(e.prompt, prompt);
+    assert.equal(e.response, "raw reply");
+  });
+
+  it("llmFilenameFor: slugifies the name", () => {
+    assert.equal(llmFilenameFor("Anne", new Set()), "anne.jsonl");
+  });
+
+  it("llmFilenameFor: two names slugifying the same get -2, -3, ...", () => {
+    const used = new Set<string>();
+    assert.equal(llmFilenameFor("Anne", used), "anne.jsonl");
+    assert.equal(llmFilenameFor("anne!", used), "anne-2.jsonl");
+    assert.equal(llmFilenameFor("ANNE", used), "anne-3.jsonl");
+    assert.deepEqual(used, new Set(["anne.jsonl", "anne-2.jsonl", "anne-3.jsonl"]));
+  });
+
+  it("llmFilenameFor: a name that slugifies empty falls back to 'agent'", () => {
+    assert.equal(llmFilenameFor("!!!", new Set()), "agent.jsonl");
   });
 });
 
