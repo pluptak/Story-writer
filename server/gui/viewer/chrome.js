@@ -1,8 +1,8 @@
-import { $, notify } from "./util.js";
+import { $ } from "./util.js";
 import { APP, READV, open } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
-import { navLocked, go } from "./nav.js";
+import { go } from "./nav.js";
 
 // ---- chrome -------------------------------------------------------------
 $("expand").onclick = () => {
@@ -16,20 +16,19 @@ $("theme").onclick = () => {
   const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
   const next = dark ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
-  // Kept, because a run is watched across reloads and reconnects, and having to re-pick the theme
-  // on each one is a choice the page keeps forgetting. Restored before paint, up in the head.
   try { localStorage.setItem("sw-theme", next); } catch {}
 };
+// Opening or dropping a saved log lands on the read page, which is read-only -- so it is allowed
+// even mid-run, the same as clicking the read tab. The live scene keeps streaming into LIVEV and is
+// one click on the run tab away.
 $("file").onchange = e => {
   const f = e.target.files[0]; if (!f) return;
-  if (navLocked()) { notify("pause or stop the run to leave"); e.target.value = ""; return; }
   f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; ingest(t, READV); go("read"); });
 };
-addEventListener("dragover", e => { e.preventDefault(); if (!navLocked()) $("drop").classList.add("on"); });
+addEventListener("dragover", e => { e.preventDefault(); $("drop").classList.add("on"); });
 addEventListener("dragleave", e => { if (e.relatedTarget === null) $("drop").classList.remove("on"); });
 addEventListener("drop", e => {
   e.preventDefault(); $("drop").classList.remove("on");
-  if (navLocked()) { notify("pause or stop the run to leave"); return; }
   const f = e.dataTransfer.files[0]; if (!f) return;
   f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; ingest(t, READV); go("read"); });
 });

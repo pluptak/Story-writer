@@ -1,10 +1,9 @@
 import { esc, post } from "./util.js";
 import { APP } from "./state.js";
 import { castChips } from "./shelf.js";
+import { go } from "./nav.js";
 
 // ---- the play confirmation -------------------------------------------------
-// A card click no longer starts a run by itself -- it opens this, showing exactly what the shelf's
-// card already showed, plus the two ways forward: play it, or (not yet built) edit it first.
 export function confirmModalHtml() {
   if (!APP.confirmDir) return "";
   const s = (APP.stories || []).find(x => x.dir === APP.confirmDir);
@@ -48,6 +47,7 @@ export async function choose(payload) {
   APP.confirmError = "";
   APP.render();
   const j = await post("/select", payload);
-  if (!j || j.ok === false) { APP.picked = ""; APP.confirmError = (j && j.reason) || "that did not go through"; APP.render(); }
-  else { APP.confirmDir = ""; APP.render(); }        // the run starting flips the view to `live` on its own
+  if (!j || j.ok === false) { APP.picked = ""; APP.confirmError = (j && j.reason) || "that did not go through"; APP.render(); return; }
+  APP.confirmDir = "";
+  go("live");
 }

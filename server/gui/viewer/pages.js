@@ -7,13 +7,9 @@ import { confirmModalHtml, wireConfirm } from "./confirm.js";
 import { savedRunsHtml, wireSavedRuns } from "./saved-runs.js";
 import { paintSrcbar, renderRail } from "./hud.js";
 import { interviewModalHtml, wireInterview } from "./interview.js";
-import { userNav, navLocked } from "./nav.js";
+import { userNav, navBlocked, generating } from "./nav.js";
 import { renderSession } from "./session.js";
 
-/** Give focus back to whatever field had it when the render began, caret at the end — and failing
- *  that, put it where the typing goes. A modal that opens with focus still on the page behind it
- *  makes the keyboard useless until you click, which is half of why the buttons were doing the
- *  talking. */
 function restoreFocus(page, id) {
   if (id) {
     const el = page.querySelector("#" + id);
@@ -23,8 +19,6 @@ function restoreFocus(page, id) {
       return;
     }
   }
-  // Document order, so the folder question — which renders above the say box — takes the caret
-  // while it is open. It is the thing being asked.
   const first = page.querySelector(".iv #f-folder:not([disabled]), .iv textarea:not([disabled])");
   if (first) first.focus();
 }
@@ -41,12 +35,14 @@ function renderNav() {
     t.classList.toggle("current", isCurrent);
     t.setAttribute("aria-current", isCurrent ? "page" : "false");
   }
-  const locked = navLocked();
+  // Only a tab whose destination is actually refused goes dead -- the read tab stays live during a
+  // run so a saved run is one click away, and the run keeps streaming behind it (tabdot below).
   for (const t of [shelfTab, liveTab, readTab]) {
-    t.disabled = locked && t.dataset.view !== APP.view;
-    t.title = t.disabled ? "pause or stop the run to leave" : "";
+    const blocked = navBlocked(t.dataset.view) && t.dataset.view !== APP.view;
+    t.disabled = blocked;
+    t.title = blocked ? "stop the run to choose another story" : "";
   }
-  $("tabdot").hidden = !(APP.live && APP.session.running && !APP.session.paused);
+  $("tabdot").hidden = !generating();
 }
 
 function renderHeader() {
@@ -60,6 +56,11 @@ function renderHeader() {
     if (c.lacks?.length)  bits.push(`<span class="no">no ${c.lacks.join(", ")}</span>`);
     return `<span class="chip"><b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
   }).join("");
+}
+
+function storyName(dir) {
+  const s = (APP.stories || []).find(x => x.dir === dir);
+  return s?.name || (dir || "").replace(/^.*[\\/]/, "");
 }
 
 function paintRibbon() {
@@ -81,12 +82,29 @@ function renderShelf(page, keepFocus) {
 
 function renderLive(page, blocks) {
   if (!blocks.length) {
-    page.innerHTML = `<div class="empty"><h2>Nothing written yet</h2>
-      <p>${APP.live ? "The scene will appear here as soon as the engine starts writing."
-                 : "Run the engine with <code>--serve</code> to watch a scene as it is written."}</p>
-      ${APP.live && APP.session.picking ? `<div class="btns" style="justify-content:center">
-        <button class="btn" id="go-shelf">choose a story</button></div>` : ""}
+    const warming = APP.live && (APP.picked || (APP.session.running && !APP.session.picking));
+    const idle = APP.live && APP.session.picking && !warming;
+    let html;
+    if (warming) {
+      const name = storyName(APP.picked || LIVEV.meta?.story || "");
+      html = `<div class="empty starting">
+        <h2>Starting${name ? ` <em>${esc(name)}</em>` : ""}…</h2>
+        <p class="thinking"><i></i>waiting for the writer — a cold model can take a few seconds</p>
+        <p class="hint">use <b>stop</b> above to cancel once the run controls appear</p>
       </div>`;
+    } else if (idle) {
+      html = `<div class="empty"><h2>Nothing written yet</h2>
+        <p>The scene will appear here as soon as the engine starts writing.</p>
+        <div class="btns" style="justify-content:center">
+          <button class="btn" id="go-shelf">choose a story</button></div>
+      </div>`;
+    } else {
+      html = `<div class="empty"><h2>Nothing written yet</h2>
+        <p>${APP.live ? "The scene will appear here as soon as the engine starts writing."
+                     : "Run the engine with <code>--serve</code> to watch a scene as it is written."}</p>
+      </div>`;
+    }
+    page.innerHTML = html;
     $("rail").innerHTML = "";
     const gb = page.querySelector("#go-shelf");
     if (gb) gb.addEventListener("click", () => userNav("shelf"));
@@ -134,8 +152,6 @@ function wireModal(page) {
   if (bd) bd.addEventListener("click", e => { if (e.target === bd) { APP.ivHidden = true; APP.render(); } });
 }
 
-/** A run whose drafts were all salvaged has no consults in it at all, and "expand all" over a page
- *  with nothing foldable looks like a broken button rather than an empty run. Say which it is. */
 function setFoldable(foldable) {
   $("expand").disabled = !foldable;
   $("expand").title = foldable ? "" : "nothing to expand — no consults in this run";
