@@ -49,6 +49,7 @@ export function startServer(port: number, host: ServerHost) {
   const viewerPath = new URL("./gui/viewer.html", import.meta.url);
   const viewerCssPath = new URL("./gui/viewer.css", import.meta.url);
   const viewerJsPath = new URL("./gui/viewer.js", import.meta.url);
+  const viewerModule = /^\/viewer\/([a-z0-9_-]+\.js)$/i;
 
   const server = createServer(async (req, res) => {
     const path = (req.url || "/").split("?")[0];
@@ -58,6 +59,11 @@ export function startServer(port: number, host: ServerHost) {
       await serveFile(res, viewerCssPath, "text/css; charset=utf-8");
     } else if (path === "/viewer.js") {
       await serveFile(res, viewerJsPath, "application/javascript; charset=utf-8");
+    } else if (viewerModule.test(path)) {
+      // viewer.js's own submodules -- an allowlist regex (flat filenames only, no subfolders)
+      // rather than a `..`-blacklist check, since that's the shape the folder actually has.
+      const file = path.match(viewerModule)![1];
+      await serveFile(res, new URL(`./gui/viewer/${file}`, import.meta.url), "application/javascript; charset=utf-8");
     } else if (path === "/events") {
       res.writeHead(200, {
         "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
