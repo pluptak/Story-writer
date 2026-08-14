@@ -45,10 +45,12 @@ then run it. Accepting writes a real `stories/<slug>/`, pre-flights it and runs 
 happened in. It also answers the out-of-budget prompt, stops a run, pauses one to swap models, and
 runs the scaffolding interview. [GUI-SPEC.md](GUI-SPEC.md) is authoritative for all of it.
 
-Two things worth knowing before you pass the flag:
+Three things worth knowing before you pass the flag:
 
 - **With `--serve` and no story on the command line, the browser drives the session** — the console
   prints status and never blocks on stdin (GUI-SPEC §5). A non-TTY run is never browser-driven.
+- **The console stops echoing story prose and character dialogue too** — the viewer is the place to
+  read the scene as it streams. The console still carries logs, retries and errors.
 - **A port already in use warns and lets the run continue.** Losing the viewer must never cost a
   scene. Without `--serve` the server and SSE fan-out are inert.
 

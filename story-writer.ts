@@ -1653,7 +1653,7 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     // carries the whole consult block. This keeps the history JSON-shaped without the noise.
     writer.said(JSON.stringify({ prose, ...(who ? { consult: { character: who } } : {}), scene_done: sceneDone }));
     log({ t: "draft", step: steps, prose, words: wordCount(), consulting: who, salvaged });
-    if (prose) console.log(`\n${prose}\n`);
+    if (prose && !SERVE) console.log(`\n${prose}\n`);
 
     // -- CONSULT (with accept / retry)
     let asked = false;                   // did anyone actually get consulted this step?
@@ -1769,7 +1769,7 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
           persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
           writer.hear(P.characterAnswered(def.name, P.answerBody(reply)));
           log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action });
-          console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
+          if (!SERVE) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
             + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
         }
       }
@@ -2159,9 +2159,11 @@ async function runAndSave(sc: StoryConfig, dir: string) {
 
   setWhere(r.stopped ? `stopped ${dir}` : `finished ${dir}`, false);
 
-  console.log(`\n${C.bold}${"=".repeat(60)}${C.reset}`);
-  console.log(r.prose.join("\n\n"));
-  console.log(`${C.bold}${"=".repeat(60)}${C.reset}`);
+  if (!SERVE) {
+    console.log(`\n${C.bold}${"=".repeat(60)}${C.reset}`);
+    console.log(r.prose.join("\n\n"));
+    console.log(`${C.bold}${"=".repeat(60)}${C.reset}`);
+  }
   const consults = events.filter(e => e.t === "consult").length;
   const retries  = events.filter(e => e.t === "retry").length;
   const needs    = events.filter(e => e.t === "need").length;
