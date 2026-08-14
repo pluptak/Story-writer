@@ -1548,6 +1548,13 @@ export type RunEvent =
  */
 async function askMoreSteps(steps: number, budget: number): Promise<number> {
   if (RUN.stopped) return 0;              // already abandoned; do not ask for more of it
+  // Hands-off: the budget becomes hard rather than soft. Checked before the viewer and the console,
+  // both of which would otherwise park the run waiting on a human the switch says isn't coming.
+  if (!LIVE.interactive) {
+    console.log(`\n${C.yellow}Step budget (${budget}) spent and the scene is not finished. `
+      + `Stopping — interactive is off.${C.reset}`);
+    return 0;
+  }
   if (sseClients.size) {
     LIVE.awaitingContinue = { steps, budget };
     progressDone();
@@ -1571,6 +1578,22 @@ async function askMoreSteps(steps: number, budget: number): Promise<number> {
 /** How far past `max_prose_words` a draft may go before the next [WRITE] mentions it. */
 const OVERRUN_SLACK = 1.5;
 
+/** Steps a cast member may go unconsulted before the next [WRITE] names them — long enough that one
+ *  quiet beat is not a complaint, short enough that a whole scene does not pass on it. */
+const NEGLECT_GAP = 3;
+
+/** Pure: who in `cast` has gone `gap` steps or more without being consulted, as of `step`. Never
+ *  before `step >= gap` — a cast that has barely started has nobody neglected yet, only unreached.
+ *  Does not know whether anyone left the scene (item 6); a story where that matters should not read
+ *  this as more than a nudge. */
+export function neglectedCast(cast: string[], lastAsked: Map<string, number>, step: number, gap: number): string[] {
+  if (step < gap) return [];
+  return cast.filter(name => {
+    const last = lastAsked.get(name.toLowerCase());
+    return last === undefined || step - last >= gap;
+  });
+}
+
 export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
   const writer = new Agent("WRITER", sc.models.writer, wrapWriter(sc), 0.8);
   writer.think = sc.thinking.writer;
@@ -1582,6 +1605,10 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
 
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
+  // The step an accepted consult last landed on, by name lowercased — `neglectedCast`'s only input
+  // besides the cast itself. Never touched by a REJECTED consult: a question refused by
+  // `normalizeConsult` or answered by nobody is not evidence the character was reached.
+  const lastAsked = new Map<string, number>();
   let steps = 0, budget = sc.maxSteps, done = false, empties = 0;
   // The cap is an instruction, never a truncation — cutting prose at a word count would throw away
   // words that were actually written, which is the one thing this loop is built not to do. What the
@@ -1617,7 +1644,9 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
 
     // -- READER CONSULT (armed via the viewer's "consult me" button; fires once, browser-only — an
     // arm with nobody attached by the time it would fire is dropped rather than left to block forever)
-    if (LIVE.readerArmed && sseClients.size) {
+    // `interactive` is checked here too, not just at the arming route: a toggle flipped mid-run must
+    // not let an arm that predates it still fire.
+    if (LIVE.readerArmed && LIVE.interactive && sseClients.size) {
       LIVE.readerArmed = false;
       sseWrite(runState());
       writer.hear(P.askReader(wordCount()));
@@ -1655,8 +1684,9 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     // writer's own prose left the chat template with no user turn after the system prompt, and the
     // model answered the next call with nothing at all — three empty completions and a dead run.
     const words = wordCount();
+    const neglected = neglectedCast(sc.characters.map(c => c.name), lastAsked, steps, NEGLECT_GAP);
     writer.hear(P.writeInstruction({
-      words, target: sc.scene.length, maxProseWords: sc.maxProseWords, overran,
+      words, target: sc.scene.length, maxProseWords: sc.maxProseWords, overran, neglected,
     }));
     let draftRaw: string;
     try {
@@ -1807,6 +1837,7 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
           persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
           persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
           writer.hear(P.characterAnswered(def.name, P.answerBody(reply)));
+          lastAsked.set(def.name.toLowerCase(), steps);
           log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action });
           if (!SERVE) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
             + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));

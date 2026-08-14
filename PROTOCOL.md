@@ -62,6 +62,12 @@ outstanding, resolves to an empty answer the loop discards rather than folds in.
 
 ## Character replies
 
+`CHARACTER_FORMAT` leads with the same **FIRST DECIDE** shape `ARCHITECT_FORMAT` uses for
+propose-or-ask: read what you were given, and either ask for the one fact of your situation it is
+missing, or answer and commit. Framing it as a decision rather than a fallback ("if you cannot
+answer…") is deliberate — the earlier fallback framing measurably produced zero `need` replies across
+every retained run ([GOTCHAS.md](GOTCHAS.md)).
+
 ```json
 {"need": "Can I reach the door handle from where I am?"}
 {"thought": "...", "speech": "...", "action": "...", "skills_used": ["movement"], "note": ""}

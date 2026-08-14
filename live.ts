@@ -54,7 +54,8 @@ export type LiveFrame =
   | { t: "idle" }
   | { t: "continue_prompt"; steps: number; budget: number; suggested: number }
   | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean;
-      paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean }
+      paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
+      interactive: boolean }
   | { t: "run_reset" }
   | { t: "scaffold"; state: unknown };
 
@@ -95,6 +96,12 @@ export const LIVE = {
   // equivalent.
   modelOverride: null as string | null,
 
+  // A session preference, not run state — like `modelOverride`, `resetLive()` must leave it alone.
+  // Off means the run never waits on a human: the step budget stops rather than prompting, and the
+  // reader-consult arm cannot fire. On is the default so an unattended `--serve` behaves as it always
+  // has.
+  interactive: true,
+
   // A pause never aborts a call in flight, unlike a stop — it only keeps the loop from STARTING the
   // next one, so the model can be swapped without losing the piece being generated. `pausing` from
   // the click, `paused` only once the loop is actually sitting at a boundary, which `/model` checks.
@@ -127,6 +134,7 @@ export function runState(): LiveFrame {
     // `continue_prompt` is one-shot, so a viewer that did not answer it — the console did, or a stop
     // cleared it — otherwise keeps a live-looking prompt whose buttons only 400.
     awaitingContinue: !!LIVE.awaitingContinue,
+    interactive: LIVE.interactive,
   };
 }
 

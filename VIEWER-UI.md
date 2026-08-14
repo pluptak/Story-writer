@@ -62,6 +62,7 @@ one *does* is [GUI-SPEC.md](GUI-SPEC.md#4-ending-a-run-early); this is only how 
 | **consult me** | yes | disabled and relabelled while the one it just armed is still pending |
 | **pause** | yes | a third label for the request-vs-effective gap: *"pause" → "pausing…" → "resume"* |
 | **model dropdown** | no — idle is exactly when it picks what the next run loads with | disabled whenever the run is going and not paused: enabled exactly when a choice would do something, never when it would 400 |
+| **interactive** | no — same reason as the model dropdown: idle is when you set it for the run about to start | never disabled, since the route never refuses; relabels `interactive` ↔ `hands off` and switches amber while off. **consult me** disables alongside it |
 
 A refusal from the engine surfaces as **one error line in the source bar**, clearing itself after a few
 seconds. Two of them need more, because the page has already moved ahead of the server: a refused

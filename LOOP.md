@@ -53,6 +53,10 @@ A **stop** from the viewer is none of these and is never reported as a failure:
 when one is attached, at the console on a TTY, otherwise the run stops rather than blocking forever.
 `--steps=N` overrides it.
 
+The viewer's **interactive** toggle (`LIVE.interactive`, [GUI-SPEC.md](GUI-SPEC.md#46-going-hands-off))
+makes it hard instead: switched off, `askMoreSteps` returns `0` before asking anybody, and the reader
+consult cannot arm either. Checked first in `askMoreSteps`, ahead of the browser and console branches.
+
 ## Pacing
 
 A scene has a fixed word budget and exactly two things to spend it on: the writer's narration and the
@@ -79,3 +83,21 @@ words that were actually written, the one thing this loop is built not to do.
   the writer can actually do.
 
 A refused consult is logged as `bad_consult` and counts toward the stuck-writer guard above.
+
+## An inert cast
+
+The pacing pressure above has a side effect: a cast member the writer is not actively steering toward
+tends never to be asked anything at all, even when they never leave the scene. Measured on
+`stories/doorway`'s most complete run — two characters, both on stage the whole time — 10 of 10
+consults went to the POV character and 0 to the other ([GOTCHAS.md](GOTCHAS.md)).
+
+`neglectedCast(cast, lastAsked, step, gap)` is the notice, not a fix: pure, and the same shape as the
+overrun nudge above — it never blocks or forces a consult, it names whoever has gone `NEGLECT_GAP`
+(3) steps or more unconsulted on the **next** `[WRITE]`, and `writeScene()` updates `lastAsked` only
+on an *accepted* consult, so a refused or unanswered one does not count as having reached them. It has
+no notion of whether a character has left the scene — that is item 6's gap, not this one's — so the
+nudge is phrased "if they are still in the scene" rather than as a demand.
+
+The other half is `"wants": "reaction"` ([PROTOCOL.md](PROTOCOL.md#writer-modes)): the shape that lets
+a present-but-quiet character be asked something without needing them to speak or act, so a writer
+that takes the nudge has somewhere to spend it.

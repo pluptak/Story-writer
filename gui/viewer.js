@@ -17,7 +17,7 @@
   let meta = null;            // from /run, when serving
   let composing = null;       // ephemeral: {who, secs, chars}
   let session = { running:false, stopping:false, where:"", picking:false, armed:false,
-                  paused:false, pausing:false, model:null };  // the process, not the story
+                  paused:false, pausing:false, model:null, interactive:true };  // the process, not the story
   let live = false;           // attached to a running engine, as opposed to reading a saved log
   let armed = 0;              // timer id: the stop button is waiting for its confirming second click
   let stories = null;         // story cards from /stories, while the session waits for a choice
@@ -655,15 +655,20 @@
   function renderSession() {
     // The idle screen belongs to the picker; three permanently-disabled run controls on it are
     // furniture, not information. The model dropdown stays visible, because idle is exactly when it
-    // picks the model the NEXT run will load with (§4.4).
+    // picks the model the NEXT run will load with (§4.4). `interactive` joins it — off before a run
+    // starts is the main use, since that is what keeps the NEXT run from ever waiting on you.
     for (const id of ["stop", "consultMe", "pause"]) $(id).hidden = !live || !session.running;
+    $("interactive").hidden = !live;
     const b = $("stop");
     b.disabled = !session.running || session.stopping;
     b.classList.toggle("armed", !!armed);
     b.textContent = session.stopping ? "stopping…" : armed ? "confirm stop" : "stop run";
     $("where").textContent = session.where ? "· " + session.where : "";
+    const iv = $("interactive");
+    iv.classList.toggle("off", !session.interactive);
+    iv.textContent = session.interactive ? "interactive" : "hands off";
     const cm = $("consultMe");
-    cm.disabled = !session.running || session.stopping || session.armed;
+    cm.disabled = !session.running || session.stopping || session.armed || !session.interactive;
     cm.textContent = session.armed ? "consulting…" : "consult me";
     const p = $("pause");
     p.disabled = !session.running || session.stopping;
@@ -726,6 +731,13 @@
     if (!session.running || session.stopping) return;
     await post(session.paused || session.pausing ? "/resume" : "/pause");
   };
+  $("interactive").onclick = async () => {
+    // Optimistic: the toggle has no gate to refuse it (unlike stop/pause/model), so the button
+    // reflects the click immediately rather than waiting on the round trip.
+    session.interactive = !session.interactive;
+    renderSession();
+    await post("/interactive", { on: session.interactive });
+  };
   $("modelSelect").onchange = async () => {
     const ms = $("modelSelect");
     const model = ms.value;                 // "" == "story default", clears the override
@@ -747,7 +759,7 @@
       const j = await r.json();
       if (j.run) { meta = j.run; renderHeader(); }
       session = { running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking, armed: !!j.armed,
-                  paused: !!j.paused, pausing: !!j.pausing, model: j.model || null };
+                  paused: !!j.paused, pausing: !!j.pausing, model: j.model || null, interactive: j.interactive !== false };
       loadModels();
       if (j.awaitingContinue) showPrompt(j.awaitingContinue);
       if (j.picking) loadStories();          // a reload while the session waits must not strand it
@@ -774,7 +786,7 @@
       if (f.t === "run_state") {
         const was = session.picking;
         session = { running: !!f.running, stopping: !!f.stopping, where: f.where || "", picking: !!f.picking, armed: !!f.armed,
-                    paused: !!f.paused, pausing: !!f.pausing, model: f.model || null };
+                    paused: !!f.paused, pausing: !!f.pausing, model: f.model || null, interactive: f.interactive !== false };
         // The budget question can be answered somewhere else — the console, a second tab, or a stop
         // that clears it. Every frame carries whether it is still outstanding, so a prompt nobody is
         // waiting on comes down instead of sitting there with buttons that only 400.

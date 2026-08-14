@@ -62,3 +62,78 @@ What the refusals were built from:
   does not move the scene.
 - **`wants` as free text** became "what they do next" in four of five consults, naming no shape at
   all — which is also why nobody spoke.
+
+## An inert cast ([LOOP.md](LOOP.md#an-inert-cast))
+
+**A cast member the writer is not steering toward can go a whole scene unconsulted, on stage the
+entire time.** Measured on `stories/doorway/out/2026-08-14T12-13-23-439Z/`: 11 drafts, 10 consults,
+**all 10 to RIVEN (the `pov:` character), zero to MERRITT**, who never leaves the corridor. Nothing in
+the loop noticed — there was no signal anywhere that one character had gone silent.
+
+Worse, `scene.md` from that run gives Merritt deliberate acts nobody asked for, a THE ONE RULE
+violation ([PROTOCOL.md](PROTOCOL.md)) sitting right next to the omission that caused it: *"Merritt
+slowly pushes themselves off the upturned crate, rising to their full height"*, *"Merritt has closed
+the distance between them and the open doorway"*.
+
+Two compounding causes, both addressed:
+
+- `ARCHITECT_FORMAT` used to say *"TWO is the sweet spot"* outright, and the worked example fed to
+  every interview is `stories/doorway` itself — a two-hander (SPEC-S-scaffold.md §7). Rewritten to
+  state the actual trade-off (a cast member costs consults out of the step budget) instead of a
+  target count.
+- `writerSystem`'s `Point of view: RIVEN` line names whose *perception* frames the scene, not whose
+  choices are the only ones worth asking about — but nothing stopped it reading as the latter.
+  `neglectedCast()` ([LOOP.md](LOOP.md#an-inert-cast)) is the notice; `"wants": "reaction"` is what a
+  writer that takes the notice actually sends.
+
+**The nudge works, and its first wording taught two lessons about how.** In
+`out/2026-08-14T12-51-10-134Z/` the same story went from 10/0 to **RIVEN 10, MERRITT 5**, with
+`llm/merritt.jsonl` existing for the first time, MERRITT consulted on steps 4/8/12/16 — the
+`NEGLECT_GAP` of 3 firing like clockwork. But:
+
+- **A nudge must name no sense.** The first wording asked what the neglected character could *see*.
+  MERRITT `lacks: sight`. The scene then said *"Merritt watches the receding figure"*, *"their gaze
+  fixed"*, five times over — precisely the failure `wrapWriter`'s `CANNOT:` list is supposed to
+  prevent. The list was being **rendered but never instructed**; `writerSystem` now states that a
+  CANNOT governs narration, not just answers.
+- **A nudge must name no `wants` shape.** Both halves of that wording were reaction-shaped, and all
+  **5 of 5** MERRITT consults came back `"wants": "reaction"` — no decision, no speech, not one line
+  of dialogue in 989 words. The scene's own question is *"Does Riven get through the door before
+  **Merritt decides** what to do about them?"*, so the one shape never asked for was the one that
+  could close it, and the run ended `done: false` over a 700-word target. Consulting a character is
+  not the same as letting them matter.
+
+## Nobody ever asks ([PROTOCOL.md](PROTOCOL.md#character-replies))
+
+**Zero `need` events across every retained run.** No character has ever asked the writer for a fact.
+The `llm/riven.jsonl` interaction log ([RUN-RECORD.md](RUN-RECORD.md)) shows why: every question the
+writer sent was a closed binary — *"Do you attempt to pick the lock with your tools, or do you speak
+first?"*, *"Do you push harder on the pick, risking a loud noise, or pause and assess what Merritt has
+done?"*. A fully-specified either/or leaves nothing to ask for.
+
+That is the Pacing section's own anti-stall rules working as designed —
+`DEGENERATE_QUESTIONS`/`badConsult.degenerate` and `WRITER_FORMAT`'s *"NAME THE FORK OR NAME THE
+COST"* all push the writer toward exactly this shape. **The rule that stops a scene stalling on a
+question with no stake is the same rule that leaves a character nothing to ask for**, and nothing
+before this had written that tension down. `CHARACTER_FORMAT` also framed asking as an exception
+("if you cannot answer without…") rather than a real choice, unlike `ARCHITECT_FORMAT`'s own
+propose-or-ask split, where the same model demonstrably does choose to ask. Rephrased to match —
+[PROTOCOL.md](PROTOCOL.md#character-replies). Whether that alone is enough against a fully-specified
+question is for a live run to show; the tension itself is structural and does not go away.
+
+**It was enough, and the tension is confirmed in the same breath.** The first run after the rewrite
+produced the first two `need` events on record — both from MERRITT, the blind character, and both
+spatial: *"How close is Riven standing to the service door?"*, *"Where is Riven standing relative to
+me?"*. Exactly the shape the design predicts: a character asks when the situation withholds something
+they genuinely cannot perceive for themselves. Note which character it was **not** — RIVEN, who can
+see, was handed 10 fully-specified binaries and asked nothing, all 10 times.
+
+## A character written out is still consultable ([DESIGN.md](DESIGN.md#presence-is-not-modelled))
+
+**There is no code path that stops the writer consulting a character it has already narrated leaving
+the scene.** Not yet observed in a retained run — none of the three stories currently sends anyone
+offstage — but confirmed by tracing every place the cast is referenced: `buildCharacterAgents()`
+builds the full cast once, `defOf()` in `writeScene()` accepts any cast name for the run's whole
+length, and `normalizeConsult` checks the *shape* of a request, never its subject. Left for
+[DESIGN.md](DESIGN.md#presence-is-not-modelled) rather than fixed here, because the honest fix needs
+new per-character state the loop does not carry yet, not a prompt tweak.

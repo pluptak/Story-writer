@@ -67,7 +67,7 @@ record of what happened, not of what a browser happened to be showing.
 | `{t:"composing", who, secs, chars}` | an agent is generating; drives the indicator |
 | `{t:"idle"}` | it stopped |
 | `{t:"continue_prompt", steps, budget, suggested}` | the step budget is spent (§4.1) |
-| `{t:"run_state", running, stopping, where, picking, armed, paused, pausing, model}` | what the **session** is doing (§4.2, §5); `armed` is the reader-consult flag (§4.3), `paused`/`pausing`/`model` the pause and override state (§4.4) |
+| `{t:"run_state", running, stopping, where, picking, armed, paused, pausing, model, interactive}` | what the **session** is doing (§4.2, §5); `armed` is the reader-consult flag (§4.3), `paused`/`pausing`/`model` the pause and override state (§4.4), `interactive` the hands-off toggle (§4.6) |
 | `{t:"run_reset"}` | a new run is starting in this process; drop what you are holding |
 
 `run_state` exists because *"is a scene being written right now"* is not answerable from the events:
@@ -91,7 +91,7 @@ run it was opened for.
 |---|---|
 | `GET /` | the viewer, `no-cache` |
 | `GET /events` | SSE. **Replays `liveHistory` first, then attaches** — a viewer opened halfway through sees the whole scene, not the rest of it — then one `run_state` for what is happening now |
-| `GET /run` | `{ run: {story, characters, target, question}, awaitingContinue, events, running, stopping, where, picking, armed, paused, pausing, model }` |
+| `GET /run` | `{ run: {story, characters, target, question}, awaitingContinue, events, running, stopping, where, picking, armed, paused, pausing, model, interactive }` |
 | `POST /continue` | `{steps}` — grants budget (§4.1); 400 when nothing is waiting |
 | `POST /stop` | end the current run (§4.2); 400 when none is in progress |
 | `POST /consult-me` | arm the reader-consult flag (§4.3); 400 when no run is in progress; a second arm before the first fires is a no-op |
@@ -100,6 +100,7 @@ run it was opened for.
 | `POST /pause` | request a pause at the run's next boundary (§4.4); 400 when none is in progress; a second request before the first takes effect is a no-op |
 | `POST /resume` | clear a pause, requested or in effect (§4.4); 400 when neither is true |
 | `POST /model` | `{model}` — set the model override; `""` clears it. Idle: applies to the next run. Paused: swaps every live agent immediately. Running-and-not-paused: 400 (§4.4) |
+| `POST /interactive` | `{on}` — the hands-off toggle (§4.6). Never refuses; switching off retracts a pending reader-consult arm |
 | `GET /stories` | every discovered story, pre-flighted, as picker cards (§5) |
 | `POST /select` | `{dir}` — choose the next story (§5); 400 when the session is not waiting, or the story was not discovered |
 | `GET /scaffold` | the open interview, or `{active:false}` (§5.1) |
@@ -125,6 +126,7 @@ stays readable instead of the server dying under it.
 
 When `max_steps` is spent without the scene finishing, `askMoreSteps` asks, in this order:
 
+0. **nobody, if `interactive` is off** (§4.6) — checked first, before either of the below
 1. **the viewer**, if any client is attached — `continue_prompt` frame, answered by `POST /continue`
 2. **the console**, on a TTY
 3. **nobody** — the run stops, which is honest rather than blocking forever
@@ -176,7 +178,9 @@ writer continues informed by whatever was sent, verbatim.
 
 Two edges, both covered by the loop rather than the viewer: a viewer that **disconnects between
 arming and firing** drops the arm silently (§3's principle), and a **stop while one is outstanding**
-resolves it with an empty answer the loop discards (§4.2).
+resolves it with an empty answer the loop discards (§4.2). A third, the same shape: **`interactive`
+switched off while armed** (§4.6) retracts the arm at the route and disables the button; the loop's
+own check at the top of the branch is what stops an arm that predates the toggle from firing anyway.
 
 ### 4.4 Pausing and changing the model
 
@@ -216,6 +220,28 @@ rather than as an answered question.
 
 Every refusal therefore carries a `reason` the page can show, and two of them need the page to roll
 back state it had already assumed — [VIEWER-UI.md](VIEWER-UI.md#control-states).
+
+### 4.6 Going hands-off
+
+A run started unattended, or one you no longer want to babysit, needs a way to guarantee it never
+parks waiting for a click that is not coming. The topbar's **interactive** button
+(`interactive` ↔ `hands off`) is that guarantee: `POST /interactive {on}` sets `LIVE.interactive`,
+carried on `run_state` and `GET /run`, defaulting to `true` so an unattended `--serve` behaves as it
+always has.
+
+Off disarms both of §4's blocking paths, checked ahead of everything else in each:
+
+- **The out-of-budget prompt** (§4.1) is never sent — `askMoreSteps` returns `0` before it would ask
+  the viewer or the console, so `max_steps` becomes a hard budget and the run ends the same honest
+  way it would with nobody attached at all.
+- **The reader consult** (§4.3) cannot arm — `POST /consult-me` is 400 while off — and an arm from
+  before the toggle flipped cannot fire, checked again at the top of the loop's next step.
+
+Unlike `pause` and `model`, this route never refuses: there is no run state it is unsafe to flip in.
+It is also visible **idle**, alongside the model dropdown, because setting it before a run starts —
+so the run that follows never blocks at all — is the ordinary use. Not carried into `resetLive()`:
+it is a session preference, not a fact about any one run, so a second story in the same session keeps
+whatever you last set it to.
 
 ---
 

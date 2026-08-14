@@ -44,6 +44,10 @@
   /* armed: the second click is the one that ends a scene, so it has to look different from the first */
   .btn.armed { color:var(--bad); border-color:var(--bad); }
   .btn.armed:hover { color:var(--bad); border-color:var(--bad); }
+  /* off: the interactive toggle in its "hands off" state — a standing condition, not a momentary one,
+     so it reads as amber rather than the alarm red `armed` uses. */
+  .btn.off { color:var(--warn); border-color:var(--warn); }
+  .btn.off:hover { color:var(--warn); border-color:var(--warn); }
 
   .srcbar { display:flex; align-items:center; gap:8px; padding:6px 20px; border-bottom:1px solid var(--line);
             background:var(--panel-2); font-family:var(--mono); font-size:11px; color:var(--muted); }

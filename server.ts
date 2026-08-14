@@ -118,6 +118,7 @@ export function startServer(port: number, host: ServerHost) {
         running: LIVE.running, stopping: RUN.stopped && LIVE.running, where: LIVE.where,
         picking: LIVE.awaitingPick, armed: LIVE.readerArmed, paused: LIVE.paused,
         pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
+        interactive: LIVE.interactive,
       });
 
     } else if (path === "/stories") {
@@ -163,6 +164,7 @@ export function startServer(port: number, host: ServerHost) {
     } else if (path === "/consult-me" && req.method === "POST") {
       // One armed request at a time; a second click before the first has fired changes nothing.
       if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return; }
+      if (!LIVE.interactive) { json(res, 400, { ok: false, reason: "interactive is off" }); return; }
       if (LIVE.readerArmed || LIVE.readerResolve) { json(res, 200, { ok: true, already: true }); return; }
       LIVE.readerArmed = true;
       sseWrite(runState());
@@ -214,6 +216,19 @@ export function startServer(port: number, host: ServerHost) {
           for (const a of LIVE.agents.values()) a.model = model;
           LIVE.log?.({ t: "model_changed", model });
         }
+        sseWrite(runState());
+        json(res, 200, { ok: true });
+      });
+
+    } else if (path === "/interactive" && req.method === "POST") {
+      let body = ""; req.on("data", c => (body += c));
+      req.on("end", () => {
+        let o: any = {}; try { o = JSON.parse(body || "{}"); } catch {}
+        LIVE.interactive = !!o.on;
+        // A toggle to "off" must retract an arm that predates it — the loop's own guard (LOOP.md,
+        // story-writer.ts) covers the arm firing again, but a viewer looking at `session.armed` should
+        // not go on showing one that can no longer resolve.
+        if (!LIVE.interactive && LIVE.readerArmed) LIVE.readerArmed = false;
         sseWrite(runState());
         json(res, 200, { ok: true });
       });

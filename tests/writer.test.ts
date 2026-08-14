@@ -28,8 +28,10 @@ import {
   normalizeSpec, loadDefaults, applyEdits, directEdit, renderStory, slugify,
   RUN, stopRun, armRun, StoppedError, complete, selectableStory, ScaffoldSession,
   normalizeConsult, canonWants, CONSULT_WANTS, runDirs, retainedRuns, llmFilenameFor, llmLogEntry,
+  neglectedCast,
   type Skill, type ConsultEvent, type ConsultRequest, type Defaults,
 } from "../story-writer.ts";
+import { LIVE, runState, resetLive } from "../live.ts";
 
 // Several loaders warn by design; keep the test output readable.
 async function quiet<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -334,6 +336,27 @@ describe("stopRun", () => {
   });
 });
 
+// LIVE.interactive is a session preference (GUI-SPEC.md §4.6), not run state — it must survive what
+// run state does not.
+describe("LIVE.interactive", () => {
+  it("defaults on and rides runState()", () => {
+    assert.equal(LIVE.interactive, true);
+    assert.equal(runState().interactive, true);
+    LIVE.interactive = false;
+    assert.equal(runState().interactive, false);
+    LIVE.interactive = true;
+  });
+
+  it("resetLive() leaves it untouched — a second story keeps what you set it to", () => {
+    LIVE.interactive = false;
+    resetLive();
+    assert.equal(LIVE.interactive, false, "a session preference, not a fact about one run");
+    LIVE.interactive = true;
+    resetLive();
+    assert.equal(LIVE.interactive, true);
+  });
+});
+
 describe("consult", () => {
   it("answers straight through and reports the skills used", async () => {
     const { reply, agent } = await run([`{"speech":"Early enough.","skills_used":["speech"]}`]);
@@ -432,6 +455,30 @@ describe("consult", () => {
 // The gate in front of `consult()`. A malformed request costs a character call, up to
 // `clarifications` more and a judge call, and buys filler — so it is refused before anyone is asked.
 // Every rejected shape here was logged verbatim in a real run under `stories/*/out/`.
+// The doorway story's most complete run put 10 consults to the POV character and 0 to the other, who
+// stood through the whole scene (GOTCHAS.md). This is the loop's half of noticing that.
+describe("neglectedCast", () => {
+  it("names nobody before the cast has had a fair chance", () => {
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], new Map(), 0, 3), []);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], new Map(), 2, 3), []);
+  });
+
+  it("names a cast member never consulted, once the gap has passed", () => {
+    const lastAsked = new Map([["riven", 1]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 3, 3), ["MERRITT"]);
+  });
+
+  it("stops naming someone once they are asked again, and resumes after another full gap", () => {
+    const lastAsked = new Map([["riven", 4], ["merritt", 6]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 6, 3), []);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 8, 3), ["RIVEN"]);
+  });
+
+  it("is case-insensitive against how lastAsked is keyed", () => {
+    assert.deepEqual(neglectedCast(["Merritt"], new Map([["merritt", 3]]), 6, 3), ["Merritt"]);
+  });
+});
+
 describe("canonWants", () => {
   it("takes the four exactly", () => {
     for (const w of CONSULT_WANTS) assert.equal(canonWants(w), w);

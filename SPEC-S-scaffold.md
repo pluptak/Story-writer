@@ -272,4 +272,12 @@ All landed, in this order:
 - **The architect bleeding structured fields into persona prose** (`LACKS: None.` written inside a
   persona while the engine hands that character a skill list with something missing — a contradiction
   inside its own prompt). Same treatment: forbidden in the prompt, reported by `normalizeSpec`.
+- **A settled two-character cast.** `ARCHITECT_FORMAT` used to say outright that two was the sweet
+  spot, and the worked example fed to every interview is `stories/doorway` — a two-hander — so the
+  bias was compounded rather than merely present. Measured against the retained runs of that same
+  story: of 10 consults across its most complete run, all 10 went to the POV character and none to
+  the other, who stood through the whole scene and still had deliberate acts narrated for them
+  ([GOTCHAS.md](GOTCHAS.md)). The line was rewritten to state the actual trade-off — a cast member
+  costs consults out of the step budget, so add one only for their own stake — rather than a target
+  count, and to name `"reaction"` as what makes a present-but-quiet character worth the slot.
 - Each refine round is one model call, as is the initial proposal. Negligible next to a run.

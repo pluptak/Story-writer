@@ -54,10 +54,37 @@ deterministic gate would need a rule layer with world-state predicates, which th
 
 ---
 
+## Presence is not modelled
+
+**The engine has no concept of who is on stage.** Nothing in any of the five modules tracks it, and
+the gap is not merely theoretical — a writer that narrates a character leaving is still free to
+consult them afterward, and the engine has no way to notice or refuse it. Traced through the run:
+
+- `buildCharacterAgents()` builds the full cast once, at scene start; `writerSystem`'s cast block
+  ([prompts.ts](prompts.ts)) is fixed for the whole run — nobody ever leaves it.
+- `defOf(who)` in `writeScene()` accepts any cast name for the run's entire length. `normalizeConsult`
+  validates the *shape* of a request (a real situation, a real question, a real `wants`) but has
+  nothing to say about whether its *subject* is still there to ask.
+- `wrapCharacter(def, sc.scene.place)` bakes `place` into the character's system prompt once, at
+  build time — a character written out of the corridor is still told `WHERE YOU ARE: the corridor`
+  for the rest of the run.
+- The persistent agent's history carries no marker for an exit either, so the next `askBlock` a
+  departed character receives lands exactly as if nothing had happened.
+
+**Agreed shape for when this is built**: the writer declares an exit in its `[WRITE]` reply, the
+engine folds it into per-character state the loop already threads through (`writeScene()`'s scope,
+alongside `lastAsked` — [LOOP.md](LOOP.md#an-inert-cast)), and `normalizeConsult` refuses a consult
+to an absent character with a `why` handed back to the writer — the same shape `bad_consult` already
+has, not a new subsystem. Re-entry, and what a departed character's own agent should be told, are
+open questions for that design, not this note.
+
+---
+
 ## Deliberately not built
 
 Multi-scene stories and outlining · a declarative rule layer gating skills on world state and
-possessions · any dependency on the roleplay engine this was forked from.
+possessions · any dependency on the roleplay engine this was forked from · presence (who is on stage
+right now), traced above under [Presence is not modelled](#presence-is-not-modelled).
 
 Tests cover code-enforced invariants only ([CLI.md](CLI.md) lists them). Whether the writer asks
 *good* questions, whether the architect designs an interesting scene, and whether the prose is any

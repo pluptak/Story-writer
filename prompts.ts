@@ -79,7 +79,11 @@ scene.question -- the dramatic question the scene has to answer, phrased so it C
 scene.pov    -- whose perception we are inside. One of the character names.
 scene.length -- words. 600-900 unless the idea demands otherwise.
 writer_style -- house style: person, tense, what to do with dialogue, what to leave out.
-characters   -- TWO is the sweet spot; four is the maximum. For each:
+characters   -- Every character costs consults out of a fixed step budget, so add a third or fourth
+                only when they have their own stake in what happens -- not because a scene feels thin
+                with two. Four is the maximum. A character who is present but not the one acting is
+                still worth the cast slot: the writer can ask what they see, or what it lands on them
+                as ("wants": "reaction"), without ever needing them to speak or move. For each:
   name       -- one word, capitalised, how the writer will refer to them.
   persona    -- who they are: history in a line or two, then VOICE (how they talk), then how they
                 are UNDER PRESSURE. Concrete and particular. Around 150 words. Write it addressed
@@ -163,27 +167,33 @@ An author is writing a scene you are in. They will describe your situation and a
 You answer as yourself, in the moment -- never about yourself from outside, never as a suggestion
 for what the scene could do.
 
-You may reply in one of two ways.
+FIRST DECIDE: ask, or answer?
 
-1. If you cannot answer without knowing something about your situation that they have not told you,
-   ask for it:
+  Read the situation and the question. Is there a fact of YOUR SITUATION -- something you would need
+  to see, hear, or already know in order to answer honestly -- that the author simply has not told
+  you? Then ASK INSTEAD OF ANSWERING:
 
-   {"need": "Can I reach the door handle from where I am?"}
+  {"need": "Can I reach the door handle from where I am?"}
 
-   ONE question, the smallest one that unblocks you, about a fact of your situation only. Do not ask
-   what you should do, what would be interesting, or what anyone else is thinking or feeling.
+  ONE question, the smallest one that unblocks you, about a fact of your situation only. Do not ask
+  what you should do, what would be interesting, or what anyone else is thinking or feeling -- those
+  are not facts you are missing, they are the answer you are being asked for.
 
-2. Otherwise, answer:
+  This is not a fallback for when you are stuck; it is the honest first move whenever the situation
+  as given genuinely leaves you guessing. Asking is not a failure to answer -- it is how you keep the
+  answer from being a guess.
 
-   {"thought": "...", "speech": "...", "action": "...", "skills_used": ["..."], "note": ""}
+  If you already have everything you need, do NOT ask. Answer, and commit:
 
-   thought      -- what actually goes through your head, in TWO SENTENCES AT MOST. Not a summary of
+  {"thought": "...", "speech": "...", "action": "...", "skills_used": ["..."], "note": ""}
+
+  thought      -- what actually goes through your head, in TWO SENTENCES AT MOST. Not a summary of
                    the situation, not your reasoning about what to do: the thought itself.
-   speech       -- the words you say aloud and nothing else, with no quotation marks around them,
+  speech       -- the words you say aloud and nothing else, with no quotation marks around them,
                    or "" if you say nothing.
-   action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
-   skills_used  -- every skill from YOUR SKILLS below that this answer uses, named exactly as listed.
-   note         -- "" normally. Use it to tell the author something out of character: an assumption
+  action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
+  skills_used  -- every skill from YOUR SKILLS below that this answer uses, named exactly as listed.
+  note         -- "" normally. Use it to tell the author something out of character: an assumption
                    you had to make, or something you would need and do not have.
 
 WHAT YOU KNOW: your own persona, your own skills, what you knew coming into this scene, the
@@ -222,7 +232,8 @@ export function characterSystem(p: {
 
 export const askBlock = (req: { situation: string; question: string; wants: string }) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}\nQuestion: ${req.question}`
-  + (req.wants ? `\nWhat they need from you: ${req.wants}` : "");
+  + (req.wants ? `\nWhat they need from you: ${req.wants}` : "")
+  + `\n\nMissing a fact of your situation to answer that honestly? Ask for it instead.`;
 
 export const authorAnswers = (answer: string) => `[THE AUTHOR ANSWERS] ${answer}`;
 
@@ -309,7 +320,10 @@ WHEN ASKED TO WRITE -- [WRITE]:
                     action    -- what they physically do
                     decision  -- which way they go, when there are two ways
                     reaction  -- what this lands on them as
-                  If you never ask for "speech", nobody in your scene will ever speak.
+                  If you never ask for "speech", nobody in your scene will ever speak. "reaction" is
+                  how someone who is present but not the one acting still gets to be a person rather
+                  than furniture: ask what they notice, what it costs them to hold still, what they
+                  make of it -- without needing them to speak or move to earn the question.
   scene_done -- true only when the scene's question has been answered and the last line is written.
 
   Consult when a choice is being made. Do not consult for scenery, for a gesture that carries
@@ -412,6 +426,10 @@ export function writerSystem(p: {
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
   return `${WRITER_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
     + `THE CAST:\n${cast}\n\n`
+    + `A CANNOT is absolute, and it governs your narration as much as their answers. Do not write `
+    + `someone perceiving through a sense they do not have — no watching, no glancing, no gaze for `
+    + `someone who cannot see — and do not put them in a situation phrased around one. Render them `
+    + `through what they DO have.\n\n`
     + `You have not been given their personalities, their histories, or what they want. That is `
     + `deliberate. You find out who they are the same way anyone does: by asking them and watching `
     + `what they do.${style}`;
@@ -421,13 +439,25 @@ export function writerSystem(p: {
 
 // Why the stop-before-the-choice reminder rides on every [WRITE]: LOOP.md, Pacing.
 export const writeInstruction = (p: {
-  words: number; target: number; maxProseWords: number; overran: number;
+  words: number; target: number; maxProseWords: number; overran: number; neglected: string[];
 }) =>
   `[WRITE] ${p.words} words so far, aiming at about ${p.target}.`
   + ` At most ${p.maxProseWords} words in this piece.`
   + (p.overran ? ` Your last piece ran to ${p.overran} words — far past that. Keep this one short.` : "")
   + ` Write up to the next choice and stop while the pressure is still live, then ask for it.`
-  + (p.words >= p.target ? ` You are at length — bring the scene to its end.` : "");
+  + (p.words >= p.target ? ` You are at length — bring the scene to its end.` : "")
+  // Not an order — a scene the writer wrote them out of is one this cannot see (a fact this engine
+  // does not track yet). Noticing, not forcing: the same shape as the overrun nudge above.
+  //
+  // Deliberately names NO sense and NO `wants` shape. The first wording asked what they "see", and
+  // the run that followed put every single one of those consults to a character who lacks sight, all
+  // five as "reaction" — so a scene whose question turned on that character's DECISION never once
+  // asked them for one, and could not close. GOTCHAS.md.
+  + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
+    + `gone unconsulted for a while now — if they are still in the scene, ask them something, and ask `
+    + `for whatever this moment actually turns on for them: what they decide, what they say, what they `
+    + `do, or what it lands on them as. If the scene's question turns on their choice, they have to be `
+    + `asked for it before the scene can end.` : "");
 
 export const askReader = (words: number) =>
   `[ASK READER] ${words} words so far. The reader wants to choose the `
