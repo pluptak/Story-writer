@@ -5,8 +5,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { C } from "./ansi.ts";
-import { LIVE, stopRun, sseWrite, runState } from "./live.ts";
+import { C } from "../ansi.ts";
+import { LIVE, stopRun, sseWrite, runState } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 

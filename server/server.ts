@@ -6,12 +6,14 @@ import { createServer, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 
-import { C } from "./ansi.ts";
-import { LIVE, RUN, sseClients, liveHistory, runState } from "./live.ts";
+import { C } from "../ansi.ts";
+import { LIVE, RUN, sseClients, liveHistory, runState } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
 import { handleRunControl } from "./run-control-routes.ts";
 import { handleScaffoldRoutes } from "./scaffold-routes.ts";
-import type { ScaffoldSession, StorySpec, StoryCard } from "./story-writer.ts";
+import type { ScaffoldSession } from "../engine/architect.ts";
+import type { StorySpec } from "../engine/story-spec.ts";
+import type { StoryCard } from "../engine/preflight.ts";
 
 export interface ServerHost {
   storyCards(): Promise<StoryCard[]>;

@@ -10,5 +10,11 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["story-writer.ts", "prompts.ts", "live.ts", "server.ts", "ansi.ts"]
+  "include": [
+    "story-writer.ts", "prompts.ts", "live.ts", "ansi.ts",
+    "engine/engine-state.ts", "engine/config-util.ts", "engine/json-extract.ts", "engine/skills.ts",
+    "engine/llm-client.ts", "engine/agent.ts", "engine/story-format.ts", "engine/story-spec.ts",
+    "engine/preflight.ts", "engine/consult.ts", "engine/architect.ts", "engine/scene-loop.ts",
+    "server/server.ts", "server/run-control-routes.ts", "server/scaffold-routes.ts", "server/http-util.ts"
+  ]
 }

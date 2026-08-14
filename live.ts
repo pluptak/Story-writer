@@ -3,7 +3,8 @@
  * that fans a run out to attached viewers.
  */
 
-import type { Agent, RunEvent } from "./story-writer.ts";
+import type { Agent } from "./engine/agent.ts";
+import type { RunEvent } from "./engine/scene-loop.ts";
 
 // -- STOPPING A RUN --------------------------------------------------------.
 export class StoppedError extends Error {

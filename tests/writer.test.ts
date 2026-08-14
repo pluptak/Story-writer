@@ -9,16 +9,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  parseStoryMd, splitMeaning, resolveSkills, SKILL_CATALOG,
-  num, bool, enumOf, extractJson, balancedObjectEnd, salvageProse, topLevelObjects,
-  loadStory, discoverStories, chooseStory, NEW_STORY, consult, wrapCharacter, wrapWriter, Agent,
-  normalizeSpec, loadDefaults, applyEdits, directEdit, renderStory, slugify,
-  RUN, stopRun, armRun, StoppedError, complete, selectableStory, ScaffoldSession,
-  normalizeConsult, canonWants, CONSULT_WANTS, runDirs, retainedRuns, llmFilenameFor, llmLogEntry,
-  neglectedCast,
-  type Skill, type ConsultEvent, type ConsultRequest, type Defaults,
-} from "../story-writer.ts";
-import { LIVE, runState, resetLive } from "../live.ts";
+  parseStoryMd, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults,
+  type Defaults,
+} from "../engine/story-format.ts";
+import { splitMeaning, resolveSkills, SKILL_CATALOG, type Skill } from "../engine/skills.ts";
+import { num, bool, enumOf, slugify } from "../engine/config-util.ts";
+import { extractJson, balancedObjectEnd, salvageProse, topLevelObjects } from "../engine/json-extract.ts";
+import {
+  consult, normalizeConsult, canonWants, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
+} from "../engine/consult.ts";
+import { wrapCharacter, wrapWriter, neglectedCast } from "../engine/scene-loop.ts";
+import { Agent, llmFilenameFor, llmLogEntry } from "../engine/agent.ts";
+import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
+import { complete } from "../engine/llm-client.ts";
+import { ScaffoldSession } from "../engine/architect.ts";
+import { runDirs, retainedRuns } from "../engine/preflight.ts";
+import { LIVE, runState, resetLive, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 
 // Several loaders warn by design; keep the test output readable.
 async function quiet<T>(fn: () => Promise<T> | T): Promise<T> {

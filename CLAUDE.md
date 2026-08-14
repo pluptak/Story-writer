@@ -58,20 +58,42 @@ Full flag reference in [CLI.md](CLI.md).
 
 ## Architecture
 
-Dependency arrows point one way only — `story-writer.ts` → `server.ts` → {`run-control-routes.ts`,
-`scaffold-routes.ts`} → {`http-util.ts`, `live.ts`} → (nothing). Nothing imports `story-writer.ts` at
-run time; where a module needs one of its types it uses `import type`, which is erased — that is also
-how the two route modules take a `ServerHost` from `server.ts` without creating a runtime cycle back
-into it. **There are no import cycles here. Keep it that way.**
+The engine (everything `story-writer.ts` used to hold in one file) lives under [engine/](engine/),
+split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts` and `skills.ts` have no
+engine dependencies; `llm-client.ts`, `agent.ts`, `story-format.ts` and `story-spec.ts` build on
+those; `preflight.ts`, `consult.ts`, `architect.ts` and `scene-loop.ts` build on those in turn;
+`story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
+the `HOST` object. Separately, `story-writer.ts` → [server/server.ts](server/server.ts) →
+{`run-control-routes.ts`, `scaffold-routes.ts`} → `http-util.ts` → (nothing), all under
+[server/](server/) — nothing in that chain imports `story-writer.ts` or any `engine/` module at run
+time. `prompts.ts`, `ansi.ts` and `live.ts` stay at the repo root because both chains import them;
+where `live.ts` needs an engine type (`Agent`, `RunEvent`) it reaches into `engine/agent.ts` /
+`engine/scene-loop.ts` with `import type`, which is erased and creates no runtime cycle, while
+`engine/agent.ts`, `engine/llm-client.ts` and `engine/scene-loop.ts` import `live.ts`'s runtime
+values (`RUN`, `sseWrite`, ...) the ordinary way. **There are no import cycles here. Keep it that
+way.**
 
 | file | what is in it |
 | --- | --- |
-| [story-writer.ts](story-writer.ts) | the engine: parsing, agents, the consult, the scene loop, the CLI |
+| [story-writer.ts](story-writer.ts) | the composition root: CLI flags, the story picker, the scaffold console UI, `runAndSave`, the `HOST` object handed to `server/server.ts` |
+| [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
+| [engine/config-util.ts](engine/config-util.ts) | `story.md` config-value parsing (`num`/`bool`/`enumOf`) and `slugify` |
+| [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
+| [engine/skills.ts](engine/skills.ts) | the general skill catalog and a story's `skills:`/`lacks:` overrides |
+| [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |
+| [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
+| [engine/story-format.ts](engine/story-format.ts) | parsing `story.md`, loading a `StoryConfig`, discovering stories on disk |
+| [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and its renderings |
+| [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
+| [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
+| [engine/architect.ts](engine/architect.ts) | building the architect agent and running the interactive story-building conversation |
+| [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
 | [prompts.ts](prompts.ts) | every word said to a model |
-| [server.ts](server.ts) | the `--serve` viewer's HTTP surface: static files, SSE, and dispatch to the route modules |
-| [run-control-routes.ts](run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
-| [scaffold-routes.ts](scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
-| [http-util.ts](http-util.ts) | the `json()` response helper and `readJsonBody()`, shared by server.ts and the route modules |
+| [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: static files (from `server/gui/`), SSE, and dispatch to the route modules |
+| [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
+| [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
+| [server/http-util.ts](server/http-util.ts) | the `json()` response helper and `readJsonBody()`, shared by server.ts and the route modules |
+| [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, `viewer.js` |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
 | [ansi.ts](ansi.ts) | terminal colours |
 
@@ -87,15 +109,17 @@ The one invariant to hold while editing the engine: **`consult()` never touches 
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean
 retry.
 
-**`server.ts` and the route modules never import the engine.** Everything a route needs arrives as a
-`ServerHost` object built in `story-writer.ts` (`HOST`). Adding a route that needs something new means
-adding a host method, not an import.
+**`server/server.ts` and the route modules never import `engine/`.** Everything a route needs arrives
+as a `ServerHost` object built in `story-writer.ts` (`HOST`). Adding a route that needs something new
+means adding a host method, not an import.
 
 **`live.ts` exists because the two halves genuinely write the same variables** — `/pause` sets
 `pausing`, the loop reads it at its next boundary; `writeScene()` sets `writer`/`agents` and `/model`
 reaches through them to swap a model mid-run. ESM cannot share a writable `let` across modules, so
-they are fields on one exported `LIVE` object. `RUN`/`stopRun`/`armRun`/`StoppedError` live there too
-and are re-exported from `story-writer.ts` for the tests.
+they are fields on one exported `LIVE` object. `RUN`/`stopRun`/`armRun`/`StoppedError` live there too.
+`engine-state.ts` follows the same pattern for the engine's own run knobs (stream/debug/token-cap, the
+LLM log handles) — kept separate from `LIVE` because those are engine-internal, not loop↔server shared
+state.
 
 **Every word said to a model lives in [prompts.ts](prompts.ts), and nothing else does.** The test is
 whether a model ever sees the string; console output, log lines and warnings are not prompts and stay

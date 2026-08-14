@@ -4,10 +4,10 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE, sseWrite, setWhere } from "./live.ts";
+import { LIVE, sseWrite, setWhere } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
-import type { ScaffoldSession, ScaffoldRound, ScaffoldAccept } from "./story-writer.ts";
+import type { ScaffoldSession, ScaffoldRound, ScaffoldAccept } from "../engine/architect.ts";
 
 let SCAFFOLD: ScaffoldSession | null = null;
 let scaffoldBusy = false;                  // one architect at a time
