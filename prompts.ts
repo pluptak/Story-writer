@@ -209,8 +209,6 @@ Answer at the length the moment deserves. One breath is a complete answer.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
-/** Deliberately NOT the premise: a character that has read the shape of the scene stops being
- *  independent evidence about itself. `goal` lives here alone for the same reason. */
 export function characterSystem(p: {
   persona: string;
   place: string;
@@ -257,7 +255,6 @@ export const clarificationTrail = (cs: { question: string; answer: string }[]) =
   cs.map(x => `\n[YOU ASKED] ${x.question}\n[THEY ANSWERED] ${x.answer}`).join("");
 
 // -- WHY A CONSULT WAS REFUSED ---------------------------------------------
-// The console prints the first sentence only, so the first sentence has to carry the complaint.
 
 export const badConsult = {
   emptySituation: (character: string) =>
@@ -403,9 +400,6 @@ WHEN YOU ARE SHOWN AN ANSWER -- [<NAME> ANSWERED]:
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
-/** The cast is given as names and CAPABILITIES only, never personas: a writer holding everyone's
- *  interiority writes them from the inside and stops asking. Capabilities it does need, so that it
- *  never writes a blind man watching someone. */
 export function writerSystem(p: {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
@@ -437,7 +431,6 @@ export function writerSystem(p: {
 
 // -- WHAT THE WRITER IS SENT, TURN BY TURN ---------------------------------
 
-// Why the stop-before-the-choice reminder rides on every [WRITE]: LOOP.md, Pacing.
 export const writeInstruction = (p: {
   words: number; target: number; maxProseWords: number; overran: number; neglected: string[];
 }) =>
@@ -446,13 +439,6 @@ export const writeInstruction = (p: {
   + (p.overran ? ` Your last piece ran to ${p.overran} words — far past that. Keep this one short.` : "")
   + ` Write up to the next choice and stop while the pressure is still live, then ask for it.`
   + (p.words >= p.target ? ` You are at length — bring the scene to its end.` : "")
-  // Not an order — a scene the writer wrote them out of is one this cannot see (a fact this engine
-  // does not track yet). Noticing, not forcing: the same shape as the overrun nudge above.
-  //
-  // Deliberately names NO sense and NO `wants` shape. The first wording asked what they "see", and
-  // the run that followed put every single one of those consults to a character who lacks sight, all
-  // five as "reaction" — so a scene whose question turned on that character's DECISION never once
-  // asked them for one, and could not close. GOTCHAS.md.
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
     + `gone unconsulted for a while now — if they are still in the scene, ask them something, and ask `
     + `for whatever this moment actually turns on for them: what they decide, what they say, what they `

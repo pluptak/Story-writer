@@ -1,18 +1,5 @@
 /**
  * Deterministic suite — `npm test` (node --test via tsx). No model calls, ever.
- *
- * Scope: the invariants CODE enforces. Story parsing, skill resolution, config validation, JSON
- * extraction, the consult protocol's control flow (clarification budget, the forced answer, the
- * repair pass, skill flagging), the stop path, and the scaffold interview.
- *
- * The consult and scaffold tests work because `Agent.generate` is an ordinary method on an exported
- * class: a subclass with scripted replies makes the whole protocol testable without a model. What is
- * NOT in here is whether the writer asks good questions or the prose is any good — that is
- * judgement, not an invariant, and it belongs in a live run.
- *
- * Two deliberate exceptions to "nothing but pure functions": `ScaffoldSession.accept` writes into a
- * temp directory (cleaned up), and the pre-flight it then runs makes a localhost model-list request
- * that fails fast when nothing is listening and is never fatal either way.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -73,8 +60,6 @@ retries: 2
 
   it("collects premise prose, section keys and character sub-blocks", () => {
     const p = parseStoryMd(SRC);
-    // Paragraph breaks in the premise are KEPT — it is prose the writer reads, and it is what lets
-    // a scaffolded story round-trip through story.md unchanged.
     assert.equal(p.premise, "First line.\n\nSecond line.");
     assert.equal(parseStoryMd(`## Premise\n\n\nA.\n\n\n\nB.\n\n\n`).premise, "A.\n\nB.",
                  "runs of blank lines collapse to one, and the ends are trimmed");
@@ -161,9 +146,6 @@ function quietSync<T>(fn: () => T): T {
 }
 
 // -- CONFIG VALIDATION -----------------------------------------------------
-// Policy: reject the whole value and use the documented default; warn, never throw. The fixture's
-// numeric prefixes differ from the defaults on purpose, so half-coercion and correct rejection
-// cannot look alike.
 describe("config validation", () => {
   it("num rejects a value that is not wholly an integer", () => {
     const kv = { "config.a": "16garbage", "config.b": "10.9", "config.c": "0", "config.d": "12" };
@@ -230,8 +212,6 @@ describe("extractJson", () => {
   });
 });
 
-// The streaming transport keeps a reply that broke off mid-stream if it had already finished an
-// object. That decision is this function, and it must NOT accept a half-written reply.
 describe("topLevelObjects", () => {
   it("finds each complete object and skips nested ones", () => {
     const found = topLevelObjects(`{"a":1} noise {"b":{"c":2}}`);
@@ -251,8 +231,6 @@ describe("topLevelObjects", () => {
   });
 });
 
-// Regression: a draft cut off at the token cap parses to nothing, and the written words are the
-// product. Recover them rather than losing the whole draft to a missing closing brace.
 describe("salvageProse", () => {
   const truncated = `{"prose": "The wall bites cold.\\n\\nShe shifts her weight. The package is heavier than it looks, wrapped in brown paper,`;
 
@@ -272,7 +250,6 @@ describe("salvageProse", () => {
 });
 
 // -- CONSULT PROTOCOL ------------------------------------------------------
-// A scripted agent: same class, replies from a list instead of a model.
 class ScriptedAgent extends Agent {
   calls: number = 0;
   constructor(public script: string[]) { super("TESTER", "none", "system", 0); }
@@ -295,9 +272,6 @@ const run = (script: string[], clarifications = 2, clarify = async () => "two pa
 };
 
 // -- STOPPING A RUN --------------------------------------------------------
-// The interesting half of "stop" is what it refuses to do: no retry, no salvage, no swallowing it
-// into a repair pass. All three are reachable without a model, because a stop is decided before the
-// transport ever calls out.
 describe("stopRun", () => {
   it("is idempotent, and armRun makes the next run stoppable again", () => {
     armRun();
@@ -313,8 +287,6 @@ describe("stopRun", () => {
   });
 
   it("refuses to start a model call at all, rather than starting one and retrying it", async () => {
-    // No network in this suite: reaching fetch would fail differently (and slowly), so the error
-    // type IS the assertion that the transport short-circuited.
     stopRun();
     await assert.rejects(() => complete("none", [{ role: "user", content: "x" }], 0),
                          (e: Error) => e instanceof StoppedError);
@@ -322,8 +294,6 @@ describe("stopRun", () => {
   });
 
   it("propagates out of a consult instead of being repaired or flagged", async () => {
-    // A character call that dies on a stop must not look like "returned nothing usable" — that would
-    // spend a repair pass, and then write a stall into the log as if the character had misbehaved.
     class Stopping extends Agent {
       constructor() { super("TESTER", "none", "system", 0); }
       async generate(): Promise<string> { throw new StoppedError(); }
@@ -336,8 +306,6 @@ describe("stopRun", () => {
   });
 });
 
-// LIVE.interactive is a session preference (GUI-SPEC.md §4.6), not run state — it must survive what
-// run state does not.
 describe("LIVE.interactive", () => {
   it("defaults on and rides runState()", () => {
     assert.equal(LIVE.interactive, true);
@@ -420,8 +388,6 @@ describe("consult", () => {
     assert.ok(events.some(e => e.t === "repair" && e.why.includes("nothing usable")));
   });
 
-  // Regression: every branch out of `need` must consume a budget. A character that only ever asks
-  // used to loop forever at one model call per turn — a slow infinite loop that reads as a slow model.
   it("gives up on a character that will not stop asking, in a bounded number of calls", async () => {
     const forever = Array(50).fill(`{"need":"but where exactly?"}`);
     const { reply, agent } = await run(forever, 2);
@@ -452,11 +418,6 @@ describe("consult", () => {
 });
 
 // -- WHAT A CONSULT MUST CONTAIN ------------------------------------------
-// The gate in front of `consult()`. A malformed request costs a character call, up to
-// `clarifications` more and a judge call, and buys filler — so it is refused before anyone is asked.
-// Every rejected shape here was logged verbatim in a real run under `stories/*/out/`.
-// The doorway story's most complete run put 10 consults to the POV character and 0 to the other, who
-// stood through the whole scene (GOTCHAS.md). This is the loop's half of noticing that.
 describe("neglectedCast", () => {
   it("names nobody before the cast has had a fair chance", () => {
     assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], new Map(), 0, 3), []);
@@ -485,8 +446,6 @@ describe("canonWants", () => {
     assert.equal(canonWants("  Speech "), "speech");
   });
 
-  // Near-miss recovery, not a paraphrase engine: the writer is told to send one of the four words,
-  // and these are the shapes it sends instead when it does not.
   it("canonicalizes what a writer actually writes", () => {
     assert.equal(canonWants("what they do next"), "action");        // 4 of 5 logged consults
     assert.equal(canonWants("what they say"), "speech");
@@ -515,8 +474,6 @@ describe("normalizeConsult", () => {
     assert.equal(r.req.character, "RIVEN");
   });
 
-  // The observed bug: stories/glass-womb sent a consult with a zero-character situation. The
-  // character — whose only world IS the situation — answered with filler, and the exchange was spent.
   it("refuses an empty situation", () => {
     const r = normalizeConsult({ ...good, situation: "" });
     assert.ok(!r.ok);
@@ -533,8 +490,6 @@ describe("normalizeConsult", () => {
     assert.ok(!normalizeConsult({ ...good, question: "" }).ok);
   });
 
-  // "What do you do?" names no fork and no stake, so the safest answer is always correct — and the
-  // safest answer is the one that does not move the scene. All four were logged.
   it("refuses the questions that ask for nothing", () => {
     for (const q of ["What do you do?", "What does Elara do?", "What does Riven do next with the pick?",
                      "What happens next?", "Your move?"]) {
@@ -561,8 +516,6 @@ describe("normalizeConsult", () => {
   });
 
   it("says what is wrong in terms the writer can act on", () => {
-    // The rejection goes straight back into the writer's history. One it cannot act on is one it
-    // repeats, and three sterile steps in a row end the scene.
     for (const bad of [{ situation: "" }, { situation: "Dark." }, { question: "What do you do?" }, { wants: "" }]) {
       const r = normalizeConsult({ ...good, ...bad });
       assert.ok(!r.ok);
@@ -617,8 +570,6 @@ describe("normalizeSpec", () => {
     assert.match(dup.problems.join(" "), /two characters called/i);
   });
 
-  // Observed: the architect proposed two keepers who could both do everything, which reads fine and
-  // gives the consult almost nothing to bite on.
   it("notices a cast where nobody lacks anything", () => {
     const flat = { ...base, scene: { ...base.scene, pov: "" },
       characters: [{ ...base.characters[0], name: "A", lacks: [] }, { ...base.characters[0], name: "B", lacks: [] }] };
@@ -629,8 +580,6 @@ describe("normalizeSpec", () => {
     assert.ok(!normalizeSpec(base).problems.some(p => /asymmetry/.test(p)));
   });
 
-  // Observed: the architect wrote "LACKS: None." into a persona while the engine had given that
-  // character a skill list with something missing — a contradiction inside the character's prompt.
   it("notices a persona that restates the structured fields", () => {
     const bled = { ...base, characters: [{ ...base.characters[0],
       persona: "A courier. VOICE: economical. KNOWS: the code changed. LACKS: None." }] };
@@ -641,9 +590,6 @@ describe("normalizeSpec", () => {
     assert.ok(!normalizeSpec(ok).problems.some(p => /restates/.test(p)));
   });
 
-  // The scaffolder decides "propose" vs "patch" by whether a usable story exists. An ambiguous idea
-  // makes the architect ask a question INSTEAD of proposing, so this must come back unusable — that
-  // emptiness is the signal, and treating it as a story to patch is what used to collapse the loop.
   it("an ask-only reply yields no usable story", () => {
     const { spec } = normalizeSpec({ ask: "Who are these two people, and what do they want?" });
     assert.equal(spec.characters.length, 0);
@@ -737,9 +683,6 @@ describe("applyEdits", () => {
     }
   });
 
-  // The browser sets a scene's length directly rather than spending a model call on a number
-  // (GUI-SPEC §6.1). The point of the test is the CLOSED LIST: everything else stays the
-  // architect's, and a value the engine cannot use is refused rather than silently substituted.
   describe("directEdit", () => {
     it("sets the one field it is allowed to, through applyEdits", () => {
       const r = quietSync(() => directEdit(spec, "scene.length", 1200));
@@ -783,9 +726,6 @@ describe("slugify", () => {
   });
 });
 
-// THE invariant the scaffolder rests on (SPEC-S §1): what the architect designed is what the run
-// loads. Everything else about scaffolding is a convenience; if this breaks, a generated story is
-// quietly not the story that was accepted.
 describe("renderStory round trip", () => {
   const spec = normalizeSpec({
     title: "The Unwritten Tide",
@@ -843,11 +783,7 @@ describe("renderStory round trip", () => {
   });
 });
 
-// -- MODEL OVERRIDE (the GUI's dropdown/pause feature, GUI-SPEC §4.4) ------
-// loadStory()'s only new surface: an override applied BEFORE models.default's fallbacks resolve, so
-// it reaches a character or role that would otherwise have inherited the default, and nothing that
-// named its own model. This is the one piece of that feature pure enough to unit test; pause/resume
-// and the live-agent swap are server wiring, exercised by hand like the reader consult's is.
+// -- MODEL OVERRIDE  ------
 describe("loadStory model override", () => {
   async function withStory(): Promise<string> {
     const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
@@ -1013,9 +949,6 @@ describe("prompt construction", () => {
               "the writer must not be handed the personas");
   });
 
-  // THE ONE RULE's two blind spots, both found in the logs under `stories/*/out/`. Neither is
-  // machine-checkable in the prose the writer returns — the guarantee the code CAN give is that the
-  // contract states them, so a run that stalls this way was not a run that was never told.
   it("the writer is told that stillness is a choice and that pressure may not be resolved first", async () => {
     const p = wrapWriter(await quiet(() => loadStory("stories/doorway")));
     assert.match(p, /HOLDING STILL IS A CHOICE/);
@@ -1030,9 +963,6 @@ describe("prompt construction", () => {
 });
 
 // -- PACING ----------------------------------------------------------------
-// A scene has a fixed word budget and two things to spend it on: narration and consults. Four
-// measured runs averaged ~300 words of prose per draft and bought 4 character decisions out of 1119
-// words. The cap is the dial that converts the same budget into more choices.
 describe("max_prose_words", () => {
   it("defaults to a real ceiling — several pieces inside one scene's length", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
@@ -1066,8 +996,6 @@ describe("stories/doorway", () => {
     assert.ok(!found.some(d => d.includes("badstory")));
   });
 
-  // Without a terminal there is nobody to interview, so the picker must never return NEW_STORY —
-  // a scripted or piped run has to behave exactly as it did before scaffolding existed.
   it("never offers to build a story when there is no terminal", async () => {
     const orig = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
     Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
@@ -1083,9 +1011,6 @@ describe("stories/doorway", () => {
 });
 
 // -- CHOOSING FROM OUTSIDE THE PROCESS -------------------------------------
-// `POST /select` takes a directory from a browser. A path that arrives over HTTP is a request to
-// read one, not a path — so the only thing that can be selected is something `discoverStories()`
-// itself found. This is the read-side twin of `slugify()` owning where scaffolds get written.
 describe("selectableStory", () => {
   it("resolves a discovered story, by full path or bare folder name", async () => {
     assert.equal(await selectableStory("stories/doorway"), "stories/doorway");
@@ -1104,18 +1029,12 @@ describe("selectableStory", () => {
 });
 
 // -- THE SCAFFOLD INTERVIEW ------------------------------------------------
-// `ScaffoldSession` is the interview with no console in it, so a scripted architect drives the whole
-// state machine. This is the half of SPEC-S that could not be tested while the loop was welded to
-// readline: the proposal-vs-patch rule (§4.2), the ask budget, and the folder-collision path §5
-// listed as "not covered, deliberately, because it needs a terminal".
 const SCAFFOLD_DEFAULTS: Defaults = {
   models: { default: "none", architect: "none" },
   thinking: { architect: "low" },
   requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: false, debug: false,
 };
 
-// A proposal that `normalizeSpec` has nothing to complain about: everyone has a persona, none of
-// them restates the structured fields, and BRAE genuinely lacks something out of the catalog.
 const STORY = {
   title: "The Fog Signal",
   premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
@@ -1133,9 +1052,6 @@ const scaffold = (script: unknown[], storiesDir?: string) =>
                       SCAFFOLD_DEFAULTS, "two lighthouse keepers", storiesDir);
 
 describe("ScaffoldSession", () => {
-  // The bug SPEC-S §4.2 exists for: the loop used to decide proposal-vs-patch by "is this the first
-  // call", so an idea vague enough to earn a question was then sent "reply with edits only" against
-  // an EMPTY spec. It patched a void and every later round inherited the emptiness.
   it("recovers from an ambiguous idea instead of patching a void", async () => {
     const s = scaffold([{ ask: "Is this a ghost story or a fraud story?" }, STORY]);
 
@@ -1167,8 +1083,6 @@ describe("ScaffoldSession", () => {
     assert.equal((await s.say("c")).kind, "proposal");
   });
 
-  // The format says ask INSTEAD of proposing, and the model routinely does both. Read strictly, the
-  // question was landing on the floor — `ask` was only honoured when nothing else came back.
   it("surfaces a question that arrives alongside a story, without blocking acceptance", async () => {
     const s = scaffold([{ ...STORY, ask: "Should the relief boat actually arrive?" }]);
     const r = await s.propose();
@@ -1226,7 +1140,6 @@ describe("ScaffoldSession", () => {
     await s.say("make it longer");
     assert.equal(s.pendingAsk, "Longer how?");
     await s.say("more beats");
-    // Left set, the prompt goes on asking for an answer that has already been given.
     assert.equal(s.pendingAsk, "");
   });
 
@@ -1240,9 +1153,6 @@ describe("ScaffoldSession", () => {
   });
 });
 
-// Acceptance writes files, so these run against a temp directory rather than the repo's stories/.
-// They are also the only tests that reach the pre-flight's model-list ping — a localhost call that
-// fails fast when nothing is listening and is never fatal either way.
 describe("ScaffoldSession.accept", () => {
   it("refuses to write before there is a story", async () => {
     assert.equal((await scaffold([]).accept()).kind, "no_story");
