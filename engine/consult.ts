@@ -14,7 +14,7 @@ export interface ConsultRequest {
 }
 
 // -- WHAT A CONSULT MUST CONTAIN TO BE WORTH SENDING -----------------------
-export const CONSULT_WANTS = ["speech", "action", "decision", "reaction"] as const;
+export const CONSULT_WANTS = P.CONSULT_WANTS;
 export type ConsultWants = (typeof CONSULT_WANTS)[number];
 
 const WANTS_HINTS: [RegExp, ConsultWants][] = [

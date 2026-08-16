@@ -34,7 +34,13 @@ export function parseStoryMd(src: string): ParsedStory {
     if (line.startsWith("#")) continue;
 
     if (section === "premise") {
-      premise += (premise ? "\n" : "") + line.trim();
+      // Authors hand-wrap premise prose at some column for readability in the source file; a single
+      // newline there is not a real line break, so it is joined with a space (a blank line still
+      // starts a new paragraph) -- otherwise the viewer's pre-wrap rendering forces those same breaks
+      // at whatever width the modal happens to be, fragmenting the text once it narrows.
+      const trimmed = line.trim();
+      if (!trimmed) premise += "\n\n";
+      else premise += (premise && !premise.endsWith("\n") ? " " : "") + trimmed;
       continue;
     }
 

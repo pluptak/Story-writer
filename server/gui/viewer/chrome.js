@@ -23,12 +23,12 @@ $("theme").onclick = () => {
 // one click on the run tab away.
 $("file").onchange = e => {
   const f = e.target.files[0]; if (!f) return;
-  f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; ingest(t, READV); go("read"); });
+  f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; READV.dir = ""; READV.id = ""; ingest(t, READV); go("read"); });
 };
 addEventListener("dragover", e => { e.preventDefault(); $("drop").classList.add("on"); });
 addEventListener("dragleave", e => { if (e.relatedTarget === null) $("drop").classList.remove("on"); });
 addEventListener("drop", e => {
   e.preventDefault(); $("drop").classList.remove("on");
   const f = e.dataTransfer.files[0]; if (!f) return;
-  f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; ingest(t, READV); go("read"); });
+  f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; READV.dir = ""; READV.id = ""; ingest(t, READV); go("read"); });
 });

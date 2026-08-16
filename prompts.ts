@@ -104,7 +104,10 @@ characters   -- Every character costs consults out of a fixed step budget, so ad
   lacks      -- general skills this character does NOT have. MUST be names from the general list.
                 One character who cannot see, or cannot speak, or cannot move, will do more for a
                 scene than any amount of backstory. AT LEAST ONE character must lack something
-                real, unless the idea makes that genuinely impossible.
+                real, unless the idea makes that genuinely impossible. A lack earns its place only
+                if it can actually bite in THIS scene -- prefer one that creates an information or
+                action asymmetry (she can't see the signal he's watching for; he can't hear the
+                alarm she can) over one the scene never puts to the test.
 ask          -- see FIRST DECIDE above. Either this is your whole reply and everything else is
                 empty, or it is "". Do not send a full story with a question attached: if you had
                 enough to propose, you had enough not to ask.
@@ -155,7 +158,8 @@ export const architectChange = (userText: string, specJson: string) =>
 export const architectMore = (userText: string, idea: string, insist: boolean) =>
   `[MORE] ${userText}\n\n[THE IDEA, AGAIN]\n${idea}\n\n`
   + (insist
-      ? `Do not ask anything else. Choose the most interesting reading of this and commit to it. `
+      ? `OVERRIDE: the author has told you not to ask. Do not ask anything else -- choose the most `
+        + `interesting reading of this and commit to it. `
       : ``)
   + `Propose the whole story now, in the full format.`;
 
@@ -182,6 +186,10 @@ FIRST DECIDE: ask, or answer?
   This is not a fallback for when you are stuck; it is the honest first move whenever the situation
   as given genuinely leaves you guessing. Asking is not a failure to answer -- it is how you keep the
   answer from being a guess.
+
+  OVERRIDE: if the author tells you plainly that no more detail is coming, or tells you to answer
+  now, that outranks the rule above. Do not ask again. Take the most likely reading of your
+  situation, answer with it, and say which reading you took in "note".
 
   If you already have everything you need, do NOT ask. Answer, and commit:
 
@@ -226,11 +234,29 @@ export function characterSystem(p: {
   return `${CHARACTER_FORMAT}\n\n${p.persona.trim()}\n\n${extras}`;
 }
 
+// -- THE FOUR THINGS A CONSULT CAN ASK FOR ----------------------------------
+// Shared by the writer's WANTS field and by what the character is told it is being asked for,
+// so the two sides never learn different meanings for the same word -- and the canonical word
+// list itself: engine/consult.ts's CONSULT_WANTS derives from this rather than keeping its own copy.
+const WANTS_MENU = [
+  ["speech",   "the words they say"],
+  ["action",   "what they physically do"],
+  ["decision", "which way they go, when there are two ways"],
+  ["reaction", "their immediate internal or emotional response to what they perceive -- not a "
+              + "deliberate act, not spoken words"],
+] as const;
+
+export const CONSULT_WANTS = WANTS_MENU.map(([w]) => w) as readonly (typeof WANTS_MENU)[number][0][];
+
+const wantsMenuLines = WANTS_MENU.map(([w, d]) => `                    ${w.padEnd(10)}-- ${d}`).join("\n");
+
+const wantsDef = (w: string) => WANTS_MENU.find(([name]) => name === w)?.[1] ?? "";
+
 // -- WHAT THE CHARACTER IS SENT --------------------------------------------
 
 export const askBlock = (req: { situation: string; question: string; wants: string }) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}\nQuestion: ${req.question}`
-  + (req.wants ? `\nWhat they need from you: ${req.wants}` : "")
+  + (req.wants ? `\nWhat they need from you: ${req.wants} (${wantsDef(req.wants)})` : "")
   + `\n\nMissing a fact of your situation to answer that honestly? Ask for it instead.`;
 
 export const authorAnswers = (answer: string) => `[THE AUTHOR ANSWERS] ${answer}`;
@@ -313,10 +339,7 @@ WHEN ASKED TO WRITE -- [WRITE]:
                   correct, and the safest possible answer is the one that stops the scene. It will
                   be rejected and you will have spent a step on nothing.
     wants      -- EXACTLY ONE of these four words, and nothing else:
-                    speech    -- the words they say
-                    action    -- what they physically do
-                    decision  -- which way they go, when there are two ways
-                    reaction  -- what this lands on them as
+${wantsMenuLines}
                   If you never ask for "speech", nobody in your scene will ever speak. "reaction" is
                   how someone who is present but not the one acting still gets to be a person rather
                   than furniture: ask what they notice, what it costs them to hold still, what they

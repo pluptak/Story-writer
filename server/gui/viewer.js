@@ -10,6 +10,7 @@ import "./viewer/session.js";
 import "./viewer/interview.js";
 import "./viewer/sse.js";
 import "./viewer/chrome.js";
+import "./viewer/character-card.js";
 
 APP.render = render;
 boot();

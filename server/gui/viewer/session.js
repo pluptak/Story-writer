@@ -1,10 +1,19 @@
-import { $, esc, post } from "./util.js";
+import { $, post, notify, modelOptionsHtml } from "./util.js";
 import { APP } from "./state.js";
+
+/** Every session control shares one inline slot -- cleared at the start of each new attempt so a
+ *  stale refusal from a different button doesn't linger, set again only if this one also fails. */
+async function postSession(path, body) {
+  notify("", "sessionNotice");
+  return post(path, body, "sessionNotice");
+}
 
 // ---- the session (live only) --------------------------------------------
 export function renderSession() {
   const onLive = APP.view === "live";
- $("sessionbar").hidden = !onLive || !APP.live;
+  const hidden = !onLive || !APP.live;
+  if (hidden && !$("sessionbar").hidden) notify("", "sessionNotice");   // don't carry a stale refusal into the next run
+  $("sessionbar").hidden = hidden;
   for (const id of ["stop", "consultMe", "pause"]) $(id).hidden = !APP.session.running;
   const b = $("stop");
   b.disabled = !APP.session.running || APP.session.stopping;
@@ -33,10 +42,9 @@ export async function loadModels() {
     APP.modelDefault = j.architect || "";
     const ms = $("modelSelect");
     const cur = ms.value;
-    ms.innerHTML = '<option value="">story default</option>'
-      + APP.modelIds.map(id => `<option value="${esc(id)}">${esc(id)}</option>`).join("");
+    ms.innerHTML = '<option value="">story default</option>' + modelOptionsHtml(APP.modelIds);
     ms.value = APP.session.model || cur || "";
- if ((APP.scaffold.active || APP.ideaOpen) && !APP.ivHidden) APP.render();
+    if ((APP.scaffold.active || APP.ideaOpen) && !APP.ivHidden) APP.render();
   } catch {}
 }
 
@@ -45,24 +53,24 @@ $("stop").onclick = async () => {
   if (!APP.armed) { APP.armed = setTimeout(disarm, 4000); renderSession(); return; }
   clearTimeout(APP.armed); APP.armed = 0;
   APP.session.stopping = true; renderSession();
-  await post("/stop");
+  await postSession("/stop");
 };
 $("consultMe").onclick = async () => {
   if (!APP.session.running || APP.session.stopping || APP.session.armed) return;
-  await post("/consult-me");
+  await postSession("/consult-me");
 };
 $("pause").onclick = async () => {
   if (!APP.session.running || APP.session.stopping) return;
-  await post(APP.session.paused || APP.session.pausing ? "/resume" : "/pause");
+  await postSession(APP.session.paused || APP.session.pausing ? "/resume" : "/pause");
 };
 $("interactive").onclick = async () => {
   APP.session.interactive = !APP.session.interactive;
   renderSession();
-  await post("/interactive", { on: APP.session.interactive });
+  await postSession("/interactive", { on: APP.session.interactive });
 };
 $("modelSelect").onchange = async () => {
   const ms = $("modelSelect");
   const model = ms.value;                 // "" == "story default", clears the override
-  const j = await post("/model", { model });
+  const j = await postSession("/model", { model });
   if (!j || j.ok === false) ms.value = APP.session.model || "";
 };

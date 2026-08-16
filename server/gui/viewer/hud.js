@@ -1,16 +1,27 @@
 import { $, esc } from "./util.js";
-import { APP, LIVEV, READV } from "./state.js";
+import { APP, LIVEV, READV, storyName } from "./state.js";
 
 // The two small "paint a fixed chrome region from store state" pieces -- the `#src`/`#dot` source
 // indicator and the `#rail` progress panel -- as opposed to `#page`, which `pages.js` owns.
 
 export function paintSrcbar() {
   if (APP.view === "shelf") { $("src").textContent = "choosing a story"; $("dot").className = "dot"; return; }
+  if (APP.view === "story") {
+    const name = storyName(APP.storyDir);
+    $("src").textContent = name ? `looking at ${name}` : "looking at a story";
+    $("dot").className = "dot";
+    return;
+  }
   const store = APP.view === "read" ? READV : LIVEV;
   $("src").textContent = store.source || "nothing loaded";
   $("dot").className = "dot" + (store.isLive ? " live" : "");
 }
 export function setSrc(store, text, isLive) { store.source = text; store.isLive = isLive; paintSrcbar(); }
+
+const BASE_TITLE = document.title;
+export function paintTitle() {
+  document.title = APP.awaitingReader ? "● you're asked — " + BASE_TITLE : BASE_TITLE;
+}
 
 export function renderRail(store, blocks) {
   const words = store.events.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);

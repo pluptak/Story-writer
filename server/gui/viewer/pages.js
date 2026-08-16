@@ -1,13 +1,15 @@
-import { $, esc } from "./util.js";
-import { APP, LIVEV, READV, FIELDS, open } from "./state.js";
+import { $, esc, basename, wireBackdropClose } from "./util.js";
+import { APP, LIVEV, READV, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
 import { renderBlock, wireReader } from "./blocks.js";
-import { pickerHtml, wirePicker } from "./shelf.js";
-import { confirmModalHtml, wireConfirm } from "./confirm.js";
-import { savedRunsHtml, wireSavedRuns } from "./saved-runs.js";
-import { paintSrcbar, renderRail } from "./hud.js";
+import { pickerHtml, wirePicker, castChips } from "./shelf.js";
+import { storyPageHtml, wireStoryPage } from "./story-page.js";
+import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
+import { paintSrcbar, paintTitle, renderRail } from "./hud.js";
+import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
+import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { interviewModalHtml, wireInterview } from "./interview.js";
-import { userNav, navBlocked, generating } from "./nav.js";
+import { go, generating } from "./nav.js";
 import { renderSession } from "./session.js";
 
 function restoreFocus(page, id) {
@@ -27,56 +29,52 @@ function restoreFocus(page, id) {
 function renderNav() {
   document.body.dataset.view = APP.view;
   const shelfTab = $("tab-shelf"), liveTab = $("tab-live"), readTab = $("tab-read");
-  shelfTab.hidden = !APP.live || !APP.session.picking;
+  // The shelf is the hub: reachable any time an engine is attached, mid-run included -- so nothing
+  // here disables a tab any more. The story page has no tab of its own; it reads as "shelf".
+  shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
+  const shown = APP.view === "story" ? "shelf" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
-    const isCurrent = t.dataset.view === APP.view;
+    const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
     t.setAttribute("aria-current", isCurrent ? "page" : "false");
   }
-  // Only a tab whose destination is actually refused goes dead -- the read tab stays live during a
-  // run so a saved run is one click away, and the run keeps streaming behind it (tabdot below).
-  for (const t of [shelfTab, liveTab, readTab]) {
-    const blocked = navBlocked(t.dataset.view) && t.dataset.view !== APP.view;
-    t.disabled = blocked;
-    t.title = blocked ? "stop the run to choose another story" : "";
-  }
-  $("tabdot").hidden = !generating();
+  $("tabdot").hidden = !(generating() || APP.awaitingReader);
+  $("tabdot").classList.toggle("asked", APP.awaitingReader);
+  $("tabasked").hidden = !APP.awaitingReader;
 }
 
 function renderHeader() {
   const m = APP.view === "live" ? LIVEV.meta : APP.view === "read" ? READV.meta : null;
   if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; return; }
-  $("title").textContent = (m.story || "").replace(/^.*[\\/]/, "") || "story-writer";
+  $("title").textContent = basename(m.story) || "story-writer";
   $("question").textContent = m.question || "";
-  $("cast").innerHTML = (m.characters || []).map(c => {
-    const bits = [];
-    if (c.skills?.length) bits.push(`<span class="yes">+${c.skills.join(", ")}</span>`);
-    if (c.lacks?.length)  bits.push(`<span class="no">no ${c.lacks.join(", ")}</span>`);
-    return `<span class="chip"><b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
-  }).join("");
-}
-
-function storyName(dir) {
-  const s = (APP.stories || []).find(x => x.dir === dir);
-  return s?.name || (dir || "").replace(/^.*[\\/]/, "");
+  // Live only: the read page carries its own "Cast" section, and the same pills in the header too
+  // is one set too many.
+  $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story) : "";
 }
 
 function paintRibbon() {
   const el = $("ribbon");
   if (APP.view !== "read" || !READV.meta) { el.hidden = true; el.textContent = ""; return; }
-  const who = (READV.meta.story || "").replace(/^.*[\\/]/, "") || "saved run";
+  const who = basename(READV.meta.story) || "saved run";
   el.hidden = false;
   el.textContent = `reading a saved run · ${who}${READV.label ? " · " + READV.label : ""}`;
 }
 
 function renderShelf(page, keepFocus) {
-  const modal = interviewModalHtml() || confirmModalHtml();
-  page.innerHTML = pickerHtml() + modal;
+  page.innerHTML = pickerHtml() + interviewModalHtml();
   $("rail").innerHTML = "";
-  wirePicker(page); wireInterview(page); wireConfirm(page); wireModal(page);
+  wirePicker(page, () => go("story")); wireInterview(page); wireModal(page);
   restoreFocus(page, keepFocus);
+  setFoldable(false);
+}
+
+function renderStoryPage(page) {
+  page.innerHTML = storyPageHtml();
+  $("rail").innerHTML = "";
+  wireStoryPage(page);
   setFoldable(false);
 }
 
@@ -92,22 +90,19 @@ function renderLive(page, blocks) {
         <p class="thinking"><i></i>waiting for the writer — a cold model can take a few seconds</p>
         <p class="hint">use <b>stop</b> above to cancel once the run controls appear</p>
       </div>`;
-    } else if (idle) {
-      html = `<div class="empty"><h2>Nothing written yet</h2>
-        <p>The scene will appear here as soon as the engine starts writing.</p>
-        <div class="btns" style="justify-content:center">
-          <button class="btn" id="go-shelf">choose a story</button></div>
-      </div>`;
     } else {
+      const text = APP.live ? "The scene will appear here as soon as the engine starts writing."
+                             : "Run the engine with <code>--serve</code> to watch a scene as it is written.";
       html = `<div class="empty"><h2>Nothing written yet</h2>
-        <p>${APP.live ? "The scene will appear here as soon as the engine starts writing."
-                     : "Run the engine with <code>--serve</code> to watch a scene as it is written."}</p>
+        <p>${text}</p>
+        ${idle ? `<div class="btns" style="justify-content:center">
+          <button class="btn" id="go-shelf">choose a story</button></div>` : ""}
       </div>`;
     }
     page.innerHTML = html;
     $("rail").innerHTML = "";
     const gb = page.querySelector("#go-shelf");
-    if (gb) gb.addEventListener("click", () => userNav("shelf"));
+    if (gb) gb.addEventListener("click", () => go("shelf"));
     setFoldable(false);
     return;
   }
@@ -124,11 +119,17 @@ function renderLive(page, blocks) {
 }
 
 function renderRead(page, blocks) {
-  const chrome = savedRunsHtml();
+  const chrome = readChromeHtml();
   if (!blocks.length) {
-    page.innerHTML = chrome + `<div class="empty"><h2>Nothing loaded</h2>
-      <p>Pick a retained run above, drop a saved <code>out/writing-log.jsonl</code> onto this page,
-      or open one from disk.</p></div>`;
+    // A run CAN load fine and still have nothing to show -- a run killed before its first draft
+    // leaves a log holding only `scene_start`. Saying "nothing loaded" there blames the wrong thing
+    // and reads exactly like a failed fetch, so an empty run says it is empty.
+    const empty = READV.events.length > 0;
+    page.innerHTML = chrome + `<div class="empty"><h2>${empty ? "This run is empty" : "Nothing loaded"}</h2>
+      <p>${empty ? `${esc(READV.label || "it")} — the run was stopped before a word of it was written.
+             Pick an earlier one, which may have more in it.`
+                 : `Open a story on the shelf and "read" a previous run, drop a saved
+             <code>out/writing-log.jsonl</code> onto this page, or open one from disk.`}</p></div>`;
     $("rail").innerHTML = "";
     wireSavedRuns(page);
     setFoldable(false);
@@ -148,13 +149,25 @@ function renderRead(page, blocks) {
 
 /** Backdrop click closes (hides) the interview modal, same as the × button — never abandons. */
 function wireModal(page) {
-  const bd = page.querySelector("#iv-backdrop");
-  if (bd) bd.addEventListener("click", e => { if (e.target === bd) { APP.ivHidden = true; APP.render(); } });
+  wireBackdropClose(page, "iv-backdrop", () => { APP.ivHidden = true; APP.render(); });
 }
 
 function setFoldable(foldable) {
   $("expand").disabled = !foldable;
   $("expand").title = foldable ? "" : "nothing to expand — no consults in this run";
+}
+
+/** Repainted every render(), regardless of view -- the header pill that opens the character card
+ *  is visible on the live and read pages too, not just the shelf, so neither modal can live inside
+ *  `#page` like the interview's does. Character card last: if a header pill is clicked while the
+ *  run-ended modal is up, it stacks on top rather than being clicked through. Owned here rather
+ *  than by either modal's own module, since painting "every overlay modal" isn't either one's job. */
+function paintModals(goShelf) {
+  const root = $("modalroot");
+  if (!APP.runEnded && !APP.charCard) { if (root.innerHTML) root.innerHTML = ""; return; }
+  root.innerHTML = runEndedModalHtml() + characterCardModalHtml();
+  wireRunEndedModal(root, goShelf);
+  wireCharacterCard(root);
 }
 
 export function render() {
@@ -165,10 +178,13 @@ export function render() {
   renderSession();
   paintSrcbar();
   paintRibbon();
+  paintTitle();
+  paintModals(() => go("shelf"));
   const page = $("page");
   const active = document.activeElement;
   const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";
   if (APP.view === "shelf") renderShelf(page, keepFocus);
+  else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
 }

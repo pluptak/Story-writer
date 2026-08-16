@@ -39,10 +39,16 @@
   .tabdot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent);
             margin-left:6px; vertical-align:middle; animation:pulse 1.2s ease-in-out infinite; }
   .tabdot[hidden] { display:none; }
+  .tabdot.asked { background:var(--warn); animation:pulse .8s ease-in-out infinite; }
+  .tabasked { color:var(--warn); font-weight:600; margin-left:4px; }
+  .tabasked[hidden] { display:none; }
 
   .cast { display:flex; gap:6px; flex-wrap:wrap; }
   .chip { font-family:var(--mono); font-size:11px; padding:3px 9px; border-radius:999px;
-          border:1px solid var(--line); background:var(--panel-2); white-space:nowrap; }
+          border:1px solid var(--line); background:var(--panel-2); white-space:nowrap;
+          color:inherit; cursor:pointer; }
+  .chip:hover, .chip:focus-visible { border-color:var(--accent); }
+  .chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .chip b { font-weight:600; }
   .chip .no { color:var(--bad); }
   .chip .yes { color:var(--good); }
@@ -67,6 +73,8 @@
   .sessionbar[hidden] { display:none; }
   .sessionbar #modelSelect { max-width:260px; }
   .sessionbar #stop { margin-left:auto; }
+  .ctrl-err { font-family:var(--mono); font-size:11px; color:var(--bad); }
+  .ctrl-err:empty { display:none; }
 
   .srcbar { display:flex; align-items:center; gap:8px; padding:6px 20px; border-bottom:1px solid var(--line);
             background:var(--panel-2); font-family:var(--mono); font-size:11px; color:var(--muted); }
@@ -175,26 +183,35 @@
   .card .q { font-size:13.5px; margin:4px 0 0; }
   .card .pre { font-size:12.5px; color:var(--muted); margin:5px 0 0;
                display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  .card .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:9px; }
+  .card .row, .story .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:9px; }
   .card .meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-left:auto; }
   .card .bad  { color:var(--bad); font-size:12.5px; margin-top:5px; }
   .card .warn { color:var(--warn); font-size:11.5px; margin-top:4px; }
   .card.new { border-style:dashed; }
   .card.new .name { color:var(--good); }
   .card.new .q { color:var(--muted); }
+  .card.new.top { margin-bottom:18px; }
   .cardwrap { display:flex; flex-direction:column; gap:6px; }
+  .divider { display:flex; align-items:center; gap:10px; margin:0 0 14px;
+             font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--faint); }
+  .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--line); }
   .runs { display:flex; flex-wrap:wrap; gap:6px; }
   .runbtn { font-size:10px; padding:4px 8px; }
-  /* the saved-run browser: one story name, its retained runs beside it -- no card, nothing to click
-     to start anything, since this page only ever reads. */
-  .storyrow { font-family:var(--mono); font-size:12.5px; font-weight:600; margin-bottom:2px; }
-  .storyrow + .runs { margin-bottom:4px; }
+  .runbtn.current { color:var(--accent); border-color:var(--accent); background:var(--panel-2); }
+  /* the read tab's chrome -- just the loaded run's cast, reusing the shelf card's .row spacing */
+  .readchrome .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; }
 
-  /* the play confirmation reuses the shelf card's chips/meta outside a .card -- these are the
-     equivalents of `.card .q`/`.card .row`/`.card .meta`, scoped to the modal instead of a card. */
-  .confirm .q { font-size:13.5px; margin:8px 0 0; }
-  .confirm .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:9px; }
-  .confirm .meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-left:auto; }
+  /* the story page reuses the shelf card's chips/meta outside a .card -- `.row` is shared with
+     `.card .row` above; `.said`/`.prob` are shared with the `.iv` modal below. */
+  .scenerow { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+              padding:13px 15px; box-shadow:var(--shadow); }
+  .scenerow .sc-q { font-size:13.5px; }
+  .scenerow .sc-meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:4px; }
+  .scenerow .btn { margin-top:10px; }
+
+  /* the character card -- reuses the story page's .row for its can/cannot line */
+  .charcard .row { display:flex; flex-wrap:wrap; gap:10px; font-size:12.5px; margin-top:6px; }
+  .charmd-placeholder { font-size:12.5px; color:var(--faint); margin-top:14px; }
 
   .modal-backdrop { position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.55);
                      display:flex; align-items:flex-start; justify-content:center;
@@ -204,14 +221,20 @@
                                 border-radius:14px; padding:22px 24px; box-shadow:var(--shadow); }
   .iv-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
   .iv-head h2 { margin:0 0 3px; }
+  .steps { display:flex; align-items:center; gap:6px; margin:2px 0 12px;
+           font-family:var(--mono); font-size:10px; letter-spacing:.07em; text-transform:uppercase; }
+  .steps .step { color:var(--faint); padding-bottom:3px; border-bottom:2px solid transparent; }
+  .steps .step + .step::before { content:"›"; margin-right:6px; color:var(--faint); }
+  .steps .step.current { color:var(--accent); border-color:var(--accent); font-weight:600; }
+  .steps .step.done { color:var(--muted); }
   #iv-hide { font-family:var(--mono); font-size:16px; line-height:1; padding:4px 8px; flex:none; }
   .iv .lead { font-family:var(--serif); font-size:15.5px; margin:0 0 12px; color:var(--muted); }
-  .iv .said { font-family:var(--mono); font-size:11px; color:var(--faint); margin:10px 0 0; }
-  .iv .said.bad { color:var(--bad); } .iv .said.good { color:var(--good); }
+  .iv .said, .story .said { font-family:var(--mono); font-size:11px; color:var(--faint); margin:10px 0 0; }
+  .iv .said.bad, .story .said.bad { color:var(--bad); } .iv .said.good { color:var(--good); }
   .iv .asked { border-left:2px solid var(--warn); padding-left:12px; margin:14px 0 0; }
   .iv .asked .k { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
                   color:var(--warn); display:block; margin-bottom:3px; }
-  .iv .prob { color:var(--warn); font-size:12.5px; margin-top:5px; }
+  .iv .prob, .story .prob { color:var(--warn); font-size:12.5px; margin-top:5px; }
   .iv .note { text-align:left; margin:10px 0 0; }
 
   .proposal { background:var(--panel); border:1px solid var(--line); border-radius:12px;

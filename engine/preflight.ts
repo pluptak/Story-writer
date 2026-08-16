@@ -98,6 +98,7 @@ export interface StoryCard {
   scene?: { place: string; question: string; pov: string; length: number };
   characters?: { name: string; can: string[]; cannot: string[] }[];
   maxSteps?: number;
+  defaultModel?: string;
   runs: RunSummary[];
 }
 
@@ -143,6 +144,7 @@ export async function storyCards(): Promise<StoryCard[]> {
         scene: s.scene,
         characters: s.characters.map(c => ({ name: c.name, can: c.added, cannot: c.lacking })),
         maxSteps: s.maxSteps,
+        defaultModel: s.models.default,
       } : {}),
     });
   }

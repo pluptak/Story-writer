@@ -1,11 +1,14 @@
-import { esc } from "./util.js";
+import { esc, reasonOr } from "./util.js";
 import { APP, draft } from "./state.js";
 
 // ---- the interview ------------------------------------------------------
-const fld = (id, label, value, rows, disabled) =>
+const fld = (id, label, value, rows, disabled, placeholder = "") =>
   `<div class="field"><label for="${id}">${label}</label>
     <textarea id="${id}" ${disabled ? "disabled" : ""} rows="${rows}"
-              placeholder="">${esc(value)}</textarea></div>`;
+              placeholder="${esc(placeholder)}">${esc(value)}</textarea></div>`;
+
+const IDEA_PLACEHOLDER =
+  "e.g. A locksmith is asked to open a door they installed years ago, for someone they don't recognise.";
 
 const modelField = () =>
   `<div class="field"><label for="f-model">built by</label>
@@ -46,6 +49,16 @@ function proposalHtml(spec, busy) {
   </div>`;
 }
 
+/** Where the interview stands, derived from state already on hand -- nothing new to track. A round
+ *  can repeat indefinitely between Describe and Review, so this marks progress, not a countdown. */
+function stepperHtml(s) {
+  const stage = !s.active || !s.haveStory ? 0 : s.needsFolder ? 2 : 1;
+  const steps = ["describe", "review", "name & write"];
+  return `<div class="steps">${steps.map((label, i) =>
+    `<span class="step${i === stage ? " current" : i < stage ? " done" : ""}">${esc(label)}</span>`
+  ).join("")}</div>`;
+}
+
 /** What the last round did, said plainly. Mirrors showRound() at the console. */
 function lastHtml(last) {
   if (!last) return "";
@@ -67,8 +80,9 @@ function interviewHtml() {
   if (!s.active) {
     return `<section class="picker iv">
       <h2>A new story</h2>
+      ${stepperHtml(s)}
       <p class="sub">as much or as little as you like — it will ask if it needs more</p>
-      ${fld("f-idea", "the idea", draft.idea, 4, false)}
+      ${fld("f-idea", "the idea", draft.idea, 4, false, IDEA_PLACEHOLDER)}
       ${modelField()}
       ${err}
       <div class="btns"><button class="btn primary" id="iv-start">propose a story</button>
@@ -123,6 +137,7 @@ function interviewHtml() {
   return `<section class="picker iv">
     <div class="iv-head"><h2>${s.haveStory ? "Does this look right?" : "A new story"}</h2>
       <button class="btn" id="iv-hide" title="close — keeps the interview going, reopen from the shelf">×</button></div>
+    ${stepperHtml(s)}
     <p class="sub">${esc(s.idea)}${s.model ? ` <span class="hint">· built by ${esc(s.model)}</span>` : ""}</p>
     ${body.join("")}
   </section>`;
@@ -146,7 +161,7 @@ async function postScaffold(what, payload) {
   APP.scaffoldError =
     j && j.kind === "unloadable"   ? `written to ${j.dir}, but it does not load — ${j.error}`
     : j && j.kind === "needs_folder" ? ""                            // the folder question renders itself
-    : (j && j.reason) || "that did not go through";
+    : reasonOr(j, "that did not go through");
   APP.render();
   return j;
 }

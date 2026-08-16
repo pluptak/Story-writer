@@ -1,4 +1,4 @@
-import { esc, post } from "./util.js";
+import { esc, post, verdictText, reasonOr } from "./util.js";
 import { APP, open } from "./state.js";
 
 // ---- rendering ----------------------------------------------------------
@@ -55,6 +55,8 @@ function renderReader(b, interactive) {
   }
   const opts = b.options.map((o, i) =>
     `<button class="btn readerOpt" data-seq="${b.seq}" data-i="${i}">${esc(o)}</button>`).join("");
+  const err = APP.readerError && APP.readerError.seq === b.seq
+    ? `<div class="ctrl-err" style="margin-top:8px">${esc(APP.readerError.text)}</div>` : "";
   return `<div class="reader pending" data-seq="${b.seq}">
     <div class="rlabel">the writer wants your call</div>
     <div class="rframing">${esc(b.framing)}</div>
@@ -62,29 +64,31 @@ function renderReader(b, interactive) {
     <div class="field"><textarea class="readerOwn" data-seq="${b.seq}" rows="2"
               placeholder="or write your own"></textarea></div>
     <div class="btns"><button class="btn primary readerSend" data-seq="${b.seq}">send</button></div>
+    ${err}
   </div>`;
 }
 
 export function wireReader(page) {
   for (const b of page.querySelectorAll(".readerOpt"))
-    b.addEventListener("click", () => sendReaderAnswer(b.textContent));
+    b.addEventListener("click", () => sendReaderAnswer(Number(b.dataset.seq), b.textContent));
   for (const b of page.querySelectorAll(".readerSend"))
     b.addEventListener("click", () => {
       const ta = page.querySelector(`.readerOwn[data-seq="${b.dataset.seq}"]`);
       const text = (ta?.value || "").trim();
-      if (text) sendReaderAnswer(text);
+      if (text) sendReaderAnswer(Number(b.dataset.seq), text);
     });
 }
 /** One answer. A second click is not a second choice — and the first one takes a moment to come
  *  back as an event, which is exactly the window in which it used to be clicked again. */
 let readerSending = false;
-async function sendReaderAnswer(answer) {
+async function sendReaderAnswer(seq, answer) {
   if (readerSending) return;
   readerSending = true;
+  APP.readerError = null;
   for (const b of document.querySelectorAll(".reader.pending .btn")) b.disabled = true;
-  const j = await post("/reader-answer", { answer });
+  const j = await post("/reader-answer", { answer }, false);
   readerSending = false;
-  if (!j || j.ok === false) APP.render();          // put the buttons back; `post` has said why
+  if (!j || j.ok === false) { APP.readerError = { seq, text: reasonOr(j, "that did not go through") }; APP.render(); }
 }
 
 /** A block, rendered for whichever page is showing it. `interactive` gates the one thing that
@@ -95,8 +99,6 @@ export function renderBlock(b, interactive) {
   if (b.kind === "consult") return renderConsult(b);
   if (b.kind === "reader") return renderReader(b, interactive);
   if (b.kind === "note") return `<div class="note">${esc(b.text)}</div>`;
-  if (b.kind === "end") return `<div class="note end">${
-    b.stopped ? "stopped by request" : b.done ? "scene finished" : "stopped early"}
-    · ${b.words} words · ${b.steps} steps</div>`;
+  if (b.kind === "end") return `<div class="note end">${verdictText(b)} · ${b.words} words · ${b.steps} steps</div>`;
   return "";
 }

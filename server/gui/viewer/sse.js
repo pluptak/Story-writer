@@ -1,23 +1,17 @@
 import { $, post } from "./util.js";
-import { APP, LIVEV, READV } from "./state.js";
-import { build, ingest } from "./events.js";
+import { APP, LIVEV } from "./state.js";
+import { build } from "./events.js";
 import { setSrc, renderRail } from "./hud.js";
 import { go, parseHash, parseHashParams, syncHash } from "./nav.js";
 import { renderSession, disarm, loadModels } from "./session.js";
-import { loadStories } from "./saved-runs.js";
+import { loadStories, loadRun } from "./saved-runs.js";
 import { disarmAccept } from "./interview.js";
 
-export async function loadDeepLinkedRun() {
+export function loadDeepLinkedRun() {
   const params = parseHashParams();
   const dir = params.get("dir"), id = params.get("id");
-  if (!dir || !id) return false;
-  try {
-    const r = await fetch(`/runs/log?dir=${encodeURIComponent(dir)}&id=${encodeURIComponent(id)}`);
-    if (!r.ok) return false;
-    setSrc(READV, `${dir.replace(/^stories\//, "")} · saved run`, false);
-    ingest(await r.text(), READV);
-    return true;
-  } catch { return false; }
+  if (!dir || !id) return Promise.resolve(false);
+  return loadRun(dir, id);
 }
 
 export const sessionFrom = j => ({ running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking,
@@ -34,12 +28,15 @@ export async function tryHttp() {
     if (j.awaitingContinue) showPrompt(j.awaitingContinue);
     // An interview may already be open — a reload in the middle of one must land back in it.
     try { APP.scaffold = await (await fetch("/scaffold")).json(); } catch {}
-    // Respect an explicit hash (a reload, a bookmark) unless it names the shelf and nothing is
-    // actually waiting on a pick -- otherwise land wherever the session itself is.
+    // Respect an explicit hash (a reload, a bookmark, a deep link) -- the shelf is a real
+    // destination now, not just a place the session parks you, so there is no case left where it
+    // has to be rewritten. With nothing asked for, land on the scene if one is running, the hub
+    // otherwise.
     const wanted = parseHash();
-    APP.view = (wanted && (wanted !== "shelf" || APP.session.picking)) ? wanted : (APP.session.picking ? "shelf" : "live");
+    APP.view = wanted || (APP.session.running ? "live" : "shelf");
+    if (APP.view === "story") APP.storyDir = parseHashParams().get("dir") || "";
     if (APP.view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
-    if (APP.view === "read" || APP.view === "shelf") loadStories();
+    if (APP.view === "read" || APP.view === "shelf" || APP.view === "story") loadStories();
     syncHash();
     APP.render();
     startSSE();
@@ -65,15 +62,26 @@ export function startSSE() {
       // that clears it. Every frame carries whether it is still outstanding, so a prompt nobody is
       // waiting on comes down instead of sitting there with buttons that only 400.
       if (!f.awaitingContinue) $("prompt").classList.remove("on");
-      if (!APP.session.running) disarm();
+      if (!APP.session.running) { disarm(); APP.awaitingReader = false; }
       // Edges only -- a page you navigated to on purpose must not get yanked out from under you
-      // by a frame that arrives several times a run for reasons that have nothing to do with it
-      // (VIEWER-UI.md: run_state always re-renders, not only on a picking edge -- the SAME frame
-      // still means "leave this page" only the first time each condition becomes true). `go()`
-      // already renders, so the plain `render()` below only runs when neither edge fired.
+      // by a frame that arrives several times a run for reasons that have nothing to do with it --
+      // run_state always re-renders, not only on an edge, so the same frame must not repeat a side
+      // effect that only makes sense the first time each condition becomes true.
+      if (!wasPicking && APP.session.picking) {
+        // A new pick window opened -- the previous one, if any, is done with. Reset without
+        // navigating: the engine parks in awaitPick() the instant a run ends, one tick after
+        // running goes false below, and following it to the shelf would yank a just-finished scene
+        // off the screen before its own "run ended" edge (below) ever gets to say so.
+        APP.picked = ""; APP.storyModel = ""; APP.storyError = "";
+      }
       let moved = false;
-      if (!wasPicking && APP.session.picking) { APP.picked = ""; APP.confirmDir = ""; APP.confirmError = ""; go("shelf"); moved = true; }
       if (!wasRunning && APP.session.running) { go("live"); moved = true; }
+      else if (wasRunning && !APP.session.running && APP.view === "live") {
+        // The run just ended while it was on screen -- offer the choice explicitly instead of
+        // silently deleting the "run controls vanish" behaviour that used to be the only sign.
+        const end = LIVEV.events.findLast(e => e.t === "scene_end");
+        if (end) APP.runEnded = { done: end.done, stopped: end.stopped, words: end.words, steps: end.steps };
+      }
       if (!moved) APP.render();
       return;
     }
@@ -89,6 +97,7 @@ export function startSSE() {
       // A new story in the same session. Replay only helps clients that connect after it; one
       // already attached has to be told, or the next scene renders glued onto the last one.
       LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.open = new Set(); APP.composing = null;
+      APP.awaitingReader = false; APP.runEnded = null;
       fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (APP.view === "live") APP.render(); } }).catch(() => {});
       go("live");
       return;
@@ -97,16 +106,12 @@ export function startSSE() {
     // identity of the event in both the log and the stream.
     if (f.seq !== undefined) { if (LIVEV.seen.has(f.seq)) return; LIVEV.seen.add(f.seq); }
     LIVEV.events.push(f);
-    if (f.t === "reader_ask") APP.wantReaderView = true;
+    if (f.t === "reader_ask") { APP.wantReaderView = true; APP.awaitingReader = true; }
+    if (f.t === "reader_answer") APP.awaitingReader = false;
     // Re-render whole, debounced: a scene is a few dozen events, and rebuilding is far cheaper
     // than keeping incremental DOM state correct across retries and late-arriving verdicts. Only
     // when the run page is actually showing -- otherwise the events just accumulate in LIVEV and
     // render in full the next time it is.
-    //
-    // A TIMER, not requestAnimationFrame. rAF does not fire in a hidden or non-compositing tab, so
-    // a run watched in a background tab stopped updating entirely — and because the handle latched
-    // in `pending`, nothing rescheduled either. A scene is a few dozen events; frame alignment was
-    // never worth that.
     if (!pending) pending = setTimeout(() => {
       pending = null;
       if (APP.view !== "live") return;

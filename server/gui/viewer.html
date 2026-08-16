@@ -12,9 +12,9 @@
 <div class="topbar">
   <div class="brand"><h1 id="title">story-writer</h1><div class="q" id="question"></div></div>
   <nav class="tabs" id="tabs">
-    <button class="tab" id="tab-shelf" data-view="shelf" hidden>story</button>
-    <button class="tab" id="tab-live" data-view="live" hidden>run<span class="tabdot" id="tabdot" hidden></span></button>
-    <button class="tab" id="tab-read" data-view="read" hidden>saved runs</button>
+    <button class="tab" id="tab-shelf" data-view="shelf" hidden>shelf</button>
+    <button class="tab" id="tab-live" data-view="live" hidden>write<span class="tabasked" id="tabasked" hidden>· asked</span><span class="tabdot" id="tabdot" hidden></span></button>
+    <button class="tab" id="tab-read" data-view="read" hidden>read</button>
   </nav>
   <div class="cast" id="cast"></div>
   <button class="btn" id="expand">expand all</button>
@@ -26,6 +26,7 @@
   <button class="btn" id="pause" hidden>pause</button>
   <button class="btn" id="consultMe" hidden>consult me</button>
   <button class="btn" id="stop" hidden>stop run</button>
+  <span class="ctrl-err" id="sessionNotice"></span>
 </div>
 <div class="ribbon" id="ribbon" hidden></div>
 <div class="srcbar"><span class="dot" id="dot"></span><span id="src">nothing loaded</span><span id="where"></span>
@@ -35,6 +36,7 @@
   <main class="page" id="page"></main>
   <aside class="rail" id="rail"></aside>
 </div>
+<div id="modalroot"></div>
 
 <div class="drop" id="drop">drop a writing-log.jsonl</div>
 <div class="prompt" id="prompt">

@@ -1,31 +1,42 @@
-import { notify } from "./util.js";
-import { APP } from "./state.js";
+import { APP, READV } from "./state.js";
 import { loadStories } from "./saved-runs.js";
 
 // ---- pages and navigation --------------------------------------------------
 /** A scene is being written RIGHT NOW -- as opposed to paused, finished, or not yet started. */
 export const generating = () => APP.live && APP.session.running && !APP.session.paused;
 
-export const navBlocked = v => v === "shelf" && generating();
-
 export const parseHash = () => {
   const path = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return /^(shelf|live|read)$/.test(path) ? path : null;
+  return /^(shelf|story|live|read)$/.test(path) ? path : null;
 };
 export const parseHashParams = () => {
   const qs = location.hash.replace(/^#\/?/, "").split("?")[1] || "";
   return new URLSearchParams(qs);
 };
+
+/** The hash a page WANTS, params and all -- not just its path. A story page and a saved run are
+ *  each about one particular thing, and a reload that keeps the page but loses which one is a
+ *  bookmark that does not work. */
+const hashFor = () => {
+  if (APP.view === "story" && APP.storyDir) return `#/story?dir=${encodeURIComponent(APP.storyDir)}`;
+  if (APP.view === "read" && READV.dir && READV.id)
+    return `#/read?dir=${encodeURIComponent(READV.dir)}&id=${encodeURIComponent(READV.id)}`;
+  return "#/" + APP.view;
+};
+// replaceState, never `location.hash =`, so the page's own transitions do not fire a synthetic
+// hashchange for the listener below to chase.
 export const syncHash = () => {
-  if (parseHash() === APP.view) return;
-  history.replaceState(null, "", "#/" + APP.view);
+  const want = hashFor();
+  if (location.hash !== want) history.replaceState(null, "", want);
 };
 
+/** Go to a page. The shelf is always a legal destination while an engine is attached -- it is the
+ *  hub, not somewhere the session parks you -- so the only rewrite left is the one for a viewer
+ *  with no engine behind it at all, which has nothing but a saved run to show. */
 export function go(v) {
-  if (!APP.live) v = "read";
-  else if (v === "shelf" && !APP.session.picking) v = "live";
+  if (!APP.live && v !== "read") v = "read";
   APP.view = v;
-if (v === "read" || v === "shelf") loadStories();
+  if (v === "read" || v === "shelf" || v === "story") loadStories();
   syncHash();
   APP.render();
   if (v === "live" && APP.wantReaderView) {
@@ -34,14 +45,11 @@ if (v === "read" || v === "shelf") loadStories();
     if (q) q.scrollIntoView({ block:"center", behavior:"smooth" });
   }
 }
-export function userNav(v) {
-  if (navBlocked(v)) { notify("stop the run to choose another story"); return; }
-  go(v);
-}
+
 addEventListener("hashchange", () => {
   const v = parseHash();
-  if (v && v !== APP.view) userNav(v);
+  if (v && v !== APP.view) go(v);
 });
 
 for (const t of document.querySelectorAll(".tab"))
-  t.addEventListener("click", () => userNav(t.dataset.view));
+  t.addEventListener("click", () => go(t.dataset.view));
