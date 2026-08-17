@@ -23,7 +23,7 @@ import { directEdit, renderSpec, specView, type StorySpec } from "./engine/story
 import { runDirs, runPreflight, loadedModelIds, storyCards } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import { buildArchitect, ScaffoldSession, type ScaffoldRound } from "./engine/architect.ts";
-import { buildCharacterAgents, writeScene, type RunEvent } from "./engine/scene-loop.ts";
+import { buildCharacterAgents, writeScenes, type RunEvent } from "./engine/scene-loop.ts";
 
 // -- CONFIG ----------------------------------------------------------------
 const CLI = process.argv.slice(2);
@@ -70,7 +70,7 @@ const flag = (name: string): string | undefined => {
 };
 
 async function runConsultCli(sc: StoryConfig, who: string) {
-  const agents = buildCharacterAgents(sc);
+  const agents = buildCharacterAgents(sc.characters, sc.scene.place, "", { character: sc.thinking.character }, []);
   const def = sc.characters.find(c => c.name.toLowerCase() === who.trim().toLowerCase());
   const agent = agents.get(who.trim().toLowerCase());
   if (!def || !agent) throw new Error(`No character "${who}" in ${sc.dir}. Known: ${sc.characters.map(c => c.name).join(", ")}`);
@@ -309,11 +309,13 @@ async function main() {
 const MAX_RUNS = 3;
 
 async function runAndSave(sc: StoryConfig, dir: string) {
+  const sceneCount = sc.scenes.length;
+  const firstScene = sc.scenes[0];
   console.log(`${C.bold}${dir}${C.reset} ${C.dim}— ${sc.characters.map(c => c.name).join(", ")} `
-    + `· ~${sc.scene.length} words · up to ${sc.maxSteps} steps${C.reset}`);
+    + `· ~${firstScene.length} words ${sceneCount > 1 ? `(${sceneCount} scenes) ` : ""}· up to ${sc.maxSteps} steps per scene${C.reset}`);
 
   LIVE.meta = {
-    story: dir, target: sc.scene.length, question: sc.scene.question,
+    story: dir, target: firstScene.length, question: firstScene.question,
     characters: sc.characters.map(c => ({
       name: c.name,
       skills: c.skills.filter(s => s.source === "story").map(s => s.name),
@@ -335,14 +337,21 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   const logStream = createWriteStream(logPath, { flags: "w" });
 
   const events: RunEvent[] = [];
-  const pieces: string[] = [];
+  const allPieces: string[] = [];
   let sceneWrites: Promise<unknown> = Promise.resolve();
-  const r = await writeScene(sc, e => {
+  let currentChapter = 0;
+
+  const r = await writeScenes(sc, e => {
     events.push(e);
     logStream.write(JSON.stringify(publish(e)) + "\n");
     if (e.t === "draft" && e.prose) {
-      pieces.push(e.prose);
-      sceneWrites = sceneWrites.then(() => writeFile(scenePath, pieces.join("\n\n") + "\n", "utf8")).catch(() => {});
+      allPieces.push(e.prose);
+      sceneWrites = sceneWrites.then(() => {
+        const sep = e.chapter > 1 && currentChapter !== e.chapter
+          ? `\n\n---\n*Chapter ${e.chapter}*\n\n` : "";
+        currentChapter = e.chapter;
+        return writeFile(scenePath, allPieces.join("\n\n") + "\n", "utf8");
+      }).catch(() => {});
     }
   });
   await sceneWrites;
@@ -359,7 +368,7 @@ async function runAndSave(sc: StoryConfig, dir: string) {
 
   if (!SERVE) {
     console.log(`\n${C.bold}${"=".repeat(60)}${C.reset}`);
-    console.log(r.prose.join("\n\n"));
+    for (const s of r.scenes) console.log(s.prose.join("\n\n"));
     console.log(`${C.bold}${"=".repeat(60)}${C.reset}`);
   }
   const consults = events.filter(e => e.t === "consult").length;
@@ -368,7 +377,7 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   const flags    = events.filter(e => e.t === "skill_flag").length;
   console.log(`${C.dim}${r.words} words · ${r.steps} steps · ${consults} consult(s) · `
     + `${needs} clarification(s) · ${retries} retry/retries · ${flags} skill flag(s) · `
-    + `${r.stopped ? "stopped by request" : r.done ? "scene finished" : "stopped early"}${C.reset}`);
+    + `${r.stopped ? "stopped by request" : "scene finished"}${C.reset}`);
   console.log(`${C.dim}${scenePath}\n${logPath}${C.reset}`);
 }
 

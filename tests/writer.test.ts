@@ -18,7 +18,7 @@ import { extractJson, balancedObjectEnd, salvageProse, topLevelObjects } from ".
 import {
   consult, normalizeConsult, canonWants, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
 } from "../engine/consult.ts";
-import { wrapCharacter, wrapWriter, neglectedCast } from "../engine/scene-loop.ts";
+import { wrapCharacter, wrapWriter, writerCast, neglectedCast } from "../engine/scene-loop.ts";
 import { Agent, llmFilenameFor, llmLogEntry } from "../engine/agent.ts";
 import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
 import { complete } from "../engine/llm-client.ts";
@@ -939,7 +939,7 @@ describe("prompt construction", () => {
   it("a character is told its skills and its place, and NOT the premise", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
     const merritt = sc.characters.find(c => c.name === "MERRITT")!;
-    const p = wrapCharacter(merritt, sc.scene.place);
+    const p = wrapCharacter(merritt, sc.scene.place, "");
     assert.match(p, /hearing/);
     assert.match(p, /Kessel/);                       // the place
     assert.ok(!p.includes("sight"), "a character must not be shown a skill it lacks");
@@ -948,20 +948,22 @@ describe("prompt construction", () => {
 
   it("the writer is told what each character cannot do, and no personas", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
-    const p = wrapWriter(sc);
+    const p = wrapWriter(sc.premise, sc.scene, writerCast(sc.characters, sc.scene.roaster), sc.writerStyle);
     assert.match(p, /MERRITT[\s\S]{0,200}CANNOT: sight/);
     assert.ok(!p.includes("night porter at Kessel's for nine years"),
               "the writer must not be handed the personas");
   });
 
   it("the writer is told that stillness is a choice and that pressure may not be resolved first", async () => {
-    const p = wrapWriter(await quiet(() => loadStory("stories/doorway")));
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    const p = wrapWriter(sc.premise, sc.scene, writerCast(sc.characters, sc.scene.roaster), sc.writerStyle);
     assert.match(p, /HOLDING STILL IS A CHOICE/);
     assert.match(p, /YOU MAY NOT RESOLVE THE PRESSURE BEFORE YOU ASK ABOUT IT/);
   });
 
   it("the writer is given the closed `wants` vocabulary, not an invitation to phrase one", async () => {
-    const p = wrapWriter(await quiet(() => loadStory("stories/doorway")));
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    const p = wrapWriter(sc.premise, sc.scene, writerCast(sc.characters, sc.scene.roaster), sc.writerStyle);
     for (const w of CONSULT_WANTS) assert.match(p, new RegExp(`\\b${w}\\b`));
     assert.match(p, /EXACTLY ONE of these four words/);
   });

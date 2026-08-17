@@ -61,7 +61,7 @@ export async function handleRunControl(
     if (LIVE.paused && LIVE.writer && LIVE.agents) {
       LIVE.writer.model = model;
       for (const a of LIVE.agents.values()) a.model = model;
-      LIVE.log?.({ t: "model_changed", model });
+      LIVE.log?.({ t: "model_changed", model, chapter: 0 });
     }
     sseWrite(runState());
     json(res, 200, { ok: true });

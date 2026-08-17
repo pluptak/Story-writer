@@ -1,11 +1,12 @@
-/** SCENE LOOP — the writer's draft/consult loop: character and writer agent wrapping, and writeScene(). */
+/** SCENE LOOP — the writer's draft/consult loop: character and writer agent wrapping, writeScene(), and writeScenes(). */
 import { createInterface } from "node:readline/promises";
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
 import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { canonSkill, SKILL_CATALOG } from "./skills.ts";
-import { type CharacterDef, type StoryConfig } from "./story-format.ts";
+import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
+import type { ThinkLevel } from "./llm-client.ts";
 import {
   consult, normalizeConsult, canonWants,
   type ConsultEvent, type ConsultRequest, type ConsultReply,
@@ -14,74 +15,81 @@ import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live
 import { ENGINE, progressDone } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
-export function wrapCharacter(def: CharacterDef, place: string): string {
+export function wrapCharacter(def: CharacterDef, place: string, chapterGoal: string): string {
   return P.characterSystem({
-    persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
+    persona: def.persona, place, skills: def.skills, knows: def.knows,
+    goal: chapterGoal || def.goal,
   });
 }
 
-export function buildCharacterAgents(sc: StoryConfig): Map<string, Agent> {
+export function buildCharacterAgents(
+  characters: CharacterDef[], place: string, chapterGoal: string, think: { character: ThinkLevel },
+  rostered: string[],
+): Map<string, Agent> {
   const agents = new Map<string, Agent>();
-  for (const def of sc.characters) {
-    const a = new Agent(def.name, def.model, wrapCharacter(def, sc.scene.place), 0.9);
-    a.think = sc.thinking.character;
+  for (const def of characters) {
+    if (rostered.length && !rostered.some(r => r.toLowerCase() === def.name.toLowerCase())) continue;
+    const a = new Agent(def.name, def.model, wrapCharacter(def, place, chapterGoal), 0.9);
+    a.think = think.character;
     agents.set(def.name.toLowerCase(), a);
   }
   return agents;
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
-export function wrapWriter(sc: StoryConfig): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; cannot: string[] }[], style: string): string {
+  return P.writerSystem({ premise, scene, cast, style });
+}
+
+export function writerCast(characters: CharacterDef[], rostered: string[]): { name: string; can: string[]; cannot: string[] }[] {
   const general = Object.keys(SKILL_CATALOG);
-  return P.writerSystem({
-    premise: sc.premise,
-    scene: sc.scene,
-    cast: sc.characters.map(c => ({
+  return characters
+    .filter(def => !rostered.length || rostered.some(r => r.toLowerCase() === def.name.toLowerCase()))
+    .map(c => ({
       name: c.name,
       can: c.skills.map(s => s.name),
       cannot: general.filter(g => !c.skills.some(s => canonSkill(s.name) === canonSkill(g))),
-    })),
-    style: sc.writerStyle,
-  });
+    }));
 }
 
 // -- SCENE LOOP ------------------------------------------------------------
 export type RunEvent =
   | ConsultEvent
-  | { t: "scene_start"; story: string; characters: string[]; target: number }
-  | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean }
-  | { t: "bad_consult"; character: string; why: string }
-  | { t: "judge"; character: string; verdict: string; note: string; attempt: number }
-  | { t: "accept"; character: string; attempt: number; speech: string; action: string }
-  | { t: "retry"; character: string; attempt: number; situation: string; question: string }
-  | { t: "budget"; added: number; budget: number }
-  | { t: "reader_ask"; step: number; framing: string; options: string[] }
-  | { t: "reader_answer"; answer: string }
-  | { t: "model_changed"; model: string }
-  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean };
+  | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
+  | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
+  | { t: "bad_consult"; character: string; why: string; chapter: number }
+  | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
+  | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
+  | { t: "retry"; character: string; attempt: number; situation: string; question: string; chapter: number }
+  | { t: "budget"; added: number; budget: number; chapter: number }
+  | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
+  | { t: "reader_answer"; answer: string; chapter: number }
+  | { t: "model_changed"; model: string; chapter: number }
+  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number }
+  | { t: "story_end"; scenes: number; steps: number; words: number };
 
 
-async function askMoreSteps(steps: number, budget: number): Promise<number> {
+async function askMoreSteps(steps: number, budget: number, chapter: number): Promise<number> {
   if (RUN.stopped) return 0;
   if (!LIVE.interactive) {
-    console.log(`\n${C.yellow}Step budget (${budget}) spent and the scene is not finished. `
+    console.log(`\n${C.yellow}Step budget (${budget}) spent on chapter ${chapter} and the scene is not finished. `
       + `Stopping — interactive is off.${C.reset}`);
     return 0;
   }
   if (sseClients.size) {
     LIVE.awaitingContinue = { steps, budget };
     progressDone();
-    console.log(`\n${C.yellow}Budget spent — waiting on the viewer.${C.reset}`);
+    console.log(`\n${C.yellow}Budget spent on chapter ${chapter} — waiting on the viewer.${C.reset}`);
     sseWrite({ t: "continue_prompt", steps, budget, suggested: 8 });
     return new Promise<number>(resolve => { LIVE.continueResolve = resolve; });
   }
   if (!process.stdin.isTTY) {
-    console.log(`\n${C.yellow}Step budget (${budget}) spent and the scene is not finished. `
+    console.log(`\n${C.yellow}Step budget (${budget}) spent on chapter ${chapter} and the scene is not finished. `
       + `Stopping — nobody to ask.${C.reset}`);
     return 0;
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const ans = (await rl.question(`\n${C.yellow}${steps} steps used and the scene is not done. `
+  const ans = (await rl.question(`\n${C.yellow}${steps} steps used on chapter ${chapter} and the scene is not done. `
     + `How many more? [8, 0 to stop]: ${C.reset}`)).trim();
   rl.close();
   const n = ans === "" ? 8 : Number(ans);
@@ -100,20 +108,26 @@ export function neglectedCast(cast: string[], lastAsked: Map<string, number>, st
   });
 }
 
-export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
-  const writer = new Agent("WRITER", sc.models.writer, wrapWriter(sc), 0.8);
-  writer.think = sc.thinking.writer;
-  const agents = buildCharacterAgents(sc);
-  const defOf = (name: string) => sc.characters.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
-  LIVE.writer = writer; LIVE.agents = agents; LIVE.log = log;
+export async function writeScene(
+  sd: SceneDef, chapter: number, characters: CharacterDef[], agents: Map<string, Agent>,
+  premise: string, writerStyle: string, writerModel: string, summaryModel: string,
+  thinking: { writer: ThinkLevel; summary: ThinkLevel },
+  maxSteps: number, maxProseWords: number, retries: number, clarifications: number,
+  dir: string, log: (e: RunEvent) => void,
+) {
+  const cast = writerCast(characters, sd.roaster);
+  const writer = new Agent("WRITER", writerModel, wrapWriter(premise, sd, cast, writerStyle), 0.8);
+  writer.think = thinking.writer;
+  const defOf = (name: string) => characters.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+  LIVE.writer = writer; LIVE.log = log;
 
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   const lastAsked = new Map<string, number>();
-  let steps = 0, budget = sc.maxSteps, done = false, empties = 0;
+  let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
 
-  log({ t: "scene_start", story: sc.dir, characters: sc.characters.map(c => c.name), target: sc.scene.length });
+  log({ t: "scene_start", story: dir, characters: characters.map(c => c.name), target: sd.length, chapter });
 
   while (!done) {
     if (RUN.stopped) break;
@@ -127,10 +141,10 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     }
 
     if (steps >= budget) {
-      const extra = await askMoreSteps(steps, budget);
+      const extra = await askMoreSteps(steps, budget, chapter);
       if (!extra) break;
       budget += extra;
-      log({ t: "budget", added: extra, budget });
+      log({ t: "budget", added: extra, budget, chapter });
     }
 
     if (LIVE.readerArmed && LIVE.interactive && sseClients.size) {
@@ -152,13 +166,13 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
         const options = Array.isArray(ask.options)
           ? ask.options.map((o: unknown) => String(o).trim()).filter(Boolean).slice(0, 3) : [];
         writer.said(JSON.stringify({ framing, options }));
-        log({ t: "reader_ask", step: steps, framing, options });
+        log({ t: "reader_ask", step: steps, framing, options, chapter });
         console.log(`\n${C.cyan}(waiting on the reader — ${options.length} direction(s) offered)${C.reset}`);
 
         const answer = await new Promise<string>(resolve => { LIVE.readerResolve = resolve; });
         if (RUN.stopped) break;
         if (answer) {
-          log({ t: "reader_answer", answer });
+          log({ t: "reader_answer", answer, chapter });
           writer.hear(P.readerChose(answer));
         }
       }
@@ -166,9 +180,9 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     }
 
     const words = wordCount();
-    const neglected = neglectedCast(sc.characters.map(c => c.name), lastAsked, steps, NEGLECT_GAP);
+    const neglected = neglectedCast(characters.map(c => c.name), lastAsked, steps, NEGLECT_GAP);
     writer.hear(P.writeInstruction({
-      words, target: sc.scene.length, maxProseWords: sc.maxProseWords, overran, neglected,
+      words, target: sd.length, maxProseWords, overran, neglected,
     }));
     let draftRaw: string;
     try {
@@ -194,22 +208,22 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     const who = c ? String(c.character ?? "").trim() : "";
 
     const proseWords = prose ? prose.split(/\s+/).filter(Boolean).length : 0;
-    overran = proseWords > sc.maxProseWords * OVERRUN_SLACK ? proseWords : 0;
+    overran = proseWords > maxProseWords * OVERRUN_SLACK ? proseWords : 0;
     if (prose) pieces.push(prose);
     writer.said(JSON.stringify({ prose, ...(who ? { consult: { character: who } } : {}), scene_done: sceneDone }));
-    log({ t: "draft", step: steps, prose, words: wordCount(), consulting: who, salvaged });
+    log({ t: "draft", step: steps, prose, words: wordCount(), consulting: who, salvaged, chapter });
     if (prose && !ENGINE.serve) console.log(`\n${prose}\n`);
 
     // -- CONSULT (with accept / retry)
-    let asked = false;                   // did anyone actually get consulted this step?
+    let asked = false;
     if (who) {
       const def = defOf(who);
       const persistent = agents.get(who.toLowerCase());
       const check = def ? normalizeConsult({ ...c!, character: def.name }) : null;
       if (!def || !persistent) {
-        writer.hear(P.noSuchCharacter(who, sc.characters.map(x => x.name)));
+        writer.hear(P.noSuchCharacter(who, characters.map(x => x.name)));
       } else if (!check!.ok) {
-        log({ t: "bad_consult", character: def.name, why: check!.why });
+        log({ t: "bad_consult", character: def.name, why: check!.why, chapter });
         console.log(`${C.yellow}(not sent to ${def.name} — ${check!.why.split(". ")[0]}.)${C.reset}`);
         writer.hear(P.consultNotSent(check!.why, def.name));
       } else {
@@ -224,7 +238,7 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
           const agent = attempt === 1 ? persistent : persistent.fork();
           try {
             reply = await consult(agent, req, def.skills, {
-              clarifications: sc.clarifications, attempt, log,
+              clarifications, attempt, log,
               clarify: async (q, r) => {
                 let a = "";
                 try {
@@ -234,7 +248,7 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
                   a = String(extractJson(raw).answer ?? "").trim();
                 } catch (e) {
                   console.log(`${C.red}(clarification call failed: ${(e as Error).message})${C.reset}`);
-                  return "";     // consult turns this into "(no answer)" and the character answers anyway
+                  return "";
                 }
                 writer.hear(P.characterAsks(r.character, q));
                 writer.said(JSON.stringify({ answer: a }));
@@ -262,9 +276,9 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
           }
           const verdict = String(j.verdict ?? "accept").trim().toLowerCase() === "retry" ? "retry" : "accept";
           const note = String(j.note ?? "").trim();
-          log({ t: "judge", character: def.name, verdict, note, attempt });
+          log({ t: "judge", character: def.name, verdict, note, attempt, chapter });
 
-          if (verdict === "accept" || attempt > sc.retries) {
+          if (verdict === "accept" || attempt > retries) {
             if (verdict === "retry") console.log(`${C.dim}(retries spent — taking ${def.name}'s last answer)${C.reset}`);
             break;
           }
@@ -275,8 +289,8 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
             question: String(rev.question ?? "").trim() || req.question,
             wants: canonWants(rev.wants) ?? req.wants,
           };
-          console.log(`${C.yellow}retry ${attempt}/${sc.retries} — ${def.name}${C.reset}${note ? ` ${C.dim}(${note})${C.reset}` : ""}`);
-          log({ t: "retry", character: def.name, attempt, situation: req.situation, question: req.question });
+          console.log(`${C.yellow}retry ${attempt}/${retries} — ${def.name}${C.reset}${note ? ` ${C.dim}(${note})${C.reset}` : ""}`);
+          log({ t: "retry", character: def.name, attempt, situation: req.situation, question: req.question, chapter });
         }
 
         if (RUN.stopped) break;
@@ -291,7 +305,7 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
           persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
           writer.hear(P.characterAnswered(def.name, P.answerBody(reply)));
           lastAsked.set(def.name.toLowerCase(), steps);
-          log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action });
+          log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
           if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
             + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
         }
@@ -303,12 +317,57 @@ export async function writeScene(sc: StoryConfig, log: (e: RunEvent) => void) {
     } else empties = 0;
 
     if (sceneDone) done = true;
-    if (RUN.stopped) break;              // don't spend summary calls on a run that is over
-    await trimHistory(writer, sc.models.summary, sc.thinking.summary);
-    for (const a of agents.values()) await trimHistory(a, sc.models.summary, sc.thinking.summary);
+    if (RUN.stopped) break;
+    await trimHistory(writer, summaryModel, thinking.summary);
+    for (const a of agents.values()) await trimHistory(a, summaryModel, thinking.summary);
   }
 
-  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped });
-  LIVE.writer = null; LIVE.agents = null; LIVE.log = null;
+  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter });
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
+}
+
+export async function writeScenes(sc: StoryConfig, log: (e: RunEvent) => void): Promise<{
+  scenes: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }[];
+  words: number; steps: number; stopped: boolean;
+}> {
+  const agents = new Map<string, Agent>();
+  const results: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }[] = [];
+  let totalWords = 0, totalSteps = 0;
+
+  for (let i = 0; i < sc.scenes.length; i++) {
+    const sd = sc.scenes[i];
+    const chapter = i + 1;
+
+    // Build or update agents for this scene's roaster
+    const chapterGoal = (c: typeof sc.characters[0]) => c.goals?.[i] || c.goal;
+    for (const def of sc.characters) {
+      if (sd.roaster.length && !sd.roaster.some(r => r.toLowerCase() === def.name.toLowerCase())) continue;
+      if (!agents.has(def.name.toLowerCase())) {
+        const a = new Agent(def.name, def.model, wrapCharacter(def, sd.place, chapterGoal(def)), 0.9);
+        a.think = sc.thinking.character;
+        agents.set(def.name.toLowerCase(), a);
+      }
+    }
+
+    LIVE.agents = agents;
+
+    log({ t: "scene_start" as const, story: sc.dir, characters: sc.characters.map(c => c.name), target: sd.length, chapter });
+
+    const r = await writeScene(
+      sd, chapter, sc.characters, agents,
+      sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+      sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
+      sc.dir, log,
+    );
+
+    results.push(r);
+    totalWords += r.words;
+    totalSteps += r.steps;
+
+    if (r.stopped || RUN.stopped) break;
+  }
+
+  LIVE.agents = null;
+  log({ t: "story_end", scenes: results.length, steps: totalSteps, words: totalWords });
+  return { scenes: results, words: totalWords, steps: totalSteps, stopped: RUN.stopped };
 }
