@@ -22,30 +22,30 @@ export function splitMeaning(raw: string): { text: string; meaning: string } {
   return { text: raw.slice(0, i).trim(), meaning: raw.slice(i + 2).trim() };
 }
 
-export function resolveSkills(who: string, skillsRaw: string, lacksRaw: string): Skill[] {
+export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string): Skill[] {
   const split = (s: string) => s.split("|").map(x => x.trim()).filter(Boolean);
-  const lacks = new Map<string, string>();          // canon -> authored spelling
-  for (const entry of split(lacksRaw)) {
+  const restricted = new Map<string, string>();          // canon -> authored spelling
+  for (const entry of split(restrictionsRaw)) {
     const { text } = splitMeaning(entry);
     if (!text) continue;
     const key = canonSkill(text);
     if (!(key in SKILL_CATALOG))
-      console.warn(`   (character ${who}: lacks "${text}" — not a general skill, so there is nothing to remove; known: ${Object.keys(SKILL_CATALOG).join(", ")})`);
-    lacks.set(key, text);
+      console.warn(`   (character ${who}: restrictions "${text}" — not a general skill, so there is nothing to remove; known: ${Object.keys(SKILL_CATALOG).join(", ")})`);
+    restricted.set(key, text);
   }
 
   const out = new Map<string, Skill>();
   for (const [name, meaning] of Object.entries(SKILL_CATALOG))
-    if (!lacks.has(canonSkill(name))) out.set(canonSkill(name), { name, meaning, source: "general" });
+    if (!restricted.has(canonSkill(name))) out.set(canonSkill(name), { name, meaning, source: "general" });
 
   for (const entry of split(skillsRaw)) {
     const { text, meaning } = splitMeaning(entry);
     if (!text) { console.warn(`   (character ${who}: a skills entry has a meaning but no name before the "::" — dropped)`); continue; }
     const key = canonSkill(text);
-    if (key in SKILL_CATALOG && !lacks.has(key))
+    if (key in SKILL_CATALOG && !restricted.has(key))
       console.warn(`   (character ${who}: skills "${text}" redeclares a general skill — the story's wording wins)`);
-    if (lacks.has(key))
-      console.warn(`   (character ${who}: "${text}" is in both skills and lacks — added back, so they HAVE it)`);
+    if (restricted.has(key))
+      console.warn(`   (character ${who}: "${text}" is in both skills and restrictions — added back, so they HAVE it)`);
     out.set(key, { name: text, meaning, source: "story" });
   }
   return [...out.values()];

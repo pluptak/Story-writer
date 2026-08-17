@@ -79,7 +79,7 @@ way.**
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
 | [engine/config-util.ts](engine/config-util.ts) | `story.md` config-value parsing (`num`/`bool`/`enumOf`) and `slugify` |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
-| [engine/skills.ts](engine/skills.ts) | the general skill catalog and a story's `skills:`/`lacks:` overrides |
+| [engine/skills.ts](engine/skills.ts) | the general skill catalog and a story's `skills:`/`restrictions:` overrides |
 | [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
 | [engine/story-format.ts](engine/story-format.ts) | parsing `story.md`, loading a `StoryConfig`, discovering stories on disk |

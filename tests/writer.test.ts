@@ -109,8 +109,7 @@ describe("resolveSkills", () => {
   });
 
   it("removes what a character lacks and adds what the story gives them", () => {
-    const s = quietSync(() => resolveSkills("X", "lockpicking :: picking locks | climbing", "sight"));
-    assert.ok(!names(s).includes("sight"));
+    const s = quietSync(() => resolveSkills("X", "lockpicking :: picking locks | climbing", "sight"));    assert.ok(!names(s).includes("sight"));
     assert.deepEqual(names(s).slice(-2), ["lockpicking", "climbing"]);
     assert.equal(s.find(x => x.name === "lockpicking")!.meaning, "picking locks");
     assert.equal(s.length, general.length - 1 + 2);
@@ -138,9 +137,9 @@ describe("resolveSkills", () => {
     assert.equal(s.length, Object.keys(SKILL_CATALOG).length);
   });
 
-  it("a name in BOTH skills and lacks ends up present, and says so", () => {
+  it("a name in BOTH skills and restrictions ends up present, and says so", () => {
     const w = warnings(() => resolveSkills("X", "sight :: they can see after all", "sight"));
-    assert.match(w.join(" "), /both skills and lacks/);
+    assert.match(w.join(" "), /both skills and restrictions/);
     assert.ok(resolveSkills("X", "sight :: they can see after all", "sight").some(x => x.name === "sight"));
   });
 });
@@ -535,7 +534,7 @@ describe("normalizeSpec", () => {
   const base = {
     title: "Doorway", premise: "A corridor at 3am.",
     scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700 },
-    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: ["lockpicking :: picks locks"], lacks: [] }],
+    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: ["lockpicking :: picks locks"], restrictions: [] }],
   };
 
   it("accepts a well-formed proposal with no complaints", () => {
@@ -545,10 +544,10 @@ describe("normalizeSpec", () => {
     assert.deepEqual(spec.characters[0].skills, ["lockpicking :: picks locks"]);
   });
 
-  it("drops a lacks: that names no general skill, and says why", () => {
+  it("drops a restriction that names no general skill, and says why", () => {
     const { spec, problems } = normalizeSpec({
-      ...base, characters: [{ ...base.characters[0], lacks: ["telepathy", "sight"] }] });
-    assert.deepEqual(spec.characters[0].lacks, ["sight"]);
+      ...base, characters: [{ ...base.characters[0], restrictions: ["telepathy", "sight"] }] });
+    assert.deepEqual(spec.characters[0].restrictions, ["sight"]);
     assert.match(problems.join(" "), /telepathy/);
   });
 
@@ -558,11 +557,11 @@ describe("normalizeSpec", () => {
     assert.match(problems.join(" "), /NOBODY/);
   });
 
-  it("takes skills and lacks as a pipe-separated string too", () => {
+  it("takes skills and restrictions as a pipe-separated string too", () => {
     const { spec } = normalizeSpec({
-      ...base, characters: [{ ...base.characters[0], skills: "climbing | keys :: by feel", lacks: "sight" }] });
+      ...base, characters: [{ ...base.characters[0], skills: "climbing | keys :: by feel", restrictions: "sight" }] });
     assert.deepEqual(spec.characters[0].skills, ["climbing", "keys :: by feel"]);
-    assert.deepEqual(spec.characters[0].lacks, ["sight"]);
+    assert.deepEqual(spec.characters[0].restrictions, ["sight"]);
   });
 
   it("enforces the cast bounds and rejects duplicates", () => {
@@ -576,11 +575,11 @@ describe("normalizeSpec", () => {
     assert.match(dup.problems.join(" "), /two characters called/i);
   });
 
-  it("notices a cast where nobody lacks anything", () => {
+  it("notices a cast where nobody has any restrictions", () => {
     const flat = { ...base, scene: { ...base.scene, pov: "" },
-      characters: [{ ...base.characters[0], name: "A", lacks: [] }, { ...base.characters[0], name: "B", lacks: [] }] };
+      characters: [{ ...base.characters[0], name: "A", restrictions: [] }, { ...base.characters[0], name: "B", restrictions: [] }] };
     assert.match(normalizeSpec(flat).problems.join(" "), /asymmetry/);
-    const sharp = { ...flat, characters: [flat.characters[0], { ...flat.characters[1], lacks: ["sight"] }] };
+    const sharp = { ...flat, characters: [flat.characters[0], { ...flat.characters[1], restrictions: ["sight"] }] };
     assert.ok(!normalizeSpec(sharp).problems.some(p => /asymmetry/.test(p)));
     // A single character has nobody to be asymmetric with; do not nag about it.
     assert.ok(!normalizeSpec(base).problems.some(p => /asymmetry/.test(p)));
@@ -588,7 +587,7 @@ describe("normalizeSpec", () => {
 
   it("notices a persona that restates the structured fields", () => {
     const bled = { ...base, characters: [{ ...base.characters[0],
-      persona: "A courier. VOICE: economical. KNOWS: the code changed. LACKS: None." }] };
+      persona: "A courier. VOICE: economical. KNOWS: the code changed. RESTRICTIONS: None." }] };
     assert.match(normalizeSpec(bled).problems.join(" "), /restates/);
     // A persona using the labelled headings the format actually asks for is fine.
     const ok = { ...base, characters: [{ ...base.characters[0],
@@ -616,8 +615,8 @@ describe("applyEdits", () => {
     scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700 },
     writer_style: "Close third.",
     characters: [
-      { name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: ["lockpicking"], lacks: [] },
-      { name: "MERRITT", persona: "A porter.", knows: "The lock sticks.", skills: [], lacks: ["sight"] },
+      { name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: ["lockpicking"], restrictions: [] },
+      { name: "MERRITT", persona: "A porter.", knows: "The lock sticks.", skills: [], restrictions: ["sight"] },
     ],
   }).spec;
   const edit = (field: string, value: any) => quietSync(() => applyEdits(spec, { edits: [{ field, value }] }));
@@ -638,10 +637,10 @@ describe("applyEdits", () => {
     assert.deepEqual(r.applied, ["MERRITT.persona"]);
   });
 
-  it("takes skills and lacks as a list or a pipe-separated string", () => {
+  it("takes skills and restrictions as a list or a pipe-separated string", () => {
     assert.deepEqual(edit("characters.RIVEN.skills", ["climbing", "keys :: by feel"]).spec.characters[0].skills,
                      ["climbing", "keys :: by feel"]);
-    assert.deepEqual(edit("characters.RIVEN.lacks", "hearing | smell").spec.characters[0].lacks,
+    assert.deepEqual(edit("characters.RIVEN.restrictions", "hearing | smell").spec.characters[0].restrictions,
                      ["hearing", "smell"]);
   });
 
@@ -653,7 +652,7 @@ describe("applyEdits", () => {
   });
 
   it("adds and removes characters, and refuses the impossible ones", () => {
-    const added = edit("add_character", { name: "TOVA", persona: "A cook.", knows: "", skills: [], lacks: ["hearing"] });
+    const added = edit("add_character", { name: "TOVA", persona: "A cook.", knows: "", skills: [], restrictions: ["hearing"] });
     assert.deepEqual(added.spec.characters.map(c => c.name), ["RIVEN", "MERRITT", "TOVA"]);
     assert.match(edit("add_character", { name: "RIVEN", persona: "x" }).ignored.join(" "), /already in the cast/);
     assert.match(edit("remove_character", "NOBODY").ignored.join(" "), /not in the cast/);
@@ -666,9 +665,9 @@ describe("applyEdits", () => {
     assert.match(r.problems.join(" "), /RIVEN/);
   });
 
-  it("re-validates after editing, so a bad lacks: is caught in the round that caused it", () => {
-    const r = edit("characters.MERRITT.lacks", ["telepathy"]);
-    assert.deepEqual(r.spec.characters[1].lacks, []);
+  it("re-validates after editing, so a bad restriction is caught in the round that caused it", () => {
+    const r = edit("characters.MERRITT.restrictions", ["telepathy"]);
+    assert.deepEqual(r.spec.characters[1].restrictions, []);
     assert.match(r.problems.join(" "), /telepathy/);
   });
 
@@ -740,9 +739,9 @@ describe("renderStory round trip", () => {
     writer_style: "Third person limited. Present tense.",
     characters: [
       { name: "ELIAS", persona: "The senior keeper.\n\nThirty years of it.", knows: "The radio only receives.",
-        skills: ["writelog :: drafting entries in correct naval syntax"], lacks: [] },
+        skills: ["writelog :: drafting entries in correct naval syntax"], restrictions: [] },
       { name: "MARA", persona: "The junior keeper.", knows: "The fog signal has not fired in eleven days.",
-        skills: [], lacks: ["hearing"] },
+        skills: [], restrictions: ["hearing"] },
     ],
   }).spec;
 
@@ -764,7 +763,7 @@ describe("renderStory round trip", () => {
       assert.ok(elias.persona.includes("Thirty years of it."));
       // The two things that would silently change the SCENE if they were lost:
       assert.ok(elias.skills.some(s => s.name === "writelog" && s.meaning.startsWith("drafting entries")));
-      assert.ok(!mara.skills.some(s => s.name === "hearing"), "a lacks: must survive as a real absence");
+      assert.ok(!mara.skills.some(s => s.name === "hearing"), "a restriction must survive as a real absence");
       assert.ok(mara.skills.some(s => s.name === "sight"), "and must not take anything else with it");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
@@ -1048,9 +1047,9 @@ const STORY = {
   writer_style: "Plain sentences. No weather as metaphor.",
   characters: [
     { name: "ASTER", persona: "Keeps the log in a small clear hand and has never once falsified it.",
-      knows: "The signal did not fire.", skills: ["lamp-tending :: trimming and lighting the great lens"], lacks: [] },
+      knows: "The signal did not fire.", skills: ["lamp-tending :: trimming and lighting the great lens"], restrictions: [] },
     { name: "BRAE", persona: "Came up from the boats and trusts the weather over anyone's paperwork.",
-      knows: "", skills: [], lacks: ["hearing"] },
+      knows: "", skills: [], restrictions: ["hearing"] },
   ],
 };
 const scaffold = (script: unknown[], storiesDir?: string) =>

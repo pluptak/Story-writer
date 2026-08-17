@@ -25,7 +25,7 @@ export function summarizePrompt(name: string, digest: string, exchanges: string)
 // -- SKILL CATALOG ---------------------------------------------------------
 
 export function catalogBlock(catalog: Readonly<Record<string, string>>): string {
-  return `THE GENERAL SKILL LIST -- every character has all of these unless "lacks" removes them:\n`
+  return `THE GENERAL SKILL LIST -- every character has all of these unless "restrictions" removes them:\n`
     + Object.entries(catalog).map(([n, m]) => `  ${n} -- ${m}`).join("\n");
 }
 
@@ -65,7 +65,7 @@ Reply with ONE JSON object and nothing else:
  "writer_style": "...",
  "characters": [{"name": "NAME", "persona": "...", "knows": "...", "goal": "...",
                  "skills": ["lockpicking :: opening a mechanical lock without its key"],
-                 "lacks": ["sight"]}],
+                 "restrictions": ["sight"]}],
  "ask": "",
  "note": ""}
 
@@ -89,8 +89,8 @@ characters   -- Every character costs consults out of a fixed step budget, so ad
                 are UNDER PRESSURE. Concrete and particular. Around 150 words. Write it addressed
                 to them ("You have...") or about them, either way, but never as a summary of their
                 arc -- they must be able to act from it, not perform it. PROSE ONLY: do not restate
-                knows, goal, skills or lacks inside it. Those are separate fields and the engine
-                renders them itself; a persona that also says "LACKS: none" contradicts the skill
+                knows, goal, skills or restrictions inside it. Those are separate fields and the engine
+                renders them itself; a persona that also says "RESTRICTIONS: none" contradicts the skill
                 list the character is actually given.
   knows      -- what they know walking in that the other characters do not. This is where a scene
                 gets its friction.
@@ -101,10 +101,10 @@ characters   -- Every character costs consults out of a fixed step budget, so ad
   skills     -- abilities BEYOND the general list below. "name :: what it means". Give someone
                 something the other cannot do. Do NOT restate a general skill under a new name:
                 "watching :: seeing the lens turn" is just sight, and adds nothing.
-  lacks      -- general skills this character does NOT have. MUST be names from the general list.
-                One character who cannot see, or cannot speak, or cannot move, will do more for a
-                scene than any amount of backstory. AT LEAST ONE character must lack something
-                real, unless the idea makes that genuinely impossible. A lack earns its place only
+  restrictions      -- general skills this character does NOT have. MUST be names from the general list.
+                 One character who cannot see, or cannot speak, or cannot move, will do more for a
+                 scene than any amount of backstory. AT LEAST ONE character must have a restriction,
+                 unless the idea makes that genuinely impossible. It earns its place only
                 if it can actually bite in THIS scene -- prefer one that creates an information or
                 action asymmetry (she can't see the signal he's watching for; he can't hear the
                 alarm she can) over one the scene never puts to the test.
@@ -124,7 +124,7 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
     title · premise · writer_style
     scene.place · scene.question · scene.pov · scene.length
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
-    characters.<NAME>.skills · characters.<NAME>.lacks     (value is a list)
+    characters.<NAME>.skills · characters.<NAME>.restrictions     (value is a list)
     add_character      (value is a whole character object, as above)
     remove_character   (value is the name)
 

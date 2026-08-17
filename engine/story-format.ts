@@ -55,23 +55,32 @@ export function parseStoryMd(src: string): ParsedStory {
   return { kv, characters, premise: premise.replace(/\n{3,}/g, "\n\n").trim() };
 }
 
+export interface SceneDef {
+  place: string;
+  question: string;
+  pov: string;
+  length: number;
+  roaster: string[];     // character names present; empty means all characters
+}
 export interface CharacterDef {
   name: string;
   file: string;
   model: string;
   persona: string;      // raw persona markdown
   knows: string;        // what they know entering the scene
-  goal: string;         // what they want tonight — theirs alone to weigh progress against
-  skills: Skill[];      // effective set (catalog − lacks + skills)
+  goal: string;         // what they want overall — theirs alone to weigh progress against
+  goals: string[];      // per-scene goals (index 0-2 for scenes 1-3)
+  skills: Skill[];      // effective set (catalog − restrictions + skills)
 }
 export interface StoryConfig {
   dir: string;
   premise: string;
-  scene: { place: string; question: string; pov: string; length: number };
+  scene: SceneDef;                // alias for scenes[0], backward compat
+  scenes: SceneDef[];             // 1-3 scenes
   writerStyle: string;             // optional ## Writer / file: markdown, "" when undeclared
   retries: number;                 // writer rewrites per consult
   clarifications: number;          // questions a character may ask before it must answer
-  maxSteps: number;                // soft budget of writer draft calls
+  maxSteps: number;                // soft budget of writer draft calls PER SCENE
   maxProseWords: number;           // ceiling on ONE draft's prose — the scene's pacing dial
   stream: boolean;
   debug: boolean;
@@ -120,14 +129,31 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
   const premise = parsed.premise.trim();
   if (!premise) throw new Error(`## Premise is empty in ${dir}/story.md — there is nothing to write.`);
 
-  const scene = {
-    place:    kv["scene.place"] ?? "",
-    question: kv["scene.question"] ?? "",
-    pov:      kv["scene.pov"] ?? "",
-    length:   num(kv, "scene.length", 700),
+  const readScene = (prefix: string): SceneDef => {
+    const ns = prefix ? `${prefix}.` : "scene.";
+    const s = prefix ? prefix : "scene";
+    const place    = kv[`${ns}place`]    ?? "";
+    const question = kv[`${ns}question`] ?? "";
+    const pov      = kv[`${ns}pov`]      ?? "";
+    const length   = num(kv, `${ns}length`, 700);
+    const roasterRaw = kv[`${ns}roaster`] ?? "";
+    const roaster = roasterRaw.split(",").map(s => s.trim()).filter(Boolean);
+    return { place, question, pov, length, roaster };
   };
-  if (!scene.question)
-    console.warn(`   (## Scene has no "question:" — the writer has no dramatic question to close, so it decides alone when the scene is done)`);
+
+  const scene1 = readScene("");
+  const scenes = [scene1];
+  let seenScene2 = kv["scene 2.place"] !== undefined || kv["scene 2.question"] !== undefined
+                || kv["scene 2.pov"] !== undefined || kv["scene 2.length"] !== undefined;
+  if (seenScene2) scenes.push(readScene("scene 2"));
+  let seenScene3 = kv["scene 3.place"] !== undefined || kv["scene 3.question"] !== undefined
+                || kv["scene 3.pov"] !== undefined || kv["scene 3.length"] !== undefined;
+  if (seenScene3) scenes.push(readScene("scene 3"));
+
+  for (const [i, s] of scenes.entries()) {
+    if (!s.question)
+      console.warn(`   (## ${i === 0 ? "Scene" : `Scene ${i + 1}`} has no "question:" — the writer has no dramatic question to close, so it decides alone when the scene is done)`);
+  }
 
   // Declared-but-unreadable is a hard failure, as every file reference is; undeclared is fine.
   const writerFile = kv["writer.file"];
@@ -149,21 +175,30 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     const persona = await read(c.file).catch(() => {
       throw new Error(`Persona file "${c.file}" for ${name} could not be read in ${dir}.`);
     });
+    const restrictionsRaw = c.restrictions ?? c.lacks ?? "";
+    const goals = [
+      (c["goal 1"] ?? "").trim(),
+      (c["goal 2"] ?? "").trim(),
+      (c["goal 3"] ?? "").trim(),
+    ];
     characters.push({
       name, file: c.file,
       model: c.model ?? models.default,
       persona,
       knows: (c.knows ?? "").trim(),
       goal: (c.goal ?? "").trim(),
-      skills: resolveSkills(name, c.skills ?? "", c.lacks ?? ""),
+      goals,
+      skills: resolveSkills(name, c.skills ?? "", restrictionsRaw),
     });
   }
 
-  if (scene.pov && !characters.some(c => c.name.toLowerCase() === scene.pov.trim().toLowerCase()))
-    console.warn(`   (## Scene pov: "${scene.pov}" is not one of the characters — ignored)`);
+  for (const [i, s] of scenes.entries()) {
+    if (s.pov && !characters.some(c => c.name.toLowerCase() === s.pov.trim().toLowerCase()))
+      console.warn(`   (## ${i === 0 ? "Scene" : `Scene ${i + 1}`} pov: "${s.pov}" is not one of the characters — ignored)`);
+  }
 
   return {
-    dir: base, premise, scene, writerStyle,
+    dir: base, premise, scene: scenes[0], scenes, writerStyle,
     retries, clarifications, maxSteps, maxProseWords, stream, debug, thinking,
     requestTimeout, attempts, maxTokens, models, characters,
   };

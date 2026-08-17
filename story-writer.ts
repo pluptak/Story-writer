@@ -317,7 +317,7 @@ async function runAndSave(sc: StoryConfig, dir: string) {
     characters: sc.characters.map(c => ({
       name: c.name,
       skills: c.skills.filter(s => s.source === "story").map(s => s.name),
-      lacks: Object.keys(SKILL_CATALOG).filter(g => !c.skills.some(s => canonSkill(s.name) === canonSkill(g))),
+      restrictions: Object.keys(SKILL_CATALOG).filter(g => !c.skills.some(s => canonSkill(s.name) === canonSkill(g))),
     })),
   };
   resetLive();

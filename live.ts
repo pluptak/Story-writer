@@ -29,7 +29,7 @@ export function armRun() {
 // -- LIVE EVENT BUS --------------------------------------------------------
 export interface RunMeta {
   story: string;
-  characters: Array<{ name: string; skills: string[]; lacks: string[] }>;
+  characters: Array<{ name: string; skills: string[]; restrictions: string[] }>;
   target: number;
   question: string;
 }

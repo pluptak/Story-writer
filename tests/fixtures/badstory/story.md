@@ -17,7 +17,7 @@ length: 12.5
 
 ### GHOST
 file: ghost.md
-lacks: telepathy
+restrictions: telepathy
 skills: walking through walls :: what it says | :: a meaning with no name
 
 ## Config
