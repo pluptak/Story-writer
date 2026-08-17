@@ -17,21 +17,19 @@ references that repo** — keep it that way.
 
 ## Docs — open the one, not the set
 
-One concept per file, so a bug in the loop never means reading the story format. Read the relevant
-one before an architectural change, and keep it in sync afterwards.
+One concept per file. Read the relevant one before an architectural change, and keep it in sync
+afterwards.
 
 | doc | read it when |
 | --- | --- |
-| [DESIGN.md](DESIGN.md) | you need the *why*: the asymmetry, skills, what is deliberately not built |
-| [PROTOCOL.md](PROTOCOL.md) | an agent returned something the engine could not use |
-| [LOOP.md](LOOP.md) | a scene stalled, ended early, or spent its budget on narration |
-| [STORY-FORMAT.md](STORY-FORMAT.md) | authoring a story folder, or adding a config key |
-| [RUN-RECORD.md](RUN-RECORD.md) | anything under `out/` — log events, retention, what the viewer is fed |
 | [GUI-SPEC.md](GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
-| [VIEWER-UI.md](VIEWER-UI.md) | the page looks wrong — rendering, button states, picker, interview |
-| [SPEC-S-scaffold.md](SPEC-S-scaffold.md) | `--new`: the architect, the interview, acceptance |
-| [CLI.md](CLI.md) | flags, checks, output layout |
-| [GOTCHAS.md](GOTCHAS.md) | **before loosening any rule** — the run that earned each one |
+| [SPEC-E-editor.md](SPEC-E-editor.md) | *proposed, not built* — the story editor: making the GUI write an existing story, not just read one |
+| [SPEC-GUI-MULTISCENE.md](SPEC-GUI-MULTISCENE.md) | wiring the viewer to multi-scene runs — engine side (`chapter` on `RunEvent`, `story_end`, `StoryConfig.scenes[]`) is done, GUI side is the open work |
+
+> DESIGN.md, PROTOCOL.md, LOOP.md, STORY-FORMAT.md, RUN-RECORD.md, VIEWER-UI.md, SPEC-S-scaffold.md,
+> CLI.md and GOTCHAS.md are gone — deleted in `da3cf00` ("comments clean-up", 2026-08-14), which also
+> stripped code from `live.ts`/`prompts.ts`/`server.ts`/`story-writer.ts`/`tests/writer.test.ts`. Their
+> content is recoverable from git history if a topic needs its own file again.
 
 ## Working process
 
@@ -54,14 +52,14 @@ npx tsx story-writer.ts stories/doorway
 ```
 
 Requires **LM Studio running locally** at `http://localhost:1234/v1` with the story's models loaded.
-Full flag reference in [CLI.md](CLI.md).
 
 ## Architecture
 
 The engine (everything `story-writer.ts` used to hold in one file) lives under [engine/](engine/),
-split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts` and `skills.ts` have no
-engine dependencies; `llm-client.ts`, `agent.ts`, `story-format.ts` and `story-spec.ts` build on
-those; `preflight.ts`, `consult.ts`, `architect.ts` and `scene-loop.ts` build on those in turn;
+split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `skills.ts` and
+`story-schema.ts` have no engine dependencies; `llm-client.ts`, `agent.ts`, `story-format.ts` and
+`story-spec.ts` build on those; `preflight.ts`, `consult.ts`, `architect.ts` and `scene-loop.ts`
+build on those in turn;
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
 the `HOST` object. Separately, `story-writer.ts` → [server/server.ts](server/server.ts) →
 {`run-control-routes.ts`, `scaffold-routes.ts`} → `http-util.ts` → (nothing), all under
@@ -77,13 +75,14 @@ way.**
 | --- | --- |
 | [story-writer.ts](story-writer.ts) | the composition root: CLI flags, the story picker, the scaffold console UI, `runAndSave`, the `HOST` object handed to `server/server.ts` |
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
-| [engine/config-util.ts](engine/config-util.ts) | `story.md` config-value parsing (`num`/`bool`/`enumOf`) and `slugify` |
+| [engine/config-util.ts](engine/config-util.ts) | kv-map config parsing (`num`/`bool`/`enumOf`, currently exercised only by `tests/writer.test.ts`) and the shared `slugify` |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
 | [engine/skills.ts](engine/skills.ts) | the general skill catalog and a story's `skills:`/`restrictions:` overrides |
+| [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
-| [engine/story-format.ts](engine/story-format.ts) | parsing `story.md`, loading a `StoryConfig`, discovering stories on disk |
-| [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and its renderings |
+| [engine/story-format.ts](engine/story-format.ts) | loading and validating `story.json` (against `story-schema.ts`), building a `StoryConfig`, discovering stories on disk |
+| [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` and the other story files |
 | [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
 | [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
 | [engine/architect.ts](engine/architect.ts) | building the architect agent and running the interactive story-building conversation |
@@ -98,12 +97,11 @@ way.**
 | [ansi.ts](ansi.ts) | terminal colours |
 
 **The asymmetry is the product.** The writer never sees a persona; a character never sees the premise,
-the draft, or anyone else's replies. Every other rule follows from protecting that
-([DESIGN.md](DESIGN.md)).
+the draft, or anyone else's replies. Every other rule follows from protecting that.
 
 **Agents** are all the same generic `Agent` class (windowed history + rolling `digest`), differing
-only by system prompt, model and temperature: **writer** (0.8) and one **character** per `### NAME`
-(0.9).
+only by system prompt, model and temperature: **writer** (0.8) and one **character** (0.9) per entry
+in `story.json`'s `characters[]`.
 
 The one invariant to hold while editing the engine: **`consult()` never touches `agent.history`** —
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean

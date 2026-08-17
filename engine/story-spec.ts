@@ -2,21 +2,20 @@
 import { C } from "../ansi.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, canonSkill, splitMeaning } from "./skills.ts";
+import { StoryJson, type SceneDef, type CharacterDef, type SceneDef as SceneDefSchema } from "./story-schema.ts";
 
-export interface SceneDef {
-  place: string;
-  question: string;
-  pov: string;
-  length: number;
-  roaster: string[];
-}
+export type { SceneDef, CharacterDef } from "./story-schema.ts";
+
 export interface StorySpec {
   title: string;
   premise: string;
-  scene: SceneDef;                    // alias for scenes[0], backward compat
-  scenes: SceneDef[];                 // 1-3 scenes
+  scene: SceneDef;
+  scenes: SceneDef[];
   writerStyle: string;
-  characters: Array<{ name: string; persona: string; knows: string; goal: string; goals: string[]; skills: string[]; restrictions: string[] }>;
+  characters: Array<{
+    name: string; persona: string; knows: string; goal: string; goals: string[];
+    skills: string[]; restrictions: string[];
+  }>;
 }
 
 const asStrings = (v: unknown): string[] =>
@@ -31,7 +30,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     : (o.scene && typeof o.scene === "object") ? [o.scene]
     : [];
   if (!rawScenes.length && o.scenes === undefined && o.scene) rawScenes.push(o.scene);
-  if (!rawScenes.length) rawScenes.push({});   // at least one scene, even if empty
+  if (!rawScenes.length) rawScenes.push({});
   const s = rawScenes[0] ?? {};
 
   const seen = new Set<string>();
@@ -184,62 +183,40 @@ export function directEdit(spec: StorySpec, field: string, value: unknown):
 }
 
 export function renderStory(spec: StorySpec, models: { default: string }): Record<string, string> {
-  const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
   const files: Record<string, string> = {};
 
-  const used = new Set<string>();
-  const fileFor = (name: string) => {
-    let base = slugify(name) || "character";
-    let f = `${base}.md`, n = 2;
-    while (used.has(f)) f = `${base}-${n++}.md`;
-    used.add(f);
-    return f;
-  };
-
-  const blocks = spec.characters.map(c => {
-    const file = fileFor(c.name);
-    files[file] = `# ${c.name}\n\n${c.persona.trim()}\n`;
-    const lines = [
-      `### ${c.name}`,
-      `file: ${file}`,
-      c.skills.length ? `skills: ${c.skills.map(oneLine).join(" | ")}` : "",
-      c.restrictions.length ? `restrictions: ${c.restrictions.map(oneLine).join(" | ")}` : "",
-      c.knows ? `knows: ${oneLine(c.knows)}` : "",
-      c.goal  ? `goal: ${oneLine(c.goal)}` : "",
-    ];
-    if (c.goals?.length) {
-      for (let i = 0; i < c.goals.length; i++) {
-        if (c.goals[i]) lines.push(`goal ${i + 1}: ${oneLine(c.goals[i])}`);
-      }
-    }
-    return lines.filter(Boolean).join("\n");
+  const charDefs = spec.characters.map(c => {
+    const goals = [...c.goals];
+    while (goals.length < 3) goals.push("");
+    return {
+      name: c.name,
+      model: "",
+      persona: c.persona,
+      knows: c.knows,
+      goal: c.goal,
+      goals,
+      skills: c.skills,
+      restrictions: c.restrictions,
+    };
   });
 
-  const sceneSection = (s: SceneDef, i: number): string => {
-    const heading = i === 0 ? "## Scene" : `## Scene ${i + 1}`;
-    const lines = [
-      s.place ? `place: ${oneLine(s.place)}` : "",
-      s.question ? `question: ${oneLine(s.question)}` : "",
-      s.pov ? `pov: ${s.pov}` : "",
-      `length: ${s.length}`,
-      s.roaster.length ? `roaster: ${s.roaster.join(", ")}` : "",
-    ].filter(Boolean).join("\n");
-    return `${heading}\n${lines}`;
+  const story = {
+    title: spec.title,
+    premise: spec.premise,
+    scenes: spec.scenes,
+    writerStyle: spec.writerStyle,
+    characters: charDefs,
+    config: {
+      retries: 2,
+      clarifications: 2,
+      maxSteps: 24,
+    },
+    models: {
+      default: models.default,
+    },
   };
 
-  if (spec.writerStyle.trim()) files["writer.md"] = `# House style\n\n${spec.writerStyle.trim()}\n`;
-
-  const sceneBlocks = spec.scenes.map((s, i) => sceneSection(s, i)).join("\n\n");
-
-  files["story.md"] = [
-    `# ${spec.title}`,
-    `## Premise\n${spec.premise.trim()}`,
-    sceneBlocks,
-    ...(files["writer.md"] ? [`## Writer\nfile: writer.md`] : []),
-    `## Characters\n\n${blocks.join("\n\n")}`,
-    `## Config\nretries: 2\nclarifications: 2\nmax_steps: 24`,
-    `## Models\ndefault: ${models.default}`,
-  ].join("\n\n") + "\n";
+  files["story.json"] = JSON.stringify(story, null, 2) + "\n";
 
   return files;
 }

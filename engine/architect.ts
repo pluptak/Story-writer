@@ -13,8 +13,9 @@ import { runPreflight } from "./preflight.ts";
 
 async function architectExample(): Promise<string> {
   try {
-    const md = await readFile(joinPath(ROOT, "stories/doorway/story.md"), "utf8");
-    const persona = await readFile(joinPath(ROOT, "stories/doorway/riven.md"), "utf8");
+    const md = await readFile(joinPath(ROOT, "stories/doorway/story.json"), "utf8");
+    const story = JSON.parse(md);
+    const persona = story.characters.find((c: any) => c.name === "RIVEN")?.persona || "";
     return P.workedExample(md, persona);
   } catch { return ""; }
 }
@@ -123,7 +124,7 @@ export class ScaffoldSession {
     if (!slug) return { kind: "needs_folder", reason: `"${from}" doesn't give a usable folder name.` };
 
     const abs = joinPath(this.storiesDir, slug);
-    const taken = await readFile(joinPath(abs, "story.md"), "utf8").then(() => true).catch(() => false);
+    const taken = await readFile(joinPath(abs, "story.json"), "utf8").then(() => true).catch(() => false);
     if (taken) return { kind: "needs_folder", reason: `${this.label(abs)} already exists.` };
 
     const dir = this.label(abs);

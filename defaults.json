@@ -1,0 +1,15 @@
+{
+  "models": {
+    "default": "gemma-4-12b-it-qat-uncensored-heretic",
+    "architect": "gemma-4-12b-it-qat-uncensored-heretic"
+  },
+  "config": {
+    "thinking": "low",
+    "thinking_architect": "low",
+    "max_tokens": 2000,
+    "request_timeout": 300,
+    "attempts": 3,
+    "stream": true,
+    "debug": false
+  }
+}

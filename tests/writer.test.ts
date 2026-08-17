@@ -9,9 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  parseStoryMd, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults,
+  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults,
   type Defaults,
 } from "../engine/story-format.ts";
+import { StoryJson } from "../engine/story-schema.ts";
 import { splitMeaning, resolveSkills, SKILL_CATALOG, type Skill } from "../engine/skills.ts";
 import { num, bool, enumOf, slugify } from "../engine/config-util.ts";
 import { extractJson, balancedObjectEnd, salvageProse, topLevelObjects } from "../engine/json-extract.ts";
@@ -43,49 +44,46 @@ function warnings(fn: () => void): string[] {
 // `new URL(...).pathname` is wrong on Windows and this repo's path may contain a space.
 const FIXTURE = fileURLToPath(new URL("./fixtures/badstory", import.meta.url));
 
-// -- STORY PARSING ---------------------------------------------------------
-describe("parseStoryMd", () => {
-  const SRC = `# Title
-## Premise
-First line.
-
-Second line.
-## Scene
-place: A corridor
-length: 700   # inline comment stripped here
-## Characters
-### RIVEN
-file: riven.md
-knows: The code changed # this is NOT a comment, it is prose
-### MERRITT
-file: merritt.md
-lacks: sight
-## Config
-retries: 2
-`;
-
-  it("collects premise prose, section keys and character sub-blocks", () => {
-    const p = parseStoryMd(SRC);
-    assert.equal(p.premise, "First line.\n\nSecond line.");
-    assert.equal(parseStoryMd(`## Premise\n\n\nA.\n\n\n\nB.\n\n\n`).premise, "A.\n\nB.",
-                 "runs of blank lines collapse to one, and the ends are trimmed");
-    assert.equal(p.kv["scene.place"], "A corridor");
-    assert.equal(p.kv["config.retries"], "2");
-    assert.equal(p.characters.length, 2);
-    assert.deepEqual(p.characters.map(c => c.name), ["RIVEN", "MERRITT"]);
-    assert.equal(p.characters[1].lacks, "sight");
+// -- STORY SCHEMA (story.json validation) -----------------------------------
+describe("StoryJson schema", () => {
+  it("fills in every default when only a character name is given", () => {
+    const r = StoryJson.parse({ characters: [{ name: "X" }] });
+    assert.equal(r.title, "");
+    assert.equal(r.premise, "");
+    assert.equal(r.scenes.length, 1);
+    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roaster: [] });
+    assert.equal(r.config.maxSteps, 24);
+    assert.equal(r.config.thinking.writer, "low");
+    assert.equal(r.models.default, "qwen3.6-35b-a3b");
   });
 
-  it("strips inline comments in structured sections but never inside a character block", () => {
-    const p = parseStoryMd(SRC);
-    assert.equal(p.kv["scene.length"], "700");
-    assert.equal(p.characters[0].knows, "The code changed # this is NOT a comment, it is prose");
+  it("bounds the scene count to 1-3", () => {
+    const scene = { question: "Q?" };
+    assert.equal(StoryJson.safeParse({ characters: [{ name: "X" }], scenes: [] }).success, false);
+    assert.equal(
+      StoryJson.safeParse({ characters: [{ name: "X" }], scenes: [scene, scene, scene, scene] }).success, false);
+    assert.equal(StoryJson.safeParse({ characters: [{ name: "X" }], scenes: [scene, scene, scene] }).success, true);
   });
 
-  it("ignores ### headings outside ## Characters", () => {
-    const p = parseStoryMd(`## Premise\nx\n## Scene\n### NOT A CHARACTER\nplace: here\n`);
-    assert.equal(p.characters.length, 0);
-    assert.equal(p.kv["scene.place"], "here");
+  it("requires a character's name to be non-empty, but allows an empty cast at the schema level", () => {
+    assert.equal(StoryJson.safeParse({ characters: [{ name: "" }] }).success, false);
+    assert.equal(StoryJson.safeParse({ characters: [] }).success, true,
+                 "loadStory, not the schema, is what refuses a story with nobody in it");
+  });
+
+  it("rejects a value of the wrong type or out of range, rather than coercing it", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X" }],
+      scenes: [{ length: "not-a-number" }],
+      config: { retries: 7.5, clarifications: -1, stream: "flase", thinking: { writer: "highh" } },
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const paths = r.error.issues.map(i => i.path.join("."));
+      for (const p of ["scenes.0.length", "config.retries", "config.clarifications",
+                        "config.stream", "config.thinking.writer"])
+        assert.ok(paths.includes(p), `expected an issue at ${p}, got ${paths.join(", ")}`);
+    }
   });
 });
 
@@ -175,18 +173,41 @@ describe("config validation", () => {
     assert.equal(enumOf(kv, "config.ok", ["low", "high"] as const, "low"), "high");
   });
 
-  it("a malformed story loads, warns about every bad value, and keeps the defaults", async () => {
-    const warns: string[] = [];
-    const orig = console.warn;
-    console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
-    let sc;
-    try { sc = await loadStory(FIXTURE); } finally { console.warn = orig; }
-    assert.equal(sc.maxSteps, 24);          // fixture says 99garbage
-    assert.equal(sc.retries, 2);            // fixture says 7.5
-    assert.equal(sc.clarifications, 2);     // fixture says 0
-    assert.equal(sc.stream, true);          // fixture says flase
-    assert.equal(sc.thinking.writer, "low");// fixture says highh
-    assert.ok(warns.length >= 5, `expected a warning per bad value, got ${warns.length}`);
+  it("rejects a story.json with malformed config values instead of silently accepting them", async () => {
+    await assert.rejects(() => loadStory(FIXTURE), (e: any) => {
+      assert.equal(e.name, "ZodError");
+      const paths = e.issues.map((i: { path: (string | number)[] }) => i.path.join("."));
+      for (const p of ["scenes.0.length", "config.retries", "config.clarifications",
+                        "config.stream", "config.thinking.writer"])
+        assert.ok(paths.includes(p), `expected an issue at ${p}, got ${paths.join(", ")}`);
+      return true;
+    });
+  });
+});
+
+// -- LOADING A STRUCTURALLY VALID BUT IMPERFECT STORY -----------------------
+describe("loadStory warnings", () => {
+  it("loads a story with non-fatal problems, warning about each one instead of failing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        title: "T", premise: "A premise.",
+        scenes: [{ place: "Nowhere" }],                                     // no question
+        characters: [{ name: "GHOST", persona: "x", restrictions: ["telepathy"] }],  // not a general skill
+      }), "utf8");
+
+      const warns: string[] = [];
+      const orig = console.warn;
+      console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      let sc;
+      try { sc = await loadStory(dir); } finally { console.warn = orig; }
+
+      assert.equal(sc.characters.length, 1, "a non-fatal problem must not stop the story from loading");
+      assert.ok(!sc.characters[0].skills.some(s => s.name === "telepathy"),
+                "an unrecognized restriction removes nothing, and must not become a real skill");
+      assert.match(warns.join(" "), /telepathy/);
+      assert.match(warns.join(" "), /no "question"/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
 
@@ -745,6 +766,12 @@ describe("renderStory round trip", () => {
     ],
   }).spec;
 
+  it("renders to a single story.json", () => {
+    const files = renderStory(spec, { default: "some-model" });
+    assert.deepEqual(Object.keys(files), ["story.json"]);
+    assert.doesNotThrow(() => JSON.parse(files["story.json"]));
+  });
+
   it("survives spec -> files -> loadStory unchanged", async () => {
     const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
     try {
@@ -768,23 +795,15 @@ describe("renderStory round trip", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
-  it("flattens a multi-line knows: rather than letting it end the field", async () => {
+  it("round-trips a multi-line knows: literally — JSON needs no flattening", async () => {
     const messy = { ...spec, characters: [{ ...spec.characters[0], knows: "One thing.\nAnd another." }, spec.characters[1]] };
     const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
     try {
       for (const [name, body] of Object.entries(renderStory(messy, { default: "m" })))
         await writeFile(join(dir, name), body, "utf8");
       const sc = await quiet(() => loadStory(dir));
-      assert.equal(sc.characters[0].knows, "One thing. And another.");
+      assert.equal(sc.characters[0].knows, "One thing.\nAnd another.");
     } finally { await rm(dir, { recursive: true, force: true }); }
-  });
-
-  it("gives two characters that slug alike separate files", () => {
-    const clash = { ...spec, characters: [
-      { ...spec.characters[0], name: "MARA JAY" }, { ...spec.characters[1], name: "Mara-Jay" }] };
-    const files = renderStory(clash, { default: "m" });
-    assert.ok(files["mara-jay.md"] && files["mara-jay-2.md"], Object.keys(files).join(", "));
-    assert.notEqual(files["mara-jay.md"], files["mara-jay-2.md"]);
   });
 });
 
@@ -792,13 +811,15 @@ describe("renderStory round trip", () => {
 describe("loadStory model override", () => {
   async function withStory(): Promise<string> {
     const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
-    await writeFile(join(dir, "story.md"), [
-      "## Premise", "A premise.", "",
-      "## Characters", "", "### A", "file: a.md", "", "### B", "file: b.md", "model: b-own-model", "",
-      "## Models", "default: story-default",
-    ].join("\n"), "utf8");
-    await writeFile(join(dir, "a.md"), "A's persona.", "utf8");
-    await writeFile(join(dir, "b.md"), "B's persona.", "utf8");
+    await writeFile(join(dir, "story.json"), JSON.stringify({
+      title: "T", premise: "A premise.",
+      scenes: [{ question: "Q?" }],
+      characters: [
+        { name: "A", persona: "A's persona." },
+        { name: "B", persona: "B's persona.", model: "b-own-model" },
+      ],
+      models: { default: "story-default" },
+    }), "utf8");
     return dir;
   }
 
@@ -924,7 +945,7 @@ describe("LLM interaction log", () => {
 });
 
 describe("loadDefaults", () => {
-  it("reads defaults.md, and --model overrides everything in it", async () => {
+  it("reads defaults.json, and --model overrides everything in it", async () => {
     const d = await quiet(() => loadDefaults());
     assert.ok(d.models.default);
     assert.ok(d.models.architect);
@@ -1177,7 +1198,7 @@ describe("ScaffoldSession.accept", () => {
 
       const w = await quiet(() => s.accept("Fog Signal"));
       assert.ok(w.kind === "written", `expected written, got ${w.kind}`);
-      assert.deepEqual(w.files, ["aster.md", "brae.md", "story.md", "writer.md"]);
+      assert.deepEqual(w.files, ["story.json"]);
       assert.match(w.dir.replace(/\\/g, "/"), /\/fog-signal$/);
 
       // The pre-flight ran the real loader on what was just written; prove it independently.
@@ -1207,17 +1228,16 @@ describe("renderStory shape", () => {
     characters: [{ name: "SOLO", persona: "Alone." }],
   }).spec;
 
-  it("omits ## Writer entirely when no house style was proposed", () => {
+  it("renders exactly one file, regardless of what was left blank", () => {
     const files = renderStory(bare, { default: "m" });
-    assert.ok(!("writer.md" in files));
-    assert.ok(!files["story.md"].includes("## Writer"));
-    assert.deepEqual(Object.keys(files).sort(), ["solo.md", "story.md"]);
+    assert.deepEqual(Object.keys(files), ["story.json"]);
   });
 
-  it("omits scene keys it has no value for, rather than writing empty ones", () => {
-    const md = renderStory(bare, { default: "m" })["story.md"];
-    assert.ok(!md.includes("place:"));
-    assert.ok(!md.includes("pov:"));
-    assert.match(md, /length: 700/);
+  it("writes empty fields as empty JSON values rather than omitting them, and fills in scene defaults", () => {
+    const story = JSON.parse(renderStory(bare, { default: "m" })["story.json"]);
+    assert.equal(story.writerStyle, "");
+    assert.equal(story.scenes[0].place, "");
+    assert.equal(story.scenes[0].pov, "");
+    assert.equal(story.scenes[0].length, 700);
   });
 });

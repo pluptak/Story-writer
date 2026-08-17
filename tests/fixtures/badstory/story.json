@@ -1,0 +1,28 @@
+{
+  "title": "Bad Story (test fixture)",
+  "premise": "A fixture. Nothing here is meant to be read as a story; it exists so the loader can be caught accepting a value it should have rejected.",
+  "scenes": [
+    {
+      "place": "Nowhere in particular",
+      "length": "not-a-number"
+    }
+  ],
+  "characters": [
+    {
+      "name": "GHOST",
+      "persona": "A persona that exists only so the loader has something to read. No character here.",
+      "skills": ["walking through walls :: what it says"],
+      "restrictions": ["telepathy"]
+    }
+  ],
+  "config": {
+    "retries": 7.5,
+    "clarifications": -1,
+    "stream": "flase",
+    "thinking": { "writer": "highh" },
+    "attempts": -3
+  },
+  "models": {
+    "default": "not-a-real-model"
+  }
+}
