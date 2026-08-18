@@ -1,8 +1,13 @@
 # SPEC-GUI — multi-scene viewer changes
 
-Read this before touching the GUI viewer for multi-scene support. Engine side is done (Block 1-4):
-`RunEvent` now carries `chapter: number` on every event, `story_end` fires after the final scene,
-and `StoryConfig.scenes[]` is the source of truth.
+**Status: needs revision — parts of this are now wrong.** It was written when one run wrote every
+scene. [SPEC-H-handoff.md](SPEC-H-handoff.md) block P2 changed that: **a run writes one chapter**, and
+the `story_end` event no longer exists — `scene_end` carries `chapter`, `done`, `stopped`, `steps` and
+`words`, and is a run's terminal event. Every `story_end` instruction below should be read as
+`scene_end`, and "total-story stats" now means aggregating across runs, not across one run's scenes.
+
+Still accurate: `RunEvent` carries `chapter: number` on every scene-scoped event, and
+`StoryConfig.scenes[]` is the source of truth.
 
 ## What changes, file by file
 

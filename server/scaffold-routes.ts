@@ -120,7 +120,7 @@ export async function handleScaffoldRoutes(
     publishScaffold(host);
     const resolve = LIVE.pickResolve; LIVE.pickResolve = null; LIVE.awaitingPick = false;
     json(res, 200, { ok: true, ...r });
-    resolve(r.dir);                   // the parked session gets the story it was waiting for
+    resolve({ dir: r.dir, chapter: 1 });   // a story that did not exist a moment ago starts at its first chapter
   }
 
   return true;

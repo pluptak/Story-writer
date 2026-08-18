@@ -2,19 +2,20 @@
 import { C } from "../ansi.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, canonSkill, splitMeaning } from "./skills.ts";
-import { StoryJson, type SceneDef, type CharacterDef, type SceneDef as SceneDefSchema } from "./story-schema.ts";
+import { StoryJson, RunConfig, type SceneDef, type CharacterDef } from "./story-schema.ts";
 
-export type { SceneDef, CharacterDef } from "./story-schema.ts";
+export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
 
 /** What the architect proposes: a story in the working shape used for editing and rendering. */
 export interface StorySpec {
   title: string;
   premise: string;
-  scene: SceneDef;
   scenes: SceneDef[];
   writerStyle: string;
+  config: RunConfig;
+  models: { default: string; writer: string; summary: string };
   characters: Array<{
-    name: string; persona: string; knows: string; goal: string; goals: string[];
+    name: string; model: string; persona: string; knows: string; goal: string;
     skills: string[]; restrictions: string[];
   }>;
 }
@@ -47,14 +48,9 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       if (!ok) problems.push(`${name} "restrictions: ${l}" — not a general skill, so it would remove nothing`);
       return ok;
     });
-    const goals = [
-      String(c?.["goal 1"] ?? "").trim(),
-      String(c?.["goal 2"] ?? "").trim(),
-      String(c?.["goal 3"] ?? "").trim(),
-    ];
     characters.push({
-      name, persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
-      goal: String(c?.goal ?? "").trim(), goals, skills: asStrings(c?.skills), restrictions,
+      name, model: String(c?.model ?? "").trim(), persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
+      goal: String(c?.goal ?? "").trim(), skills: asStrings(c?.skills), restrictions,
     });
     if (!c?.persona) problems.push(`${name} has no persona`);
     else if (/\b(RESTRICTIONS|LACKS|KNOWS|SKILLS|GOAL)\s*:/.test(String(c.persona)))
@@ -73,18 +69,27 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       question: String(s.question ?? "").trim(),
       pov: povOk ? pov : "",
       length: Number.isFinite(lengthRaw) && lengthRaw >= 1 ? Math.round(lengthRaw) : 700,
-      roaster: Array.isArray(s.roaster) ? s.roaster.map((r: unknown) => String(r).trim()).filter(Boolean) : [],
+      roster: Array.isArray(s.roster) ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [],
     };
   };
 
   const scenes: SceneDef[] = rawScenes.map((s, i) => readSceneDef(s, i === 0 ? "scene" : `scene ${i + 1}`));
 
+  const config = RunConfig.parse(o.config ?? {});
+
+  const models = {
+    default: String(o.models?.default ?? "").trim(),
+    writer: String(o.models?.writer ?? "").trim(),
+    summary: String(o.models?.summary ?? "").trim(),
+  };
+
   const spec: StorySpec = {
     title: String(o.title ?? "").trim(),
     premise: String(o.premise ?? "").trim(),
-    scene: scenes[0],
     scenes,
     writerStyle: String(o.writer_style ?? o.writerStyle ?? "").trim(),
+    config,
+    models,
     characters,
   };
   if (!spec.title) problems.push("no title");
@@ -116,11 +121,11 @@ export function applyEdits(spec: StorySpec, raw: any): {
     if (field === "title" || field === "premise") { draft[field] = scalar(); applied.push(field); continue; }
     if (field === "writer_style" || field === "writerStyle") { draft.writer_style = scalar(); applied.push("writer_style"); continue; }
 
-    const sceneMatch = field.match(/^(scene(?:_(\d))?)\.(place|question|pov|length|roaster)$/);
+    const sceneMatch = field.match(/^(scene(?:_(\d))?)\.(place|question|pov|length|roster)$/);
     if (sceneMatch) {
       const idx = sceneMatch[2] ? Number(sceneMatch[2]) - 1 : 0;
       if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
-      if (sceneMatch[3] === "roaster") draft.scenes[idx].roaster = asStrings(value);
+      if (sceneMatch[3] === "roster") draft.scenes[idx].roster = asStrings(value);
       else if (sceneMatch[3] === "length") draft.scenes[idx].length = Number(value);
       else draft.scenes[idx][sceneMatch[3]] = scalar();
       applied.push(field);
@@ -154,17 +159,6 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
-    const goalMatch = field.match(/^characters\.(.+)\.goal_(\d)$/);
-    if (goalMatch) {
-      const c = findChar(goalMatch[1]);
-      if (!c) { ignored.push(`${field} — no character called "${goalMatch[1]}"`); continue; }
-      const idx = Number(goalMatch[2]) - 1;
-      if (!c.goals) c.goals = ["", "", ""];
-      c.goals[idx] = scalar();
-      applied.push(`${c.name}.goal_${goalMatch[2]}`);
-      continue;
-    }
-
     ignored.push(field ? `unknown field "${field}"` : "an edit with no field");
   }
 
@@ -192,20 +186,21 @@ export function directEdit(spec: StorySpec, field: string, value: unknown):
 export function renderStory(spec: StorySpec, models: { default: string }): Record<string, string> {
   const files: Record<string, string> = {};
 
-  const charDefs = spec.characters.map(c => {
-    const goals = [...c.goals];
-    while (goals.length < 3) goals.push("");
-    return {
-      name: c.name,
-      model: "",
-      persona: c.persona,
-      knows: c.knows,
-      goal: c.goal,
-      goals,
-      skills: c.skills,
-      restrictions: c.restrictions,
-    };
-  });
+  const charDefs = spec.characters.map(c => ({
+    name: c.name,
+    model: c.model,
+    persona: c.persona,
+    knows: c.knows,
+    goal: c.goal,
+    skills: c.skills,
+    restrictions: c.restrictions,
+  }));
+
+  const renderedModels = {
+    default: spec.models.default || models.default,
+    ...(spec.models.writer ? { writer: spec.models.writer } : {}),
+    ...(spec.models.summary ? { summary: spec.models.summary } : {}),
+  };
 
   const story = {
     title: spec.title,
@@ -213,14 +208,8 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     scenes: spec.scenes,
     writerStyle: spec.writerStyle,
     characters: charDefs,
-    config: {
-      retries: 2,
-      clarifications: 2,
-      maxSteps: 24,
-    },
-    models: {
-      default: models.default,
-    },
+    config: spec.config,
+    models: renderedModels,
   };
 
   files["story.json"] = JSON.stringify(story, null, 2) + "\n";
@@ -231,11 +220,11 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
 /** Never raw JSON — the round asks for a judgement about people, which JSON is the wrong shape for. */
 export function renderSpec(spec: StorySpec, full = false): string {
   const head = `${C.bold}${spec.title || "(untitled)"}${C.reset}\n`
-    + `${C.dim}${spec.scene.place || "(nowhere stated)"} · ~${spec.scene.length} words`
-    + `${spec.scene.pov ? ` · pov ${spec.scene.pov}` : ""}${C.reset}`
+    + `${C.dim}${spec.scenes[0].place || "(nowhere stated)"} · ~${spec.scenes[0].length} words`
+    + `${spec.scenes[0].pov ? ` · pov ${spec.scenes[0].pov}` : ""}${C.reset}`
     + `${spec.scenes.length > 1 ? ` · ${spec.scenes.length} scenes` : ""}\n\n`
     + `${spec.premise || "(no premise)"}\n\n`
-    + `${C.bold}Question:${C.reset} ${spec.scene.question || "(none)"}\n`;
+    + `${C.bold}Question:${C.reset} ${spec.scenes[0].question || "(none)"}\n`;
   const cast = spec.characters.map(c => {
     const lines = [`\n${C.cyan}${c.name}${C.reset}`];
     if (c.skills.length) lines.push(`  ${C.green}can also:${C.reset} ${c.skills.map(s => splitMeaning(s).text).join(", ")}`);
@@ -251,7 +240,7 @@ export function renderSpec(spec: StorySpec, full = false): string {
 /** The spec as the GUI expects it: character skills split into their `name :: meaning` parts. */
 export function specView(spec: StorySpec) {
   return {
-    title: spec.title, premise: spec.premise, scene: spec.scene, scenes: spec.scenes, writerStyle: spec.writerStyle,
+    title: spec.title, premise: spec.premise, scene: spec.scenes[0], scenes: spec.scenes, writerStyle: spec.writerStyle,
     characters: spec.characters.map(c => ({
       name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
       skills: c.skills.map(s => splitMeaning(s)),

@@ -23,7 +23,7 @@ import { directEdit, renderSpec, specView, type StorySpec } from "./engine/story
 import { runDirs, runPreflight, loadedModelIds, storyCards } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import { buildArchitect, ScaffoldSession, type ScaffoldRound } from "./engine/architect.ts";
-import { buildCharacterAgents, writeScenes, type RunEvent } from "./engine/scene-loop.ts";
+import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
 
 // -- CONFIG ----------------------------------------------------------------
 const CLI = process.argv.slice(2);
@@ -70,10 +70,9 @@ const flag = (name: string): string | undefined => {
 };
 
 async function runConsultCli(sc: StoryConfig, who: string) {
-  const agents = buildCharacterAgents(sc.characters, sc.scene.place, "", { character: sc.thinking.character }, []);
   const def = sc.characters.find(c => c.name.toLowerCase() === who.trim().toLowerCase());
-  const agent = agents.get(who.trim().toLowerCase());
-  if (!def || !agent) throw new Error(`No character "${who}" in ${sc.dir}. Known: ${sc.characters.map(c => c.name).join(", ")}`);
+  if (!def) throw new Error(`No character "${who}" in ${sc.dir}. Known: ${sc.characters.map(c => c.name).join(", ")}`);
+  const agent = newCharacterAgent(def, sc.scenes[0].place, sc.thinking.character);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ask = async (label: string, preset?: string) => {
@@ -224,7 +223,7 @@ async function runScaffoldCli() {
         NET.timeoutMs = sc.requestTimeout * 1000;
         NET.retries = sc.attempts - 1;
         ENGINE.maxTokens = sc.maxTokens;
-        return runAndSave(sc, dir);
+        return runAndSave(sc, dir, 1);
       }
       if (said === "?") {
         // Don't spend a model call showing nothing.
@@ -239,7 +238,7 @@ async function runScaffoldCli() {
 }
 
 /** Load one story, apply the debug flags, and either write its scene or answer one consult. */
-async function runOne(dir: string) {
+async function runOne(dir: string, chapter = 1) {
   const sc = await loadStory(dir, LIVE.modelOverride ?? undefined);
   ENGINE.stream = sc.stream; ENGINE.debug = sc.debug;
   NET.timeoutMs = sc.requestTimeout * 1000;
@@ -259,27 +258,35 @@ async function runOne(dir: string) {
     return runConsultCli(sc, who);
   }
 
-  return runAndSave(sc, dir);
+  const chapterFlag = flag("chapter");
+  if (chapterFlag) chapter = Number(chapterFlag);
+  if (!Number.isInteger(chapter) || chapter < 1 || chapter > sc.scenes.length) {
+    console.error(`${C.red}chapter must be a whole number in 1..${sc.scenes.length}, not ${chapterFlag ?? chapter}${C.reset}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  return runAndSave(sc, dir, chapter);
 }
 
 let BROWSER_DRIVES = false;
 
-function awaitPick(): Promise<string> {
+function awaitPick(): Promise<{ dir: string; chapter: number }> {
   LIVE.awaitingPick = true;
   setWhere("choosing a story", false);
   console.log(`\n${C.dim}Waiting for a story to be chosen at ${C.reset}http://localhost:${LIVE.port}/`
     + `${C.dim} — Ctrl-C to quit.${C.reset}`);
-  return new Promise<string>(r => { LIVE.pickResolve = r; }).then(picked => {
+  return new Promise<{ dir: string; chapter: number }>(r => { LIVE.pickResolve = r; }).then(picked => {
     setWhere("loading", false);
     return picked;
   });
 }
 
 /** Wait for the next story: the browser when it is driving, the console picker otherwise. */
-async function pickStory(): Promise<string> {
+async function pickStory(): Promise<{ dir: string; chapter: number }> {
   if (BROWSER_DRIVES) return awaitPick();
   setWhere("choosing a story", false);
-  return chooseStory("");
+  return { dir: await chooseStory(""), chapter: 1 };
 }
 
 const HOST: ServerHost = {
@@ -295,12 +302,13 @@ async function main() {
   const oneShot = !!STORY_DIR || !process.stdin.isTTY || flag("consult") !== undefined;
   BROWSER_DRIVES = SERVE && !oneShot;
 
-  let next: string = CLI.includes("--new") ? NEW_STORY
-                   : STORY_DIR ? STORY_DIR
-                   : await pickStory();
+  let next: { dir: string; chapter: number } =
+    CLI.includes("--new") ? { dir: NEW_STORY, chapter: 1 }
+    : STORY_DIR ? { dir: STORY_DIR, chapter: 1 }
+    : await pickStory();
   for (;;) {
-    if (next === NEW_STORY) await runScaffoldCli();
-    else await runOne(next);
+    if (next.dir === NEW_STORY) await runScaffoldCli();
+    else await runOne(next.dir, next.chapter);
     if (oneShot) return;
     next = await pickStory();
   }
@@ -308,14 +316,15 @@ async function main() {
 
 const MAX_RUNS = 3;
 
-async function runAndSave(sc: StoryConfig, dir: string) {
+async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
   const sceneCount = sc.scenes.length;
-  const firstScene = sc.scenes[0];
+  const targetScene = sc.scenes[chapter - 1];
+  const chapterDisplay = sceneCount > 1 ? ` · chapter ${chapter} of ${sceneCount}` : "";
   console.log(`${C.bold}${dir}${C.reset} ${C.dim}— ${sc.characters.map(c => c.name).join(", ")} `
-    + `· ~${firstScene.length} words ${sceneCount > 1 ? `(${sceneCount} scenes) ` : ""}· up to ${sc.maxSteps} steps per scene${C.reset}`);
+    + `${chapterDisplay} · ~${targetScene.length} words · up to ${sc.maxSteps} steps${C.reset}`);
 
   LIVE.meta = {
-    story: dir, target: firstScene.length, question: firstScene.question,
+    story: dir, target: targetScene.length, question: targetScene.question,
     characters: sc.characters.map(c => ({
       name: c.name,
       skills: c.skills.filter(s => s.source === "story").map(s => s.name),
@@ -339,19 +348,13 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   const events: RunEvent[] = [];
   const allPieces: string[] = [];
   let sceneWrites: Promise<unknown> = Promise.resolve();
-  let currentChapter = 0;
 
-  const r = await writeScenes(sc, e => {
+  const r = await runChapter(sc, chapter, e => {
     events.push(e);
     logStream.write(JSON.stringify(publish(e)) + "\n");
     if (e.t === "draft" && e.prose) {
       allPieces.push(e.prose);
-      sceneWrites = sceneWrites.then(() => {
-        const sep = e.chapter > 1 && currentChapter !== e.chapter
-          ? `\n\n---\n*Chapter ${e.chapter}*\n\n` : "";
-        currentChapter = e.chapter;
-        return writeFile(scenePath, allPieces.join("\n\n") + "\n", "utf8");
-      }).catch(() => {});
+      sceneWrites = sceneWrites.then(() => writeFile(scenePath, allPieces.join("\n\n") + "\n", "utf8")).catch(() => {});
     }
   });
   await sceneWrites;
@@ -364,11 +367,21 @@ async function runAndSave(sc: StoryConfig, dir: string) {
     await rm(joinPath(sc.dir, "out", stale), { recursive: true, force: true }).catch(() => {});
   }
 
+  let chapterPath = "";
+  if (r.done) {
+    const chaptersDir = joinPath(sc.dir, "chapters");
+    await mkdir(chaptersDir, { recursive: true });
+    chapterPath = joinPath(chaptersDir, `${chapter}.md`);
+    await writeFile(chapterPath, r.prose.join("\n\n") + "\n", "utf8");
+  } else if (!r.stopped) {
+    console.log(`${C.dim}chapter ${chapter} not saved — the run did not finish${C.reset}`);
+  }
+
   setWhere(r.stopped ? `stopped ${dir}` : `finished ${dir}`, false);
 
   if (!SERVE) {
     console.log(`\n${C.bold}${"=".repeat(60)}${C.reset}`);
-    for (const s of r.scenes) console.log(s.prose.join("\n\n"));
+    console.log(r.prose.join("\n\n"));
     console.log(`${C.bold}${"=".repeat(60)}${C.reset}`);
   }
   const consults = events.filter(e => e.t === "consult").length;
@@ -377,8 +390,8 @@ async function runAndSave(sc: StoryConfig, dir: string) {
   const flags    = events.filter(e => e.t === "skill_flag").length;
   console.log(`${C.dim}${r.words} words · ${r.steps} steps · ${consults} consult(s) · `
     + `${needs} clarification(s) · ${retries} retry/retries · ${flags} skill flag(s) · `
-    + `${r.stopped ? "stopped by request" : "scene finished"}${C.reset}`);
-  console.log(`${C.dim}${scenePath}\n${logPath}${C.reset}`);
+    + `${r.stopped ? "stopped by request" : r.done ? "chapter finished" : "stopped early"}${C.reset}`);
+  console.log(`${C.dim}${scenePath}\n${logPath}${chapterPath ? "\n" + chapterPath : ""}${C.reset}`);
 }
 
 const IS_MAIN = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

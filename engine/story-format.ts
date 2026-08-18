@@ -17,7 +17,6 @@ export interface CharacterDef {
   persona: string;
   knows: string;
   goal: string;
-  goals: string[];
   skills: Skill[];
 }
 
@@ -25,7 +24,6 @@ export interface CharacterDef {
 export interface StoryConfig {
   dir: string;
   premise: string;
-  scene: SceneDef;
   scenes: SceneDef[];
   writerStyle: string;
   retries: number;
@@ -75,7 +73,6 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       persona: c.persona,
       knows: c.knows,
       goal: c.goal,
-      goals: c.goals,
       skills: resolveSkills(name, c.skills.join(" | "), c.restrictions.join(" | ")),
     });
   }
@@ -88,6 +85,10 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       warn(`Scene ${i + 1} has no "question" — the writer has no dramatic question to close, so it decides alone when the scene is done`);
     if (s.pov && !characters.some(c => c.name.toLowerCase() === s.pov.trim().toLowerCase()))
       warn(`Scene ${i + 1} pov "${s.pov}" is not one of the characters — ignored`);
+    for (const r of s.roster) {
+      if (!characters.some(c => c.name.toLowerCase() === r.trim().toLowerCase()))
+        warn(`Scene ${i + 1} roster "${r}" is not one of the characters — ignored`);
+    }
   }
 
   const config = parsed.config;
@@ -95,7 +96,6 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
   return {
     dir: base,
     premise: parsed.premise,
-    scene: parsed.scenes[0],
     scenes: parsed.scenes,
     writerStyle: parsed.writerStyle,
     retries: config.retries,
@@ -185,4 +185,21 @@ export async function loadDefaults(override = ""): Promise<Defaults> {
     stream: parsed.config?.stream ?? true,
     debug: parsed.config?.debug ?? false,
   };
+}
+
+/** Read all chapter files from <storyDir>/chapters/, returning chapter number and prose text ordered numerically. */
+export async function readChapters(storyDir: string): Promise<{ n: number; text: string }[]> {
+  const base = resolveStoryDir(storyDir);
+  const chaptersDir = joinPath(base, "chapters");
+  let dirents;
+  try { dirents = await readdir(chaptersDir, { withFileTypes: true }); } catch { return []; }
+
+  const chapters: { n: number; text: string }[] = [];
+  for (const d of dirents) {
+    const match = d.isFile() ? d.name.match(/^(\d+)\.md$/) : null;
+    if (!match) continue;
+    chapters.push({ n: Number(match[1]), text: await readFile(joinPath(chaptersDir, d.name), "utf8") });
+  }
+  chapters.sort((a, b) => a.n - b.n);
+  return chapters;
 }

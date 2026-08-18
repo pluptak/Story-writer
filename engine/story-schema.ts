@@ -3,25 +3,24 @@ import { z } from "zod";
 
 const thinkLevel = z.enum(["low", "medium", "high"]);
 
-/** One scene's definition: where it is, the question it answers, whose perception, length, and roaster. */
+/** One scene's definition: where it is, the question it answers, whose perception, length, and roster. */
 export const SceneDef = z.object({
   place: z.string().default(""),
   question: z.string().default(""),
   pov: z.string().default(""),
   length: z.number().min(1).default(700),
-  roaster: z.array(z.string()).default([]),
+  roster: z.array(z.string()).default([]),
 });
 
 export type SceneDef = z.infer<typeof SceneDef>;
 
-/** One character as authored: name, model, persona, what they know, goals, skills and restrictions. */
+/** One character as authored: name, model, persona, what they know, their goal, skills and restrictions. */
 export const CharacterDef = z.object({
   name: z.string().min(1),
   model: z.string().default(""),
   persona: z.string().default(""),
   knows: z.string().default(""),
   goal: z.string().default(""),
-  goals: z.array(z.string()).default(["", "", ""]),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
 });
@@ -46,6 +45,22 @@ export const ModelsConfig = z.object({
 
 export type ModelsConfig = z.infer<typeof ModelsConfig>;
 
+/** Run configuration: retries, clarifications, pacing, timeouts, and thinking levels. */
+export const RunConfig = z.object({
+  retries: z.number().int().min(0).default(2),
+  clarifications: z.number().int().min(0).default(2),
+  maxSteps: z.number().int().min(1).default(24),
+  maxProseWords: z.number().int().min(1).default(140),
+  stream: z.boolean().default(true),
+  debug: z.boolean().default(false),
+  thinking: ThinkingConfig.prefault(() => ({})),
+  requestTimeout: z.number().int().min(1).default(120),
+  attempts: z.number().int().min(1).default(3),
+  maxTokens: z.number().int().min(1).default(2000),
+}).prefault(() => ({}));
+
+export type RunConfig = z.infer<typeof RunConfig>;
+
 /** The whole story.json: title, premise, 1-3 scenes, cast, run config, and models. */
 export const StoryJson = z.object({
   title: z.string().default(""),
@@ -53,18 +68,7 @@ export const StoryJson = z.object({
   scenes: z.array(SceneDef).min(1).max(3).prefault(() => [{}]),
   writerStyle: z.string().default(""),
   characters: z.array(CharacterDef).default([]),
-  config: z.object({
-    retries: z.number().int().min(0).default(2),
-    clarifications: z.number().int().min(0).default(2),
-    maxSteps: z.number().int().min(1).default(24),
-    maxProseWords: z.number().int().min(1).default(140),
-    stream: z.boolean().default(true),
-    debug: z.boolean().default(false),
-    thinking: ThinkingConfig.prefault(() => ({})),
-    requestTimeout: z.number().int().min(1).default(120),
-    attempts: z.number().int().min(1).default(3),
-    maxTokens: z.number().int().min(1).default(2000),
-  }).prefault(() => ({})),
+  config: RunConfig,
   models: ModelsConfig.prefault(() => ({})),
 });
 

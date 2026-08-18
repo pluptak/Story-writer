@@ -1,4 +1,4 @@
-/** SCENE LOOP — the writer's draft/consult loop: character and writer agent wrapping, writeScene(), and writeScenes(). */
+/** SCENE LOOP — the writer's draft/consult loop: character and writer agent wrapping, writeScene(), and runChapter(). */
 import { createInterface } from "node:readline/promises";
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
@@ -16,26 +16,17 @@ import { ENGINE, progressDone } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
 /** The system prompt for one character agent: their persona, place, skills, knowledge and goal. */
-export function wrapCharacter(def: CharacterDef, place: string, chapterGoal: string): string {
+export function wrapCharacter(def: CharacterDef, place: string): string {
   return P.characterSystem({
-    persona: def.persona, place, skills: def.skills, knows: def.knows,
-    goal: chapterGoal || def.goal,
+    persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
   });
 }
 
-/** Build the character agents for a scene, honoring its roaster and carrying the character thinking level. */
-export function buildCharacterAgents(
-  characters: CharacterDef[], place: string, chapterGoal: string, think: { character: ThinkLevel },
-  rostered: string[],
-): Map<string, Agent> {
-  const agents = new Map<string, Agent>();
-  for (const def of characters) {
-    if (rostered.length && !rostered.some(r => r.toLowerCase() === def.name.toLowerCase())) continue;
-    const a = new Agent(def.name, def.model, wrapCharacter(def, place, chapterGoal), 0.9);
-    a.think = think.character;
-    agents.set(def.name.toLowerCase(), a);
-  }
-  return agents;
+/** One character agent: their wrapped system prompt, their model, and the run's character think level. */
+export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel): Agent {
+  const a = new Agent(def.name, def.model, wrapCharacter(def, place), 0.9);
+  a.think = think;
+  return a;
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
@@ -44,12 +35,15 @@ export function wrapWriter(premise: string, scene: SceneDef, cast: { name: strin
   return P.writerSystem({ premise, scene, cast, style });
 }
 
+/** The cast actually in a scene; an empty roster means the whole cast. */
+export const rosterOf = (characters: CharacterDef[], rostered: string[]): CharacterDef[] =>
+  characters.filter(def => !rostered.length || rostered.some(r => r.toLowerCase() === def.name.toLowerCase()));
+
 // `can`/`cannot` here, not the wire's `skills`/`restrictions`: these two feed the writer prompt,
 // which prints "CANNOT:" and then argues from that word. Renaming them rewords the prompt.
 /** What the writer gets to know about each character: what they can do, and what they absolutely cannot. */
 export function writerCast(characters: CharacterDef[], rostered: string[]): { name: string; can: string[]; cannot: string[] }[] {
-  return characters
-    .filter(def => !rostered.length || rostered.some(r => r.toLowerCase() === def.name.toLowerCase()))
+  return rosterOf(characters, rostered)
     .map(c => ({
       name: c.name,
       can: c.skills.map(s => s.name),
@@ -70,9 +64,8 @@ export type RunEvent =
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
-  | { t: "model_changed"; model: string; chapter: number }
-  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number }
-  | { t: "story_end"; scenes: number; steps: number; words: number };
+  | { t: "model_changed"; model: string }
+  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number };
 
 
 async function askMoreSteps(steps: number, budget: number, chapter: number): Promise<number> {
@@ -123,10 +116,11 @@ export async function writeScene(
   maxSteps: number, maxProseWords: number, retries: number, clarifications: number,
   dir: string, log: (e: RunEvent) => void,
 ) {
-  const cast = writerCast(characters, sd.roaster);
-  const writer = new Agent("WRITER", writerModel, wrapWriter(premise, sd, cast, writerStyle), 0.8);
+  const roster = rosterOf(characters, sd.roster);
+  const rosterNames = roster.map(c => c.name);
+  const writer = new Agent("WRITER", writerModel, wrapWriter(premise, sd, writerCast(roster, []), writerStyle), 0.8);
   writer.think = thinking.writer;
-  const defOf = (name: string) => characters.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+  const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
   LIVE.writer = writer; LIVE.log = log;
 
   const pieces: string[] = [];
@@ -188,7 +182,7 @@ export async function writeScene(
     }
 
     const words = wordCount();
-    const neglected = neglectedCast(characters.map(c => c.name), lastAsked, steps, NEGLECT_GAP);
+    const neglected = neglectedCast(rosterNames, lastAsked, steps, NEGLECT_GAP);
     writer.hear(P.writeInstruction({
       words, target: sd.length, maxProseWords, overran, neglected,
     }));
@@ -229,7 +223,7 @@ export async function writeScene(
       const persistent = agents.get(who.toLowerCase());
       const check = def ? normalizeConsult({ ...c!, character: def.name }) : null;
       if (!def || !persistent) {
-        writer.hear(P.noSuchCharacter(who, characters.map(x => x.name)));
+        writer.hear(P.noSuchCharacter(who, rosterNames));
       } else if (!check!.ok) {
         log({ t: "bad_consult", character: def.name, why: check!.why, chapter });
         console.log(`${C.yellow}(not sent to ${def.name} — ${check!.why.split(". ")[0]}.)${C.reset}`);
@@ -327,56 +321,40 @@ export async function writeScene(
     if (sceneDone) done = true;
     if (RUN.stopped) break;
     await trimHistory(writer, summaryModel, thinking.summary);
-    for (const a of agents.values()) await trimHistory(a, summaryModel, thinking.summary);
+    for (const def of roster) {
+      const a = agents.get(def.name.toLowerCase());
+      if (a) await trimHistory(a, summaryModel, thinking.summary);
+    }
   }
 
   log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter });
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
 }
 
-/** Write every scene in the story, one chapter at a time, sharing character agents where the roasters allow. */
-export async function writeScenes(sc: StoryConfig, log: (e: RunEvent) => void): Promise<{
-  scenes: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }[];
-  words: number; steps: number; stopped: boolean;
-}> {
-  const agents = new Map<string, Agent>();
-  const results: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }[] = [];
-  let totalWords = 0, totalSteps = 0;
-
-  for (let i = 0; i < sc.scenes.length; i++) {
-    const sd = sc.scenes[i];
-    const chapter = i + 1;
-
-    // Build or update agents for this scene's roaster
-    const chapterGoal = (c: typeof sc.characters[0]) => c.goals?.[i] || c.goal;
-    for (const def of sc.characters) {
-      if (sd.roaster.length && !sd.roaster.some(r => r.toLowerCase() === def.name.toLowerCase())) continue;
-      if (!agents.has(def.name.toLowerCase())) {
-        const a = new Agent(def.name, def.model, wrapCharacter(def, sd.place, chapterGoal(def)), 0.9);
-        a.think = sc.thinking.character;
-        agents.set(def.name.toLowerCase(), a);
-      }
-    }
-
-    LIVE.agents = agents;
-
-    log({ t: "scene_start" as const, story: sc.dir, characters: sc.characters.map(c => c.name), target: sd.length, chapter });
-
-    const r = await writeScene(
-      sd, chapter, sc.characters, agents,
-      sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-      sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
-      sc.dir, log,
-    );
-
-    results.push(r);
-    totalWords += r.words;
-    totalSteps += r.steps;
-
-    if (r.stopped || RUN.stopped) break;
+/** Write one chapter: build the agents for the chapter's roster, call writeScene, and clean up. */
+export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunEvent) => void): Promise<
+  { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }
+> {
+  if (!Number.isInteger(chapter) || chapter < 1 || chapter > sc.scenes.length) {
+    throw new Error(`Chapter must be an integer in 1..${sc.scenes.length}, not ${chapter}`);
   }
 
-  LIVE.agents = null;
-  log({ t: "story_end", scenes: results.length, steps: totalSteps, words: totalWords });
-  return { scenes: results, words: totalWords, steps: totalSteps, stopped: RUN.stopped };
+  const sd = sc.scenes[chapter - 1];
+  const agents = new Map<string, Agent>();
+
+  for (const def of rosterOf(sc.characters, sd.roster)) {
+    agents.set(def.name.toLowerCase(), newCharacterAgent(def, sd.place, sc.thinking.character));
+  }
+
+  LIVE.agents = agents;
+
+  const r = await writeScene(
+    sd, chapter, sc.characters, agents,
+    sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+    sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
+    sc.dir, log,
+  );
+
+  LIVE.writer = null; LIVE.agents = null; LIVE.log = null;
+  return r;
 }

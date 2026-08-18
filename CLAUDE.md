@@ -24,7 +24,8 @@ afterwards.
 | --- | --- |
 | [GUI-SPEC.md](GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
 | [SPEC-E-editor.md](SPEC-E-editor.md) | *proposed, not built* — the story editor: making the GUI write an existing story, not just read one |
-| [SPEC-GUI-MULTISCENE.md](SPEC-GUI-MULTISCENE.md) | wiring the viewer to multi-scene runs — engine side (`chapter` on `RunEvent`, `story_end`, `StoryConfig.scenes[]`) is done, GUI side is the open work |
+| [SPEC-H-handoff.md](SPEC-H-handoff.md) | *proposed, not built* — one run per chapter, and the architect handoff that re-authors the cast between them; owns the plan for `runChapter`, `renderStory` and the removed `CharacterDef.goals[]` |
+| [SPEC-GUI-MULTISCENE.md](SPEC-GUI-MULTISCENE.md) | wiring the viewer to multi-chapter stories — *needs revision*: written before one-run-per-chapter, and `story_end` no longer exists |
 
 > DESIGN.md, PROTOCOL.md, LOOP.md, STORY-FORMAT.md, RUN-RECORD.md, VIEWER-UI.md, SPEC-S-scaffold.md,
 > CLI.md and GOTCHAS.md are gone — deleted in `da3cf00` ("comments clean-up", 2026-08-14), which also
@@ -92,7 +93,7 @@ way.**
 | [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
 | [server/http-util.ts](server/http-util.ts) | the `json()` response helper and `readJsonBody()`, shared by server.ts and the route modules |
-| [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, `viewer.js` |
+| [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
 | [ansi.ts](ansi.ts) | terminal colours |
 

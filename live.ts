@@ -88,7 +88,7 @@ export const LIVE = {
   readerArmed: false,
   readerResolve: null as ((answer: string) => void) | null,
   awaitingPick: false,
-  pickResolve: null as ((dir: string) => void) | null,
+  pickResolve: null as ((pick: { dir: string; chapter: number }) => void) | null,
 };
 
 /** A snapshot of the session's run state, for /run, SSE, and the viewer's header. */

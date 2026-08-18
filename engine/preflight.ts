@@ -78,7 +78,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
             added: c.skills.filter(s => s.source === "story").map(s => s.name),
             restrictions: restrictionsOf(c.skills),
           })),
-          scene: sc.scene,
+          scene: sc.scenes[0],
           maxSteps: sc.maxSteps, retries: sc.retries, clarifications: sc.clarifications,
           maxProseWords: sc.maxProseWords,
           models: sc.models, modelCheck, missingModels,
