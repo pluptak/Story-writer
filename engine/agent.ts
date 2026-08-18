@@ -62,6 +62,7 @@ export class Agent {
 }
 
 // -- LLM INTERACTION LOG -----------------------------------------------------
+/** A unique llm-log filename for an agent name within this run, suffixing -2, -3, ... on collisions. */
 export function llmFilenameFor(name: string, used: Set<string>): string {
   const base = slugify(name) || "agent";
   let f = `${base}.jsonl`, n = 2;
@@ -70,6 +71,7 @@ export function llmFilenameFor(name: string, used: Set<string>): string {
   return f;
 }
 
+/** One JSONL record for an agent/model exchange; WRITER is typed "writer", everyone else "character". */
 export function llmLogEntry(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string) {
   return { ts, role: agent.name === "WRITER" ? "writer" : "character", agent: agent.name, model: agent.model, prompt, response };
 }
@@ -89,6 +91,7 @@ function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: strin
 }
 
 // -- HISTORY WINDOWING -----------------------------------------------------
+/** Fold history beyond the window into a rolling digest; the digest itself feeds the next prompt. */
 export async function trimHistory(agent: Agent, summarizerModel: string, summarizerThink: ThinkLevel = "low") {
   if (agent.history.length <= agent.maxMessages) return;
   const overflowCount = agent.history.length - WINDOW.keepRecent;

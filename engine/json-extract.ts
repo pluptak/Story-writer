@@ -1,6 +1,7 @@
 /** JSON EXTRACTION — pulling structured replies (or a prose fallback) out of raw model output. */
 import { ENGINE } from "./engine-state.ts";
 
+/** Index just past the closing brace of the object that opens at `start`, or -1 if it never closes. */
 export function balancedObjectEnd(s: string, start: number): number {
   let depth = 0, inStr = false, esc = false;
   for (let i = start; i < s.length; i++) {
@@ -18,6 +19,7 @@ export function balancedObjectEnd(s: string, start: number): number {
   return -1;
 }
 
+/** Every complete, parseable top-level object in `s`, in order — nested ones are skipped. */
 export function topLevelObjects(s: string): Record<string, any>[] {
   const found: Record<string, any>[] = [];
   for (let i = 0; i < s.length; i++) {
@@ -36,6 +38,7 @@ const PROSE_KEYS = ["prose", "question", "situation", "need", "speech", "action"
                     "verdict", "note", "answer", "skills_used", "character"] as const;
 const PROSE_ALT = PROSE_KEYS.join("|");
 
+/** The structured reply in raw model output: the last top-level JSON object, else a labelled-prose fallback, else {}. */
 export function extractJson(raw: string): Record<string, any> {
   const stripped = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   const afterThink = stripped.includes("</think>")
@@ -61,6 +64,7 @@ export function extractJson(raw: string): Record<string, any> {
   return {};
 }
 
+/** Recover a draft that the model cut off mid-JSON: everything up to the last finished sentence in its prose. */
 export function salvageProse(raw: string): string {
   const m = raw.match(/"?prose"?\s*:\s*"/);
   if (!m) return "";

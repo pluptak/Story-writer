@@ -6,6 +6,7 @@ import { canonSkill, type Skill } from "./skills.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
 
+/** What the writer sends when it wants a character's take: who, the situation as given to them, the question, and what shape of answer is wanted. */
 export interface ConsultRequest {
   character: string;
   situation: string;
@@ -14,6 +15,7 @@ export interface ConsultRequest {
 }
 
 // -- WHAT A CONSULT MUST CONTAIN TO BE WORTH SENDING -----------------------
+/** The four shapes of answer a consult can ask for, in the writer's closed vocabulary. */
 export const CONSULT_WANTS = P.CONSULT_WANTS;
 export type ConsultWants = (typeof CONSULT_WANTS)[number];
 
@@ -43,8 +45,10 @@ const DEGENERATE_QUESTIONS = [
 
 const MIN_SITUATION_WORDS = 5;
 
+/** The outcome of checking a proposed consult: sendable, or refused with a reason the writer can act on. */
 export type ConsultCheck = { ok: true; req: ConsultRequest } | { ok: false; why: string };
 
+/** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step. */
 export function normalizeConsult(raw: {
   character: string; situation?: unknown; question?: unknown; wants?: unknown;
 }): ConsultCheck {
@@ -68,6 +72,7 @@ export function normalizeConsult(raw: {
 
   return { ok: true, req: { character, situation, question, wants } };
 }
+/** A character's answer: what they thought/said/did, what they claimed to use, and any clarification trail. */
 export interface ConsultReply {
   character: string;
   thought: string; speech: string; action: string; note: string;
@@ -77,6 +82,7 @@ export interface ConsultReply {
   forced: boolean;                                       // ran out of clarifications and answered anyway
   raw: string;
 }
+/** Everything a consult can report to the run log, as one tagged event each. */
 export type ConsultEvent =
   | { t: "consult"; character: string; situation: string; question: string; wants: string; attempt: number }
   | { t: "need"; character: string; question: string }
@@ -87,6 +93,7 @@ export type ConsultEvent =
   | { t: "answer"; character: string; thought: string; speech: string; action: string;
       note: string; skills_used: string[]; unverified: string[] };
 
+/** How the caller answers a character's request for a missing fact. */
 export type Clarifier = (question: string, req: ConsultRequest) => Promise<string>;
 
 const asList = (v: unknown): string[] =>
@@ -94,6 +101,7 @@ const asList = (v: unknown): string[] =>
   : typeof v === "string" ? v.split(/[,;|]/).map(s => s.trim()).filter(Boolean)
   : [];
 
+/** Run one consult against a character agent: clarify, repair and answer within the given budget. */
 export async function consult(
   agent: Agent, req: ConsultRequest, skills: Skill[],
   opts: { clarifications: number; clarify: Clarifier; attempt?: number; log?: (e: ConsultEvent) => void },

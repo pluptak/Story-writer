@@ -1,6 +1,7 @@
 /** CONFIG VALIDATION — parsing helpers for a story.md `kv` map, plus the shared filename slugifier. */
 const configLabel = (key: string) => key.replace(/^config\./, "");
 
+/** Read `key` from a kv map as a whole number >= 1, warning and falling back to `def` otherwise. */
 export function num(kv: Record<string, string>, key: string, def: number): number {
   const raw = kv[key];
   if (raw == null) return def;
@@ -10,6 +11,7 @@ export function num(kv: Record<string, string>, key: string, def: number): numbe
   return n;
 }
 
+/** Read `key` from a kv map as a boolean (only "true"/"false"), warning and falling back to `def` otherwise. */
 export function bool(kv: Record<string, string>, key: string, def: boolean): boolean {
   const raw = kv[key];
   if (raw == null) return def;
@@ -20,6 +22,7 @@ export function bool(kv: Record<string, string>, key: string, def: boolean): boo
   return def;
 }
 
+/** Read `key` from a kv map as one of `allowed`, warning and falling back to `def` otherwise. */
 export function enumOf<T extends string>(kv: Record<string, string>, key: string, allowed: readonly T[], def: T): T {
   const raw = kv[key];
   if (raw == null) return def;
@@ -29,6 +32,7 @@ export function enumOf<T extends string>(kv: Record<string, string>, key: string
   return def;
 }
 
+/** A safe folder-name slug from any string, or "" when nothing usable survives. */
 export function slugify(s: string): string {
   return s.toLowerCase().normalize("NFKD")
     .replace(/[^a-z0-9]+/g, "-")

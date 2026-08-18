@@ -5,6 +5,7 @@
  */
 import { type WriteStream } from "node:fs";
 
+/** Mutable run knobs shared across the engine: stream/debug/serve flags, token cap, and the run's LLM log handles. */
 export const ENGINE = {
   stream: true,
   debug: false,
@@ -17,6 +18,7 @@ export const ENGINE = {
 
 // TTY only: carriage returns in a redirected log file are worse than silence.
 let progressOpen = false;
+/** Paint a one-line status at the cursor (TTY only), so the terminal shows what a long call is doing. */
 export function progress(text: string) {
   if (!process.stdout.isTTY) return;
   process.stdout.write(`\r\x1b[2K  ${text}`);

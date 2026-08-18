@@ -10,6 +10,7 @@ import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef } fro
 
 export type { SceneDef } from "./story-schema.ts";
 
+/** A loaded character: everything the agents need, with skills already resolved to the final list. */
 export interface CharacterDef {
   name: string;
   model: string;
@@ -20,6 +21,7 @@ export interface CharacterDef {
   skills: Skill[];
 }
 
+/** A story as loaded and validated: the engine's view of story.json, with defaults filled in. */
 export interface StoryConfig {
   dir: string;
   premise: string;
@@ -40,9 +42,12 @@ export interface StoryConfig {
   characters: CharacterDef[];
 }
 
+/** The repo root, resolved from this file so relative paths work no matter where the process starts. */
 export const ROOT = fileURLToPath(new URL("..", import.meta.url));
+/** Resolve a story directory against the repo root (an absolute path passes through unchanged). */
 export const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolvePath(ROOT, dir));
 
+/** Validate and load a story into a StoryConfig; a model override beats the story's own default. */
 export async function loadStory(dir: string, modelOverride?: string): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
   const raw = JSON.parse(await readFile(joinPath(base, "story.json"), "utf8"));
@@ -113,6 +118,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
 }
 
 // -- DISCOVERY -------------------------------------------------------------
+/** Every story folder under stories/ that has a loadable story.json, sorted by name. */
 export async function discoverStories(): Promise<string[]> {
   const choices: string[] = [];
   try {
@@ -126,6 +132,7 @@ export async function discoverStories(): Promise<string[]> {
 }
 
 export const NEW_STORY = "\0new";
+/** Ask the user to pick a story, or "n" for a new one; without a terminal, picks the first or errors. */
 export async function chooseStory(arg: string): Promise<string> {
   if (arg) return arg;
   const choices = await discoverStories();
@@ -149,6 +156,7 @@ export async function chooseStory(arg: string): Promise<string> {
   return choices[Number.isInteger(idx) && idx >= 0 && idx < choices.length ? idx : 0];
 }
 
+/** Resolve a directory that came from OUTSIDE the process to a discovered story, or null if it is not one. */
 export async function selectableStory(dir: string): Promise<string | null> {
   const want = String(dir ?? "").trim().replace(/\\/g, "/").replace(/\/+$/, "");
   if (!want) return null;
@@ -157,11 +165,13 @@ export async function selectableStory(dir: string): Promise<string | null> {
 }
 
 const BUILTIN_MODEL = "qwen3.6-35b-a3b";
+/** The scaffold interview's knobs: models, architect thinking, and the request retry settings. */
 export interface Defaults {
   models: { default: string; architect: string };
   thinking: { architect: ThinkLevel };
   requestTimeout: number; attempts: number; maxTokens: number; stream: boolean; debug: boolean;
 }
+/** Read defaults.json, falling back to built-ins; `override` (e.g. --model) beats everything in it. */
 export async function loadDefaults(override = ""): Promise<Defaults> {
   let parsed: any = {};
   try { parsed = JSON.parse(await readFile(joinPath(ROOT, "defaults.json"), "utf8")); } catch {}

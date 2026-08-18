@@ -5,7 +5,7 @@ export function build(store) {
   const blocks = []; let cur = null;
   for (const e of store.events) {
     switch (e.t) {
-      case "scene_start": if (!store.meta) store.meta = { story:e.story, target:e.target, characters:(e.characters||[]).map(n=>({name:n,skills:[],lacks:[]})) }; break;
+      case "scene_start": if (!store.meta) store.meta = { story:e.story, target:e.target, characters:(e.characters||[]).map(n=>({name:n,skills:[],restrictions:[]})) }; break;
       case "draft":
         if (e.prose) { blocks.push({ kind:"prose", seq:e.seq, text:e.prose, salvaged:!!e.salvaged }); }
         break;

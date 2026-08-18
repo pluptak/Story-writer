@@ -20,6 +20,7 @@ async function architectExample(): Promise<string> {
   } catch { return ""; }
 }
 
+/** Build the architect agent: its system prompt carries the skill catalog and a worked example. */
 export async function buildArchitect(d: Defaults): Promise<Agent> {
   const system = P.architectSystem(SKILL_CATALOG, await architectExample());
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
@@ -29,6 +30,7 @@ export async function buildArchitect(d: Defaults): Promise<Agent> {
 
 // -- SCAFFOLD SESSION ------------------------------------------------------
 
+/** What one exchange with the architect produced, for the CLI/SSE to announce. */
 export type ScaffoldRound =
   | { kind: "proposal"; note: string }
   | { kind: "edits"; applied: string[]; ignored: string[]; note: string }
@@ -36,6 +38,7 @@ export type ScaffoldRound =
   | { kind: "nothing"; why: string }
   | { kind: "failed"; error: string };
 
+/** The outcome of trying to write the accepted story to disk. */
 export type ScaffoldAccept =
   | { kind: "written"; dir: string; files: string[]; warnings: string[] }
   | { kind: "unloadable"; dir: string; files: string[]; error: string; warnings: string[] }
@@ -49,6 +52,7 @@ function withAsk(out: Record<string, any>): string {
   return note ? `${note} — it also asks: ${ask}` : `it also asks: ${ask}`;
 }
 
+/** One interactive story-building conversation: propose, refine via edits, and accept to disk. */
 export class ScaffoldSession {
   spec: StorySpec = normalizeSpec({}).spec;    // nothing proposed yet
   problems: string[] = [];

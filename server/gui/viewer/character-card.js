@@ -10,8 +10,8 @@ import { APP } from "./state.js";
  *  is a `<span role="button">`, not a `<button>`, because the shelf's cast row sits inside a card
  *  that is itself a `<button>` -- nesting real buttons breaks the outer one. */
 export function charChip(c, dir) {
-  const can = c.can || c.skills || [];
-  const cannot = c.cannot || c.lacks || [];
+  const can = c.skills || [];
+  const cannot = c.restrictions || [];
   const bits = [];
   if (can.length) bits.push(`<span class="yes">+${esc(can.join(", "))}</span>`);
   if (cannot.length) bits.push(`<span class="no">no ${esc(cannot.join(", "))}</span>`);

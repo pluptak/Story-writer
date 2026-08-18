@@ -24,7 +24,7 @@ function castHtml(spec) {
     return `<div class="who">
       <div class="nm">${esc(c.name)}</div>
       ${can ? `<div class="line"><span class="k yes">can also</span>${can}</div>` : ""}
-      ${c.lacks.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.lacks.join(", "))}</div>` : ""}
+      ${c.restrictions.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
       ${c.knows ? `<div class="line"><span class="k">knows</span>${esc(c.knows)}</div>` : ""}
       <div class="persona${APP.personasFull ? "" : " clip"}">${esc(c.persona)}</div>
     </div>`;

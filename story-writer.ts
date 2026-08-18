@@ -13,7 +13,7 @@ import { C } from "./ansi.ts";
 import { LIVE, resetLive, setWhere, publish } from "./live.ts";
 import { startServer, type ServerHost } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { SKILL_CATALOG, canonSkill } from "./engine/skills.ts";
+import { restrictionsOf } from "./engine/skills.ts";
 import { NET } from "./engine/llm-client.ts";
 import {
   resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
@@ -49,7 +49,7 @@ async function runPreflightCli() {
       for (const c of s.characters)
         console.log(`   ${c.name}: ${c.skills} skills`
           + (c.added.length ? ` (+${c.added.join(", ")})` : "")
-          + (c.lacking.length ? ` ${C.dim}(no ${c.lacking.join(", ")})${C.reset}` : ""));
+          + (c.restrictions.length ? ` ${C.dim}(no ${c.restrictions.join(", ")})${C.reset}` : ""));
       console.log(`   steps ${s.maxSteps} · retries ${s.retries} · clarifications ${s.clarifications}`
         + ` · ≤${s.maxProseWords} words/piece`
         + (s.scene.pov ? ` · pov ${s.scene.pov}` : "")
@@ -319,7 +319,7 @@ async function runAndSave(sc: StoryConfig, dir: string) {
     characters: sc.characters.map(c => ({
       name: c.name,
       skills: c.skills.filter(s => s.source === "story").map(s => s.name),
-      restrictions: Object.keys(SKILL_CATALOG).filter(g => !c.skills.some(s => canonSkill(s.name) === canonSkill(g))),
+      restrictions: restrictionsOf(c.skills),
     })),
   };
   resetLive();

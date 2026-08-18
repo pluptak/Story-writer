@@ -15,6 +15,7 @@ import type { ScaffoldSession } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard } from "../engine/preflight.ts";
 
+/** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
   storyCards(): Promise<StoryCard[]>;
   /** Resolve a directory that came from OUTSIDE the process to one the engine discovered, or null. */
@@ -43,6 +44,7 @@ async function serveFile(res: ServerResponse, url: URL, contentType: string) {
 }
 
 let serverStarted = false;
+/** Start the viewer's HTTP server once: static GUI files, SSE at /events, and dispatch to the route modules. */
 export function startServer(port: number, host: ServerHost) {
   if (serverStarted) return; serverStarted = true;
   LIVE.port = port;

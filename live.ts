@@ -49,6 +49,7 @@ export const sseClients = new Set<{ write: (s: string) => void }>();
 export const liveHistory: Array<{ seq: number } & RunEvent> = [];
 let liveSeq = 0;
 
+/** Fan one frame out to every attached viewer; silently ignored when nobody is watching. */
 export function sseWrite(frame: LiveFrame) {
   if (!sseClients.size) return;
   const line = `data: ${JSON.stringify(frame)}\n\n`;
@@ -56,6 +57,7 @@ export function sseWrite(frame: LiveFrame) {
 }
 
 /** History + SSE. The JSONL file is the caller's, so a run logs whether or not anyone is watching. */
+/** Stamp a run event with a sequence number, keep it in history, and stream it to viewers. */
 export function publish(ev: RunEvent): { seq: number } & RunEvent {
   const stamped = { seq: ++liveSeq, ...ev };
   liveHistory.push(stamped);
@@ -89,6 +91,7 @@ export const LIVE = {
   pickResolve: null as ((dir: string) => void) | null,
 };
 
+/** A snapshot of the session's run state, for /run, SSE, and the viewer's header. */
 export function runState(): LiveFrame {
   return {
     t: "run_state", running: LIVE.running, stopping: RUN.stopped && LIVE.running,
@@ -99,11 +102,13 @@ export function runState(): LiveFrame {
   };
 }
 
+/** Update where the session is and broadcast it; `running` says a run is in progress there. */
 export function setWhere(where: string, running = LIVE.running) {
   LIVE.where = where; LIVE.running = running;
   sseWrite(runState());
 }
 
+/** Clear everything that belongs to one run, so a second story starts from a clean session. */
 export function resetLive() {
   liveHistory.length = 0;
   liveSeq = 0;

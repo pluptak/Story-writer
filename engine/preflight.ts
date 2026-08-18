@@ -1,7 +1,7 @@
 /** PRE-FLIGHT — checking a story loads and its models are available, and the story-card listing. */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { SKILL_CATALOG, canonSkill } from "./skills.ts";
+import { restrictionsOf } from "./skills.ts";
 import { LMSTUDIO_MODELS_URL } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir } from "./story-format.ts";
 
@@ -17,7 +17,7 @@ export interface PreflightResult {
   ok: boolean; error?: string; warnings: string[];
   summary?: {
     premise: string;
-    characters: { name: string; skills: number; added: string[]; lacking: string[] }[];
+    characters: { name: string; skills: number; added: string[]; restrictions: string[] }[];
     scene: { place: string; question: string; pov: string; length: number };
     maxSteps: number; retries: number; clarifications: number; maxProseWords: number;
     models: { default: string; writer: string; summary: string };
@@ -76,7 +76,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
             name: c.name,
             skills: c.skills.length,
             added: c.skills.filter(s => s.source === "story").map(s => s.name),
-            lacking: Object.keys(SKILL_CATALOG).filter(g => !c.skills.some(s => canonSkill(s.name) === canonSkill(g))),
+            restrictions: restrictionsOf(c.skills),
           })),
           scene: sc.scene,
           maxSteps: sc.maxSteps, retries: sc.retries, clarifications: sc.clarifications,
@@ -96,7 +96,7 @@ export interface StoryCard {
   dir: string; name: string; ok: boolean; error?: string; warnings: string[];
   premise?: string;
   scene?: { place: string; question: string; pov: string; length: number };
-  characters?: { name: string; can: string[]; cannot: string[] }[];
+  characters?: { name: string; skills: string[]; restrictions: string[] }[];
   maxSteps?: number;
   defaultModel?: string;
   runs: RunSummary[];
@@ -142,7 +142,7 @@ export async function storyCards(): Promise<StoryCard[]> {
       ...(s ? {
         premise: s.premise,
         scene: s.scene,
-        characters: s.characters.map(c => ({ name: c.name, can: c.added, cannot: c.lacking })),
+        characters: s.characters.map(c => ({ name: c.name, skills: c.added, restrictions: c.restrictions })),
         maxSteps: s.maxSteps,
         defaultModel: s.models.default,
       } : {}),

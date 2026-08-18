@@ -4,7 +4,7 @@ import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
 import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
-import { canonSkill, SKILL_CATALOG } from "./skills.ts";
+import { restrictionsOf } from "./skills.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel } from "./llm-client.ts";
 import {
@@ -15,6 +15,7 @@ import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live
 import { ENGINE, progressDone } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
+/** The system prompt for one character agent: their persona, place, skills, knowledge and goal. */
 export function wrapCharacter(def: CharacterDef, place: string, chapterGoal: string): string {
   return P.characterSystem({
     persona: def.persona, place, skills: def.skills, knows: def.knows,
@@ -22,6 +23,7 @@ export function wrapCharacter(def: CharacterDef, place: string, chapterGoal: str
   });
 }
 
+/** Build the character agents for a scene, honoring its roaster and carrying the character thinking level. */
 export function buildCharacterAgents(
   characters: CharacterDef[], place: string, chapterGoal: string, think: { character: ThinkLevel },
   rostered: string[],
@@ -37,22 +39,26 @@ export function buildCharacterAgents(
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
+/** The system prompt for the writer agent: premise, scene, the cast's skills, and house style. */
 export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; cannot: string[] }[], style: string): string {
   return P.writerSystem({ premise, scene, cast, style });
 }
 
+// `can`/`cannot` here, not the wire's `skills`/`restrictions`: these two feed the writer prompt,
+// which prints "CANNOT:" and then argues from that word. Renaming them rewords the prompt.
+/** What the writer gets to know about each character: what they can do, and what they absolutely cannot. */
 export function writerCast(characters: CharacterDef[], rostered: string[]): { name: string; can: string[]; cannot: string[] }[] {
-  const general = Object.keys(SKILL_CATALOG);
   return characters
     .filter(def => !rostered.length || rostered.some(r => r.toLowerCase() === def.name.toLowerCase()))
     .map(c => ({
       name: c.name,
       can: c.skills.map(s => s.name),
-      cannot: general.filter(g => !c.skills.some(s => canonSkill(s.name) === canonSkill(g))),
+      cannot: restrictionsOf(c.skills),
     }));
 }
 
 // -- SCENE LOOP ------------------------------------------------------------
+/** Everything the run can report to the viewer and the writing log, as one tagged event each. */
 export type RunEvent =
   | ConsultEvent
   | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
@@ -100,6 +106,7 @@ const OVERRUN_SLACK = 1.5;
 
 const NEGLECT_GAP = 3;
 
+/** Cast members who have gone unconsulted for `gap` steps or more, so the writer does not lose someone. */
 export function neglectedCast(cast: string[], lastAsked: Map<string, number>, step: number, gap: number): string[] {
   if (step < gap) return [];
   return cast.filter(name => {
@@ -108,6 +115,7 @@ export function neglectedCast(cast: string[], lastAsked: Map<string, number>, st
   });
 }
 
+/** Write one scene: the draft/consult loop that stops at choices, consults, judges, and trims history. */
 export async function writeScene(
   sd: SceneDef, chapter: number, characters: CharacterDef[], agents: Map<string, Agent>,
   premise: string, writerStyle: string, writerModel: string, summaryModel: string,
@@ -326,6 +334,7 @@ export async function writeScene(
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
 }
 
+/** Write every scene in the story, one chapter at a time, sharing character agents where the roasters allow. */
 export async function writeScenes(sc: StoryConfig, log: (e: RunEvent) => void): Promise<{
   scenes: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }[];
   words: number; steps: number; stopped: boolean;

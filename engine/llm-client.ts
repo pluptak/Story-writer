@@ -8,10 +8,15 @@ export const LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions";
 export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$/, "/models");
 
 type Role = "system" | "user" | "assistant";
+/** One chat message: role plus content. */
 export interface Msg { role: Role; content: string; }
 
+/** "default" means "send nothing"; "off" suppresses reasoning entirely. */
 export const THINK_LEVELS = ["off", "low", "medium", "high", "default"] as const;
 export type ThinkLevel = (typeof THINK_LEVELS)[number];
+
+/** The retry/backoff knobs, settable per run from a story's config. */
+export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };
 
 function requestBody(model: string, messages: Msg[], temperature: number, stream: boolean, think: ThinkLevel) {
   const body: Record<string, unknown> = { model, messages, temperature, max_tokens: ENGINE.maxTokens, stream };
@@ -22,8 +27,6 @@ function requestBody(model: string, messages: Msg[], temperature: number, stream
 class LmError extends Error {
   constructor(message: string, public status?: number, public retryable = false) { super(message); }
 }
-
-export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };
 
 const retryableStatus = (s: number) => s === 408 || s === 409 || s === 425 || s === 429 || s >= 500;
 
@@ -71,6 +74,7 @@ async function postChat(body: string, signal: AbortSignal) {
   return res;
 }
 
+/** One non-streaming completion, with retry/backoff; throws StoppedError when the run is stopped. */
 export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low"): Promise<string> {
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal);
@@ -84,7 +88,7 @@ export async function complete(model: string, messages: Msg[], temperature: numb
   });
 }
 
-// Returns the FULL text so the caller still buffers -> parses -> checks; onDelta is preview only.
+/** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
 export async function completeStream(model: string, messages: Msg[], temperature: number,
                                      onDelta: (d: string) => void, think: ThinkLevel = "low"): Promise<string> {
   return withRetry(`${model} stream`, async signal => {

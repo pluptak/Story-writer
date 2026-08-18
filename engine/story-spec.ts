@@ -6,6 +6,7 @@ import { StoryJson, type SceneDef, type CharacterDef, type SceneDef as SceneDefS
 
 export type { SceneDef, CharacterDef } from "./story-schema.ts";
 
+/** What the architect proposes: a story in the working shape used for editing and rendering. */
 export interface StorySpec {
   title: string;
   premise: string;
@@ -23,6 +24,7 @@ const asStrings = (v: unknown): string[] =>
   : typeof v === "string" ? v.split("|").map(s => s.trim()).filter(Boolean)
   : [];
 
+/** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing. */
 export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] } {
   const problems: string[] = [];
   const o = raw ?? {};
@@ -96,6 +98,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
   return { spec, problems };
 }
 
+/** Apply a list of field edits to a spec without mutating the input; report what was applied and what was ignored. */
 export function applyEdits(spec: StorySpec, raw: any): {
   spec: StorySpec; applied: string[]; ignored: string[]; problems: string[];
 } {
@@ -169,8 +172,11 @@ export function applyEdits(spec: StorySpec, raw: any): {
   return { spec: next, applied, ignored, problems };
 }
 
+/** The fields a GUI may set directly; everything else goes through the architect. */
 export const DIRECT_FIELDS = ["scene.length"] as const;
+/** The acceptable length range for one scene, enforced by directEdit. */
 export const MIN_SCENE_WORDS = 100, MAX_SCENE_WORDS = 10000;
+/** The one direct edit the engine trusts: `scene.length`, rounded and bounds-checked. */
 export function directEdit(spec: StorySpec, field: string, value: unknown):
   { ok: false; reason: string } | { ok: true; spec: StorySpec; applied: string[]; problems: string[] } {
   if (!(DIRECT_FIELDS as readonly string[]).includes(field))
@@ -182,6 +188,7 @@ export function directEdit(spec: StorySpec, field: string, value: unknown):
   return { ok: true, spec: e.spec, applied: e.applied, problems: e.problems };
 }
 
+/** Render a spec to the story files on disk (currently just story.json), ready to write into a story folder. */
 export function renderStory(spec: StorySpec, models: { default: string }): Record<string, string> {
   const files: Record<string, string> = {};
 
@@ -241,6 +248,7 @@ export function renderSpec(spec: StorySpec, full = false): string {
   return head + cast + (spec.writerStyle && full ? `\n\n${C.bold}House style${C.reset}\n${spec.writerStyle}\n` : "");
 }
 
+/** The spec as the GUI expects it: character skills split into their `name :: meaning` parts. */
 export function specView(spec: StorySpec) {
   return {
     title: spec.title, premise: spec.premise, scene: spec.scene, scenes: spec.scenes, writerStyle: spec.writerStyle,
