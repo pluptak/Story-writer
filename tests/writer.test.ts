@@ -1,15 +1,17 @@
 /**
  * Deterministic suite — `npm test` (node --test via tsx). No model calls, ever.
  */
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults,
+  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, ROOT,
   type Defaults,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
@@ -19,13 +21,18 @@ import { extractJson, balancedObjectEnd, salvageProse, topLevelObjects } from ".
 import {
   consult, normalizeConsult, canonWants, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
 } from "../engine/consult.ts";
-import { wrapCharacter, wrapWriter, writerCast, neglectedCast } from "../engine/scene-loop.ts";
+import { wrapCharacter, wrapWriter, writerCast, neglectedCast, runChapter } from "../engine/scene-loop.ts";
 import { Agent, llmFilenameFor, llmLogEntry } from "../engine/agent.ts";
 import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
-import { complete } from "../engine/llm-client.ts";
-import { ScaffoldSession } from "../engine/architect.ts";
+import { architectNextChapter } from "../prompts.ts";
+import { complete, completeStream } from "../engine/llm-client.ts";
+import { ScaffoldSession, NextChapterSession, openNextChapter } from "../engine/architect.ts";
 import { runDirs, retainedRuns } from "../engine/preflight.ts";
 import { LIVE, runState, resetLive, RUN, stopRun, armRun, StoppedError } from "../live.ts";
+import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
+import { handleRunControl } from "../server/run-control-routes.ts";
+import { HttpError, readJsonBody } from "../server/http-util.ts";
+import type { ServerHost } from "../server/server.ts";
 
 // Several loaders warn by design; keep the test output readable.
 async function quiet<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -51,18 +58,17 @@ describe("StoryJson schema", () => {
     assert.equal(r.title, "");
     assert.equal(r.premise, "");
     assert.equal(r.scenes.length, 1);
-    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roaster: [] });
+    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [] });
     assert.equal(r.config.maxSteps, 24);
     assert.equal(r.config.thinking.writer, "low");
     assert.equal(r.models.default, "qwen3.6-35b-a3b");
   });
 
-  it("bounds the scene count to 1-3", () => {
+  it("wants at least one scene, and puts no ceiling on how many chapters a story runs to", () => {
     const scene = { question: "Q?" };
     assert.equal(StoryJson.safeParse({ characters: [{ name: "X" }], scenes: [] }).success, false);
     assert.equal(
-      StoryJson.safeParse({ characters: [{ name: "X" }], scenes: [scene, scene, scene, scene] }).success, false);
-    assert.equal(StoryJson.safeParse({ characters: [{ name: "X" }], scenes: [scene, scene, scene] }).success, true);
+      StoryJson.safeParse({ characters: [{ name: "X" }], scenes: Array(12).fill(scene) }).success, true);
   });
 
   it("requires a character's name to be non-empty, but allows an empty cast at the schema level", () => {
@@ -83,6 +89,64 @@ describe("StoryJson schema", () => {
       for (const p of ["scenes.0.length", "config.retries", "config.clarifications",
                         "config.stream", "config.thinking.writer"])
         assert.ok(paths.includes(p), `expected an issue at ${p}, got ${paths.join(", ")}`);
+    }
+  });
+
+  it("rejects an unknown key at the top level instead of silently dropping it", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X" }],
+      unknown_field: "should fail",
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const msgs = r.error.issues.map(i => i.message).join(" ");
+      assert.ok(msgs.includes("unknown_field"), `expected unknown_field in error, got "${msgs}"`);
+    }
+  });
+
+  it("rejects the pre-rename spelling 'lacks' in a character instead of treating it as unknown", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X", lacks: ["telepathy"] }],
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const msgs = r.error.issues.map(i => i.message).join(" ");
+      assert.ok(msgs.includes("lacks"), `expected lacks in error, got "${msgs}"`);
+    }
+  });
+
+  it("rejects the misspelled 'skils' in a character instead of treating it as unknown", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X", skils: ["lockpicking"] }],
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const msgs = r.error.issues.map(i => i.message).join(" ");
+      assert.ok(msgs.includes("skils"), `expected skils in error, got "${msgs}"`);
+    }
+  });
+
+  it("rejects the pre-rename spelling 'roaster' in a scene instead of treating it as unknown", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X" }],
+      scenes: [{ roaster: ["X"] }],
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const msgs = r.error.issues.map(i => i.message).join(" ");
+      assert.ok(msgs.includes("roaster"), `expected roaster in error, got "${msgs}"`);
+    }
+  });
+
+  it("rejects the pre-JSON snake_case spelling 'max_steps' in config instead of treating it as unknown", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X" }],
+      config: { max_steps: 99 },
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const msgs = r.error.issues.map(i => i.message).join(" ");
+      assert.ok(msgs.includes("max_steps"), `expected max_steps in error, got "${msgs}"`);
     }
   });
 });
@@ -175,13 +239,33 @@ describe("config validation", () => {
 
   it("rejects a story.json with malformed config values instead of silently accepting them", async () => {
     await assert.rejects(() => loadStory(FIXTURE), (e: any) => {
-      assert.equal(e.name, "ZodError");
-      const paths = e.issues.map((i: { path: (string | number)[] }) => i.path.join("."));
-      for (const p of ["scenes.0.length", "config.retries", "config.clarifications",
-                        "config.stream", "config.thinking.writer"])
-        assert.ok(paths.includes(p), `expected an issue at ${p}, got ${paths.join(", ")}`);
+      assert.match(e.message, /story\.json/);
+      assert.match(e.message, /scenes\.0\.length/);
+      assert.match(e.message, /config\.retries/);
+      assert.match(e.message, /config\.clarifications/);
+      assert.match(e.message, /config\.stream/);
+      assert.match(e.message, /config\.thinking\.writer/);
+      assert.ok(!/"code"/.test(e.message), "error message must not contain JSON dump");
       return true;
     });
+  });
+
+  it("formats schema errors as human-readable path: message, not JSON dumps", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        title: "T", premise: "A premise.",
+        scenes: [{ place: "Nowhere" }],
+        characters: [{ name: "X", lacks: ["sight"] }],
+      }), "utf8");
+
+      await assert.rejects(() => loadStory(dir), (e: any) => {
+        assert.match(e.message, /story\.json/);
+        assert.match(e.message, /characters\.0.*lacks/);
+        assert.ok(!/"code"/.test(e.message), "error message must not contain JSON dump");
+        return true;
+      });
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
 
@@ -207,6 +291,79 @@ describe("loadStory warnings", () => {
                 "an unrecognized restriction removes nothing, and must not become a real skill");
       assert.match(warns.join(" "), /telepathy/);
       assert.match(warns.join(" "), /no "question"/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("warns when a scene roster names a character that is not in the cast", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        title: "T", premise: "A premise.",
+        scenes: [{ place: "Nowhere", roster: ["MERRIT", "GHOST"] }],
+        characters: [{ name: "GHOST", persona: "x" }],
+      }), "utf8");
+
+      const warns: string[] = [];
+      const orig = console.warn;
+      console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      try { await loadStory(dir); } finally { console.warn = orig; }
+
+      assert.match(warns.join(" "), /roster "MERRIT"/);
+      assert.ok(!/roster "GHOST"/.test(warns.join(" ")),
+                "a roster name that is in the cast must not be warned about");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("rejects a story with an empty premise", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        title: "T", premise: "",
+        scenes: [{ place: "Nowhere" }],
+        characters: [{ name: "GHOST", persona: "x" }],
+      }), "utf8");
+
+      await assert.rejects(() => loadStory(dir), (e: any) => {
+        assert.match(e.message, /story\.json/);
+        assert.match(e.message, /[Pp]remise.*empty/);
+        return true;
+      });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("rejects a story with a whitespace-only premise", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        title: "T", premise: "   \n\t  ",
+        scenes: [{ place: "Nowhere" }],
+        characters: [{ name: "GHOST", persona: "x" }],
+      }), "utf8");
+
+      await assert.rejects(() => loadStory(dir), (e: any) => {
+        assert.match(e.message, /story\.json/);
+        assert.match(e.message, /[Pp]remise.*empty/);
+        return true;
+      });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("exposes the title from story.json", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    assert.equal(sc.title, "Doorway");
+  });
+
+  it("loads with an empty title when none is given in story.json", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        premise: "A premise.",
+        scenes: [{ place: "Nowhere" }],
+        characters: [{ name: "GHOST", persona: "x" }],
+      }), "utf8");
+
+      const sc = await quiet(() => loadStory(dir));
+      assert.equal(sc.title, "");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
@@ -561,7 +718,7 @@ describe("normalizeSpec", () => {
   it("accepts a well-formed proposal with no complaints", () => {
     const { spec, problems } = normalizeSpec(base);
     assert.deepEqual(problems, []);
-    assert.equal(spec.scene.pov, "RIVEN");
+    assert.equal(spec.scenes[0].pov, "RIVEN");
     assert.deepEqual(spec.characters[0].skills, ["lockpicking :: picks locks"]);
   });
 
@@ -574,7 +731,7 @@ describe("normalizeSpec", () => {
 
   it("clears a pov that is not one of the characters", () => {
     const { spec, problems } = normalizeSpec({ ...base, scene: { ...base.scene, pov: "NOBODY" } });
-    assert.equal(spec.scene.pov, "");
+    assert.equal(spec.scenes[0].pov, "");
     assert.match(problems.join(" "), /NOBODY/);
   });
 
@@ -624,7 +781,7 @@ describe("normalizeSpec", () => {
 
   it("reports an empty proposal rather than throwing", () => {
     const { spec, problems } = normalizeSpec({});
-    assert.equal(spec.scene.length, 700);
+    assert.equal(spec.scenes[0].length, 700);
     assert.equal(spec.characters.length, 0);
     assert.ok(problems.length >= 4, problems.join(" · "));
   });
@@ -644,12 +801,12 @@ describe("applyEdits", () => {
 
   it("changes only the field named and leaves the rest untouched", () => {
     const r = edit("scene.place", "A stairwell");
-    assert.equal(r.spec.scene.place, "A stairwell");
+    assert.equal(r.spec.scenes[0].place, "A stairwell");
     assert.equal(r.spec.premise, spec.premise);
     assert.deepEqual(r.spec.characters.map(c => c.name), ["RIVEN", "MERRITT"]);
     assert.deepEqual(r.applied, ["scene.place"]);
     assert.deepEqual(r.ignored, []);
-    assert.equal(spec.scene.place, "Behind Kessel's", "the input spec must not be mutated");
+    assert.equal(spec.scenes[0].place, "Behind Kessel's", "the input spec must not be mutated");
   });
 
   it("edits a character by name, case-insensitively", () => {
@@ -682,7 +839,7 @@ describe("applyEdits", () => {
   it("removing the pov character clears the pov rather than leaving it dangling", () => {
     const r = edit("remove_character", "RIVEN");
     assert.deepEqual(r.spec.characters.map(c => c.name), ["MERRITT"]);
-    assert.equal(r.spec.scene.pov, "");
+    assert.equal(r.spec.scenes[0].pov, "");
     assert.match(r.problems.join(" "), /RIVEN/);
   });
 
@@ -702,6 +859,56 @@ describe("applyEdits", () => {
     assert.match(r.problems.join(" "), /keeping the first 4/);
   });
 
+  it("adds a scene at the end and edits it by number", () => {
+    const grown = edit("add_scene", { place: "The yard", question: "Does he follow?", pov: "MERRITT", length: 800, roster: ["MERRITT"] });
+    assert.equal(grown.spec.scenes.length, 2);
+    assert.deepEqual(grown.applied, ["added scene 2"]);
+    assert.equal(grown.spec.scenes[1].question, "Does he follow?");
+    assert.deepEqual(grown.spec.scenes[1].roster, ["MERRITT"]);
+    assert.equal(grown.spec.scenes[0].question, "Does she get in?", "the scene already there is untouched");
+
+    const r = quietSync(() => applyEdits(grown.spec, { edits: [{ field: "scene_2.place", value: "The alley" }] }));
+    assert.equal(r.spec.scenes[1].place, "The alley");
+    assert.equal(r.spec.scenes[0].place, "Behind Kessel's");
+  });
+
+  it("fills a scene added with nothing in it from the schema defaults", () => {
+    const r = edit("add_scene", {});
+    assert.equal(r.spec.scenes.length, 2);
+    assert.equal(r.spec.scenes[1].length, 700);
+    assert.deepEqual(r.spec.scenes[1].roster, []);
+    assert.match(r.problems.join(" "), /scene 2 has no question/);
+  });
+
+  it("refuses an add_scene that is not a scene object", () => {
+    for (const v of ["a scene", 3, null, ["place"]]) {
+      const r = edit("add_scene", v);
+      assert.equal(r.spec.scenes.length, 1, String(v));
+      assert.match(r.ignored.join(" "), /must be a scene object/);
+    }
+  });
+
+  it("removes a scene by number, and never the only one there is", () => {
+    const two = edit("add_scene", { question: "Does he follow?" }).spec;
+    const r = quietSync(() => applyEdits(two, { edits: [{ field: "remove_scene", value: 1 }] }));
+    assert.equal(r.spec.scenes.length, 1);
+    assert.equal(r.spec.scenes[0].question, "Does he follow?");
+    assert.deepEqual(r.applied, ["removed scene 1"]);
+
+    const last = edit("remove_scene", 1);
+    assert.equal(last.spec.scenes.length, 1);
+    assert.match(last.ignored.join(" "), /a story needs at least one scene/);
+  });
+
+  it("ignores a remove_scene that names no scene", () => {
+    for (const v of [0, 2, -1, "second", 1.5, null]) {
+      const r = edit("remove_scene", v);
+      assert.equal(r.spec.scenes.length, 1, String(v));
+      assert.deepEqual(r.applied, [], String(v));
+      assert.match(r.ignored.join(" "), /there is no scene/);
+    }
+  });
+
   it("survives an edits list that is missing, empty, or malformed", () => {
     for (const raw of [{}, { edits: [] }, { edits: [{ value: "x" }] }, { edits: "nonsense" }]) {
       const r = quietSync(() => applyEdits(spec, raw));
@@ -713,15 +920,15 @@ describe("applyEdits", () => {
     it("sets the one field it is allowed to, through applyEdits", () => {
       const r = quietSync(() => directEdit(spec, "scene.length", 1200));
       assert.ok(r.ok);
-      assert.equal(r.spec.scene.length, 1200);
+      assert.equal(r.spec.scenes[0].length, 1200);
       assert.deepEqual(r.applied, ["scene.length"]);
-      assert.equal(spec.scene.length, 700, "the input spec must not be mutated");
+      assert.equal(spec.scenes[0].length, 700, "the input spec must not be mutated");
     });
 
     it("rounds what it is given", () => {
       const r = quietSync(() => directEdit(spec, "scene.length", "850.6"));
       assert.ok(r.ok);
-      assert.equal(r.spec.scene.length, 851);
+      assert.equal(r.spec.scenes[0].length, 851);
     });
 
     it("refuses every other field, however well-formed", () => {
@@ -780,7 +987,7 @@ describe("renderStory round trip", () => {
       const sc = await quiet(() => loadStory(dir));
 
       assert.equal(sc.premise, spec.premise, "paragraph breaks and all");
-      assert.deepEqual(sc.scene, spec.scene);
+      assert.deepEqual(sc.scenes[0], spec.scenes[0]);
       assert.equal(sc.writerStyle.includes("Third person limited. Present tense."), true);
       assert.equal(sc.models.default, "some-model");
       assert.deepEqual(sc.characters.map(c => c.name), ["ELIAS", "MARA"]);
@@ -804,6 +1011,47 @@ describe("renderStory round trip", () => {
       const sc = await quiet(() => loadStory(dir));
       assert.equal(sc.characters[0].knows, "One thing.\nAnd another.");
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("renders back every config key, models block and per-character model the story file declared", async () => {
+    const original = JSON.parse(await readFile(join(ROOT, "stories/doorway/story.json"), "utf8"));
+    const { spec } = normalizeSpec(original);
+    const rendered = JSON.parse(renderStory(spec, { default: "unused-fallback" })["story.json"]);
+
+    for (const [key, value] of Object.entries(original.config))
+      assert.deepEqual(rendered.config[key], value, `config.${key} must survive the round trip`);
+    assert.deepEqual(rendered.models, original.models);
+    assert.deepEqual(rendered.characters.map((c: any) => c.model),
+                     original.characters.map((c: any) => c.model));
+  });
+
+  it("an unrelated edit does not disturb config or models", () => {
+    const withConfig = normalizeSpec({
+      title: "Title", premise: "A premise.",
+      scene: { question: "Q?" },
+      config: { maxProseWords: 200, maxSteps: 30 },
+      models: { default: "model-a", writer: "model-w" },
+      characters: [{ name: "SOLO", persona: "Alone.", model: "model-c" }],
+    }).spec;
+
+    const edited = quietSync(() => applyEdits(withConfig, { edits: [{ field: "title", value: "New Title" }] })).spec;
+    assert.equal(edited.title, "New Title");
+    assert.equal(edited.config.maxProseWords, 200, "maxProseWords must be preserved");
+    assert.equal(edited.config.maxSteps, 30, "maxSteps must be preserved");
+    assert.equal(edited.models.default, "model-a", "models.default must be preserved");
+    assert.equal(edited.models.writer, "model-w", "models.writer must be preserved");
+    assert.equal(edited.characters[0].model, "model-c", "per-character model must be preserved");
+  });
+
+  it("a fresh proposal with no config still renders with schema defaults and fallback model", () => {
+    const fresh = normalizeSpec({}).spec;
+    const rendered = renderStory(fresh, { default: "fallback-model" });
+    const story = JSON.parse(rendered["story.json"]);
+    assert.equal(story.config.maxProseWords, 140, "schema default for maxProseWords");
+    assert.equal(story.config.maxSteps, 24, "schema default for maxSteps");
+    assert.equal(story.models.default, "fallback-model", "fallback model from argument");
+    assert.ok(!story.models.writer, "empty writer should not be emitted");
+    assert.ok(!story.models.summary, "empty summary should not be emitted");
   });
 });
 
@@ -909,6 +1157,60 @@ describe("runDirs / retainedRuns", () => {
   });
 });
 
+describe("readChapters", () => {
+  it("returns an empty list when chapters/ does not exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const chapters = await readChapters(dir);
+      assert.deepEqual(chapters, []);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("reads the chapters that exist and returns their text", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "Chapter 1 prose.", "utf8");
+      await writeFile(join(dir, "chapters", "2.md"), "Chapter 2 prose.", "utf8");
+
+      const chapters = await readChapters(dir);
+      assert.equal(chapters.length, 2);
+      assert.equal(chapters[0].n, 1);
+      assert.equal(chapters[0].text, "Chapter 1 prose.");
+      assert.equal(chapters[1].n, 2);
+      assert.equal(chapters[1].text, "Chapter 2 prose.");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("orders chapters numerically, not lexically", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "One", "utf8");
+      await writeFile(join(dir, "chapters", "10.md"), "Ten", "utf8");
+      await writeFile(join(dir, "chapters", "2.md"), "Two", "utf8");
+
+      const chapters = await readChapters(dir);
+      assert.deepEqual(chapters.map(c => c.n), [1, 2, 10]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("ignores files that are not <digits>.md", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "One", "utf8");
+      await writeFile(join(dir, "chapters", "notes.md"), "Notes", "utf8");
+      await writeFile(join(dir, "chapters", "3.txt"), "Three as txt", "utf8");
+      await writeFile(join(dir, "chapters", "draft-2.md"), "Draft", "utf8");
+
+      const chapters = await readChapters(dir);
+      assert.deepEqual(chapters.map(c => c.n), [1]);
+      assert.equal(chapters[0].text, "One");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe("LLM interaction log", () => {
   it("llmLogEntry: WRITER gets role writer, anyone else gets role character", () => {
     const w = llmLogEntry({ name: "WRITER", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp");
@@ -960,7 +1262,7 @@ describe("prompt construction", () => {
   it("a character is told its skills and its place, and NOT the premise", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
     const merritt = sc.characters.find(c => c.name === "MERRITT")!;
-    const p = wrapCharacter(merritt, sc.scene.place, "");
+    const p = wrapCharacter(merritt, sc.scenes[0].place);
     assert.match(p, /hearing/);
     assert.match(p, /Kessel/);                       // the place
     assert.ok(!p.includes("sight"), "a character must not be shown a skill it lacks");
@@ -969,7 +1271,7 @@ describe("prompt construction", () => {
 
   it("the writer is told what each character cannot do, and no personas", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
-    const p = wrapWriter(sc.premise, sc.scene, writerCast(sc.characters, sc.scene.roaster), sc.writerStyle);
+    const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
     assert.match(p, /MERRITT[\s\S]{0,200}CANNOT: sight/);
     assert.ok(!p.includes("night porter at Kessel's for nine years"),
               "the writer must not be handed the personas");
@@ -977,14 +1279,14 @@ describe("prompt construction", () => {
 
   it("the writer is told that stillness is a choice and that pressure may not be resolved first", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
-    const p = wrapWriter(sc.premise, sc.scene, writerCast(sc.characters, sc.scene.roaster), sc.writerStyle);
+    const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
     assert.match(p, /HOLDING STILL IS A CHOICE/);
     assert.match(p, /YOU MAY NOT RESOLVE THE PRESSURE BEFORE YOU ASK ABOUT IT/);
   });
 
   it("the writer is given the closed `wants` vocabulary, not an invitation to phrase one", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
-    const p = wrapWriter(sc.premise, sc.scene, writerCast(sc.characters, sc.scene.roaster), sc.writerStyle);
+    const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
     for (const w of CONSULT_WANTS) assert.match(p, new RegExp(`\\b${w}\\b`));
     assert.match(p, /EXACTLY ONE of these four words/);
   });
@@ -995,7 +1297,7 @@ describe("max_prose_words", () => {
   it("defaults to a real ceiling — several pieces inside one scene's length", async () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
     assert.equal(sc.maxProseWords, 140);
-    assert.ok(sc.maxProseWords * 3 <= sc.scene.length,
+    assert.ok(sc.maxProseWords * 3 <= sc.scenes[0].length,
               "a cap that a scene fits into in one or two pieces is not a cap");
   });
 
@@ -1014,7 +1316,7 @@ describe("stories/doorway", () => {
     const riven = sc.characters[0], merritt = sc.characters[1];
     assert.ok(riven.skills.some(s => s.name === "lockpicking" && s.source === "story"));
     assert.ok(!merritt.skills.some(s => s.name === "sight"));
-    assert.ok(sc.scene.question);
+    assert.ok(sc.scenes[0].question);
     assert.ok(sc.premise.length > 100);
   });
 
@@ -1147,7 +1449,7 @@ describe("ScaffoldSession", () => {
     const r = await s.say("make it longer");
     assert.equal(r.kind, "edits");
     assert.deepEqual((r as { applied: string[] }).applied, ["scene.length"]);
-    assert.equal(s.spec.scene.length, 900);
+    assert.equal(s.spec.scenes[0].length, 900);
     assert.equal(s.spec.title, "The Fog Signal", "everything not named survived the round");
     assert.equal(s.spec.characters.length, 2);
   });
@@ -1222,6 +1524,36 @@ describe("ScaffoldSession.accept", () => {
   });
 });
 
+// -- CHAPTER VALIDATION ----
+describe("runChapter validation", () => {
+  it("rejects a chapter number below 1, naming the valid range", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    await assert.rejects(() => runChapter(sc, 0, () => {}),
+                         (e: Error) => {
+                           assert.match(e.message, /1\.\.1/);
+                           return true;
+                         });
+  });
+
+  it("rejects a chapter number above the scene count", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    await assert.rejects(() => runChapter(sc, 2, () => {}),
+                         (e: Error) => {
+                           assert.match(e.message, /1\.\.1/);
+                           return true;
+                         });
+  });
+
+  it("rejects a non-integer chapter number", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    await assert.rejects(() => runChapter(sc, 1.5, () => {}),
+                         (e: Error) => {
+                           assert.match(e.message, /integer/);
+                           return true;
+                         });
+  });
+});
+
 describe("renderStory shape", () => {
   const bare = normalizeSpec({
     title: "Bare", premise: "A room.", scene: { question: "Does it end?" },
@@ -1239,5 +1571,886 @@ describe("renderStory shape", () => {
     assert.equal(story.scenes[0].place, "");
     assert.equal(story.scenes[0].pov, "");
     assert.equal(story.scenes[0].length, 700);
+  });
+});
+
+// -- THE HANDOFF -----------------------------------------------------------
+describe("architectNextChapter", () => {
+  const chapters = [{ n: 1, text: "The lamp went out." }, { n: 2, text: "Nobody relit it." }];
+  const spec = JSON.stringify({ title: "Dark", scenes: [{}, {}] });
+
+  it("asks for the chapter after the last one written, however the list is ordered", () => {
+    const p = architectNextChapter("A premise.", spec, [chapters[1], chapters[0]]);
+    assert.match(p, /Prepare chapter 3\./);
+    assert.match(p, /Chapters 1-2 of this story are written/);
+  });
+
+  it("hands over the premise, every chapter's prose, and the story as it stands", () => {
+    const p = architectNextChapter("A lighthouse, unlit.", spec, chapters);
+    assert.match(p, /A lighthouse, unlit\./);
+    assert.match(p, /CHAPTER 1, as written[\s\S]*The lamp went out\./);
+    assert.match(p, /CHAPTER 2, as written[\s\S]*Nobody relit it\./);
+    assert.ok(p.includes(spec), "the architect edits the story it was shown");
+  });
+
+  it("says the engine carries nothing forward — the reason the handoff exists at all", () => {
+    const p = architectNextChapter("A premise.", spec, chapters);
+    assert.match(p, /No character remembers a word of an earlier chapter/);
+    assert.match(p, /roster/);
+  });
+
+  it("gives the edit vocabulary, including both ways to reach the next chapter's scene", () => {
+    const p = architectNextChapter("A premise.", spec, chapters);
+    for (const field of ["add_character", "remove_character", "add_scene", "remove_scene",
+                         "characters.<NAME>.persona", "scene_<n>.place"])
+      assert.ok(p.includes(field), `the handoff must name ${field}`);
+    assert.match(p, /scene_3\.place/);       // re-author the scene the story already has
+    assert.match(p, /add_scene/);            // or add it when it does not
+  });
+
+  it("counts one written chapter in the singular", () => {
+    const p = architectNextChapter("A premise.", spec, [chapters[0]]);
+    assert.match(p, /Chapter 1 of this story is written/);
+    assert.match(p, /Prepare chapter 2\./);
+  });
+});
+
+describe("NextChapterSession", () => {
+  const spec = normalizeSpec(STORY).spec;
+  const written = [{ n: 1, text: "The signal never fired, and Aster wrote that it did." }];
+  const handoff = (script: unknown[], s = spec, dir = "stories/doorway") =>
+    new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))),
+                           SCAFFOLD_DEFAULTS, dir, s, written);
+
+  it("prepares the chapter after the last one written, and hands over what was written", async () => {
+    const s = handoff([{ edits: [{ field: "characters.ASTER.goal", value: "Get off the rock." }] }]);
+    assert.equal(s.chapter, 2);
+    const r = await s.propose();
+    assert.equal(r.kind, "edits");
+    const sent = s.architect.history[0].content;
+    assert.match(sent, /Prepare chapter 2\./);
+    assert.match(sent, /The signal never fired/);
+    assert.match(sent, /The Fog Signal/, "the story as it stands, not the architect's memory of it");
+  });
+
+  it("folds the edits into the story and leaves everything they did not name alone", async () => {
+    const s = handoff([{ edits: [
+      { field: "characters.ASTER.knows", value: "Brae read the log." },
+      { field: "add_scene", value: { place: "the boat shed", question: "Does Brae say so?", pov: "BRAE", length: 800, roster: ["BRAE", "ASTER"] } },
+    ] }]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.equal(s.edited, true);
+    assert.equal(s.spec.characters[0].knows, "Brae read the log.");
+    assert.equal(s.spec.scenes.length, 2);
+    assert.equal(s.spec.scenes[1].question, "Does Brae say so?");
+    assert.equal(s.spec.scenes[0].question, spec.scenes[0].question, "chapter 1's scene is untouched");
+    assert.equal(s.spec.title, "The Fog Signal");
+  });
+
+  it("refuses to remove a scene whose chapter is already written — it would renumber the rest", async () => {
+    const two = quietSync(() => applyEdits(spec, { edits: [{ field: "add_scene", value: { question: "And then?" } }] })).spec;
+    const s = handoff([{ edits: [{ field: "remove_scene", value: 1 }, { field: "remove_scene", value: 2 }] }], two);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { applied: string[] }).applied, ["removed scene 2"]);
+    assert.match((r as { ignored: string[] }).ignored.join(" "), /remove_scene 1 . chapter 1 is already written/);
+    assert.equal(s.spec.scenes.length, 1);
+    assert.equal(s.spec.scenes[0].question, spec.scenes[0].question);
+  });
+
+  it("changes nothing when the architect asks instead of editing", async () => {
+    const s = handoff([{ ask: "Did Aster ever admit it?" }]);
+    const before = structuredClone(s.spec);
+    const r = await s.propose();
+    assert.equal(r.kind, "question");
+    assert.equal(s.pendingAsk, "Did Aster ever admit it?");
+    assert.equal(s.edited, false);
+    assert.deepEqual(s.spec, before);
+  });
+
+  it("takes a follow-up as an ordinary change round", async () => {
+    const s = handoff([{ ask: "How long is chapter 2?" }, { edits: [{ field: "scene.length", value: 900 }] }]);
+    await s.propose();
+    const r = await quiet(() => s.say("about the same"));
+    assert.equal(r.kind, "edits");
+    assert.match(s.architect.history[2].content, /\[CHANGE\] about the same/);
+    assert.equal(s.spec.scenes[0].length, 900);
+    assert.equal(s.pendingAsk, "");
+  });
+
+  it("reports a reply that is neither edits nor a question, and a round that fails", async () => {
+    const s = handoff([{ note: "thinking about it" }]);
+    assert.equal((await s.propose()).kind, "nothing");
+    assert.equal(s.edited, false);
+    assert.equal((await s.say("well?")).kind, "failed");   // the script is spent, so the call throws
+  });
+});
+
+describe("NextChapterSession.accept", () => {
+  const spec = normalizeSpec(STORY).spec;
+  const prose = "The signal never fired, and Aster wrote that it did.\n";
+
+  async function storyOnDisk(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    await writeFile(join(dir, "story.json"), renderStory(spec, { default: "none" })["story.json"], "utf8");
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    await writeFile(join(dir, "chapters", "1.md"), prose, "utf8");
+    return dir;
+  }
+  const session = (dir: string, script: unknown[]) =>
+    new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))), SCAFFOLD_DEFAULTS,
+                           dir, spec, [{ n: 1, text: prose }]);
+
+  it("writes nothing until a round has changed something", async () => {
+    const dir = await storyOnDisk();
+    try {
+      assert.equal((await session(dir, []).accept()).kind, "nothing");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("writes the re-authored story over the one on disk, and leaves the chapters alone", async () => {
+    const dir = await storyOnDisk();
+    try {
+      const s = session(dir, [{ edits: [
+        { field: "characters.BRAE.goal", value: "Get the log off the rock." },
+        { field: "add_scene", value: { place: "the boat shed", question: "Does Brae take it?", pov: "BRAE" } },
+      ] }]);
+      await quiet(() => s.propose());
+      const w = await quiet(() => s.accept());
+      assert.ok(w.kind === "written", `expected written, got ${w.kind}`);
+      assert.deepEqual(w.files, ["story.json"]);
+
+      const sc = await quiet(() => loadStory(dir));
+      assert.equal(sc.characters[1].goal, "Get the log off the rock.");
+      assert.equal(sc.scenes.length, 2);
+      assert.equal(await readFile(join(dir, "chapters", "1.md"), "utf8"), prose);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("puts back exactly what was there when the re-authored story does not load", async () => {
+    const dir = await storyOnDisk();
+    try {
+      const before = await readFile(join(dir, "story.json"), "utf8");
+      const s = session(dir, [{ edits: [{ field: "remove_character", value: "ASTER" },
+                                        { field: "remove_character", value: "BRAE" }] }]);
+      await quiet(() => s.propose());
+      const r = await quiet(() => s.accept());
+      assert.ok(r.kind === "unloadable", `expected unloadable, got ${r.kind}`);
+      assert.match(r.error, /character/i);
+      assert.equal(await readFile(join(dir, "story.json"), "utf8"), before,
+                   "a story that already worked must survive a handoff that does not");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("openNextChapter", () => {
+  const storyJson = () => renderStory(normalizeSpec(STORY).spec, { default: "none" })["story.json"];
+
+  it("refuses a story with no chapters written — there is nothing to hand off from", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    try {
+      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await assert.rejects(() => openNextChapter(SCAFFOLD_DEFAULTS, dir), /nothing for the handoff to read/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("opens on the story as authored, at the chapter after the last written", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    try {
+      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      for (const n of [1, 2]) await writeFile(join(dir, "chapters", `${n}.md`), `chapter ${n}\n`, "utf8");
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.equal(s.chapter, 3);
+      assert.equal(s.spec.title, "The Fog Signal");
+      assert.deepEqual(s.spec.characters.map(c => c.name), ["ASTER", "BRAE"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- THE HANDOFF, OVER HTTP ------------------------------------------------
+describe("/next-chapter routes", () => {
+  const spec = normalizeSpec(STORY).spec;
+  const opened: string[] = [];
+
+  const host = (open?: () => Promise<NextChapterSession>): ServerHost => ({
+    storyCards: async () => [],
+    selectableStory: async (dir: string) => (dir === "stories/doorway" ? "stories/doorway" : null),
+    resolveStoryDir: (dir: string) => dir,
+    runDirs: async () => [],
+    loadedModelIds: async () => null,
+    architectModel: async () => "none",
+    newScaffoldSession: async () => { throw new Error("not in this test"); },
+    newHandoffSession: async (dir: string) => { opened.push(dir); return open ? open() : session([]); },
+    directEdit: () => ({ ok: false, reason: "not in this test" }),
+    specView: (s) => s,
+    outDir: () => "",
+  });
+
+  const session = (script: unknown[]) =>
+    new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))), SCAFFOLD_DEFAULTS,
+                           "stories/doorway", spec, [{ n: 1, text: "It happened." }]);
+
+  /** Drive one route call with a fake request/response pair, and hand back what it replied. */
+  async function call(path: string, body: unknown, h: ServerHost, method = "POST") {
+    const req = Readable.from([JSON.stringify(body ?? {})]) as unknown as IncomingMessage;
+    (req as { method?: string }).method = method;
+    let code = 0, sent = "";
+    const res = {
+      writeHead(c: number) { code = c; return res; },
+      end(s?: string) { sent = s ?? ""; },
+    } as unknown as ServerResponse;
+    const handled = await handleNextChapterRoutes(req, res, path, h);
+    return { handled, code, body: sent ? JSON.parse(sent) : null };
+  }
+
+  it("leaves a path that is not one of its own to the rest of the server", async () => {
+    assert.equal((await call("/scaffold/say", {}, host())).handled, false);
+    assert.equal((await call("/next-chapter", {}, host(), "GET")).body.active, false);
+  });
+
+  it("refuses a story it did not discover, and never opens a session for it", async () => {
+    opened.length = 0;
+    const r = await call("/next-chapter/start", { dir: "../elsewhere" }, host());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /no such story/);
+    assert.deepEqual(opened, []);
+  });
+
+  it("reports why a story cannot be handed off, and stays closed", async () => {
+    const h = host(async () => { throw new Error("No chapters written yet in stories/doorway"); });
+    const r = await call("/next-chapter/start", { dir: "stories/doorway" }, h);
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /No chapters written yet/);
+    assert.equal((await call("/next-chapter", {}, h, "GET")).body.active, false);
+    assert.equal((await call("/next-chapter/say", { text: "go on" }, h)).body.reason, "no handoff is open");
+  });
+
+  it("will not rewrite the story a run is reading", async () => {
+    LIVE.running = true;
+    try {
+      const r = await call("/next-chapter/start", { dir: "stories/doorway" }, host());
+      assert.equal(r.code, 409);
+      assert.match(r.body.reason, /a run is in flight/);
+    } finally { LIVE.running = false; }
+  });
+
+  it("opens, proposes, and publishes the chapter it is preparing", async () => {
+    const h = host(async () => session([{ edits: [{ field: "characters.ASTER.goal", value: "Leave." }] }]));
+    const r = await quiet(() => call("/next-chapter/start", { dir: "stories/doorway" }, h));
+    assert.equal(r.code, 200);
+    assert.equal(r.body.active, true);
+    assert.equal(r.body.chapter, 2);
+    assert.equal(r.body.dir, "stories/doorway");
+    assert.equal(r.body.edited, true);
+    assert.equal(r.body.last.kind, "edits");
+    assert.equal(r.body.spec.characters[0].goal, "Leave.");
+
+    assert.equal((await call("/next-chapter/abandon", {}, h)).body.ok, true);
+    assert.equal((await call("/next-chapter", {}, h, "GET")).body.active, false);
+  });
+
+  it("names an action it does not have instead of silently doing nothing", async () => {
+    const r = await call("/next-chapter/write", {}, host());
+    assert.equal(r.code, 404);
+    assert.match(r.body.reason, /no such handoff action/);
+  });
+});
+
+// -- HTTP UTILITIES -------------------------------------------------------
+describe("readJsonBody", () => {
+  it("resolves to {} when the body is empty", async () => {
+    const req = Readable.from([]) as unknown as IncomingMessage;
+    const result = await readJsonBody(req);
+    assert.deepEqual(result, {});
+  });
+
+  it("parses valid JSON", async () => {
+    const req = Readable.from([JSON.stringify({ key: "value", num: 42 })]) as unknown as IncomingMessage;
+    const result = await readJsonBody(req);
+    assert.deepEqual(result, { key: "value", num: 42 });
+  });
+
+  it("rejects malformed JSON with HttpError status 400", async () => {
+    const req = Readable.from(["{invalid json"]) as unknown as IncomingMessage;
+    await assert.rejects(
+      () => readJsonBody(req),
+      (e: Error) => e instanceof HttpError && (e as HttpError).status === 400);
+  });
+
+  it("rejects a body over 1 MiB with HttpError status 413", async () => {
+    const oversized = "x".repeat(1024 * 1024 + 1);
+    const req = Readable.from([oversized]) as unknown as IncomingMessage;
+    await assert.rejects(
+      () => readJsonBody(req),
+      (e: Error) => e instanceof HttpError && (e as HttpError).status === 413);
+  });
+
+  it("accepts a missing Content-Type header (viewer's no-body POSTs send none)", async () => {
+    const req = Readable.from([JSON.stringify({ data: "test" })]) as unknown as IncomingMessage;
+    (req as { headers?: any }).headers = {};
+    const result = await readJsonBody(req);
+    assert.deepEqual(result, { data: "test" });
+  });
+
+  it("accepts Content-Type: application/json", async () => {
+    const req = Readable.from([JSON.stringify({ ok: true })]) as unknown as IncomingMessage;
+    (req as { headers?: any }).headers = { "content-type": "application/json" };
+    const result = await readJsonBody(req);
+    assert.deepEqual(result, { ok: true });
+  });
+
+  it("rejects unsupported Content-Type like text/plain with HttpError status 400", async () => {
+    const req = Readable.from([JSON.stringify({ data: "test" })]) as unknown as IncomingMessage;
+    (req as { headers?: any }).headers = { "content-type": "text/plain" };
+    await assert.rejects(
+      () => readJsonBody(req),
+      (e: Error) => e instanceof HttpError && (e as HttpError).status === 400);
+  });
+});
+
+// -- RUN CONTROL ROUTES ---------------------------------------------------
+describe("handleRunControl", () => {
+  /** Helper to drive one route call with a fake request/response pair. */
+  async function call(path: string, body: unknown, method = "POST") {
+    const req = Readable.from([JSON.stringify(body ?? {})]) as unknown as IncomingMessage;
+    (req as { method?: string }).method = method;
+    let code = 0, sent = "";
+    const res = {
+      writeHead(c: number) { code = c; return res; },
+      end(s?: string) { sent = s ?? ""; },
+    } as unknown as ServerResponse;
+    const host = {
+      loadedModelIds: async () => ["qwen-new", "qwen-test", "qwen-old"],
+    } as unknown as ServerHost;
+    const handled = await handleRunControl(req, res, path, host);
+    return { handled, code, body: sent ? JSON.parse(sent) : null };
+  }
+
+  describe("/stop", () => {
+    it("refuses when no run is in progress", async () => {
+      resetLive(); LIVE.running = false;
+      const r = await call("/stop", {});
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "no run in progress");
+    });
+
+    it("stops the first call and marks it as the first stop", async () => {
+      resetLive(); LIVE.running = true; armRun();
+      const r = await call("/stop", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(r.body.already, false, "first stop should return already: false");
+      resetLive(); LIVE.running = false;
+    });
+
+    it("refuses a second stop rather than being a second stop", async () => {
+      resetLive(); LIVE.running = true; armRun();
+      await call("/stop", {});
+      const r2 = await call("/stop", {});
+      assert.equal(r2.code, 200);
+      assert.equal(r2.body.ok, true);
+      assert.equal(r2.body.already, true, "second stop should return already: true");
+      resetLive(); LIVE.running = false;
+    });
+
+    it("clears pause-related state when stopping", async () => {
+      resetLive(); LIVE.running = true; armRun(); LIVE.pausing = true; LIVE.paused = true;
+      await call("/stop", {});
+      assert.equal(LIVE.pausing, false);
+      assert.equal(LIVE.paused, false);
+      resetLive(); LIVE.running = false;
+    });
+  });
+
+  describe("/pause", () => {
+    it("refuses when no run is in progress", async () => {
+      resetLive(); LIVE.running = false;
+      const r = await call("/pause", {});
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "no run in progress");
+    });
+
+    it("sets pausing flag when run is in progress", async () => {
+      resetLive(); LIVE.running = true; armRun();
+      const r = await call("/pause", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(LIVE.pausing, true);
+      resetLive(); LIVE.running = false;
+    });
+
+    it("returns already: true when already pausing", async () => {
+      resetLive(); LIVE.running = true; armRun(); LIVE.pausing = true;
+      const r = await call("/pause", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.already, true);
+      resetLive(); LIVE.running = false;
+    });
+
+    it("returns already: true when already paused", async () => {
+      resetLive(); LIVE.running = true; armRun(); LIVE.paused = true;
+      const r = await call("/pause", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.already, true);
+      resetLive(); LIVE.running = false;
+    });
+  });
+
+  describe("/resume", () => {
+    it("refuses when not paused", async () => {
+      resetLive(); LIVE.running = false;
+      const r = await call("/resume", {});
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "not paused");
+    });
+
+    it("clears the pausing flag when pausing", async () => {
+      resetLive(); LIVE.pausing = true;
+      const r = await call("/resume", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(LIVE.pausing, false);
+      resetLive(); LIVE.running = false;
+    });
+
+    it("clears the paused flag and calls pauseResolve when paused", async () => {
+      resetLive();
+      let resolved = false;
+      LIVE.paused = true;
+      LIVE.pauseResolve = () => { resolved = true; };
+      const r = await call("/resume", {});
+      assert.equal(r.code, 200);
+      assert.equal(LIVE.paused, false);
+      assert.equal(resolved, true);
+      resetLive(); LIVE.running = false;
+    });
+  });
+
+  describe("/model", () => {
+    it("sets modelOverride when no run is in progress", async () => {
+      resetLive(); LIVE.running = false;
+      const r = await call("/model", { model: "qwen-test" });
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(LIVE.modelOverride, "qwen-test");
+      LIVE.modelOverride = null;
+    });
+
+    it("clears modelOverride when given an empty model string", async () => {
+      resetLive(); LIVE.running = false; LIVE.modelOverride = "qwen-test";
+      const r = await call("/model", { model: "" });
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(LIVE.modelOverride, null);
+    });
+
+    it("refuses to change model while run is active and not paused", async () => {
+      resetLive(); LIVE.running = true; armRun();
+      const r = await call("/model", { model: "qwen-test" });
+      assert.equal(r.code, 400);
+      assert.match(r.body.reason, /pause the run before/);
+      resetLive(); LIVE.running = false;
+    });
+
+    it("allows model change when run is paused", async () => {
+      resetLive(); LIVE.running = true; LIVE.paused = true; armRun();
+      const r = await call("/model", { model: "qwen-test" });
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      LIVE.modelOverride = null;
+      resetLive(); LIVE.running = false;
+    });
+
+    it("updates writer and agents models when paused with live writer/agents", async () => {
+      resetLive(); LIVE.running = true; LIVE.paused = true; armRun();
+      const writer = new Agent("writer", "qwen-old", "system", 0.8);
+      LIVE.writer = writer;
+      LIVE.agents = new Map([["char", new Agent("char", "qwen-old", "system", 0.9)]]);
+      const r = await call("/model", { model: "qwen-new" });
+      assert.equal(r.code, 200);
+      assert.equal(writer.model, "qwen-new");
+      assert.equal(LIVE.agents.get("char")!.model, "qwen-new");
+      LIVE.modelOverride = null;
+      resetLive(); LIVE.running = false;
+    });
+  });
+
+  describe("/interactive", () => {
+    it("toggles interactive on", async () => {
+      resetLive(); LIVE.interactive = false;
+      const r = await call("/interactive", { on: true });
+      assert.equal(r.code, 200);
+      assert.equal(LIVE.interactive, true);
+      resetLive(); LIVE.interactive = true;
+    });
+
+    it("toggles interactive off", async () => {
+      resetLive(); LIVE.interactive = true;
+      const r = await call("/interactive", { on: false });
+      assert.equal(r.code, 200);
+      assert.equal(LIVE.interactive, false);
+      resetLive(); LIVE.interactive = true;
+    });
+
+    it("disarms reader when interactive is turned off", async () => {
+      resetLive(); LIVE.interactive = true; LIVE.readerArmed = true;
+      const r = await call("/interactive", { on: false });
+      assert.equal(r.code, 200);
+      assert.equal(LIVE.readerArmed, false);
+      resetLive(); LIVE.interactive = true;
+    });
+  });
+
+  describe("/consult-me (reader consult seat)", () => {
+    it("refuses when no run is in progress", async () => {
+      resetLive(); LIVE.running = false;
+      const r = await call("/consult-me", {});
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "no run in progress");
+    });
+
+    it("refuses when interactive is off", async () => {
+      resetLive(); LIVE.running = true; armRun(); LIVE.interactive = false;
+      const r = await call("/consult-me", {});
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "interactive is off");
+      LIVE.interactive = true;
+      resetLive(); LIVE.running = false;
+    });
+
+    it("arms the reader when run is active and interactive", async () => {
+      resetLive(); LIVE.running = true; armRun();
+      const r = await call("/consult-me", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(LIVE.readerArmed, true);
+      resetLive(); LIVE.running = false;
+    });
+
+    it("returns already: true if reader is already armed", async () => {
+      resetLive(); LIVE.running = true; armRun(); LIVE.readerArmed = true;
+      const r = await call("/consult-me", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.already, true);
+      resetLive(); LIVE.running = false;
+    });
+
+    it("returns already: true if reader has a resolve callback", async () => {
+      resetLive(); LIVE.running = true; armRun(); LIVE.readerResolve = () => {};
+      const r = await call("/consult-me", {});
+      assert.equal(r.code, 200);
+      assert.equal(r.body.already, true);
+      LIVE.readerResolve = null;
+      resetLive(); LIVE.running = false;
+    });
+  });
+
+  describe("/reader-answer", () => {
+    it("refuses when no reader prompt is pending", async () => {
+      resetLive();
+      const r = await call("/reader-answer", { answer: "test" });
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "no reader prompt pending");
+    });
+
+    it("refuses an empty answer", async () => {
+      resetLive();
+      let answered = false;
+      LIVE.readerResolve = () => { answered = true; };
+      const r = await call("/reader-answer", { answer: "" });
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "empty answer");
+      assert.equal(answered, false);
+      resetLive();
+    });
+
+    it("accepts and resolves a non-empty answer", async () => {
+      resetLive();
+      let answer = "";
+      LIVE.readerResolve = (a: string) => { answer = a; };
+      const r = await call("/reader-answer", { answer: "  the answer  " });
+      assert.equal(r.code, 200);
+      assert.equal(r.body.ok, true);
+      assert.equal(answer, "the answer");
+      assert.equal(LIVE.readerResolve, null, "readerResolve should be cleared after resolving");
+      resetLive();
+    });
+  });
+
+  it("returns false for routes it does not handle", async () => {
+    const r = await call("/unknown-route", {});
+    assert.equal(r.handled, false);
+  });
+
+  it("only handles POST and GET methods", async () => {
+    resetLive(); LIVE.running = true; armRun();
+    const rPut = await call("/stop", {}, "PUT");
+    assert.equal(rPut.handled, false);
+    resetLive();
+  });
+});
+
+// -- SSE FRAME PARSER (completeStream) ----------------------------------------
+describe("completeStream SSE frame parsing", () => {
+  const origFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = origFetch;
+    armRun();
+  });
+
+  /** Helper to create a ReadableStream from an array of chunks. */
+  function chunkedStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+    let index = 0;
+    return new ReadableStream({
+      pull(controller) {
+        if (index < chunks.length) {
+          controller.enqueue(chunks[index++]);
+        } else {
+          controller.close();
+        }
+      },
+    });
+  }
+
+  it("parses a normal multi-frame stream with onDelta called per chunk", async () => {
+    armRun();
+    const deltas: string[] = [];
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'),
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":" world"}}]}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
+                                        (d) => deltas.push(d));
+    assert.equal(result, "Hello world");
+    assert.deepEqual(deltas, ["Hello", " world"]);
+  });
+
+  it("pulls text from reasoning_content when content is empty (Qwen3 thinking)", async () => {
+    armRun();
+    const deltas: string[] = [];
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":""}}]}\n\n'),
+        new TextEncoder().encode('data: {"choices":[{"delta":{"reasoning_content":"Thinking..."}}]}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
+                                        (d) => deltas.push(d));
+    assert.equal(result, "Thinking...");
+    assert.deepEqual(deltas, ["Thinking..."]);
+  });
+
+  it("handles frame split across chunk boundaries mid-JSON", async () => {
+    armRun();
+    const deltas: string[] = [];
+    // Split a JSON frame across two chunks — realistic network case
+    const fullFrame = 'data: {"choices":[{"delta":{"content":"Split text"}}]}\n\n';
+    const mid = Math.floor(fullFrame.length / 2);
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode(fullFrame.slice(0, mid)),
+        new TextEncoder().encode(fullFrame.slice(mid)),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
+                                        (d) => deltas.push(d));
+    assert.equal(result, "Split text");
+    assert.deepEqual(deltas, ["Split text"]);
+  });
+
+  it("skips malformed data: frames without killing the stream", async () => {
+    armRun();
+    const deltas: string[] = [];
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"before"}}]}\n\n'),
+        new TextEncoder().encode('data: {broken json without closing\n\n'),
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"after"}}]}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
+                                        (d) => deltas.push(d));
+    assert.equal(result, "beforeafter");
+    assert.deepEqual(deltas, ["before", "after"], "malformed frame is silently skipped");
+  });
+
+  it("handles stream that ends without [DONE] terminator", async () => {
+    armRun();
+    const deltas: string[] = [];
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Incomplete"}}]}\n\n'),
+        // No [DONE] — stream just ends
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
+                                        (d) => deltas.push(d));
+    assert.equal(result, "Incomplete");
+    assert.deepEqual(deltas, ["Incomplete"]);
+  });
+
+  it("recovers when stream breaks after text already arrived (recovery path)", async () => {
+    armRun();
+    const deltas: string[] = [];
+    class BreakingStream extends ReadableStream<Uint8Array> {
+      constructor() {
+        let sent = false;
+        super({
+          pull(controller) {
+            if (!sent) {
+              sent = true;
+              // Send a complete JSON object so the recovery path recognizes it
+              controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"{\\"result\\":\\"kept\\"}"}}]}\n\n'));
+            } else {
+              controller.error(new Error("stream broke"));
+            }
+          },
+        });
+      }
+    }
+    globalThis.fetch = async () => new Response(new BreakingStream(),
+      { headers: { "content-type": "text/event-stream" } }) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
+                                        (d) => deltas.push(d));
+    assert.equal(result, '{"result":"kept"}');
+    assert.deepEqual(deltas, ['{"result":"kept"}']);
+  });
+
+  it("rethrows stream error when RUN.stopped (stops recovery on line 122)", async () => {
+    armRun();
+    const encoder = new TextEncoder();
+    let readCount = 0;
+    let hasErrored = false;
+
+    class BreakAfterData extends ReadableStream<Uint8Array> {
+      constructor() {
+        super({
+          pull(controller) {
+            readCount++;
+            if (readCount === 1) {
+              // Send text with complete JSON so recovery would normally keep it
+              controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"{\\"result\\":\\"ok\\"}"}}]}\n'));
+            } else if (readCount === 2 && !hasErrored) {
+              // Second attempt: error the stream
+              hasErrored = true;
+              controller.error(new Error("stream broke mid-transmission"));
+            }
+          },
+        });
+      }
+    }
+
+    globalThis.fetch = async () => new Response(new BreakAfterData(),
+      { headers: { "content-type": "text/event-stream" } }) as any;
+
+    // Stop the run BEFORE starting the stream — this ensures RUN.stopped=true
+    // when the stream error is caught on line 122
+    stopRun();
+
+    // Now start a stream that will error — because RUN.stopped is true, the error
+    // must be rethrown (line 122) instead of recovered (line 128)
+    await assert.rejects(
+      () => completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {}),
+      (e: Error) => e instanceof Error);
+
+    armRun();
+  });
+});
+
+// -- PAUSE/RESUME HANDSHAKE (loop↔route promise coordination) ---------------
+describe("pause/resume handshake", () => {
+  /** Helper to call handleRunControl (mimics the one in handleRunControl suite). */
+  async function callControl(path: string, body: unknown, method = "POST") {
+    const req = Readable.from([JSON.stringify(body ?? {})]) as unknown as IncomingMessage;
+    (req as { method?: string }).method = method;
+    let code = 0, sent = "";
+    const res = {
+      writeHead(c: number) { code = c; return res; },
+      end(s?: string) { sent = s ?? ""; },
+    } as unknown as ServerResponse;
+    const host = {
+      loadedModelIds: async () => ["test-model"],
+    } as unknown as ServerHost;
+    const handled = await handleRunControl(req, res, path, host);
+    return { handled, code, body: sent ? JSON.parse(sent) : null };
+  }
+
+  /** A waiter that is never released would hang the whole suite; fail it instead. Clearing the
+   *  timer matters: an uncleared one keeps the loop alive for its full second after the test. */
+  function releasedWithin<T>(p: Promise<T>, ifNot: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const guard = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(ifNot)), 1000);
+    });
+    return Promise.race([p, guard]).finally(() => clearTimeout(timer));
+  }
+
+  it("/resume resolves the paused waiter and clears state", async () => {
+    resetLive();
+    LIVE.running = true;
+    LIVE.paused = true;
+    armRun();
+
+    let pauseResolvedFlag = false;
+    const pauseWaiter = new Promise<void>(res => {
+      LIVE.pauseResolve = res;
+    }).then(() => { pauseResolvedFlag = true; });
+
+    // Call /resume — should call pauseResolve() to wake the loop
+    const r = await callControl("/resume", {});
+    assert.equal(r.code, 200);
+
+    await releasedWithin(pauseWaiter, "Pause waiter did not resolve within 1s");
+
+    assert.equal(pauseResolvedFlag, true, "paused waiter must have resolved");
+    assert.equal(LIVE.paused, false, "/resume clears paused");
+    assert.equal(LIVE.pausing, false, "/resume clears pausing");
+    assert.equal(LIVE.pauseResolve, null, "/resume clears pauseResolve");
+    resetLive(); LIVE.running = false;
+  });
+
+  it("/stop releases a paused waiter to prevent deadlock", async () => {
+    resetLive();
+    LIVE.running = true;
+    LIVE.paused = true;
+    armRun();
+
+    let pauseResolvedFlag = false;
+    const pauseWaiter = new Promise<void>(res => {
+      LIVE.pauseResolve = res;
+    }).then(() => { pauseResolvedFlag = true; });
+
+    // Call /stop — must release the paused loop or it will hang forever
+    const r = await callControl("/stop", {});
+    assert.equal(r.code, 200);
+
+    await releasedWithin(pauseWaiter, "Stop did not release paused waiter — deadlock risk");
+
+    assert.equal(pauseResolvedFlag, true, "stop must release paused waiter to prevent deadlock");
+    resetLive(); LIVE.running = false;
+  });
+
+  it("resetLive clears all pause state", () => {
+    LIVE.pausing = true;
+    LIVE.paused = true;
+    LIVE.pauseResolve = () => {};
+    resetLive();
+    assert.equal(LIVE.pausing, false);
+    assert.equal(LIVE.paused, false);
+    assert.equal(LIVE.pauseResolve, null);
   });
 });

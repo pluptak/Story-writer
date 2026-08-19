@@ -6,7 +6,8 @@ import { C } from "../ansi.ts";
 import { sseWrite } from "../live.ts";
 import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { slugify } from "./config-util.ts";
-import { complete, completeStream, type Msg, type ThinkLevel } from "./llm-client.ts";
+import { complete, completeStream, type Msg } from "./llm-client.ts";
+import type { ThinkLevel } from "./story-schema.ts";
 
 const WINDOW = { cap: 24, keepRecent: 14 };
 
@@ -15,13 +16,13 @@ export class Agent {
   digest = "";                    // rolling summary of trimmed-off older history
   think: ThinkLevel = "low";      // config `thinking` / `thinking_<role>`
   constructor(public name: string, public model: string, public system: string,
-              public temperature = 0.85, public maxMessages = WINDOW.cap) {}
+              public temperature = 0.85) {}
   hear(c: string) { this.history.push({ role: "user", content: c }); }
   said(c: string) { this.history.push({ role: "assistant", content: c }); }
 
   // Same persona and model, EMPTY history: a re-asked character never learns it was rejected.
   fork(): Agent {
-    const a = new Agent(this.name, this.model, this.system, this.temperature, this.maxMessages);
+    const a = new Agent(this.name, this.model, this.system, this.temperature);
     a.think = this.think;
     return a;
   }
@@ -93,7 +94,7 @@ function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: strin
 // -- HISTORY WINDOWING -----------------------------------------------------
 /** Fold history beyond the window into a rolling digest; the digest itself feeds the next prompt. */
 export async function trimHistory(agent: Agent, summarizerModel: string, summarizerThink: ThinkLevel = "low") {
-  if (agent.history.length <= agent.maxMessages) return;
+  if (agent.history.length <= WINDOW.cap) return;
   const overflowCount = agent.history.length - WINDOW.keepRecent;
   const overflow = agent.history.slice(0, overflowCount);
   const recent = agent.history.slice(overflowCount);

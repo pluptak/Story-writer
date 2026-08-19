@@ -15,7 +15,7 @@ extraction, agent/history windowing, markdown parsing and config-validation poli
 as source; the Director / Warden / Ledger / WorldState machinery was not. **Nothing here imports or
 references that repo** — keep it that way.
 
-## Docs — open the one, not the set
+## Documentation
 
 One concept per file. Read the relevant one before an architectural change, and keep it in sync
 afterwards.
@@ -24,13 +24,12 @@ afterwards.
 | --- | --- |
 | [GUI-SPEC.md](GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
 | [SPEC-E-editor.md](SPEC-E-editor.md) | *proposed, not built* — the story editor: making the GUI write an existing story, not just read one |
-| [SPEC-H-handoff.md](SPEC-H-handoff.md) | *proposed, not built* — one run per chapter, and the architect handoff that re-authors the cast between them; owns the plan for `runChapter`, `renderStory` and the removed `CharacterDef.goals[]` |
-| [SPEC-GUI-MULTISCENE.md](SPEC-GUI-MULTISCENE.md) | wiring the viewer to multi-chapter stories — *needs revision*: written before one-run-per-chapter, and `story_end` no longer exists |
+| [SPEC-H-handoff.md](SPEC-H-handoff.md) | one run per chapter, and the architect handoff that re-authors the cast between them — `runChapter`, `chapters/<n>.md`, `NextChapterSession`, `--next-chapter` and `/next-chapter/*` |
+| [SPEC-GUI-MULTISCENE.md](SPEC-GUI-MULTISCENE.md) | current multi-chapter viewer gaps and proposed UI work |
 
-> DESIGN.md, PROTOCOL.md, LOOP.md, STORY-FORMAT.md, RUN-RECORD.md, VIEWER-UI.md, SPEC-S-scaffold.md,
-> CLI.md and GOTCHAS.md are gone — deleted in `da3cf00` ("comments clean-up", 2026-08-14), which also
-> stripped code from `live.ts`/`prompts.ts`/`server.ts`/`story-writer.ts`/`tests/writer.test.ts`. Their
-> content is recoverable from git history if a topic needs its own file again.
+The repository has no separate protocol, story-format, run-record, or scaffold specifications. Keep
+the route contract in `GUI-SPEC.md`, the handoff design in `SPEC-H-handoff.md`, and proposed editor
+work in `SPEC-E-editor.md` rather than copying those details into this file.
 
 ## Working process
 
@@ -49,8 +48,11 @@ Change is delivered in **small, independently-pausable blocks**, not whole featu
 ## Commands
 
 ```bash
-npx tsx story-writer.ts stories/doorway
+npx tsx story-writer.ts stories/doorway --chapter=1
 ```
+
+One run writes **one chapter**. Between chapters, `--next-chapter` opens the architect handoff that
+re-authors the cast for the next one ([SPEC-H-handoff.md](SPEC-H-handoff.md)).
 
 Requires **LM Studio running locally** at `http://localhost:1234/v1` with the story's models loaded.
 
@@ -63,7 +65,7 @@ split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `skill
 build on those in turn;
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
 the `HOST` object. Separately, `story-writer.ts` → [server/server.ts](server/server.ts) →
-{`run-control-routes.ts`, `scaffold-routes.ts`} → `http-util.ts` → (nothing), all under
+{`run-control-routes.ts`, `scaffold-routes.ts`, `next-chapter-routes.ts`} → `http-util.ts` → (nothing), all under
 [server/](server/) — nothing in that chain imports `story-writer.ts` or any `engine/` module at run
 time. `prompts.ts`, `ansi.ts` and `live.ts` stay at the repo root because both chains import them;
 where `live.ts` needs an engine type (`Agent`, `RunEvent`) it reaches into `engine/agent.ts` /
@@ -83,16 +85,17 @@ way.**
 | [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
 | [engine/story-format.ts](engine/story-format.ts) | loading and validating `story.json` (against `story-schema.ts`), building a `StoryConfig`, discovering stories on disk |
-| [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` and the other story files |
+| [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` |
 | [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
 | [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
-| [engine/architect.ts](engine/architect.ts) | building the architect agent and running the interactive story-building conversation |
+| [engine/architect.ts](engine/architect.ts) | building the architect agent, the interactive story-building conversation, and the between-chapters handoff that re-authors the cast |
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
 | [prompts.ts](prompts.ts) | every word said to a model |
 | [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: static files (from `server/gui/`), SSE, and dispatch to the route modules |
 | [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
-| [server/http-util.ts](server/http-util.ts) | the `json()` response helper and `readJsonBody()`, shared by server.ts and the route modules |
+| [server/next-chapter-routes.ts](server/next-chapter-routes.ts) | `/next-chapter` and `/next-chapter/*` — the architect handoff, server side |
+| [server/http-util.ts](server/http-util.ts) | the `json()` response helper, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
 | [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
 | [ansi.ts](ansi.ts) | terminal colours |

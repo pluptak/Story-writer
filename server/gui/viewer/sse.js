@@ -93,11 +93,22 @@ export function startSSE() {
       if (!APP.scaffold.problems || !APP.scaffold.problems.length) disarmAccept(); else APP.render();
       return;
     }
+    // The engine failed to load or run the story. Clear the pending pick and show the error on the
+    // story page. runError survives picking-edge resets (which clear storyError), so it stays visible.
+    if (f.t === "run_error") {
+      APP.runError = f.message;
+      APP.picked = "";
+      APP.render();
+      return;
+    }
+    // The handoff has routes but no panel here yet (SPEC-E owns that screen). Drop the frame rather
+    // than letting it fall through to the run log, where an unknown event renders as a junk block.
+    if (f.t === "handoff") return;
     if (f.t === "run_reset") {
       // A new story in the same session. Replay only helps clients that connect after it; one
       // already attached has to be told, or the next scene renders glued onto the last one.
       LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.open = new Set(); APP.composing = null;
-      APP.awaitingReader = false; APP.runEnded = null;
+      APP.awaitingReader = false; APP.runEnded = null; APP.runError = "";
       fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (APP.view === "live") APP.render(); } }).catch(() => {});
       go("live");
       return;

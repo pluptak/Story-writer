@@ -6,7 +6,7 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { restrictionsOf } from "./skills.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
-import type { ThinkLevel } from "./llm-client.ts";
+import type { ThinkLevel } from "./story-schema.ts";
 import {
   consult, normalizeConsult, canonWants,
   type ConsultEvent, type ConsultRequest, type ConsultReply,
@@ -348,13 +348,15 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
 
   LIVE.agents = agents;
 
-  const r = await writeScene(
-    sd, chapter, sc.characters, agents,
-    sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-    sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
-    sc.dir, log,
-  );
-
-  LIVE.writer = null; LIVE.agents = null; LIVE.log = null;
-  return r;
+  try {
+    const r = await writeScene(
+      sd, chapter, sc.characters, agents,
+      sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+      sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
+      sc.dir, log,
+    );
+    return r;
+  } finally {
+    LIVE.writer = null; LIVE.agents = null; LIVE.log = null;
+  }
 }

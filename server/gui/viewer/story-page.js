@@ -75,6 +75,7 @@ export function storyPageHtml() {
 
     <div class="row" style="margin-top:12px"><span class="hint">model</span>${modelSelectHtml(s)}</div>
     ${APP.storyError ? `<div class="said bad">${esc(APP.storyError)}</div>` : ""}
+    ${APP.runError ? `<div class="said bad">${esc(APP.runError)}</div>` : ""}
     ${(s.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
 
     <div class="divider"><span>scenes</span></div>
@@ -124,7 +125,7 @@ async function playChosen(dir, model) {
 async function choose(payload) {
   if (APP.picked) return;                       // a double-click is one choice, not two
   APP.picked = payload.dir;
-  APP.storyError = "";
+  APP.storyError = ""; APP.runError = "";
   APP.render();
   const j = await post("/select", payload, false);
   if (!j || j.ok === false) { APP.picked = ""; APP.storyError = reasonOr(j, "that did not go through"); APP.render(); return; }

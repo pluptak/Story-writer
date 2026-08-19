@@ -5,8 +5,7 @@ import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
 import { C } from "../ansi.ts";
 import { resolveSkills, type Skill } from "./skills.ts";
-import type { ThinkLevel } from "./llm-client.ts";
-import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef } from "./story-schema.ts";
+import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef, type ThinkLevel } from "./story-schema.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -23,6 +22,7 @@ export interface CharacterDef {
 /** A story as loaded and validated: the engine's view of story.json, with defaults filled in. */
 export interface StoryConfig {
   dir: string;
+  title: string;
   premise: string;
   scenes: SceneDef[];
   writerStyle: string;
@@ -48,8 +48,17 @@ export const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolve
 /** Validate and load a story into a StoryConfig; a model override beats the story's own default. */
 export async function loadStory(dir: string, modelOverride?: string): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
-  const raw = JSON.parse(await readFile(joinPath(base, "story.json"), "utf8"));
-  const parsed = StoryJson.parse(raw);
+  const storyPath = joinPath(base, "story.json");
+  const raw = JSON.parse(await readFile(storyPath, "utf8"));
+  const result = StoryJson.safeParse(raw);
+  if (!result.success) {
+    const lines = result.error.issues.map(i => `${i.path.join(".") || "story"}: ${i.message}`);
+    throw new Error(`${storyPath}\n${lines.join("\n")}`);
+  }
+  const parsed = result.data;
+
+  if (!parsed.premise.trim())
+    throw new Error(`Premise is empty in ${base}/story.json — there is nothing to write.`);
 
   const warn = (msg: string) => console.warn(`  (${msg})`);
 
@@ -95,6 +104,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
 
   return {
     dir: base,
+    title: parsed.title,
     premise: parsed.premise,
     scenes: parsed.scenes,
     writerStyle: parsed.writerStyle,

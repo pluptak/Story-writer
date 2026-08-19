@@ -1,88 +1,36 @@
-# SPEC-GUI — multi-scene viewer changes
+# Multi-Chapter Viewer
 
-**Status: needs revision — parts of this are now wrong.** It was written when one run wrote every
-scene. [SPEC-H-handoff.md](SPEC-H-handoff.md) block P2 changed that: **a run writes one chapter**, and
-the `story_end` event no longer exists — `scene_end` carries `chapter`, `done`, `stopped`, `steps` and
-`words`, and is a run's terminal event. Every `story_end` instruction below should be read as
-`scene_end`, and "total-story stats" now means aggregating across runs, not across one run's scenes.
+**Status: proposed.** Chapter execution is already implemented: one run writes one chapter, and the
+finished prose is stored in `chapters/<n>.md`. The viewer still treats the story page primarily as a
+single-scene page. This document records only the remaining UI work.
 
-Still accurate: `RunEvent` carries `chapter: number` on every scene-scoped event, and
-`StoryConfig.scenes[]` is the source of truth.
+## Current contract
 
-## What changes, file by file
+- `story.json.scenes[]` is the chapter list; its index is the chapter number minus one.
+- `POST /select` accepts `{ dir, chapter }` and starts one selected chapter.
+- A completed chapter is written to `chapters/<n>.md`. Partial or stopped runs remain in their run
+  directory and do not replace the accepted chapter file.
+- `scene_start` and `scene_end` identify the chapter. `scene_end` is the terminal event for a run;
+  there is no `story_end` event.
+- Run summaries are retained under each story's `runs[]` list. The current retention limit is three
+  run directories, so chapter files are the durable reading surface.
 
-### `server/gui/viewer/events.js` (2 changes)
+The full HTTP and SSE contract belongs in [`GUI-SPEC.md`](GUI-SPEC.md). This document should not
+repeat event shapes or route error handling.
 
-1. **`scene_start` handler (line 8)** — store `e.chapter` in the meta:
-   ```js
-   if (!store.meta) store.meta = { story: e.story, target: e.target, characters: ... };
-   store.meta.chapter = e.chapter;
-   store.meta.totalScenes = ...;  // not yet known; can be set from story_end or left null
-   ```
-   Single-scene stories get `chapter: 1`, so this is always set.
+## Viewer work
 
-2. **`story_end` handler (new)** — add a case after `scene_end`:
-   ```js
-   case "story_end": blocks.push({ kind: "story_end", seq: e.seq, scenes: e.scenes, steps: e.steps, words: e.words }); break;
-   ```
-   Rendered as a summary block showing total scenes, steps, words.
+1. Show every `story.json.scenes[]` entry on the story page, including its place, question, POV, and
+   whether it is writable.
+2. Give each chapter its own write action that posts `{ dir, chapter }` to `/select`.
+3. Display the accepted `chapters/<n>.md` text in chapter order.
+4. Group retained runs by chapter and make each run's log available through the existing log routes.
+5. Keep current-run rendering scoped to one chapter. Aggregate story-level totals only when the UI is
+   explicitly showing more than one run.
 
-### `server/gui/viewer/sse.js` (1 change)
+## Out of scope
 
-- **`run_state` ended detection (lines 82-83)** — currently finds the last `scene_end` to
-  extract `{ done, stopped, words, steps }`. With multi-scene, the last `scene_end` is still
-  the right per-scene value, but when `story_end` exists prefer it for total-story stats:
-  ```js
-  const storyEnd = LIVEV.events.findLast(e => e.t === "story_end");
-  const end = storyEnd || LIVEV.events.findLast(e => e.t === "scene_end");
-  if (end) APP.runEnded = { done: end.done, stopped: end.stopped, words: end.words, steps: end.steps };
-  ```
-
-### `server/gui/viewer/pages.js` (1 change)
-
-- **`renderHeader()` (lines 49-52)** — show chapter indicator when multi-scene:
-  ```js
-  const ch = m.chapter ? ` (Chapter ${m.chapter} of ${m.totalScenes || "?"})` : "";
-  $("question").textContent = (m.question || "") + ch;
-  ```
-
-### `server/gui/viewer/blocks.js` (1 addition)
-
-- **`renderBlock()`** — add a branch for `"story_end"` kind:
-  ```js
-  if (b.kind === "story_end") return `<div class="note end">Story finished · ${b.scenes} scene(s) · ${b.words} words · ${b.steps} steps</div>`;
-  ```
-  Already has `"end"` for per-scene `scene_end`; this is the total-story counterpart.
-
-### `server/gui/viewer/util.js` (optional, 1 line)
-
-- `verdictText(e)` — currently says `"scene finished"`. For multi-scene stories the last
-  scene's `scene_end` verdict is still correct per-scene; `story_end` block handles the
-  total-story message. No change strictly needed.
-
-## Files with no change needed
-
-| file | reason |
-|------|--------|
-| `shelf.js` | reads `APP.stories` (shelf cards), not RunEvent data |
-| `nav.js` | URL routing only |
-| `session.js` | reads `APP.session.*` (from `run_state` SSE), no RunEvent fields |
-| `character-card.js` | reads character data from chip data attributes |
-| `interview.js` | works with `APP.scaffold` only |
-| `chrome.js` | theme toggle, file picker, drag-drop |
-| `boot.js` | startup orchestration |
-| `viewer.css` | no new layout needed |
-| `hud.js` | rail counts drafts and events globally — correct for total-story stats |
-| `state.js` | `APP.runEnded` shape (`{ done, stopped, words, steps }`) unchanged |
-| `run-ended.js` | reads `APP.runEnded` — works same for multi-scene |
-
-## Summary of required changes
-
-| File | Change | Lines |
-|------|--------|-------|
-| `events.js` | Store `chapter` on `scene_start` meta; add `story_end` case | 4 |
-| `sse.js` | Prefer `story_end` over `scene_end` for total stats | 3 |
-| `pages.js` | Show chapter indicator in header | 4 |
-| `blocks.js` | Render `story_end` summary block | 3 |
-
-**4 files, ~14 lines.** No CSS, no new modules.
+- Adding a new server route solely for chapter discovery; `/stories` already returns story cards and
+  their scene metadata.
+- Reintroducing `story_end` or a multi-scene run.
+- Editing chapter prose. The proposed editor is described in [`SPEC-E-editor.md`](SPEC-E-editor.md).

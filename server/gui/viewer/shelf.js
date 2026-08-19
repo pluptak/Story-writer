@@ -49,7 +49,7 @@ export function pickerHtml() {
 export function wirePicker(page, openStory) {
   for (const b of page.querySelectorAll(".card[data-dir]"))
     b.addEventListener("click", () => { if (!APP.picked) {
-      APP.storyDir = b.dataset.dir; APP.storyModel = ""; APP.storyError = ""; openStory();
+      APP.storyDir = b.dataset.dir; APP.storyModel = ""; APP.storyError = ""; APP.runError = ""; openStory();
     } });
   for (const b of page.querySelectorAll(".card[data-new]"))
     b.addEventListener("click", () => {

@@ -1,5 +1,5 @@
 /** ARCHITECT — builds the architect Agent, and the interactive story-building conversation with it. */
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join as joinPath, relative as relativePath } from "node:path";
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
@@ -7,7 +7,7 @@ import { Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG } from "./skills.ts";
-import { ROOT, type Defaults } from "./story-format.ts";
+import { ROOT, resolveStoryDir, readChapters, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, type StorySpec } from "./story-spec.ts";
 import { runPreflight } from "./preflight.ts";
 
@@ -45,6 +45,19 @@ export type ScaffoldAccept =
   | { kind: "needs_folder"; reason: string }
   | { kind: "no_story" };
 
+/** One exchange with the architect: say it, take the reply, and pull JSON out of it. */
+async function architectRound(agent: Agent, message: string):
+  Promise<{ out: Record<string, any> } | { error: string }> {
+  agent.hear(message);
+  try {
+    const reply = await agent.generate(`${C.magenta}ARCHITECT${C.reset}`);
+    agent.said(reply.trim());
+    return { out: extractJson(reply) };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
 function withAsk(out: Record<string, any>): string {
   const note = String(out.note ?? "").trim();
   const ask = String(out.ask ?? "").trim();
@@ -73,16 +86,7 @@ export class ScaffoldSession {
     return P.architectMore(userText, this.idea, this.asks >= ScaffoldSession.MAX_ASKS);
   }
 
-  private async round(userText: string): Promise<{ out: Record<string, any> } | { error: string }> {
-    this.architect.hear(this.request(userText));
-    try {
-      const reply = await this.architect.generate(`${C.magenta}ARCHITECT${C.reset}`);
-      this.architect.said(reply.trim());
-      return { out: extractJson(reply) };
-    } catch (e) {
-      return { error: (e as Error).message };
-    }
-  }
+  private round(userText: string) { return architectRound(this.architect, this.request(userText)); }
 
   private takeProposal(out: Record<string, any>): ScaffoldRound {
     const n = normalizeSpec(out);
@@ -143,4 +147,107 @@ export class ScaffoldSession {
       ? { kind: "written", dir, files, warnings }
       : { kind: "unloadable", dir, files, error: pf.error ?? "unknown", warnings };
   }
+}
+
+// -- NEXT-CHAPTER SESSION --------------------------------------------------
+
+/** The outcome of trying to write the re-authored story back over the one on disk. */
+export type HandoffAccept =
+  | { kind: "written"; dir: string; files: string[]; warnings: string[] }
+  | { kind: "unloadable"; dir: string; error: string }
+  | { kind: "nothing" };
+
+/**
+ * The handoff between two chapters: show the architect what was actually written, take back edits to
+ * the cast and the next scene, and write them over `story.json` only when the author accepts.
+ */
+export class NextChapterSession {
+  problems: string[] = [];
+  pendingAsk = "";
+  edited = false;                              // has any round changed the spec
+
+  constructor(public architect: Agent, public defaults: Defaults, public dir: string,
+              public spec: StorySpec, public chapters: { n: number; text: string }[]) {}
+
+  /** The chapter this handoff is preparing: the one after the last written. */
+  get chapter(): number { return this.chapters.reduce((m, c) => Math.max(m, c.n), 0) + 1; }
+
+  private specJson(): string {
+    return JSON.stringify({ ...this.spec, writer_style: this.spec.writerStyle }, null, 1);
+  }
+
+  /** Edits that would rewrite history: removing a scene already written renumbers every chapter after it. */
+  private refuse(edits: any[]): { edits: any[]; refused: string[] } {
+    const written = this.chapter - 1;
+    const refused: string[] = [];
+    const kept = edits.filter(e => {
+      const n = Number(e?.value);
+      if (String(e?.field ?? "").trim() !== "remove_scene" || !(Number.isInteger(n) && n >= 1 && n <= written))
+        return true;
+      refused.push(`remove_scene ${n} — chapter ${n} is already written`);
+      return false;
+    });
+    return { edits: kept, refused };
+  }
+
+  private take(r: { out: Record<string, any> } | { error: string }): ScaffoldRound {
+    if ("error" in r) return { kind: "failed", error: r.error };
+    const back = String(r.out.ask ?? "").trim();
+    if (back && !r.out.edits) { this.pendingAsk = back; return { kind: "question", ask: back }; }
+    if (!Array.isArray(r.out.edits))
+      return { kind: "nothing", why: "the reply was neither edits nor a question" };
+
+    const guarded = this.refuse(r.out.edits);
+    const e = applyEdits(this.spec, { edits: guarded.edits });
+    this.spec = e.spec; this.problems = e.problems; this.pendingAsk = "";
+    this.edited = true;
+    return { kind: "edits", applied: e.applied, ignored: [...guarded.refused, ...e.ignored], note: withAsk(r.out) };
+  }
+
+  /** The handoff request itself: the premise, the chapters as written, and the story as it stands. */
+  async propose(): Promise<ScaffoldRound> {
+    return this.take(await architectRound(this.architect,
+      P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters)));
+  }
+
+  /** A follow-up from the author, in the same edits-only format. */
+  async say(text: string): Promise<ScaffoldRound> {
+    return this.take(await architectRound(this.architect, P.architectChange(text, this.specJson())));
+  }
+
+  /**
+   * Write the re-authored story over the one on disk, and put back exactly what was there if the
+   * result does not load — a story that already works must not be lost to a bad handoff.
+   */
+  async accept(): Promise<HandoffAccept> {
+    if (!this.edited) return { kind: "nothing" };
+    const abs = resolveStoryDir(this.dir);
+    const rendered = renderStory(this.spec, this.defaults.models);
+
+    const before = new Map<string, string | null>();
+    for (const name of Object.keys(rendered))
+      before.set(name, await readFile(joinPath(abs, name), "utf8").catch(() => null));
+    for (const [name, body] of Object.entries(rendered)) await writeFile(joinPath(abs, name), body, "utf8");
+
+    const pf = await runPreflight(this.dir);
+    if (!pf.ok) {
+      for (const [name, body] of before)
+        body === null ? await rm(joinPath(abs, name), { force: true })
+                      : await writeFile(joinPath(abs, name), body, "utf8");
+      return { kind: "unloadable", dir: this.dir, error: pf.error ?? "unknown" };
+    }
+    return { kind: "written", dir: this.dir, files: Object.keys(rendered).sort(), warnings: pf.warnings.map(w => w.trim()) };
+  }
+}
+
+/** Open a handoff on a story that has at least one chapter written; throws if it has none, or does not parse. */
+export async function openNextChapter(d: Defaults, dir: string): Promise<NextChapterSession> {
+  const chapters = await readChapters(dir);
+  if (!chapters.length)
+    throw new Error(`No chapters written yet in ${dir} — there is nothing for the handoff to read.`);
+  const raw = JSON.parse(await readFile(joinPath(resolveStoryDir(dir), "story.json"), "utf8"));
+  const n = normalizeSpec(raw);
+  const s = new NextChapterSession(await buildArchitect(d), d, dir, n.spec, chapters);
+  s.problems = n.problems;
+  return s;
 }

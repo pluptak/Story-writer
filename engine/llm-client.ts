@@ -3,6 +3,7 @@ import { C } from "../ansi.ts";
 import { RUN, StoppedError } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 import { topLevelObjects } from "./json-extract.ts";
+import type { ThinkLevel } from "./story-schema.ts";
 
 export const LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions";
 export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$/, "/models");
@@ -10,10 +11,6 @@ export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$
 type Role = "system" | "user" | "assistant";
 /** One chat message: role plus content. */
 export interface Msg { role: Role; content: string; }
-
-/** "default" means "send nothing"; "off" suppresses reasoning entirely. */
-export const THINK_LEVELS = ["off", "low", "medium", "high", "default"] as const;
-export type ThinkLevel = (typeof THINK_LEVELS)[number];
 
 /** The retry/backoff knobs, settable per run from a story's config. */
 export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };

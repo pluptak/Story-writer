@@ -10,19 +10,21 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { join as joinPath } from "node:path";
 import { C } from "./ansi.ts";
-import { LIVE, resetLive, setWhere, publish } from "./live.ts";
+import { LIVE, resetLive, setWhere, publish, sseWrite } from "./live.ts";
 import { startServer, type ServerHost } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { restrictionsOf } from "./engine/skills.ts";
 import { NET } from "./engine/llm-client.ts";
 import {
   resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
-  loadDefaults, type StoryConfig,
+  loadDefaults, type StoryConfig, type Defaults,
 } from "./engine/story-format.ts";
 import { directEdit, renderSpec, specView, type StorySpec } from "./engine/story-spec.ts";
 import { runDirs, runPreflight, loadedModelIds, storyCards } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
-import { buildArchitect, ScaffoldSession, type ScaffoldRound } from "./engine/architect.ts";
+import {
+  buildArchitect, ScaffoldSession, openNextChapter, type ScaffoldRound, type NextChapterSession,
+} from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
 
 // -- CONFIG ----------------------------------------------------------------
@@ -42,7 +44,8 @@ async function runPreflightCli() {
   for (const dir of dirs) {
     const r = await runPreflight(dir);
     const head = r.ok ? `${C.green}✓${C.reset}` : `${C.red}✗${C.reset}`;
-    console.log(`\n${head} ${C.bold}${dir}${C.reset}`);
+    const titleSuffix = r.summary?.title ? ` ${C.dim}${r.summary.title}${C.reset}` : "";
+    console.log(`\n${head} ${C.bold}${dir}${C.reset}${titleSuffix}`);
     if (!r.ok) { failed++; console.log(`   ${C.red}${r.error}${C.reset}`); }
     else if (r.summary) {
       const s = r.summary;
@@ -104,13 +107,23 @@ async function runConsultCli(sc: StoryConfig, who: string) {
   if (reply.forced) console.log(`${C.yellow}(answered without the detail it asked for)${C.reset}`);
 }
 
-async function newScaffoldSession(idea: string, model = ""): Promise<ScaffoldSession> {
+/** The architect's own knobs, which are the defaults' — not any one story's. */
+async function architectDefaults(model = ""): Promise<Defaults> {
   const d = await loadDefaults(model || flag("model") || "");
   ENGINE.stream = d.stream; ENGINE.debug = d.debug;
   NET.timeoutMs = d.requestTimeout * 1000;
   NET.retries = d.attempts - 1;
   ENGINE.maxTokens = d.maxTokens;
+  return d;
+}
+
+async function newScaffoldSession(idea: string, model = ""): Promise<ScaffoldSession> {
+  const d = await architectDefaults(model);
   return new ScaffoldSession(await buildArchitect(d), d, idea);
+}
+
+async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
+  return openNextChapter(await architectDefaults(model), dir);
 }
 
 async function readParagraph(rl: ReturnType<typeof createInterface>, prompt: string): Promise<string> {
@@ -131,16 +144,18 @@ function showSpec(spec: StorySpec, problems: string[], note = "", full = false) 
   for (const p of problems) console.log(`${C.yellow}⚠${C.reset} ${p}`);
 }
 
+const SCAFFOLD_HINT = "Try saying more about who is in the scene and what is at stake.";
+
 /** Print whatever a round did. The session decided it; this only says it out loud. */
-function showRound(s: ScaffoldSession, r: ScaffoldRound) {
+function showRound(s: { spec: StorySpec; problems: string[] }, r: ScaffoldRound, hint = SCAFFOLD_HINT) {
   switch (r.kind) {
     case "failed":
       console.log(`${C.red}That round failed (${r.error}) — nothing changed.${C.reset}`); return;
     case "question":
       console.log(`\n${C.yellow}It needs to know:${C.reset} ${r.ask}`); return;
     case "nothing":
-      console.log(`\n${C.yellow}It didn't come back with a story.${C.reset} `
-        + `${C.dim}Try saying more about who is in the scene and what is at stake.${C.reset}`); return;
+      console.log(`\n${C.yellow}Nothing came back to apply — ${r.why}.${C.reset} `
+        + `${C.dim}${hint}${C.reset}`); return;
     case "proposal":
       showSpec(s.spec, s.problems, r.note); return;
     case "edits":
@@ -237,6 +252,55 @@ async function runScaffoldCli() {
   } finally { rl2.close(); }
 }
 
+const HANDOFF_HINT = `Say what should be different about the next chapter.`;
+
+/** The architect handoff at the console: re-author the cast between chapters, and write it on accept. */
+async function runHandoffCli(dir: string) {
+  let s: NextChapterSession;
+  // A story with no chapters written is the ordinary first case, not a crash worth a stack trace.
+  try { s = await newHandoffSession(dir); }
+  catch (e) { console.error(`${C.red}${(e as Error).message}${C.reset}`); process.exitCode = 1; return; }
+  setWhere(`preparing chapter ${s.chapter} of ${dir}`, false);
+  console.log(`\n${C.bold}${dir}${C.reset} ${C.dim}— ${s.chapters.length} chapter(s) written · `
+    + `preparing chapter ${s.chapter} (${s.defaults.models.architect})…${C.reset}`);
+  showRound(s, await s.propose(), HANDOFF_HINT);
+
+  if (!process.stdin.isTTY) return;
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    for (;;) {
+      const said = (await rl.question(s.pendingAsk
+        ? `\n${C.dim}your answer (or "q" to leave it alone): ${C.reset}`
+        : `\n${C.dim}[enter] accept · "?" personas in full · "q" abort · or say what to change${C.reset}`
+          + `\n${C.dim}> ${C.reset}`)).trim();
+
+      if (said.toLowerCase() === "q") { console.log(`${C.dim}Left alone. ${dir}/story.json is as it was.${C.reset}`); return; }
+      if (said === "?") { showSpec(s.spec, [], "", true); continue; }
+      if (said) { showRound(s, await s.say(said), HANDOFF_HINT); continue; }
+      if (s.pendingAsk) continue;                  // it asked; silence is not an answer
+      if (!s.edited) { console.log(`${C.dim}Nothing has changed yet, so there is nothing to accept.${C.reset}`); continue; }
+
+      if (s.problems.length) {
+        const sure = (await rl.question(`${C.yellow}${s.problems.length} thing(s) flagged above. `
+          + `Accept anyway? [y/N] ${C.reset}`)).trim().toLowerCase();
+        if (sure !== "y") continue;
+      }
+      const r = await s.accept();
+      if (r.kind === "nothing") { console.log(`${C.dim}Nothing to accept yet.${C.reset}`); continue; }
+      if (r.kind === "unloadable") {
+        console.log(`${C.red}That story does not load: ${r.error}${C.reset}`);
+        console.log(`${C.dim}${dir}/story.json was put back as it was. Keep refining, or "q".${C.reset}`);
+        continue;
+      }
+      console.log(`\n${C.green}Written:${C.reset} ${r.dir}/ ${C.dim}(${r.files.join(", ")})${C.reset}`);
+      for (const w of r.warnings) console.log(`   ${C.yellow}⚠${C.reset} ${w}`);
+      console.log(`${C.dim}Write it with: npx tsx story-writer.ts ${dir} --chapter=${s.chapter}${C.reset}`);
+      return;
+    }
+  } finally { rl.close(); }
+}
+
 /** Load one story, apply the debug flags, and either write its scene or answer one consult. */
 async function runOne(dir: string, chapter = 1) {
   const sc = await loadStory(dir, LIVE.modelOverride ?? undefined);
@@ -291,7 +355,7 @@ async function pickStory(): Promise<{ dir: string; chapter: number }> {
 
 const HOST: ServerHost = {
   storyCards, selectableStory, resolveStoryDir, runDirs, loadedModelIds,
-  newScaffoldSession, directEdit, specView,
+  newScaffoldSession, newHandoffSession, directEdit, specView,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
 };
@@ -306,10 +370,21 @@ async function main() {
     CLI.includes("--new") ? { dir: NEW_STORY, chapter: 1 }
     : STORY_DIR ? { dir: STORY_DIR, chapter: 1 }
     : await pickStory();
+  const handoff = flag("next-chapter") !== undefined;
   for (;;) {
-    if (next.dir === NEW_STORY) await runScaffoldCli();
-    else await runOne(next.dir, next.chapter);
-    if (oneShot) return;
+    try {
+      if (next.dir === NEW_STORY) await runScaffoldCli();
+      else if (handoff) await runHandoffCli(next.dir);
+      else await runOne(next.dir, next.chapter);
+      if (oneShot) return;
+    } catch (e) {
+      const msg = (e as Error).message;
+      sseWrite({ t: "run_error", message: msg });   // a --serve viewer is watching either way
+      if (oneShot) throw e;                         // main().catch() says it, with the LM Studio hint
+      console.error(`${C.red}${msg}${C.reset}`);
+      setWhere("choosing a story", false);
+      LIVE.awaitingPick = false;
+    }
     next = await pickStory();
   }
 }
@@ -344,22 +419,51 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
   const scenePath = joinPath(ENGINE.outDir, "scene.md");
   const logPath = joinPath(ENGINE.outDir, "writing-log.jsonl");
   const logStream = createWriteStream(logPath, { flags: "w" });
+  logStream.on("error", () => {});   // an async write failure must not crash the run
 
   const events: RunEvent[] = [];
   const allPieces: string[] = [];
   let sceneWrites: Promise<unknown> = Promise.resolve();
+  let sceneWriteError: Error | null = null;
 
-  const r = await runChapter(sc, chapter, e => {
-    events.push(e);
-    logStream.write(JSON.stringify(publish(e)) + "\n");
-    if (e.t === "draft" && e.prose) {
-      allPieces.push(e.prose);
-      sceneWrites = sceneWrites.then(() => writeFile(scenePath, allPieces.join("\n\n") + "\n", "utf8")).catch(() => {});
+  // Safe stream closing: never throws, never hangs; errors are reported but don't displace the original exception
+  const endStream = (stream: NodeJS.WritableStream): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      stream.on("error", () => resolve());
+      stream.end(() => resolve());
+    });
+  };
+
+  let r: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean };
+  let cleanupError: Error | null = null;
+  try {
+    r = await runChapter(sc, chapter, e => {
+      events.push(e);
+      logStream.write(JSON.stringify(publish(e)) + "\n");
+      if (e.t === "draft" && e.prose) {
+        allPieces.push(e.prose);
+        sceneWrites = sceneWrites.then(() => writeFile(scenePath, allPieces.join("\n\n") + "\n", "utf8")).catch((err: unknown) => {
+          if (!sceneWriteError) sceneWriteError = err instanceof Error ? err : new Error(String(err));
+        });
+      }
+    });
+  } finally {
+    try {
+      await sceneWrites;
+      await endStream(logStream);
+      await Promise.all([...ENGINE.llmStreams.values()].map(s => endStream(s)));
+    } catch (e) {
+      cleanupError = e as Error;
     }
-  });
-  await sceneWrites;
-  await new Promise<void>(res => logStream.end(res));
-  await Promise.all([...ENGINE.llmStreams.values()].map(s => new Promise<void>(res => s.end(res))));
+  }
+
+  if (sceneWriteError) {
+    console.error(`${C.red}Failed to write scene.md: ${(sceneWriteError as Error).message}${C.reset}`);
+    process.exitCode = 1;
+  }
+  if (cleanupError) {
+    console.error(`${C.red}Error closing streams: ${cleanupError.message}${C.reset}`);
+  }
 
   // Rotate: keep only the last MAX_RUNS folders, including the one just written.
   const kept = await runDirs(sc.dir);

@@ -43,7 +43,9 @@ export type LiveFrame =
       paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
       interactive: boolean }
   | { t: "run_reset" }
-  | { t: "scaffold"; state: unknown };
+  | { t: "run_error"; message: string }
+  | { t: "scaffold"; state: unknown }
+  | { t: "handoff"; state: unknown };
 
 export const sseClients = new Set<{ write: (s: string) => void }>();
 export const liveHistory: Array<{ seq: number } & RunEvent> = [];

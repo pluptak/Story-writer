@@ -16,6 +16,7 @@ let preflightChain: Promise<unknown> = Promise.resolve();
 export interface PreflightResult {
   ok: boolean; error?: string; warnings: string[];
   summary?: {
+    title: string;
     premise: string;
     characters: { name: string; skills: number; added: string[]; restrictions: string[] }[];
     scene: { place: string; question: string; pov: string; length: number };
@@ -71,6 +72,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
       return {
         ok: true, warnings,
         summary: {
+          title: sc.title,
           premise: sc.premise,
           characters: sc.characters.map(c => ({
             name: c.name,
@@ -94,6 +96,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
 
 export interface StoryCard {
   dir: string; name: string; ok: boolean; error?: string; warnings: string[];
+  title?: string;
   premise?: string;
   scene?: { place: string; question: string; pov: string; length: number };
   characters?: { name: string; skills: string[]; restrictions: string[] }[];
@@ -140,6 +143,7 @@ export async function storyCards(): Promise<StoryCard[]> {
       warnings: r.warnings.map(w => w.trim()),
       runs: await retainedRuns(resolveStoryDir(dir)),
       ...(s ? {
+        title: s.title,
         premise: s.premise,
         scene: s.scene,
         characters: s.characters.map(c => ({ name: c.name, skills: c.added, restrictions: c.restrictions })),

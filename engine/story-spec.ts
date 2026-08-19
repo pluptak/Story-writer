@@ -121,7 +121,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
     if (field === "title" || field === "premise") { draft[field] = scalar(); applied.push(field); continue; }
     if (field === "writer_style" || field === "writerStyle") { draft.writer_style = scalar(); applied.push("writer_style"); continue; }
 
-    const sceneMatch = field.match(/^(scene(?:_(\d))?)\.(place|question|pov|length|roster)$/);
+    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster)$/);
     if (sceneMatch) {
       const idx = sceneMatch[2] ? Number(sceneMatch[2]) - 1 : 0;
       if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
@@ -129,6 +129,26 @@ export function applyEdits(spec: StorySpec, raw: any): {
       else if (sceneMatch[3] === "length") draft.scenes[idx].length = Number(value);
       else draft.scenes[idx][sceneMatch[3]] = scalar();
       applied.push(field);
+      continue;
+    }
+
+    if (field === "add_scene") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        ignored.push("add_scene — the value must be a scene object"); continue;
+      }
+      draft.scenes.push(value);
+      applied.push(`added scene ${draft.scenes.length}`);
+      continue;
+    }
+    if (field === "remove_scene") {
+      const n = Number(typeof value === "object" ? NaN : value);
+      if (!Number.isInteger(n) || n < 1 || n > draft.scenes.length) {
+        ignored.push(`remove_scene ${scalar() || "(nothing)"} — there is no scene ${scalar() || "(nothing)"}`); continue;
+      }
+      // A story with no scenes has nothing to write; normalizeSpec would silently invent a blank one.
+      if (draft.scenes.length === 1) { ignored.push("remove_scene 1 — a story needs at least one scene"); continue; }
+      draft.scenes.splice(n - 1, 1);
+      applied.push(`removed scene ${n}`);
       continue;
     }
 

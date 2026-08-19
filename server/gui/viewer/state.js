@@ -24,6 +24,7 @@ export const APP = {
   storyDir: "",                 // a shelf card was clicked; the story page is showing this dir
   storyModel: "",               // a model chosen on the story page, overriding the story's own default
   storyError: "",               // the last refusal of /select or /model, said out loud on the story page
+  runError: "",                 // the engine failed to load or run the picked story, shown on the story page
   runEnded: null,                // the run just finished: {done, stopped, words, steps} -- the end-of-
                                   // run modal is up until "back to shelf" or "stay here" clears it
   charCard: null,               // a character pill was clicked: {name, dir, can, cannot} -- the

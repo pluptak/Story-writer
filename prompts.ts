@@ -122,11 +122,14 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
   not changing -- everything you leave alone is kept exactly as it is. The field must be one of:
 
     title · premise · writer_style
-    scene.place · scene.question · scene.pov · scene.length
+    scene.place · scene.question · scene.pov · scene.length · scene.roster
+    scene_<n>.place · ...      (the same fields on the nth scene; scene_1 and scene are the same one)
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.skills · characters.<NAME>.restrictions     (value is a list)
     add_character      (value is a whole character object, as above)
     remove_character   (value is the name)
+    add_scene          (value is a whole scene object: place, question, pov, length, roster)
+    remove_scene       (value is the scene number)
 
   Any other field name is ignored, and the author is told it was. If the change they asked for is
   ambiguous enough that you would be guessing at what they meant, use "ask" and change nothing.
@@ -162,6 +165,74 @@ export const architectMore = (userText: string, idea: string, insist: boolean) =
         + `interesting reading of this and commit to it. `
       : ``)
   + `Propose the whole story now, in the full format.`;
+
+// -- THE HANDOFF -----------------------------------------------------------
+
+/** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one. */
+export function architectNextChapter(
+  premise: string, specJson: string, chaptersSoFar: { n: number; text: string }[],
+): string {
+  const last = chaptersSoFar.reduce((m, c) => Math.max(m, c.n), 0);
+  const next = last + 1;
+  const written = chaptersSoFar
+    .map(c => `--- CHAPTER ${c.n}, as written ---\n${c.text.trim()}`)
+    .join("\n\n") || "(nothing written yet)";
+
+  return `[NEXT CHAPTER] Chapter${last === 1 ? "" : "s"} 1${last > 1 ? `-${last}` : ""} of this story `
+    + `${last === 1 ? "is" : "are"} written. Prepare chapter ${next}.
+
+HOW THE ENGINE CARRIES A STORY FORWARD, because it decides what your job is here: it does not carry
+anything. No character remembers a word of an earlier chapter -- every agent is built fresh from the
+story file, which is the ONLY thing that crosses between chapters. Whatever the chapters below did to
+these people, you write into their definitions now or it is lost:
+
+  - someone who learned something has it in their "knows", in their own terms;
+  - someone whose goal was met, or became impossible, needs a new one, or they will play a finished
+    goal again as if nothing happened;
+  - someone changed by what they did -- hardened, broken, in someone's debt -- has it in their
+    persona, which you edit only where the chapter actually changed them;
+  - someone who died, left, or is simply not in the next scene is dropped from that scene's "roster".
+    They stay in the cast; the roster is what decides who is in the room;
+  - someone who lost a capability -- an arm, their nerve, the lantern -- gains a restriction, and
+    restrictions must be names from the general skill list.
+
+[THE PREMISE]
+${premise}
+
+[WHAT HAPPENED]
+${written}
+
+[THE STORY AS IT STANDS]
+${specJson}
+
+CHAPTER ${next} ITSELF. If the story above already defines a scene ${next}, re-author it in place with
+scene_${next}.place / .question / .pov / .length / .roster -- it was sketched before chapter ${last}
+existed, so it is a starting point, not a commitment. If there is no scene ${next}, add one with
+add_scene. Its question must be one THIS chapter can answer, and it must follow from what actually
+happened, not from what was planned.
+
+If the story is finished -- its question answered, nothing left that is worth a chapter -- say so in
+"note" and add no scene. Use remove_scene to drop any later scene the chapters have made pointless.
+Do not invent a chapter to keep it running.
+
+Reply with edits only, and nothing else:
+
+{"edits": [{"field": "...", "value": ...}], "ask": "", "note": ""}
+
+  title · premise · writer_style
+  characters.<NAME>.persona · .knows · .goal · .skills · .restrictions   (skills, restrictions: lists)
+  add_character      (a whole character object, in the full format)
+  remove_character   (the name)
+  scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
+  add_scene          (a whole scene object: place, question, pov, length, roster)
+  remove_scene       (the scene number)
+
+Everything you leave alone is kept exactly as it is, so send only what the chapters changed. If you
+cannot tell from what was written whether something changed, and guessing would put a fact in a
+character's head that the prose does not support, use "ask" and send no edits.
+
+Do not write chapter ${next}. You are re-authoring the people and the pressure; the writer does the rest.`;
+}
 
 // -- CHARACTER AGENT -------------------------------------------------------
 
