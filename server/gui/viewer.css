@@ -408,3 +408,6 @@
   .prosecard .runmeta { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:15px; }
   .prosecard .metachip { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:999px;
                          border:1px solid var(--line); background:var(--panel-2); color:var(--muted); }
+
+  /* the story reader — accepted prose, chapter by chapter, no controls */
+  .reader-view .reader-chapter { margin-bottom:18px; }

@@ -2,6 +2,7 @@ import { esc, post, fmtRun, modelOptionsHtml, reasonOr } from "./util.js";
 import { APP, READV, runningReason } from "./state.js";
 import { castChips } from "./shelf.js";
 import { loadRun } from "./saved-runs.js";
+import { loadReader } from "./reader.js";
 import { go } from "./nav.js";
 import { paras } from "./blocks.js";
 
@@ -136,6 +137,7 @@ export function storyPageHtml() {
 
     <div class="btns" style="margin-top:18px">
       <button class="btn" id="story-edit">edit story</button>
+      ${(s.chapters?.length) ? `<button class="btn" id="story-read-story">read story</button>` : ""}
       <span class="spacer"></span>
       <button class="btn" id="story-back">back to shelf</button>
     </div>
@@ -172,6 +174,11 @@ export function wireStoryPage(page) {
 
   const edit = page.querySelector("#story-edit");
   if (edit) edit.addEventListener("click", () => { APP.editDir = APP.storyDir; go("edit"); });
+
+  const readStory = page.querySelector("#story-read-story");
+  if (readStory) readStory.addEventListener("click", () => {
+    go("readstory"); loadReader(APP.storyDir);
+  });
 
   for (const b of page.querySelectorAll(".runbtn"))
     b.addEventListener("click", async () => {

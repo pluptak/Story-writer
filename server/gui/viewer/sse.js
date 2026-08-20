@@ -5,6 +5,7 @@ import { setSrc, renderRail } from "./hud.js";
 import { go, parseHash, parseHashParams, syncHash } from "./nav.js";
 import { renderSession, disarm, loadModels } from "./session.js";
 import { loadStories, loadRun } from "./saved-runs.js";
+import { loadReader } from "./reader.js";
 import { disarmAccept } from "./interview.js";
 
 export function loadDeepLinkedRun() {
@@ -12,6 +13,13 @@ export function loadDeepLinkedRun() {
   const dir = params.get("dir"), id = params.get("id");
   if (!dir || !id) return Promise.resolve(false);
   return loadRun(dir, id);
+}
+
+export function loadDeepLinkedReader() {
+  const params = parseHashParams();
+  const dir = params.get("dir");
+  if (!dir) return;
+  loadReader(dir);
 }
 
 export const sessionFrom = j => ({ running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking,
@@ -43,8 +51,9 @@ export async function tryHttp() {
     APP.view = wanted || (APP.session.running ? "live" : "shelf");
     if (APP.view === "story") APP.storyDir = parseHashParams().get("dir") || "";
     if (APP.view === "handoff") APP.handoffDir = APP.handoffDir || parseHashParams().get("dir") || "";
+    if (APP.view === "readstory") loadDeepLinkedReader();     // sets READER.dir and starts the fetch
     if (APP.view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
-    if (APP.view === "read" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff") loadStories();
+    if (APP.view === "readstory" || APP.view === "read" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff") loadStories();
     syncHash();
     APP.render();
     startSSE();

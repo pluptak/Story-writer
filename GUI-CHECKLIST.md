@@ -208,6 +208,34 @@ Needs a run, so pair it with section 2. What the redesign changed:
 - [ ] **Narrow the window below 900px.** The rail stacks below the prose and stays visible. If it
       vanishes, the only way to stop a run has gone with it.
 
+## 10. The story reader
+
+No run needed, and nothing here destroys one, so this can go anywhere in the pass. `the-final-meal`
+story page → **read story**. The button only appears once a story has a written chapter.
+
+- [ ] **It opens.** Every written chapter under its own `chapter N` divider, in numeric order, as
+      continuous prose. No run controls, no rail stats, no consult chrome.
+- [ ] **It is not on the SSE stream.** Start a run in another tab and leave the reader open. The
+      reader must not move — it is static once loaded. (The topbar reads `reading <story>`.)
+- [ ] **Deep link.** The address bar reads `#/readstory?dir=…` — check it picked up the `dir`, since
+      the hash is written twice, once by `go()` before the story is known and again by `loadReader`.
+      Reload the page on that URL: it comes back to the same story's prose, not the shelf.
+- [ ] **back** returns to the story page it was opened from, not the shelf.
+- [ ] **The saved-run view is untouched.** Open a retained run from the read tab, note which run it
+      is, then open the reader and come back. `#/read?dir=&id=` still opens that run, still labelled —
+      the reader must not have cleared it.
+- [ ] **Empty story.** Open the reader on a story with no written chapters, e.g. by hand at
+      `#/readstory?dir=doorway`. Expect *no chapters written yet*, not a blank page or a spinner that
+      never stops.
+- [ ] **A chapter that will not load.** Temporarily rename one of `stories/the-final-meal/chapters/`'s
+      prose files and reopen the reader. That chapter's slot says *could not load*; **the others still
+      render**. One bad chapter must not blank the story. Put the file back.
+- [ ] **Switching stories.** Open the reader on one story, go back, open it on another: the second
+      must never show the first one's prose under the second one's title, not even for a frame. *Needs
+      a second story with a written chapter — see the note in section 3; write one first or record
+      this as unchecked.*
+- [ ] **Narrow the window below 900px.** The prose column reflows and stays readable.
+
 ## Checking the viewer without an engine
 
 Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the

@@ -11,9 +11,12 @@ const newStore = () => ({ events: [], seen: new Set(), meta: null, open: new Set
 
 export const LIVEV = newStore();          // the running (or just-finished) scene
 export const READV = newStore();          // a saved run, loaded read-only
+export const READER = {                  // the story reader view: accepted prose by chapter
+  dir: "", chapters: [], loading: false, error: "",
+};
 
 export const APP = {
-  view: "live",               // which page is showing: shelf | story | live | read
+  view: "live",               // which page is showing: shelf | story | live | read | readstory | handoff | edit
   live: false,                 // attached to a running engine, as opposed to a static/file:// load
   session: { running:false, stopping:false, where:"", picking:false, armed:false,
              paused:false, pausing:false, model:null, interactive:true },  // the process, not the story

@@ -1,5 +1,5 @@
-import { $, esc } from "./util.js";
-import { APP, LIVEV, READV, storyName } from "./state.js";
+import { $, esc, basename } from "./util.js";
+import { APP, LIVEV, READV, READER, storyName } from "./state.js";
 
 // The two small "paint a fixed chrome region from store state" pieces -- the `#src`/`#dot` source
 // indicator and the `#rail` progress panel -- as opposed to `#page`, which `pages.js` owns.
@@ -9,6 +9,12 @@ export function paintSrcbar() {
   if (APP.view === "story") {
     const name = storyName(APP.storyDir);
     $("src").textContent = name ? `looking at ${name}` : "looking at a story";
+    $("dot").className = "dot";
+    return;
+  }
+  if (APP.view === "readstory") {
+    const name = storyName(READER.dir) || basename(READER.dir) || "reader";
+    $("src").textContent = `reading ${name}`;
     $("dot").className = "dot";
     return;
   }

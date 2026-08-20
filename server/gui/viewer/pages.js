@@ -1,5 +1,5 @@
 import { $, esc, basename, wireBackdropClose } from "./util.js";
-import { APP, LIVEV, READV, FIELDS, open, storyName } from "./state.js";
+import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
 import { renderBlock, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
@@ -12,6 +12,7 @@ import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { interviewModalHtml, wireInterview } from "./interview.js";
+import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { go, generating } from "./nav.js";
 import { renderSession } from "./session.js";
 
@@ -37,7 +38,7 @@ function renderNav() {
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
-  const shown = APP.view === "story" || APP.view === "handoff" ? "shelf" : APP.view;
+  const shown = APP.view === "story" || APP.view === "handoff" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
     const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
@@ -49,6 +50,14 @@ function renderNav() {
 }
 
 function renderHeader() {
+  // Reader mode: show the story name, no cast
+  if (APP.view === "readstory") {
+    const name = storyName(READER.dir) || basename(READER.dir) || "reader";
+    $("title").textContent = name;
+    $("question").textContent = "reading · " + name;
+    $("cast").innerHTML = ""; $("castcard").hidden = true;
+    return;
+  }
   const m = APP.view === "live" ? LIVEV.meta : APP.view === "read" ? READV.meta : null;
   if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; $("castcard").hidden = true; return; }
   $("title").textContent = basename(m.story) || "story-writer";
@@ -90,6 +99,13 @@ function renderHandoff(page, keepFocus) {
   $("railstats").innerHTML = "";
   wireHandoff(page);
   restoreFocus(page, keepFocus);
+  setFoldable(false);
+}
+
+function renderReader(page) {
+  page.innerHTML = readerPageHtml();
+  $("railstats").innerHTML = "";
+  wireReaderPage(page);
   setFoldable(false);
 }
 
@@ -257,6 +273,7 @@ export function render() {
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
   else if (APP.view === "edit") renderEdit(page, keepFocus);
+  else if (APP.view === "readstory") renderReader(page);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
   // Empty on the shelf/story/handoff pages, and on live/read before there is anything to show --
