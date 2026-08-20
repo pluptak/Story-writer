@@ -14,7 +14,7 @@ import {
 } from "../engine/story-format.ts";
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
 import { architectNextChapter } from "../prompts.ts";
-import { ScaffoldSession, NextChapterSession, openNextChapter } from "../engine/architect.ts";
+import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect } from "../engine/architect.ts";
 import { LIVE } from "../live.ts";
 import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
 import { HttpError, readJsonBody } from "../server/http-util.ts";
@@ -422,6 +422,23 @@ describe("openNextChapter", () => {
       assert.equal(s.chapter, 3);
       assert.equal(s.spec.title, "The Fog Signal");
       assert.deepEqual(s.spec.characters.map(c => c.name), ["ASTER", "BRAE"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("leaves the worked example out of the handoff agent, which the scaffold agent still carries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    try {
+      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "chapter 1\n", "utf8");
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      const scaffolding = await buildArchitect(SCAFFOLD_DEFAULTS);
+
+      assert.ok(scaffolding.system.includes("A WORKED EXAMPLE"),
+                "the scaffold has no story yet, so it needs the format demonstrated");
+      assert.ok(!s.architect.system.includes("A WORKED EXAMPLE"),
+                "the handoff sends the real story every round; the example is the format said twice");
+      assert.ok(s.architect.system.length < scaffolding.system.length);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

@@ -431,5 +431,7 @@ architect work, but the story-data route the multi-chapter reader needs anyway.
 - Accepting a handoff rewrites `story.json`, so the GUI should show the target story and chapter clearly.
 - A failed handoff preflight restores the previous `story.json`.
 - The GUI should not expose raw filesystem paths; use discovered story directories returned by the API.
-- The architect currently receives a hard-coded worked example from `stories/doorway`; this should be
-  removed or made story-independent before treating the architect prompt as fully portable.
+- A **scaffold** architect receives a hard-coded worked example from `stories/doorway` (~1,870
+  estimated tokens); this should be made story-independent before treating that prompt as fully
+  portable. A **handoff** architect no longer gets it — the handoff prompt names every edit field
+  inline and resends the real story each round, so the example was the format said twice.

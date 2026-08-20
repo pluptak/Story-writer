@@ -26,10 +26,11 @@ git history, not in an evergreen planning document.
 
 ## Architect follow-ups
 
-- **The worked example is a quarter of every architect prompt.** `architectExample()` hard-codes
-  `stories/doorway/story.json`; it measures ~1,770 tokens of an opening handoff round's ~6,950. Making
-  it story-independent, or dropping it once the format is stable, is the cheapest context saving
-  available, and `Architect.MD` already lists it as a portability problem.
+- **The worked example still costs the scaffold a quarter of its prompt.** `architectExample()`
+  hard-codes `stories/doorway/story.json`, ~1,870 estimated tokens. The handoff no longer carries it
+  (`buildArchitect(d, false)`), which is where the context pressure actually was; the scaffold still
+  does, because it has no story yet to demonstrate the format with. Making it story-independent is
+  what is left, and `Architect.MD` lists it as a portability problem.
 - **Refused edits are never told to the model.** `applyEdits` and `refuse()` report ignored fields to
   the author, but `architectChange` sends only the author's text and the spec — so an architect that
   invents a field (`scene_1` rather than `scene_1.question`, observed) can repeat it every round.

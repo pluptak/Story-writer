@@ -22,9 +22,14 @@ async function architectExample(): Promise<string> {
   } catch { return ""; }
 }
 
-/** Build the architect agent: its system prompt carries the skill catalog and a worked example. */
-export async function buildArchitect(d: Defaults): Promise<Agent> {
-  const system = P.architectSystem(SKILL_CATALOG, await architectExample());
+/**
+ * Build the architect agent: its system prompt carries the skill catalog and, when scaffolding, a
+ * worked example of the story format. A handoff does not want it — the prompt names every edit field
+ * inline and sends the real story every round, so the example is the format said twice, and the one
+ * shape it demonstrates is the whole-story reply a handoff must *not* send.
+ */
+export async function buildArchitect(d: Defaults, withExample = true): Promise<Agent> {
+  const system = P.architectSystem(SKILL_CATALOG, withExample ? await architectExample() : "");
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
   a.think = d.thinking.architect;
   return a;
@@ -265,7 +270,7 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
     throw new Error(`No chapters written yet in ${dir} — there is nothing for the handoff to read.`);
   const raw = JSON.parse(await readFile(joinPath(resolveStoryDir(dir), "story.json"), "utf8"));
   const n = normalizeSpec(raw);
-  const s = new NextChapterSession(await buildArchitect(d), d, dir, n.spec, chapters);
+  const s = new NextChapterSession(await buildArchitect(d, false), d, dir, n.spec, chapters);
   s.problems = n.problems;
 
   // `refuse()` keeps the architect off a written chapter's scene, but a hand edit reaches it, and
