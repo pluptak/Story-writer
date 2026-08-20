@@ -115,7 +115,29 @@ them and must stay quiet forever.
       so rather than undoing it.
 - [ ] Put the question back.
 
-## 6. Consult timeline strip
+## 6. Story editor
+
+Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and click **edit story**).
+
+- [ ] **Load.** The editor shows metadata, scenes, characters, facts, config and models sections.
+- [ ] **Sections are collapsible.** Metadata and scenes open by default; config, models and facts start closed.
+- [ ] **Edit a field.** Change the title. The "unsaved changes" banner appears. The save button becomes enabled.
+- [ ] **Server-side validation.** Remove the premise text. After ~400ms the debounced `/story/check` call shows a validation error in both the issues list and the metadata section.
+- [ ] **Revert.** Click **revert**. Confirm the dialog. The title goes back to what it was. The "unsaved changes" banner disappears.
+- [ ] **Save.** Change the premise, click **save**. The save button briefly shows "saving…" then returns to "save". The "unsaved changes" banner disappears. Reload the page to confirm the edit persisted.
+- [ ] **Dirty guard.** With unsaved changes, click **back to story**. A `confirm()` dialog warns about unsaved changes. Cancel stays on the editor; confirm navigates away.
+- [ ] **Dirty guard — browser close.** With unsaved changes, close the tab. The browser fires `beforeunload` with a confirmation. (Hard to automate; verify once.)
+- [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
+- [ ] **Character editor.** Change a character's persona, knows, or goal. Add a skill. Verify after save.
+- [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
+- [ ] **Models editor.** Expand the models section. Change `default` model, save, reload.
+- [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
+- [ ] **Architect suggestion.** Expand "Ask the architect". Type a change request, click **suggest**. The button shows "thinking…" then returns results showing applied fields and any problems. *(Requires LM Studio with the architect model loaded.)*
+- [ ] **Run-in-flight guard.** Start a run. While it runs, navigate to the editor. Expect: the editor refuses to load with "cannot edit while a run is in flight". Alternately, open a story, start its run, then in another tab open the editor — verify the 409 response.
+- [ ] **Malformed story.** Directly open a story directory that has an unparseable `story.json` (modify one manually to be invalid JSON). The editor loads showing the error and the raw content (or `{ ok: false, error, raw }`).
+- [ ] **No concurrent edit loss.** Open the editor in two tabs. Edit in tab A, save. Tab B still shows stale data. Reload tab B — it gets the saved version.
+
+## 7. Consult timeline strip
 
 The strip lives outside `#page`, above the layout, so most of what can go wrong with it is about
 which view it is showing and whether it clears itself.
@@ -142,7 +164,7 @@ Capped markers need a story that can hit the ceiling — nothing on disk sets on
       character that gets retried once comes back marked capped (the `.capped` colour) with "capped"
       in its tooltip. *Skip and note as unchecked if you would rather not spend a run on it.*
 
-## 7. Per-agent model-call panel
+## 8. Per-agent model-call panel
 
 Also read-tab only, so no run is needed. Ground truth, to check the numbers against:
 
@@ -164,7 +186,7 @@ for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
 - [ ] Read a run with an empty `llm/` folder — a run killed before its first generation, if you have
       one. Expect "this run logged no model calls", not an error and not a spinner.
 
-## 8. Live writer screen
+## 9. Live writer screen
 
 Needs a run, so pair it with section 2. What the redesign changed:
 

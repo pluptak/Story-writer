@@ -4,7 +4,7 @@
  * a rejected answer is re-asked of a FRESH instance that never learns it was rejected.
  */
 
-import { writeFile, mkdir, rm, readFile } from "node:fs/promises";
+import { writeFile, mkdir, rm, readFile, rename } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
@@ -15,15 +15,15 @@ import { startServer, type ServerHost } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { restrictionsOf } from "./engine/skills.ts";
 import { NET } from "./engine/llm-client.ts";
-import {
-  resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
+import { resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
   loadDefaults, writtenChapters, type StoryConfig, type Defaults,
 } from "./engine/story-format.ts";
 import { directEdit, renderSpec, specView, type StorySpec } from "./engine/story-spec.ts";
+import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, runPreflight, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import {
-  buildArchitect, ScaffoldSession, openNextChapter, type ScaffoldRound, type NextChapterSession,
+  buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest, type ScaffoldRound, type NextChapterSession,
 } from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
 
@@ -358,6 +358,98 @@ const HOST: ServerHost = {
   newScaffoldSession, newHandoffSession, directEdit, specView,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
+  storyForEdit: async (dir) => {
+    const base = resolveStoryDir(dir);
+    const storyPath = joinPath(base, "story.json");
+    let raw: unknown;
+    try { raw = JSON.parse(await readFile(storyPath, "utf8")); }
+    catch (e) {
+      return { ok: false, error: `could not read story.json: ${(e as Error).message}`, raw: undefined };
+    }
+    const result = StoryJson.safeParse(raw);
+    if (!result.success) {
+      return {
+        ok: false, error: result.error.issues.map(i => `${i.path.join(".") || "story"}: ${i.message}`).join("\n"),
+        raw: raw as object,
+      };
+    }
+    // Run engine-level checks (premise, characters, warnings)
+    const parsed = result.data;
+    const warnings: string[] = [];
+    if (!parsed.premise.trim()) warnings.push("Premise is empty — there is nothing to write.");
+    if (!parsed.characters.length) warnings.push("No characters defined — the writer would have nobody to consult.");
+    for (const [i, s] of parsed.scenes.entries()) {
+      if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
+    }
+    return { ok: true, story: parsed, warnings };
+  },
+  checkStory: (story) => {
+    const result = StoryJson.safeParse(story);
+    if (!result.success) {
+      return {
+        ok: false, error: "validation failed",
+        issues: result.error.issues.map(i => ({ path: i.path.join(".") || "story", message: i.message })),
+      };
+    }
+    const parsed = result.data;
+    const warnings: string[] = [];
+    if (!parsed.premise.trim()) warnings.push("Premise is empty — there is nothing to write.");
+    if (!parsed.characters.length) warnings.push("No characters defined — the writer would have nobody to consult.");
+    for (const [i, s] of parsed.scenes.entries()) {
+      if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
+    }
+    return { ok: true, warnings };
+  },
+  saveStory: async (dir, story) => {
+    // Validate first
+    const check = StoryJson.safeParse(story);
+    if (!check.success) {
+      return { ok: false, reason: "validation failed" };
+    }
+    const parsed = check.data;
+    if (!parsed.premise.trim()) return { ok: false, reason: "Premise is empty — there is nothing to write." };
+    if (!parsed.characters.length) return { ok: false, reason: "No characters defined — the writer would have nobody to consult." };
+
+    // Guard: run must not be in flight (already checked by route, but double-check)
+    if (LIVE.running) return { ok: false, reason: "a run is in flight", status: 409 };
+
+    // Atomic write: write to .tmp, then rename over story.json
+    const base = resolveStoryDir(dir);
+    const storyPath = joinPath(base, "story.json");
+    const tmpPath = storyPath + ".tmp";
+    const content = JSON.stringify(parsed, null, 2) + "\n";
+    try {
+      await writeFile(tmpPath, content, "utf8");
+      await rename(tmpPath, storyPath);
+    } catch (e) {
+      return { ok: false, reason: `write failed: ${(e as Error).message}` };
+    }
+
+    // Re-load to confirm (catches silently-corrupt writes on constrained filesystems)
+    try {
+      await loadStory(dir);
+    } catch (e) {
+      return { ok: false, reason: `saved but does not load: ${(e as Error).message}` };
+    }
+
+    const warnings: string[] = [];
+    for (const [i, s] of parsed.scenes.entries()) {
+      if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
+    }
+    return { ok: true, warnings };
+  },
+  suggestEdits: async (spec, text) => {
+    const d = await architectDefaults(flag("model") ?? "");
+    const specObj = spec as StorySpec;
+    try {
+      const r = await statelessSuggest(d, specObj, String(text ?? ""));
+      if (r.kind === "failed") return { ok: false, error: r.error };
+      if (r.kind === "question") return { ok: true, kind: "question", ask: r.ask };
+      return { ok: true, kind: "edits", applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  },
 };
 const serve = () => startServer(PORT, HOST);
 

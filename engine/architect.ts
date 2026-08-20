@@ -292,3 +292,30 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
   }
   return s;
 }
+
+// -- STATELESS SUGGEST ------------------------------------------------------
+
+/** A stateless architect call: given the current story spec and the author's instruction, return
+ *  proposed edits. Creates a fresh agent per call, so no history carries between invocations. */
+export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
+  Promise<{ kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[];
+            problems: string[]; note: string }
+         | { kind: "question"; ask: string }
+         | { kind: "failed"; error: string }> {
+  const agent = await buildArchitect(d, false);
+  const specJson = JSON.stringify({ ...spec, writer_style: spec.writerStyle }, null, 1);
+  const prompt = P.architectChange(text, specJson);
+  const r = await architectRound(agent, prompt);
+  if ("error" in r) return { kind: "failed", error: r.error };
+
+  const back = String(r.out.ask ?? "").trim();
+  if (back && !r.out.edits) return { kind: "question", ask: back };
+  if (!Array.isArray(r.out.edits))
+    return { kind: "failed", error: "the reply contained neither edits nor a question" };
+
+  const e = applyEdits(spec, r.out);
+  return {
+    kind: "edits", applied: e.applied, ignored: e.ignored, problems: e.problems,
+    note: String(r.out.note ?? "").trim(),
+  };
+}

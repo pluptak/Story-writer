@@ -13,9 +13,11 @@ import { handleRunControl } from "./run-control-routes.ts";
 import { handleScaffoldRoutes } from "./scaffold-routes.ts";
 import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
 import { handleRunLogRoutes } from "./run-log-routes.ts";
-import type { ScaffoldSession, NextChapterSession } from "../engine/architect.ts";
+import { handleStoryEditRoutes } from "./story-edit-routes.ts";
+import type { ScaffoldSession, NextChapterSession, ScaffoldRound } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
+import type { StoryJson } from "../engine/story-schema.ts";
 
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
@@ -41,6 +43,37 @@ export interface ServerHost {
   specView(spec: StorySpec): unknown;
   /** The current run's output folder, or "" before a run has committed one. */
   outDir(): string;
+  /** Load a story's full validated definition for editing. Returns the Zod-parsed StoryJson
+   *  plus engine warnings. On parse failure returns the raw object so the editor can show the
+   *  error and let the user fix the file. */
+  storyForEdit(dir: string): Promise<{
+    ok: true; story: StoryJson; warnings: string[]
+  } | {
+    ok: false; error: string; raw?: object
+  }>;
+  /** Validate a modified story.json in memory without writing. Returns Zod errors + engine
+   *  warnings (empty premise, no characters, etc.) grouped by path. */
+  checkStory(story: object): {
+    ok: true; warnings: string[]
+  } | {
+    ok: false; error: string; issues: { path: string; message: string }[]
+  };
+  /** Save a validated story.json atomically. Guards: refuses while a run is in flight and
+   *  refuses if the story no longer loads. */
+  saveStory(dir: string, story: object): Promise<{
+    ok: true; warnings: string[]
+  } | {
+    ok: false; reason: string; status?: number
+  }>;
+  /** Stateless architect suggestion: given the current spec and user text, return proposed edits. */
+  suggestEdits(spec: unknown, text: string): Promise<{
+    ok: true; kind: "edits"; applied: {field:string;before:unknown;after:unknown}[]; ignored: string[];
+    problems: string[]; note: string
+  } | {
+    ok: true; kind: "question"; ask: string
+  } | {
+    ok: false; error: string
+  }>;
 }
 
 async function serveFile(res: ServerResponse, url: URL, contentType: string) {
@@ -125,6 +158,9 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         // handled
 
       } else if (await handleNextChapterRoutes(req, res, path, host)) {
+        // handled
+
+      } else if (await handleStoryEditRoutes(req, res, path, host)) {
         // handled
 
       } else if (await handleRunLogRoutes(req, res, path, host)) {

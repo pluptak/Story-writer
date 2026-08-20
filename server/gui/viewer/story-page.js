@@ -135,7 +135,7 @@ export function storyPageHtml() {
     ${runsListHtml(s)}
 
     <div class="btns" style="margin-top:18px">
-      <button class="btn" id="story-edit" disabled title="not built yet">edit story</button>
+      <button class="btn" id="story-edit">edit story</button>
       <span class="spacer"></span>
       <button class="btn" id="story-back">back to shelf</button>
     </div>
@@ -169,6 +169,9 @@ export function wireStoryPage(page) {
 
   const handoff = page.querySelector("#story-handoff");
   if (handoff) handoff.addEventListener("click", () => { APP.handoffDir = APP.storyDir; go("handoff"); });
+
+  const edit = page.querySelector("#story-edit");
+  if (edit) edit.addEventListener("click", () => { APP.editDir = APP.storyDir; go("edit"); });
 
   for (const b of page.querySelectorAll(".runbtn"))
     b.addEventListener("click", async () => {

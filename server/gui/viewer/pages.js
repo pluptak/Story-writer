@@ -4,6 +4,7 @@ import { build } from "./events.js";
 import { renderBlock, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
 import { storyPageHtml, wireStoryPage } from "./story-page.js";
+import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
 import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
 import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
@@ -88,6 +89,14 @@ function renderHandoff(page, keepFocus) {
   page.innerHTML = handoffPageHtml();
   $("railstats").innerHTML = "";
   wireHandoff(page);
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+}
+
+function renderEdit(page, keepFocus) {
+  page.innerHTML = storyEditHtml();
+  $("railstats").innerHTML = "";
+  wireStoryEditor(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
@@ -247,8 +256,12 @@ export function render() {
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
+  else if (APP.view === "edit") renderEdit(page, keepFocus);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
+  // Empty on the shelf/story/handoff pages, and on live/read before there is anything to show --
+  // an empty bordered card with just the header is worse than no card at all.
+  $("runctrl").hidden = !$("railstats").innerHTML && $("sessionbar").hidden;
   renderTimeline(blocks);
   wireTimeline();
 }

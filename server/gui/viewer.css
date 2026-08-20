@@ -77,7 +77,7 @@
   .rail .sessionbar { padding:12px 0 0; margin-top:12px; border-bottom:0;
                       border-top:1px solid var(--line); background:none; gap:7px; }
   .rail .sessionbar .btn { flex:1 1 auto; }
-  .rail .sessionbar #modelSelect { flex:1 1 100%; max-width:none; }
+  .rail .sessionbar #modelSelect { flex:1 1 100%; max-width:none; width:100%; min-width:0; }
   .rail .sessionbar #stop { margin-left:0; }
   .rail .sessionbar .ctrl-err { flex:1 1 100%; }
   .ctrl-err { font-family:var(--mono); font-size:11px; color:var(--bad); }
@@ -308,6 +308,32 @@
   .empty.starting h2 em { font-style:italic; color:var(--accent); }
   .empty.starting .thinking { display:inline-flex; align-items:center; gap:8px; font-size:14px; }
   .empty.starting .hint { margin-top:14px; font-size:12px; opacity:.7; }
+
+  /* ── editor ─────────────────────────────────────────────── */
+  .editor { max-width:800px; margin:0 auto; }
+  .editor-section { margin-bottom:12px; border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  .editor-section summary { font-family:var(--mono); font-size:11px; font-weight:600;
+                            text-transform:uppercase; letter-spacing:.08em; cursor:pointer;
+                            padding:4px 0; color:var(--muted); }
+  .editor-scene, .editor-char { border:1px solid var(--line); border-radius:6px; padding:10px 12px;
+                                margin-bottom:8px; background:var(--panel-2); }
+  .editor-scene h4, .editor-char h4 { font-family:var(--mono); font-size:12px; margin:0 0 6px;
+                                      color:var(--text); }
+  .editor-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .editor-row .field { flex:1; min-width:140px; }
+  .editor .field textarea { min-height:50px; }
+  .editor .field input[type=text], .editor .field input[type=number],
+  .editor .field textarea, .editor .field select {
+    font-size:13px; padding:5px 8px; border:1px solid var(--line); border-radius:4px;
+    background:var(--panel); color:var(--text); width:100%; box-sizing:border-box; }
+  .editor .field input[type=checkbox] { width:auto; margin-top:6px; }
+  .editor .field label { display:block; font-family:var(--mono); font-size:10px;
+                         text-transform:uppercase; letter-spacing:.08em; color:var(--faint);
+                         margin-bottom:2px; }
+  .editor .field.half { max-width:50%; }
+  .editor .field.third { max-width:33.33%; }
+  .editor .prob { font-size:11px; margin:2px 0; }
+
   .drop { position:fixed; inset:0; background:color-mix(in srgb,var(--accent) 14%,transparent);
           border:3px dashed var(--accent); display:none; place-items:center; z-index:20;
           font-family:var(--mono); color:var(--ink); }

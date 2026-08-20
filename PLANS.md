@@ -15,51 +15,7 @@ run, which is the owner's to make, batched.
 
 ---
 
-## 1. Story editor
-
-The engine stores authored stories in one validated `story.json`. The viewer reads stories and can
-create one through the scaffold interview, but it cannot edit an existing one.
-
-**Goals.** Edit a story without silently dropping fields or applying partial writes; use the same
-Zod-backed loader and preflight checks a run uses; keep architect suggestions provisional until
-accepted; leave run output and accepted prose outside the editable definition.
-
-**Model.** The server loads a story into an in-memory draft. The browser edits that draft and sends the
-complete `story.json` back for validation. A save is allowed only when the full draft loads
-successfully. Warnings stay visible but do not block saving. The server writes the file atomically, or
-not at all.
-
-Editable: `title`, `premise`, `writerStyle`; `scenes[]` (`place`, `question`, `pov`, `length`,
-`roster`); characters (`name`, `model`, `persona`, `knows`, `goal`, `skills`, `restrictions`); and
-`config`/`models`. **Not** editable: `chapters/<n>.md` and `out/` — chapter prose is produced by a run
-and is durable content, not configuration.
-
-**Routes** (a contract for later; route modules keep using `ServerHost` and must not import `engine/`):
-
-```text
-GET  /story/edit?dir=...            -> { dir, story, warnings[] }
-POST /story/check  { dir, story }   -> { ok, warnings[], error? }
-POST /story/save   { dir, story }   -> { ok: true, warnings[] } | { ok: false, reason }
-```
-
-`/story/check` validates the complete draft in memory. `/story/save` repeats that validation
-server-side and must not write on failure. It must also refuse while a run for that story is active —
-the run is reading the file the save would rewrite, the same rule the handoff already follows.
-
-**Blocks.** (1) The route and a full draft load. (2) Schema-aware fields for metadata, chapters,
-characters, models, run settings. (3) Debounced validation that preserves textarea selection and
-scroll position across SSE-triggered renders. (4) Save, revert, unsaved-change indicators. (5) An
-architect panel whose accepted suggestions modify the draft only, saving stays explicit — this is the
-editor's own panel, not the scaffold or handoff screen. (6) Coverage for malformed drafts, warnings,
-concurrent runs, and preservation of fields an edit did not touch.
-
-**Non-goals.** The removed `story.md`/persona-file format; editing retained logs or generated prose;
-collaborative editing (last successful save wins); a second story parser in the browser — the engine
-stays the validation authority.
-
----
-
-## 2. Reading: reader mode, story search, character sheet
+## 1. Reading: reader mode, story search, character sheet
 
 Three read-only consumption features. `GET /chapter?dir=&n=` already serves an accepted chapter after
 checking it against `host.writtenChapters()`, so **A and B need no server work at all.**
@@ -114,7 +70,7 @@ does not show it.
 
 ---
 
-## 3. Run inspection: cost/latency HUD and run comparison
+## 2. Run inspection: cost/latency HUD and run comparison
 
 The read tab already renders a retained `writing-log.jsonl` through `/runs/log`, and
 [`agents.js`](server/gui/viewer/agents.js) renders each agent's raw transcripts through `/runs/llm`.

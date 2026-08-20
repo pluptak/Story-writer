@@ -59,6 +59,20 @@ export const APP = {
                                 // screen -- with a live start button -- between the two.
   hAcceptArmed: 0,             // timer id: accepting a handoff wants a second click
   hAbandonArmed: 0,            // so does throwing it away
+  // Story editor state
+  editDir: "",                 // which story is being edited
+  editStory: null,             // the loaded story.json (Zod-parsed)
+  editWarnings: [],            // warnings from load
+  editError: "",               // load/validation error
+  editDraft: null,             // modified version (=== editStory initially)
+  editIssues: [],              // live validation issues [{path, message}]
+  editDirty: false,            // true if draft differs from loaded
+  editSaving: false,           // save in flight
+  editCheckTimer: null,        // debounce timer for /story/check
+  editSuggestOpen: false,      // architect suggestion panel expanded
+  editSuggestText: "",         // draft text in the suggestion textarea
+  editSuggestBusy: false,      // suggestion in flight
+  editSuggestResult: null,     // {ok, kind, applied, ignored, problems, note} from /story/suggest
   modelIds: [],                 // what LM Studio has loaded; fetched once, used by both dropdowns
   modelDefault: "",             // the model an interview would use if you chose nothing
   expandAll: false,

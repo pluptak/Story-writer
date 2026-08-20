@@ -131,6 +131,37 @@ second click after that returns `400 the session is not waiting on a choice`, no
 positive integer falls back to `1` rather than failing the pick. Out of range for *this* story is not
 caught here: `runChapter` rejects it when the run starts.
 
+## Story editor
+
+```
+GET  /story/edit?dir=...     → { ok:true, story: StoryJson, warnings[] }
+                               | { ok:false, error, raw? }
+POST /story/check  { story } → { ok:true, warnings[] }
+                               | { ok:false, error, issues[] }
+POST /story/save   { dir, story } → { ok:true, warnings[] }
+                                     | { ok:false, reason }
+POST /story/suggest { spec, text } → { ok:true, kind:"edits",
+                                       applied, ignored, problems, note }
+                                     | { ok:true, kind:"question", ask }
+                                     | { ok:false, error }
+```
+
+`/story/edit` loads the full Zod-parsed `StoryJson` from disk for editing, plus engine-level
+warnings. Returns `{ ok: false, raw }` when the file is on disk but will not parse, so the editor
+can show the error and the raw content. Refuses with `409` while a run is in flight — editing the
+definition a live run is reading would be a race.
+
+`/story/check` validates a modified draft in memory against the Zod schema and engine-level checks
+(empty premise, no characters, scenes without questions). Never writes.
+
+`/story/save` validates, atomically writes via `.tmp` rename, then re-loads to confirm. Refuses
+with `409` while a run is in flight.
+
+`/story/suggest` is a stateless architect call: given the current story spec and the author's
+instruction in `text`, creates a fresh architect agent, sends the change prompt, and returns the
+proposed edits. The editor shows the result but the user applies changes manually — the engine
+never writes from a suggestion.
+
 ## Run control
 
 All of these require a run already in flight (`running: true`) except `/interactive`, which is a
