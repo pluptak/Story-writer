@@ -399,7 +399,7 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
     + `${chapterDisplay} · ~${targetScene.length} words · up to ${sc.maxSteps} steps${C.reset}`);
 
   LIVE.meta = {
-    story: dir, target: targetScene.length, question: targetScene.question,
+    story: dir, chapter, chapters: sceneCount, target: targetScene.length, question: targetScene.question,
     characters: sc.characters.map(c => ({
       name: c.name,
       skills: c.skills.filter(s => s.source === "story").map(s => s.name),

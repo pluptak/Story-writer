@@ -165,7 +165,7 @@ export interface StoryCard {
 }
 
 export interface RunSummary {
-  id: string; mtimeMs: number;
+  id: string; mtimeMs: number; chapter?: number;
   steps?: number; words?: number; done?: boolean; stopped?: boolean;
 }
 export async function retainedRuns(storyDir: string): Promise<RunSummary[]> {
@@ -180,6 +180,7 @@ export async function retainedRuns(storyDir: string): Promise<RunSummary[]> {
       const lines = (await readFile(joinPath(runPath, "writing-log.jsonl"), "utf8")).trim().split("\n");
       for (let i = lines.length - 1; i >= 0; i--) {
         const ev = JSON.parse(lines[i]);
+        if (summary.chapter === undefined && typeof ev.chapter === "number") summary.chapter = ev.chapter;
         if (ev.t === "scene_end") {
           summary.steps = ev.steps; summary.words = ev.words; summary.done = ev.done; summary.stopped = ev.stopped;
           break;

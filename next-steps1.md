@@ -8,10 +8,10 @@ git history, not in an evergreen planning document.
 1. **Run inspector.** Render retained `writing-log.jsonl` and per-agent `llm/*.jsonl` data through the
    existing `/log.jsonl` and `/runs/log` routes. Keep inspection read-only and separate from run control.
 2. **Multi-chapter reader.** The chapter list, the per-chapter write action and reading accepted prose
-   are built ([`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md) items 1–3). What is left is grouping
-   retained runs by chapter, which waits on the API gaps [`Writer.MD`](Writer.MD) tracks: `chapter` is
-   absent from both `RunMeta` and `RunSummary`, so a run cannot be attributed to a chapter without
-   reading its log.
+   are built ([`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md) items 1–3). The API gaps are closed
+   too — `RunSummary.chapter` and `RunMeta.chapter`/`.chapters` now attribute a run without reading its
+   log. What is left is purely viewer work: grouping the "previous runs" list by chapter in
+   `server/gui/viewer/story-page.js`.
 3. ~~**Handoff screen.**~~ Built — the `#/handoff?dir=` page consumes `/next-chapter/*` and the
    `handoff` SSE state. What is left is the chapters-written column in `Architect.MD`'s Mockup B;
    `GET /chapter?dir=&n=` unblocks it, but the word counts mean one fetch per chapter. Design in
@@ -21,8 +21,8 @@ git history, not in an evergreen planning document.
 5. **Live writer screen redesign.** [`Writer.MD`](Writer.MD) verdict is build it now: every route the
    screen needs already works and is already driven by the shipped viewer, and
    [`writer-mockup.html`](writer-mockup.html) is faithful to the engine — including the reader round,
-   which offers directions rather than a character's answer. The one thing the mockup wants and cannot
-   have is the chapter label, which is the `RunMeta` gap in (2).
+   which offers directions rather than a character's answer. The chapter label it wanted is now on
+   `RunMeta`, so nothing about the mockup is unbuildable.
 
 ## Architect follow-ups
 

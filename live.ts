@@ -29,6 +29,8 @@ export function armRun() {
 // -- LIVE EVENT BUS --------------------------------------------------------
 export interface RunMeta {
   story: string;
+  chapter: number;
+  chapters: number;
   characters: Array<{ name: string; skills: string[]; restrictions: string[] }>;
   target: number;
   question: string;

@@ -47,27 +47,42 @@ describe("runDirs / retainedRuns", () => {
     const dir = await withOut();
     try {
       await addRun(dir, "2026-01-01T00-00-00-000Z", [
-        { t: "scene_start" }, { t: "scene_end", steps: 4, words: 900, done: true, stopped: false },
+        { t: "scene_start", chapter: 1 }, { t: "scene_end", chapter: 1, steps: 4, words: 900, done: true, stopped: false },
       ]);
       await addRun(dir, "2026-01-02T00-00-00-000Z", [
-        { t: "scene_start" }, { t: "scene_end", steps: 2, words: 300, done: false, stopped: true },
+        { t: "scene_start", chapter: 2 }, { t: "scene_end", chapter: 2, steps: 2, words: 300, done: false, stopped: true },
       ]);
       const runs = await retainedRuns(dir);
       assert.deepEqual(runs.map(r => r.id), ["2026-01-02T00-00-00-000Z", "2026-01-01T00-00-00-000Z"]);
+      assert.equal(runs[0].chapter, 2);
       assert.equal(runs[0].stopped, true);
+      assert.equal(runs[1].chapter, 1);
       assert.equal(runs[1].done, true);
       assert.equal(runs[1].words, 900);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
-  it("still lists a run killed mid-scene, with its outcome fields simply absent", async () => {
+  it("still lists a run killed mid-scene, with its outcome fields simply absent, but still attributed to its chapter", async () => {
     const dir = await withOut();
     try {
-      await addRun(dir, "2026-01-01T00-00-00-000Z", [{ t: "scene_start" }, { t: "draft", step: 1 }]);
+      await addRun(dir, "2026-01-01T00-00-00-000Z", [{ t: "scene_start", chapter: 3 }, { t: "draft", step: 1, chapter: 3 }]);
       const runs = await retainedRuns(dir);
       assert.equal(runs.length, 1);
+      assert.equal(runs[0].chapter, 3);
       assert.equal(runs[0].done, undefined);
       assert.equal(runs[0].stopped, undefined);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("leaves chapter unset for a run retained from before chapter numbers were logged", async () => {
+    const dir = await withOut();
+    try {
+      await addRun(dir, "2026-01-01T00-00-00-000Z", [
+        { t: "scene_start" }, { t: "scene_end", steps: 4, words: 900, done: true, stopped: false },
+      ]);
+      const runs = await retainedRuns(dir);
+      assert.equal(runs[0].chapter, undefined);
+      assert.equal(runs[0].done, true);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

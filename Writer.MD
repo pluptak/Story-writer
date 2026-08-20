@@ -116,9 +116,12 @@ three-direction panel needs no new field — see [The Reader Seat](#the-reader-s
 
 These would make the writer screen more robust; none of them block starting the redesign.
 
-1. Add `chapter` to `RunMeta`; it currently appears only in `scene_start` and scene events, so the
-   screen cannot label which chapter is running from `GET /run` alone.
-2. Add `chapter` to retained `RunSummary` so runs can be grouped by chapter without reading every log.
+1. ~~Add `chapter` to `RunMeta`~~ — built. `RunMeta` carries `chapter` and `chapters`, so `GET /run`
+   alone is enough to label a run "chapter 2 of 3" on a cold attach.
+2. ~~Add `chapter` to retained `RunSummary`~~ — built, read off the run's own log during
+   `retainedRuns`. It is optional: a run retained from before chapter numbers were logged has none,
+   and a run killed mid-scene still gets one, because the chapter is taken from the last event that
+   carries it rather than from `scene_end`.
 3. Consider an explicit `phase` and `awaitingReader` field in `run_state` instead of requiring the GUI
    to infer them from event history.
 4. Add structured model-error events so failures are understandable without reading the console.
