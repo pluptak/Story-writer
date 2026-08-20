@@ -236,6 +236,23 @@ story page → **read story**. The button only appears once a story has a writte
       this as unchecked.*
 - [ ] **Narrow the window below 900px.** The prose column reflows and stays readable.
 
+## 11. Story-wide search
+
+In the reader (section 10), using the search box above the prose.
+
+- [ ] **Empty box shows nothing.** No results panel, no "no matches" — just the chapters below.
+- [ ] **A word you know is there.** Type it. A match count appears and a hit per matching line, each
+      labelled with its chapter and showing the line with every occurrence highlighted.
+- [ ] **Case-insensitive.** The same word in a different case finds the same lines.
+- [ ] **Jump.** Click a hit. The page scrolls to that chapter's heading, and the heading is not hidden
+      under the sticky topbar.
+- [ ] **No results.** Type something not in the story. *no matches for "…"* — not a blank panel.
+- [ ] **Typing does not refetch.** With the network tab open, type several characters. No `/chapter`
+      or `/stories` requests fire — search is over prose already loaded. Focus stays in the box.
+- [ ] **Switching stories clears it.** Search for something, go back, open the reader on another
+      story: the box is empty and no prior hits remain. *(Needs a second story with a written
+      chapter — same note as section 3.)*
+
 ## Checking the viewer without an engine
 
 Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the

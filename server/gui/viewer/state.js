@@ -12,7 +12,7 @@ const newStore = () => ({ events: [], seen: new Set(), meta: null, open: new Set
 export const LIVEV = newStore();          // the running (or just-finished) scene
 export const READV = newStore();          // a saved run, loaded read-only
 export const READER = {                  // the story reader view: accepted prose by chapter
-  dir: "", chapters: [], loading: false, error: "",
+  dir: "", chapters: [], loading: false, error: "", query: "",
 };
 
 export const APP = {

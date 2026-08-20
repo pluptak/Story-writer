@@ -25,7 +25,7 @@ async function fetchChapters(dir, numbers) {
  *  wide window, and a second story opened inside it must not have the first one's prose land under
  *  its title. The later call has already overwritten `READER.dir`, so the earlier one bows out. */
 export async function loadReader(dir) {
-  READER.loading = true; READER.error = ""; READER.dir = dir; READER.chapters = [];
+  READER.loading = true; READER.error = ""; READER.dir = dir; READER.chapters = []; READER.query = "";
   syncHash();   // go() ran before READER.dir was set, so the hash has no ?dir= on it yet
   APP.render();
 
@@ -74,8 +74,13 @@ export function readerPageHtml() {
     </section>`;
   }
   const body = [`<h2>${esc(name)}</h2>`];
+  body.push(`<div class="reader-search">
+    <input type="text" id="reader-q" placeholder="search this story" value="${esc(READER.query || "")}"
+      autocomplete="off" spellcheck="false">
+  </div>
+  <div id="reader-results">${resultsHtml()}</div>`);
   for (const ch of READER.chapters) {
-    body.push(`<div class="reader-chapter">
+    body.push(`<div class="reader-chapter" id="reader-ch-${ch.n}">
       <div class="divider"><span>chapter ${ch.n}</span></div>
       ${ch.error ? `<div class="said bad">${esc(ch.error)}</div>` : `<div class="prose">${paras(ch.text)}</div>`}
     </div>`);
@@ -84,11 +89,78 @@ export function readerPageHtml() {
   return `<section class="picker reader-view">${body.join("")}</section>`;
 }
 
+// ---- search over the loaded prose ----------------------------------------
+// Runs entirely over READER.chapters, already in memory -- so a keystroke never fetches, and
+// switching stories (which resets chapters and query in loadReader) cannot show stale hits.
+
+/** One entry per line of prose that contains the query, in chapter then document order. */
+function searchMatches(query) {
+  const q = query.trim().toLowerCase();
+  const out = [];
+  if (!q) return out;
+  for (const ch of READER.chapters) {
+    if (ch.error || !ch.text) continue;
+    for (const line of ch.text.split("\n")) {
+      if (line.toLowerCase().includes(q)) out.push({ n: ch.n, line });
+    }
+  }
+  return out;
+}
+
+/** A ~50-char window either side of the first hit in `line`, every occurrence within it marked. */
+function snippetHtml(line, query) {
+  const q = query.trim();
+  const lc = line.toLowerCase(), qlc = q.toLowerCase();
+  const first = lc.indexOf(qlc);
+  const start = Math.max(0, first - 50), end = Math.min(line.length, first + q.length + 50);
+  const slice = line.slice(start, end), slc = slice.toLowerCase();
+  let out = "", i = 0;
+  for (let j = slc.indexOf(qlc); j !== -1; j = slc.indexOf(qlc, i)) {
+    out += esc(slice.slice(i, j)) + `<mark>${esc(slice.slice(j, j + q.length))}</mark>`;
+    i = j + q.length;
+  }
+  out += esc(slice.slice(i));
+  return (start > 0 ? "…" : "") + out + (end < line.length ? "…" : "");
+}
+
+function resultsHtml() {
+  const q = (READER.query || "").trim();
+  if (!q) return "";
+  const hits = searchMatches(q);
+  if (!hits.length) return `<p class="reader-noresult">no matches for "${esc(q)}"</p>`;
+  const items = hits.map(m => `<button class="reader-hit" data-ch="${m.n}">
+      <span class="hit-ch">ch ${m.n}</span>
+      <span class="hit-line">${snippetHtml(m.line, q)}</span>
+    </button>`).join("");
+  return `<p class="reader-count">${hits.length} match${hits.length === 1 ? "" : "es"}</p>
+    <div class="reader-hits">${items}</div>`;
+}
+
 export function wireReaderPage(page) {
   const back = page.querySelector("#reader-back");
   if (back) back.addEventListener("click", () => {
     const dir = READER.dir;
-    READER.dir = ""; READER.chapters = []; READER.error = "";
+    READER.dir = ""; READER.chapters = []; READER.error = ""; READER.query = "";
     if (dir) { APP.storyDir = dir; go("story"); } else go("shelf");
+  });
+
+  const results = page.querySelector("#reader-results");
+  // A hit jumps to its chapter's heading. The whole story is one scrolling page, so this is a
+  // scroll, not a route change -- #/readstory?dir= stays put.
+  const wireHits = () => {
+    for (const b of page.querySelectorAll(".reader-hit"))
+      b.addEventListener("click", () => {
+        page.querySelector(`#reader-ch-${b.dataset.ch}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+  };
+  wireHits();
+
+  // Repaint only the results list on a keystroke -- a full render would rebuild every chapter's
+  // prose and drop focus out of the box mid-word.
+  const q = page.querySelector("#reader-q");
+  if (q && results) q.addEventListener("input", () => {
+    READER.query = q.value;
+    results.innerHTML = resultsHtml();
+    wireHits();
   });
 }
