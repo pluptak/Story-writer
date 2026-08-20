@@ -126,8 +126,6 @@ function renderLive(page, blocks) {
   wireReader(page);
   setFoldable(blocks.some(b => b.kind === "consult"));
   renderRail(LIVEV, blocks);
-  renderTimeline();
-  wireTimeline(page);
 }
 
 function renderRead(page, blocks) {
@@ -200,4 +198,6 @@ export function render() {
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
+  renderTimeline(blocks);
+  wireTimeline();
 }
