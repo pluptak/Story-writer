@@ -8,9 +8,10 @@ import { Agent } from "../engine/agent.ts";
 import { LIVE, resetLive, armRun } from "../live.ts";
 import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
+import { handleRunLogRoutes } from "../server/run-log-routes.ts";
 import { HttpError, readJsonBody } from "../server/http-util.ts";
 import type { ServerHost } from "../server/server.ts";
-import { callRoute, fakeRequest, fakeRawRequest, quiet, ScriptedAgent } from "./helpers.ts";
+import { callRoute, callGet, fakeRequest, fakeRawRequest, quiet, ScriptedAgent } from "./helpers.ts";
 
 // Constants needed by tests
 const SCAFFOLD_DEFAULTS = {
@@ -424,5 +425,56 @@ describe("handleRunControl", () => {
     const rPut = await callRoute(handleRunControl, "/stop", {}, host, "PUT");
     assert.equal(rPut.handled, false);
     resetLive();
+  });
+});
+
+// -- SECTION ----
+describe("/runs/llm routes", () => {
+  const host: ServerHost = {
+    selectableStory: async (d) => d.startsWith("stories/") ? d : null,
+    resolveStoryDir: (d) => "/resolved/" + d,
+    runDirs: async () => ["run-1"],
+    runLlmLogs: async () => [{ file: "writer.jsonl", agent: "WRITER", role: "writer", models: ["m1"], calls: 3, promptChars: 100, responseChars: 20 }],
+    readLlmLog: async (_dir, _id, file) => file === "writer.jsonl" ? '{"ts":"t1"}\n{"ts":"t2"}' : null,
+  } as unknown as ServerHost;
+
+  it("is not one of its routes", async () => {
+    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/x&id=run-1", host);
+    assert.equal(r.handled, false);
+  });
+
+  it("refuses a story it did not discover", async () => {
+    const r = await callGet(handleRunLogRoutes, "/runs/llm?dir=../elsewhere&id=run-1", host);
+    assert.equal(r.code, 400);
+    assert.match(r.json().reason, /no such story/);
+  });
+
+  it("refuses a run the story does not have", async () => {
+    const r = await callGet(handleRunLogRoutes, "/runs/llm?dir=stories/doorway&id=nope", host);
+    assert.equal(r.code, 404);
+    assert.match(r.json().reason, /no such run/);
+  });
+
+  it("lists a run's transcripts", async () => {
+    const r = await callGet(handleRunLogRoutes, "/runs/llm?dir=stories/doorway&id=run-1", host);
+    assert.equal(r.code, 200);
+    const body = r.json();
+    assert.equal(body.logs.length, 1);
+    assert.equal(body.logs[0].agent, "WRITER");
+    assert.equal(body.logs[0].calls, 3);
+  });
+
+  it("serves one transcript as ndjson", async () => {
+    const r = await callGet(handleRunLogRoutes, "/runs/llm/file?dir=stories/doorway&id=run-1&file=writer.jsonl", host);
+    assert.equal(r.code, 200);
+    assert.equal(r.headers["Content-Type"], "application/x-ndjson");
+    assert.equal(r.text.split("\n").filter((l: string) => l).length, 2);
+  });
+
+  it("refuses a transcript the run does not have", async () => {
+    // The engine's listing is the allowlist; the route never validates the name itself.
+    const r = await callGet(handleRunLogRoutes, "/runs/llm/file?dir=stories/doorway&id=run-1&file=../writing-log.jsonl", host);
+    assert.equal(r.code, 404);
+    assert.match(r.json().reason, /no such transcript/);
   });
 });

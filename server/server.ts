@@ -12,9 +12,10 @@ import { HttpError, json, readJsonBody } from "./http-util.ts";
 import { handleRunControl } from "./run-control-routes.ts";
 import { handleScaffoldRoutes } from "./scaffold-routes.ts";
 import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
+import { handleRunLogRoutes } from "./run-log-routes.ts";
 import type { ScaffoldSession, NextChapterSession } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
-import type { StoryCard } from "../engine/preflight.ts";
+import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
@@ -23,6 +24,9 @@ export interface ServerHost {
   selectableStory(dir: string): Promise<string | null>;
   resolveStoryDir(dir: string): string;
   runDirs(storyDir: string): Promise<string[]>;
+  /** A retained run's per-agent LLM transcripts. Both take a resolved story path, as `runDirs` does. */
+  runLlmLogs(storyDir: string, id: string): Promise<LlmLogSummary[]>;
+  readLlmLog(storyDir: string, id: string, file: string): Promise<string | null>;
   /** The chapter numbers already written for a story -- the chapter equivalent of `runDirs`. Takes
    *  a discovered story dir, not a resolved path. */
   writtenChapters(dir: string): Promise<number[]>;
@@ -121,6 +125,9 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         // handled
 
       } else if (await handleNextChapterRoutes(req, res, path, host)) {
+        // handled
+
+      } else if (await handleRunLogRoutes(req, res, path, host)) {
         // handled
 
       } else if (path === "/log.jsonl") {

@@ -77,3 +77,19 @@ export async function callRoute(handler: RouteHandler, path: string, body: unkno
   const handled = await handler(req, res, path, host);
   return { handled, code, body: sent ? JSON.parse(sent) : null };
 }
+
+/** Drive one GET route whose parameters live in the query string. Unlike `callRoute` it sets
+ *  `req.url` and hands back the raw body and the response headers -- these routes answer with NDJSON
+ *  as often as with JSON, so parsing is the caller's choice. */
+export async function callGet(handler: RouteHandler, url: string, host: ServerHost) {
+  const req = Readable.from([]) as unknown as IncomingMessage;
+  (req as { method?: string }).method = "GET";
+  (req as { url?: string }).url = url;
+  let code = 0, sent = "", headers: Record<string, string> = {};
+  const res = {
+    writeHead(c: number, h?: Record<string, string>) { code = c; headers = h ?? {}; return res; },
+    end(s?: string) { sent = s ?? ""; },
+  } as unknown as ServerResponse;
+  const handled = await handler(req, res, url.split("?")[0], host);
+  return { handled, code, headers, text: sent, json: () => JSON.parse(sent) };
+}
