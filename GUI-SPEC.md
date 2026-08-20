@@ -99,11 +99,22 @@ not be reached (distinct from "reachable but empty").
 GET /log.jsonl            → the in-progress run's writing-log.jsonl, or 404 before one exists
 GET /runs/log?dir=&id=    → a retained run's writing-log.jsonl, or 404/400 if dir/id don't resolve
 GET /chapter?dir=&n=      → an accepted chapter's markdown, or 404 if that chapter is not written
+GET /runs/llm?dir=&id=    → 200 { ok:true, logs:[{ file, agent, role, models[], calls,
+                                                   promptChars, responseChars }] }
+GET /runs/llm/file?dir=&id=&file=
+                          → that transcript's raw NDJSON, or 404 { ok:false, reason }
 ```
-All three serve the exact on-disk files. The event shapes are listed in the SSE section below. `dir` goes
+They serve the exact on-disk files. The event shapes are listed in the SSE section below. `dir` goes
 through `host.selectableStory()` first, so it accepts anything the
 picker itself would accept, not a raw filesystem path. `/chapter` also validates `n` against the story's
 written chapters rather than trusting it.
+
+The two `/runs/llm` routes read `out/<id>/llm/<agent>.jsonl`, one file per agent, each line
+`{ ts, role, agent, model, prompt, response }`. `models` is a list because `/model` can swap a model
+mid-run. **`file` is never validated by the route** — it is passed to the engine, which serves only
+what its own directory listing named, so the allowlist is what is actually on disk rather than a
+pattern. A run killed before its first generation lists nothing rather than failing. Both are
+read-only: unlike the run-control routes, nothing here can reach a running scene.
 
 ## Story selection
 
@@ -265,7 +276,7 @@ plus, scene-loop-level:
   { t:"bad_consult"; character; why }
   { t:"judge"; character; verdict; note; attempt }
   { t:"accept"; character; attempt; speech; action }
-   { t:"retry"; character; attempt; situation; question }
+  { t:"retry"; character; attempt; situation; question }
   { t:"budget"; added; budget }
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
