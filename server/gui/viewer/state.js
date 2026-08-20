@@ -29,6 +29,13 @@ export const APP = {
                                  // not clear it -- chapter 1 of one story must never render under
                                  // chapter 1 of another.
   chapterError: "",             // that chapter would not load
+  agents: null,                 // {dir, id, logs[]}: /runs/llm for the run being read. Carries its
+                                 // own dir+id for the same reason `chapter` does -- one run's agents
+                                 // must never render under another's
+  agentsError: "",              // /runs/llm refused or did not answer
+  transcript: null,             // {dir, id, file, calls[]}: one agent's transcript, opened on demand
+  transcriptError: "",          // that transcript would not load
+  callOpen: -1,                 // index of the one call expanded in the open transcript, or -1
   runError: "",                 // the engine failed to load or run the picked story, shown on the story page
   runEnded: null,                // the run just finished: {done, stopped, words, steps} -- the end-of-
                                   // run modal is up until "back to shelf" or "stay here" clears it

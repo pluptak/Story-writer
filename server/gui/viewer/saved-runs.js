@@ -3,6 +3,7 @@ import { APP, READV } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
 import { castChips } from "./shelf.js";
+import { loadAgents, agentsPanelHtml, wireAgents } from "./agents.js";
 
 /** Fetch one retained run's log and load it into READV -- shared by a deep-linked reload (sse.js)
  *  and the story page's "read a previous run" rows (story-page.js). */
@@ -14,6 +15,7 @@ export async function loadRun(dir, id) {
     READV.dir = dir; READV.id = id;
     READV.label = fmtRun((APP.stories?.find(s => s.dir === dir)?.runs || []).find(x => x.id === id) || {});
     ingest(await r.text(), READV);
+    await loadAgents(dir, id);
     return true;
   } catch { return false; }
 }
@@ -29,12 +31,13 @@ export function readChromeHtml() {
     ${cast ? `<div class="row">${cast}</div>`
            : `<p class="sub">open a story on the shelf, then "read" a previous run — or open one from disk</p>`}
     <div class="btns" style="margin-top:14px"><button class="btn" id="open-log">open a saved log</button></div>
-  </section>`;
+  </section>` + agentsPanelHtml();
 }
 
 export function wireSavedRuns(page) {
   const ol = page.querySelector("#open-log");
   if (ol) ol.addEventListener("click", () => $("file").click());
+  wireAgents(page);
 }
 
 /** Fetch the shelf's cards. Feeds the shelf itself (while picking) and, while reading, only labels

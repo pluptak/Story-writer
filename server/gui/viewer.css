@@ -320,3 +320,23 @@
   .timeline .tl-marker.capped { background:color-mix(in srgb, var(--bad) 18%, var(--panel-2));
                                 border-color:var(--bad); color:var(--bad); }
   .timeline .tl-marker.retried.capped { background:color-mix(in srgb, var(--bad) 28%, var(--panel-2)); }
+
+  /* the read tab's per-agent panel -- reuses .cards/.divider/.hint/.said from the story page */
+  .agents { margin-top: 18px; }
+  .agentrow { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+              padding:13px 15px; box-shadow:var(--shadow); }
+  .agentrow .ag-name { font-size:13.5px; }
+  .agentrow .ag-name .tag { font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:999px;
+                            border:1px solid var(--line); color:var(--faint); margin-left:6px; }
+  .agentrow .ag-name .tag.writer { color:var(--accent); border-color:var(--accent); }
+  .agentrow .ag-meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:4px; }
+  .agentrow .btn { margin-top:10px; }
+  .calls { display:flex; flex-wrap:wrap; gap:6px; }
+  .callbtn { font-size:10px; padding:4px 8px; }
+  .callbtn.current { color:var(--accent); border-color:var(--accent); background:var(--panel-2); }
+  .callbody { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+  .callbody .msg { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+                   padding:10px 12px; font-size:12.5px; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .callbody .msg.reply { border-color:var(--accent); }
+  .callbody .msg-role { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+                        text-transform:uppercase; color:var(--faint); margin-bottom:5px; }
