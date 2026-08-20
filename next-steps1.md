@@ -9,7 +9,8 @@ git history, not in an evergreen planning document.
    existing `/log.jsonl` and `/runs/log` routes. Keep inspection read-only and separate from run control.
 2. ~~**Multi-chapter reader.**~~ Built — [`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md) items 1–4:
    the chapter list, the per-chapter write action, reading accepted prose, and runs grouped by the
-   chapter they wrote. Verified statically only, like everything else under `server/gui/`.
+   chapter they wrote. Checked live against [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) on 2026-08-20 —
+   still no automated coverage, so any further change there needs that pass run again.
 3. ~~**Handoff screen.**~~ Built — the `#/handoff?dir=` page consumes `/next-chapter/*` and the
    `handoff` SSE state. What is left is the chapters-written column in `Architect.MD`'s Mockup B;
    `GET /chapter?dir=&n=` unblocks it, but the word counts mean one fetch per chapter. Design in
