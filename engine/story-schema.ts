@@ -7,13 +7,15 @@ export type ThinkLevel = (typeof THINK_LEVELS)[number];
 
 const thinkLevel = z.enum(THINK_LEVELS);
 
-/** One scene's definition: where it is, the question it answers, whose perception, length, and roster. */
+/** One scene's definition: where it is, the question it answers, whose perception, length, roster, and optional per-scene overrides. */
 export const SceneDef = z.strictObject({
   place: z.string().default(""),
   question: z.string().default(""),
   pov: z.string().default(""),
   length: z.number().min(1).default(700),
   roster: z.array(z.string()).default([]),
+  writerModel: z.string().optional(),
+  writerThink: thinkLevel.optional(),
 });
 
 export type SceneDef = z.infer<typeof SceneDef>;

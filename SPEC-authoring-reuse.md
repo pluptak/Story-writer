@@ -1,6 +1,6 @@
 # SPEC-authoring-reuse: Restriction Bundles and Per-Scene Overrides
 
-**Status: proposed, not built.** Two ideas for reducing repetitive `story.json` authoring: named
+**Status: implemented.** Two ideas for reducing repetitive `story.json` authoring: named
 bundles for multi-skill restrictions, and per-scene model/thinking overrides.
 
 ## Correction to the original premise
@@ -12,7 +12,7 @@ text." Inspection shows restrictions are **already** named, single references, n
 speech, hearing, sight, touch, taste, smell, recall) via `canonSkill()`, dropping the matching general
 skill. A restriction of `"sight"` already means "blind" — there is no prose to template.
 
-Two real gaps remain, and this doc scopes both:
+Two real gaps were identified, and this doc records both implementations:
 
 1. **No bundles.** A character restricted in several senses at once still needs one catalog entry per
    sense (`["sight", "hearing"]`), and there's no way to name that combination once and reuse it across
@@ -38,24 +38,26 @@ Two real gaps remain, and this doc scopes both:
   other story-load warnings are, via `engine/preflight.ts`) instead of only a console warning invisible
   outside the terminal.
 
-**Files:** `engine/skills.ts` (catalog + resolution), `engine/preflight.ts` (surfacing unresolved
-restrictions as warnings). No schema change — `restrictions` stays `string[]`, values are just allowed
-to reference a bundle name now.
+**Implementation:** `engine/skills.ts` now contains the fixed global `TRAIT_CATALOG` with the built-in
+`deprived` (`sight`, `hearing`), `anosmic` (`smell`), and `insensate` (`touch`, `taste`) bundles.
+`resolveSkills()` checks bundle names before single skills, composes multiple bundles, and warns once
+for unresolved restriction entries. `runPreflight()` already captured `console.warn` during story
+loading, so no additional `engine/preflight.ts` change was needed to surface those warnings. No schema
+change — `restrictions` stays `string[]`, and values may reference a bundle name.
 
-**Tests:** `tests/skills.test.ts` — a bundle expands to its constituent skills, an unknown restriction
-becomes a warning rather than being silently swallowed, and existing single-skill restrictions are
-unaffected.
+**Tests:** `tests/skills.test.ts` covers bundle expansion, composition, case-insensitive matching,
+unknown restriction warnings, and unchanged single-skill behavior. Existing story-load warning tests
+also confirm the preflight capture path.
 
-**Verify:** `npx tsc`, `npm test`.
+**Verify:** `npx tsc --noEmit`, `npm test` — 231 tests passed.
 
 ## B. Per-scene model/thinking overrides
 
-Confirmed: `models`/`config.thinking` are read exactly once per story load
+The original limitation was that `models`/`config.thinking` were read exactly once per story load
 (`engine/story-format.ts`, building `StoryConfig`) and reused unchanged across every chapter —
 `engine/scene-loop.ts` reads `sc.models.writer` (line ~354) and `sc.thinking.writer` (line ~122) as
-constants for the whole run. `SceneDef` (`engine/story-schema.ts`) is a `strictObject` with only
-`place`/`question`/`pov`/`length`/`roster` — no override field exists, and being `strictObject` means
-one would need to be added explicitly (an unknown key is rejected, not silently ignored).
+constants for the whole run. `SceneDef` (`engine/story-schema.ts`) was a `strictObject` with only
+`place`/`question`/`pov`/`length`/`roster`; it now explicitly includes the two writer override fields.
 
 - `SceneDef`: add `writerModel?: string` (falls back to `sc.models.writer` when unset) and
   `writerThink?: ThinkLevel` (falls back to `sc.thinking.writer`). Scoped to the writer only, since
@@ -67,20 +69,23 @@ one would need to be added explicitly (an unknown key is rejected, not silently 
   and `sd.writerThink ?? sc.thinking.writer`. `sd` (the active `SceneDef`) is already in scope at both
   call sites — no new parameter threading needed.
 
-**Files:** `engine/story-schema.ts` (schema), `engine/scene-loop.ts` (the two read sites).
+**Implementation:** `SceneDef` in `engine/story-schema.ts` now accepts optional `writerModel` and
+`writerThink` fields. `engine/scene-loop.ts` uses those values for the active writer, falling back to
+the story-wide model and thinking settings with nullish coalescing. Character-agent settings remain
+story-wide/per-character as before.
 
-**Tests:** `tests/story-format.test.ts` for schema defaults/validation; `tests/run-state.test.ts` (or
-wherever `writeScene`'s writer-agent construction is already covered) to confirm a scene override wins
-over the story-wide setting and an absent override falls back correctly.
+**Tests:** `tests/story-format.test.ts` covers schema acceptance, absent-field behavior, and invalid
+thinking values. `tests/run-state.test.ts` directly inspects writer construction without an LLM call to
+confirm an override wins and absent overrides fall back.
 
-**Verify:** `npx tsc`, `npm test`.
+**Verify:** `npx tsc --noEmit`, `npm test` — 231 tests passed.
 
 ## Blocks
 
-1. Bundle catalog + preflight warning fix (A) — self-contained, `engine/skills.ts` and
-   `engine/preflight.ts` only.
-2. Per-scene writer model/thinking override (B) — self-contained, `engine/story-schema.ts` and
-   `engine/scene-loop.ts` only.
+1. Bundle catalog + preflight warning fix (A) — implemented in `engine/skills.ts`; existing
+   `engine/preflight.ts` warning capture required no code change.
+2. Per-scene writer model/thinking override (B) — implemented in `engine/story-schema.ts` and
+   `engine/scene-loop.ts`.
 
 Independent of each other; either can go first. Both are engine-only — no GUI or prompt changes, since
 neither introduces anything a model needs told differently (a bundle just expands before the existing

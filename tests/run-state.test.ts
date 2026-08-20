@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 
 import { loadStory } from "../engine/story-format.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
-import { wrapWriter, writerCast, runChapter } from "../engine/scene-loop.ts";
+import { wrapWriter, writerCast, runChapter, writeScene } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
 import type { Skill } from "../engine/skills.ts";
 import { complete } from "../engine/llm-client.ts";
@@ -101,6 +101,53 @@ describe("runChapter validation", () => {
                            assert.match(e.message, /integer/);
                            return true;
                          });
+  });
+});
+
+describe("per-scene writer overrides", () => {
+  it("wins over story-wide writer settings without making an LLM call", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sd = { ...sc.scenes[0], writerModel: "scene-model", writerThink: "high" as const };
+
+    armRun();
+    stopRun();
+    try {
+      await writeScene(
+        sd, 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, "story-model", sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        1, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, () => {},
+      );
+
+      assert.equal(LIVE.writer?.model, "scene-model");
+      assert.equal(LIVE.writer?.think, "high");
+    } finally {
+      armRun();
+      resetLive();
+    }
+  });
+
+  it("falls back to story-wide writer settings when overrides are absent", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+
+    armRun();
+    stopRun();
+    try {
+      await writeScene(
+        sc.scenes[0], 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, "story-model", sc.models.summary,
+        { writer: "medium", summary: sc.thinking.summary },
+        1, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, () => {},
+      );
+
+      assert.equal(LIVE.writer?.model, "story-model");
+      assert.equal(LIVE.writer?.think, "medium");
+    } finally {
+      armRun();
+      resetLive();
+    }
   });
 });
 

@@ -118,8 +118,8 @@ export async function writeScene(
 ) {
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
-  const writer = new Agent("WRITER", writerModel, wrapWriter(premise, sd, writerCast(roster, []), writerStyle), 0.8);
-  writer.think = thinking.writer;
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, writerCast(roster, []), writerStyle), 0.8);
+  writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
   LIVE.writer = writer; LIVE.log = log;
 
