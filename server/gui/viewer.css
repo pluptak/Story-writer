@@ -354,3 +354,23 @@
   .callbody .msg.reply { border-color:var(--accent); }
   .callbody .msg-role { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.06em;
                         text-transform:uppercase; color:var(--faint); margin-bottom:5px; }
+
+  /* the live writer page: headline block, then the prose in a card. `.head`/`.body`/`.label` are
+     scoped to .prosecard on purpose -- other components already use those names. */
+  .livehead { margin-bottom: 22px; }
+  .livehead .eyebrow { font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+                       text-transform:uppercase; color:var(--accent); margin:0 0 6px; }
+  .livehead h2 { font-family:var(--serif); font-weight:400; font-size:clamp(23px,3.6vw,31px);
+                 line-height:1.14; margin:0; }
+  .livehead .lede { max-width:620px; margin:11px 0 0; color:var(--muted); font-size:13.5px; }
+  .prosecard { background:var(--panel); border:1px solid var(--line); border-radius:13px;
+               box-shadow:var(--shadow); }
+  .prosecard .head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+                     padding:15px 18px 12px; border-bottom:1px solid var(--line); }
+  .prosecard .head h3 { font-family:var(--serif); font-weight:400; font-size:18px; margin:3px 0 0; }
+  .prosecard .label { font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+                      text-transform:uppercase; color:var(--faint); }
+  .prosecard .body { padding:16px 18px; }
+  .prosecard .runmeta { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:15px; }
+  .prosecard .metachip { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:999px;
+                         border:1px solid var(--line); background:var(--panel-2); color:var(--muted); }

@@ -6,7 +6,7 @@ import { pickerHtml, wirePicker, castChips } from "./shelf.js";
 import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
-import { paintSrcbar, paintTitle, renderRail } from "./hud.js";
+import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
@@ -51,7 +51,10 @@ function renderHeader() {
   const m = APP.view === "live" ? LIVEV.meta : APP.view === "read" ? READV.meta : null;
   if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; $("castcard").hidden = true; return; }
   $("title").textContent = basename(m.story) || "story-writer";
-  $("question").textContent = m.question || "";
+  // The live page shows the question as its headline, so the topbar says what the run is doing
+  // instead of repeating it.
+  const ph = APP.view === "live" ? phaseOf(LIVEV) : "";
+  $("question").textContent = APP.view === "live" ? (ph ? `live chapter · ${ph}` : "") : (m.question || "");
   // Live only: the read page carries its own "Cast" section, and the same pills in the header too
   // is one set too many.
   $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story) : "";
@@ -89,6 +92,34 @@ function renderHandoff(page, keepFocus) {
   setFoldable(false);
 }
 
+/** The mockup's headline block. The scene question is the headline: it is what this chapter exists
+ *  to answer, and the topbar stops repeating it while the live page is showing. */
+function liveHeaderHtml() {
+  const m = LIVEV.meta;
+  if (!m) return "";
+  const where = m.chapters > 1 ? `chapter ${m.chapter} of ${m.chapters}` : "chapter";
+  return `<div class="livehead">
+    <p class="eyebrow">${esc(where)} · ${esc(storyName(m.story))}</p>
+    <h2>${esc(m.question || "")}</h2>
+    <p class="lede">The writer drafts only as far as the next choice that is a character's to make,
+      then asks them for it. It never sees their personas.</p>
+  </div>`;
+}
+
+/** Titles reuse the app's own existing wording for each state rather than inventing a second
+ *  vocabulary for the same thing -- "the writer wants your call" is what the reader card says, and
+ *  "the step budget is spent" is what the budget prompt says. */
+const PHASE_TITLE = {
+  "writing": "A draft is arriving",
+  "consulting": "A choice is being checked",
+  "reader wait": "The writer wants your call",
+  "budget wait": "The step budget is spent",
+  "paused": "Paused at the last boundary",
+  "pausing": "Pausing at the next boundary",
+  "stopping": "Stopping",
+  "idle": "The scene so far",
+};
+
 function renderLive(page, blocks) {
   if (!blocks.length) {
     const warming = APP.live && (APP.picked || (APP.session.running && !APP.session.picking));
@@ -117,7 +148,26 @@ function renderLive(page, blocks) {
     setFoldable(false);
     return;
   }
-  page.innerHTML = `<div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>`;
+  const steps = LIVEV.events.filter(e => e.t === "draft").length;
+  const target = LIVEV.meta?.target || 0;
+  const words = LIVEV.events.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);
+  const consults = blocks.filter(b => b.kind === "consult").length;
+  const phase = phaseOf(LIVEV);
+  const chip = t => `<span class="metachip">${esc(t)}</span>`;
+  page.innerHTML = liveHeaderHtml() + `<section class="prosecard">
+    <div class="head">
+      <div><span class="label">live prose</span><h3>${esc(PHASE_TITLE[phase] || "The scene so far")}</h3></div>
+      <span class="label">step ${steps}</span>
+    </div>
+    <div class="body">
+      <div class="runmeta">
+        ${chip(target ? `${words} / ${target} words` : `${words} words`)}
+        ${chip(`${consults} consult${consults === 1 ? "" : "s"}`)}
+        ${chip(APP.session.interactive ? "interactive" : "hands off")}
+      </div>
+      <div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>
+    </div>
+  </section>`;
   for (const d of page.querySelectorAll("details.consult")) {
     d.addEventListener("toggle", () => {
       const s = Number(d.dataset.seq);
