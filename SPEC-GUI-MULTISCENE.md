@@ -20,17 +20,19 @@ repeat event shapes or route error handling.
 
 ## Viewer work
 
-1. Show every `story.json.scenes[]` entry on the story page, including its place, question, POV, and
-   whether it is writable.
-2. Give each chapter its own write action that posts `{ dir, chapter }` to `/select`.
-3. Display the accepted `chapters/<n>.md` text in chapter order.
+1. ~~Show every `story.json.scenes[]` entry on the story page, including its place, question, POV, and
+   whether it is writable.~~ Done — `/stories` carries `scenes[]` and `chapters[]`, and the story page
+   draws a row per chapter tagged `written`/`next`.
+2. ~~Give each chapter its own write action that posts `{ dir, chapter }` to `/select`.~~ Done.
+3. ~~Display the accepted `chapters/<n>.md` text in chapter order.~~ Done — `GET /chapter?dir=&n=`
+   serves the prose and each written chapter row on the story page opens it inline.
 4. Group retained runs by chapter and make each run's log available through the existing log routes.
 5. Keep current-run rendering scoped to one chapter. Aggregate story-level totals only when the UI is
    explicitly showing more than one run.
 
 ## Out of scope
 
-- Adding a new server route solely for chapter discovery; `/stories` already returns story cards and
-  their scene metadata.
+- Adding a new server route solely for chapter discovery; `/stories` now carries `scenes[]` and the
+  written chapter numbers, so chapter discovery needs no route.
 - Reintroducing `story_end` or a multi-scene run.
 - Editing chapter prose. The proposed editor is described in [`SPEC-E-editor.md`](SPEC-E-editor.md).

@@ -3,7 +3,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { restrictionsOf } from "./skills.ts";
 import { LMSTUDIO_MODELS_URL } from "./llm-client.ts";
-import { loadStory, discoverStories, resolveStoryDir } from "./story-format.ts";
+import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
 
 export async function runDirs(storyDir: string): Promise<string[]> {
   try {
@@ -20,6 +20,7 @@ export interface PreflightResult {
     premise: string;
     characters: { name: string; skills: number; added: string[]; restrictions: string[] }[];
     scene: { place: string; question: string; pov: string; length: number };
+    scenes: SceneDef[];
     maxSteps: number; retries: number; clarifications: number; maxProseWords: number;
     models: { default: string; writer: string; summary: string };
     modelCheck: "ok" | "missing" | "unreachable";
@@ -81,6 +82,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
             restrictions: restrictionsOf(c.skills),
           })),
           scene: sc.scenes[0],
+          scenes: sc.scenes,
           maxSteps: sc.maxSteps, retries: sc.retries, clarifications: sc.clarifications,
           maxProseWords: sc.maxProseWords,
           models: sc.models, modelCheck, missingModels,
@@ -99,10 +101,12 @@ export interface StoryCard {
   title?: string;
   premise?: string;
   scene?: { place: string; question: string; pov: string; length: number };
+  scenes?: SceneDef[];
   characters?: { name: string; skills: string[]; restrictions: string[] }[];
   maxSteps?: number;
   defaultModel?: string;
   runs: RunSummary[];
+  chapters: number[];
 }
 
 export interface RunSummary {
@@ -138,14 +142,16 @@ export async function storyCards(): Promise<StoryCard[]> {
   for (const dir of dirs) {
     const r = await runPreflight(dir);
     const s = r.summary;
+    const [runs, chapters] = await Promise.all([retainedRuns(resolveStoryDir(dir)), writtenChapters(dir)]);
     out.push({
       dir, name: dir.replace(/^stories\//, ""), ok: r.ok, error: r.error,
       warnings: r.warnings.map(w => w.trim()),
-      runs: await retainedRuns(resolveStoryDir(dir)),
+      runs, chapters,
       ...(s ? {
         title: s.title,
         premise: s.premise,
         scene: s.scene,
+        scenes: s.scenes,
         characters: s.characters.map(c => ({ name: c.name, skills: c.added, restrictions: c.restrictions })),
         maxSteps: s.maxSteps,
         defaultModel: s.models.default,

@@ -23,13 +23,21 @@ afterwards.
 | doc | read it when |
 | --- | --- |
 | [GUI-SPEC.md](GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
+| [Writer.MD](Writer.MD) | the writer's role and the live-run screen — what the API already supports and what's still missing |
+| [Architect.MD](Architect.MD) | the architect's role and its two GUI screens — the scaffold interview and the handoff panel |
 | [SPEC-E-editor.md](SPEC-E-editor.md) | *proposed, not built* — the story editor: making the GUI write an existing story, not just read one |
 | [SPEC-H-handoff.md](SPEC-H-handoff.md) | one run per chapter, and the architect handoff that re-authors the cast between them — `runChapter`, `chapters/<n>.md`, `NextChapterSession`, `--next-chapter` and `/next-chapter/*` |
 | [SPEC-GUI-MULTISCENE.md](SPEC-GUI-MULTISCENE.md) | current multi-chapter viewer gaps and proposed UI work |
+| [SPEC-consult-tuning.md](SPEC-consult-tuning.md) | *proposed, not built* — a chapter-wide per-character retry ceiling, retry analytics on `scene_end`, and the GUI consult timeline strip that reads them |
+| [SPEC-run-inspection.md](SPEC-run-inspection.md) | *proposed, not built* — a live per-agent cost/latency HUD and a run comparison view (the latter depends on the Run inspector item in `next-steps1.md`) |
+| [SPEC-authoring-reuse.md](SPEC-authoring-reuse.md) | *proposed, not built* — named restriction/skill bundles and per-scene writer model/thinking overrides |
+| [SPEC-continuity.md](SPEC-continuity.md) | *proposed, not built* — a story-level fact bible, advisory continuity flags in the handoff round, and a before/after diff for handoff edits |
+| [SPEC-reading.md](SPEC-reading.md) | *proposed, not built* — reader mode, story-wide search, and a character sheet panel on the live writer screen |
 
 The repository has no separate protocol, story-format, run-record, or scaffold specifications. Keep
-the route contract in `GUI-SPEC.md`, the handoff design in `SPEC-H-handoff.md`, and proposed editor
-work in `SPEC-E-editor.md` rather than copying those details into this file.
+the route contract in `GUI-SPEC.md`, the live writer screen in `Writer.MD`, the handoff design in
+`SPEC-H-handoff.md`, the architect's GUI screens in `Architect.MD`, and proposed editor work in
+`SPEC-E-editor.md` rather than copying those details into this file.
 
 ## Working process
 
@@ -96,7 +104,7 @@ way.**
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
 | [server/next-chapter-routes.ts](server/next-chapter-routes.ts) | `/next-chapter` and `/next-chapter/*` — the architect handoff, server side |
 | [server/http-util.ts](server/http-util.ts) | the `json()` response helper, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
-| [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview) |
+| [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
 | [ansi.ts](ansi.ts) | terminal colours |
 

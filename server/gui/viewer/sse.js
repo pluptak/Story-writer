@@ -27,7 +27,14 @@ export async function tryHttp() {
     loadModels();
     if (j.awaitingContinue) showPrompt(j.awaitingContinue);
     // An interview may already be open — a reload in the middle of one must land back in it.
-    try { APP.scaffold = await (await fetch("/scaffold")).json(); } catch {}
+    // Independent endpoints, fetched concurrently; either may fail without affecting the other.
+    const [scaf, hand] = await Promise.allSettled([
+      fetch("/scaffold").then(r => r.json()),
+      fetch("/next-chapter").then(r => r.json()),
+    ]);
+    if (scaf.status === "fulfilled") APP.scaffold = scaf.value;
+    if (hand.status === "fulfilled") APP.handoff = hand.value;
+    if (APP.handoff.active) APP.handoffDir = APP.handoff.dir;
     // Respect an explicit hash (a reload, a bookmark, a deep link) -- the shelf is a real
     // destination now, not just a place the session parks you, so there is no case left where it
     // has to be rewritten. With nothing asked for, land on the scene if one is running, the hub
@@ -35,8 +42,9 @@ export async function tryHttp() {
     const wanted = parseHash();
     APP.view = wanted || (APP.session.running ? "live" : "shelf");
     if (APP.view === "story") APP.storyDir = parseHashParams().get("dir") || "";
+    if (APP.view === "handoff") APP.handoffDir = APP.handoffDir || parseHashParams().get("dir") || "";
     if (APP.view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
-    if (APP.view === "read" || APP.view === "shelf" || APP.view === "story") loadStories();
+    if (APP.view === "read" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff") loadStories();
     syncHash();
     APP.render();
     startSSE();
@@ -101,9 +109,14 @@ export function startSSE() {
       APP.render();
       return;
     }
-    // The handoff has routes but no panel here yet (SPEC-E owns that screen). Drop the frame rather
-    // than letting it fall through to the run log, where an unknown event renders as a junk block.
-    if (f.t === "handoff") return;
+    if (f.t === "handoff") {
+      // Same reason as the scaffold frame above: a round is a minute of model call, and the POST
+      // response only ever reaches whoever sent it.
+      APP.handoff = f.state || { active:false };
+      if (APP.handoff.active) APP.handoffDir = APP.handoff.dir;
+      APP.render();
+      return;
+    }
     if (f.t === "run_reset") {
       // A new story in the same session. Replay only helps clients that connect after it; one
       // already attached has to be told, or the next scene renders glued onto the last one.

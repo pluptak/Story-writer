@@ -7,7 +7,7 @@ export const generating = () => APP.live && APP.session.running && !APP.session.
 
 export const parseHash = () => {
   const path = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return /^(shelf|story|live|read)$/.test(path) ? path : null;
+  return /^(shelf|story|live|read|handoff)$/.test(path) ? path : null;
 };
 export const parseHashParams = () => {
   const qs = location.hash.replace(/^#\/?/, "").split("?")[1] || "";
@@ -19,6 +19,7 @@ export const parseHashParams = () => {
  *  bookmark that does not work. */
 const hashFor = () => {
   if (APP.view === "story" && APP.storyDir) return `#/story?dir=${encodeURIComponent(APP.storyDir)}`;
+  if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
   if (APP.view === "read" && READV.dir && READV.id)
     return `#/read?dir=${encodeURIComponent(READV.dir)}&id=${encodeURIComponent(READV.id)}`;
   return "#/" + APP.view;
@@ -36,7 +37,7 @@ export const syncHash = () => {
 export function go(v) {
   if (!APP.live && v !== "read") v = "read";
   APP.view = v;
-  if (v === "read" || v === "shelf" || v === "story") loadStories();
+  if (v === "read" || v === "shelf" || v === "story" || v === "handoff") loadStories();
   syncHash();
   APP.render();
   if (v === "live" && APP.wantReaderView) {

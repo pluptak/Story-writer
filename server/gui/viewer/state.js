@@ -24,6 +24,11 @@ export const APP = {
   storyDir: "",                 // a shelf card was clicked; the story page is showing this dir
   storyModel: "",               // a model chosen on the story page, overriding the story's own default
   storyError: "",               // the last refusal of /select or /model, said out loud on the story page
+  chapter: null,                // {dir, n, text}: a written chapter opened inline on the story page.
+                                 // It carries its own dir because reaching the shelf by the tab does
+                                 // not clear it -- chapter 1 of one story must never render under
+                                 // chapter 1 of another.
+  chapterError: "",             // that chapter would not load
   runError: "",                 // the engine failed to load or run the picked story, shown on the story page
   runEnded: null,                // the run just finished: {done, stopped, words, steps} -- the end-of-
                                   // run modal is up until "back to shelf" or "stay here" clears it
@@ -37,6 +42,16 @@ export const APP = {
   acceptArmed: 0,               // timer id: accepting over a complaint (or over unsent text) wants a second click
   abandonArmed: 0,              // timer id: so does throwing the whole interview away
   scaffoldError: "",            // the last refusal from /scaffold/*, said out loud in the modal
+  handoff: { active:false },   // the between-chapters handoff, from /next-chapter and its SSE frames
+  handoffDir: "",              // which story the handoff page is showing
+  handoffError: "",            // the last refusal from /next-chapter/*, said on the handoff page
+  handoffDone: null,           // accepted: {dir, chapter, warnings[]} -- the server drops its session
+                                // on accept, so the "chapter N is prepared" state has to live here
+  handoffAccepting: false,     // an accept is in flight. The server publishes {active:false} BEFORE it
+                                // answers the POST, so without this the page falls back to the start
+                                // screen -- with a live start button -- between the two.
+  hAcceptArmed: 0,             // timer id: accepting a handoff wants a second click
+  hAbandonArmed: 0,            // so does throwing it away
   modelIds: [],                 // what LM Studio has loaded; fetched once, used by both dropdowns
   modelDefault: "",             // the model an interview would use if you chose nothing
   expandAll: false,
@@ -53,12 +68,18 @@ export const APP = {
 /** A story's display name off the shelf list, falling back to its folder name. */
 export const storyName = dir => (APP.stories || []).find(s => s.dir === dir)?.name || basename(dir || "");
 
+/** Why a control that touches story.json or starts a run is disabled while a scene is being
+ *  written — the story and handoff pages both explain themselves this way rather than
+ *  round-tripping to find out. Empty string when nothing is running. */
+export const runningReason = () => APP.session.running ? "a scene is being written — stop it first" : "";
+
 // Re-render is whole, which would otherwise eat what you are typing mid-round. Drafts live out
 // here and are written back in; focus is read off the document as the render begins, rather than
 // tracked through focus/blur -- removing a focused node does not reliably fire blur, and a click on
 // any button would clear a tracked value before the re-render it triggered.
 export const draft = { idea:"", say:"", folder:"", model:"", length:"" };
-export const FIELDS = /^f-(idea|say|folder|model|length)$/;
+export const hdraft = { say:"" };
+export const FIELDS = /^[fh]-(idea|say|folder|model|length)$/;
 
 /** Which consults are expanded, by seq — shared across pages on purpose: it is a reading
  *  preference ("I like things opened up"), not a fact tied to one particular run. */

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, ROOT,
+  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, writtenChapters, ROOT,
   type Defaults,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
@@ -369,6 +369,50 @@ describe("readChapters", () => {
       const chapters = await readChapters(dir);
       assert.deepEqual(chapters.map(c => c.n), [1]);
       assert.equal(chapters[0].text, "One");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("writtenChapters", () => {
+  it("returns an empty list when chapters/ does not exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const chapters = await writtenChapters(dir);
+      assert.deepEqual(chapters, []);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns chapter numbers in numeric order, ignoring non-matching files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "2.md"), "Chapter 2", "utf8");
+      await writeFile(join(dir, "chapters", "10.md"), "Chapter 10", "utf8");
+      await writeFile(join(dir, "chapters", "notes.md"), "Notes", "utf8");
+      await writeFile(join(dir, "chapters", "3.txt"), "Chapter 3 as txt", "utf8");
+      await mkdir(join(dir, "chapters", "subdir"), { recursive: true });
+
+      const chapters = await writtenChapters(dir);
+      assert.deepEqual(chapters, [2, 10]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns the same chapter numbers that readChapters will read with contents", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "2.md"), "Chapter 2 text", "utf8");
+      await writeFile(join(dir, "chapters", "10.md"), "Chapter 10 text", "utf8");
+
+      const nums = await writtenChapters(dir);
+      const full = await readChapters(dir);
+
+      assert.deepEqual(nums, [2, 10]);
+      assert.equal(full.length, 2);
+      assert.equal(full[0].n, 2);
+      assert.equal(full[0].text, "Chapter 2 text");
+      assert.equal(full[1].n, 10);
+      assert.equal(full[1].text, "Chapter 10 text");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

@@ -208,6 +208,10 @@
   .scenerow .sc-q { font-size:13.5px; }
   .scenerow .sc-meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:4px; }
   .scenerow .btn { margin-top:10px; }
+  .scenerow .tag { font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:999px;
+                   border:1px solid var(--line); color:var(--faint); margin-left:6px; }
+  .scenerow .tag.written { color:var(--good); border-color:var(--good); }
+  .scenerow .tag.next { color:var(--accent); border-color:var(--accent); }
 
   /* the character card -- reuses the story page's .row for its can/cannot line */
   .charcard .row { display:flex; flex-wrap:wrap; gap:10px; font-size:12.5px; margin-top:6px; }

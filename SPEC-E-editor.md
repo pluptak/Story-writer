@@ -56,6 +56,8 @@ active, because a run reads the same definition while it is executing.
 3. Debounce validation and preserve textarea selection and scroll position across SSE-triggered renders.
 4. Add save, revert, and unsaved-change indicators.
 5. Add an architect panel whose accepted suggestions modify the draft only; saving remains explicit.
+   This is the editor's own panel, not the scaffold or handoff screen — those belong to
+   [`Architect.MD`](Architect.MD).
 6. Add browser coverage for malformed drafts, warnings, concurrent runs, and preservation of fields
    not changed by an edit.
 

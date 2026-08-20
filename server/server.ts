@@ -23,6 +23,9 @@ export interface ServerHost {
   selectableStory(dir: string): Promise<string | null>;
   resolveStoryDir(dir: string): string;
   runDirs(storyDir: string): Promise<string[]>;
+  /** The chapter numbers already written for a story -- the chapter equivalent of `runDirs`. Takes
+   *  a discovered story dir, not a resolved path. */
+  writtenChapters(dir: string): Promise<number[]>;
   loadedModelIds(): Promise<string[] | null>;
   /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
   architectModel(): Promise<string>;
@@ -138,6 +141,17 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         try {
           res.writeHead(200, { "Content-Type": "application/x-ndjson" });
           res.end(await readFile(joinPath(base, "out", id, "writing-log.jsonl"), "utf8"));
+        } catch { res.writeHead(404); res.end(""); }
+
+      } else if (path === "/chapter") {
+        const query = new URLSearchParams((req.url || "").split("?")[1] || "");
+        const storyDir = await host.selectableStory(query.get("dir") || "");
+        if (!storyDir) { res.writeHead(400); res.end("no such story"); return; }
+        const n = Number(query.get("n"));
+        if (!(await host.writtenChapters(storyDir)).includes(n)) { res.writeHead(404); res.end("no such chapter"); return; }
+        try {
+          res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
+          res.end(await readFile(joinPath(host.resolveStoryDir(storyDir), "chapters", `${n}.md`), "utf8"));
         } catch { res.writeHead(404); res.end(""); }
 
       } else { res.writeHead(404); res.end("not found"); }

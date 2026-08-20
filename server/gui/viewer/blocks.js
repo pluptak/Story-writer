@@ -2,7 +2,7 @@ import { esc, post, verdictText, reasonOr } from "./util.js";
 import { APP, open } from "./state.js";
 
 // ---- rendering ----------------------------------------------------------
-const paras = t => String(t).split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
+export const paras = t => String(t).split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
 
 function renderConsult(b) {
   const retried = b.attempts.length > 1;

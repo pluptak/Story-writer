@@ -9,7 +9,11 @@ git history, not in an evergreen planning document.
    existing `/log.jsonl` and `/runs/log` routes. Keep inspection read-only and separate from run control.
 2. **Multi-chapter reader.** Implement the UI in [`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md):
    chapter list, accepted prose, chapter-specific write action, and runs grouped by chapter.
-3. **Handoff screen.** Consume the existing `/next-chapter/*` routes and `handoff` SSE state, following
+   [`Writer.MD`](Writer.MD) tracks the matching API gaps on the live-run side (`chapter` missing from
+   `RunMeta` and `RunSummary`).
+3. ~~**Handoff screen.**~~ Built — the `#/handoff?dir=` page consumes `/next-chapter/*` and the
+   `handoff` SSE state. What is left of it is the chapters-written column, which needs the chapter
+   prose route in (2). Design in [`Architect.MD`](Architect.MD), behaviour in
    [`SPEC-H-handoff.md`](SPEC-H-handoff.md).
 4. **Story editor.** Design and implement the JSON-backed draft and validation flow in
    [`SPEC-E-editor.md`](SPEC-E-editor.md).

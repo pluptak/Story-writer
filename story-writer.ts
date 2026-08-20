@@ -17,7 +17,7 @@ import { restrictionsOf } from "./engine/skills.ts";
 import { NET } from "./engine/llm-client.ts";
 import {
   resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
-  loadDefaults, type StoryConfig, type Defaults,
+  loadDefaults, writtenChapters, type StoryConfig, type Defaults,
 } from "./engine/story-format.ts";
 import { directEdit, renderSpec, specView, type StorySpec } from "./engine/story-spec.ts";
 import { runDirs, runPreflight, loadedModelIds, storyCards } from "./engine/preflight.ts";
@@ -354,7 +354,7 @@ async function pickStory(): Promise<{ dir: string; chapter: number }> {
 }
 
 const HOST: ServerHost = {
-  storyCards, selectableStory, resolveStoryDir, runDirs, loadedModelIds,
+  storyCards, selectableStory, resolveStoryDir, runDirs, writtenChapters, loadedModelIds,
   newScaffoldSession, newHandoffSession, directEdit, specView,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,

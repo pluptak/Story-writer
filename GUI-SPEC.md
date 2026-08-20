@@ -41,7 +41,7 @@ Two channels carry everything:
   finds out only through `/events`).
 
 Nothing under `server/*.ts` imports `engine/`. Every route reaches the engine only through the
-`ServerHost` interface built once in `story-writer.ts` ([server.ts:18](server/server.ts#L18)) — eleven
+`ServerHost` interface built once in `story-writer.ts` ([server.ts:18](server/server.ts#L18)) — twelve
 methods, all read-only or side-effect-free except `newScaffoldSession`. A route that needs something new
 gets a host method, never an import (CLAUDE.md).
 
@@ -74,13 +74,17 @@ GET /stories
   → { stories: StoryCard[], picking: boolean }
 
 StoryCard = { dir, name, ok, error?, warnings[],
-              title?, premise?, scene?: {place,question,pov,length}, characters?: {name,skills[],restrictions[]}[],
+              title?, premise?, scene?: {place,question,pov,length}, scenes?: {place,question,pov,length}[],
+              characters?: {name,skills[],restrictions[]}[],
               maxSteps?, defaultModel?,
-              runs: { id, mtimeMs, steps?, words?, done?, stopped? }[] }
+              runs: { id, mtimeMs, steps?, words?, done?, stopped? }[],
+              chapters: number[] }
 ```
 `title` is the story's own, as authored — empty when it has none, and never substituted with the
-folder name; what to show in its absence is the client's call, and `name` is the folder. One call gets
-the whole picker: every discovered story, preflighted, with its own retained runs
+folder name; what to show in its absence is the client's call, and `name` is the folder. `scene` is
+`scenes[0]`, kept because the shelf and scaffold interview read it; a card from an older server has
+only that one. `chapters` lists the chapter numbers already written to `chapters/<n>.md`, in numeric
+order. One call gets the whole picker: every discovered story, preflighted, with its own retained runs
 embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 3` — [story-writer.ts:309](story-writer.ts#L309)).
 There is no separate "list runs" route; a run only exists as a story's `runs[]` entry.
 
@@ -94,10 +98,12 @@ not be reached (distinct from "reachable but empty").
 ```
 GET /log.jsonl            → the in-progress run's writing-log.jsonl, or 404 before one exists
 GET /runs/log?dir=&id=    → a retained run's writing-log.jsonl, or 404/400 if dir/id don't resolve
+GET /chapter?dir=&n=      → an accepted chapter's markdown, or 404 if that chapter is not written
 ```
-Both serve the exact on-disk NDJSON. The event shapes are listed in the SSE section below. `dir` goes
+All three serve the exact on-disk files. The event shapes are listed in the SSE section below. `dir` goes
 through `host.selectableStory()` first, so it accepts anything the
-picker itself would accept, not a raw filesystem path.
+picker itself would accept, not a raw filesystem path. `/chapter` also validates `n` against the story's
+written chapters rather than trusting it.
 
 ## Story selection
 
@@ -136,9 +142,15 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 - **`/pause` / `/resume`** don't interrupt an in-flight model call; `pausing: true` until the loop
   reaches its next boundary, then `paused: true`. `/model` while paused hot-swaps the model on the
   live `writer`/`agents` agents, not just the preference for the next run.
-- **`/consult-me`** arms the reader as the answerer for the *next* consult the writer issues — it does
-  not itself ask a question. The question arrives as a `consult` SSE frame same as any character
-  consult; `/reader-answer` is how the human replies to it.
+- **`/consult-me`** arms the reader as the **director** for the next round, not as a stand-in for a
+  character. It does not itself ask a question: at its next boundary the loop spends a writer round
+  asking for directions instead of prose ([scene-loop.ts:152](engine/scene-loop.ts#L152)), and that
+  arrives as a `reader_ask` frame — `framing` plus up to three `options` — **not** as a `consult`.
+  `/reader-answer` is how the human replies, and the answer is fed back as the direction the scene
+  takes from here, so it need not be one of the three offered. `armed` in `run_state` means the
+  reader is armed but not yet asked; it is cleared *before* the prompt goes out, so nothing in
+  `run_state` reports an outstanding reader question — a client that needs that tracks `reader_ask`
+  and `reader_answer` itself.
 - **`/continue`** answers the step-budget prompt (`continue_prompt` SSE frame) with how many more
   steps to allow, `0` to stop there.
 
@@ -201,8 +213,9 @@ leaving the session open to keep refining. Only `kind:"written"` means the file 
 that reply is the chapter now prepared — write it with `POST /select { dir, chapter }`.
 
 Every handoff route republishes a `{ t: "handoff", state }` SSE frame (`state` is exactly the
-`GET /next-chapter` body). **No GUI consumes it yet** — the viewer drops the frame
-([sse.js](server/gui/viewer/sse.js)); the screen belongs to [SPEC-E-editor.md](SPEC-E-editor.md).
+`GET /next-chapter` body). The viewer's handoff page consumes it
+([handoff.js](server/gui/viewer/handoff.js)); the screen itself is designed in
+[Architect.MD](Architect.MD).
 
 ## `/events` — the SSE stream
 
@@ -275,7 +288,7 @@ against it.** Two things make that true:
    second frontend calling this same API from the same origin is indistinguishable, server-side, from
    the shipped one.
 2. **Every route reaches the engine only through `ServerHost`.** No route module imports `engine/`
-    directly (CLAUDE.md's own invariant), so the API's behavior is exactly the eleven `ServerHost` methods
+    directly (CLAUDE.md's own invariant), so the API's behavior is exactly the twelve `ServerHost` methods
    plus the `LIVE`/`RUN`/`SCAFFOLD`/`HANDOFF` state machine described above — nothing lives only in
    `server/gui/*.js` that a route depends on.
 

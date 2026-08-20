@@ -1,8 +1,9 @@
 import { esc, post, fmtRun, modelOptionsHtml, reasonOr } from "./util.js";
-import { APP, READV } from "./state.js";
+import { APP, READV, runningReason } from "./state.js";
 import { castChips } from "./shelf.js";
 import { loadRun } from "./saved-runs.js";
 import { go } from "./nav.js";
+import { paras } from "./blocks.js";
 
 // ---- the story page ----------------------------------------------------------
 // One story, a full page rather than a modal (`#/story?dir=...`, so a reload or a bookmark lands
@@ -10,11 +11,11 @@ import { go } from "./nav.js";
 // scaffolded to grow into: a scene list (below) and, later, a story editor. Reached only by clicking
 // a shelf card; "back to shelf" is the only way out, same as before.
 
-/** A story has exactly one scene today -- one `## Scene` block in story.md, and the engine has no
- *  notion of a second (STORY-FORMAT.md: a second `## Scene` would silently overwrite the first).
- *  Drawing it as a one-item list is the seam: when the format grows a scene list, this function and
- *  the engine change together and the page already knows how to draw N of them. */
-export const scenesOf = card => card.scene ? [{ ...card.scene, n: 1 }] : [];
+/** The story's scenes, numbered -- scene N is chapter N, written or not (`card.chapters` is which
+ *  ones exist on disk). `scene` is the legacy singular the shelf still reads. */
+export const scenesOf = card =>
+  card.scenes?.length ? card.scenes.map((s, i) => ({ ...s, n: i + 1 }))
+  : card.scene ? [{ ...card.scene, n: 1 }] : [];
 
 // The story's own default is preselected only once it is actually loaded in LM Studio -- picking an
 // unloaded model would just fail the run, so there is nothing to gain by defaulting to it.
@@ -28,11 +29,27 @@ function modelSelectHtml(s) {
   </select>`;
 }
 
-function sceneRowHtml(scene, canWrite, why) {
+/** The chapter after the last one written -- 1 when nothing is written yet. Shared by the scene
+ *  list (which chapter gets the "next" tag) and the handoff row (which chapter it would prepare). */
+export const nextChapterOf = chapters => Math.max(0, ...chapters) + 1;
+
+/** "~700 words" plus an optional "pov X" suffix -- the length/pov formatting a scene card needs,
+ *  shared with the handoff's proposed-chapter card (handoff-view.js). */
+export const wordsPovHtml = scene => `~${scene.length ?? "?"} words${scene.pov ? " · pov " + esc(scene.pov) : ""}`;
+
+function sceneRowHtml(scene, chapters, canWrite, why) {
+  const written = chapters.includes(scene.n);
+  const open = APP.chapter?.dir === APP.storyDir && APP.chapter.n === scene.n;
+  const next = !written && scene.n === nextChapterOf(chapters);
+  const tag = written ? `<span class="tag written">written</span>`
+            : next ? `<span class="tag next">next</span>` : "";
   return `<div class="cardwrap"><div class="scenerow">
-    <div class="sc-q">${esc(scene.question || "(no scene question)")}</div>
-    <div class="sc-meta">${scene.place ? esc(scene.place) + " · " : ""}~${scene.length ?? "?"} words${scene.pov ? " · pov " + esc(scene.pov) : ""}</div>
-    <button class="btn primary" id="story-write"${canWrite ? "" : " disabled"} title="${esc(why)}">write a new run</button>
+    <div class="sc-q">${esc(scene.question || "(no scene question)")}${tag}</div>
+    <div class="sc-meta">chapter ${scene.n}${scene.place ? " · " + esc(scene.place) : ""} · ${wordsPovHtml(scene)}</div>
+    <button class="btn${next ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
+    ${written ? `<button class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
+    ${open ? `<div class="prose" style="margin-top:12px">${paras(APP.chapter.text)}</div>` : ""}
+    ${open && APP.chapterError ? `<div class="said bad">${esc(APP.chapterError)}</div>` : ""}
   </div></div>`;
 }
 
@@ -43,6 +60,21 @@ function runsListHtml(s) {
     return `<button class="btn runbtn${current ? " current" : ""}" data-run="${esc(r.id)}"
          >${current ? "reading · " : "read · "}${esc(fmtRun(r))}</button>`;
   }).join("")}</div>`;
+}
+
+/** The handoff prepares the chapter after the last one written, so a story with nothing written has
+ *  nothing for it to read and the engine refuses. */
+function handoffRowHtml(s) {
+  if (!s.chapters?.length) return "";
+  const mine = APP.handoff.active && APP.handoff.dir === s.dir;
+  const n = mine ? APP.handoff.chapter : nextChapterOf(s.chapters);
+  const why = runningReason();
+  return `<div class="divider"><span>next chapter</span></div>
+    <div class="row">
+      <button class="btn" id="story-handoff"${why ? ` disabled title="${esc(why)}"` : ""}
+        >${mine ? "continue preparing" : "prepare"} chapter ${n}</button>
+      <span class="hint">the architect re-authors the cast from the chapters already written</span>
+    </div>`;
 }
 
 export function storyPageHtml() {
@@ -63,9 +95,9 @@ export function storyPageHtml() {
 
   // The client-side mirror of what /select and /model would refuse anyway (server.ts, run-control-
   // routes.ts) -- said here so the button explains itself instead of round-tripping to find out.
-  const why = APP.session.running ? "a scene is being written — stop it first"
-            : !APP.session.picking ? "not ready to start a run right now"
-            : APP.picked ? "starting…" : "";
+  const why = runningReason()
+            || (!APP.session.picking ? "not ready to start a run right now"
+              : APP.picked ? "starting…" : "");
   const canWrite = !why;
 
   return `<section class="picker story">
@@ -79,7 +111,9 @@ export function storyPageHtml() {
     ${(s.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
 
     <div class="divider"><span>scenes</span></div>
-    <div class="cards">${scenesOf(s).map(sc => sceneRowHtml(sc, canWrite, why)).join("")}</div>
+    <div class="cards">${scenesOf(s).map(sc => sceneRowHtml(sc, s.chapters || [], canWrite, why)).join("")}</div>
+
+    ${handoffRowHtml(s)}
 
     <div class="divider"><span>previous runs</span></div>
     ${runsListHtml(s)}
@@ -94,13 +128,31 @@ export function storyPageHtml() {
 
 export function wireStoryPage(page) {
   const back = page.querySelector("#story-back");
-  if (back) back.addEventListener("click", () => { APP.storyDir = ""; go("shelf"); });
+  if (back) back.addEventListener("click", () => { APP.storyDir = ""; APP.chapter = null; go("shelf"); });
 
   const model = page.querySelector("#story-model");
   if (model) model.addEventListener("change", () => { APP.storyModel = model.value; });
 
-  const write = page.querySelector("#story-write");
-  if (write) write.addEventListener("click", () => playChosen(APP.storyDir, APP.storyModel));
+  for (const b of page.querySelectorAll(".scenewrite"))
+    b.addEventListener("click", () => playChosen(APP.storyDir, APP.storyModel, Number(b.dataset.chapter)));
+
+  for (const b of page.querySelectorAll(".chapterread"))
+    b.addEventListener("click", async () => {
+      const n = Number(b.dataset.chapter), dir = APP.storyDir;
+      if (APP.chapter?.dir === dir && APP.chapter.n === n) {
+        APP.chapter = null; APP.chapterError = ""; APP.render(); return;
+      }
+      APP.chapterError = "";
+      try {
+        const r = await fetch(`/chapter?dir=${encodeURIComponent(dir)}&n=${n}`);
+        if (!r.ok) throw 0;
+        APP.chapter = { dir, n, text: await r.text() };
+      } catch { APP.chapter = { dir, n, text: "" }; APP.chapterError = "that chapter would not load"; }
+      APP.render();
+    });
+
+  const handoff = page.querySelector("#story-handoff");
+  if (handoff) handoff.addEventListener("click", () => { APP.handoffDir = APP.storyDir; go("handoff"); });
 
   for (const b of page.querySelectorAll(".runbtn"))
     b.addEventListener("click", async () => {
@@ -115,14 +167,14 @@ export function wireStoryPage(page) {
 /** Play needs the model set before /select, not after -- a fresh run reads `LIVE.modelOverride`
  *  the moment it loads the story. Sent unconditionally (even blank) so a leftover override from a
  *  previous story's run never silently rides along into this one. */
-async function playChosen(dir, model) {
+async function playChosen(dir, model, chapter) {
   if (APP.picked) return;
   const mj = await post("/model", { model }, false);
   if (!mj || mj.ok === false) { APP.storyError = reasonOr(mj, "could not set that model"); APP.render(); return; }
-  await choose({ dir });
+  await choose({ dir, chapter });
 }
 
-async function choose(payload) {
+export async function choose(payload) {
   if (APP.picked) return;                       // a double-click is one choice, not two
   APP.picked = payload.dir;
   APP.storyError = ""; APP.runError = "";

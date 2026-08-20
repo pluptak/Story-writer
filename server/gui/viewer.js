@@ -8,6 +8,7 @@ import { boot } from "./viewer/boot.js";
 import "./viewer/nav.js";
 import "./viewer/session.js";
 import "./viewer/interview.js";
+import "./viewer/handoff.js";
 import "./viewer/sse.js";
 import "./viewer/chrome.js";
 import "./viewer/character-card.js";

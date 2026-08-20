@@ -197,19 +197,22 @@ export async function loadDefaults(override = ""): Promise<Defaults> {
   };
 }
 
+/** The chapter numbers already written to <storyDir>/chapters/, ordered. */
+export async function writtenChapters(storyDir: string): Promise<number[]> {
+  const chaptersDir = joinPath(resolveStoryDir(storyDir), "chapters");
+  let dirents;
+  try { dirents = await readdir(chaptersDir, { withFileTypes: true }); } catch { return []; }
+  return dirents
+    .filter(d => d.isFile() && /^\d+\.md$/.test(d.name))
+    .map(d => Number(d.name.slice(0, -3)))
+    .sort((a, b) => a - b);
+}
+
 /** Read all chapter files from <storyDir>/chapters/, returning chapter number and prose text ordered numerically. */
 export async function readChapters(storyDir: string): Promise<{ n: number; text: string }[]> {
   const base = resolveStoryDir(storyDir);
-  const chaptersDir = joinPath(base, "chapters");
-  let dirents;
-  try { dirents = await readdir(chaptersDir, { withFileTypes: true }); } catch { return []; }
-
   const chapters: { n: number; text: string }[] = [];
-  for (const d of dirents) {
-    const match = d.isFile() ? d.name.match(/^(\d+)\.md$/) : null;
-    if (!match) continue;
-    chapters.push({ n: Number(match[1]), text: await readFile(joinPath(chaptersDir, d.name), "utf8") });
-  }
-  chapters.sort((a, b) => a.n - b.n);
+  for (const n of await writtenChapters(storyDir))
+    chapters.push({ n, text: await readFile(joinPath(base, "chapters", `${n}.md`), "utf8") });
   return chapters;
 }

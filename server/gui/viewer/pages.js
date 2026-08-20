@@ -4,6 +4,7 @@ import { build } from "./events.js";
 import { renderBlock, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
 import { storyPageHtml, wireStoryPage } from "./story-page.js";
+import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
 import { paintSrcbar, paintTitle, renderRail } from "./hud.js";
 import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
@@ -34,7 +35,7 @@ function renderNav() {
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
-  const shown = APP.view === "story" ? "shelf" : APP.view;
+  const shown = APP.view === "story" || APP.view === "handoff" ? "shelf" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
     const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
@@ -75,6 +76,14 @@ function renderStoryPage(page) {
   page.innerHTML = storyPageHtml();
   $("rail").innerHTML = "";
   wireStoryPage(page);
+  setFoldable(false);
+}
+
+function renderHandoff(page, keepFocus) {
+  page.innerHTML = handoffPageHtml();
+  $("rail").innerHTML = "";
+  wireHandoff(page);
+  restoreFocus(page, keepFocus);
   setFoldable(false);
 }
 
@@ -185,6 +194,7 @@ export function render() {
   const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
+  else if (APP.view === "handoff") renderHandoff(page, keepFocus);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
 }

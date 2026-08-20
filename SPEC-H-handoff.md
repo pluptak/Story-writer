@@ -1,8 +1,9 @@
 # SPEC-H: Architect Handoff
 
 **Status: built.** The handoff prepares the next chapter between runs. It is a user-invoked action,
-not another step inside a scene run. The remaining viewer work is documented in
-[`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md) and [`SPEC-E-editor.md`](SPEC-E-editor.md).
+not another step inside a scene run. The handoff screen is designed in
+[`Architect.MD`](Architect.MD); the rest of the remaining viewer work is in
+[`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md).
 
 ## Why it exists
 
@@ -67,5 +68,6 @@ modules directly.
 - Carrying agent histories across chapters.
 - Starting a chapter automatically after accepting a handoff.
 - Deciding what to do with later chapters when an earlier chapter is rewritten.
-- A viewer panel. The `handoff` SSE frame exists, but the current viewer intentionally drops it until
-  the handoff screen is implemented.
+- The handoff screen's own design and remaining GUI work, which belong to
+  [`Architect.MD`](Architect.MD). The viewer has the panel; this document stays about the behaviour
+  behind it.
