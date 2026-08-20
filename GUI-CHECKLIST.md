@@ -22,22 +22,27 @@ npx tsx story-writer.ts --serve
 
 ## Order matters — read this before clicking anything
 
-`MAX_RUNS` is 3 and `stories/the-final-meal` currently holds exactly 3 retained runs. Its oldest,
-`2026-08-14T23-13-48-623Z`, is the only run on disk whose log carries **no chapter number** — the one
-case that proves the `unattributed` group works. The next run written in that story rotates it away
-permanently.
+`MAX_RUNS` is 3, so writing a run destroys the oldest retained one in that story. Where a check below
+depends on a *particular* retained run existing, it says so and comes first.
 
-**Do section 1 before section 3.**
+The `unattributed` case in section 1 is already gone this way: the only run on disk that predated
+chapter numbers rotated out on 2026-08-20. Nothing can recreate it — every run written from now on
+carries a chapter — so that branch of the grouping is now unreachable in practice and cannot be
+re-checked live.
 
 ## 1. Runs grouped by chapter — no run needed
 
 Shelf → `the-final-meal` → the *previous runs* list at the bottom.
 
-- [ ] Three groups, each with a label in a left-hand column, in this order: **chapter 1**,
-      **chapter 2**, **unattributed**.
-- [ ] One run in each, and they are these:
-      chapter 1 → `2026-08-19T19-46-34-757Z` · chapter 2 → `2026-08-20T07-29-41-471Z` ·
-      unattributed → `2026-08-14T23-13-48-623Z`.
+Run IDs rotate, so read the truth off disk rather than trusting a list written here:
+
+```bash
+for r in stories/the-final-meal/out/*/; do echo -n "$(basename $r) "; grep -o '"chapter":[0-9]*' "$r/writing-log.jsonl" | tail -1; done
+```
+
+- [ ] Every run that command prints appears on the page, under a label matching the chapter it printed.
+- [ ] Groups are labelled in a left-hand column and ordered by chapter number ascending, matching the
+      scene list above them. A run the command shows no chapter for belongs under **unattributed**, last.
 - [ ] Clicking any of them still opens the read tab with that run loaded — the grouping nests the
       buttons one level deeper, so this is what proves the wiring survived it.
 - [ ] Now open a single-scene story (`doorway`, 3 runs, or `three-in-a-cupboard`, 4).
@@ -110,6 +115,33 @@ them and must stay quiet forever.
 - [ ] The warning does not block the handoff. Revising your own story is legitimate; the engine says
       so rather than undoing it.
 - [ ] Put the question back.
+
+## 6. Consult timeline strip
+
+The strip lives outside `#page`, above the layout, so most of what can go wrong with it is about
+which view it is showing and whether it clears itself.
+
+Cheapest check first — it follows the read tab, so no run is needed:
+
+- [ ] Story page → *previous runs* → read any run that has consults in it. A **consults** strip
+      appears above the page with one marker per consult, named for the character.
+- [ ] Click a marker. The page scrolls to that consult block **and expands it**. If it scrolls
+      nowhere, the marker is finding itself instead of its block — both carry the same `data-seq`.
+- [ ] Go back to the shelf. **The strip disappears.** A strip that survives the view change is
+      showing you a run you are no longer looking at.
+- [ ] Read a different run. The markers change to that run's consults, not the previous one's.
+- [ ] A consult that was retried is coloured differently from one that was not, and its tooltip reads
+      "N retries".
+
+Then during a live run (section 2 leaves you well placed):
+
+- [ ] Markers appear as consults happen, and clicking one still jumps to its block mid-run.
+
+Capped markers need a story that can hit the ceiling — nothing on disk sets one:
+
+- [ ] Add `"maxCharacterRetries": 1` to a scratch story's `config`, run a chapter, and confirm a
+      character that gets retried once comes back marked capped (the `.capped` colour) with "capped"
+      in its tooltip. *Skip and note as unchecked if you would rather not spend a run on it.*
 
 ## What this list cannot tell you
 
