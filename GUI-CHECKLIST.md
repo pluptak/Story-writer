@@ -165,6 +165,49 @@ for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
 - [ ] Read a run with an empty `llm/` folder — a run killed before its first generation, if you have
       one. Expect "this run logged no model calls", not an error and not a spinner.
 
+## 8. Live writer screen
+
+Needs a run, so pair it with section 2. What the redesign changed:
+
+- [ ] The page opens with an eyebrow (`chapter N of M · story`), the **scene question as the
+      headline**, and a lede. The topbar no longer repeats the question — it reads
+      `live chapter · <phase>` instead.
+- [ ] The prose sits in a card whose title tracks the phase: *A draft is arriving* while writing,
+      *A choice is being checked* during a consult, *The writer wants your call* on a reader round,
+      *The step budget is spent* at the budget prompt.
+- [ ] The chip row shows words against target, the consult count, and `interactive` / `hands off`.
+- [ ] The run controls are in the right-hand rail, not across the top. **Click each one**: pause,
+      resume, consult me, the model select, and stop (twice — it arms first). They were relocated as
+      elements rather than re-emitted, so if one is dead the relocation broke its wiring.
+- [ ] The rail shows phase, steps, words, model, then the bar and counts. Phase tracks what the run is
+      doing; model shows the override or `story default`.
+- [ ] The status bar reads `<story> · chapter N of M`, agreeing with the terminal's own run header.
+- [ ] On the read tab the rail drops phase and model, and there is no headline or prose card — both
+      are live-only.
+- [ ] **Narrow the window below 900px.** The rail stacks below the prose and stays visible. If it
+      vanishes, the only way to stop a run has gone with it.
+
+## Checking the viewer without an engine
+
+Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the
+viewer handles "no engine attached" — the API calls just 404. Serve the folder on its own port and
+open it, and you get the real modules, the real CSS, and the real render path.
+
+From there, the browser console can drive the actual screen, because a dynamic `import()` of a module
+the page already loaded returns **the same instance**:
+
+```js
+const { APP, LIVEV } = await import('/viewer/state.js');
+LIVEV.meta = { story:"stories/doorway", chapter:2, chapters:3, target:700, question:"…", characters:[] };
+LIVEV.events = [ /* the same shapes writing-log.jsonl holds */ ];
+APP.view = "live"; APP.live = true; APP.render();
+```
+
+That renders any state you like — every phase, an empty run, a stopped one — without spending a run to
+reach it. It is how sections 6-8 were built, and it is the only way to see a state that needs the
+engine to be in a particular mood. It does not replace a live pass: it cannot tell you that SSE
+delivers those events, only that the screen draws them correctly once it has them.
+
 ## What this list cannot tell you
 
 It exercises the paths a person clicks. It says nothing about the ones they do not: an SSE reconnect

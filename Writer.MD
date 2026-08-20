@@ -122,7 +122,10 @@ These would make the writer screen more robust; none of them block starting the 
    `retainedRuns`. It is optional: a run retained from before chapter numbers were logged has none,
    and a run killed mid-scene still gets one, because the chapter is taken from the last event that
    carries it rather than from `scene_end`.
-3. Consider an explicit `phase` and `awaitingReader` field in `run_state` instead of requiring the GUI
+3. Still open, and now with a concrete client-side workaround to replace: `hud.js`'s `phaseOf()`
+   derives the phase from `run_state` plus `APP.awaitingReader` plus the `#prompt` element's own
+   class. That last one is the tell — the budget wait has no representation in state at all, only in
+   the DOM. Consider an explicit `phase` and `awaitingReader` field in `run_state` instead of requiring the GUI
    to infer them from event history.
 4. Add structured model-error events so failures are understandable without reading the console.
 5. Consider `POST /run/start { dir, chapter, model? }` if the application moves away from the CLI-owned
@@ -135,3 +138,14 @@ not provide separate live model controls for writer, character, judge, or summar
 
 The standalone prototype is [`writer-mockup.html`](writer-mockup.html). It demonstrates a redesign of
 the live writer screen without calling the API.
+
+**Built.** The shipped screen now follows it: the run controls and the cast sit in the right-hand rail
+as cards, the page opens with an eyebrow/headline/lede block, and the prose sits in a card with a
+phase-derived title and a chip row. Two deliberate departures:
+
+- **The consult blocks were not simplified to the mockup's.** The shipped rendering carries per-attempt
+  detail the mockup drops — the fresh-instance note, asked-back Q&A, skill flags, judge verdicts. The
+  mockup is a picture of one consult going well; losing the rest would make a retry unreadable.
+- **POV is not shown.** The mockup has a `POV RIVEN` chip, but POV is a hint to the writer about whose
+  choice comes first, not something a reader of the run needs. `RunMeta` carries no `pov` and does not
+  need to.

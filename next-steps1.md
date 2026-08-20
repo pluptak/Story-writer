@@ -23,11 +23,12 @@ git history, not in an evergreen planning document.
    [`Architect.MD`](Architect.MD), behaviour in [`SPEC-H-handoff.md`](SPEC-H-handoff.md).
 4. **Story editor.** Design and implement the JSON-backed draft and validation flow in
    [`SPEC-E-editor.md`](SPEC-E-editor.md).
-5. **Live writer screen redesign.** [`Writer.MD`](Writer.MD) verdict is build it now: every route the
-   screen needs already works and is already driven by the shipped viewer, and
-   [`writer-mockup.html`](writer-mockup.html) is faithful to the engine — including the reader round,
-   which offers directions rather than a character's answer. The chapter label it wanted is now on
-   `RunMeta`, so nothing about the mockup is unbuildable.
+5. ~~**Live writer screen redesign.**~~ Built — controls and cast in the rail as cards, the
+   eyebrow/headline/lede block, and the prose in a card with a phase-derived title and chip row. Two
+   departures from [`writer-mockup.html`](writer-mockup.html), both recorded in
+   [`Writer.MD`](Writer.MD): the consult blocks keep their per-attempt detail rather than being
+   simplified to the mockup's single happy path, and the POV chip is dropped as a writer-side hint
+   with no reader value.
 
 ## Architect follow-ups
 
