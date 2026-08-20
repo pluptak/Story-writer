@@ -198,6 +198,9 @@
   .runs { display:flex; flex-wrap:wrap; gap:6px; }
   .runbtn { font-size:10px; padding:4px 8px; }
   .runbtn.current { color:var(--accent); border-color:var(--accent); background:var(--panel-2); }
+  /* grouped by chapter: the label is a left column, the runs wrap beside it */
+  .rungroup { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .rungroup > .hint { flex:0 0 auto; min-width:62px; }
   /* the read tab's chrome -- just the loaded run's cast, reusing the shelf card's .row spacing */
   .readchrome .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; }
 

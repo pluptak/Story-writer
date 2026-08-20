@@ -53,13 +53,29 @@ function sceneRowHtml(scene, chapters, canWrite, why) {
   </div></div>`;
 }
 
+/** Runs filed under the chapter they wrote, ascending to match the scene list above, newest first
+ *  inside each group. A run retained from before chapter numbers were logged has none and lands in
+ *  its own group at the end. One group is not a grouping, so a single-chapter story still renders
+ *  the flat list it always did. */
 function runsListHtml(s) {
   if (!s.runs?.length) return `<p class="hint">no retained runs yet</p>`;
-  return `<div class="runs">${s.runs.map(r => {
+  const btn = r => {
     const current = READV.dir === s.dir && READV.id === r.id;
     return `<button class="btn runbtn${current ? " current" : ""}" data-run="${esc(r.id)}"
          >${current ? "reading · " : "read · "}${esc(fmtRun(r))}</button>`;
-  }).join("")}</div>`;
+  };
+  const groups = new Map();
+  for (const r of s.runs) {
+    const k = typeof r.chapter === "number" ? r.chapter : Infinity;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const keys = [...groups.keys()].sort((a, b) => a - b);
+  if (keys.length === 1) return `<div class="runs">${s.runs.map(btn).join("")}</div>`;
+  return keys.map(k => `<div class="rungroup">
+      <span class="hint">${k === Infinity ? "unattributed" : `chapter ${k}`}</span>
+      <div class="runs">${groups.get(k).map(btn).join("")}</div>
+    </div>`).join("");
 }
 
 /** The handoff prepares the chapter after the last one written, so a story with nothing written has

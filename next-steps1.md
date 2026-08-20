@@ -7,11 +7,9 @@ git history, not in an evergreen planning document.
 
 1. **Run inspector.** Render retained `writing-log.jsonl` and per-agent `llm/*.jsonl` data through the
    existing `/log.jsonl` and `/runs/log` routes. Keep inspection read-only and separate from run control.
-2. **Multi-chapter reader.** The chapter list, the per-chapter write action and reading accepted prose
-   are built ([`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md) items 1–3). The API gaps are closed
-   too — `RunSummary.chapter` and `RunMeta.chapter`/`.chapters` now attribute a run without reading its
-   log. What is left is purely viewer work: grouping the "previous runs" list by chapter in
-   `server/gui/viewer/story-page.js`.
+2. ~~**Multi-chapter reader.**~~ Built — [`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md) items 1–4:
+   the chapter list, the per-chapter write action, reading accepted prose, and runs grouped by the
+   chapter they wrote. Verified statically only, like everything else under `server/gui/`.
 3. ~~**Handoff screen.**~~ Built — the `#/handoff?dir=` page consumes `/next-chapter/*` and the
    `handoff` SSE state. What is left is the chapters-written column in `Architect.MD`'s Mockup B;
    `GET /chapter?dir=&n=` unblocks it, but the word counts mean one fetch per chapter. Design in

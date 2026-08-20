@@ -26,7 +26,10 @@ repeat event shapes or route error handling.
 2. ~~Give each chapter its own write action that posts `{ dir, chapter }` to `/select`.~~ Done.
 3. ~~Display the accepted `chapters/<n>.md` text in chapter order.~~ Done — `GET /chapter?dir=&n=`
    serves the prose and each written chapter row on the story page opens it inline.
-4. Group retained runs by chapter and make each run's log available through the existing log routes.
+4. ~~Group retained runs by chapter~~ Done — `RunSummary.chapter` is read off each run's own log, and
+   the story page's "previous runs" list files runs under the chapter they wrote, ascending, flat when
+   there is only one group. Rendering a run's log in more depth than the read tab does is the Run
+   inspector in [`next-steps1.md`](next-steps1.md), not this item.
 5. Keep current-run rendering scoped to one chapter. Aggregate story-level totals only when the UI is
    explicitly showing more than one run.
 
