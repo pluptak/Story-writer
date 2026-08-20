@@ -63,10 +63,15 @@ New instrumentation is required — nothing today captures duration or tokens pe
 
 ## B. Run comparison view
 
-**Depends on the Run inspector** (next-steps1.md item 1) existing first: that work is what turns a
-retained `writing-log.jsonl` into the same grouped, rendered blocks the live screen already shows
-(`events.js`/`blocks.js`), just fed from `/runs/log` instead of `/events`. Comparison reuses that
-rendering path twice rather than building its own.
+**Depended on the Run inspector** (next-steps1.md item 1), which is now built, so this is unblocked.
+That work is what turns a retained `writing-log.jsonl` into the same grouped, rendered blocks the live
+screen already shows (`events.js`/`blocks.js`), just fed from `/runs/log` instead of `/events`.
+Comparison reuses that rendering path twice rather than building its own.
+
+Note the inspector also added a per-agent panel (`server/gui/viewer/agents.js`) reading
+`/runs/llm`. A comparison view gets that for free per pane, which is worth more than the prose diff
+below for the "what did changing the model actually do" question — the panel already carries each
+run's call counts and volumes side by side.
 
 Once the inspector exists:
 

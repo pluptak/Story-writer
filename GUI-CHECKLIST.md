@@ -143,6 +143,28 @@ Capped markers need a story that can hit the ceiling — nothing on disk sets on
       character that gets retried once comes back marked capped (the `.capped` colour) with "capped"
       in its tooltip. *Skip and note as unchecked if you would rather not spend a run on it.*
 
+## 7. Per-agent model-call panel
+
+Also read-tab only, so no run is needed. Ground truth, to check the numbers against:
+
+```bash
+for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
+```
+
+- [ ] Read any run that has an `llm/` folder. A **Model calls** panel appears below the cast, one row
+      per agent, each tagged `writer` or `character`.
+- [ ] The agents listed, and their call counts, match what the command printed for that run.
+- [ ] Open a *character's* transcript. A list of calls appears, one button per call, numbered.
+- [ ] Click a call. Its prompt messages and the response appear below, each labelled by role.
+- [ ] Click the same call again — it collapses.
+- [ ] Now open the **writer's** transcript. This is the volume check: expect tens of calls, and the
+      page must stay responsive. Expanding one writer call renders a genuinely large prompt; if the
+      tab hangs, the panel is inlining more than one call's worth.
+- [ ] Read a *different* run. The panel changes to that run's agents and **no transcript stays open**
+      from the previous one.
+- [ ] Read a run with an empty `llm/` folder — a run killed before its first generation, if you have
+      one. Expect "this run logged no model calls", not an error and not a spinner.
+
 ## What this list cannot tell you
 
 It exercises the paths a person clicks. It says nothing about the ones they do not: an SSE reconnect

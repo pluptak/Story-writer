@@ -5,14 +5,14 @@ git history, not in an evergreen planning document.
 
 ## Highest value
 
-1. **Run inspector.** The engine and route halves are built. `writing-log.jsonl` was already served by
-   `/runs/log` and already rendered by the read tab; the per-agent `llm/*.jsonl` transcripts, which
-   nothing could read back at all, are now `runLlmLogs`/`readLlmLog` in `engine/preflight.ts` behind
-   `GET /runs/llm` and `GET /runs/llm/file` (`server/run-log-routes.ts`, read-only by construction).
-   What is left is the viewer: a per-agent panel on the read tab showing each agent's call count,
-   prompt/response volume and models, opening one transcript on demand. Note the volumes are lopsided —
-   a real 6-step chapter logged 57 writer calls and ~1.07M prompt characters against ~7 calls per
-   character — so the panel should not assume agents are comparable.
+1. ~~**Run inspector.**~~ Built. `writing-log.jsonl` was already served by `/runs/log` and rendered by
+   the read tab; the per-agent `llm/*.jsonl` transcripts, which nothing could read back at all, are
+   `runLlmLogs`/`readLlmLog` in `engine/preflight.ts` behind `GET /runs/llm` and `GET /runs/llm/file`
+   (`server/run-log-routes.ts`, read-only by construction), and `server/gui/viewer/agents.js` renders
+   them on the read tab. Volumes are lopsided — a real 6-step chapter logged 57 writer calls and
+   ~1.07M prompt characters against ~7 calls per character — which is why a transcript is fetched only
+   on demand and rendered one call at a time. Viewer half checked statically only; see
+   [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) §7.
 2. ~~**Multi-chapter reader.**~~ Built — [`SPEC-GUI-MULTISCENE.md`](SPEC-GUI-MULTISCENE.md) items 1–4:
    the chapter list, the per-chapter write action, reading accepted prose, and runs grouped by the
    chapter they wrote. Checked live against [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) on 2026-08-20 —
