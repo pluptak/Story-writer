@@ -16,17 +16,8 @@
     <button class="tab" id="tab-live" data-view="live" hidden>write<span class="tabasked" id="tabasked" hidden>· asked</span><span class="tabdot" id="tabdot" hidden></span></button>
     <button class="tab" id="tab-read" data-view="read" hidden>read</button>
   </nav>
-  <div class="cast" id="cast"></div>
   <button class="btn" id="expand">expand all</button>
   <button class="btn" id="theme">theme</button>
-</div>
-<div class="sessionbar" id="sessionbar" hidden>
-  <select class="btn" id="modelSelect"><option value="">story default</option></select>
-  <button class="btn" id="interactive">interactive</button>
-  <button class="btn" id="pause" hidden>pause</button>
-  <button class="btn" id="consultMe" hidden>consult me</button>
-  <button class="btn" id="stop" hidden>stop run</button>
-  <span class="ctrl-err" id="sessionNotice"></span>
 </div>
 <div class="ribbon" id="ribbon" hidden></div>
 <div class="srcbar"><span class="dot" id="dot"></span><span id="src">nothing loaded</span><span id="where"></span>
@@ -35,7 +26,24 @@
 
 <div class="layout">
   <main class="page" id="page"></main>
-  <aside class="rail" id="rail"></aside>
+  <aside class="rail" id="rail">
+    <section class="side">
+      <h3>run controls</h3>
+      <div id="railstats"></div>
+      <div class="sessionbar" id="sessionbar" hidden>
+        <select class="btn" id="modelSelect"><option value="">story default</option></select>
+        <button class="btn" id="interactive">interactive</button>
+        <button class="btn" id="pause" hidden>pause</button>
+        <button class="btn" id="consultMe" hidden>consult me</button>
+        <button class="btn" id="stop" hidden>stop run</button>
+        <span class="ctrl-err" id="sessionNotice"></span>
+      </div>
+    </section>
+    <section class="side" id="castcard" hidden>
+      <h3>cast in scene</h3>
+      <div class="cast" id="cast"></div>
+    </section>
+  </aside>
 </div>
 <div id="modalroot"></div>
 

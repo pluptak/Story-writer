@@ -31,8 +31,7 @@ export function renderRail(store, blocks) {
   const pct = target ? Math.min(100, Math.round(words / target * 100)) : 0;
   const stat = (k, v, cls) => `<div class="stat"><span>${k}</span><span class="n ${cls||""}">${v}</span></div>`;
   const flags = count("skill_flag"), retries = count("retry");
-  $("rail").innerHTML = `
-    <h3>progress</h3>
+  $("railstats").innerHTML = `
     <div class="bar"><i style="width:${pct}%"></i></div>
     ${stat("words", target ? `${words} / ${target}` : words)}
     ${stat("steps", count("draft"))}

@@ -73,6 +73,13 @@
   .sessionbar[hidden] { display:none; }
   .sessionbar #modelSelect { max-width:260px; }
   .sessionbar #stop { margin-left:auto; }
+  /* in the rail it is a control group in a card, not a bar across the window */
+  .rail .sessionbar { padding:12px 0 0; margin-top:12px; border-bottom:0;
+                      border-top:1px solid var(--line); background:none; gap:7px; }
+  .rail .sessionbar .btn { flex:1 1 auto; }
+  .rail .sessionbar #modelSelect { flex:1 1 100%; max-width:none; }
+  .rail .sessionbar #stop { margin-left:0; }
+  .rail .sessionbar .ctrl-err { flex:1 1 100%; }
   .ctrl-err { font-family:var(--mono); font-size:11px; color:var(--bad); }
   .ctrl-err:empty { display:none; }
 
@@ -89,8 +96,11 @@
   .ribbon:not([hidden]) { display:flex; }
   body[data-view="read"] { background:color-mix(in srgb, var(--bg) 88%, var(--panel-2)); }
 
-  .layout { display:grid; grid-template-columns:minmax(0,1fr) 260px; align-items:start; }
-  @media (max-width: 900px) { .layout { grid-template-columns:1fr; } .rail { display:none; } }
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 285px; align-items:start; }
+  /* The rail carries the run controls now, so it stacks on a narrow screen instead of vanishing --
+     hiding it would take away the only way to stop a run. The `position` half of that has to come
+     after the `.rail` rule below, not here, or equal specificity lets source order undo it. */
+  @media (max-width: 900px) { .layout { grid-template-columns:1fr; } }
 
   .page { padding:28px clamp(16px,4vw,40px) 140px; max-width:730px; margin:0 auto; width:100%; }
   .prose { font-family:var(--serif); font-size:17.5px; line-height:1.66; }
@@ -142,7 +152,11 @@
           margin:22px 0; letter-spacing:.03em; }
   .note.end { color:var(--accent); }
 
-  .rail { position:sticky; top:52px; padding:24px 20px; font-size:12px; }
+  .rail { position:sticky; top:52px; padding:24px 20px; font-size:12px; display:grid; gap:14px; }
+  @media (max-width: 900px) { .rail { position:static; } }
+  .side { background:var(--panel); border:1px solid var(--line); border-radius:13px;
+          padding:15px; box-shadow:var(--shadow); }
+  .side[hidden] { display:none; }
   .rail h3 { font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase;
              color:var(--faint); margin:0 0 10px; font-weight:600; }
   .stat { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); }

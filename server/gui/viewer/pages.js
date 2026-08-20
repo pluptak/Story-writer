@@ -49,12 +49,13 @@ function renderNav() {
 
 function renderHeader() {
   const m = APP.view === "live" ? LIVEV.meta : APP.view === "read" ? READV.meta : null;
-  if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; return; }
+  if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; $("castcard").hidden = true; return; }
   $("title").textContent = basename(m.story) || "story-writer";
   $("question").textContent = m.question || "";
   // Live only: the read page carries its own "Cast" section, and the same pills in the header too
   // is one set too many.
   $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story) : "";
+  $("castcard").hidden = !(APP.view === "live" && m.characters?.length);
 }
 
 function paintRibbon() {
@@ -67,7 +68,7 @@ function paintRibbon() {
 
 function renderShelf(page, keepFocus) {
   page.innerHTML = pickerHtml() + interviewModalHtml();
-  $("rail").innerHTML = "";
+  $("railstats").innerHTML = "";
   wirePicker(page, () => go("story")); wireInterview(page); wireModal(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -75,14 +76,14 @@ function renderShelf(page, keepFocus) {
 
 function renderStoryPage(page) {
   page.innerHTML = storyPageHtml();
-  $("rail").innerHTML = "";
+  $("railstats").innerHTML = "";
   wireStoryPage(page);
   setFoldable(false);
 }
 
 function renderHandoff(page, keepFocus) {
   page.innerHTML = handoffPageHtml();
-  $("rail").innerHTML = "";
+  $("railstats").innerHTML = "";
   wireHandoff(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -98,7 +99,7 @@ function renderLive(page, blocks) {
       html = `<div class="empty starting">
         <h2>Starting${name ? ` <em>${esc(name)}</em>` : ""}…</h2>
         <p class="thinking"><i></i>waiting for the writer — a cold model can take a few seconds</p>
-        <p class="hint">use <b>stop</b> above to cancel once the run controls appear</p>
+        <p class="hint">use <b>stop</b> in the run controls to cancel, once they appear</p>
       </div>`;
     } else {
       const text = APP.live ? "The scene will appear here as soon as the engine starts writing."
@@ -110,7 +111,7 @@ function renderLive(page, blocks) {
       </div>`;
     }
     page.innerHTML = html;
-    $("rail").innerHTML = "";
+    $("railstats").innerHTML = "";
     const gb = page.querySelector("#go-shelf");
     if (gb) gb.addEventListener("click", () => go("shelf"));
     setFoldable(false);
@@ -140,7 +141,7 @@ function renderRead(page, blocks) {
              Pick an earlier one, which may have more in it.`
                  : `Open a story on the shelf and "read" a previous run, drop a saved
              <code>out/writing-log.jsonl</code> onto this page, or open one from disk.`}</p></div>`;
-    $("rail").innerHTML = "";
+    $("railstats").innerHTML = "";
     wireSavedRuns(page);
     setFoldable(false);
     return;
