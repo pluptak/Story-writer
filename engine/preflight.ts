@@ -216,3 +216,54 @@ export async function storyCards(): Promise<StoryCard[]> {
   }
   return out;
 }
+
+/** One agent's transcript within a run: what it was, how much it said, and under which model(s).
+ *  `models` is a list because `/model` can swap the model mid-run. */
+export interface LlmLogSummary {
+  file: string; agent: string; role: string;
+  models: string[]; calls: number; promptChars: number; responseChars: number;
+}
+
+/** Every per-agent transcript in one run, by filename. A run that never opened one -- killed before
+ *  its first generation, or old enough to predate them -- lists nothing rather than failing. A line
+ *  that will not parse is skipped, the same tolerance `retainedRuns` gives a truncated log. */
+export async function runLlmLogs(storyDir: string, id: string): Promise<LlmLogSummary[]> {
+  const dir = joinPath(storyDir, "out", id, "llm");
+  let files: string[];
+  try {
+    files = (await readdir(dir, { withFileTypes: true }))
+      .filter(e => e.isFile() && e.name.endsWith(".jsonl")).map(e => e.name).sort();
+  } catch { return []; }
+
+  const out: LlmLogSummary[] = [];
+  for (const file of files) {
+    const summary: LlmLogSummary = {
+      file, agent: "", role: "", models: [], calls: 0, promptChars: 0, responseChars: 0,
+    };
+    try {
+      for (const line of (await readFile(joinPath(dir, file), "utf8")).trim().split("\n")) {
+        if (!line) continue;
+        let ev: any;
+        try { ev = JSON.parse(line); } catch { continue; }
+        summary.calls++;
+        if (!summary.agent && typeof ev.agent === "string") summary.agent = ev.agent;
+        if (!summary.role && typeof ev.role === "string") summary.role = ev.role;
+        if (typeof ev.model === "string" && !summary.models.includes(ev.model)) summary.models.push(ev.model);
+        for (const m of Array.isArray(ev.prompt) ? ev.prompt : [])
+          summary.promptChars += String(m?.content ?? "").length;
+        summary.responseChars += String(ev.response ?? "").length;
+      }
+    } catch { continue; }
+    out.push(summary);
+  }
+  return out;
+}
+
+/** One transcript's raw NDJSON, or null. `file` comes from outside the process, so it is checked
+ *  against what `runLlmLogs` actually found rather than against a pattern -- the listing is the
+ *  allowlist, and no caller-supplied text ever reaches a path join unvalidated. */
+export async function readLlmLog(storyDir: string, id: string, file: string): Promise<string | null> {
+  if (!(await runLlmLogs(storyDir, id)).some(l => l.file === file)) return null;
+  try { return await readFile(joinPath(storyDir, "out", id, "llm", file), "utf8"); }
+  catch { return null; }
+}

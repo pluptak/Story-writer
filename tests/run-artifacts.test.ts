@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { loadStory } from "../engine/story-format.ts";
 import { num } from "../engine/config-util.ts";
 import { llmFilenameFor, llmLogEntry } from "../engine/agent.ts";
-import { runDirs, retainedRuns } from "../engine/preflight.ts";
+import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
 import { wrapCharacter, wrapWriter, writerCast } from "../engine/scene-loop.ts";
 import { quiet, quietSync, warnings } from "./helpers.ts";
@@ -83,6 +83,140 @@ describe("runDirs / retainedRuns", () => {
       const runs = await retainedRuns(dir);
       assert.equal(runs[0].chapter, undefined);
       assert.equal(runs[0].done, true);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- LLM LOG READING --------------------------------------------------------
+describe("runLlmLogs / readLlmLog", () => {
+  async function addRun(storyDir: string, id: string, log?: object[]): Promise<void> {
+    const runPath = join(storyDir, "out", id);
+    await mkdir(runPath, { recursive: true });
+    if (log) await writeFile(runPath + "/writing-log.jsonl", log.map(e => JSON.stringify(e)).join("\n"), "utf8");
+  }
+  async function addLlm(storyDir: string, id: string, file: string, records: object[]): Promise<void> {
+    const dir = join(storyDir, "out", id, "llm");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, file), records.map(r => JSON.stringify(r)).join("\n"), "utf8");
+  }
+
+  it("returns nothing for a run with no llm folder", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      await mkdir(join(storyDir, "out", id), { recursive: true });
+      assert.deepEqual(await runLlmLogs(storyDir, id), []);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("summarises each agent's transcript, counting calls and characters", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      await addLlm(storyDir, id, "writer.jsonl", [
+        { ts: "t1", role: "writer", agent: "WRITER", model: "m1", prompt: [{ role: "system", content: "abc" }, { role: "user", content: "de" }], response: "xyz" },
+        { ts: "t2", role: "writer", agent: "WRITER", model: "m1", prompt: [{ role: "user", content: "f" }], response: "12" },
+      ]);
+      const logs = await runLlmLogs(storyDir, id);
+      assert.equal(logs.length, 1);
+      assert.equal(logs[0].agent, "WRITER");
+      assert.equal(logs[0].role, "writer");
+      assert.equal(logs[0].calls, 2);
+      assert.equal(logs[0].promptChars, 6);
+      assert.equal(logs[0].responseChars, 5);
+      assert.deepEqual(logs[0].models, ["m1"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("lists one entry per file, sorted by filename", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      await addLlm(storyDir, id, "writer.jsonl", [{ ts: "t1", role: "writer", agent: "W", model: "m", prompt: [], response: "r" }]);
+      await addLlm(storyDir, id, "riven.jsonl", [{ ts: "t1", role: "character", agent: "R", model: "m", prompt: [], response: "r" }]);
+      const logs = await runLlmLogs(storyDir, id);
+      assert.deepEqual(logs.map(l => l.file), ["riven.jsonl", "writer.jsonl"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("collects every model a run used, in the order it saw them", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      await addLlm(storyDir, id, "agent.jsonl", [
+        { ts: "t1", role: "character", agent: "A", model: "m1", prompt: [], response: "r" },
+        { ts: "t2", role: "character", agent: "A", model: "m2", prompt: [], response: "r" },
+        { ts: "t3", role: "character", agent: "A", model: "m1", prompt: [], response: "r" },
+      ]);
+      const logs = await runLlmLogs(storyDir, id);
+      assert.deepEqual(logs[0].models, ["m1", "m2"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("skips a line that will not parse rather than losing the file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      const llmDir = join(storyDir, "out", id, "llm");
+      await mkdir(llmDir, { recursive: true });
+      const validRecord1 = JSON.stringify({ ts: "t1", role: "character", agent: "A", model: "m", prompt: [], response: "r1" });
+      const invalidLine = "not json {";
+      const validRecord2 = JSON.stringify({ ts: "t2", role: "character", agent: "A", model: "m", prompt: [], response: "r2" });
+      await writeFile(join(llmDir, "agent.jsonl"), `${validRecord1}\n${invalidLine}\n${validRecord2}`, "utf8");
+      const logs = await runLlmLogs(storyDir, id);
+      assert.equal(logs.length, 1);
+      assert.equal(logs[0].calls, 2);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("readLlmLog returns the raw text of a listed transcript", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      const record = { ts: "t1", role: "character", agent: "A", model: "m", prompt: [], response: "test-response-xyz" };
+      await addLlm(storyDir, id, "agent.jsonl", [record]);
+      const text = await readLlmLog(storyDir, id, "agent.jsonl");
+      assert.ok(text);
+      assert.match(text!, /test-response-xyz/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("readLlmLog refuses a file the run does not have", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      await mkdir(join(storyDir, "out", id), { recursive: true });
+      const result = await readLlmLog(storyDir, id, "nope.jsonl");
+      assert.equal(result, null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("readLlmLog refuses a traversal attempt", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const storyDir = join(dir, "story");
+      await mkdir(storyDir, { recursive: true });
+      const id = "test-run";
+      await addRun(storyDir, id, [{ t: "scene_start" }]);
+      // A populated listing, so the refusal is the allowlist doing its job rather than an empty
+      // run refusing everything -- `llm/../writing-log.jsonl` is a real file, and still not served.
+      await addLlm(storyDir, id, "agent.jsonl", [{ ts: "t1", role: "character", agent: "A", model: "m", prompt: [], response: "r" }]);
+      assert.ok(await readLlmLog(storyDir, id, "agent.jsonl"));
+      assert.equal(await readLlmLog(storyDir, id, "../writing-log.jsonl"), null);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
