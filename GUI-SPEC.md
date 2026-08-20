@@ -174,7 +174,7 @@ GET  /scaffold
 
 ScaffoldRound =
   | { kind:"proposal"; note }
-  | { kind:"edits"; applied[]; ignored[]; note }
+  | { kind:"edits"; applied:{field:string;before:unknown;after:unknown}[]; ignored[]; flags:string[]; note }
   | { kind:"question"; ask }
   | { kind:"nothing"; why }
   | { kind:"failed"; error }
@@ -217,6 +217,11 @@ run in flight is reading the file the handoff would rewrite. `handoffBusy` is th
 one-round-at-a-time lock as the scaffold's (`409` for a second `POST` mid-round), and rounds share
 `ScaffoldRound` minus `proposal` — the handoff only ever returns edits, a question, nothing, or a
 failure.
+
+An edits round has four separate result lists: `applied` changes, `ignored` edits that were not
+applied, `flags` advisory continuity observations, and `problems` on the surrounding state. `flags`
+are non-blocking and are never resolved implicitly through edits. Scaffold edits also return
+`flags: []` because the same `ScaffoldRound` shape is shared by both screens.
 
 `accept` writes over the story that is already there, so it validates by writing and then running
 `runPreflight`: on failure it **puts back exactly what was on disk** and answers `kind:"unloadable"`,

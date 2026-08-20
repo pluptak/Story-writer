@@ -112,7 +112,8 @@ describe("ScaffoldSession", () => {
 
     const r = await s.say("make it longer");
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { applied: string[] }).applied, ["scene.length"]);
+    assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["scene.length"]);
+    assert.deepEqual((r as { flags: string[] }).flags, []);
     assert.equal(s.spec.scenes[0].length, 900);
     assert.equal(s.spec.title, "The Fog Signal", "everything not named survived the round");
     assert.equal(s.spec.characters.length, 2);
@@ -267,7 +268,7 @@ describe("NextChapterSession", () => {
     const s = handoff([{ edits: [{ field: "remove_scene", value: 1 }, { field: "remove_scene", value: 2 }] }], two);
     const r = await quiet(() => s.propose());
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { applied: string[] }).applied, ["removed scene 2"]);
+    assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["removed scene 2"]);
     assert.match((r as { ignored: string[] }).ignored.join(" "), /remove_scene 1 . chapter 1 is already written/);
     assert.equal(s.spec.scenes.length, 1);
     assert.equal(s.spec.scenes[0].question, spec.scenes[0].question);
@@ -278,9 +279,20 @@ describe("NextChapterSession", () => {
     const before = structuredClone(s.spec);
     const r = await quiet(() => s.propose());
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { applied: string[] }).applied, []);
+    assert.equal((r as { applied: unknown[] }).applied.length, 0);
     assert.match((r as { ignored: string[] }).ignored.join(" "), /scene_1\.question . chapter 1 is already written/);
     assert.equal(s.spec.scenes[0].question, before.scenes[0].question);
+  });
+
+  it("passes trimmed continuity flags separately from applied edits and problems", async () => {
+    const s = handoff([{ flags: ["  prose contradicts the fact bible.  ", "the cast knows too much", 42, "   "], edits: [
+      { field: "characters.ASTER.goal", value: "Get off the rock." },
+    ] }]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, ["prose contradicts the fact bible.", "the cast knows too much"]);
+    assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["ASTER.goal"]);
+    assert.deepEqual(s.problems, []);
   });
 
   it("refuses to edit bare scene.place when chapter 1 is already written", async () => {
@@ -288,7 +300,7 @@ describe("NextChapterSession", () => {
     const before = structuredClone(s.spec);
     const r = await quiet(() => s.propose());
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { applied: string[] }).applied, []);
+    assert.equal((r as { applied: unknown[] }).applied.length, 0);
     assert.match((r as { ignored: string[] }).ignored.join(" "), /scene\.place . chapter 1 is already written/);
     assert.equal(s.spec.scenes[0].place, before.scenes[0].place);
   });
@@ -298,7 +310,7 @@ describe("NextChapterSession", () => {
     const s = handoff([{ edits: [{ field: "scene_2.question", value: "What happens next?" }] }], two);
     const r = await quiet(() => s.propose());
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { applied: string[] }).applied, ["scene_2.question"]);
+    assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["scene_2.question"]);
     assert.deepEqual((r as { ignored: string[] }).ignored, []);
     assert.equal(s.spec.scenes[1].question, "What happens next?");
   });
@@ -310,7 +322,7 @@ describe("NextChapterSession", () => {
     ] }]);
     const r = await quiet(() => s.propose());
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { applied: string[] }).applied, ["ASTER.goal"]);
+    assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["ASTER.goal"]);
     assert.match((r as { ignored: string[] }).ignored.join(" "), /scene_1\.place . chapter 1 is already written/);
     assert.equal(s.spec.characters[0].goal, "Escape the lighthouse.");
     assert.equal(s.spec.scenes[0].place, spec.scenes[0].place, "scene 1 place is unchanged");

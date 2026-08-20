@@ -40,7 +40,7 @@ export async function buildArchitect(d: Defaults, withExample = true): Promise<A
 /** What one exchange with the architect produced, for the CLI/SSE to announce. */
 export type ScaffoldRound =
   | { kind: "proposal"; note: string }
-  | { kind: "edits"; applied: string[]; ignored: string[]; note: string }
+  | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string }
   | { kind: "question"; ask: string }
   | { kind: "nothing"; why: string }
   | { kind: "failed"; error: string };
@@ -124,7 +124,7 @@ export class ScaffoldSession {
     const e = applyEdits(this.spec, r.out);
     this.spec = e.spec; this.problems = e.problems;
     this.pendingAsk = "";
-    return { kind: "edits", applied: e.applied, ignored: e.ignored, note: withAsk(r.out) };
+    return { kind: "edits", applied: e.applied, ignored: e.ignored, flags: [], note: withAsk(r.out) };
   }
 
   private label(abs: string): string {
@@ -218,7 +218,11 @@ export class NextChapterSession {
     const e = applyEdits(this.spec, { edits: guarded.edits });
     this.spec = e.spec; this.problems = e.problems; this.pendingAsk = "";
     this.edited = true;
-    return { kind: "edits", applied: e.applied, ignored: [...guarded.refused, ...e.ignored], note: withAsk(r.out) };
+    const flags = Array.isArray(r.out.flags)
+      ? r.out.flags.filter((flag): flag is string => typeof flag === "string")
+        .map(flag => flag.trim()).filter(Boolean)
+      : [];
+    return { kind: "edits", applied: e.applied, ignored: [...guarded.refused, ...e.ignored], flags, note: withAsk(r.out) };
   }
 
   /** The handoff request itself: the premise, the chapters as written, and the story as it stands. */

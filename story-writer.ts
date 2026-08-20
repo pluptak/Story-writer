@@ -160,7 +160,7 @@ function showRound(s: { spec: StorySpec; problems: string[] }, r: ScaffoldRound,
       showSpec(s.spec, s.problems, r.note); return;
     case "edits":
       if (!r.applied.length && !r.ignored.length) console.log(`${C.yellow}It changed nothing.${C.reset}`);
-      else console.log(`${C.green}changed:${C.reset} ${r.applied.join(", ") || "(nothing)"}`);
+      else console.log(`${C.green}changed:${C.reset} ${r.applied.map(a => a.field).join(", ") || "(nothing)"}`);
       for (const ig of r.ignored) console.log(`${C.yellow}⚠${C.reset} ignored ${ig}`);
       showSpec(s.spec, s.problems, r.note); return;
   }

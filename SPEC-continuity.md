@@ -1,6 +1,6 @@
 # SPEC-continuity: Fact Bible, Continuity Flags, Handoff Diff
 
-**Status: proposed, not built.** Three ideas that all concern turning accumulated chapter prose into
+**Status: Sections A, B and C implemented.** Three ideas that all concern turning accumulated chapter prose into
 durable, reviewable story state: a story-level fact bible, continuity flags surfaced during the
 handoff, and a before/after diff for the edits the handoff already applies. The third is explicitly
 named as a known gap in [`Architect.MD`](Architect.MD) ("There is no before/after... field-level
@@ -16,34 +16,36 @@ chapters written after they were introduced.
 
 ## A. Story-level fact bible
 
-No such field exists today — `StoryJson` (`engine/story-schema.ts`) has `title`, `premise`, `scenes`,
-`writerStyle`, `characters`, `config`, `models` only; `CharacterDef.knows` is per-character, there is
-no story-level equivalent for world truths nobody in particular owns (e.g. "the lighthouse hasn't
-worked since the storm").
+**Implemented in Block 1.** `facts` is present in the schema and working story/spec shapes, is carried
+into the writer prompt, survives story rendering/loading, and is available through the architect's
+scaffold and handoff edit vocabulary. Tests cover the fact edit operations, schema default, and writer
+prompt facts block.
 
-- **Schema**: add `facts: string[]` to `StoryJson`, following the same plain-list shape as
-  `writerStyle`-adjacent fields rather than inventing an id/object shape.
-- **Writer context**: `writerSystem()` (`prompts.ts` ~line 497, called from `engine/scene-loop.ts:35`)
-  builds `THE PREMISE:`/`THE SCENE:`/`THE CAST:` blocks from a plain object. Add a `THE FACTS:` block
-  in the same function, threaded from the same place `premise`/`scene`/`cast` already are.
-- **Architect edit surface**: `applyEdits()` (`engine/story-spec.ts` ~line 107) already has a proven
-  pattern for indexed collections — `scene_<n>.field` addresses one scene by array index. Facts should
-  follow the same convention rather than a new id concept: `add_fact <text>`, `remove_fact <n>`,
-  `update_fact <n> <text>`, targeting `facts[n]` the same way scene edits target `scenes[n]`.
-- **Prompts**: `architectNextChapter()` (`prompts.ts` ~line 172) needs its `[STORY FACTS]` input block
-  and the new `add_fact`/`remove_fact`/`update_fact` entries added to its edit-field grammar (alongside
-  the existing `title`/`characters.<NAME>.persona`/`scene_<n>.*` list, ~line 222). The scaffold's
-  `architectSystem`/worked example (`prompts.ts` ~line 152) needs the same additions so facts can be
-  proposed on the *first* story proposal, not only introduced later during a handoff.
+The story-level `facts` field holds world truths nobody in particular owns (e.g. "the lighthouse
+hasn't worked since the storm"). It is a plain list rather than an id/object shape, while
+`CharacterDef.knows` remains per-character.
+
+- **Schema**: `StoryJson` has `facts: string[]`, following the same plain-list shape as the
+  `writerStyle`-adjacent fields.
+- **Writer context**: `writerSystem()` includes a `THE FACTS:` block, threaded through
+  `engine/scene-loop.ts` with the premise, scene, and cast.
+- **Architect edit surface**: `applyEdits()` supports `add_fact <text>`, `remove_fact <n>`, and the
+  indexed fact update operation, targeting `facts[n]` without a new id concept.
+- **Prompts**: scaffold and handoff architect prompts include the story-facts input and fact edit
+  vocabulary, so facts can be proposed on the first story and during later handoffs.
 
 **Files:** `engine/story-schema.ts`, `engine/story-spec.ts`, `prompts.ts`, `engine/scene-loop.ts`
 (threading `sc.facts` into the writer-context call).
 
-**Tests:** `tests/story-spec.test.ts` for the three new edit ops; `tests/story-format.test.ts` for the
-schema default; a `prompts`-adjacent test (or extend an existing writer-prompt test) confirming facts
-appear in `writerSystem()`'s output.
+**Tests:** `tests/story-spec.test.ts` covers the fact edit ops; `tests/story-format.test.ts` covers the
+schema default; prompt coverage confirms facts appear in `writerSystem()`'s output.
 
 ## B. Continuity flags in the handoff round
+
+**Implemented in Block 2.** The existing handoff architect round now returns normalized advisory
+continuity flags, passes them through as a separate result list, documents them in the GUI contract,
+and renders them in a distinct non-blocking handoff block. Scaffold edit rounds return `flags: []` to
+keep the shared round shape stable.
 
 **Resolves the open design question in [`next-steps1.md`](next-steps1.md)** ("decide which agent owns
 [a continuity-check] call and what it may see") rather than adding a new agent.
@@ -79,31 +81,33 @@ resolve, the same way an `ask` question already blocks a round without writing a
 **Files:** `prompts.ts` (`architectNextChapter`), `engine/architect.ts` (`NextChapterSession.take`),
 `GUI-SPEC.md` (the handoff round-result shape), `server/gui/viewer/handoff-view.js`.
 
-**Tests:** `tests/architect.test.ts` — a round whose model response includes `flags` passes them
-through untouched and does not fold them into `applied`/`problems`.
+**Tests:** `tests/architect.test.ts` — a round whose model response includes `flags` passes trimmed,
+valid flag strings through and does not fold them into `applied`/`problems`.
 
 ## C. Before/after diff for handoff edits
 
-Today `applyEdits()` (`engine/story-spec.ts` ~lines 111-187) clones `spec` into a mutated `draft` and,
-at each edit, pushes only a bare field label to `applied` (e.g. `applied.push(field)` line ~131,
-`applied.push(\`${c.name}.${targetField}\`)` line ~178) — the old value is one line away at each of
-these seven call sites (readable off `draft` immediately before the mutating assignment, or off the
-original untouched `spec`), it's just never captured.
+**Implemented in Block 3.** `applyEdits()` returns structured applied entries with normalized
+`before`/`after` values. Structural additions and removals report an undefined side and the relevant
+object on the other side; repeated edits retain each edit's own normalized result. The handoff view
+renders concise, escaped values for review.
 
-- Change each `applied.push(field)` call to `applied.push({ field, before, after })`, reading `before`
-  from `spec` (or pre-mutation `draft`) at that exact point and `after` from the value being assigned.
+`applyEdits()` (`engine/story-spec.ts`) clones `spec` into a mutated `draft` and records each applied
+edit with its field label, before value, and after value. Internal target descriptors resolve ordinary
+single edits against the normalized result returned to the caller; repeated and structural edits keep
+normalized per-edit snapshots so later edits do not overwrite earlier review entries.
+
+- Applied entries are `{ field: string; before: unknown; after: unknown }` and are populated after the
+  final `normalizeSpec()` call, so `after` is what the caller actually receives rather than the raw
+  architect value.
   `add_scene`/`remove_scene`/`add_character`/`remove_character` are structural, not field-level — for
   those, `before`/`after` should be `undefined`/the added object (or the removed object/`undefined`),
   not a value diff, so the GUI can distinguish "changed" from "added"/"removed".
-- `draft` is re-normalized into `next` at the end (line ~185), so `after` should reflect the
-  **normalized** result the caller actually receives, not the raw edit `value` — read it off `next`
-  after normalization rather than off `draft` mid-loop, or defer filling `after` until normalization
-  completes.
+- Ordinary single edits resolve `after` against the final normalized `next`; repeated and structural
+  edits retain normalized snapshots for their individual operations.
 - `applied` changes shape from `string[]` to `{ field: string; before: unknown; after: unknown }[]`.
   This is a breaking shape change for existing consumers: `handoff-view.js`'s "CHANGES TO REVIEW" list
-  (`Architect.MD` Mockup B) currently renders `applied` entries as bare labels (`IVO.goal`,
-  `MARA.restrictions`) — update it to render `field` as the label and show `before → after` beneath it
-  when both are present.
+  (`Architect.MD` Mockup B) renders `field` as the label and shows a concise escaped `before → after`
+  value line, including readable summaries for objects and arrays.
 
 **Files:** `engine/story-spec.ts` (`applyEdits`), `GUI-SPEC.md` (the `applied` shape in the handoff
 round-result), `server/gui/viewer/handoff-view.js`.
@@ -114,18 +118,21 @@ post-normalization values (e.g. a coerced number) rather than the raw edit input
 
 ## Blocks
 
-1. **Fact bible** (A) — schema, writer prompt, architect edit ops on both scaffold and handoff. Self-
+1. **Fact bible** (A) — complete: schema, writer prompt, architect edit ops on both scaffold and handoff. Self-
    contained; nothing else here depends on it, though (B) reads more naturally once facts exist as a
    substrate to check contradictions against.
-2. **Continuity flags** (B) — prompt/response schema, `NextChapterSession` passthrough, the GUI's
-   fourth block. Best done after (A) so there's a concrete fact list to check chapters against, but not
-   strictly blocked by it — flags can also catch contradictions against `knows`/prior chapters alone.
-3. **Handoff diff** (C) — `applyEdits`'s shape change and the corresponding `handoff-view.js` render
-   update. Independent of (A) and (B); pure engine + one GUI file.
+2. **Continuity flags** (B) — complete: prompt/response schema, `NextChapterSession` passthrough, the
+   GUI's fourth advisory block, and focused passthrough tests. Best done after (A) so there's a concrete
+   fact list to check chapters against, though flags also catch contradictions against `knows`/prior
+   chapters alone.
+3. **Handoff diff** (C) — complete: `applyEdits`'s shape change, normalized value handling, tests, and
+   the corresponding `handoff-view.js` render update. Independent of (A) and (B); pure engine + one
+   GUI file.
 
-**Verify (all three):** `npx tsc`, `npm test`. (B) additionally needs an owner-run handoff against a
-multi-chapter story with a deliberately introduced contradiction, to confirm the architect actually
-flags it rather than silently rewriting state — `npx tsx story-writer.ts stories/<name> --next-chapter`.
+**Verify:** `npx tsc`, `npm test` are the completed cheap checks for all three blocks. B additionally
+needs an owner-run handoff against a multi-chapter story with a deliberately introduced contradiction,
+to confirm the architect actually flags it rather than silently rewriting state —
+`npx tsx story-writer.ts stories/<name> --next-chapter`.
 
 ## Out of scope
 

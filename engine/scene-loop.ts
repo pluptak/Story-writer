@@ -30,9 +30,9 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
-/** The system prompt for the writer agent: premise, scene, the cast's skills, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; cannot: string[] }[], style: string): string {
-  return P.writerSystem({ premise, scene, cast, style });
+/** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; cannot: string[] }[], style: string, facts: string[] = []): string {
+  return P.writerSystem({ premise, scene, cast, facts, style });
 }
 
 /** The cast actually in a scene; an empty roster means the whole cast. */
@@ -117,10 +117,11 @@ export async function writeScene(
   maxSteps: number, maxProseWords: number, retries: number, clarifications: number,
   dir: string, log: (e: RunEvent) => void,
   maxCharacterRetries?: number,
+  facts: string[] = [],
 ) {
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
-  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, writerCast(roster, []), writerStyle), 0.8);
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, writerCast(roster, []), writerStyle, facts), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
   LIVE.writer = writer; LIVE.log = log;
@@ -370,6 +371,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
       sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
       sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
       sc.dir, log, sc.maxCharacterRetries,
+      sc.facts,
     );
     return r;
   } finally {

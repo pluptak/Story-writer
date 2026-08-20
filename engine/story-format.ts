@@ -27,6 +27,7 @@ export interface StoryConfig {
   premise: string;
   scenes: SceneDef[];
   writerStyle: string;
+  facts: string[];
   retries: number;
   clarifications: number;
   maxSteps: number;
@@ -111,6 +112,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     premise: parsed.premise,
     scenes: parsed.scenes,
     writerStyle: parsed.writerStyle,
+    facts: parsed.facts,
     retries: config.retries,
     clarifications: config.clarifications,
     maxSteps: config.maxSteps,

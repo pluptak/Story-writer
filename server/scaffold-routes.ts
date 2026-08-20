@@ -86,7 +86,7 @@ export async function handleScaffoldRoutes(
     const r = host.directEdit(SCAFFOLD.spec, String(o.field ?? ""), o.value);
     if (!r.ok) { json(res, 400, { ok: false, reason: r.reason }); return true; }
     SCAFFOLD.spec = r.spec; SCAFFOLD.problems = r.problems;
-    scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], note: "" };
+    scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "" };
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 

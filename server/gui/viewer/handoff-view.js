@@ -115,15 +115,35 @@ export function handoffPageHtml() {
 
   // Last round results
   if (s.last?.kind === "edits") {
+    const changeValue = (value) => {
+      if (value === undefined || value === null) return "∅";
+      if (typeof value === "string") return JSON.stringify(value);
+      if (Array.isArray(value)) {
+        const items = value.slice(0, 4).map(changeValue);
+        return `[${items.join(", ")}${value.length > 4 ? ", …" : ""}]`;
+      }
+      if (typeof value === "object") {
+        const entries = Object.entries(value).slice(0, 4)
+          .map(([key, item]) => `${key}: ${changeValue(item)}`);
+        return `{${entries.join(", " )}${Object.keys(value).length > 4 ? ", …" : ""}}`;
+      }
+      return String(value);
+    };
     body.push(`<div class="divider"><span>changes to review</span></div>`);
     if (s.last.applied.length) {
-      body.push(s.last.applied.map(a => `<p class="hint">✓ ${esc(a)}</p>`).join(""));
+      body.push(s.last.applied.map(a => {
+        return `<p class="hint">✓ ${esc(a.field)} <span class="dim">${esc(changeValue(a.before))} → ${esc(changeValue(a.after))}</span></p>`;
+      }).join(""));
     } else {
       body.push(`<p class="hint">nothing changed yet</p>`);
     }
     if (s.last.ignored.length) {
       body.push(`<div class="divider"><span>not applied</span></div>`);
       body.push(s.last.ignored.map(x => `<div class="said bad">✗ ${esc(x)}</div>`).join(""));
+    }
+    if ((s.last.flags || []).length) {
+      body.push(`<div class="divider"><span>continuity flags · advisory</span></div>`);
+      body.push((s.last.flags || []).map(x => `<div class="said">⚑ ${esc(x)}</div>`).join(""));
     }
     if (s.last.note) {
       body.push(`<p class="sub">${esc(s.last.note)}</p>`);

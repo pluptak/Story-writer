@@ -215,17 +215,26 @@ If the story is finished -- its question answered, nothing left that is worth a 
 "note" and add no scene. Use remove_scene to drop any later scene the chapters have made pointless.
 Do not invent a chapter to keep it running.
 
+CONTINUITY FLAGS. Read all of the accumulated prose against itself and against the story's "facts"
+and each character's "knows". If something conflicts, add a plain-sentence observation to "flags".
+For example: "Ivo reacts to the falsified log in chapter 3 as if he already knew, but no chapter
+establishes that he learned it." Flags are advisory and non-blocking. Do not resolve a flag through
+an edit: surface the observation for the author to resolve instead.
+
 Reply with edits only, and nothing else:
 
-{"edits": [{"field": "...", "value": ...}], "ask": "", "note": ""}
+{"edits": [{"field": "characters.NAME.goal", "value": "..."}], "flags": [], "ask": "", "note": ""}
 
   title · premise · writer_style
   characters.<NAME>.persona · .knows · .goal · .skills · .restrictions   (skills, restrictions: lists)
   add_character      (a whole character object, in the full format)
   remove_character   (the name)
   scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
-  add_scene          (a whole scene object: place, question, pov, length, roster)
-  remove_scene       (the scene number)
+   add_scene          (a whole scene object: place, question, pov, length, roster)
+   remove_scene       (the scene number)
+   add_fact           (value is the fact text)
+   remove_fact        (value is the fact number, 1-indexed)
+   fact_<n>           (value is the new fact text; replaces fact at position n)
 
 Everything you leave alone is kept exactly as it is, so send only what the chapters changed. If you
 cannot tell from what was written whether something changed, and guessing would put a fact in a
@@ -498,6 +507,7 @@ export function writerSystem(p: {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
   cast: { name: string; can: string[]; cannot: string[] }[];
+  facts: string[];
   style: string;
 }): string {
   const cast = p.cast.map(c =>
@@ -514,6 +524,7 @@ export function writerSystem(p: {
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
   return `${WRITER_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
     + `THE CAST:\n${cast}\n\n`
+    + (p.facts.length ? `THE FACTS (world truths, known to anyone who would know them):\n${p.facts.map(f => `  • ${f}`).join("\n")}\n\n` : "")
     + `A CANNOT is absolute, and it governs your narration as much as their answers. Do not write `
     + `someone perceiving through a sense they do not have — no watching, no glancing, no gaze for `
     + `someone who cannot see — and do not put them in a situation phrased around one. Render them `

@@ -109,15 +109,39 @@ describe("applyEdits", () => {
     assert.equal(r.spec.scenes[0].place, "A stairwell");
     assert.equal(r.spec.premise, spec.premise);
     assert.deepEqual(r.spec.characters.map(c => c.name), ["RIVEN", "MERRITT"]);
-    assert.deepEqual(r.applied, ["scene.place"]);
+    assert.equal(r.applied.length, 1);
+    assert.equal(r.applied[0].field, "scene.place");
     assert.deepEqual(r.ignored, []);
     assert.equal(spec.scenes[0].place, "Behind Kessel's", "the input spec must not be mutated");
+  });
+
+  it("reports normalized before/after values, including each repeated edit", () => {
+    const r = quietSync(() => applyEdits(spec, { edits: [
+      { field: "scene.length", value: 901.4 },
+      { field: "scene.length", value: 1200 },
+    ] }));
+    assert.deepEqual(r.applied.map(a => ({ field: a.field, before: a.before, after: a.after })), [
+      { field: "scene.length", before: 700, after: 901 },
+      { field: "scene.length", before: 901, after: 1200 },
+    ]);
+  });
+
+  it("reports normalized objects for structural edits", () => {
+    const added = edit("add_scene", { place: "  yard ", length: 801.4, question: "Follow?" });
+    assert.deepEqual(added.applied[0].before, undefined);
+    assert.deepEqual(added.applied[0].after, {
+      place: "yard", question: "Follow?", pov: "", length: 801, roster: [],
+    });
+    const removed = quietSync(() => applyEdits(added.spec, { edits: [{ field: "remove_scene", value: 2 }] }));
+    assert.deepEqual(removed.applied[0].before, added.spec.scenes[1]);
+    assert.deepEqual(removed.applied[0].after, undefined);
   });
 
   it("edits a character by name, case-insensitively", () => {
     const r = edit("characters.merritt.persona", "Older than they look.");
     assert.equal(r.spec.characters[1].persona, "Older than they look.");
-    assert.deepEqual(r.applied, ["MERRITT.persona"]);
+    assert.equal(r.applied.length, 1);
+    assert.equal(r.applied[0].field, "MERRITT.persona");
   });
 
   it("takes skills and restrictions as a list or a pipe-separated string", () => {
@@ -129,7 +153,7 @@ describe("applyEdits", () => {
 
   it("reports an unknown field instead of guessing at it", () => {
     const r = edit("scene.mood", "tense");
-    assert.deepEqual(r.applied, []);
+    assert.equal(r.applied.length, 0);
     assert.match(r.ignored.join(" "), /unknown field "scene\.mood"/);
     assert.deepEqual(r.spec, spec);
   });
@@ -167,7 +191,8 @@ describe("applyEdits", () => {
   it("adds a scene at the end and edits it by number", () => {
     const grown = edit("add_scene", { place: "The yard", question: "Does he follow?", pov: "MERRITT", length: 800, roster: ["MERRITT"] });
     assert.equal(grown.spec.scenes.length, 2);
-    assert.deepEqual(grown.applied, ["added scene 2"]);
+    assert.equal(grown.applied.length, 1);
+    assert.equal(grown.applied[0].field, "added scene 2");
     assert.equal(grown.spec.scenes[1].question, "Does he follow?");
     assert.deepEqual(grown.spec.scenes[1].roster, ["MERRITT"]);
     assert.equal(grown.spec.scenes[0].question, "Does she get in?", "the scene already there is untouched");
@@ -198,7 +223,8 @@ describe("applyEdits", () => {
     const r = quietSync(() => applyEdits(two, { edits: [{ field: "remove_scene", value: 1 }] }));
     assert.equal(r.spec.scenes.length, 1);
     assert.equal(r.spec.scenes[0].question, "Does he follow?");
-    assert.deepEqual(r.applied, ["removed scene 1"]);
+    assert.equal(r.applied.length, 1);
+    assert.equal(r.applied[0].field, "removed scene 1");
 
     const last = edit("remove_scene", 1);
     assert.equal(last.spec.scenes.length, 1);
@@ -209,7 +235,7 @@ describe("applyEdits", () => {
     for (const v of [0, 2, -1, "second", 1.5, null]) {
       const r = edit("remove_scene", v);
       assert.equal(r.spec.scenes.length, 1, String(v));
-      assert.deepEqual(r.applied, [], String(v));
+      assert.equal(r.applied.length, 0, String(v));
       assert.match(r.ignored.join(" "), /there is no scene/);
     }
   });
@@ -226,7 +252,8 @@ describe("applyEdits", () => {
       const r = quietSync(() => directEdit(spec, "scene.length", 1200));
       assert.ok(r.ok);
       assert.equal(r.spec.scenes[0].length, 1200);
-      assert.deepEqual(r.applied, ["scene.length"]);
+      assert.equal(r.applied.length, 1);
+    assert.equal(r.applied[0].field, "scene.length");
       assert.equal(spec.scenes[0].length, 700, "the input spec must not be mutated");
     });
 

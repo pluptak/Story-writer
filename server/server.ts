@@ -37,7 +37,7 @@ export interface ServerHost {
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
   directEdit(spec: StorySpec, field: string, value: unknown):
-    { ok: false; reason: string } | { ok: true; spec: StorySpec; applied: string[]; problems: string[] };
+    { ok: false; reason: string } | { ok: true; spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; problems: string[] };
   specView(spec: StorySpec): unknown;
   /** The current run's output folder, or "" before a run has committed one. */
   outDir(): string;

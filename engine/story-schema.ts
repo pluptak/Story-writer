@@ -75,6 +75,8 @@ export const StoryJson = z.strictObject({
   premise: z.string().default(""),
   scenes: z.array(SceneDef).min(1).prefault(() => [{}]),
   writerStyle: z.string().default(""),
+  /** World truths known to anyone who would know them — the writer sees these as THE FACTS. */
+  facts: z.array(z.string()).default([]),
   characters: z.array(CharacterDef).default([]),
   config: RunConfig,
   models: ModelsConfig.prefault(() => ({})),
