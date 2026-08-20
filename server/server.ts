@@ -14,6 +14,7 @@ import { handleScaffoldRoutes } from "./scaffold-routes.ts";
 import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
 import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
+import { handleStoryReadRoutes } from "./story-read-routes.ts";
 import type { ScaffoldSession, NextChapterSession, ScaffoldRound } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
@@ -50,6 +51,17 @@ export interface ServerHost {
     ok: true; story: StoryJson; warnings: string[]
   } | {
     ok: false; error: string; raw?: object
+  }>;
+  /** A story's full authored cast for the live screen's read-only character sheet. Same load and
+   *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted. On a
+   *  story that will not parse, returns `{ ok:false, error }`. */
+  fullCast(dir: string): Promise<{
+    ok: true; characters: {
+      name: string; persona: string; knows: string; goal: string;
+      skills: { text: string; meaning: string }[]; restrictions: string[];
+    }[];
+  } | {
+    ok: false; error: string;
   }>;
   /** Validate a modified story.json in memory without writing. Returns Zod errors + engine
    *  warnings (empty premise, no characters, etc.) grouped by path. */
@@ -161,6 +173,9 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         // handled
 
       } else if (await handleStoryEditRoutes(req, res, path, host)) {
+        // handled
+
+      } else if (await handleStoryReadRoutes(req, res, path, host)) {
         // handled
 
       } else if (await handleRunLogRoutes(req, res, path, host)) {

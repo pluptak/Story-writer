@@ -13,7 +13,7 @@ import { C } from "./ansi.ts";
 import { LIVE, resetLive, setWhere, publish, sseWrite } from "./live.ts";
 import { startServer, type ServerHost } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { restrictionsOf } from "./engine/skills.ts";
+import { restrictionsOf, splitMeaning } from "./engine/skills.ts";
 import { NET } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
   loadDefaults, writtenChapters, type StoryConfig, type Defaults,
@@ -353,28 +353,36 @@ async function pickStory(): Promise<{ dir: string; chapter: number }> {
   return { dir: await chooseStory(""), chapter: 1 };
 }
 
+/** Read and Zod-parse a story's story.json. Shared by storyForEdit and fullCast so there is exactly
+ *  one place that reads the file. On parse failure returns the raw object for the editor to show. */
+async function loadStoryJson(dir: string): Promise<
+  { ok: true; story: StoryJson } | { ok: false; error: string; raw?: object }
+> {
+  const base = resolveStoryDir(dir);
+  const storyPath = joinPath(base, "story.json");
+  let raw: unknown;
+  try { raw = JSON.parse(await readFile(storyPath, "utf8")); }
+  catch (e) { return { ok: false, error: `could not read story.json: ${(e as Error).message}` }; }
+  const result = StoryJson.safeParse(raw);
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.error.issues.map(i => `${i.path.join(".") || "story"}: ${i.message}`).join("\n"),
+      raw: raw as object,
+    };
+  }
+  return { ok: true, story: result.data };
+}
+
 const HOST: ServerHost = {
   storyCards, selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
   newScaffoldSession, newHandoffSession, directEdit, specView,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   storyForEdit: async (dir) => {
-    const base = resolveStoryDir(dir);
-    const storyPath = joinPath(base, "story.json");
-    let raw: unknown;
-    try { raw = JSON.parse(await readFile(storyPath, "utf8")); }
-    catch (e) {
-      return { ok: false, error: `could not read story.json: ${(e as Error).message}`, raw: undefined };
-    }
-    const result = StoryJson.safeParse(raw);
-    if (!result.success) {
-      return {
-        ok: false, error: result.error.issues.map(i => `${i.path.join(".") || "story"}: ${i.message}`).join("\n"),
-        raw: raw as object,
-      };
-    }
-    // Run engine-level checks (premise, characters, warnings)
-    const parsed = result.data;
+    const loaded = await loadStoryJson(dir);
+    if (!loaded.ok) return { ok: false, error: loaded.error, raw: loaded.raw };
+    const parsed = loaded.story;
     const warnings: string[] = [];
     if (!parsed.premise.trim()) warnings.push("Premise is empty — there is nothing to write.");
     if (!parsed.characters.length) warnings.push("No characters defined — the writer would have nobody to consult.");
@@ -382,6 +390,18 @@ const HOST: ServerHost = {
       if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
     }
     return { ok: true, story: parsed, warnings };
+  },
+  fullCast: async (dir) => {
+    const loaded = await loadStoryJson(dir);
+    if (!loaded.ok) return { ok: false, error: loaded.error };
+    return {
+      ok: true,
+      characters: loaded.story.characters.map(c => ({
+        name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
+        skills: c.skills.map(s => splitMeaning(s)),
+        restrictions: c.restrictions,
+      })),
+    };
   },
   checkStory: (story) => {
     const result = StoryJson.safeParse(story);
