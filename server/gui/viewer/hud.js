@@ -56,6 +56,19 @@ export function renderRail(store, blocks) {
   // The starting budget is not in RunMeta; a `budget` event is the only place the number appears,
   // so steps show a denominator only once the budget has actually been extended at least once.
   const budget = store.events.filter(e => e.t === "budget").pop()?.budget;
+  const fmtMs = ms => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+  const fmtTokens = (s, key) => s.tokenCalls === s.calls ? s[key].toLocaleString() : "unavailable";
+  const agentStats = store === LIVEV ? Object.values(store.agentStats || {}) : [];
+  const statsPanel = live && agentStats.length ? `<section class="agentstats">
+    <h3>model calls</h3>
+    <div class="agentstats-head"><span>agent</span><span>calls</span><span>avg</span><span>tokens</span></div>
+    ${agentStats.map(s => `<div class="agentstat">
+      <span class="agentstat-who">${esc(s.who)}</span>
+      <span>${s.calls}</span>
+      <span>${fmtMs(s.durationMs / s.calls)}</span>
+      <span title="prompt / completion tokens">${fmtTokens(s, "promptTokens")} / ${fmtTokens(s, "completionTokens")}</span>
+    </div>`).join("")}
+  </section>` : "";
   $("railstats").innerHTML = `
     ${live ? stat("phase", esc(phaseOf(store))) : ""}
     ${stat("steps", budget ? `${count("draft")} / ${budget}` : count("draft"))}
@@ -66,6 +79,7 @@ export function renderRail(store, blocks) {
     ${stat("asked back", count("clarify"))}
     ${stat("retries", retries, retries ? "warn" : "")}
     ${stat("skill flags", flags, flags ? "bad" : "")}
-    ${store === LIVEV && APP.composing ? `<div class="composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
-       composing… ${APP.composing.secs}s</div>` : ""}`;
+     ${store === LIVEV && APP.composing ? `<div class="composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
+        composing… ${APP.composing.secs}s</div>` : ""}
+     ${statsPanel}`;
 }

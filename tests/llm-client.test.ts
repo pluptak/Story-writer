@@ -2,8 +2,22 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { completeStream } from "../engine/llm-client.ts";
+import { complete, completeStream } from "../engine/llm-client.ts";
 import { RUN, stopRun, armRun } from "../live.ts";
+
+/** Helper to create a ReadableStream from an array of chunks. */
+function chunkedStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  let index = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index++]);
+      } else {
+        controller.close();
+      }
+    },
+  });
+}
 
 // -- SECTION ----
 describe("completeStream SSE frame parsing", () => {
@@ -13,20 +27,6 @@ describe("completeStream SSE frame parsing", () => {
     globalThis.fetch = origFetch;
     armRun();
   });
-
-  /** Helper to create a ReadableStream from an array of chunks. */
-  function chunkedStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
-    let index = 0;
-    return new ReadableStream({
-      pull(controller) {
-        if (index < chunks.length) {
-          controller.enqueue(chunks[index++]);
-        } else {
-          controller.close();
-        }
-      },
-    });
-  }
 
   it("parses a normal multi-frame stream with onDelta called per chunk", async () => {
     armRun();
@@ -41,7 +41,7 @@ describe("completeStream SSE frame parsing", () => {
     ) as any;
     const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
                                         (d) => deltas.push(d));
-    assert.equal(result, "Hello world");
+    assert.equal(result.text, "Hello world");
     assert.deepEqual(deltas, ["Hello", " world"]);
   });
 
@@ -58,7 +58,7 @@ describe("completeStream SSE frame parsing", () => {
     ) as any;
     const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
                                         (d) => deltas.push(d));
-    assert.equal(result, "Thinking...");
+    assert.equal(result.text, "Thinking...");
     assert.deepEqual(deltas, ["Thinking..."]);
   });
 
@@ -78,7 +78,7 @@ describe("completeStream SSE frame parsing", () => {
     ) as any;
     const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
                                         (d) => deltas.push(d));
-    assert.equal(result, "Split text");
+    assert.equal(result.text, "Split text");
     assert.deepEqual(deltas, ["Split text"]);
   });
 
@@ -96,7 +96,7 @@ describe("completeStream SSE frame parsing", () => {
     ) as any;
     const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
                                         (d) => deltas.push(d));
-    assert.equal(result, "beforeafter");
+    assert.equal(result.text, "beforeafter");
     assert.deepEqual(deltas, ["before", "after"], "malformed frame is silently skipped");
   });
 
@@ -112,7 +112,7 @@ describe("completeStream SSE frame parsing", () => {
     ) as any;
     const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
                                         (d) => deltas.push(d));
-    assert.equal(result, "Incomplete");
+    assert.equal(result.text, "Incomplete");
     assert.deepEqual(deltas, ["Incomplete"]);
   });
 
@@ -139,7 +139,7 @@ describe("completeStream SSE frame parsing", () => {
       { headers: { "content-type": "text/event-stream" } }) as any;
     const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
                                         (d) => deltas.push(d));
-    assert.equal(result, '{"result":"kept"}');
+    assert.equal(result.text, '{"result":"kept"}');
     assert.deepEqual(deltas, ['{"result":"kept"}']);
   });
 
@@ -181,5 +181,86 @@ describe("completeStream SSE frame parsing", () => {
       (e: Error) => e instanceof Error);
 
     armRun();
+  });
+});
+
+// -- USAGE PARSING ----
+describe("completion usage parsing", () => {
+  const origFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = origFetch;
+    armRun();
+  });
+
+  it("complete() captures usage from a buffered response", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "hello" } }],
+        usage: { prompt_tokens: 42, completion_tokens: 7 },
+      }),
+      { headers: { "content-type": "application/json" } },
+    ) as any;
+    const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
+    assert.equal(result.text, "hello");
+    assert.equal(result.usage?.promptTokens, 42);
+    assert.equal(result.usage?.completionTokens, 7);
+  });
+
+  it("complete() returns null usage when the server omits it", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: "hello" } }] }),
+      { headers: { "content-type": "application/json" } },
+    ) as any;
+    const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
+    assert.equal(result.text, "hello");
+    assert.equal(result.usage, null);
+  });
+
+  it("completeStream() captures usage from the final usage-only frame", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'),
+        new TextEncoder().encode('data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {});
+    assert.equal(result.text, "Hi");
+    assert.equal(result.usage?.promptTokens, 10);
+    assert.equal(result.usage?.completionTokens, 3);
+  });
+
+  it("completeStream() returns null usage when no usage frame arrives", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {});
+    assert.equal(result.text, "Hi");
+    assert.equal(result.usage, null);
+  });
+
+  it("completeStream() ignores a malformed usage field rather than failing", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'),
+        new TextEncoder().encode('data: {"choices":[],"usage":{"prompt_tokens":"not a number"}}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {});
+    assert.equal(result.text, "Hi");
+    assert.equal(result.usage, null);
   });
 });

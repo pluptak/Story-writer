@@ -30,6 +30,7 @@ export function build(store) {
         break;
       }
       case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
+      case "schema_mismatch": blocks.push({ kind:"note", seq:e.seq, text:`the ${e.call} call for ${e.character} came back in the wrong shape — asked again` }); break;
       case "model_changed": blocks.push({ kind:"note", seq:e.seq, text:`model switched to ${e.model}` }); break;
       case "scene_end": blocks.push({ kind:"end", seq:e.seq, ...e }); break;
     }

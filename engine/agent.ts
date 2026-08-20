@@ -6,7 +6,7 @@ import { C } from "../ansi.ts";
 import { sseWrite } from "../live.ts";
 import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { slugify } from "./config-util.ts";
-import { complete, completeStream, type Msg } from "./llm-client.ts";
+import { complete, completeStream, type Msg, type CompletionUsage } from "./llm-client.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 
 const WINDOW = { cap: 24, keepRecent: 14 };
@@ -38,12 +38,14 @@ export class Agent {
     const msgs = this.buildMessages(extra);
     const ts = new Date().toISOString();
     const prepend = "{";
+    const started = Date.now();
     if (!ENGINE.stream) {
-      const raw = await complete(this.model, msgs, this.temperature, this.think);
-      writeLlmRecord(this, ts, msgs, raw);
+      const { text: raw, usage } = await complete(this.model, msgs, this.temperature, this.think);
+      const durationMs = Date.now() - started;
+      writeLlmRecord(this, ts, msgs, raw, durationMs, usage);
+      emitStats(this.name, this.model, durationMs, usage);
       return prepend + raw;
     }
-    const started = Date.now();
     let chars = 0, lastPaint = 0;
     const paint = () => {
       const secs = Math.round((Date.now() - started) / 1000);
@@ -51,13 +53,15 @@ export class Agent {
       sseWrite({ t: "composing", who: this.name, secs, chars });
     };
     paint();
-    const rest = await completeStream(this.model, msgs, this.temperature, d => {
+    const { text: rest, usage } = await completeStream(this.model, msgs, this.temperature, d => {
       chars += d.length;
       if (Date.now() - lastPaint > 250) { lastPaint = Date.now(); paint(); }
     }, this.think);
+    const durationMs = Date.now() - started;
     progressDone();
     sseWrite({ t: "idle" });
-    writeLlmRecord(this, ts, msgs, rest);
+    writeLlmRecord(this, ts, msgs, rest, durationMs, usage);
+    emitStats(this.name, this.model, durationMs, usage);
     return prepend + rest;
   }
 }
@@ -73,11 +77,25 @@ export function llmFilenameFor(name: string, used: Set<string>): string {
 }
 
 /** One JSONL record for an agent/model exchange; WRITER is typed "writer", everyone else "character". */
-export function llmLogEntry(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string) {
-  return { ts, role: agent.name === "WRITER" ? "writer" : "character", agent: agent.name, model: agent.model, prompt, response };
+export function llmLogEntry(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string,
+                            durationMs: number, usage: CompletionUsage | null) {
+  return {
+    ts, role: agent.name === "WRITER" ? "writer" : "character", agent: agent.name, model: agent.model,
+    prompt, response, durationMs, usage,
+  };
 }
 
-function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: string) {
+/** Push a per-call stats frame to live viewers. Token counts are null when the server did not report usage. */
+function emitStats(who: string, model: string, durationMs: number, usage: CompletionUsage | null) {
+  sseWrite({
+    t: "agent_stats", who, model, durationMs,
+    promptTokens: usage?.promptTokens ?? null,
+    completionTokens: usage?.completionTokens ?? null,
+  });
+}
+
+function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: string,
+                        durationMs: number, usage: CompletionUsage | null) {
   if (!ENGINE.outDir || agent.name === "ARCHITECT") return;
   try {
     let stream = ENGINE.llmStreams.get(agent.name);
@@ -87,7 +105,7 @@ function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: strin
       stream.on("error", () => {});   // an async write failure must never crash the run
       ENGINE.llmStreams.set(agent.name, stream);
     }
-    stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response)) + "\n");
+    stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response, durationMs, usage)) + "\n");
   } catch { }
 }
 
@@ -100,10 +118,10 @@ export async function trimHistory(agent: Agent, summarizerModel: string, summari
   const recent = agent.history.slice(overflowCount);
   const text = overflow.map(m => `${m.role === "assistant" ? agent.name : "input"}: ${m.content}`).join("\n");
   try {
-    agent.digest = await complete(summarizerModel, [
+    agent.digest = (await complete(summarizerModel, [
       { role: "system", content: P.SUMMARIZER_SYSTEM },
       { role: "user", content: P.summarizePrompt(agent.name, agent.digest, text) },
-    ], 0.3, summarizerThink);
+    ], 0.3, summarizerThink)).text;
     agent.history = recent;
   } catch (e) {
     console.warn(`   (digest skipped for ${agent.name}: ${(e as Error).message})`);

@@ -8,9 +8,10 @@ import { restrictionsOf } from "./skills.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 import {
-  consult, normalizeConsult, canonWants,
+  consult, normalizeConsult, parseVerdict, parseClarifyAnswer, missingShape, reviseConsult,
   type ConsultEvent, type ConsultRequest, type ConsultReply,
 } from "./consult.ts";
+import { type Msg } from "./llm-client.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 
@@ -58,6 +59,7 @@ export type RunEvent =
   | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
+  | { t: "schema_mismatch"; call: "judge" | "clarify"; character: string; chapter: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
   | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string; chapter: number }
@@ -100,6 +102,9 @@ const OVERRUN_SLACK = 1.5;
 
 const NEGLECT_GAP = 3;
 
+// Judging an answer is classification, not composition: the writer's own 0.8 buys nothing here.
+const JUDGE_TEMPERATURE = 0.3;
+
 /** Cast members who have gone unconsulted for `gap` steps or more, so the writer does not lose someone. */
 export function neglectedCast(cast: string[], lastAsked: Map<string, number>, step: number, gap: number): string[] {
   if (step < gap) return [];
@@ -121,10 +126,32 @@ export async function writeScene(
 ) {
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
-  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, writerCast(roster, []), writerStyle, facts), 0.8);
+  const cast = writerCast(roster, []);
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
   LIVE.writer = writer; LIVE.log = log;
+
+  // Both author-side helpers are named WRITER so they share the writer's transcript, and both take
+  // `writer.model` at call time so a mid-run /model swap still reaches them.
+  const newJudge = () => {
+    const a = new Agent("WRITER", writer.model, P.judgeSystem(cast), JUDGE_TEMPERATURE);
+    a.think = writer.think;
+    return a;
+  };
+  // The judge is stateless — it is given everything it needs and never benefits from remembering an
+  // earlier verdict. The clarifier is not: what it settles becomes true for the rest of the scene,
+  // so it keeps its own history and gets trimmed along with everyone else.
+  let clarifier: Agent | null = null;
+  const theClarifier = () => {
+    if (!clarifier) {
+      clarifier = new Agent("WRITER", writer.model,
+        P.clarifySystem({ premise, scene: sd, facts, cast }), writer.temperature);
+      clarifier.think = writer.think;
+    }
+    clarifier.model = writer.model;
+    return clarifier;
+  };
 
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
@@ -246,16 +273,30 @@ export async function writeScene(
             reply = await consult(agent, req, def.skills, {
               clarifications, attempt, log,
               clarify: async (q, r) => {
+                const cl = theClarifier();
+                const extra: Msg[] = [{
+                  role: "user",
+                  content: P.clarifyRequest(r.character, q, r.situation, pieces[pieces.length - 1] ?? ""),
+                }];
                 let a = "";
                 try {
-                  const raw = await writer.generate(`${C.magenta}WRITER${C.reset}`, [{
-                    role: "user", content: P.clarifyRequest(r.character, q, r.situation),
-                  }]);
-                  a = String(extractJson(raw).answer ?? "").trim();
+                  for (let tries = 0; ; tries++) {
+                    const raw = await cl.generate(`${C.magenta}WRITER${C.reset}`, extra);
+                    const answered = parseClarifyAnswer(extractJson(raw));
+                    if (answered !== null) { a = answered; break; }
+                    if (tries) break;
+                    log({ t: "schema_mismatch", call: "clarify", character: r.character, chapter });
+                    extra.push({ role: "assistant", content: raw.trim() },
+                               { role: "user", content: P.ANSWER_ONLY });
+                  }
                 } catch (e) {
                   console.log(`${C.red}(clarification call failed: ${(e as Error).message})${C.reset}`);
                   return "";
                 }
+                // The clarifier remembers so it stays consistent; the writer remembers so its own
+                // narration does not contradict what the character was told.
+                cl.hear(P.characterAsks(r.character, q));
+                cl.said(JSON.stringify({ answer: a }));
                 writer.hear(P.characterAsks(r.character, q));
                 writer.said(JSON.stringify({ answer: a }));
                 return a;
@@ -268,19 +309,31 @@ export async function writeScene(
 
           const flags = P.answerFlags(reply);
           let j: Record<string, any> = {};
+          let judged: "accept" | "retry" | null = null;
+          const judge = newJudge();
+          const judgeExtra: Msg[] = [{
+            role: "user",
+            content: P.judgeRequest({
+              name: def.name, situation: req.situation, question: req.question, wants: req.wants,
+              thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note, flags,
+            }),
+          }];
           try {
-            const judgeRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, [{
-              role: "user",
-              content: P.judgeRequest({
-                name: def.name, question: req.question, thought: reply.thought,
-                speech: reply.speech, action: reply.action, note: reply.note, flags,
-              }),
-            }]);
-            j = extractJson(judgeRaw);
+            for (let tries = 0; ; tries++) {
+              const judgeRaw = await judge.generate(`${C.magenta}WRITER${C.reset}`, judgeExtra);
+              j = extractJson(judgeRaw);
+              judged = parseVerdict(j);
+              if (judged || tries) break;
+              log({ t: "schema_mismatch", call: "judge", character: def.name, chapter });
+              judgeExtra.push({ role: "assistant", content: judgeRaw.trim() },
+                              { role: "user", content: P.VERDICT_ONLY });
+            }
           } catch (e) {
             console.log(`${C.red}(judge call failed: ${(e as Error).message} — accepting)${C.reset}`);
           }
-          const verdict = String(j.verdict ?? "accept").trim().toLowerCase() === "retry" ? "retry" : "accept";
+          // A reply that never carried a verdict is not a judgement; taking "accept" is the fallback,
+          // not the reading, and `schema_mismatch` is what says so in the log.
+          const verdict = judged ?? "accept";
           const note = String(j.note ?? "").trim();
           log({ t: "judge", character: def.name, verdict, note, attempt, chapter });
 
@@ -298,16 +351,21 @@ export async function writeScene(
             }
             break;
           }
-          if (verdict === "retry") {
-            retryCounts.set(def.name.toLowerCase(), cumulative + 1);
-          }
+          // A revision goes through the same door its first draft did. It used to skip the check
+          // entirely, which is how a re-ask of "What do you do?" — refused at the front door — reached
+          // a character anyway and drew the do-nothing answer the guard exists to prevent.
           const rev = (j.revised && typeof j.revised === "object") ? j.revised as Record<string, unknown> : {};
-          req = {
-            character: def.name,
-            situation: String(rev.situation ?? "").trim() || req.situation,
-            question: String(rev.question ?? "").trim() || req.question,
-            wants: canonWants(rev.wants) ?? req.wants,
-          };
+          const revised = reviseConsult(req, rev);
+          if (!revised.ok) {
+            // Asking again with a question that cannot be sent would spend the attempt on nothing,
+            // so the answer already in hand is the one the scene gets.
+            log({ t: "bad_consult", character: def.name, why: revised.why, chapter });
+            console.log(`${C.yellow}(${def.name}'s re-ask was not usable — ${revised.why.split(". ")[0]}. `
+              + `Keeping the answer.)${C.reset}`);
+            break;
+          }
+          retryCounts.set(def.name.toLowerCase(), cumulative + 1);
+          req = revised.req;
           console.log(`${C.yellow}retry ${attempt}/${retries} — ${def.name}${C.reset}${note ? ` ${C.dim}(${note})${C.reset}` : ""}`);
           log({ t: "retry", character: def.name, attempt, situation: req.situation, question: req.question, chapter });
         }
@@ -315,8 +373,15 @@ export async function writeScene(
         if (RUN.stopped) break;
 
         const stalled = !!reply && !reply.thought && !reply.speech && !reply.action;
-        if (failed || !reply || stalled) {
-          const why = failed || (stalled ? reply!.note || "did not answer" : "no reply");
+        // A thought with nothing said and nothing done answers a "reaction" and nothing else. Taken
+        // as an accept it is worse than a refusal: it costs the attempts, marks the character as
+        // freshly consulted, and hands the writer an answer with nothing in it to write.
+        const shortOf = reply && !stalled ? missingShape(req.wants, reply) : null;
+        if (failed || !reply || stalled || shortOf) {
+          const why = failed
+            || (stalled ? reply!.note || "did not answer"
+            : shortOf ? `was asked for ${shortOf} and gave none`
+            : "no reply");
           console.log(`${C.red}${def.name}: ${why}.${C.reset}`);
           writer.hear(P.noAnswer(def.name, why));
         } else {
@@ -338,6 +403,7 @@ export async function writeScene(
     if (sceneDone) done = true;
     if (RUN.stopped) break;
     await trimHistory(writer, summaryModel, thinking.summary);
+    if (clarifier) await trimHistory(clarifier, summaryModel, thinking.summary);
     for (const def of roster) {
       const a = agents.get(def.name.toLowerCase());
       if (a) await trimHistory(a, summaryModel, thinking.summary);

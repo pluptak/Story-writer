@@ -357,6 +357,20 @@ export const skillCheck = (unknown: string[], have: string[]) =>
 export const EMPTY_REPLY =
   `[EMPTY] That reply had no thought, no speech and no action. Answer the question.`;
 
+const SHAPE_ASKED_FOR: Record<string, string> = {
+  speech:   `You were asked what you SAY, and "speech" was empty. Put the words in "speech" — the `
+          + `words themselves, not a description of saying them. If you will not speak, that is a `
+          + `thing you do: put it in "action".`,
+  action:   `You were asked what you DO, and "action" was empty. Put it in "action". Holding still `
+          + `counts, but then say so plainly: staying where you are is an act, not an absence.`,
+  decision: `You were asked which way you go, and you gave neither speech nor action. A decision has `
+          + `to land somewhere someone else could see. Say it, or do it.`,
+};
+
+export const shapeCheck = (wants: string) =>
+  `[ANSWER THE SHAPE] ${SHAPE_ASKED_FOR[wants] ?? SHAPE_ASKED_FOR.decision} `
+  + `Thinking about it is not yet answering it.`;
+
 export const clarificationTrail = (cs: { question: string; answer: string }[]) =>
   cs.map(x => `\n[YOU ASKED] ${x.question}\n[THEY ANSWERED] ${x.answer}`).join("");
 
@@ -478,30 +492,112 @@ WHEN ASKED FOR DIRECTIONS -- [ASK READER]:
   Whatever comes back is the direction the scene takes from here. Write it the way you would any
   other answer you were given.
 
-WHEN A CHARACTER ASKS YOU SOMETHING -- [<NAME> ASKS]:
+CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+// -- THE JUDGE AND THE CLARIFIER -------------------------------------------
+// Both were once sections of WRITER_FORMAT, answered by the writer on its own history. With ~20
+// messages of [WRITE]->{"prose":...} behind them the dominant pattern won often enough to matter:
+// in one two-chapter run 6 of 30 judgements came back as prose and were silently accepted, and one
+// clarification came back as a verdict, which cost the character its answer. They are separate
+// agents now, each holding exactly one schema, so there is no second shape to fall into.
+
+export const JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING ONE ANSWER.
+
+You are writing a scene. Where it turned on a choice, you stopped and asked the person making it.
+This is their answer coming back. Deciding whether it is usable is your whole job here: you are not
+writing prose, and you are not being asked what happens next.
+
+You are shown the situation you gave them, the question you asked, and what they answered.
+
+Reply with ONE JSON object -- one of these two shapes -- and nothing else:
+
+  {"verdict": "accept"}
+
+  {"verdict": "retry", "note": "why it is unusable, in one line -- required",
+   "revised": {"situation": "...", "question": "...", "wants": "..."}}
+
+  revised  -- all three fields, every time you retry. They will be asked again from nothing, by a
+              fresh instance that never learns this attempt happened, so these must stand on their own.
+    situation -- what THEY can perceive right now, in your words. They know nothing you do not put
+                 here. Do not paste back the prose you wrote: that is the page, not their world, and
+                 it tells them things they cannot know.
+    question  -- NAME THE FORK OR NAME THE COST: "Do you hold the door, or let go?". "What do you do?"
+                 is not a question -- it names nothing at stake, so the safest possible answer is
+                 always correct, and the safest possible answer is the one that stops the scene. It
+                 will be refused and the retry will have bought nothing.
+    wants     -- EXACTLY ONE of these four words:
+${wantsMenuLines}
+
+RETRY ONLY WHEN THE ANSWER IS UNUSABLE: they answered a different question, or they plainly lacked
+something they needed in order to answer (then fix the SITUATION, not the question), or they did
+something they are not able to do.
+
+AN ANSWER HAS TO ARRIVE IN THE SHAPE YOU ASKED FOR. Asked for speech, "speech" cannot be empty; asked
+for an action, "action" cannot be empty; asked for a decision, one or the other has to carry it. Only
+a reaction is answered by a thought alone. A thought where you asked for one of the others is someone
+turning the question over and never answering it -- retry, and put the fork in front of them plainly.
+
+DO NOT RETRY because the answer is inconvenient, quieter than you hoped, or takes the scene somewhere
+you had not planned. That is the scene telling you something true. Accept it, and go and write it.
+
+CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+export const CLARIFY_FORMAT = `YOU ARE THE AUTHOR, ANSWERING ONE QUESTION.
+
+Someone in the scene you are writing has asked you for a fact about their situation -- something they
+would have to see, hear, or already know in order to answer you honestly. Give it to them.
+
+Reply with ONE JSON object and nothing else:
 
   {"answer": "..."}
 
-  They are asking for a fact about their situation. Answer it plainly, briefly, and only it. If you
-  had not decided yet, decide now -- your answer becomes true for the rest of the scene. Never
-  answer with what they should do, and never tell them anything they could not perceive.
+Answer plainly, briefly, and only what was asked. If you had not decided yet, decide now -- your
+answer becomes true for the rest of the scene and you will be held to it.
 
-WHEN YOU ARE SHOWN AN ANSWER -- [<NAME> ANSWERED]:
+Never answer with what they should do, and never tell them anything they could not perceive from
+where they are.
 
-  {"verdict": "accept", "note": "", "revised": {"situation": "...", "question": "..."}}
-
-  verdict  -- "accept" or "retry".
-  revised  -- only with "retry": the question as you should have asked it. They will be asked again
-              from nothing, with no memory of this attempt, so the revised situation and question
-              must stand on their own.
-
-  Retry only when the answer is unusable: they answered a different question, or they plainly lacked
-  something they needed in order to answer (then fix the SITUATION, not the question), or they did
-  something they are not able to do.
-  Do NOT retry because the answer is inconvenient, quieter than you hoped, or takes the scene
-  somewhere you had not planned. That is the scene telling you something true. Accept it and write it.
+NEVER PUT WORDS IN ANOTHER CHARACTER'S MOUTH. What anyone else says, or decides, is theirs -- and you
+have not asked them yet. If the honest answer is that they hear someone speak, then they hear a voice
+on the radio, or an answer arriving they cannot yet make out. Not what it said. The moment you write
+another character's line here, you have decided for them, and the rest of the scene gets built on a
+line they never gave you.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+/** What every author-side agent gets to know about the cast: what each can do, and what they cannot. */
+const castBlock = (cast: { name: string; can: string[]; cannot: string[] }[]) =>
+  cast.map(c =>
+    `  ${c.name} -- can: ${c.can.join(", ")}`
+    + (c.cannot.length ? `\n${" ".repeat(4 + c.name.length)}CANNOT: ${c.cannot.join(", ")}` : "")
+  ).join("\n");
+
+const factsBlock = (facts: string[]) =>
+  facts.length ? `THE FACTS (world truths, known to anyone who would know them):\n`
+    + `${facts.map(f => `  • ${f}`).join("\n")}\n\n` : "";
+
+/** The judge: one answer, one verdict. It needs the cast's limits to see an answer that overran them,
+ *  and nothing else — the situation and the question arrive in the payload. */
+export function judgeSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
+  return `${JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
+    + `A CANNOT is absolute. An answer that reaches through one is unusable however good it reads.`;
+}
+
+/** The clarifier: one question about the world, one fact back. It holds the premise and the facts so
+ *  what it decides on the spot cannot contradict what the story already settled. */
+export function clarifySystem(p: {
+  premise: string;
+  scene: { place: string; question: string };
+  facts: string[];
+  cast: { name: string; can: string[]; cannot: string[] }[];
+}): string {
+  return `${CLARIFY_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\n`
+    + (p.scene.place ? `WHERE THIS SCENE IS: ${p.scene.place}\n\n` : "")
+    + factsBlock(p.facts)
+    + `THE CAST:\n${castBlock(p.cast)}\n\n`
+    + `A CANNOT is absolute: never answer someone with something they would have to perceive through `
+    + `a sense they do not have.`;
+}
 
 export function writerSystem(p: {
   premise: string;
@@ -510,10 +606,7 @@ export function writerSystem(p: {
   facts: string[];
   style: string;
 }): string {
-  const cast = p.cast.map(c =>
-    `  ${c.name} -- can: ${c.can.join(", ")}`
-    + (c.cannot.length ? `\n${" ".repeat(4 + c.name.length)}CANNOT: ${c.cannot.join(", ")}` : "")
-  ).join("\n");
+  const cast = castBlock(p.cast);
   const scene = [
     p.scene.place ? `Where: ${p.scene.place}` : "",
     p.scene.question ? `The question this scene has to answer: ${p.scene.question}` : "",
@@ -524,7 +617,7 @@ export function writerSystem(p: {
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
   return `${WRITER_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
     + `THE CAST:\n${cast}\n\n`
-    + (p.facts.length ? `THE FACTS (world truths, known to anyone who would know them):\n${p.facts.map(f => `  • ${f}`).join("\n")}\n\n` : "")
+    + factsBlock(p.facts)
     + `A CANNOT is absolute, and it governs your narration as much as their answers. Do not write `
     + `someone perceiving through a sense they do not have — no watching, no glancing, no gaze for `
     + `someone who cannot see — and do not put them in a situation phrased around one. Render them `
@@ -567,8 +660,19 @@ export const consultNotSent = (why: string, name: string) =>
 export const characterAsks = (name: string, question: string) =>
   `[${name} ASKS] ${question}`;
 
-export const clarifyRequest = (name: string, question: string, situation: string) =>
-  `${characterAsks(name, question)}\n\n[THE SITUATION YOU GAVE THEM] ${situation}`;
+/** `recent` is the last piece of prose written. The clarifier remembers what it has answered but not
+ *  what the scene narrated, and a fact settled here must not contradict the page. */
+export const clarifyRequest = (name: string, question: string, situation: string, recent = "") =>
+  `${characterAsks(name, question)}\n\n[THE SITUATION YOU GAVE THEM] ${situation}`
+  + (recent ? `\n\n[THE LAST THING YOU WROTE] ${recent}` : "");
+
+export const VERDICT_ONLY =
+  `[WRONG SHAPE] That was not a verdict, and there is no prose to write here. Reply with exactly `
+  + `{"verdict":"accept"} or {"verdict":"retry","note":"...","revised":{...}} and nothing else.`;
+
+export const ANSWER_ONLY =
+  `[WRONG SHAPE] That was not an answer. Reply with exactly {"answer":"..."} — the fact they asked `
+  + `for, and nothing else.`;
 
 export const answerFlags = (p: { unverified: string[]; forced: boolean }) => [
   p.unverified.length
@@ -577,10 +681,11 @@ export const answerFlags = (p: { unverified: string[]; forced: boolean }) => [
 ].filter(Boolean).join(" ");
 
 export const judgeRequest = (p: {
-  name: string; question: string;
+  name: string; situation: string; question: string; wants: string;
   thought: string; speech: string; action: string; note: string; flags: string;
 }) =>
-  `[${p.name} ANSWERED]\nYou asked: ${p.question}\n`
+  `[${p.name} ANSWERED]\nThe situation you gave them: ${p.situation}\nYou asked: ${p.question}\n`
+  + `What you needed from them: ${p.wants}\n`
   + `thought: ${p.thought}\nspeech: ${p.speech}\naction: ${p.action}`
   + (p.note ? `\nnote: ${p.note}` : "")
   + (p.flags ? `\n\n[FLAGGED] ${p.flags}` : "");

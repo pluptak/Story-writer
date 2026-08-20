@@ -279,6 +279,8 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` ([live.ts:37](live.ts#
 { seq, ...RunEvent }                     — see below; seq makes ordering/de-dup possible client-side
 { t:"composing"; who; secs; chars }      — an agent is mid-generation (progress ticker, not logged)
 { t:"idle" }                             — nothing composing right now
+{ t:"agent_stats"; who; model; durationMs; promptTokens; completionTokens }
+                                          — one completed model call; token fields are null when unavailable
 { t:"continue_prompt"; steps; budget; suggested }  — step budget spent, needs a /continue
 { t:"run_state"; running; stopping; where; picking; armed; paused; pausing; model; awaitingContinue; interactive }
 { t:"run_reset" }                        — a new run is about to start; discard everything and refetch
@@ -311,6 +313,7 @@ plus, scene-loop-level:
   { t:"scene_start"; story; characters[]; target }
   { t:"draft"; step; prose; words; consulting; salvaged }
   { t:"bad_consult"; character; why }
+  { t:"schema_mismatch"; call:"judge"|"clarify"; character }
   { t:"judge"; character; verdict; note; attempt }
   { t:"accept"; character; attempt; speech; action }
   { t:"retry"; character; attempt; situation; question }
@@ -325,6 +328,11 @@ plus, scene-loop-level:
 `wants` in `consult` is always one of `speech | action | decision | reaction` — the same four words
 `prompts.ts`'s `CONSULT_WANTS` sends the writer and the character (prompts.ts's single source of truth
 for that vocabulary, so the API and the model prompt can never drift apart).
+
+`schema_mismatch` says an author-side agent replied in a shape that is not the one its call asked for
+— a judge that wrote prose, a clarifier that returned a verdict. The call is made once more before
+falling back to a default, so the event is a warning about model behaviour, not a failed run. It is
+the only signal that a judgement was defaulted rather than made; see [Writer.MD](Writer.MD).
 
 ## Replacing the GUI
 

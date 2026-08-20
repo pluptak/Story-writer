@@ -7,7 +7,7 @@ import { basename } from "./util.js";
 // (`.field = x`, `.add()`/`.delete()`) don't need that: a plain `export const` already lets
 // any importer reach in and change them.
 //
-const newStore = () => ({ events: [], seen: new Set(), meta: null, open: new Set(), source: "", isLive: false, label: "", dir: "", id: "" });
+const newStore = () => ({ events: [], seen: new Set(), meta: null, open: new Set(), source: "", isLive: false, label: "", dir: "", id: "", agentStats: {} });
 
 export const LIVEV = newStore();          // the running (or just-finished) scene
 export const READV = newStore();          // a saved run, loaded read-only

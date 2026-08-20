@@ -5,8 +5,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  consult, normalizeConsult, canonWants, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
+  consult, normalizeConsult, canonWants, parseVerdict, parseClarifyAnswer, missingShape,
+  reviseConsult, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
 } from "../engine/consult.ts";
+import * as P from "../prompts.ts";
 import { wrapCharacter, wrapWriter, writerCast, neglectedCast, runChapter } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
 import { ScriptedAgent } from "./helpers.ts";
@@ -159,6 +161,225 @@ describe("canonWants", () => {
     assert.equal(canonWants(undefined), null);
     assert.equal(canonWants("please"), null);
     assert.equal(canonWants("how she takes it"), null, "a paraphrase with no keyword is refused, not guessed at");
+  });
+});
+
+// -- WHAT THE JUDGE IS SHOWN ----------------------------------------------
+describe("judgeRequest", () => {
+  const p = {
+    name: "RIVEN", situation: "You are kneeling by the steel service door.",
+    question: "Do you turn it, or ease off?", wants: "decision", thought: "t", speech: "s", action: "a",
+    note: "", flags: "",
+  };
+
+  it("shows the judge the situation it is told to repair", () => {
+    // Without it, "fix the SITUATION, not the question" asks for a repair to something unseen.
+    assert.match(P.judgeRequest(p), /You are kneeling by the steel service door\./);
+  });
+
+  it("names the shape that was asked for, so a short answer is visible as one", () => {
+    assert.match(P.judgeRequest({ ...p, wants: "speech" }), /needed from them: speech/);
+  });
+
+  it("keeps the question and the answer alongside it", () => {
+    const s = P.judgeRequest(p);
+    for (const part of [p.question, "thought: t", "speech: s", "action: a"]) assert.ok(s.includes(part));
+  });
+});
+
+describe("the retry template", () => {
+  it("names every field a retry has to carry", () => {
+    // A field absent from the template is a field the model does not send: `wants` was missing from
+    // 17 of 17 logged retries, and `note` came back empty in 13 of them.
+    for (const field of ["revised", "situation", "question", "wants", "note"])
+      assert.match(P.JUDGE_FORMAT, new RegExp(`"${field}"`));
+  });
+
+  it("spells out the four wants", () => {
+    for (const w of CONSULT_WANTS) assert.match(P.JUDGE_FORMAT, new RegExp(w));
+  });
+
+  it("tells the judge not to paste the prose back as a situation", () => {
+    assert.match(P.JUDGE_FORMAT, /Do not paste back the prose you wrote/);
+  });
+
+  it("tells the judge that only a reaction is answered by a thought", () => {
+    assert.match(P.JUDGE_FORMAT, /Only\s+a reaction is answered by a thought alone/);
+  });
+});
+
+// -- ONE SCHEMA PER AGENT -------------------------------------------------
+describe("the author-side agents each hold exactly one schema", () => {
+  const cast = [{ name: "RIVEN", can: ["movement"], cannot: ["sight"] }];
+  const judge = P.judgeSystem(cast);
+  const clarify = P.clarifySystem({
+    premise: "a premise", scene: { place: "a door", question: "does it open?" },
+    facts: ["the lock is old"], cast,
+  });
+
+  it("the writer no longer carries the judge's or the clarifier's shape", () => {
+    // The whole point of splitting them out: with both here, the [WRITE] pattern won 7 times in 55.
+    assert.ok(!P.WRITER_FORMAT.includes(`"verdict"`));
+    assert.ok(!P.WRITER_FORMAT.includes(`"answer"`));
+  });
+
+  it("the judge carries no way to write prose", () => {
+    assert.ok(!judge.includes(`"prose"`));
+    assert.ok(!judge.includes(`"answer"`));
+  });
+
+  it("the clarifier carries neither prose nor a verdict", () => {
+    assert.ok(!clarify.includes(`"prose"`));
+    assert.ok(!clarify.includes(`"verdict"`));
+  });
+
+  it("both still know what the cast cannot do", () => {
+    for (const s of [judge, clarify]) assert.match(s, /CANNOT: sight/);
+  });
+
+  it("the clarifier is told not to speak for a character it has not asked", () => {
+    assert.match(clarify, /NEVER PUT WORDS IN ANOTHER CHARACTER'S MOUTH/);
+  });
+
+  it("the clarifier holds the premise and the facts, so what it settles cannot contradict them", () => {
+    assert.match(clarify, /a premise/);
+    assert.match(clarify, /the lock is old/);
+  });
+});
+
+describe("parseVerdict", () => {
+  it("reads both verdicts, however they are cased", () => {
+    assert.equal(parseVerdict({ verdict: "retry" }), "retry");
+    assert.equal(parseVerdict({ verdict: " Retry " }), "retry");
+    assert.equal(parseVerdict({ verdict: "accept" }), "accept");
+  });
+
+  it("treats an unrecognised verdict as accept, the safe reading", () => {
+    assert.equal(parseVerdict({ verdict: "maybe" }), "accept");
+  });
+
+  it("returns null when there is no verdict to read", () => {
+    // A reply in another shape is not a judgement, and must not become a silent accept.
+    assert.equal(parseVerdict({ prose: "the door swings wide" }), null);
+    assert.equal(parseVerdict({}), null);
+    assert.equal(parseVerdict({ verdict: "" }), null);
+  });
+});
+
+// -- A REVISION GOES THROUGH THE SAME DOOR --------------------------------
+describe("reviseConsult", () => {
+  const prev: ConsultRequest = {
+    character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
+    question: "Do you turn it, or ease off?", wants: "decision",
+  };
+
+  it("keeps what the judge left out", () => {
+    const r = reviseConsult(prev, { question: "Do you turn it, knowing what it wakes?" });
+    assert.ok(r.ok);
+    assert.equal(r.req.situation, prev.situation, "an omitted field falls back, it does not blank");
+    assert.equal(r.req.wants, "decision");
+    assert.equal(r.req.question, "Do you turn it, knowing what it wakes?");
+  });
+
+  it("takes a whole new consult when the judge writes one", () => {
+    const r = reviseConsult(prev, {
+      situation: "The corridor has gone quiet and the wrench is still in your hand.",
+      question: "Do you call out, or keep working?", wants: "speech",
+    });
+    assert.ok(r.ok);
+    assert.equal(r.req.wants, "speech");
+    assert.match(r.req.situation, /corridor has gone quiet/);
+  });
+
+  it("refuses a revision the front door would have refused", () => {
+    // The actual regression: "What do you do?" is rejected as a first consult, and used to be sent
+    // anyway as a retry because the revision skipped the check.
+    const r = reviseConsult(prev, { question: "What do you do?" });
+    assert.ok(!r.ok);
+    assert.match(r.why, /fork|stake/);
+  });
+
+  it("refuses a revision that guts the situation", () => {
+    assert.ok(!reviseConsult(prev, { situation: "It is dark." }).ok);
+  });
+
+  it("canonicalizes a revised wants, and ignores one it cannot read", () => {
+    assert.equal((reviseConsult(prev, { wants: "what they say" }) as any).req.wants, "speech");
+    assert.equal((reviseConsult(prev, { wants: "???" }) as any).req.wants, "decision", "falls back");
+  });
+});
+
+// -- THE SHAPE THAT WAS ASKED FOR -----------------------------------------
+describe("missingShape", () => {
+  it("holds each shape to what it asked for", () => {
+    assert.equal(missingShape("speech", { speech: "", action: "I turn away." }), "speech");
+    assert.equal(missingShape("action", { speech: "Not tonight.", action: "" }), "action");
+    assert.equal(missingShape("decision", { speech: "", action: "" }), "decision");
+  });
+
+  it("is satisfied by the thing it asked for", () => {
+    assert.equal(missingShape("speech", { speech: "Not tonight.", action: "" }), null);
+    assert.equal(missingShape("action", { speech: "", action: "I turn away." }), null);
+    assert.equal(missingShape("decision", { speech: "I stay.", action: "" }), null);
+    assert.equal(missingShape("decision", { speech: "", action: "I stay put." }), null);
+  });
+
+  it("lets a reaction be answered by a thought alone", () => {
+    // The one shape that happens behind the eyes; holding it to speech or action would be wrong.
+    assert.equal(missingShape("reaction", { speech: "", action: "" }), null);
+  });
+
+  it("asks nothing of a consult that named no shape", () => {
+    assert.equal(missingShape("", { speech: "", action: "" }), null);
+  });
+});
+
+describe("consult, on the shape it was asked for", () => {
+  const ask = (wants: ConsultRequest["wants"], script: string[]) => {
+    const events: ConsultEvent[] = [];
+    const agent = new ScriptedAgent(script);
+    return consult(agent, { ...REQ, wants }, SKILLS, {
+      clarifications: 2, clarify: async () => "two paces", log: e => events.push(e),
+    }).then(reply => ({ reply, events, agent }));
+  };
+
+  it("re-asks a character that thought about it instead of answering", async () => {
+    const { reply, events, agent } = await ask("speech", [
+      `{"thought":"I weigh it up.","speech":"","action":""}`,
+      `{"thought":"Enough.","speech":"Not tonight.","skills_used":["speech"]}`,
+    ]);
+    assert.equal(agent.calls, 2);
+    assert.equal(reply.speech, "Not tonight.");
+    assert.ok(events.some(e => e.t === "repair" && /asked for speech/.test(e.why)));
+  });
+
+  it("does not re-ask a reaction that came back as a thought", async () => {
+    const { reply, events, agent } = await ask("reaction", [`{"thought":"It lands like cold water."}`]);
+    assert.equal(agent.calls, 1);
+    assert.equal(reply.thought, "It lands like cold water.");
+    assert.ok(!events.some(e => e.t === "repair"));
+  });
+
+  it("still returns the short answer when the re-ask does not fix it", async () => {
+    // The caller decides what to do with it; consult's job is to have asked once more.
+    const { reply, events } = await ask("action", [
+      `{"thought":"I consider it."}`, `{"thought":"I am still considering it."}`,
+    ]);
+    assert.equal(reply.action, "");
+    assert.equal(missingShape("action", reply), "action");
+    assert.ok(events.some(e => e.t === "repair"));
+  });
+});
+
+describe("parseClarifyAnswer", () => {
+  it("returns the fact it was given", () => {
+    assert.equal(parseClarifyAnswer({ answer: "  two paces  " }), "two paces");
+  });
+
+  it("distinguishes answering with nothing from not answering at all", () => {
+    assert.equal(parseClarifyAnswer({ answer: "" }), "", "present but empty is still a reply");
+    assert.equal(parseClarifyAnswer({ verdict: "accept" }), null, "a verdict is not a reply to this");
+    assert.equal(parseClarifyAnswer({}), null);
   });
 });
 

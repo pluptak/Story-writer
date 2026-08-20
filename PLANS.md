@@ -76,32 +76,6 @@ The read tab already renders a retained `writing-log.jsonl` through `/runs/log`,
 [`agents.js`](server/gui/viewer/agents.js) renders each agent's raw transcripts through `/runs/llm`.
 What is missing is measurement, and a second pane.
 
-### A. Live per-agent cost/latency HUD
-
-**New instrumentation is required — nothing today captures duration or tokens per call.** Each
-`out/<runId>/llm/<slug>.jsonl` entry is `{ ts, role, agent, model, prompt, response }`, where `ts` is
-captured *before* generation starts; `complete()`/`completeStream()` parse only the completion text and
-discard an OpenAI-style `usage` field if one is present.
-
-- **`engine/llm-client.ts`** — return `data.usage` (`prompt_tokens`/`completion_tokens`) alongside the
-  completion text instead of dropping it, in both the buffered and streaming paths.
-  **Open question, to verify against the local LM Studio before implementing:** whether a streamed
-  response carries `usage` at all — the OpenAI convention gates it behind `stream_options.include_usage`,
-  which is not sent today. If it does not, duration is still capturable and token counts may have to be
-  shown as unavailable for streamed calls specifically.
-- **`engine/agent.ts`** — record the completion time, compute `durationMs`, extend `llmLogEntry` with
-  `durationMs` and `usage: { promptTokens, completionTokens } | null`, and emit a new
-  `{ t: "agent_stats", who, model, durationMs, promptTokens, completionTokens }` frame through the same
-  `sseWrite` path the `composing` event already uses, so the live screen needs no log polling.
-- **`server/gui/viewer/hud.js`** — a per-agent stat table accumulating `agent_stats` across the run,
-  additive to `renderRail()`, following the same `store.events`-filtering pattern the rail counts use.
-- **`GUI-SPEC.md`** — document `agent_stats` in the `/events` contract.
-
-**Blocks.** (1) Capture and log: usage parsing, duration, the extended `llmLogEntry`; extend the
-existing `agent.ts` coverage to assert the new fields are present and non-negative. (2) Live surfacing:
-the SSE event, the GUI-SPEC entry, the panel — and a live run that settles the streaming-usage question
-above one way or the other.
-
 ### B. Run comparison view
 
 **GUI only — no new route.** `/runs/log?dir=&id=` already returns everything two runs of the same
@@ -144,6 +118,33 @@ structural diff of the consult sequence — the two panes already let a reader c
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round now refuses with the numbers rather than letting the model return nothing, but a
   long story needs a correspondingly large context window loaded.
+
+## Writing-quality follow-ups
+
+Found by reading the run logs of `stories/the-watchfire` against the writer's own rules. Each is a
+place where the engine permits something the prompts forbid.
+
+- **A scene that passes its target length does not end, and degenerates while it runs on.** One
+  chapter aimed at 750 words ran to 2,237 across 53 steps on four granted budget extensions; 37 of
+  those steps came after the target was passed, and 14 of the run's 17 refused consults were in that
+  tail — all of them `"What do you do?"`. Before the target the refusal rate was ordinary. So the
+  overrun is the disease and the degenerate consults are the symptom: a writer with no fork left to
+  ask about keeps asking anyway. `writeInstruction`'s "You are at length — bring the scene to its
+  end" is evidently too soft to close a scene on its own.
+- **`reaction` is never used.** Zero consults of 76 across three runs asked for one; the split is
+  decision 49, speech 22, action 5. It is the one shape that lets a present-but-not-acting character
+  stay a person, and it is also the honest thing to ask when there is no fork — exactly the situation
+  that currently produces `"What do you do?"`. The neglect nudge in `writeInstruction` should name it.
+- **Restrictions govern answers but not narration.** `consult.ts` machine-checks a character's
+  `skills_used`, but nothing checks the prose. `writerSystem` states that a CANNOT governs narration
+  too, and the very first sentence of the first written chapter of The Watchfire is "The tower smells
+  of old pine dust and hot metal" — POV ADAN, whose one restriction is `smell`. A lint over draft
+  prose for the POV character's restricted senses would have caught it; a warning is probably right,
+  not a hard refusal.
+- **The judge and the clarifier are named `WRITER`,** so they share the writer's transcript and, now
+  that per-call stats exist, its stats row too — one line blending three jobs at three temperatures.
+  Splitting them needs `llmLogEntry`'s `role` rule widened past `name === "WRITER" ? … : "character"`
+  and a `.tag` colour per role; see [Writer.MD](Writer.MD).
 
 ## Reliability follow-ups
 

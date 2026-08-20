@@ -115,7 +115,9 @@ the draft, or anyone else's replies. Every other rule follows from protecting th
 
 **Agents** are all the same generic `Agent` class (windowed history + rolling `digest`), differing
 only by system prompt, model and temperature: **writer** (0.8) and one **character** (0.9) per entry
-in `story.json`'s `characters[]`.
+in `story.json`'s `characters[]`, plus two author-side helpers that share the writer's voice but hold
+one response schema each — the **judge** (0.3, no history) and the **clarifier** (one per scene). Why
+they are separate agents rather than sections of the writer's prompt is in [Writer.MD](Writer.MD).
 
 The one invariant to hold while editing the engine: **`consult()` never touches `agent.history`** —
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean

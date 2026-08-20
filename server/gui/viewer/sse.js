@@ -62,6 +62,21 @@ export function startSSE() {
     let f; try { f = JSON.parse(m.data); } catch { return; }
     if (f.t === "composing") { APP.composing = f; if (APP.view === "live") renderRail(LIVEV, build(LIVEV)); return; }
     if (f.t === "idle") { APP.composing = null; if (APP.view === "live") renderRail(LIVEV, build(LIVEV)); return; }
+    if (f.t === "agent_stats") {
+      const prior = LIVEV.agentStats[f.who] || { who:f.who, model:f.model, calls:0, durationMs:0,
+        promptTokens:0, completionTokens:0, tokenCalls:0 };
+      prior.model = f.model;
+      prior.calls++;
+      prior.durationMs += Math.max(0, Number(f.durationMs) || 0);
+      if (Number.isFinite(f.promptTokens) && Number.isFinite(f.completionTokens)) {
+        prior.promptTokens += f.promptTokens;
+        prior.completionTokens += f.completionTokens;
+        prior.tokenCalls++;
+      }
+      LIVEV.agentStats[f.who] = prior;
+      if (APP.view === "live") renderRail(LIVEV, build(LIVEV));
+      return;
+    }
     if (f.t === "continue_prompt") { showPrompt(f); return; }
     if (f.t === "run_state") {
       const wasPicking = APP.session.picking, wasRunning = APP.session.running;
@@ -120,7 +135,7 @@ export function startSSE() {
     if (f.t === "run_reset") {
       // A new story in the same session. Replay only helps clients that connect after it; one
       // already attached has to be told, or the next scene renders glued onto the last one.
-      LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.open = new Set(); APP.composing = null;
+      LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.open = new Set(); LIVEV.agentStats = {}; APP.composing = null;
       APP.awaitingReader = false; APP.runEnded = null; APP.runError = "";
       fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (APP.view === "live") APP.render(); } }).catch(() => {});
       go("live");

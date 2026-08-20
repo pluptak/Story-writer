@@ -224,20 +224,29 @@ describe("runLlmLogs / readLlmLog", () => {
 // -- LLM INTERACTION LOG ----------------------------------------------------
 describe("LLM interaction log", () => {
   it("llmLogEntry: WRITER gets role writer, anyone else gets role character", () => {
-    const w = llmLogEntry({ name: "WRITER", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp");
+    const w = llmLogEntry({ name: "WRITER", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp", 100, null);
     assert.equal(w.role, "writer");
-    const c = llmLogEntry({ name: "Anne", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp");
+    const c = llmLogEntry({ name: "Anne", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp", 100, null);
     assert.equal(c.role, "character");
   });
 
-  it("llmLogEntry: fields pass through unchanged", () => {
+  it("llmLogEntry: fields pass through unchanged, including durationMs and usage", () => {
     const prompt = [{ role: "system" as const, content: "sys" }];
-    const e = llmLogEntry({ name: "Anne", model: "some-model" }, "2026-01-01T00-00-00.000Z", prompt, "raw reply");
+    const usage = { promptTokens: 42, completionTokens: 7 };
+    const e = llmLogEntry({ name: "Anne", model: "some-model" }, "2026-01-01T00-00-00.000Z", prompt, "raw reply", 3500, usage);
     assert.equal(e.ts, "2026-01-01T00-00-00.000Z");
     assert.equal(e.agent, "Anne");
     assert.equal(e.model, "some-model");
     assert.deepEqual(e.prompt, prompt);
     assert.equal(e.response, "raw reply");
+    assert.equal(e.durationMs, 3500);
+    assert.deepEqual(e.usage, usage);
+  });
+
+  it("llmLogEntry: usage is null when the server did not report it", () => {
+    const e = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "r", 100, null);
+    assert.equal(e.usage, null);
+    assert.equal(e.durationMs, 100);
   });
 
   it("llmFilenameFor: slugifies the name", () => {

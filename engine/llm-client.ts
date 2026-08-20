@@ -18,11 +18,31 @@ type Role = "system" | "user" | "assistant";
 /** One chat message: role plus content. */
 export interface Msg { role: Role; content: string; }
 
+/** Token counts an OpenAI-compatible server may report for a completion. */
+export interface CompletionUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+/** The result of a completion: the text plus whatever usage the server reported (null when absent). */
+export interface Completion {
+  text: string;
+  usage: CompletionUsage | null;
+}
+
+/** Normalize an OpenAI-style `usage` object into our shape, or null when it is missing/invalid. */
+function parseUsage(u: any): CompletionUsage | null {
+  const pt = u?.prompt_tokens, ct = u?.completion_tokens;
+  if (typeof pt !== "number" || typeof ct !== "number") return null;
+  return { promptTokens: pt, completionTokens: ct };
+}
+
 /** The retry/backoff knobs, settable per run from a story's config. */
 export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };
 
 function requestBody(model: string, messages: Msg[], temperature: number, stream: boolean, think: ThinkLevel) {
   const body: Record<string, unknown> = { model, messages, temperature, max_tokens: ENGINE.maxTokens, stream };
+  if (stream) body.stream_options = { include_usage: true };
   if (think !== "default") body.reasoning_effort = think === "off" ? "none" : think;
   return JSON.stringify(body);
 }
@@ -78,7 +98,7 @@ async function postChat(body: string, signal: AbortSignal) {
 }
 
 /** One non-streaming completion, with retry/backoff; throws StoppedError when the run is stopped. */
-export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low"): Promise<string> {
+export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low"): Promise<Completion> {
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal);
     const data = await res.json() as any;
@@ -87,19 +107,19 @@ export async function complete(model: string, messages: Msg[], temperature: numb
     if (ENGINE.debug) process.stderr.write(`\n[DEBUG complete] model=${model} len=${text.length} src=${choice?.message?.content ? "content" : "reasoning_content"} raw=${JSON.stringify(text.slice(0, 300))}\n`);
     // An empty 200 is the other shape "never replied" takes; spend a retry rather than a caller call.
     if (!text) throw new LmError(`${model} returned an empty completion`, undefined, true);
-    return text;
+    return { text, usage: parseUsage(data.usage) };
   });
 }
 
 /** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
 export async function completeStream(model: string, messages: Msg[], temperature: number,
-                                     onDelta: (d: string) => void, think: ThinkLevel = "low"): Promise<string> {
+                                     onDelta: (d: string) => void, think: ThinkLevel = "low"): Promise<Completion> {
   return withRetry(`${model} stream`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, true, think), signal);
     if (!res.body) throw new LmError(`LM Studio returned no stream body`, undefined, true);
     const reader = (res.body as any).getReader();
     const decoder = new TextDecoder();
-    let buffer = "", full = "", frameCount = 0;
+    let buffer = "", full = "", frameCount = 0, usage: CompletionUsage | null = null;
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -119,6 +139,9 @@ export async function completeStream(model: string, messages: Msg[], temperature
             // Qwen3 thinking models put output in reasoning_content when content is empty
             const delta = d?.content || d?.reasoning_content || "";
             if (delta) { full += delta; onDelta(delta); }
+            // The usage frame arrives in its own SSE chunk (often with an empty choices array) when
+            // stream_options.include_usage is honored; capture it and let the loop continue.
+            if (parsed.usage) usage = parseUsage(parsed.usage);
           } catch (e) {
             if (ENGINE.debug) process.stderr.write(`[SSE parse error] ${(e as Error).message} on: ${t.slice(0, 80)}\n`);
           }
@@ -131,13 +154,13 @@ export async function completeStream(model: string, messages: Msg[], temperature
         progressDone();
         console.warn(`   ${C.yellow}⏱${C.reset} ${model} broke off (${(e as Error).message}) but had already `
           + `finished a reply — keeping it`);
-        return sofar;
+        return { text: sofar, usage };
       }
       throw e;
     }
     if (ENGINE.debug) process.stderr.write(`\n[DEBUG stream done] model=${model} len=${full.length} raw=${JSON.stringify(full.slice(0, 300))}\n`);
     const text = full.trim();
     if (!text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
-    return text;
+    return { text, usage };
   });
 }

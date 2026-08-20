@@ -40,6 +40,8 @@ export type LiveFrame =
   | ({ seq: number } & RunEvent)
   | { t: "composing"; who: string; secs: number; chars: number }
   | { t: "idle" }
+  | { t: "agent_stats"; who: string; model: string; durationMs: number;
+      promptTokens: number | null; completionTokens: number | null }
   | { t: "continue_prompt"; steps: number; budget: number; suggested: number }
   | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean;
       paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;

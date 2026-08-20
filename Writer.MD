@@ -21,6 +21,28 @@ The writer is created fresh for each chapter run with its own history, model, th
 temperature (`0.8`). Character agents are created separately for the characters in the selected
 scene.
 
+### The judge and the clarifier
+
+Two author-side jobs sit beside the writing itself: **judging** an answer (accept or retry) and
+**clarifying** a fact a character asked for. Both are the author's own voice, and both were once extra
+sections of the writer's system prompt, answered on the writer's history.
+
+They are separate agents now, each holding exactly one response schema, because sharing a history
+cost real judgements: a writer twenty messages deep in `[WRITE]` → `{"prose": …}` answers a judge
+request with prose often enough to matter, and a reply with no `verdict` used to default silently to
+*accept*. A `schema_mismatch` event now records any such reply, and the call is made once more before
+any default is taken.
+
+| | history | temperature | why |
+| --- | --- | --- | --- |
+| judge | none — built per call | `0.3` | it is given the situation, the question, the answer and the cast's limits; a verdict needs no memory, and consistency beats invention |
+| clarifier | one per scene | the writer's | what it settles becomes true for the rest of the scene, so it has to remember what it has already said |
+
+The clarifier is also given the last piece of prose written, so a fact it decides on the spot cannot
+contradict the page; and it is forbidden from putting words in a character's mouth, because an answer
+that quotes someone is a line nobody was consulted for. Both agents log to the writer's transcript and
+both follow a mid-run `/model` swap.
+
 ## Principle of operation
 
 The writer controls narration and pressure. Character agents control character choices.
@@ -31,7 +53,8 @@ The writer must:
 2. Stop before resolving that pressure.
 3. Consult the relevant character agent.
 4. Accept the answer unless it is unusable.
-5. Retry through a clean character-agent fork when necessary.
+5. Retry through a clean character-agent fork when necessary, with a re-ask that has itself passed
+   the same check the first consult did.
 6. Add only the accepted answer to the writer's history.
 7. Continue the scene from the accepted answer.
 
@@ -40,6 +63,13 @@ choice, established facts, and POV perception within the character's capabilitie
 
 The writer may not invent dialogue, deliberate actions, decisions, thoughts, feelings, or meaningful
 stillness. This asymmetry is the central product invariant.
+
+An answer has to arrive in the shape the consult asked for: `speech` needs words said, `action` needs
+something done, `decision` needs one or the other to carry it. `reaction` is the exception, and the
+only shape a thought alone answers — it asks what a moment lands on someone as, which happens behind
+the eyes. A thought offered against any of the other three is not a quiet answer but an unanswered
+question, and it is treated as one: the character is asked again, and if it comes back the same the
+writer is told nobody answered rather than handed an accepted answer with nothing in it.
 
 One run writes one chapter. A run can finish normally, stop when its step budget is exhausted, pause
 for more budget, wait for reader direction, be stopped by the user, or end because of a model/runtime
@@ -71,6 +101,10 @@ row. Two deliberate departures from `writer-mockup.html`:
 - **POV is not shown.** The mockup has a `POV RIVEN` chip, but POV is a hint to the writer about whose
   choice comes first, not something a reader of the run needs. `RunMeta` carries no `pov` and does not
   need to.
+
+The live rail also accumulates completed model calls by agent: call count, average duration, and
+prompt/completion token totals when the provider reports them. Missing token usage is shown as
+unavailable rather than guessed.
 
 The manual pass that verifies all of this is [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) §8.
 
