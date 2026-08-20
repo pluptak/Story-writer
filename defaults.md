@@ -13,7 +13,8 @@ over both sources.
 | --- | --- | --- |
 | `models.default` | model used for the scaffold conversation | `qwen3.6-35b-a3b` |
 | `models.architect` | model used by the architect | `models.default` |
-| `config.thinking_architect` | architect reasoning level | `low` |
+| `config.thinking` | reasoning level, and the fallback for the one below | `low` |
+| `config.thinking_architect` | architect reasoning level | `config.thinking` |
 | `config.request_timeout` | request timeout in seconds | `120` |
 | `config.attempts` | total request attempts | `3` |
 | `config.max_tokens` | response token cap | `2000` |

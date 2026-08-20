@@ -4,8 +4,9 @@ Read this before adding a route, an SSE event, or anything a run control does to
 deciding whether the GUI under [server/gui/](server/gui/) could be swapped for something else. It is
 written from the server's side: what [server/server.ts](server/server.ts),
 [server/run-control-routes.ts](server/run-control-routes.ts),
-[server/scaffold-routes.ts](server/scaffold-routes.ts) and
-[server/next-chapter-routes.ts](server/next-chapter-routes.ts) actually expose, independent of the one
+[server/scaffold-routes.ts](server/scaffold-routes.ts),
+[server/next-chapter-routes.ts](server/next-chapter-routes.ts) and
+[server/run-log-routes.ts](server/run-log-routes.ts) actually expose, independent of the one
 client that happens to consume it today.
 
 ## The shape of it
@@ -41,9 +42,9 @@ Two channels carry everything:
   finds out only through `/events`).
 
 Nothing under `server/*.ts` imports `engine/`. Every route reaches the engine only through the
-`ServerHost` interface built once in `story-writer.ts` ([server.ts:18](server/server.ts#L18)) — twelve
-methods, all read-only or side-effect-free except `newScaffoldSession`. A route that needs something new
-gets a host method, never an import (CLAUDE.md).
+`ServerHost` interface built once in `story-writer.ts` ([server.ts:21](server/server.ts#L21)) — all of
+it read-only or side-effect-free except the two session openers, `newScaffoldSession` and
+`newHandoffSession`. A route that needs something new gets a host method, never an import (CLAUDE.md).
 
 ## Static routes
 
@@ -305,7 +306,7 @@ against it.** Two things make that true:
    second frontend calling this same API from the same origin is indistinguishable, server-side, from
    the shipped one.
 2. **Every route reaches the engine only through `ServerHost`.** No route module imports `engine/`
-    directly (CLAUDE.md's own invariant), so the API's behavior is exactly the twelve `ServerHost` methods
+   directly (CLAUDE.md's own invariant), so the API's behavior is exactly the `ServerHost` methods
    plus the `LIVE`/`RUN`/`SCAFFOLD`/`HANDOFF` state machine described above — nothing lives only in
    `server/gui/*.js` that a route depends on.
 
@@ -329,10 +330,11 @@ What a replacement would actually need to reproduce, none of it GUI-specific:
 
 What is **not** available through this API, and would need a new route (a `ServerHost` addition, not a
 GUI trick) rather than being derivable client-side: editing a story's files field by field
-([SPEC-E-editor.md](SPEC-E-editor.md) — proposed, not built; `/next-chapter` rewrites `story.json`, but
-only what the architect proposes and the reader accepts), reading the chapters a story has already
-written, starting a run without going through the picker/scaffold handshake, or anything about a run
-that already fell out of `MAX_RUNS` retention.
+(`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts),
+reading a story's full cast — `knows`, `goal` and `persona` — for a story that is not in a scaffold or
+handoff session, starting a run without going through the picker/scaffold handshake, or anything about
+a run that already fell out of `MAX_RUNS` retention. The first two are proposed in
+[PLANS.md](PLANS.md) (plans 1 and 2C), which is also where the routes they would add are drafted.
 
 If "replace" means **serve the new frontend from somewhere other than this process** (a separate dev
 server, a static host): the JSON/SSE routes have no CORS headers today, so a different-origin client

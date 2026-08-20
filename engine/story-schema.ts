@@ -14,6 +14,7 @@ export const SceneDef = z.strictObject({
   pov: z.string().default(""),
   length: z.number().min(1).default(700),
   roster: z.array(z.string()).default([]),
+  /** Writer-only overrides for this one scene; unset falls back to `models.writer` / `thinking.writer`. */
   writerModel: z.string().optional(),
   writerThink: thinkLevel.optional(),
 });
@@ -29,6 +30,7 @@ export const CharacterDef = z.strictObject({
   goal: z.string().default(""),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
+  /** This character's chapter-wide retry ceiling; unset falls back to `config.maxCharacterRetries`. */
   maxRetries: z.number().int().min(0).optional(),
 });
 
@@ -64,6 +66,7 @@ export const RunConfig = z.strictObject({
   requestTimeout: z.number().int().min(1).default(120),
   attempts: z.number().int().min(1).default(3),
   maxTokens: z.number().int().min(1).default(2000),
+  /** Cumulative retries one character may cost per chapter before replies are force-accepted; unset means no ceiling. */
   maxCharacterRetries: z.number().int().min(0).optional(),
 }).prefault(() => ({}));
 

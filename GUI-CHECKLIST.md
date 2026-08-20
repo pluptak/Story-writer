@@ -11,7 +11,7 @@ that alters what a route serves.
 - [ ] **Context length 16384.** The handoff's opening round resends every written chapter, roughly
       1,100 tokens each. At 10,000 preparing chapter 3 refuses even now that the worked example is
       gone from the handoff prompt.
-- [ ] `npx tsc --noEmit` clean, `npm test` green (260 at the time of writing).
+- [ ] `npx tsc --noEmit` clean, `npm test` green.
 - [ ] Start the app browser-driven — no story argument, or the picker never hands over to the GUI:
 
 ```bash
@@ -25,10 +25,9 @@ npx tsx story-writer.ts --serve
 `MAX_RUNS` is 3, so writing a run destroys the oldest retained one in that story. Where a check below
 depends on a *particular* retained run existing, it says so and comes first.
 
-The `unattributed` case in section 1 is already gone this way: the only run on disk that predated
-chapter numbers rotated out on 2026-08-20. Nothing can recreate it — every run written from now on
-carries a chapter — so that branch of the grouping is now unreachable in practice and cannot be
-re-checked live.
+The `unattributed` case in section 1 went this way on 2026-08-20: the last run predating chapter
+numbers rotated out, and every run written since carries one. That branch of the grouping is
+unreachable in practice and cannot be re-checked live.
 
 ## 1. Runs grouped by chapter — no run needed
 
