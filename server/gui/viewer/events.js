@@ -20,6 +20,7 @@ export function build(store) {
       case "skill_flag":last(cur)?.flags.push("used what it cannot do: " + (e.unknown||[]).join(", ")); break;
       case "answer":    if (last(cur)) last(cur).answer = e; break;
       case "judge":     if (last(cur)) last(cur).judge = e; break;
+      case "retry_capped": if (cur) cur.capped = true; break;
       case "accept":    if (cur) { cur.accepted = e; cur = null; } break;
       case "budget":    blocks.push({ kind:"note", seq:e.seq, text:`+${e.added} steps (budget now ${e.budget})` }); break;
       case "reader_ask": blocks.push({ kind:"reader", seq:e.seq, framing:e.framing, options:e.options||[], answer:null }); break;

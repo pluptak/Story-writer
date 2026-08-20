@@ -306,3 +306,17 @@
   .prompt.on { display:flex; }
   .prompt input { width:64px; font-family:var(--mono); font-size:13px; padding:5px 8px;
                   border:1px solid var(--line); border-radius:7px; background:var(--panel-2); color:var(--ink); }
+
+  .timeline { display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:6px 20px;
+              border-bottom:1px solid var(--line); background:var(--panel); font-family:var(--mono); font-size:11px; }
+  .timeline[hidden] { display:none; }
+  .timeline .tl-label { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--faint);
+                        margin-right:4px; font-weight:600; }
+  .timeline .tl-marker { font-family:var(--mono); font-size:10px; padding:2px 8px; border-radius:999px;
+                         border:1px solid var(--line); background:var(--panel-2); color:var(--muted);
+                         cursor:pointer; }
+  .timeline .tl-marker:hover { border-color:var(--accent); color:var(--ink); }
+  .timeline .tl-marker.retried { color:var(--warn); border-color:var(--warn); }
+  .timeline .tl-marker.capped { background:color-mix(in srgb, var(--bad) 18%, var(--panel-2));
+                                border-color:var(--bad); color:var(--bad); }
+  .timeline .tl-marker.retried.capped { background:color-mix(in srgb, var(--bad) 28%, var(--panel-2)); }

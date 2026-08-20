@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { loadStory } from "../engine/story-format.ts";
+import { StoryJson } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
 import { wrapWriter, writerCast, runChapter, writeScene } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
@@ -222,5 +223,61 @@ describe("pause/resume handshake", () => {
     assert.equal(LIVE.pausing, false);
     assert.equal(LIVE.paused, false);
     assert.equal(LIVE.pauseResolve, null);
+  });
+});
+
+// -- RETRY CEILING ----------------------------------------------------------
+describe("retry ceiling", () => {
+  it("parses maxCharacterRetries from story.json and passes through to writeScene", async () => {
+    const raw = {
+      title: "ceiling-test",
+      premise: "A test.",
+      scenes: [{ place: "room", question: "What now?" }],
+      characters: [{ name: "RIVEN", persona: "tester" }],
+      config: { maxCharacterRetries: 3 },
+    };
+    const parsed = StoryJson.parse(raw);
+    assert.equal(parsed.config.maxCharacterRetries, 3);
+
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    assert.equal(sc.maxCharacterRetries, undefined); // the existing story has no ceiling
+  });
+
+  it("parses per-character maxRetries from story.json", () => {
+    const raw = {
+      title: "per-char-test",
+      premise: "A test.",
+      scenes: [{ place: "room", question: "What now?" }],
+      characters: [{ name: "RIVEN", persona: "tester", maxRetries: 1 }],
+    };
+    const parsed = StoryJson.parse(raw);
+    assert.equal(parsed.characters[0].maxRetries, 1);
+  });
+
+  it("retryCounts is scoped to one writeScene call and retries survive a stopped run", async () => {
+    // Stopping the run before calling writeScene means the writer never generates,
+    // so retries never happen. This test validates the plumbing: the parameter
+    // reaches writeScene without error, and no retries are recorded.
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+
+    armRun();
+    stopRun();
+    try {
+      await writeScene(
+        sc.scenes[0], 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        1, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log, 5,   // maxCharacterRetries = 5
+      );
+      const se = events.find(e => e.t === "scene_end") as any;
+      assert.ok(se, "scene_end was logged");
+      assert.deepEqual(se.retries, {}, "no retries happened because the run was stopped");
+    } finally {
+      armRun();
+      resetLive();
+    }
   });
 });

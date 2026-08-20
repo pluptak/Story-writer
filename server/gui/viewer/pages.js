@@ -7,6 +7,7 @@ import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
 import { paintSrcbar, paintTitle, renderRail } from "./hud.js";
+import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { interviewModalHtml, wireInterview } from "./interview.js";
@@ -125,6 +126,8 @@ function renderLive(page, blocks) {
   wireReader(page);
   setFoldable(blocks.some(b => b.kind === "consult"));
   renderRail(LIVEV, blocks);
+  renderTimeline();
+  wireTimeline(page);
 }
 
 function renderRead(page, blocks) {

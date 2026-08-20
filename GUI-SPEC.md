@@ -265,12 +265,13 @@ plus, scene-loop-level:
   { t:"bad_consult"; character; why }
   { t:"judge"; character; verdict; note; attempt }
   { t:"accept"; character; attempt; speech; action }
-  { t:"retry"; character; attempt; situation; question }
+   { t:"retry"; character; attempt; situation; question }
   { t:"budget"; added; budget }
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
   { t:"model_changed"; model }
-  { t:"scene_end"; steps; words; done; stopped }
+  { t:"retry_capped"; character; count }
+  { t:"scene_end"; steps; words; done; stopped; retries{character:count} }
 ```
 
 `wants` in `consult` is always one of `speech | action | decision | reaction` — the same four words

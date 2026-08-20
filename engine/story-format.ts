@@ -17,6 +17,7 @@ export interface CharacterDef {
   knows: string;
   goal: string;
   skills: Skill[];
+  maxRetries?: number;
 }
 
 /** A story as loaded and validated: the engine's view of story.json, with defaults filled in. */
@@ -84,6 +85,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       knows: c.knows,
       goal: c.goal,
       skills: resolveSkills(name, c.skills.join(" | "), c.restrictions.join(" | ")),
+      maxRetries: c.maxRetries,
     });
   }
 
@@ -125,6 +127,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     maxTokens: config.maxTokens,
     models,
     characters,
+    maxCharacterRetries: config.maxCharacterRetries,
   };
 }
 
