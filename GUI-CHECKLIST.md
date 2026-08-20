@@ -253,6 +253,28 @@ In the reader (section 10), using the search box above the prose.
       story: the box is empty and no prior hits remain. *(Needs a second story with a written
       chapter — same note as section 3.)*
 
+## 12. Live character sheet
+
+Needs a run, so pair it with section 2. A read-only panel in the live rail.
+
+- [ ] **It appears while a run is live.** Below the rail's stats, a **cast** panel with a card per
+      character in the run, each showing persona / knows / goal and the character's `+skill` /
+      `no restriction` tags.
+- [ ] **It carries authored data the pills do not.** The header cast pills know only skills and
+      restrictions; this panel shows `knows` and `goal` too — proof it is the `/cast` fetch, not the
+      `scene_start` names. (Pick a story whose characters have a non-empty `knows`.)
+- [ ] **Read-only.** No inputs, no buttons, nothing to click — it is for the human reviewing what a
+      consult was working from, never an edit surface.
+- [ ] **Live only.** Switch to the read tab: no cast panel there. It belongs to a running scene.
+- [ ] **It survives a model swap and a pause** without refetching visibly or vanishing — the panel is
+      keyed by story, not by run state.
+- [ ] **Cast unavailable is graceful.** If `/cast` cannot answer, the panel reads *could not load
+      cast*; the rest of the rail — steps, words, stop — still works. (Force it by loading the live
+      screen with no engine behind it, per the section below.)
+- [ ] **The boundary holds.** This data is shown to you only. It must never appear in any agent's
+      transcript on the per-agent panel (section 8) — the sheet is a GUI read of already-authored
+      data, not anything the writer or a character is ever told.
+
 ## Checking the viewer without an engine
 
 Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the

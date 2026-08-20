@@ -86,6 +86,9 @@ export const APP = {
                                  // of which page is showing, so deriving it would mean rebuilding the
                                  // whole live event log on every frame just to read one boolean off it.
   readerError: null,            // the reader's own last refusal, shown beside its own card: {seq, text}
+  cast: null,                   // {dir, characters, loading, error}: the live screen's read-only
+                                 // character sheet, fetched from /cast for LIVEV.meta.story. dir-keyed
+                                 // so a new story's run refetches instead of showing the last cast.
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };
 

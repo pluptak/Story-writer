@@ -1,5 +1,6 @@
 import { $, esc, basename } from "./util.js";
 import { APP, LIVEV, READV, READER, storyName } from "./state.js";
+import { castSheetHtml } from "./cast-sheet.js";
 
 // The two small "paint a fixed chrome region from store state" pieces -- the `#src`/`#dot` source
 // indicator and the `#rail` progress panel -- as opposed to `#page`, which `pages.js` owns.
@@ -87,5 +88,6 @@ export function renderRail(store, blocks) {
     ${stat("skill flags", flags, flags ? "bad" : "")}
      ${store === LIVEV && APP.composing ? `<div class="composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
         composing… ${APP.composing.secs}s</div>` : ""}
-     ${statsPanel}`;
+     ${statsPanel}
+     ${castSheetHtml()}`;
 }
