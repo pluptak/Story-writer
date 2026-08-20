@@ -202,6 +202,20 @@ export function directEdit(spec: StorySpec, field: string, value: unknown):
   return { ok: true, spec: e.spec, applied: e.applied, problems: e.problems };
 }
 
+/** Which of a scene's fields differ between two versions of the story, for detecting that a chapter's
+ *  prose was written from a definition that has since changed. Roster order is not a difference. */
+export function sceneDrift(before: SceneDef | undefined, after: SceneDef | undefined): string[] {
+  if (!before || !after) return [];
+  const diff: string[] = [];
+  if (before.place.trim() !== after.place.trim()) diff.push("place");
+  if (before.question.trim() !== after.question.trim()) diff.push("question");
+  if (before.pov.trim() !== after.pov.trim()) diff.push("pov");
+  if (before.length !== after.length) diff.push("length");
+  const was = new Set(before.roster), now = new Set(after.roster);
+  if (was.size !== now.size || ![...was].every(x => now.has(x))) diff.push("roster");
+  return diff;
+}
+
 /** Render a spec to the story files on disk (currently just story.json), ready to write into a story folder. */
 export function renderStory(spec: StorySpec, models: { default: string }): Record<string, string> {
   const files: Record<string, string> = {};

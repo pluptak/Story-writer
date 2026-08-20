@@ -4,7 +4,7 @@
  * a rejected answer is re-asked of a FRESH instance that never learns it was rejected.
  */
 
-import { writeFile, mkdir, rm } from "node:fs/promises";
+import { writeFile, mkdir, rm, readFile } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
@@ -477,6 +477,17 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
     await mkdir(chaptersDir, { recursive: true });
     chapterPath = joinPath(chaptersDir, `${chapter}.md`);
     await writeFile(chapterPath, r.prose.join("\n\n") + "\n", "utf8");
+
+    // The definition this chapter was written from, beside the prose rather than in out/, which is
+    // rotated. The handoff rewrites story.json between chapters; without this, what produced an
+    // older chapter is gone. Copied verbatim: re-rendering would record a normalised story, not the
+    // authored one. Losing it must never cost the chapter that is already safely written.
+    try {
+      await writeFile(joinPath(chaptersDir, `${chapter}.json`),
+                      await readFile(joinPath(sc.dir, "story.json"), "utf8"), "utf8");
+    } catch (e) {
+      console.log(`${C.dim}chapter ${chapter}'s definition was not snapshotted — ${(e as Error).message}${C.reset}`);
+    }
   } else if (!r.stopped) {
     console.log(`${C.dim}chapter ${chapter} not saved — the run did not finish${C.reset}`);
   }

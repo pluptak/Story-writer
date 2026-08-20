@@ -216,3 +216,15 @@ export async function readChapters(storyDir: string): Promise<{ n: number; text:
     chapters.push({ n, text: await readFile(joinPath(base, "chapters", `${n}.md`), "utf8") });
   return chapters;
 }
+
+/** The story definition a chapter was written from, or null for a chapter written before snapshots
+ *  existed (or one whose snapshot will not parse). */
+export async function readChapterSpec(storyDir: string, n: number): Promise<unknown | null> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const text = await readFile(joinPath(base, "chapters", `${n}.json`), "utf8");
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}

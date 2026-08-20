@@ -2,7 +2,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { restrictionsOf } from "./skills.ts";
-import { LMSTUDIO_MODELS_URL } from "./llm-client.ts";
+import { LMSTUDIO_MODELS_URL, LMSTUDIO_REST_MODELS_URL } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
 
 export async function runDirs(storyDir: string): Promise<string[]> {
@@ -45,6 +45,51 @@ async function fetchModelIds(timeoutMs: number): Promise<string[] | null> {
   } catch { return null; }
 }
 
+export interface ModelInfo { loaded: boolean; loadedContext: number; maxContext: number; }
+
+/** Parse LM Studio's /api/v0/models body. Pure, so the fit rules below can be tested without a server. */
+export function parseModelInfo(body: unknown): Map<string, ModelInfo> {
+  const out = new Map<string, ModelInfo>();
+  const data = (body as { data?: unknown })?.data;
+  if (!Array.isArray(data)) return out;
+  for (const m of data) {
+    const id = String((m as any)?.id ?? "");
+    if (!id) continue;
+    out.set(id, {
+      loaded: (m as any)?.state === "loaded",
+      loadedContext: Number((m as any)?.loaded_context_length) || 0,
+      maxContext: Number((m as any)?.max_context_length) || 0,
+    });
+  }
+  return out;
+}
+
+/** Whether a prompt of this size fits the window the model is actually loaded with, given the reply
+ *  the request also reserves. Returns null when it fits, or when nothing is known about the model --
+ *  an unknown model must not be reported as too small. */
+export function contextShortfall(info: ModelInfo | undefined, promptTokens: number, replyTokens: number):
+  { needs: number; has: number } | null {
+  if (!info || !info.loaded || !info.loadedContext) return null;
+  const needs = promptTokens + replyTokens;
+  return needs > info.loadedContext ? { needs, has: info.loadedContext } : null;
+}
+
+let modelInfoCache: { at: number; info: Promise<Map<string, ModelInfo> | null> } | null = null;
+/** Cached fetcher for model info from LM Studio's native API. Returns null when the endpoint is unreachable or not LM Studio. */
+export async function modelInfo(timeoutMs = 1500): Promise<Map<string, ModelInfo> | null> {
+  if (modelInfoCache && Date.now() - modelInfoCache.at < 5000) return modelInfoCache.info;
+  const info = fetchModelInfo(timeoutMs);
+  modelInfoCache = { at: Date.now(), info };
+  return info;
+}
+async function fetchModelInfo(timeoutMs: number): Promise<Map<string, ModelInfo> | null> {
+  try {
+    const res = await fetch(LMSTUDIO_REST_MODELS_URL, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    return parseModelInfo(await res.json());
+  } catch { return null; }
+}
+
 export function runPreflight(dir: string): Promise<PreflightResult> {
   const task = preflightChain.then(async (): Promise<PreflightResult> => {
     const warnings: string[] = [];
@@ -68,6 +113,16 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
           warnings.push(`   (not loaded in LM Studio: ${missingModels.join(", ")} — every call using `
             + `${missingModels.length > 1 ? "these" : "this"} will error)`);
         }
+      }
+
+      // A window this small does not stop a run, but it is what an empty completion usually turns
+      // out to be, and nothing else says so before the model returns nothing three times.
+      const info = await modelInfo();
+      for (const m of info ? wanted : []) {
+        const mi = info!.get(m);
+        if (mi?.loaded && mi.loadedContext && mi.loadedContext < 8192)
+          warnings.push(`   (${m} is loaded with only ${mi.loadedContext} tokens of context — `
+            + `the architect's opening handoff round alone is about 7,000)`);
       }
 
       return {

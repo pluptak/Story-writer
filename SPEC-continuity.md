@@ -6,6 +6,14 @@ handoff, and a before/after diff for the edits the handoff already applies. The 
 named as a known gap in [`Architect.MD`](Architect.MD) ("There is no before/after... field-level
 review would need the engine to keep it") — this doc is where that gets designed.
 
+**Part of the substrate now exists.** A completed run writes `chapters/<n>.json`, a verbatim copy of
+the `story.json` that produced that chapter, and `readChapterSpec` reads it back
+([SPEC-H-handoff.md](SPEC-H-handoff.md)). Opening a handoff already uses it for one narrow check —
+`sceneDrift`, warning when a written chapter's scene has since been edited by hand. That is the
+before/after machinery in miniature: the "before" is on disk per chapter, so a fuller diff no longer
+needs the engine to start keeping something it currently throws away. Note snapshots only exist for
+chapters written after they were introduced.
+
 ## A. Story-level fact bible
 
 No such field exists today — `StoryJson` (`engine/story-schema.ts`) has `title`, `premise`, `scenes`,

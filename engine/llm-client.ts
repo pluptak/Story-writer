@@ -7,6 +7,12 @@ import type { ThinkLevel } from "./story-schema.ts";
 
 export const LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions";
 export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$/, "/models");
+/** LM Studio's own REST API, which unlike /v1/models reports load state and context length. */
+export const LMSTUDIO_REST_MODELS_URL = LMSTUDIO_URL.replace(/\/v1\/chat\/completions\/?$/, "/api/v0/models");
+
+/** A deliberately pessimistic token estimate -- prose runs about 4 chars/token, the JSON the
+ *  architect trades in runs denser, and guessing high is the safe direction for a fit check. */
+export const estimateTokens = (text: string) => Math.ceil(text.length / 3.5);
 
 type Role = "system" | "user" | "assistant";
 /** One chat message: role plus content. */

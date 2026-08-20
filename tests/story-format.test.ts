@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, writtenChapters, ROOT,
+  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
   type Defaults,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
@@ -116,6 +116,31 @@ describe("StoryJson schema", () => {
     if (!r.success) {
       const msgs = r.error.issues.map(i => i.message).join(" ");
       assert.ok(msgs.includes("max_steps"), `expected max_steps in error, got "${msgs}"`);
+    }
+  });
+
+  it("accepts per-scene writerModel and writerThink overrides, falling back without them", () => {
+    const withOverrides = StoryJson.parse({
+      characters: [{ name: "X" }],
+      scenes: [{ writerModel: "claude-4", writerThink: "high" }],
+    });
+    assert.equal(withOverrides.scenes[0].writerModel, "claude-4");
+    assert.equal(withOverrides.scenes[0].writerThink, "high");
+
+    const without = StoryJson.parse({ characters: [{ name: "X" }] });
+    assert.equal(without.scenes[0].writerModel, undefined);
+    assert.equal(without.scenes[0].writerThink, undefined);
+  });
+
+  it("rejects an invalid writerThink value", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X" }],
+      scenes: [{ writerThink: "superhigh" }],
+    });
+    assert.equal(r.success, false);
+    if (!r.success) {
+      const paths = r.error.issues.map(i => i.path.join("."));
+      assert.ok(paths.includes("scenes.0.writerThink"), `expected scenes.0.writerThink in error paths, got ${JSON.stringify(paths)}`);
     }
   });
 });
@@ -413,6 +438,51 @@ describe("writtenChapters", () => {
       assert.equal(full[0].text, "Chapter 2 text");
       assert.equal(full[1].n, 10);
       assert.equal(full[1].text, "Chapter 10 text");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("readChapterSpec", () => {
+  it("returns null when no chapters/ directory at all", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const spec = await readChapterSpec(dir, 1);
+      assert.equal(spec, null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns null when a chapter with prose but no .json snapshot exists (older chapter case)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "Chapter 1 prose.", "utf8");
+
+      const spec = await readChapterSpec(dir, 1);
+      assert.equal(spec, null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns the parsed object when a valid snapshot exists", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      const specData = { title: "Test Story", scenes: [{ place: "Somewhere" }], characters: [{ name: "Hero" }] };
+      await writeFile(join(dir, "chapters", "1.json"), JSON.stringify(specData), "utf8");
+
+      const spec = await readChapterSpec(dir, 1);
+      assert.deepEqual(spec, specData);
+      assert.equal((spec as any)?.title, "Test Story");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns null when a snapshot exists but is not valid JSON", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.json"), "not valid json {", "utf8");
+
+      const spec = await readChapterSpec(dir, 1);
+      assert.equal(spec, null);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { loadStory, ROOT } from "../engine/story-format.ts";
 import { slugify } from "../engine/config-util.ts";
-import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
+import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, type SceneDef } from "../engine/story-spec.ts";
 import { quiet, quietSync, warnings } from "./helpers.ts";
 
 // -- STORY SPEC (scaffolding, SPEC-S §3) -----------------------------------
@@ -250,6 +250,51 @@ describe("applyEdits", () => {
         if (!r.ok) assert.match(r.reason, /100/);
       }
     });
+  });
+});
+
+describe("sceneDrift", () => {
+  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"] };
+
+  it("returns [] for identical scenes", () => {
+    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"] };
+    assert.deepEqual(sceneDrift(base, after), []);
+  });
+
+  it("returns a changed question", () => {
+    const after: SceneDef = { ...base, question: "Does she stay?" };
+    assert.deepEqual(sceneDrift(base, after), ["question"]);
+  });
+
+  it("returns multiple changed fields in stable order", () => {
+    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"] };
+    assert.deepEqual(sceneDrift(base, after), ["place", "pov", "length"]);
+  });
+
+  it("ignores roster reordering", () => {
+    const after: SceneDef = { ...base, roster: ["IVAN", "MAYA"] };
+    assert.deepEqual(sceneDrift(base, after), []);
+  });
+
+  it("detects an added name in the roster", () => {
+    const after: SceneDef = { ...base, roster: ["MAYA", "IVAN", "LARS"] };
+    assert.deepEqual(sceneDrift(base, after), ["roster"]);
+  });
+
+  it("returns [] when either side is undefined", () => {
+    assert.deepEqual(sceneDrift(undefined, base), []);
+    assert.deepEqual(sceneDrift(base, undefined), []);
+    assert.deepEqual(sceneDrift(undefined, undefined), []);
+  });
+
+  it("detects a change in length as a number", () => {
+    const after: SceneDef = { ...base, length: 850 };
+    assert.deepEqual(sceneDrift(base, after), ["length"]);
+  });
+
+  it("ignores whitespace differences in strings", () => {
+    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"] };
+    assert.deepEqual(sceneDrift(base, after), []);
   });
 });
 

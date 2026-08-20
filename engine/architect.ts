@@ -3,13 +3,15 @@ import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { join as joinPath, relative as relativePath } from "node:path";
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
+import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG } from "./skills.ts";
-import { ROOT, resolveStoryDir, readChapters, type Defaults } from "./story-format.ts";
-import { normalizeSpec, applyEdits, renderStory, type StorySpec } from "./story-spec.ts";
-import { runPreflight } from "./preflight.ts";
+import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
+import { normalizeSpec, applyEdits, renderStory, sceneDrift, type StorySpec } from "./story-spec.ts";
+import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
+import { estimateTokens } from "./llm-client.ts";
 
 async function architectExample(): Promise<string> {
   try {
@@ -176,16 +178,26 @@ export class NextChapterSession {
     return JSON.stringify({ ...this.spec, writer_style: this.spec.writerStyle }, null, 1);
   }
 
-  /** Edits that would rewrite history: removing a scene already written renumbers every chapter after it. */
+  /** Edits that would rewrite history: removing a scene already written renumbers chapters after it,
+   *  and editing fields of a scene in an already-written chapter would desync the story from its prose. */
   private refuse(edits: any[]): { edits: any[]; refused: string[] } {
     const written = this.chapter - 1;
     const refused: string[] = [];
     const kept = edits.filter(e => {
+      const field = String(e?.field ?? "").trim();
       const n = Number(e?.value);
-      if (String(e?.field ?? "").trim() !== "remove_scene" || !(Number.isInteger(n) && n >= 1 && n <= written))
-        return true;
-      refused.push(`remove_scene ${n} — chapter ${n} is already written`);
-      return false;
+      if (field === "remove_scene" && Number.isInteger(n) && n >= 1 && n <= written) {
+        refused.push(`remove_scene ${n} — chapter ${n} is already written`);
+        return false;
+      }
+      // The same field shapes applyEdits accepts, read the same way: an unnumbered `scene.x` is scene 1.
+      const m = field.match(/^scene(?:_(\d+))?\.(place|question|pov|length|roster)$/);
+      const k = m ? (m[1] ? Number(m[1]) : 1) : 0;
+      if (k >= 1 && k <= written) {
+        refused.push(`${field} — chapter ${k} is already written`);
+        return false;
+      }
+      return true;
     });
     return { edits: kept, refused };
   }
@@ -206,8 +218,14 @@ export class NextChapterSession {
 
   /** The handoff request itself: the premise, the chapters as written, and the story as it stands. */
   async propose(): Promise<ScaffoldRound> {
-    return this.take(await architectRound(this.architect,
-      P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters)));
+    const prompt = P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters);
+    const info = await modelInfo();
+    const short = info && contextShortfall(info.get(this.architect.model),
+                                           estimateTokens(this.architect.system + prompt), ENGINE.maxTokens);
+    if (short) return { kind: "failed", error:
+      `this round needs about ${short.needs} tokens and ${this.architect.model} is loaded with ${short.has} — `
+      + `raise its context length in LM Studio and try again` };
+    return this.take(await architectRound(this.architect, prompt));
   }
 
   /** A follow-up from the author, in the same edits-only format. */
@@ -249,5 +267,19 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
   const n = normalizeSpec(raw);
   const s = new NextChapterSession(await buildArchitect(d), d, dir, n.spec, chapters);
   s.problems = n.problems;
+
+  // `refuse()` keeps the architect off a written chapter's scene, but a hand edit reaches it, and
+  // that is legitimate -- so this says so rather than undoing it. Chapters written before snapshots
+  // existed have nothing to compare and must pass quietly.
+  for (const c of chapters) {
+    try {
+      const snapshot = await readChapterSpec(dir, c.n);
+      if (!snapshot) continue;
+      const drifted = sceneDrift(normalizeSpec(snapshot).spec.scenes[c.n - 1], s.spec.scenes[c.n - 1]);
+      if (drifted.length)
+        s.problems.push(`chapter ${c.n}'s prose was written from a different scene definition `
+          + `(${drifted.join(", ")})`);
+    } catch { /* a broken snapshot must not stop the handoff opening */ }
+  }
   return s;
 }

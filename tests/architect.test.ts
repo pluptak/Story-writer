@@ -273,6 +273,49 @@ describe("NextChapterSession", () => {
     assert.equal(s.spec.scenes[0].question, spec.scenes[0].question);
   });
 
+  it("refuses to edit scene_1.question when chapter 1 is already written", async () => {
+    const s = handoff([{ edits: [{ field: "scene_1.question", value: "Did Aster confess?" }] }]);
+    const before = structuredClone(s.spec);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { applied: string[] }).applied, []);
+    assert.match((r as { ignored: string[] }).ignored.join(" "), /scene_1\.question . chapter 1 is already written/);
+    assert.equal(s.spec.scenes[0].question, before.scenes[0].question);
+  });
+
+  it("refuses to edit bare scene.place when chapter 1 is already written", async () => {
+    const s = handoff([{ edits: [{ field: "scene.place", value: "the rock" }] }]);
+    const before = structuredClone(s.spec);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { applied: string[] }).applied, []);
+    assert.match((r as { ignored: string[] }).ignored.join(" "), /scene\.place . chapter 1 is already written/);
+    assert.equal(s.spec.scenes[0].place, before.scenes[0].place);
+  });
+
+  it("accepts scene_2 field edits when preparing chapter 2 with an existing scene 2", async () => {
+    const two = quietSync(() => applyEdits(spec, { edits: [{ field: "add_scene", value: { question: "And then?" } }] })).spec;
+    const s = handoff([{ edits: [{ field: "scene_2.question", value: "What happens next?" }] }], two);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { applied: string[] }).applied, ["scene_2.question"]);
+    assert.deepEqual((r as { ignored: string[] }).ignored, []);
+    assert.equal(s.spec.scenes[1].question, "What happens next?");
+  });
+
+  it("keeps legitimate edits and drops only the refused scene field edits", async () => {
+    const s = handoff([{ edits: [
+      { field: "characters.ASTER.goal", value: "Escape the lighthouse." },
+      { field: "scene_1.place", value: "the rock" },
+    ] }]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { applied: string[] }).applied, ["ASTER.goal"]);
+    assert.match((r as { ignored: string[] }).ignored.join(" "), /scene_1\.place . chapter 1 is already written/);
+    assert.equal(s.spec.characters[0].goal, "Escape the lighthouse.");
+    assert.equal(s.spec.scenes[0].place, spec.scenes[0].place, "scene 1 place is unchanged");
+  });
+
   it("changes nothing when the architect asks instead of editing", async () => {
     const s = handoff([{ ask: "Did Aster ever admit it?" }]);
     const before = structuredClone(s.spec);
@@ -284,12 +327,12 @@ describe("NextChapterSession", () => {
   });
 
   it("takes a follow-up as an ordinary change round", async () => {
-    const s = handoff([{ ask: "How long is chapter 2?" }, { edits: [{ field: "scene.length", value: 900 }] }]);
+    const s = handoff([{ ask: "How long is chapter 2?" }, { edits: [{ field: "characters.ASTER.goal", value: "Reveal the truth." }] }]);
     await s.propose();
     const r = await quiet(() => s.say("about the same"));
     assert.equal(r.kind, "edits");
     assert.match(s.architect.history[2].content, /\[CHANGE\] about the same/);
-    assert.equal(s.spec.scenes[0].length, 900);
+    assert.equal(s.spec.characters[0].goal, "Reveal the truth.");
     assert.equal(s.pendingAsk, "");
   });
 

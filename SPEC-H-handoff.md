@@ -18,7 +18,10 @@ A character who died can be removed from the next scene's `roster` while remaini
 ## Behavior
 
 - One run writes one chapter selected by `--chapter=<n>` or `POST /select { dir, chapter }`.
-- A successful run writes prose to `chapters/<n>.md`.
+- A successful run writes prose to `chapters/<n>.md`, and the `story.json` it was written from to
+  `chapters/<n>.json`. The snapshot lives beside the prose because `out/` is rotated at `MAX_RUNS`,
+  and it is a verbatim copy so it records the authored story rather than a normalized one. Failing to
+  write it costs the snapshot, never the chapter. Chapter discovery still keys on `<n>.md` alone.
 - A stopped or incomplete run does not replace an existing accepted chapter file.
 - `--next-chapter` opens the console handoff. The HTTP equivalent is `/next-chapter/*`.
 - The handoff reads the highest numbered accepted chapter and prepares the next number.
@@ -37,8 +40,18 @@ The architect can edit the fields supported by `engine/story-spec.ts`:
 - characters: `persona`, `knows`, `goal`, `skills`, and `restrictions`
 - cast membership: `add_character` and `remove_character`
 
-Removing the last scene is refused. Removing a scene that already has accepted prose is refused,
-because renumbering would make existing `chapters/<n>.md` files refer to different scenes.
+Removing the last scene is refused. Two things are refused because they would rewrite history:
+removing a scene that already has accepted prose, since renumbering would make existing
+`chapters/<n>.md` files refer to different scenes; and editing any field of such a scene, since the
+prose on disk answers the older question. An unnumbered `scene.<field>` means scene 1 and is refused
+on the same terms once chapter 1 exists.
+
+A refusal is reported as an ignored edit, not an error — the round still applies everything else.
+
+Opening a handoff also compares each written chapter against its `chapters/<n>.json` snapshot and
+reports a **warning** when the scene has since changed. That path exists for edits made by hand,
+which the refusals above cannot reach; revising your own story is legitimate, so it is said rather
+than undone. Chapters written before snapshots existed have nothing to compare and pass quietly.
 
 ## Console and HTTP surfaces
 
