@@ -20,7 +20,7 @@ export const SceneDef = z.strictObject({
 
 export type SceneDef = z.infer<typeof SceneDef>;
 
-/** One character as authored: name, model, persona, what they know, their goal, skills and restrictions. */
+/** One character as authored: name, model, persona, what they know, their goal, skills, restrictions, and optional per-character retry ceiling. */
 export const CharacterDef = z.strictObject({
   name: z.string().min(1),
   model: z.string().default(""),
@@ -29,6 +29,7 @@ export const CharacterDef = z.strictObject({
   goal: z.string().default(""),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
+  maxRetries: z.number().int().min(0).optional(),
 });
 
 export type CharacterDef = z.infer<typeof CharacterDef>;
@@ -51,7 +52,7 @@ export const ModelsConfig = z.strictObject({
 
 export type ModelsConfig = z.infer<typeof ModelsConfig>;
 
-/** Run configuration: retries, clarifications, pacing, timeouts, and thinking levels. */
+/** Run configuration: retries, clarifications, pacing, timeouts, per-character retry ceiling, and thinking levels. */
 export const RunConfig = z.strictObject({
   retries: z.number().int().min(0).default(2),
   clarifications: z.number().int().min(0).default(2),
@@ -63,6 +64,7 @@ export const RunConfig = z.strictObject({
   requestTimeout: z.number().int().min(1).default(120),
   attempts: z.number().int().min(1).default(3),
   maxTokens: z.number().int().min(1).default(2000),
+  maxCharacterRetries: z.number().int().min(0).optional(),
 }).prefault(() => ({}));
 
 export type RunConfig = z.infer<typeof RunConfig>;

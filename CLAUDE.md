@@ -33,6 +33,7 @@ afterwards.
 | [SPEC-authoring-reuse.md](SPEC-authoring-reuse.md) | *proposed, not built* — named restriction/skill bundles and per-scene writer model/thinking overrides |
 | [SPEC-continuity.md](SPEC-continuity.md) | *proposed, not built* — a story-level fact bible, advisory continuity flags in the handoff round, and a before/after diff for handoff edits |
 | [SPEC-reading.md](SPEC-reading.md) | *proposed, not built* — reader mode, story-wide search, and a character sheet panel on the live writer screen |
+| [GUI-CHECKLIST.md](GUI-CHECKLIST.md) | you changed anything under `server/gui/` — the manual pass that stands in for the GUI tests this repo does not have |
 
 The repository has no separate protocol, story-format, run-record, or scaffold specifications. Keep
 the route contract in `GUI-SPEC.md`, the live writer screen in `Writer.MD`, the handoff design in

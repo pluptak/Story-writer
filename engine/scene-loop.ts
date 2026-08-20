@@ -65,7 +65,8 @@ export type RunEvent =
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }
-  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number };
+  | { t: "retry_capped"; character: string; count: number; chapter: number }
+  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
 
 
 async function askMoreSteps(steps: number, budget: number, chapter: number): Promise<number> {
@@ -115,6 +116,7 @@ export async function writeScene(
   thinking: { writer: ThinkLevel; summary: ThinkLevel },
   maxSteps: number, maxProseWords: number, retries: number, clarifications: number,
   dir: string, log: (e: RunEvent) => void,
+  maxCharacterRetries?: number,
 ) {
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
@@ -126,6 +128,7 @@ export async function writeScene(
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   const lastAsked = new Map<string, number>();
+  const retryCounts = new Map<string, number>();
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
 
@@ -280,9 +283,22 @@ export async function writeScene(
           const note = String(j.note ?? "").trim();
           log({ t: "judge", character: def.name, verdict, note, attempt, chapter });
 
-          if (verdict === "accept" || attempt > retries) {
-            if (verdict === "retry") console.log(`${C.dim}(retries spent — taking ${def.name}'s last answer)${C.reset}`);
+          const effectiveCeiling = def.maxRetries ?? maxCharacterRetries;
+          const cumulative = retryCounts.get(def.name.toLowerCase()) ?? 0;
+
+          if (verdict === "accept" || attempt > retries || (effectiveCeiling !== undefined && cumulative >= effectiveCeiling)) {
+            if (verdict === "retry" && effectiveCeiling !== undefined && cumulative >= effectiveCeiling) {
+              console.log(`${C.dim}(chapter-wide retry ceiling hit for ${def.name} — force-accepting)${C.reset}`);
+              if (cumulative === effectiveCeiling) {
+                log({ t: "retry_capped", character: def.name, count: cumulative, chapter });
+              }
+            } else if (verdict === "retry") {
+              console.log(`${C.dim}(retries spent — taking ${def.name}'s last answer)${C.reset}`);
+            }
             break;
+          }
+          if (verdict === "retry") {
+            retryCounts.set(def.name.toLowerCase(), cumulative + 1);
           }
           const rev = (j.revised && typeof j.revised === "object") ? j.revised as Record<string, unknown> : {};
           req = {
@@ -327,7 +343,7 @@ export async function writeScene(
     }
   }
 
-  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter });
+  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter, retries: Object.fromEntries(retryCounts) });
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
 }
 
@@ -353,7 +369,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
       sd, chapter, sc.characters, agents,
       sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
       sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
-      sc.dir, log,
+      sc.dir, log, sc.maxCharacterRetries,
     );
     return r;
   } finally {

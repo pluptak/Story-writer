@@ -38,6 +38,7 @@ export interface StoryConfig {
   maxTokens: number;
   models: { default: string; writer: string; summary: string };
   characters: CharacterDef[];
+  maxCharacterRetries?: number;
 }
 
 /** The repo root, resolved from this file so relative paths work no matter where the process starts. */
