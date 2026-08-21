@@ -41,6 +41,17 @@ const thinkSelect = (id, label, current) => {
 /** Deep clone an object by serialising it — Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
+function scaffoldStory(spec) {
+  const story = clone(spec);
+  story.characters = (story.characters || []).map(c => ({
+    ...c,
+    skills: (c.skills || []).map(s => typeof s === "string" ? s : [s.text, s.meaning].filter(Boolean).join(" :: ")),
+  }));
+  story.config = story.config || {};
+  story.models = story.models || {};
+  return story;
+}
+
 /** Check whether two story objects differ structurally. */
 function deepEq(a, b) {
   try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
@@ -64,6 +75,10 @@ async function doCheck() {
   } else {
     APP.editIssues = [];
     APP.editWarnings = j.warnings || [];
+  }
+  if (APP.editNew && APP.editDraft) {
+    const synced = await post("/scaffold/set", { story: APP.editDraft }, false);
+    if (synced?.active !== undefined) APP.scaffold = synced;
   }
   APP.render();
 }
@@ -204,8 +219,11 @@ function suggestResultHtml() {
 function editToolbarHtml() {
   const canSave = APP.editDirty && !APP.editIssues.length && !APP.editSaving;
   const saving = APP.editSaving ? "thinking" : "";
+  const action = APP.editNew
+    ? `<button class="btn primary" id="edit-scaffold-accept"${(!APP.editIssues.length && !APP.editSaving) ? "" : " disabled"}>confirm and write</button>`
+    : `<button class="btn primary" id="edit-save"${canSave ? "" : " disabled"}${saving ? ` title="${saving}"` : ""}>${APP.editSaving ? "saving…" : "save"}</button>`;
   return `<div class="btns" style="margin-top:16px">
-    <button class="btn primary" id="edit-save"${canSave ? "" : " disabled"}${saving ? ` title="${saving}"` : ""}>${APP.editSaving ? "saving…" : "save"}</button>
+    ${action}
     <button class="btn" id="edit-revert"${APP.editDirty ? "" : " disabled"}>revert</button>
     <span class="spacer"></span>
     <button class="btn" id="edit-back">back to story</button>
@@ -267,7 +285,7 @@ export function storyEditHtml() {
     </section>`;
   }
 
-  if (!APP.editDir) {
+  if (!APP.editDir && !APP.editNew) {
     return `<section class="picker story"><h2>Edit story</h2>
       <p class="hint">No story chosen — open one from the shelf and edit it from there.</p>
       <div class="btns" style="margin-top:14px"><button class="btn" id="edit-back">back to story</button></div>
@@ -275,19 +293,19 @@ export function storyEditHtml() {
   }
 
   if (!APP.editDraft) {
-    const name = APP.stories?.find(s => s.dir === APP.editDir)?.name || APP.editDir;
+    const name = APP.editNew ? "New story" : APP.stories?.find(s => s.dir === APP.editDir)?.name || APP.editDir;
     return `<section class="picker story"><h2>Edit ${esc(name)}</h2>
       <p class="thinking"><i></i>loading…</p></section>`;
   }
 
   const s = APP.editDraft;
   const facts = Array.isArray(s.facts) ? s.facts.join("\n") : "";
-  const title = esc(APP.stories?.find(x => x.dir === APP.editDir)?.name || APP.editDir || "");
+  const title = APP.editNew ? "new story draft" : esc(APP.stories?.find(x => x.dir === APP.editDir)?.name || APP.editDir || "");
   const suggestOpen = APP.editSuggestOpen ? "" : " hidden";
 
   return `<section class="picker story"><div class="editor">
-    <h2 style="margin-bottom:4px">Edit story</h2>
-    <p class="hint" style="margin-bottom:16px">${esc(title)}</p>
+    <h2 style="margin-bottom:4px">${APP.editNew ? "Review new story" : "Edit story"}</h2>
+    <p class="hint" style="margin-bottom:16px">${title}</p>
     ${unsavedBannerHtml()}
     ${errorBannerHtml()}
     ${envWarningsHtml()}
@@ -466,6 +484,25 @@ export function wireStoryEditor(page) {
     APP.render();
   });
 
+  const scaffoldAccept = page.querySelector("#edit-scaffold-accept");
+  if (scaffoldAccept) scaffoldAccept.addEventListener("click", async () => {
+    if (APP.editSaving || APP.editIssues.length) return;
+    const folder = prompt("Folder name for this story", APP.editDraft.title || "");
+    if (folder === null) return;
+    APP.editSaving = true; APP.render();
+    const j = await post("/scaffold/accept", { folder: folder.trim() }, false);
+    APP.editSaving = false;
+    if (!j?.ok) APP.editError = j?.reason || "could not write the story";
+    else {
+      APP.editDirty = false;
+      APP.editNew = false;
+      APP.editDir = j.dir || "";
+      APP.editFor = ""; APP.editStory = null; APP.editDraft = null;
+      go("shelf");
+    }
+    APP.render();
+  });
+
   // Revert button
   const revert = page.querySelector("#edit-revert");
   if (revert) revert.addEventListener("click", () => {
@@ -499,7 +536,14 @@ export function wireStoryEditor(page) {
   // Keyed by editFor, not editStory: a draft left over from another story must trigger a fresh
   // load here, never render as if it were this story's. No editError clause: a refusal that
   // belonged to another story must not block this one -- loadEditor clears it.
-  if (APP.editFor !== APP.editDir && !APP.editLoading && APP.editDir) {
+  if (APP.editNew && APP.scaffold?.spec && APP.editFor !== "__scaffold__") {
+    const loaded = scaffoldStory(APP.scaffold.spec);
+    APP.editFor = "__scaffold__";
+    APP.editStory = clone(loaded);
+    APP.editDraft = clone(loaded);
+    APP.editWarnings = APP.scaffold.problems || [];
+    APP.editIssues = [];
+  } else if (APP.editFor !== APP.editDir && !APP.editLoading && APP.editDir) {
     loadEditor(APP.editDir);
   }
 }

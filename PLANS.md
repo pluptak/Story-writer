@@ -15,29 +15,6 @@ run, which is the owner's to make, batched.
 
 ---
 
-## 2. Run inspection: cost/latency HUD and run comparison
-
-The read tab already renders a retained `writing-log.jsonl` through `/runs/log`, and
-[`agents.js`](server/gui/viewer/agents.js) renders each agent's raw transcripts through `/runs/llm`.
-What is missing is measurement, and a second pane.
-
-### B. Run comparison view
-
-**GUI only — no new route.** `/runs/log?dir=&id=` already returns everything two runs of the same
-chapter need.
-
-- A run picker over the story's retained `runs[]`, using existing shelf/story-page conventions.
-- Two read-tab panes side by side, each fed by its own `/runs/log` fetch through the existing rendering
-  path — that component used twice, not a second renderer. Each pane brings the per-agent panel with
-  it, which answers "what did changing the model actually do" better than the diff below does.
-- A word-level diff of the two runs' assembled prose (concatenated `draft`/`accept` text, in order)
-  above the panes. Client-side, no dependency — chapter-length text does not need a diff library.
-
-**Out of scope.** A cost/latency rollup across runs or the whole story — the HUD is one live run. A
-structural diff of the consult sequence — the two panes already let a reader compare that.
-
----
-
 ## Smaller viewer work
 
 - **The chapters-written column on the handoff panel.** `GET /chapter?dir=&n=` serves the prose, so

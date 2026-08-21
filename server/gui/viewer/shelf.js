@@ -46,7 +46,7 @@ export function pickerHtml() {
 /** `openStory` is injected (pages.js, which owns navigation) rather than imported here -- shelf.js
  *  sits underneath nav.js in the module graph (nav.js -> saved-runs.js -> here, for castChips), so
  *  importing nav.js back from here would close a cycle. */
-export function wirePicker(page, openStory) {
+export function wirePicker(page, openStory, openNew = null) {
   for (const b of page.querySelectorAll(".card[data-dir]"))
     b.addEventListener("click", () => { if (!APP.picked) {
       APP.storyDir = b.dataset.dir; APP.storyModel = ""; APP.storyError = ""; APP.runError = ""; openStory();
@@ -58,7 +58,7 @@ export function wirePicker(page, openStory) {
       // dismissal that happened before scaffold.active went true (still just APP.ideaOpen) left
       // ivHidden set with nothing else to clear it, so a second click here has to.
       APP.ivHidden = false;
-      if (!APP.scaffold.active) APP.ideaOpen = true;
-      APP.render();
+      if (openNew) openNew();
+      else { if (!APP.scaffold.active) APP.ideaOpen = true; APP.render(); }
     });
 }

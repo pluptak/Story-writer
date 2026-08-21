@@ -17,7 +17,7 @@ export interface StorySpec {
   models: { default: string; writer: string; summary: string };
   characters: Array<{
     name: string; model: string; persona: string; knows: string; goal: string;
-    skills: string[]; restrictions: string[];
+    skills: string[]; restrictions: string[]; maxRetries?: number;
   }>;
 }
 
@@ -52,6 +52,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     characters.push({
       name, model: String(c?.model ?? "").trim(), persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
       goal: String(c?.goal ?? "").trim(), skills: asStrings(c?.skills), restrictions,
+      ...(Number.isInteger(c?.maxRetries) && c.maxRetries >= 0 ? { maxRetries: c.maxRetries } : {}),
     });
     if (!c?.persona) problems.push(`${name} has no persona`);
     else if (/\b(RESTRICTIONS|LACKS|KNOWS|SKILLS|GOAL)\s*:/.test(String(c.persona)))
@@ -300,6 +301,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     goal: c.goal,
     skills: c.skills,
     restrictions: c.restrictions,
+    ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),
   }));
 
   const renderedModels = {
@@ -348,11 +350,12 @@ export function renderSpec(spec: StorySpec, full = false): string {
 export function specView(spec: StorySpec) {
   return {
     title: spec.title, premise: spec.premise, scene: spec.scenes[0], scenes: spec.scenes, writerStyle: spec.writerStyle,
-    facts: spec.facts,
+    facts: spec.facts, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
-      name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
+      name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,
       skills: c.skills.map(s => splitMeaning(s)),
       restrictions: c.restrictions,
+      ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),
     })),
   };
 }

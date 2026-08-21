@@ -178,21 +178,25 @@ reviewed; the architect input stays sticky at the bottom while the proposal scro
 
 ### Scaffold interview
 
-Built as a modal over the shelf in [`interview.js`](server/gui/viewer/interview.js): the idea field,
-the model select, the proposal panel and cast, the `scene.length` box, `pendingAsk`, `problems`, the
-`.thinking` state, the folder question, arm-to-accept, arm-to-abandon, and re-entry into an open
-interview after a reload. `architect-mockup.html`'s scaffold screen is a **redesign of that working
-screen**, not a description of missing work.
+The initial idea/question step is a modal over the shelf/editor in
+[`interview.js`](server/gui/viewer/interview.js). Once a proposal exists, review is the existing
+schema-aware story editor in [`story-edit.js`](server/gui/viewer/story-edit.js), backed by the
+in-memory scaffold session rather than a story directory. The editor shows the full `story.json`
+format; its confirm action calls scaffold accept, so nothing is written until the author confirms.
+`architect-mockup.html`'s scaffold screen is a **redesign of that working screen**, not a description
+of missing work.
 
 Behaviour the redesign must keep:
 
-- The idea field is shown only before the first proposal.
+- The idea field is shown only before the first proposal; it can overlay the empty story editor.
 - While `/scaffold/start` or `/scaffold/say` is running, sending is disabled and `.thinking` shows.
 - A `question` round focuses the answer field and labels it as the architect's question.
-- A `proposal` or `edits` round updates the proposal panel without clearing the conversation context.
+- A `proposal` or `edits` round updates the scaffold draft; after the first proposal the draft is
+  reviewed through the existing story editor without clearing the conversation context.
 - `problems` are shown beneath the proposal; warnings do not prevent further refinement.
 - Accept opens a folder-name step when the server returns `needs_folder`, and does not disappear until
-  the server returns `kind: "written"`.
+  the server returns `kind: "written"`. In editor review, field changes are synced back to the open
+  scaffold draft and the same accept path is used.
 
 ### Handoff panel
 

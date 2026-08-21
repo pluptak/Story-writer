@@ -20,6 +20,7 @@ export const parseHashParams = () => {
 const hashFor = () => {
   if (APP.view === "story" && APP.storyDir) return `#/story?dir=${encodeURIComponent(APP.storyDir)}`;
   if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
+  if (APP.view === "edit" && APP.editNew) return "#/edit?new=1";
   if (APP.view === "edit" && APP.editDir) return `#/edit?dir=${encodeURIComponent(APP.editDir)}`;
   if (APP.view === "readstory" && READER.dir) return `#/readstory?dir=${encodeURIComponent(READER.dir)}`;
   if (APP.view === "read" && READV.dir && READV.id)
@@ -47,7 +48,7 @@ export function go(v) {
   // the surviving draft can be saved into whichever story is opened next.
   if (APP.view === "edit" && v !== "edit") {
     if (APP.editCheckTimer) clearTimeout(APP.editCheckTimer);
-    APP.editDir = ""; APP.editFor = ""; APP.editStory = null; APP.editDraft = null;
+    APP.editDir = ""; APP.editNew = false; APP.editFor = ""; APP.editStory = null; APP.editDraft = null;
     APP.editDirty = false; APP.editError = ""; APP.editIssues = []; APP.editRaw = null;
   }
   APP.view = v;

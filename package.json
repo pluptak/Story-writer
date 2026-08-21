@@ -7,7 +7,8 @@
   "scripts": {
     "test": "npx tsx --test tests/story-format.test.ts tests/skills.test.ts tests/json-extract.test.ts tests/consult.test.ts tests/story-spec.test.ts tests/architect.test.ts tests/llm-client.test.ts tests/server-routes.test.ts tests/story-edit-routes.test.ts tests/story-read-routes.test.ts tests/run-state.test.ts tests/run-artifacts.test.ts tests/preflight.test.ts",
     "preflight": "npx tsx story-writer.ts --preflight",
-    "typecheck": "npx tsc"
+    "typecheck": "npx tsc",
+    "checkgui": "node scripts/check-gui-syntax.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",

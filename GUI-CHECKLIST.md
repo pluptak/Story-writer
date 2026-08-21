@@ -12,6 +12,10 @@ that alters what a route serves.
       1,100 tokens each. At 10,000 preparing chapter 3 refuses even now that the worked example is
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
+- [ ] `npm run checkgui` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
+      browser-loaded, not part of the TS build — so a plain syntax error there (an `await` outside
+      `async` broke every screen on 2026-08-21, `6dc7047`) ships silently otherwise: ES module
+      linking fails for the whole viewer and every page renders as the bare shell, nothing in `#page`.
 - [ ] Start the app browser-driven — no story argument, or the picker never hands over to the GUI:
 
 ```bash
@@ -274,6 +278,30 @@ Needs a run, so pair it with section 2. A read-only panel in the live rail.
 - [ ] **The boundary holds.** This data is shown to you only. It must never appear in any agent's
       transcript on the per-agent panel (section 8) — the sheet is a GUI read of already-authored
       data, not anything the writer or a character is ever told.
+
+## 13. Saved-run comparison
+
+Needs two retained runs from the same chapter. Use a story with two completed runs, or create them
+before starting this section. The comparison is opened from the story page's **compare runs** action.
+
+- [ ] **Picker.** The comparison screen lists two run selectors, starts with two different runs from
+      the same chapter, and displays their run metadata.
+- [ ] **Deep link.** Changing either selector updates `#/compare?dir=&a=&b=`; reload the page and verify
+      the same story and run choices return.
+- [ ] **Same chapter guard.** Select runs from different chapters, if available. The screen refuses
+      the selection rather than fetching or comparing it.
+- [ ] **Two panes.** After loading, each selected run has its own prose pane, cast, event blocks, and
+      model-call panel. A pane never shows events or agents from the other run.
+- [ ] **Independent transcripts.** Open a transcript in pane A, then one in pane B. Each pane keeps its
+      own open transcript and expanded call.
+- [ ] **Word diff.** The accepted prose diff appears above the panes. Unchanged words are plain, added
+      words are highlighted, and removed words are struck through.
+- [ ] **Diff safety.** A draft containing `<b>markup</b>` displays that text literally, not as HTML.
+- [ ] **Empty and failed runs.** A run with no draft prose shows the empty state. If either log fetch
+      fails, the comparison shows an error rather than stale content from an earlier selection.
+- [ ] **Responsive layout.** Resize below 900px. The panes stack vertically and the diff remains readable.
+- [ ] **Single-run regression.** Open a retained run through the ordinary **read** action. It still has
+      its original one-pane view and its original shared agent transcript behavior.
 
 ## Checking the viewer without an engine
 

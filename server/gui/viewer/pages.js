@@ -83,7 +83,12 @@ function paintRibbon() {
 function renderShelf(page, keepFocus) {
   page.innerHTML = pickerHtml() + interviewModalHtml();
   $("railstats").innerHTML = "";
-  wirePicker(page, () => go("story")); wireInterview(page); wireModal(page);
+  wirePicker(page, () => go("story"), () => {
+    APP.editNew = true; APP.editDir = "";
+    if (APP.scaffold.active && APP.scaffold.spec) APP.ivHidden = true;
+    else if (!APP.scaffold.active) APP.ideaOpen = true;
+    go("edit");
+  }); wireInterview(page); wireModal(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
@@ -127,9 +132,10 @@ function renderEdit(page) {
     ? [active.selectionStart, active.selectionEnd] : null;
   const folds = [...page.querySelectorAll("details.editor-section")].map(d => d.open);
 
-  page.innerHTML = storyEditHtml();
+  page.innerHTML = storyEditHtml() + interviewModalHtml();
   $("railstats").innerHTML = "";
   wireStoryEditor(page);
+  wireInterview(page);
 
   const sections = page.querySelectorAll("details.editor-section");
   if (folds.length === sections.length) sections.forEach((d, i) => { d.open = folds[i]; });

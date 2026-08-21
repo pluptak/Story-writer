@@ -3,13 +3,13 @@ import { APP, READV } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
 import { castChips } from "./shelf.js";
-import { loadAgents, agentsPanelHtml, wireAgents } from "./agents.js";
+import { loadAgentState, agentsPanelHtml, wireAgents } from "./agents.js";
 
 /** Fetch one retained run's log and load it into READV -- shared by a deep-linked reload (sse.js)
  *  and the story page's "read a previous run" rows (story-page.js). Returns false on failure,
  *  null when superseded: a slower earlier fetch must never overwrite a newer click's run
  *  (reader.js's loadReader guards the same hazard by re-checking READER.dir). */
-export async function loadSavedRun(dir, id, store = READV, repaint = true) {
+export async function loadSavedRun(dir, id, store = READV, repaint = true, agentState = APP) {
   const req = ++store.loadReq;
   try {
     const r = await fetch(`/runs/log?dir=${encodeURIComponent(dir)}&id=${encodeURIComponent(id)}`);
@@ -20,7 +20,7 @@ export async function loadSavedRun(dir, id, store = READV, repaint = true) {
     store.dir = dir; store.id = id;
     store.label = fmtRun((APP.stories?.find(s => s.dir === dir)?.runs || []).find(x => x.id === id) || {});
     ingest(text, store, repaint);
-    if (store === READV) await loadAgents(dir, id);
+    await loadAgentState(dir, id, agentState);
     return true;
   } catch { return req === store.loadReq ? false : null; }
 }
@@ -31,14 +31,14 @@ export function loadRun(dir, id) { return loadSavedRun(dir, id); }
 // Picking which run to read now happens on the story page -- its "previous runs" list -- so this
 // tab no longer needs a second copy of that picker. It shows the cast of whatever is already loaded
 // instead, and stays the way in to open a log from disk.
-export function readChromeHtml(store = READV, includeAgents = store === READV) {
+export function readChromeHtml(store = READV, includeAgents = store === READV, agentState = APP, includeOpen = store === READV) {
   const cast = store.meta ? castChips(store.meta.characters, store.meta.story) : "";
   return `<section class="picker readchrome">
     <h2>Cast</h2>
     ${cast ? `<div class="row">${cast}</div>`
            : `<p class="sub">open a story on the shelf, then "read" a previous run — or open one from disk</p>`}
-    ${includeAgents ? `<div class="btns" style="margin-top:14px"><button class="btn" id="open-log">open a saved log</button></div>` : ""}
-  </section>` + (includeAgents ? agentsPanelHtml() : "");
+    ${includeOpen ? `<div class="btns" style="margin-top:14px"><button class="btn" id="open-log">open a saved log</button></div>` : ""}
+  </section>` + (includeAgents ? agentsPanelHtml(store, agentState) : "");
 }
 
 export function wireSavedRuns(page) {

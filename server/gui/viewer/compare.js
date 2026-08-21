@@ -1,9 +1,10 @@
-import { APP, COMPAREV } from "./state.js";
+import { APP, COMPAREV, COMPARE_AGENTS } from "./state.js";
 import { esc, fmtRun } from "./util.js";
 import { parseHashParams, syncHash } from "./nav.js";
 import { build } from "./events.js";
 import { renderBlock } from "./blocks.js";
 import { loadSavedRun, readChromeHtml } from "./saved-runs.js";
+import { wireAgents } from "./agents.js";
 
 const runChapter = run => typeof run?.chapter === "number" ? run.chapter : null;
 const runsForStory = () => (APP.stories || []).find(s => s.dir === APP.compareDir)?.runs || [];
@@ -11,6 +12,37 @@ const selectedRuns = () => {
   const runs = runsForStory();
   return [runs.find(r => r.id === APP.compareA), runs.find(r => r.id === APP.compareB)];
 };
+
+export function assembledProse(store) {
+  return store.events.filter(e => e.t === "draft" && e.prose).map(e => e.prose).join("\n\n");
+}
+
+function words(text) { return String(text).match(/\S+/g) || []; }
+
+function wordDiff(left, right) {
+  const a = words(left), b = words(right);
+  const rows = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i--)
+    for (let j = b.length - 1; j >= 0; j--)
+      rows[i][j] = a[i] === b[j] ? rows[i + 1][j + 1] + 1 : Math.max(rows[i + 1][j], rows[i][j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { out.push(["same", a[i++]]); j++; }
+    else if (rows[i + 1][j] >= rows[i][j + 1]) out.push(["removed", a[i++]]);
+    else out.push(["added", b[j++]]);
+  }
+  while (i < a.length) out.push(["removed", a[i++]]);
+  while (j < b.length) out.push(["added", b[j++]]);
+  return out;
+}
+
+function diffHtml(left, right) {
+  const ops = wordDiff(left, right);
+  if (!ops.length) return `<p class="hint">neither run contains accepted prose.</p>`;
+  return `<div class="prose-diff" aria-label="word-level prose diff">${ops.map(([kind, word]) =>
+    kind === "same" ? esc(word) + " " : `<span class="diff-${kind}">${esc(word)}</span> `).join("")}</div>`;
+}
 
 function optionHtml(runs, selected) {
   return runs.map(r => `<option value="${esc(r.id)}"${r.id === selected ? " selected" : ""}>${esc(fmtRun(r))}</option>`).join("");
@@ -60,8 +92,8 @@ export async function loadComparisonRuns() {
   COMPAREV.error = "";
   APP.render();
   const [left, right] = await Promise.all([
-    loadSavedRun(APP.compareDir, a.id, COMPAREV.a, false),
-    loadSavedRun(APP.compareDir, b.id, COMPAREV.b, false),
+    loadSavedRun(APP.compareDir, a.id, COMPAREV.a, false, COMPARE_AGENTS.a),
+    loadSavedRun(APP.compareDir, b.id, COMPAREV.b, false, COMPARE_AGENTS.b),
   ]);
   if (COMPAREV.key !== key) return;
   COMPAREV.loading = false;
@@ -69,10 +101,10 @@ export async function loadComparisonRuns() {
   APP.render();
 }
 
-function paneHtml(store, title) {
-  if (!store.events.length) return `<section class="compare-pane"><h3>${esc(title)}</h3><p class="hint">${COMPAREV.loading ? "reading…" : "this run is empty"}</p></section>`;
+function paneHtml(store, title, side) {
+  if (!store.events.length) return `<section class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3><p class="hint">${COMPAREV.loading ? "reading…" : "this run is empty"}</p></section>`;
   const blocks = build(store);
-  return `<section class="compare-pane"><h3>${esc(title)}</h3>${readChromeHtml(store, false)}<div class="prose">${blocks.map(b => renderBlock(b, false)).join("")}</div></section>`;
+  return `<section class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${readChromeHtml(store, true, COMPARE_AGENTS[side], false)}<div class="prose">${blocks.map(b => renderBlock(b, false)).join("")}</div></section>`;
 }
 
 export function comparisonPageHtml() {
@@ -90,7 +122,8 @@ export function comparisonPageHtml() {
     ${error ? `<div class="said bad">${esc(error)}</div>` : `<p class="hint">${esc(fmtRun(a || {}))} versus ${esc(fmtRun(b || {}))}</p>`}
     <div class="divider"><span>comparison</span></div>
     ${COMPAREV.error ? `<div class="said bad">${esc(COMPAREV.error)}</div>` : COMPAREV.loading ? `<p class="thinking"><i></i>reading both runs…</p>`
-      : `<div class="compare-panes">${paneHtml(COMPAREV.a, fmtRun(a || {}))}${paneHtml(COMPAREV.b, fmtRun(b || {}))}</div>`}
+      : `<div class="prose-diff-card"><div class="label">accepted prose diff</div>${diffHtml(assembledProse(COMPAREV.a), assembledProse(COMPAREV.b))}</div>
+         <div class="compare-panes">${paneHtml(COMPAREV.a, fmtRun(a || {}), "a")}${paneHtml(COMPAREV.b, fmtRun(b || {}), "b")}</div>`}
   </section>`;
 }
 
@@ -99,4 +132,6 @@ export function wireComparison(page) {
   const b = page.querySelector("#compare-b");
   if (a) a.addEventListener("change", () => updateSelection("compareA", a.value));
   if (b) b.addEventListener("change", () => updateSelection("compareB", b.value));
+  for (const pane of page.querySelectorAll(".compare-pane"))
+    wireAgents(pane, COMPARE_AGENTS[pane.dataset.side]);
 }

@@ -85,6 +85,13 @@ export async function handleScaffoldRoutes(
 
   } else if (what === "set") {
     if (!SCAFFOLD.haveStory()) { json(res, 400, { ok: false, reason: "there is no story to change yet" }); return true; }
+    if (o.story && typeof o.story === "object") {
+      const r = SCAFFOLD.setSpec(o.story);
+      scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "updated from the story editor" };
+      publishScaffold(host);
+      json(res, 200, scaffoldState(host));
+      return true;
+    }
     const r = host.directEdit(SCAFFOLD.spec, String(o.field ?? ""), o.value);
     if (!r.ok) { json(res, 400, { ok: false, reason: r.reason }); return true; }
     SCAFFOLD.spec = r.spec; SCAFFOLD.problems = r.problems;

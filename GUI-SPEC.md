@@ -117,6 +117,24 @@ what its own directory listing named, so the allowlist is what is actually on di
 pattern. A run killed before its first generation lists nothing rather than failing. Both are
 read-only: unlike the run-control routes, nothing here can reach a running scene.
 
+## Saved-run comparison
+
+The viewer's comparison screen is a client-side view, not an additional HTTP route:
+
+```
+#/compare?dir=...&a=...&b=...
+```
+
+`dir` identifies the story and `a`/`b` identify two retained runs from that story. The picker only
+allows runs with known chapter numbers from the same chapter. Each selected run is fetched separately
+through `GET /runs/log?dir=&id=` and `GET /runs/llm?dir=&id=`. The two panes use the same event and block
+renderer as the single-run reader, with independent agent and transcript state.
+
+The prose diff above the panes is assembled from `draft.prose` events in event order. Consult answers,
+diagnostics and other non-draft events are not part of the prose. The diff is a client-side,
+dependency-free word comparison: unchanged words are plain, additions are highlighted, and removals
+are struck through.
+
 ## Story selection
 
 ```
@@ -214,8 +232,9 @@ ScaffoldRound =
 POST /scaffold/start  { idea, model? }   → only while picking; opens a session, runs the first propose
 POST /scaffold/say    { text }           → free-text turn; may return edits, a question, or a proposal
 POST /scaffold/set    { field, value }   → direct edit, bypassing the model — today `field` may only
-                                            be `"scene.length"` ([story-spec.ts:132](engine/story-spec.ts#L132)'s
-                                            `DIRECT_FIELDS`); anything else is 400 "the architect's to change"
+                                             be `"scene.length"` (`DIRECT_FIELDS`); alternatively
+                                             `{ story }` replaces the in-memory draft from the full
+                                             schema-aware editor. Neither form writes a story directory.
 POST /scaffold/accept { folder? }        → { ok:true, kind:"written", dir, files[], warnings[] }
                                             | { ok:false, kind:"unloadable"|"needs_folder"|"no_story", ... }
 POST /scaffold/abandon                   → drops the session unconditionally, always { ok:true }

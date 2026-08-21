@@ -142,6 +142,16 @@ export class ScaffoldSession {
 
   haveStory(): boolean { return this.spec.characters.length > 0; }
 
+  /** Replace the in-memory draft after a full GUI edit; nothing is written until accept(). */
+  setSpec(raw: unknown): { applied: { field: string; before: unknown; after: unknown }[]; problems: string[] } {
+    const n = normalizeSpec(raw);
+    this.spec = n.spec;
+    this.problems = n.problems;
+    this.pendingAsk = "";
+    this.asks = 0;
+    return { applied: [{ field: "story", before: null, after: "updated from editor" }], problems: n.problems };
+  }
+
   request(userText: string): string {
     if (!userText) return P.architectIdea(this.idea);
     if (this.haveStory())

@@ -74,6 +74,7 @@ export const APP = {
   hAbandonArmed: 0,            // so does throwing it away
   // Story editor state
   editDir: "",                 // which story is being edited
+  editNew: false,               // the in-memory scaffold draft, not a story on disk
   editFor: "",                 // which story editStory/editDraft were loaded FOR -- the load trigger
                                 // keys on this, not on editStory being null, or story A's draft
                                 // survives into story B's editor and can be saved over B
