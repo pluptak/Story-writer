@@ -5,8 +5,7 @@ import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
 import { C } from "../ansi.ts";
 import { resolveSkills, type Skill } from "./skills.ts";
-import type { ThinkLevel } from "./llm-client.ts";
-import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef } from "./story-schema.ts";
+import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef, type ThinkLevel } from "./story-schema.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -18,14 +17,17 @@ export interface CharacterDef {
   knows: string;
   goal: string;
   skills: Skill[];
+  maxRetries?: number;
 }
 
 /** A story as loaded and validated: the engine's view of story.json, with defaults filled in. */
 export interface StoryConfig {
   dir: string;
+  title: string;
   premise: string;
   scenes: SceneDef[];
   writerStyle: string;
+  facts: string[];
   retries: number;
   clarifications: number;
   maxSteps: number;
@@ -38,6 +40,7 @@ export interface StoryConfig {
   maxTokens: number;
   models: { default: string; writer: string; summary: string };
   characters: CharacterDef[];
+  maxCharacterRetries?: number;
 }
 
 /** The repo root, resolved from this file so relative paths work no matter where the process starts. */
@@ -48,8 +51,17 @@ export const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolve
 /** Validate and load a story into a StoryConfig; a model override beats the story's own default. */
 export async function loadStory(dir: string, modelOverride?: string): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
-  const raw = JSON.parse(await readFile(joinPath(base, "story.json"), "utf8"));
-  const parsed = StoryJson.parse(raw);
+  const storyPath = joinPath(base, "story.json");
+  const raw = JSON.parse(await readFile(storyPath, "utf8"));
+  const result = StoryJson.safeParse(raw);
+  if (!result.success) {
+    const lines = result.error.issues.map(i => `${i.path.join(".") || "story"}: ${i.message}`);
+    throw new Error(`${storyPath}\n${lines.join("\n")}`);
+  }
+  const parsed = result.data;
+
+  if (!parsed.premise.trim())
+    throw new Error(`Premise is empty in ${base}/story.json — there is nothing to write.`);
 
   const warn = (msg: string) => console.warn(`  (${msg})`);
 
@@ -74,6 +86,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       knows: c.knows,
       goal: c.goal,
       skills: resolveSkills(name, c.skills.join(" | "), c.restrictions.join(" | ")),
+      maxRetries: c.maxRetries,
     });
   }
 
@@ -95,9 +108,11 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
 
   return {
     dir: base,
+    title: parsed.title,
     premise: parsed.premise,
     scenes: parsed.scenes,
     writerStyle: parsed.writerStyle,
+    facts: parsed.facts,
     retries: config.retries,
     clarifications: config.clarifications,
     maxSteps: config.maxSteps,
@@ -114,6 +129,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     maxTokens: config.maxTokens,
     models,
     characters,
+    maxCharacterRetries: config.maxCharacterRetries,
   };
 }
 
@@ -187,19 +203,34 @@ export async function loadDefaults(override = ""): Promise<Defaults> {
   };
 }
 
+/** The chapter numbers already written to <storyDir>/chapters/, ordered. */
+export async function writtenChapters(storyDir: string): Promise<number[]> {
+  const chaptersDir = joinPath(resolveStoryDir(storyDir), "chapters");
+  let dirents;
+  try { dirents = await readdir(chaptersDir, { withFileTypes: true }); } catch { return []; }
+  return dirents
+    .filter(d => d.isFile() && /^\d+\.md$/.test(d.name))
+    .map(d => Number(d.name.slice(0, -3)))
+    .sort((a, b) => a - b);
+}
+
 /** Read all chapter files from <storyDir>/chapters/, returning chapter number and prose text ordered numerically. */
 export async function readChapters(storyDir: string): Promise<{ n: number; text: string }[]> {
   const base = resolveStoryDir(storyDir);
-  const chaptersDir = joinPath(base, "chapters");
-  let dirents;
-  try { dirents = await readdir(chaptersDir, { withFileTypes: true }); } catch { return []; }
-
   const chapters: { n: number; text: string }[] = [];
-  for (const d of dirents) {
-    const match = d.isFile() ? d.name.match(/^(\d+)\.md$/) : null;
-    if (!match) continue;
-    chapters.push({ n: Number(match[1]), text: await readFile(joinPath(chaptersDir, d.name), "utf8") });
-  }
-  chapters.sort((a, b) => a.n - b.n);
+  for (const n of await writtenChapters(storyDir))
+    chapters.push({ n, text: await readFile(joinPath(base, "chapters", `${n}.md`), "utf8") });
   return chapters;
+}
+
+/** The story definition a chapter was written from, or null for a chapter written before snapshots
+ *  existed (or one whose snapshot will not parse). */
+export async function readChapterSpec(storyDir: string, n: number): Promise<unknown | null> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const text = await readFile(joinPath(base, "chapters", `${n}.json`), "utf8");
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

@@ -21,14 +21,39 @@ $("theme").onclick = () => {
 // Opening or dropping a saved log lands on the read page, which is read-only -- so it is allowed
 // even mid-run, the same as clicking the read tab. The live scene keeps streaming into LIVEV and is
 // one click on the run tab away.
-$("file").onchange = e => {
-  const f = e.target.files[0]; if (!f) return;
+const openLog = f =>
   f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; READV.dir = ""; READV.id = ""; ingest(t, READV); go("read"); });
+$("file").onchange = e => {
+  const f = e.target.files[0];
+  e.target.value = "";              // picking the same file again after a cancel must still fire
+  if (!f) return;
+  openLog(f);
 };
-addEventListener("dragover", e => { e.preventDefault(); $("drop").classList.add("on"); });
+const dragHasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+addEventListener("dragover", e => {
+  // Only files light the overlay -- dragging selected text across the window used to say
+  // "drop a writing-log.jsonl" too.
+  if (!dragHasFiles(e)) return;
+  e.preventDefault(); $("drop").classList.add("on");
+});
 addEventListener("dragleave", e => { if (e.relatedTarget === null) $("drop").classList.remove("on"); });
 addEventListener("drop", e => {
   e.preventDefault(); $("drop").classList.remove("on");
   const f = e.dataTransfer.files[0]; if (!f) return;
-  f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; READV.dir = ""; READV.id = ""; ingest(t, READV); go("read"); });
+  openLog(f);
+});
+
+// Escape closes the topmost modal only -- character card stacks above run-ended, which sits above
+// the interview. Each close is that modal's own "dismiss, never submit" path.
+addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  const backdrops = [...document.querySelectorAll(".modal-backdrop")];
+  const top = backdrops[backdrops.length - 1];
+  if (!top) return;
+  if (top.id === "iv-backdrop") APP.ivHidden = true;
+  else if (top.id === "charcard-backdrop") APP.charCard = null;
+  else if (top.id === "runended-backdrop") APP.runEnded = null;
+  else return;
+  e.preventDefault();
+  APP.render();
 });

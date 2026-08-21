@@ -122,11 +122,14 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
   not changing -- everything you leave alone is kept exactly as it is. The field must be one of:
 
     title · premise · writer_style
-    scene.place · scene.question · scene.pov · scene.length
+    scene.place · scene.question · scene.pov · scene.length · scene.roster
+    scene_<n>.place · ...      (the same fields on the nth scene; scene_1 and scene are the same one)
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.skills · characters.<NAME>.restrictions     (value is a list)
     add_character      (value is a whole character object, as above)
     remove_character   (value is the name)
+    add_scene          (value is a whole scene object: place, question, pov, length, roster)
+    remove_scene       (value is the scene number)
 
   Any other field name is ignored, and the author is told it was. If the change they asked for is
   ambiguous enough that you would be guessing at what they meant, use "ask" and change nothing.
@@ -163,6 +166,148 @@ export const architectMore = (userText: string, idea: string, insist: boolean) =
       : ``)
   + `Propose the whole story now, in the full format.`;
 
+// -- THE TWO AUTOMATIC FOLLOW-UP PASSES ------------------------------------
+// Run automatically after a successful whole-story proposal or handoff re-authoring
+// proposal, before the human ever sees the round: neither ARCHITECT_FORMAT nor
+// architectNextChapter's own message ever asks for scene.roster or story-level facts, so
+// nothing gets authored unless a dedicated pass asks for it. Both reply edits-only, in
+// the same [CHANGE] vocabulary applyEdits() already accepts (scene(_n).roster / add_fact
+// / remove_fact / fact_<n>). `sceneField` is "scene" for the scaffold's one scene,
+// "scene_<n>" for the handoff's target chapter.
+
+export function architectFillGaps(specJson: string, sceneField: string): string {
+  return `[FILL] Two fields in the story below were never part of what you were just asked `
+    + `for, and they carry real continuity weight: ${sceneField}.roster, and the story's `
+    + `"facts". Fill in whatever genuinely applies. Do not invent either to look complete `
+    + `-- an empty answer is fine when nothing clears the bar below.
+
+${sceneField}.roster -- name every character actually present in this scene. Leave out `
+    + `anyone the premise puts elsewhere, asleep, or not yet arrived. An empty roster `
+    + `silently means "everyone" to the engine, and that is not the same thing as having `
+    + `decided who is in the room -- if everyone in the cast genuinely belongs, say so by `
+    + `listing them all rather than leaving it empty.
+
+add_fact -- a fact belongs at the story level only when it is true of the world at large `
+    + `and not owned by one character's private "knows". A fact only one person walks in `
+    + `holding stays in their "knows" -- sending it as add_fact too puts it in two places `
+    + `that can drift apart. Add one add_fact edit per fact that clears that bar. If none `
+    + `do, add none.
+
+[THE STORY AS IT STANDS]
+${specJson}
+
+Reply with edits only, in the same format as [CHANGE]:
+
+{"edits": [{"field": "${sceneField}.roster", "value": ["NAME", "NAME"]},
+           {"field": "add_fact", "value": "..."}],
+ "note": "", "ask": ""}
+
+If you cannot tell who belongs in the scene, or whether anything is a genuine world `
+    + `fact, without guessing, use "ask" and send no edits.`;
+}
+
+export function architectVerify(specJson: string, sceneField: string): string {
+  return `[VERIFY] Before this is shown to the author, audit your own draft below for `
+    + `anything that does not actually hold together:
+
+  - a name in ${sceneField}.roster that is not one of the characters in "characters" -- a `
+    + `typo, or a character you renamed and forgot to update.
+  - a fact in "facts" that only restates one character's private "knows" -- it belongs `
+    + `there, not at story level.
+  - a restriction that cannot actually bite in this scene -- it creates no asymmetry the `
+    + `scene puts to use.
+  - ${sceneField}.pov set to someone who is not in ${sceneField}.roster -- the reader `
+    + `would be inside the perception of someone not even placed in the room.
+  - anything else you would flag if an author put this in front of you and asked whether `
+    + `it holds together.
+
+[THE STORY AS IT STANDS]
+${specJson}
+
+Fix what is wrong with edits, in the same format as [CHANGE]. If nothing needs to `
+    + `change, reply with an empty edit list and say so in "note" -- do not invent a `
+    + `change just to have something to report:
+
+{"edits": [], "note": "", "ask": ""}`;
+}
+
+// -- THE HANDOFF -----------------------------------------------------------
+
+/** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one. */
+export function architectNextChapter(
+  premise: string, specJson: string, chaptersSoFar: { n: number; text: string }[],
+): string {
+  const last = chaptersSoFar.reduce((m, c) => Math.max(m, c.n), 0);
+  const next = last + 1;
+  const written = chaptersSoFar
+    .map(c => `--- CHAPTER ${c.n}, as written ---\n${c.text.trim()}`)
+    .join("\n\n") || "(nothing written yet)";
+
+  return `[NEXT CHAPTER] Chapter${last === 1 ? "" : "s"} 1${last > 1 ? `-${last}` : ""} of this story `
+    + `${last === 1 ? "is" : "are"} written. Prepare chapter ${next}.
+
+HOW THE ENGINE CARRIES A STORY FORWARD, because it decides what your job is here: it does not carry
+anything. No character remembers a word of an earlier chapter -- every agent is built fresh from the
+story file, which is the ONLY thing that crosses between chapters. Whatever the chapters below did to
+these people, you write into their definitions now or it is lost:
+
+  - someone who learned something has it in their "knows", in their own terms;
+  - someone whose goal was met, or became impossible, needs a new one, or they will play a finished
+    goal again as if nothing happened;
+  - someone changed by what they did -- hardened, broken, in someone's debt -- has it in their
+    persona, which you edit only where the chapter actually changed them;
+  - someone who died, left, or is simply not in the next scene is dropped from that scene's "roster".
+    They stay in the cast; the roster is what decides who is in the room;
+  - someone who lost a capability -- an arm, their nerve, the lantern -- gains a restriction, and
+    restrictions must be names from the general skill list.
+
+[THE PREMISE]
+${premise}
+
+[WHAT HAPPENED]
+${written}
+
+[THE STORY AS IT STANDS]
+${specJson}
+
+CHAPTER ${next} ITSELF. If the story above already defines a scene ${next}, re-author it in place with
+scene_${next}.place / .question / .pov / .length / .roster -- it was sketched before chapter ${last}
+existed, so it is a starting point, not a commitment. If there is no scene ${next}, add one with
+add_scene. Its question must be one THIS chapter can answer, and it must follow from what actually
+happened, not from what was planned.
+
+If the story is finished -- its question answered, nothing left that is worth a chapter -- say so in
+"note" and add no scene. Use remove_scene to drop any later scene the chapters have made pointless.
+Do not invent a chapter to keep it running.
+
+CONTINUITY FLAGS. Read all of the accumulated prose against itself and against the story's "facts"
+and each character's "knows". If something conflicts, add a plain-sentence observation to "flags".
+For example: "Ivo reacts to the falsified log in chapter 3 as if he already knew, but no chapter
+establishes that he learned it." Flags are advisory and non-blocking. Do not resolve a flag through
+an edit: surface the observation for the author to resolve instead.
+
+Reply with edits only, and nothing else:
+
+{"edits": [{"field": "characters.NAME.goal", "value": "..."}], "flags": [], "ask": "", "note": ""}
+
+  title · premise · writer_style
+  characters.<NAME>.persona · .knows · .goal · .skills · .restrictions   (skills, restrictions: lists)
+  add_character      (a whole character object, in the full format)
+  remove_character   (the name)
+  scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
+   add_scene          (a whole scene object: place, question, pov, length, roster)
+   remove_scene       (the scene number)
+   add_fact           (value is the fact text)
+   remove_fact        (value is the fact number, 1-indexed)
+   fact_<n>           (value is the new fact text; replaces fact at position n)
+
+Everything you leave alone is kept exactly as it is, so send only what the chapters changed. If you
+cannot tell from what was written whether something changed, and guessing would put a fact in a
+character's head that the prose does not support, use "ask" and send no edits.
+
+Do not write chapter ${next}. You are re-authoring the people and the pressure; the writer does the rest.`;
+}
+
 // -- CHARACTER AGENT -------------------------------------------------------
 
 export const CHARACTER_FORMAT = `YOUR OUTPUT FORMAT -- follow this exactly. Reply with ONE JSON object and nothing else.
@@ -171,13 +316,17 @@ An author is writing a scene you are in. They will describe your situation and a
 You answer as yourself, in the moment -- never about yourself from outside, never as a suggestion
 for what the scene could do.
 
+YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
+
+  {"need": "Can I reach the door handle from where I am?"}
+
+  {"thought": "...", "speech": "...", "action": "...", "skills_used": ["..."], "note": ""}
+
 FIRST DECIDE: ask, or answer?
 
   Read the situation and the question. Is there a fact of YOUR SITUATION -- something you would need
   to see, hear, or already know in order to answer honestly -- that the author simply has not told
-  you? Then ASK INSTEAD OF ANSWERING:
-
-  {"need": "Can I reach the door handle from where I am?"}
+  you? Then ASK INSTEAD OF ANSWERING, with the "need" shape above.
 
   ONE question, the smallest one that unblocks you, about a fact of your situation only. Do not ask
   what you should do, what would be interesting, or what anyone else is thinking or feeling -- those
@@ -191,12 +340,10 @@ FIRST DECIDE: ask, or answer?
   now, that outranks the rule above. Do not ask again. Take the most likely reading of your
   situation, answer with it, and say which reading you took in "note".
 
-  If you already have everything you need, do NOT ask. Answer, and commit:
+  If you already have everything you need, do NOT ask. Answer, with the shape above:
 
-  {"thought": "...", "speech": "...", "action": "...", "skills_used": ["..."], "note": ""}
-
-  thought      -- what actually goes through your head, in TWO SENTENCES AT MOST. Not a summary of
-                   the situation, not your reasoning about what to do: the thought itself.
+  thought      -- what actually goes through your head, in TWO SENTENCES AT MOST and UNDER 20 WORDS.
+                   Not a summary of the situation, not your reasoning about what to do: the thought itself.
   speech       -- the words you say aloud and nothing else, with no quotation marks around them,
                    or "" if you say nothing.
   action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
@@ -277,6 +424,20 @@ export const skillCheck = (unknown: string[], have: string[]) =>
 export const EMPTY_REPLY =
   `[EMPTY] That reply had no thought, no speech and no action. Answer the question.`;
 
+const SHAPE_ASKED_FOR: Record<string, string> = {
+  speech:   `You were asked what you SAY, and "speech" was empty. Put the words in "speech" — the `
+          + `words themselves, not a description of saying them. If you will not speak, that is a `
+          + `thing you do: put it in "action".`,
+  action:   `You were asked what you DO, and "action" was empty. Put it in "action". Holding still `
+          + `counts, but then say so plainly: staying where you are is an act, not an absence.`,
+  decision: `You were asked which way you go, and you gave neither speech nor action. A decision has `
+          + `to land somewhere someone else could see. Say it, or do it.`,
+};
+
+export const shapeCheck = (wants: string) =>
+  `[ANSWER THE SHAPE] ${SHAPE_ASKED_FOR[wants] ?? SHAPE_ASKED_FOR.decision} `
+  + `Thinking about it is not yet answering it.`;
+
 export const clarificationTrail = (cs: { question: string; answer: string }[]) =>
   cs.map(x => `\n[YOU ASKED] ${x.question}\n[THEY ANSWERED] ${x.answer}`).join("");
 
@@ -304,6 +465,14 @@ export const badConsult = {
   badWants: (allowed: readonly string[], sent: string) =>
     `"wants" must be exactly one of: ${allowed.join(", ")}. `
     + `You sent ${JSON.stringify(sent)}.`,
+};
+
+export const badReaction = {
+  noReactors: () =>
+    `A reaction fan-out needs a "reactors" list with at least one name in it.`,
+
+  namelessReactor: () =>
+    `Every entry in "reactors" needs a "name". One of them had none.`,
 };
 
 // -- WRITER AGENT ----------------------------------------------------------
@@ -334,17 +503,36 @@ WHEN ASKED TO WRITE -- [WRITE]:
                   toward. Give them enough to answer honestly, and no nudge toward the answer you
                   would prefer. A situation of a few words is not a situation; it will be rejected.
     question   -- what you need to know. NAME THE FORK OR NAME THE COST: "Do you hold the door, or
-                  let go?", "Do you say the name, knowing what it admits?". "What do you do?" is not
-                  a question -- it names nothing at stake, so the safest possible answer is always
-                  correct, and the safest possible answer is the one that stops the scene. It will
-                  be rejected and you will have spent a step on nothing.
+                  let go?", "Do you say the name, knowing what it admits?", "Do you give them the
+                  letter, or keep it?", "Do you step forward, or hold your ground?". "What do you
+                  do?" is not a question -- it names nothing at stake, so the safest possible answer
+                  is always correct, and the safest possible answer is the one that stops the scene.
+                  It will be rejected and you will have spent a step on nothing.
     wants      -- EXACTLY ONE of these four words, and nothing else:
 ${wantsMenuLines}
                   If you never ask for "speech", nobody in your scene will ever speak. "reaction" is
                   how someone who is present but not the one acting still gets to be a person rather
                   than furniture: ask what they notice, what it costs them to hold still, what they
                   make of it -- without needing them to speak or move to earn the question.
+
+    REACTING AS A GROUP -- when something just happened that the rest of the present cast would feel,
+    fan a reaction out to several of them at once instead of one at a time. In place of "character",
+    give "reactors":
+      "consult": {"reactors": [{"name": "ELARA"}, {"name": "MIRA", "situation": "..."}], "situation": "...", "question": "...", "wants": "reaction"}
+    Each reactor gets the shared "situation" unless you override it per reactor (MIRA only heard it
+    from the next room). They answer only what it lands on them as, and you are handed all their
+    reactions together to write as one beat. This is for the ones present but not acting; it costs
+    ONE step however many react, and "wants" here is always "reaction".
+    Give them the concrete fact, not its consequence: not "you have been robbed" but what was taken,
+    by whom if they would know, and how they would notice -- a consequence alone leaves nothing to
+    answer honestly from.
   scene_done -- true only when the scene's question has been answered and the last line is written.
+  exit       -- optional: the name of a character who leaves the scene for good in this piece -- they
+                fall, are dragged off, walk out, die. A real departure, not someone going quiet. A
+                character the WORLD removes (a trapdoor opens under them, the floor gives way) is
+                yours to narrate; the CHOICE that carried them into it (they stepped forward) still
+                had to be asked for first. Once you exit someone, do not consult them again. If the
+                one you exit is the point-of-view character, the chapter ends there.
 
   Consult when a choice is being made. Do not consult for scenery, for a gesture that carries
   nothing, or for something you have already asked and had answered.
@@ -376,6 +564,11 @@ THE ONE RULE
   they did next, in a situation that began "it is quiet now, he has passed". They answered that they
   got comfortable. There had been four choices in that paragraph and it asked for none of them.
 
+  Observed: a writer had one character ask another a question and, in the same piece, wrote the
+  answer as prose instead of stopping to consult -- a small, entirely guessable answer, but a line
+  was written for someone who was never asked. THE ONE RULE has no exception for an answer that felt
+  obvious: if it is a line or a deed, it is asked for, every time.
+
   So write up to the moment of choice and stop there. Send the prose you have and the consult you
   need in the same reply: you will be handed the answer before you are asked to write again, and the
   NEXT piece of prose is where it belongs.
@@ -398,41 +591,206 @@ WHEN ASKED FOR DIRECTIONS -- [ASK READER]:
   Whatever comes back is the direction the scene takes from here. Write it the way you would any
   other answer you were given.
 
-WHEN A CHARACTER ASKS YOU SOMETHING -- [<NAME> ASKS]:
+CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+// -- THE JUDGE AND THE CLARIFIER -------------------------------------------
+// Both were once sections of WRITER_FORMAT, answered by the writer on its own history. With ~20
+// messages of [WRITE]->{"prose":...} behind them the dominant pattern won often enough to matter:
+// in one two-chapter run 6 of 30 judgements came back as prose and were silently accepted, and one
+// clarification came back as a verdict, which cost the character its answer. They are separate
+// agents now, each holding exactly one schema, so there is no second shape to fall into.
+
+export const JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING ONE ANSWER.
+
+You are writing a scene. Where it turned on a choice, you stopped and asked the person making it.
+This is their answer coming back. Deciding whether it is usable is your whole job here: you are not
+writing prose, and you are not being asked what happens next.
+
+You are shown the situation you gave them, the question you asked, and what they answered.
+
+Reply with ONE JSON object -- one of these two shapes -- and nothing else:
+
+  {"verdict": "accept"}
+
+  {"verdict": "retry", "note": "why it is unusable, in one line -- required",
+   "revised": {"situation": "...", "question": "...", "wants": "..."}}
+
+  revised  -- all three fields, every time you retry. They will be asked again from nothing, by a
+              fresh instance that never learns this attempt happened, so these must stand on their own.
+    situation -- what THEY can perceive right now, in your words. They know nothing you do not put
+                 here. Do not paste back the prose you wrote: that is the page, not their world, and
+                 it tells them things they cannot know.
+    question  -- NAME THE FORK OR NAME THE COST: "Do you hold the door, or let go?". "What do you do?"
+                 is not a question -- it names nothing at stake, so the safest possible answer is
+                 always correct, and the safest possible answer is the one that stops the scene. It
+                 will be refused and the retry will have bought nothing.
+    wants     -- EXACTLY ONE of these four words:
+${wantsMenuLines}
+
+RETRY ONLY WHEN THE ANSWER IS UNUSABLE: they answered a different question, or they plainly lacked
+something they needed in order to answer (then fix the SITUATION, not the question), or they did
+something they are not able to do.
+
+AN ANSWER HAS TO ARRIVE IN THE SHAPE YOU ASKED FOR. Asked for speech, "speech" cannot be empty; asked
+for an action, "action" cannot be empty; asked for a decision, one or the other has to carry it. Only
+a reaction is answered by a thought alone. A thought where you asked for one of the others is someone
+turning the question over and never answering it -- retry, and put the fork in front of them plainly.
+
+DO NOT RETRY because the answer is inconvenient, quieter than you hoped, or takes the scene somewhere
+you had not planned. That is the scene telling you something true. Accept it, and go and write it.
+
+CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+export const CLARIFY_FORMAT = `YOU ARE THE AUTHOR, ANSWERING ONE QUESTION.
+
+Someone in the scene you are writing has asked you for a fact about their situation -- something they
+would have to see, hear, or already know in order to answer you honestly. Give it to them.
+
+Reply with ONE JSON object and nothing else:
 
   {"answer": "..."}
 
-  They are asking for a fact about their situation. Answer it plainly, briefly, and only it. If you
-  had not decided yet, decide now -- your answer becomes true for the rest of the scene. Never
-  answer with what they should do, and never tell them anything they could not perceive.
+Answer plainly, briefly, and only what was asked. If you had not decided yet, decide now -- your
+answer becomes true for the rest of the scene and you will be held to it.
 
-WHEN YOU ARE SHOWN AN ANSWER -- [<NAME> ANSWERED]:
+Never answer with what they should do, and never tell them anything they could not perceive from
+where they are.
 
-  {"verdict": "accept", "note": "", "revised": {"situation": "...", "question": "..."}}
-
-  verdict  -- "accept" or "retry".
-  revised  -- only with "retry": the question as you should have asked it. They will be asked again
-              from nothing, with no memory of this attempt, so the revised situation and question
-              must stand on their own.
-
-  Retry only when the answer is unusable: they answered a different question, or they plainly lacked
-  something they needed in order to answer (then fix the SITUATION, not the question), or they did
-  something they are not able to do.
-  Do NOT retry because the answer is inconvenient, quieter than you hoped, or takes the scene
-  somewhere you had not planned. That is the scene telling you something true. Accept it and write it.
+NEVER PUT WORDS IN ANOTHER CHARACTER'S MOUTH. What anyone else says, or decides, is theirs -- and you
+have not asked them yet. If the honest answer is that they hear someone speak, then they hear a voice
+on the radio, or an answer arriving they cannot yet make out. Not what it said. The moment you write
+another character's line here, you have decided for them, and the rest of the scene gets built on a
+line they never gave you.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+/** What every author-side agent gets to know about the cast: what each can do, and what they cannot. */
+const castBlock = (cast: { name: string; can: string[]; cannot: string[] }[]) =>
+  cast.map(c =>
+    `  ${c.name} -- can: ${c.can.join(", ")}`
+    + (c.cannot.length ? `\n${" ".repeat(4 + c.name.length)}CANNOT: ${c.cannot.join(", ")}` : "")
+  ).join("\n");
+
+const factsBlock = (facts: string[]) =>
+  facts.length ? `THE FACTS (world truths, known to anyone who would know them):\n`
+    + `${facts.map(f => `  • ${f}`).join("\n")}\n\n` : "";
+
+/** The judge: one answer, one verdict. It needs the cast's limits to see an answer that overran them,
+ *  and nothing else — the situation and the question arrive in the payload. */
+export function judgeSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
+  return `${JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
+    + `A CANNOT is absolute. An answer that reaches through one is unusable however good it reads.`;
+}
+
+export const NARRATION_LINT_FORMAT = `YOU ARE THE AUTHOR, CHECKING ONE PIECE YOU JUST WROTE.
+
+You are writing a scene. THE ONE RULE governs it: every line of dialogue and every deliberate act on
+the page belongs to the person doing it, and reaches the page only because that person was already
+asked and already answered -- in this scene, before this piece. Holding still is a choice too: "he
+does not move", "she says nothing" are decisions, and they need an answer behind them the same as a
+line or a deed does.
+
+A CANNOT is absolute, and it governs narration as much as answers: the point-of-view character may
+not be shown perceiving through a sense their CANNOT list removes -- no watching, no glancing, no
+gaze for someone who cannot see.
+
+When this piece also opens a consult or a reaction fan-out, the "situation" handed to the character
+has to give them the concrete fact this piece just established -- what was taken, broken, said, or
+done, and by whom -- or something they could plausibly perceive or infer that points at it. A
+situation that only states the fact's abstract consequence ("you have been robbed") leaves them
+nothing to answer honestly from.
+
+You are shown who has already been granted a line or a deed this scene, the piece of prose just
+drafted, and -- when present -- the consult it opens.
+
+Reply with ONE JSON object -- one of these two shapes -- and nothing else:
+
+  {"ok": true}
+
+  {"ok": false, "why": "one line, naming who and which rule -- THE ONE RULE, CANNOT, or the situation
+   -- it breaks"}
+
+Flag ONLY a clear violation: a line or a deed for someone not already granted it this scene, a
+restricted sense narrated as perceived, or a consult whose situation states only a consequence with no
+concrete fact in it. Do not flag prose that merely mentions a character, describes the scene, or
+narrates an already-granted line or deed in different words. When in doubt, pass it: {"ok": true}.
+
+CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+/** The narration lint: one drafted piece, one pass/fail. Same cast/CANNOT knowledge the judge has —
+ *  the drafted prose, the granted-so-far ledger, and any outgoing consult arrive in the payload. */
+export function narrationLintSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
+  return `${NARRATION_LINT_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
+    + `A CANNOT is absolute. Narration that reaches through one is unusable however good it reads.`;
+}
+
+export const narrationLintRequest = (p: {
+  pov: string;
+  prose: string;
+  granted: { character: string; speech: string; action: string }[];
+  consult: { character?: string; reactors?: string[]; situation: string; question: string } | null;
+}) =>
+  `[POV] ${p.pov}\n\n[PIECE JUST DRAFTED]\n${p.prose}\n\n`
+  + `[ALREADY GRANTED THIS SCENE]\n`
+  + (p.granted.length
+      ? p.granted.map(g => `${g.character}` + (g.speech ? ` -- said: ${g.speech}` : "")
+          + (g.action ? ` -- did: ${g.action}` : "")).join("\n")
+      : "(nobody yet)")
+  + (p.consult
+      ? `\n\n[CONSULT OPENED BY THIS PIECE]\n`
+        + (p.consult.character ? `asking: ${p.consult.character}\n` : "")
+        + (p.consult.reactors?.length ? `reactors: ${p.consult.reactors.join(", ")}\n` : "")
+        + `situation given: ${p.consult.situation}\nquestion: ${p.consult.question}`
+      : "");
+
+export const BATCH_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHICH REACTIONS MAY BECOME DEEDS.
+
+Several people reacted to the same thing, and some moved to do something about it. For each, decide
+exactly one thing: could this person actually do that, here and now? Mark it promotable only when the
+deed is within what they can do -- never through a CANNOT -- and it fits the moment. When in doubt,
+leave it unpromoted: an impulse that stays unspoken costs the scene nothing.
+
+Reply with ONE JSON object and nothing else:
+
+  {"verdicts": [{"name": "ELARA", "promotable": true}, {"name": "MIRA", "promotable": false}]}
+
+CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+/** The batch judge: many volunteered deeds, one call, a promotable flag each. Same cast/CANNOT
+ *  knowledge the single judge has; the reactions and deeds arrive in the payload. */
+export function batchJudgeSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
+  return `${BATCH_JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
+    + `A CANNOT is absolute. A deed that reaches through one is not promotable however good it reads.`;
+}
+
+export const batchJudgeRequest = (items: { name: string; situation: string; action: string }[]) =>
+  `[WHICH OF THESE MAY BECOME DEEDS]\n`
+  + items.map(i => `${i.name}\n  reacted to: ${i.situation}\n  moved to: ${i.action}`).join("\n\n");
+
+/** The clarifier: one question about the world, one fact back. It holds the premise and the facts so
+ *  what it decides on the spot cannot contradict what the story already settled. */
+export function clarifySystem(p: {
+  premise: string;
+  scene: { place: string; question: string };
+  facts: string[];
+  cast: { name: string; can: string[]; cannot: string[] }[];
+}): string {
+  return `${CLARIFY_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\n`
+    + (p.scene.place ? `WHERE THIS SCENE IS: ${p.scene.place}\n\n` : "")
+    + factsBlock(p.facts)
+    + `THE CAST:\n${castBlock(p.cast)}\n\n`
+    + `A CANNOT is absolute: never answer someone with something they would have to perceive through `
+    + `a sense they do not have.`;
+}
 
 export function writerSystem(p: {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
   cast: { name: string; can: string[]; cannot: string[] }[];
+  facts: string[];
   style: string;
 }): string {
-  const cast = p.cast.map(c =>
-    `  ${c.name} -- can: ${c.can.join(", ")}`
-    + (c.cannot.length ? `\n${" ".repeat(4 + c.name.length)}CANNOT: ${c.cannot.join(", ")}` : "")
-  ).join("\n");
+  const cast = castBlock(p.cast);
   const scene = [
     p.scene.place ? `Where: ${p.scene.place}` : "",
     p.scene.question ? `The question this scene has to answer: ${p.scene.question}` : "",
@@ -443,6 +801,7 @@ export function writerSystem(p: {
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
   return `${WRITER_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
     + `THE CAST:\n${cast}\n\n`
+    + factsBlock(p.facts)
     + `A CANNOT is absolute, and it governs your narration as much as their answers. Do not write `
     + `someone perceiving through a sense they do not have — no watching, no glancing, no gaze for `
     + `someone who cannot see — and do not put them in a situation phrased around one. Render them `
@@ -455,13 +814,28 @@ export function writerSystem(p: {
 // -- WHAT THE WRITER IS SENT, TURN BY TURN ---------------------------------
 
 export const writeInstruction = (p: {
-  words: number; target: number; maxProseWords: number; overran: number; neglected: string[];
+  words: number; target: number; maxProseWords: number; overran: number; neglected: string[]; hardCap: boolean;
 }) =>
   `[WRITE] ${p.words} words so far, aiming at about ${p.target}.`
   + ` At most ${p.maxProseWords} words in this piece.`
   + (p.overran ? ` Your last piece ran to ${p.overran} words — far past that. Keep this one short.` : "")
   + ` Write up to the next choice and stop while the pressure is still live, then ask for it.`
-  + (p.words >= p.target ? ` You are at length — bring the scene to its end.` : "")
+  + (p.hardCap
+      ? ` THIS IS THE LAST PIECE OF THE SCENE. You are far past length and it ends here, in this `
+        + `reply. Do not open a new consult unless it is the one choice the scene's question still `
+        + `turns on -- everything else gets resolved in the narration, now. Set "scene_done": true.`
+      : p.words >= p.target * 1.3
+      ? ` You are well past length. This has gone on too long -- stop opening anything new: no more `
+        + `description, no reaction you don't strictly need, no consult except the single choice still `
+        + `standing between here and the scene's question being answered. Close it in the next piece or `
+        + `two, not later.`
+      : p.words >= p.target
+      ? ` You are at length — bring the scene to its end.`
+      : p.words >= p.target * 0.85
+      ? ` You are almost out of budget. Do not open anything new — no fresh description, no reaction `
+        + `you don't strictly need. Ask the one character whose choice answers the scene's question, `
+        + `then write the close.`
+      : "")
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
     + `gone unconsulted for a while now — if they are still in the scene, ask them something, and ask `
     + `for whatever this moment actually turns on for them: what they decide, what they say, what they `
@@ -482,11 +856,30 @@ export const consultNotSent = (why: string, name: string) =>
   `[CONSULT NOT SENT] ${why}\n\n`
   + `${name} was not asked and nobody answered. Nothing about the scene has changed.`;
 
+export const consultExited = (name: string) =>
+  `[GONE] ${name} has left the scene and cannot be asked anything. Work with who is still here.`;
+
+export const narrationFlagged = (why: string) =>
+  `[NARRATION FLAGGED] ${why}\n\n`
+  + `That piece was not written to the page. Redraft it from the same [WRITE] instruction, honoring `
+  + `THE ONE RULE and what each CANNOT removes.`;
+
 export const characterAsks = (name: string, question: string) =>
   `[${name} ASKS] ${question}`;
 
-export const clarifyRequest = (name: string, question: string, situation: string) =>
-  `${characterAsks(name, question)}\n\n[THE SITUATION YOU GAVE THEM] ${situation}`;
+/** `recent` is the last piece of prose written. The clarifier remembers what it has answered but not
+ *  what the scene narrated, and a fact settled here must not contradict the page. */
+export const clarifyRequest = (name: string, question: string, situation: string, recent = "") =>
+  `${characterAsks(name, question)}\n\n[THE SITUATION YOU GAVE THEM] ${situation}`
+  + (recent ? `\n\n[THE LAST THING YOU WROTE] ${recent}` : "");
+
+export const VERDICT_ONLY =
+  `[WRONG SHAPE] That was not a verdict, and there is no prose to write here. Reply with exactly `
+  + `{"verdict":"accept"} or {"verdict":"retry","note":"...","revised":{...}} and nothing else.`;
+
+export const ANSWER_ONLY =
+  `[WRONG SHAPE] That was not an answer. Reply with exactly {"answer":"..."} — the fact they asked `
+  + `for, and nothing else.`;
 
 export const answerFlags = (p: { unverified: string[]; forced: boolean }) => [
   p.unverified.length
@@ -495,10 +888,11 @@ export const answerFlags = (p: { unverified: string[]; forced: boolean }) => [
 ].filter(Boolean).join(" ");
 
 export const judgeRequest = (p: {
-  name: string; question: string;
+  name: string; situation: string; question: string; wants: string;
   thought: string; speech: string; action: string; note: string; flags: string;
 }) =>
-  `[${p.name} ANSWERED]\nYou asked: ${p.question}\n`
+  `[${p.name} ANSWERED]\nThe situation you gave them: ${p.situation}\nYou asked: ${p.question}\n`
+  + `What you needed from them: ${p.wants}\n`
   + `thought: ${p.thought}\nspeech: ${p.speech}\naction: ${p.action}`
   + (p.note ? `\nnote: ${p.note}` : "")
   + (p.flags ? `\n\n[FLAGGED] ${p.flags}` : "");
@@ -510,6 +904,20 @@ export const answerBody = (p: { thought: string; speech: string; action: string 
 
 export const characterAnswered = (name: string, body: string) =>
   `[${name} ANSWERED]\n${body}`;
+
+export const reactionsAnswered = (items: { name: string; thought: string; action?: string }[]) => {
+  const lines = items.map(i => `${i.name}: ${i.thought}` + (i.action ? `\n  — could act: ${i.action}` : ""));
+  const anyAction = items.some(i => i.action);
+  return `[THE OTHERS REACT]\n${lines.join("\n")}\n\n`
+    + `Write these as their reactions to what just happened — what it lands on them as, from the `
+    + `inside. No dialogue, and no deeds beyond what is offered here; keep the whole beat brief.`
+    + (anyAction ? `\n\nYou may turn ONE of the "could act" impulses into a real deed: name that `
+        + `character in "promote" on your next reply and write the deed. The rest stay unspoken.` : "");
+};
+
+export const AUTHOR_TOOK_YOUR_ACTION =
+  `[YOU ACTED] What you moved to do just now — you did it; it is real in the scene now. Carry on `
+  + `from there.`;
 
 export const noAnswer = (name: string, why: string) =>
   `[NO ANSWER] ${name} did not answer (${why}). Write on without settling `

@@ -1,14 +1,19 @@
 import { $, esc, basename, wireBackdropClose } from "./util.js";
-import { APP, LIVEV, READV, FIELDS, open, storyName } from "./state.js";
+import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
 import { renderBlock, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
 import { storyPageHtml, wireStoryPage } from "./story-page.js";
+import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
+import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
-import { paintSrcbar, paintTitle, renderRail } from "./hud.js";
+import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
+import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { interviewModalHtml, wireInterview } from "./interview.js";
+import { readerPageHtml, wireReaderPage } from "./reader.js";
+import { comparisonPageHtml, wireComparison } from "./compare.js";
 import { go, generating } from "./nav.js";
 import { renderSession } from "./session.js";
 
@@ -34,7 +39,7 @@ function renderNav() {
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
-  const shown = APP.view === "story" ? "shelf" : APP.view;
+  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
     const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
@@ -46,13 +51,25 @@ function renderNav() {
 }
 
 function renderHeader() {
+  // Reader mode: show the story name, no cast
+  if (APP.view === "readstory") {
+    const name = storyName(READER.dir) || basename(READER.dir) || "reader";
+    $("title").textContent = name;
+    $("question").textContent = "reading · " + name;
+    $("cast").innerHTML = ""; $("castcard").hidden = true;
+    return;
+  }
   const m = APP.view === "live" ? LIVEV.meta : APP.view === "read" ? READV.meta : null;
-  if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; return; }
+  if (!m) { $("title").textContent = "story-writer"; $("question").textContent = ""; $("cast").innerHTML = ""; $("castcard").hidden = true; return; }
   $("title").textContent = basename(m.story) || "story-writer";
-  $("question").textContent = m.question || "";
+  // The live page shows the question as its headline, so the topbar says what the run is doing
+  // instead of repeating it.
+  const ph = APP.view === "live" ? phaseOf(LIVEV) : "";
+  $("question").textContent = APP.view === "live" ? (ph ? `live chapter · ${ph}` : "") : (m.question || "");
   // Live only: the read page carries its own "Cast" section, and the same pills in the header too
   // is one set too many.
   $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story) : "";
+  $("castcard").hidden = !(APP.view === "live" && m.characters?.length);
 }
 
 function paintRibbon() {
@@ -65,18 +82,100 @@ function paintRibbon() {
 
 function renderShelf(page, keepFocus) {
   page.innerHTML = pickerHtml() + interviewModalHtml();
-  $("rail").innerHTML = "";
-  wirePicker(page, () => go("story")); wireInterview(page); wireModal(page);
+  $("railstats").innerHTML = "";
+  wirePicker(page, () => go("story"), () => {
+    APP.editNew = true; APP.editDir = "";
+    if (APP.scaffold.active && APP.scaffold.spec) APP.ivHidden = true;
+    else if (!APP.scaffold.active) APP.ideaOpen = true;
+    go("edit");
+  }); wireInterview(page); wireModal(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
 
 function renderStoryPage(page) {
   page.innerHTML = storyPageHtml();
-  $("rail").innerHTML = "";
+  $("railstats").innerHTML = "";
   wireStoryPage(page);
   setFoldable(false);
 }
+
+function renderHandoff(page, keepFocus) {
+  page.innerHTML = handoffPageHtml();
+  $("railstats").innerHTML = "";
+  wireHandoff(page);
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+}
+
+function renderReader(page) {
+  page.innerHTML = readerPageHtml();
+  $("railstats").innerHTML = "";
+  wireReaderPage(page);
+  setFoldable(false);
+}
+
+function renderComparison(page) {
+  page.innerHTML = comparisonPageHtml();
+  $("railstats").innerHTML = "";
+  wireComparison(page);
+  setFoldable(false);
+}
+
+// The editor repaints whole on every render -- including the one 400ms after a keystroke, when
+// /story/check answers. Focus, caret and which sections are unfolded are carried across by hand,
+// or typing a premise would jump out of the field and collapse the section around it.
+function renderEdit(page) {
+  const active = document.activeElement;
+  const focused = active && page.contains(active) && active.id ? active.id : "";
+  const caret = focused && typeof active.selectionStart === "number"
+    ? [active.selectionStart, active.selectionEnd] : null;
+  const folds = [...page.querySelectorAll("details.editor-section")].map(d => d.open);
+
+  page.innerHTML = storyEditHtml() + interviewModalHtml();
+  $("railstats").innerHTML = "";
+  wireStoryEditor(page);
+  wireInterview(page);
+
+  const sections = page.querySelectorAll("details.editor-section");
+  if (folds.length === sections.length) sections.forEach((d, i) => { d.open = folds[i]; });
+  if (focused) {
+    const el = page.querySelector("#" + focused);
+    if (el && !el.disabled) {
+      el.focus();
+      if (caret) try { el.setSelectionRange(caret[0], caret[1]); } catch {}
+    }
+  }
+  setFoldable(false);
+}
+
+/** The mockup's headline block. The scene question is the headline: it is what this chapter exists
+ *  to answer, and the topbar stops repeating it while the live page is showing. */
+function liveHeaderHtml() {
+  const m = LIVEV.meta;
+  if (!m) return "";
+  const where = m.chapters > 1 ? `chapter ${m.chapter} of ${m.chapters}` : "chapter";
+  return `<div class="livehead">
+    <p class="eyebrow">${esc(where)} · ${esc(storyName(m.story))}</p>
+    <h2>${esc(m.question || "")}</h2>
+    <p class="lede">The writer drafts only as far as the next choice that is a character's to make,
+      then asks them for it. It never sees their personas.</p>
+  </div>`;
+}
+
+/** Titles reuse the app's own existing wording for each state rather than inventing a second
+ *  vocabulary for the same thing -- "the writer wants your call" is what the reader card says, and
+ *  "the step budget is spent" is what the budget prompt says. */
+const PHASE_TITLE = {
+  "writing": "A draft is arriving",
+  "consulting": "A choice is being checked",
+  "reader wait": "The writer wants your call",
+  "budget wait": "The step budget is spent",
+  "paused": "Paused at the last boundary",
+  "pausing": "Pausing at the next boundary",
+  "stopping": "Stopping",
+  "idle": "The scene so far",
+};
 
 function renderLive(page, blocks) {
   if (!blocks.length) {
@@ -88,7 +187,7 @@ function renderLive(page, blocks) {
       html = `<div class="empty starting">
         <h2>Starting${name ? ` <em>${esc(name)}</em>` : ""}…</h2>
         <p class="thinking"><i></i>waiting for the writer — a cold model can take a few seconds</p>
-        <p class="hint">use <b>stop</b> above to cancel once the run controls appear</p>
+        <p class="hint">use <b>stop</b> in the run controls to cancel, once they appear</p>
       </div>`;
     } else {
       const text = APP.live ? "The scene will appear here as soon as the engine starts writing."
@@ -100,13 +199,32 @@ function renderLive(page, blocks) {
       </div>`;
     }
     page.innerHTML = html;
-    $("rail").innerHTML = "";
+    $("railstats").innerHTML = "";
     const gb = page.querySelector("#go-shelf");
     if (gb) gb.addEventListener("click", () => go("shelf"));
     setFoldable(false);
     return;
   }
-  page.innerHTML = `<div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>`;
+  const steps = LIVEV.events.filter(e => e.t === "draft").length;
+  const target = LIVEV.meta?.target || 0;
+  const words = LIVEV.events.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);
+  const consults = blocks.filter(b => b.kind === "consult").length;
+  const phase = phaseOf(LIVEV);
+  const chip = t => `<span class="metachip">${esc(t)}</span>`;
+  page.innerHTML = liveHeaderHtml() + `<section class="prosecard">
+    <div class="head">
+      <div><span class="label">live prose</span><h3>${esc(PHASE_TITLE[phase] || "The scene so far")}</h3></div>
+      <span class="label">step ${steps}</span>
+    </div>
+    <div class="body">
+      <div class="runmeta">
+        ${chip(target ? `${words} / ${target} words` : `${words} words`)}
+        ${chip(`${consults} consult${consults === 1 ? "" : "s"}`)}
+        ${chip(APP.session.interactive ? "interactive" : "hands off")}
+      </div>
+      <div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>
+    </div>
+  </section>`;
   for (const d of page.querySelectorAll("details.consult")) {
     d.addEventListener("toggle", () => {
       const s = Number(d.dataset.seq);
@@ -130,7 +248,7 @@ function renderRead(page, blocks) {
              Pick an earlier one, which may have more in it.`
                  : `Open a story on the shelf and "read" a previous run, drop a saved
              <code>out/writing-log.jsonl</code> onto this page, or open one from disk.`}</p></div>`;
-    $("rail").innerHTML = "";
+    $("railstats").innerHTML = "";
     wireSavedRuns(page);
     setFoldable(false);
     return;
@@ -185,6 +303,15 @@ export function render() {
   const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
+  else if (APP.view === "handoff") renderHandoff(page, keepFocus);
+  else if (APP.view === "compare") renderComparison(page);
+  else if (APP.view === "edit") renderEdit(page);
+  else if (APP.view === "readstory") renderReader(page);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
+  // Empty on the shelf/story/handoff pages, and on live/read before there is anything to show --
+  // an empty bordered card with just the header is worse than no card at all.
+  $("runctrl").hidden = !$("railstats").innerHTML && $("sessionbar").hidden;
+  renderTimeline(blocks);
+  wireTimeline();
 }

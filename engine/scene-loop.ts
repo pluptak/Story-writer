@@ -6,11 +6,13 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { restrictionsOf } from "./skills.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
-import type { ThinkLevel } from "./llm-client.ts";
+import type { ThinkLevel } from "./story-schema.ts";
 import {
-  consult, normalizeConsult, canonWants,
-  type ConsultEvent, type ConsultRequest, type ConsultReply,
+  consult, normalizeConsult, normalizeReactionConsult, parseVerdict, parseBatchVerdict,
+  parseClarifyAnswer, missingShape, reviseConsult,
+  type ConsultEvent, type ConsultRequest, type ConsultReply, type Clarifier,
 } from "./consult.ts";
+import { type Msg } from "./llm-client.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 
@@ -30,9 +32,9 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
-/** The system prompt for the writer agent: premise, scene, the cast's skills, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; cannot: string[] }[], style: string): string {
-  return P.writerSystem({ premise, scene, cast, style });
+/** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; cannot: string[] }[], style: string, facts: string[] = []): string {
+  return P.writerSystem({ premise, scene, cast, facts, style });
 }
 
 /** The cast actually in a scene; an empty roster means the whole cast. */
@@ -58,14 +60,22 @@ export type RunEvent =
   | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
+  | { t: "schema_mismatch"; call: "judge" | "clarify"; character: string; chapter: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
   | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string; chapter: number }
   | { t: "budget"; added: number; budget: number; chapter: number }
+  | { t: "forced_end"; words: number; target: number; chapter: number }
+  | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }
-  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number };
+  | { t: "retry_capped"; character: string; count: number; chapter: number }
+  | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
+  | { t: "reaction"; character: string; thought: string; action: string; chapter: number }
+  | { t: "promote"; character: string; action: string; chapter: number }
+  | { t: "exit"; character: string; pov: boolean; chapter: number }
+  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
 
 
 async function askMoreSteps(steps: number, budget: number, chapter: number): Promise<number> {
@@ -99,6 +109,19 @@ const OVERRUN_SLACK = 1.5;
 
 const NEGLECT_GAP = 3;
 
+// A scene told repeatedly that it is at length and still not ending (PLANS.md: one chapter aimed at
+// 750 words ran to 2,237) needs a floor under the soft nudges. Twice the target is the last piece the
+// writer gets — `hardCap` forces the instruction and the loop closes the scene after it, whatever the
+// reply says.
+const HARD_CAP_MULT = 2;
+
+// One redraft only — a flagged piece gets a single chance to come back clean, then is accepted
+// regardless. The lint warns; it never blocks the scene, matching the consult-retry fallback elsewhere.
+const NARRATION_LINT_RETRIES = 1;
+
+// Judging an answer is classification, not composition: the writer's own 0.8 buys nothing here.
+const JUDGE_TEMPERATURE = 0.3;
+
 /** Cast members who have gone unconsulted for `gap` steps or more, so the writer does not lose someone. */
 export function neglectedCast(cast: string[], lastAsked: Map<string, number>, step: number, gap: number): string[] {
   if (step < gap) return [];
@@ -115,19 +138,98 @@ export async function writeScene(
   thinking: { writer: ThinkLevel; summary: ThinkLevel },
   maxSteps: number, maxProseWords: number, retries: number, clarifications: number,
   dir: string, log: (e: RunEvent) => void,
+  maxCharacterRetries?: number,
+  facts: string[] = [],
 ) {
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
-  const writer = new Agent("WRITER", writerModel, wrapWriter(premise, sd, writerCast(roster, []), writerStyle), 0.8);
-  writer.think = thinking.writer;
+  const active = new Set(rosterNames);          // the cast still in the scene; shrinks as one exits
+  const isActive = (name: string) => [...active].some(n => n.toLowerCase() === name.trim().toLowerCase());
+  const cast = writerCast(roster, []);
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts), 0.8);
+  writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
   LIVE.writer = writer; LIVE.log = log;
+
+  // Both author-side helpers are named WRITER so they share the writer's transcript, and both take
+  // `writer.model` at call time so a mid-run /model swap still reaches them.
+  const newJudge = () => {
+    const a = new Agent("WRITER", writer.model, P.judgeSystem(cast), JUDGE_TEMPERATURE);
+    a.think = writer.think;
+    return a;
+  };
+  // Stateless like the judge, but it weighs many volunteered deeds in one call and returns a
+  // promotable flag each — so a reaction beat costs at most one judge call, and none when nobody acted.
+  const newBatchJudge = () => {
+    const a = new Agent("WRITER", writer.model, P.batchJudgeSystem(cast), JUDGE_TEMPERATURE);
+    a.think = writer.think;
+    return a;
+  };
+  // Also stateless: checks the piece just drafted against THE ONE RULE, CANNOT, and (when the reply
+  // opens a consult) whether the situation names a concrete fact — before any of it reaches the page.
+  const newNarrationJudge = () => {
+    const a = new Agent("WRITER", writer.model, P.narrationLintSystem(cast), JUDGE_TEMPERATURE);
+    a.think = writer.think;
+    return a;
+  };
+  // The judge is stateless — it is given everything it needs and never benefits from remembering an
+  // earlier verdict. The clarifier is not: what it settles becomes true for the rest of the scene,
+  // so it keeps its own history and gets trimmed along with everyone else.
+  let clarifier: Agent | null = null;
+  const theClarifier = () => {
+    if (!clarifier) {
+      clarifier = new Agent("WRITER", writer.model,
+        P.clarifySystem({ premise, scene: sd, facts, cast }), writer.temperature);
+      clarifier.think = writer.think;
+    }
+    clarifier.model = writer.model;
+    return clarifier;
+  };
 
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   const lastAsked = new Map<string, number>();
+  const retryCounts = new Map<string, number>();
+  // Promotable deeds offered by the last reaction fan-out (lowercased name → action), waiting for the
+  // writer's next reply to promote at most one. A one-shot offer: cleared as the next reply is read.
+  const pendingReactionActions = new Map<string, string>();
+  // Every line/deed the writer has actually been granted this scene, for the narration lint to check
+  // "not yours" against. A reaction's thought never goes in here — interior, never on the page — only
+  // a promoted reaction action does, exactly like the writer's own history only folds a promoted deed.
+  const granted: { character: string; speech: string; action: string }[] = [];
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
+
+  // How a character's request for a missing fact is answered, shared by single consults and reaction
+  // fan-outs. The clarifier remembers so it stays consistent; the writer remembers so its own
+  // narration does not contradict what the character was told.
+  const clarify: Clarifier = async (q, r) => {
+    const cl = theClarifier();
+    const extra: Msg[] = [{
+      role: "user",
+      content: P.clarifyRequest(r.character, q, r.situation, pieces[pieces.length - 1] ?? ""),
+    }];
+    let a = "";
+    try {
+      for (let tries = 0; ; tries++) {
+        const raw = await cl.generate(`${C.magenta}WRITER${C.reset}`, extra);
+        const answered = parseClarifyAnswer(extractJson(raw));
+        if (answered !== null) { a = answered; break; }
+        if (tries) break;
+        log({ t: "schema_mismatch", call: "clarify", character: r.character, chapter });
+        extra.push({ role: "assistant", content: raw.trim() },
+                   { role: "user", content: P.ANSWER_ONLY });
+      }
+    } catch (e) {
+      console.log(`${C.red}(clarification call failed: ${(e as Error).message})${C.reset}`);
+      return "";
+    }
+    cl.hear(P.characterAsks(r.character, q));
+    cl.said(JSON.stringify({ answer: a }));
+    writer.hear(P.characterAsks(r.character, q));
+    writer.said(JSON.stringify({ answer: a }));
+    return a;
+  };
 
   log({ t: "scene_start", story: dir, characters: characters.map(c => c.name), target: sd.length, chapter });
 
@@ -182,9 +284,10 @@ export async function writeScene(
     }
 
     const words = wordCount();
-    const neglected = neglectedCast(rosterNames, lastAsked, steps, NEGLECT_GAP);
+    const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
+    const hardCap = words >= sd.length * HARD_CAP_MULT;
     writer.hear(P.writeInstruction({
-      words, target: sd.length, maxProseWords, overran, neglected,
+      words, target: sd.length, maxProseWords, overran, neglected, hardCap,
     }));
     let draftRaw: string;
     try {
@@ -195,35 +298,180 @@ export async function writeScene(
       break;
     }
     steps++;
-    const d = extractJson(draftRaw);
-    let prose = String(d.prose ?? "").trim();
-    let salvaged = false;
-    if (!prose) {
-      const recovered = salvageProse(draftRaw);
-      if (recovered) {
-        prose = recovered; salvaged = true;
-        console.log(`${C.yellow}(recovered a truncated draft — ${recovered.split(/\s+/).length} words)${C.reset}`);
-      }
-    }
-    const sceneDone = d.scene_done === true || String(d.scene_done ?? "").toLowerCase() === "true";
-    const c = (d.consult && typeof d.consult === "object") ? d.consult as Record<string, unknown> : null;
-    const who = c ? String(c.character ?? "").trim() : "";
 
-    const proseWords = prose ? prose.split(/\s+/).filter(Boolean).length : 0;
+    let d: Record<string, any> = {};
+    let prose = "", salvaged = false, sceneDone = false;
+    let c: Record<string, unknown> | null = null, who = "", exiting = "", promoting = "";
+    let fanoutNames: string[] = [], proseWords = 0;
+    let stoppedMidLint = false;
+
+    for (let lintAttempt = 0; ; lintAttempt++) {
+      d = extractJson(draftRaw);
+      prose = String(d.prose ?? "").trim();
+      salvaged = false;
+      if (!prose) {
+        const recovered = salvageProse(draftRaw);
+        if (recovered) {
+          prose = recovered; salvaged = true;
+          console.log(`${C.yellow}(recovered a truncated draft — ${recovered.split(/\s+/).length} words)${C.reset}`);
+        }
+      }
+      sceneDone = d.scene_done === true || String(d.scene_done ?? "").toLowerCase() === "true";
+      c = (d.consult && typeof d.consult === "object") ? d.consult as Record<string, unknown> : null;
+      who = c ? String(c.character ?? "").trim() : "";
+      exiting = String(d.exit ?? "").trim();
+      promoting = String(d.promote ?? "").trim();
+      fanoutNames = c && Array.isArray(c.reactors)
+        ? c.reactors.map((r: unknown) => String((r as any)?.name ?? (typeof r === "string" ? r : "")).trim())
+            .filter(Boolean)
+        : [];
+      proseWords = prose ? prose.split(/\s+/).filter(Boolean).length : 0;
+
+      // -- NARRATION LINT: check before anything is committed to the page. Nothing drafted and
+      // nothing asked ⇒ nothing to lint, same as the empty/asked-nobody path below.
+      if (!prose && !c) break;
+
+      const outgoingConsult = c ? {
+        character: who || undefined,
+        reactors: fanoutNames.length ? fanoutNames : undefined,
+        situation: String((c as Record<string, unknown>).situation ?? "").trim(),
+        question: String((c as Record<string, unknown>).question ?? "").trim(),
+      } : null;
+
+      let flagged: string | null = null;
+      try {
+        const lintRaw = await newNarrationJudge().generate(`${C.magenta}WRITER${C.reset}`,
+          [{ role: "user", content: P.narrationLintRequest({
+              pov: sd.pov, prose, granted, consult: outgoingConsult }) }]);
+        const lj = extractJson(lintRaw);
+        if (lj.ok === false || String(lj.ok ?? "").toLowerCase() === "false") {
+          flagged = String(lj.why ?? "").trim() || "narration was flagged";
+        }
+      } catch (e) {
+        console.log(`${C.yellow}(narration lint call failed: ${(e as Error).message} — accepting)${C.reset}`);
+      }
+
+      if (!flagged) break;
+
+      const retried = lintAttempt >= NARRATION_LINT_RETRIES;
+      log({ t: "narration_flag", why: flagged, retried, chapter });
+      console.log(`${C.yellow}(narration flagged — ${flagged.split(". ")[0]}.)${C.reset}`);
+      if (retried) break;   // one redraft only — accept whatever comes back next
+
+      writer.hear(P.narrationFlagged(flagged));
+      try {
+        draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`);
+      } catch (e) {
+        if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
+        console.log(`\n${C.red}Writer redraft call failed (${(e as Error).message}) — keeping the flagged piece.${C.reset}`);
+        break;
+      }
+      steps++;
+    }
+    if (stoppedMidLint) break;
+
     overran = proseWords > maxProseWords * OVERRUN_SLACK ? proseWords : 0;
     if (prose) pieces.push(prose);
-    writer.said(JSON.stringify({ prose, ...(who ? { consult: { character: who } } : {}), scene_done: sceneDone }));
+    writer.said(JSON.stringify({ prose,
+      ...(who ? { consult: { character: who } } : {}),
+      ...(fanoutNames.length ? { consult: { reactors: fanoutNames } } : {}),
+      scene_done: sceneDone }));
     log({ t: "draft", step: steps, prose, words: wordCount(), consulting: who, salvaged, chapter });
     if (prose && !ENGINE.serve) console.log(`\n${prose}\n`);
 
+    // -- PROMOTE: the writer turns one deed a reactor volunteered last beat into canon. Done before
+    // the consult below, so this beat's own fan-out (if any) can re-arm the offer afterward. The
+    // offer is one-shot — read here, then cleared whether or not it was taken.
+    if (promoting && pendingReactionActions.size) {
+      const def = defOf(promoting);
+      const action = def ? pendingReactionActions.get(def.name.toLowerCase()) : undefined;
+      const persistent = def ? agents.get(def.name.toLowerCase()) : undefined;
+      if (def && action && persistent) {
+        persistent.hear(P.AUTHOR_TOOK_YOUR_ACTION);
+        persistent.said(JSON.stringify({ action }));
+        granted.push({ character: def.name, speech: "", action });
+        log({ t: "promote", character: def.name, action, chapter });
+        if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}acts:${C.reset} ${action}`);
+      }
+    }
+    pendingReactionActions.clear();
+
     // -- CONSULT (with accept / retry)
+    const reactors = c && Array.isArray((c as Record<string, unknown>).reactors)
+      ? (c as Record<string, unknown>).reactors : null;
     let asked = false;
-    if (who) {
+    if (reactors) {
+      // -- REACTION FAN-OUT: one shared beat, several present-but-not-acting characters react at once.
+      // Each runs an isolated consult (never seeing another's reply); the writer gets them together.
+      const rc = normalizeReactionConsult({ reactors, situation: c!.situation, question: c!.question });
+      if (!rc.ok) {
+        log({ t: "bad_consult", character: "(reaction)", why: rc.why, chapter });
+        console.log(`${C.yellow}(reaction not sent — ${rc.why.split(". ")[0]}.)${C.reset}`);
+        writer.hear(P.consultNotSent(rc.why, "the group"));
+      } else {
+        asked = true;
+        log({ t: "reaction_fanout", reactors: rc.reqs.map(r => r.character),
+              situation: rc.reqs[0].situation, chapter });
+        const collected: { name: string; thought: string; action: string; situation: string }[] = [];
+        for (const req of rc.reqs) {
+          if (RUN.stopped) break;
+          const def = defOf(req.character);
+          const persistent = agents.get(req.character.toLowerCase());
+          if (!def || !persistent || !isActive(def.name)) continue;  // unknown or gone — skip quietly
+          let reply: ConsultReply;
+          try {
+            // A reaction is not retried here; its own skill repair is guard enough for the thought.
+            // Drop consult()'s decision-shaped events — a `reaction` event stands in for them.
+            reply = await consult(persistent, req, def.skills, {
+              clarifications, clarify,
+              log: e => { if (e.t !== "consult" && e.t !== "answer") log(e); },
+            });
+          } catch (e) {
+            console.log(`${C.red}${def.name}: reaction failed (${(e as Error).message}).${C.reset}`);
+            continue;
+          }
+          if (!reply.thought && !reply.speech && !reply.action) continue;  // nothing to write
+          // Fold the thought only; a volunteered action stays out of history until it is promoted, so
+          // an un-taken impulse never contradicts the page.
+          persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
+          persistent.said(JSON.stringify({ thought: reply.thought }));
+          lastAsked.set(def.name.toLowerCase(), steps);
+          log({ t: "reaction", character: def.name, thought: reply.thought, action: reply.action, chapter });
+          collected.push({ name: def.name, thought: reply.thought, action: reply.action, situation: req.situation });
+          if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}reacts:${C.reset} ${reply.thought}`);
+        }
+
+        // One batch judge over every volunteered deed decides which are promotable; the rest lapse.
+        // No deed volunteered ⇒ no judge call at all.
+        const volunteered = collected.filter(x => x.action);
+        let promotable = new Map<string, boolean>();
+        if (volunteered.length && !RUN.stopped) {
+          try {
+            const raw = await newBatchJudge().generate(`${C.magenta}WRITER${C.reset}`,
+              [{ role: "user", content: P.batchJudgeRequest(volunteered) }]);
+            promotable = parseBatchVerdict(extractJson(raw));
+          } catch (e) {
+            console.log(`${C.red}(reaction judge failed: ${(e as Error).message} — no deeds promoted)${C.reset}`);
+          }
+        }
+        for (const x of collected)
+          if (x.action && promotable.get(x.name.toLowerCase())) pendingReactionActions.set(x.name.toLowerCase(), x.action);
+
+        const bundle = collected.map(x => ({
+          name: x.name, thought: x.thought,
+          ...(pendingReactionActions.has(x.name.toLowerCase()) ? { action: x.action } : {}),
+        }));
+        if (bundle.length) writer.hear(P.reactionsAnswered(bundle));
+      }
+    } else if (who) {
       const def = defOf(who);
       const persistent = agents.get(who.toLowerCase());
       const check = def ? normalizeConsult({ ...c!, character: def.name }) : null;
       if (!def || !persistent) {
-        writer.hear(P.noSuchCharacter(who, rosterNames));
+        writer.hear(P.noSuchCharacter(who, [...active]));
+      } else if (!isActive(def.name)) {
+        console.log(`${C.yellow}(not sent to ${def.name} — they have left the scene.)${C.reset}`);
+        writer.hear(P.consultExited(def.name));
       } else if (!check!.ok) {
         log({ t: "bad_consult", character: def.name, why: check!.why, chapter });
         console.log(`${C.yellow}(not sent to ${def.name} — ${check!.why.split(". ")[0]}.)${C.reset}`);
@@ -239,24 +487,7 @@ export async function writeScene(
           usedAttempt = attempt;
           const agent = attempt === 1 ? persistent : persistent.fork();
           try {
-            reply = await consult(agent, req, def.skills, {
-              clarifications, attempt, log,
-              clarify: async (q, r) => {
-                let a = "";
-                try {
-                  const raw = await writer.generate(`${C.magenta}WRITER${C.reset}`, [{
-                    role: "user", content: P.clarifyRequest(r.character, q, r.situation),
-                  }]);
-                  a = String(extractJson(raw).answer ?? "").trim();
-                } catch (e) {
-                  console.log(`${C.red}(clarification call failed: ${(e as Error).message})${C.reset}`);
-                  return "";
-                }
-                writer.hear(P.characterAsks(r.character, q));
-                writer.said(JSON.stringify({ answer: a }));
-                return a;
-              },
-            });
+            reply = await consult(agent, req, def.skills, { clarifications, attempt, log, clarify });
           } catch (e) {
             failed = (e as Error).message;
             break;
@@ -264,33 +495,63 @@ export async function writeScene(
 
           const flags = P.answerFlags(reply);
           let j: Record<string, any> = {};
+          let judged: "accept" | "retry" | null = null;
+          const judge = newJudge();
+          const judgeExtra: Msg[] = [{
+            role: "user",
+            content: P.judgeRequest({
+              name: def.name, situation: req.situation, question: req.question, wants: req.wants,
+              thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note, flags,
+            }),
+          }];
           try {
-            const judgeRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, [{
-              role: "user",
-              content: P.judgeRequest({
-                name: def.name, question: req.question, thought: reply.thought,
-                speech: reply.speech, action: reply.action, note: reply.note, flags,
-              }),
-            }]);
-            j = extractJson(judgeRaw);
+            for (let tries = 0; ; tries++) {
+              const judgeRaw = await judge.generate(`${C.magenta}WRITER${C.reset}`, judgeExtra);
+              j = extractJson(judgeRaw);
+              judged = parseVerdict(j);
+              if (judged || tries) break;
+              log({ t: "schema_mismatch", call: "judge", character: def.name, chapter });
+              judgeExtra.push({ role: "assistant", content: judgeRaw.trim() },
+                              { role: "user", content: P.VERDICT_ONLY });
+            }
           } catch (e) {
             console.log(`${C.red}(judge call failed: ${(e as Error).message} — accepting)${C.reset}`);
           }
-          const verdict = String(j.verdict ?? "accept").trim().toLowerCase() === "retry" ? "retry" : "accept";
+          // A reply that never carried a verdict is not a judgement; taking "accept" is the fallback,
+          // not the reading, and `schema_mismatch` is what says so in the log.
+          const verdict = judged ?? "accept";
           const note = String(j.note ?? "").trim();
           log({ t: "judge", character: def.name, verdict, note, attempt, chapter });
 
-          if (verdict === "accept" || attempt > retries) {
-            if (verdict === "retry") console.log(`${C.dim}(retries spent — taking ${def.name}'s last answer)${C.reset}`);
+          const effectiveCeiling = def.maxRetries ?? maxCharacterRetries;
+          const cumulative = retryCounts.get(def.name.toLowerCase()) ?? 0;
+
+          if (verdict === "accept" || attempt > retries || (effectiveCeiling !== undefined && cumulative >= effectiveCeiling)) {
+            if (verdict === "retry" && effectiveCeiling !== undefined && cumulative >= effectiveCeiling) {
+              console.log(`${C.dim}(chapter-wide retry ceiling hit for ${def.name} — force-accepting)${C.reset}`);
+              if (cumulative === effectiveCeiling) {
+                log({ t: "retry_capped", character: def.name, count: cumulative, chapter });
+              }
+            } else if (verdict === "retry") {
+              console.log(`${C.dim}(retries spent — taking ${def.name}'s last answer)${C.reset}`);
+            }
             break;
           }
+          // A revision goes through the same door its first draft did. It used to skip the check
+          // entirely, which is how a re-ask of "What do you do?" — refused at the front door — reached
+          // a character anyway and drew the do-nothing answer the guard exists to prevent.
           const rev = (j.revised && typeof j.revised === "object") ? j.revised as Record<string, unknown> : {};
-          req = {
-            character: def.name,
-            situation: String(rev.situation ?? "").trim() || req.situation,
-            question: String(rev.question ?? "").trim() || req.question,
-            wants: canonWants(rev.wants) ?? req.wants,
-          };
+          const revised = reviseConsult(req, rev);
+          if (!revised.ok) {
+            // Asking again with a question that cannot be sent would spend the attempt on nothing,
+            // so the answer already in hand is the one the scene gets.
+            log({ t: "bad_consult", character: def.name, why: revised.why, chapter });
+            console.log(`${C.yellow}(${def.name}'s re-ask was not usable — ${revised.why.split(". ")[0]}. `
+              + `Keeping the answer.)${C.reset}`);
+            break;
+          }
+          retryCounts.set(def.name.toLowerCase(), cumulative + 1);
+          req = revised.req;
           console.log(`${C.yellow}retry ${attempt}/${retries} — ${def.name}${C.reset}${note ? ` ${C.dim}(${note})${C.reset}` : ""}`);
           log({ t: "retry", character: def.name, attempt, situation: req.situation, question: req.question, chapter });
         }
@@ -298,8 +559,15 @@ export async function writeScene(
         if (RUN.stopped) break;
 
         const stalled = !!reply && !reply.thought && !reply.speech && !reply.action;
-        if (failed || !reply || stalled) {
-          const why = failed || (stalled ? reply!.note || "did not answer" : "no reply");
+        // A thought with nothing said and nothing done answers a "reaction" and nothing else. Taken
+        // as an accept it is worse than a refusal: it costs the attempts, marks the character as
+        // freshly consulted, and hands the writer an answer with nothing in it to write.
+        const shortOf = reply && !stalled ? missingShape(req.wants, reply) : null;
+        if (failed || !reply || stalled || shortOf) {
+          const why = failed
+            || (stalled ? reply!.note || "did not answer"
+            : shortOf ? `was asked for ${shortOf} and gave none`
+            : "no reply");
           console.log(`${C.red}${def.name}: ${why}.${C.reset}`);
           writer.hear(P.noAnswer(def.name, why));
         } else {
@@ -307,6 +575,7 @@ export async function writeScene(
           persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
           writer.hear(P.characterAnswered(def.name, P.answerBody(reply)));
           lastAsked.set(def.name.toLowerCase(), steps);
+          granted.push({ character: def.name, speech: reply.speech, action: reply.action });
           log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
           if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
             + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
@@ -314,20 +583,42 @@ export async function writeScene(
       }
     }
 
+    // A character the writer wrote out of the scene: drop them from the active cast so they are not
+    // consulted or missed again. Exiting the point-of-view character ends the chapter — the handoff
+    // re-authors the cast from here, reading the exit out of the prose the writer just wrote.
+    if (exiting) {
+      const name = defOf(exiting)?.name ?? exiting;
+      if (isActive(name)) {
+        for (const n of [...active]) if (n.toLowerCase() === name.toLowerCase()) active.delete(n);
+        const pov = !!sd.pov && sd.pov.toLowerCase() === name.toLowerCase();
+        log({ t: "exit", character: name, pov, chapter });
+        console.log(`${C.dim}(${name} has left the scene${pov ? " — the point of view, so the chapter ends here" : ""})${C.reset}`);
+        if (pov) done = true;
+      }
+    }
+
     if (!prose && !asked) {
       if (++empties >= 3) { console.log(`${C.red}Writer wrote nothing and asked nobody, three times — stopping.${C.reset}`); break; }
     } else empties = 0;
 
-    if (sceneDone) done = true;
+    if (sceneDone) {
+      done = true;
+    } else if (hardCap) {
+      done = true;
+      log({ t: "forced_end", words: wordCount(), target: sd.length, chapter });
+      console.log(`${C.yellow}(scene forced to a close — ${wordCount()} words against a `
+        + `${sd.length}-word target)${C.reset}`);
+    }
     if (RUN.stopped) break;
     await trimHistory(writer, summaryModel, thinking.summary);
+    if (clarifier) await trimHistory(clarifier, summaryModel, thinking.summary);
     for (const def of roster) {
       const a = agents.get(def.name.toLowerCase());
       if (a) await trimHistory(a, summaryModel, thinking.summary);
     }
   }
 
-  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter });
+  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter, retries: Object.fromEntries(retryCounts) });
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
 }
 
@@ -348,13 +639,16 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
 
   LIVE.agents = agents;
 
-  const r = await writeScene(
-    sd, chapter, sc.characters, agents,
-    sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-    sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
-    sc.dir, log,
-  );
-
-  LIVE.writer = null; LIVE.agents = null; LIVE.log = null;
-  return r;
+  try {
+    const r = await writeScene(
+      sd, chapter, sc.characters, agents,
+      sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+      sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
+      sc.dir, log, sc.maxCharacterRetries,
+      sc.facts,
+    );
+    return r;
+  } finally {
+    LIVE.writer = null; LIVE.agents = null; LIVE.log = null;
+  }
 }

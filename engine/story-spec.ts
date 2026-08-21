@@ -12,11 +12,12 @@ export interface StorySpec {
   premise: string;
   scenes: SceneDef[];
   writerStyle: string;
+  facts: string[];
   config: RunConfig;
   models: { default: string; writer: string; summary: string };
   characters: Array<{
     name: string; model: string; persona: string; knows: string; goal: string;
-    skills: string[]; restrictions: string[];
+    skills: string[]; restrictions: string[]; maxRetries?: number;
   }>;
 }
 
@@ -51,6 +52,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     characters.push({
       name, model: String(c?.model ?? "").trim(), persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
       goal: String(c?.goal ?? "").trim(), skills: asStrings(c?.skills), restrictions,
+      ...(Number.isInteger(c?.maxRetries) && c.maxRetries >= 0 ? { maxRetries: c.maxRetries } : {}),
     });
     if (!c?.persona) problems.push(`${name} has no persona`);
     else if (/\b(RESTRICTIONS|LACKS|KNOWS|SKILLS|GOAL)\s*:/.test(String(c.persona)))
@@ -88,6 +90,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     premise: String(o.premise ?? "").trim(),
     scenes,
     writerStyle: String(o.writer_style ?? o.writerStyle ?? "").trim(),
+    facts: Array.isArray(o.facts) ? o.facts.map((f: unknown) => String(f).trim()).filter(Boolean) : [],
     config,
     models,
     characters,
@@ -105,30 +108,75 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
 
 /** Apply a list of field edits to a spec without mutating the input; report what was applied and what was ignored. */
 export function applyEdits(spec: StorySpec, raw: any): {
-  spec: StorySpec; applied: string[]; ignored: string[]; problems: string[];
+  spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; problems: string[];
 } {
-  const applied: string[] = [], ignored: string[] = [];
+  type Applied = { field: string; before: unknown; after: unknown };
+  type Work = Applied & { key: string; snapshot: unknown; resolve?: (next: StorySpec) => unknown };
+  const work: Work[] = [], ignored: string[] = [];
   const draft: any = JSON.parse(JSON.stringify({ ...spec, writer_style: spec.writerStyle, scenes: spec.scenes }));
   const edits = Array.isArray(raw?.edits) ? raw.edits : [];
   const findChar = (name: string) =>
     draft.characters.find((c: any) => String(c.name).toLowerCase() === name.trim().toLowerCase());
+  const normalizedDraft = () => normalizeSpec(draft).spec;
+  const add = (entry: Omit<Work, "after"> & { after?: unknown }) => work.push(entry as Work);
+  const scalarResolver = (key: string, resolve: (next: StorySpec) => unknown, before: unknown, field = key) => {
+    const normalized = normalizedDraft();
+    add({ field, before, after: undefined, key, snapshot: resolve(normalized), resolve });
+  };
 
   for (const e of edits) {
     const field = String(e?.field ?? "").trim();
     const value = e?.value;
     const scalar = () => String(value ?? "").trim();
 
-    if (field === "title" || field === "premise") { draft[field] = scalar(); applied.push(field); continue; }
-    if (field === "writer_style" || field === "writerStyle") { draft.writer_style = scalar(); applied.push("writer_style"); continue; }
+    if (field === "title" || field === "premise") {
+      const before = normalizedDraft()[field as "title" | "premise"];
+      draft[field] = scalar();
+      scalarResolver(field, next => next[field as "title" | "premise"], before);
+      continue;
+    }
+    if (field === "writer_style" || field === "writerStyle") {
+      const before = normalizedDraft().writerStyle;
+      draft.writer_style = scalar();
+      scalarResolver("writer_style", next => next.writerStyle, before, "writer_style");
+      continue;
+    }
 
-    const sceneMatch = field.match(/^(scene(?:_(\d))?)\.(place|question|pov|length|roster)$/);
+    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster)$/);
     if (sceneMatch) {
       const idx = sceneMatch[2] ? Number(sceneMatch[2]) - 1 : 0;
       if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
-      if (sceneMatch[3] === "roster") draft.scenes[idx].roster = asStrings(value);
-      else if (sceneMatch[3] === "length") draft.scenes[idx].length = Number(value);
-      else draft.scenes[idx][sceneMatch[3]] = scalar();
-      applied.push(field);
+      const sceneField = sceneMatch[3];
+      const before = (normalizedDraft().scenes[idx] as any)[sceneField];
+      if (sceneField === "roster") draft.scenes[idx].roster = asStrings(value);
+      else if (sceneField === "length") draft.scenes[idx].length = Number(value);
+      else draft.scenes[idx][sceneField] = scalar();
+      const key = `scene:${idx}.${sceneField}`;
+      scalarResolver(key, next => (next.scenes[idx] as any)?.[sceneField], before, field);
+      continue;
+    }
+
+    if (field === "add_scene") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        ignored.push("add_scene — the value must be a scene object"); continue;
+      }
+      const before = undefined;
+      draft.scenes.push(value);
+      const sceneNumber = draft.scenes.length;
+      const normalized = normalizedDraft();
+      add({ field: `added scene ${sceneNumber}`, before, after: undefined, key: `added-scene:${sceneNumber}`, snapshot: normalized.scenes[sceneNumber - 1] });
+      continue;
+    }
+    if (field === "remove_scene") {
+      const n = Number(typeof value === "object" ? NaN : value);
+      if (!Number.isInteger(n) || n < 1 || n > draft.scenes.length) {
+        ignored.push(`remove_scene ${scalar() || "(nothing)"} — there is no scene ${scalar() || "(nothing)"}`); continue;
+      }
+      // A story with no scenes has nothing to write; normalizeSpec would silently invent a blank one.
+      if (draft.scenes.length === 1) { ignored.push("remove_scene 1 — a story needs at least one scene"); continue; }
+      const before = normalizedDraft().scenes[n - 1];
+      draft.scenes.splice(n - 1, 1);
+      add({ field: `removed scene ${n}`, before, after: undefined, key: `removed-scene:${n}`, snapshot: undefined });
       continue;
     }
 
@@ -136,16 +184,20 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const name = String(value?.name ?? "").trim();
       if (!name) { ignored.push(`add_character with no name`); continue; }
       if (findChar(name)) { ignored.push(`add_character "${name}" — already in the cast`); continue; }
+      const before = undefined;
       draft.characters.push(value);
-      applied.push(`added ${name}`);
+      const normalized = normalizedDraft();
+      const added = normalized.characters.find(c => c.name.toLowerCase() === name.toLowerCase());
+      add({ field: `added ${name}`, before, after: undefined, key: `added-character:${name.toLowerCase()}`, snapshot: added });
       continue;
     }
     if (field === "remove_character") {
       const name = scalar();
       const idx = draft.characters.findIndex((c: any) => String(c.name).toLowerCase() === name.toLowerCase());
       if (idx < 0) { ignored.push(`remove_character "${name}" — not in the cast`); continue; }
+      const before = normalizedDraft().characters[idx];
       draft.characters.splice(idx, 1);
-      applied.push(`removed ${name}`);
+      add({ field: `removed ${name}`, before, after: undefined, key: `removed-character:${name.toLowerCase()}`, snapshot: undefined });
       continue;
     }
 
@@ -154,8 +206,42 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const c = findChar(cm[1]);
       if (!c) { ignored.push(`${field} — no character called "${cm[1]}"`); continue; }
       const targetField = cm[2] === "lacks" ? "restrictions" : cm[2];
+      const before = (normalizedDraft().characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.[targetField];
       c[targetField] = (targetField === "skills" || targetField === "restrictions") ? asStrings(value) : scalar();
-      applied.push(`${c.name}.${targetField}`);
+      const key = `character:${c.name.toLowerCase()}.${targetField}`;
+      scalarResolver(key, next => (next.characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.[targetField], before, `${c.name}.${targetField}`);
+      continue;
+    }
+
+    // -- FACT EDITS ---------------------------------------------------------
+    if (field === "add_fact") {
+      const before = undefined;
+      draft.facts.push(scalar());
+      const factNumber = draft.facts.length;
+      scalarResolver(`fact:${factNumber}`, next => next.facts[factNumber - 1], before, "added fact");
+      continue;
+    }
+    if (field === "remove_fact") {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1 || n > draft.facts.length) {
+        ignored.push(`remove_fact ${scalar() || "(nothing)"} — no such fact`);
+        continue;
+      }
+      const before = normalizedDraft().facts[n - 1];
+      draft.facts.splice(n - 1, 1);
+      add({ field: `removed fact ${n}`, before, after: undefined, key: `removed-fact:${n}`, snapshot: undefined });
+      continue;
+    }
+    const factMatch = field.match(/^fact_(\d+)$/);
+    if (factMatch) {
+      const idx = Number(factMatch[1]) - 1;
+      if (idx < 0 || idx >= draft.facts.length) {
+        ignored.push(`${field} — fact ${factMatch[1]} does not exist`);
+        continue;
+      }
+      const before = normalizedDraft().facts[idx];
+      draft.facts[idx] = scalar();
+      scalarResolver(`fact:${idx}`, next => next.facts[idx], before, `updated fact ${factMatch[1]}`);
       continue;
     }
 
@@ -163,6 +249,13 @@ export function applyEdits(spec: StorySpec, raw: any): {
   }
 
   const { spec: next, problems } = normalizeSpec(draft);
+  const counts = new Map<string, number>();
+  for (const e of work) counts.set(e.key, (counts.get(e.key) ?? 0) + 1);
+  const applied = work.map(({ field, before, snapshot, resolve, key }) => ({
+    field,
+    before,
+    after: counts.get(key) === 1 && resolve ? (resolve(next) ?? snapshot) : snapshot,
+  }));
   return { spec: next, applied, ignored, problems };
 }
 
@@ -172,7 +265,7 @@ export const DIRECT_FIELDS = ["scene.length"] as const;
 export const MIN_SCENE_WORDS = 100, MAX_SCENE_WORDS = 10000;
 /** The one direct edit the engine trusts: `scene.length`, rounded and bounds-checked. */
 export function directEdit(spec: StorySpec, field: string, value: unknown):
-  { ok: false; reason: string } | { ok: true; spec: StorySpec; applied: string[]; problems: string[] } {
+  { ok: false; reason: string } | { ok: true; spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; problems: string[] } {
   if (!(DIRECT_FIELDS as readonly string[]).includes(field))
     return { ok: false, reason: `"${field}" is the architect's to change — say what you want instead` };
   const n = Math.round(Number(value));
@@ -180,6 +273,20 @@ export function directEdit(spec: StorySpec, field: string, value: unknown):
     return { ok: false, reason: `a scene is ${MIN_SCENE_WORDS}–${MAX_SCENE_WORDS} words` };
   const e = applyEdits(spec, { edits: [{ field, value: n }] });
   return { ok: true, spec: e.spec, applied: e.applied, problems: e.problems };
+}
+
+/** Which of a scene's fields differ between two versions of the story, for detecting that a chapter's
+ *  prose was written from a definition that has since changed. Roster order is not a difference. */
+export function sceneDrift(before: SceneDef | undefined, after: SceneDef | undefined): string[] {
+  if (!before || !after) return [];
+  const diff: string[] = [];
+  if (before.place.trim() !== after.place.trim()) diff.push("place");
+  if (before.question.trim() !== after.question.trim()) diff.push("question");
+  if (before.pov.trim() !== after.pov.trim()) diff.push("pov");
+  if (before.length !== after.length) diff.push("length");
+  const was = new Set(before.roster), now = new Set(after.roster);
+  if (was.size !== now.size || ![...was].every(x => now.has(x))) diff.push("roster");
+  return diff;
 }
 
 /** Render a spec to the story files on disk (currently just story.json), ready to write into a story folder. */
@@ -194,6 +301,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     goal: c.goal,
     skills: c.skills,
     restrictions: c.restrictions,
+    ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),
   }));
 
   const renderedModels = {
@@ -207,6 +315,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     premise: spec.premise,
     scenes: spec.scenes,
     writerStyle: spec.writerStyle,
+    facts: spec.facts,
     characters: charDefs,
     config: spec.config,
     models: renderedModels,
@@ -241,10 +350,12 @@ export function renderSpec(spec: StorySpec, full = false): string {
 export function specView(spec: StorySpec) {
   return {
     title: spec.title, premise: spec.premise, scene: spec.scenes[0], scenes: spec.scenes, writerStyle: spec.writerStyle,
+    facts: spec.facts, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
-      name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
+      name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,
       skills: c.skills.map(s => splitMeaning(s)),
       restrictions: c.restrictions,
+      ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),
     })),
   };
 }

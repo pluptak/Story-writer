@@ -1,5 +1,6 @@
 import { esc, reasonOr } from "./util.js";
 import { APP, draft } from "./state.js";
+import { go } from "./nav.js";
 
 // ---- the interview ------------------------------------------------------
 const fld = (id, label, value, rows, disabled, placeholder = "") =>
@@ -186,6 +187,9 @@ async function sendSay() {
 async function startInterview() {
   const idea = draft.idea.trim();
   if (!idea) return;
+  // A second Enter (or Enter + clicking the button) while the first POST is in flight must not
+  // overwrite the optimistic busy state and race a second /scaffold/start — same guard sendSay has.
+  if (APP.scaffold.busy) return;
   APP.scaffoldError = "";
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model };
   APP.render();
@@ -193,6 +197,11 @@ async function startInterview() {
   // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear — it has
   // to fall back to the idea box, with the idea still in it, or the modal hangs until a reload.
   if (!j || j.active === undefined) { APP.scaffold = { active:false }; APP.ideaOpen = true; APP.render(); }
+  else if (j.spec) {
+    APP.ivHidden = true;
+    APP.editNew = true; APP.editDir = "";
+    go("edit");
+  }
 }
 
 export function wireInterview(page) {
@@ -237,7 +246,7 @@ export function wireInterview(page) {
     });
   });
   on("iv-folder", acceptIntoFolder);
-  on("iv-accept", () => {
+  on("iv-accept", async () => {
     // Two things make accepting deliberate rather than the button that happens to be nearest.
     // UNSENT TEXT: the story is written from the spec, so whatever is still in the box would be
     // silently thrown away. A COMPLAINT: allowed to accept over — they are judgements about the
@@ -246,8 +255,12 @@ export function wireInterview(page) {
     const unsent = !!draft.say.trim();
     const flagged = !!(APP.scaffold.problems && APP.scaffold.problems.length);
     if ((unsent || flagged) && !APP.acceptArmed) { APP.acceptArmed = setTimeout(disarmAccept, 5000); APP.render(); return; }
+    if (APP.scaffold.busy) return;   // a double-click must not POST accept twice
     clearTimeout(APP.acceptArmed); APP.acceptArmed = 0;
-    postScaffold("accept", {});
+    const j = await postScaffold("accept", {});
+    // A clean accept is done with this story -- clear its idea so the next interview does not open
+    // pre-filled with it (the abandon path has always done this).
+    if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.render(); }
   });
 }
 

@@ -11,6 +11,16 @@ export const SKILL_CATALOG: Readonly<Record<string, string>> = Object.freeze({
   recall:   "drawing on your own memory of what you have lived through",
 });
 
+/**
+ * Named restriction bundles — a single restriction entry expands to multiple general-skill names.
+ * Mirror of SKILL_CATALOG: global, in-code, fixed. Story-level custom bundles are a natural v2.
+ */
+export const TRAIT_CATALOG: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  deprived: Object.freeze(["sight", "hearing"]),
+  anosmic:  Object.freeze(["smell"]),
+  insensate: Object.freeze(["touch", "taste"]),
+});
+
 /** One skill a character has: `source` tells whether it came from the general list or the story. */
 export interface Skill { name: string; meaning: string; source: "general" | "story"; }
 
@@ -35,14 +45,23 @@ export const restrictionsOf = (skills: Skill[]): string[] =>
 export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string): Skill[] {
   const split = (s: string) => s.split("|").map(x => x.trim()).filter(Boolean);
   const restricted = new Map<string, string>();          // canon -> authored spelling
+  const unresolved: string[] = [];
   for (const entry of split(restrictionsRaw)) {
     const { text } = splitMeaning(entry);
     if (!text) continue;
     const key = canonSkill(text);
-    if (!(key in SKILL_CATALOG))
-      console.warn(`   (character ${who}: restrictions "${text}" — not a general skill, so there is nothing to remove; known: ${Object.keys(SKILL_CATALOG).join(", ")})`);
-    restricted.set(key, text);
+    if (Object.prototype.hasOwnProperty.call(TRAIT_CATALOG, key)) {
+      for (const member of TRAIT_CATALOG[key])
+        restricted.set(canonSkill(member), member);
+    } else if (Object.prototype.hasOwnProperty.call(SKILL_CATALOG, key)) {
+      restricted.set(key, text);
+    } else {
+      unresolved.push(text);
+    }
   }
+
+  if (unresolved.length)
+    console.warn(`   (character ${who}: restrictions "${unresolved.join('", "')}" — not a general skill or trait bundle, so there is nothing to remove; known bundles: ${Object.keys(TRAIT_CATALOG).join(", ")}; general skills: ${Object.keys(SKILL_CATALOG).join(", ")})`);
 
   const out = new Map<string, Skill>();
   for (const [name, meaning] of Object.entries(SKILL_CATALOG))

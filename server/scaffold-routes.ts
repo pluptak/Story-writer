@@ -13,6 +13,7 @@ let SCAFFOLD: ScaffoldSession | null = null;
 let scaffoldBusy = false;                  // one architect at a time
 let scaffoldLast: ScaffoldRound | null = null;
 let scaffoldFolderAsk = "";                // why accept() would not derive a folder name
+let scaffoldStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is running, if any
 
 function scaffoldState(host: ServerHost) {
   if (!SCAFFOLD) return { active: false };
@@ -20,6 +21,7 @@ function scaffoldState(host: ServerHost) {
     active: true,
     idea: SCAFFOLD.idea,
     busy: scaffoldBusy,
+    stage: scaffoldStage,
     haveStory: SCAFFOLD.haveStory(),
     pendingAsk: SCAFFOLD.pendingAsk,
     problems: SCAFFOLD.problems,
@@ -72,10 +74,10 @@ export async function handleScaffoldRoutes(
       SCAFFOLD = await host.newScaffoldSession(idea, model);
       setWhere("building a new story", false);
       publishScaffold(host);
-      scaffoldLast = await SCAFFOLD.propose();
+      scaffoldLast = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(host); });
     } catch (e) {
       scaffoldLast = { kind: "failed", error: (e as Error).message };
-    } finally { scaffoldBusy = false; }
+    } finally { scaffoldBusy = false; scaffoldStage = ""; }
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 
@@ -83,10 +85,17 @@ export async function handleScaffoldRoutes(
 
   } else if (what === "set") {
     if (!SCAFFOLD.haveStory()) { json(res, 400, { ok: false, reason: "there is no story to change yet" }); return true; }
+    if (o.story && typeof o.story === "object") {
+      const r = SCAFFOLD.setSpec(o.story);
+      scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "updated from the story editor" };
+      publishScaffold(host);
+      json(res, 200, scaffoldState(host));
+      return true;
+    }
     const r = host.directEdit(SCAFFOLD.spec, String(o.field ?? ""), o.value);
     if (!r.ok) { json(res, 400, { ok: false, reason: r.reason }); return true; }
     SCAFFOLD.spec = r.spec; SCAFFOLD.problems = r.problems;
-    scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], note: "" };
+    scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "" };
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 
@@ -94,9 +103,9 @@ export async function handleScaffoldRoutes(
     const text = String(o.text ?? "").trim();
     if (!text) { json(res, 400, { ok: false, reason: "say something" }); return true; }
     scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold(host);
-    try { scaffoldLast = await SCAFFOLD.say(text); }
+    try { scaffoldLast = await SCAFFOLD.say(text, stage => { scaffoldStage = stage; publishScaffold(host); }); }
     catch (e) { scaffoldLast = { kind: "failed", error: (e as Error).message }; }
-    finally { scaffoldBusy = false; }
+    finally { scaffoldBusy = false; scaffoldStage = ""; }
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 

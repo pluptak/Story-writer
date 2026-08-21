@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>story-writer | writer mockup</title>
+  <style>
+    :root { --bg:#eceff4;--panel:#fff;--panel2:#f4f6fa;--ink:#161b22;--muted:#5b6675;--faint:#8a94a3;--line:#dbe1ea;--accent:#0d6f8b;--accent-soft:#e5f3f6;--warn:#a2650c;--warn-soft:#fff4df;--bad:#b03a30;--good:#2c7a4b;--good-soft:#e8f5ed;--shadow:0 1px 2px rgba(20,32,52,.05),0 8px 26px rgba(20,32,52,.07);--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:Georgia,"Iowan Old Style","Palatino Linotype",ui-serif,serif;--mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace; }
+    :root[data-theme="dark"] { --bg:#0d1117;--panel:#151b24;--panel2:#11161e;--ink:#dfe6f0;--muted:#8b97a8;--faint:#6a7686;--line:#242c38;--accent:#4fc3dd;--accent-soft:#12313a;--warn:#e0a84a;--warn-soft:#3a2b13;--bad:#ef7a6e;--good:#5fce87;--good-soft:#123321;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35); }
+    * { box-sizing:border-box; } body { margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5; } button,select,textarea { font:inherit; } button { cursor:pointer; }
+    button:focus-visible,select:focus-visible,textarea:focus-visible { outline:2px solid var(--accent);outline-offset:2px; }
+    .topbar { position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:14px;padding:10px clamp(16px,4vw,40px);background:var(--panel);border-bottom:1px solid var(--line); }
+    .brand { margin-right:auto; }.brand h1 { margin:0;font-size:15px;font-weight:650; }.brand p { margin:1px 0 0;color:var(--muted);font-size:12px; }
+    .tabs { display:flex;gap:4px; }.button,.tab { padding:7px 10px;border:1px solid var(--line);border-radius:8px;color:var(--muted);background:var(--panel2);font:10px var(--mono);letter-spacing:.07em;text-transform:uppercase; }.tab { background:transparent;border-color:transparent; }.tab.active { color:var(--ink);border-color:var(--line); }.button:hover,.tab:hover { color:var(--ink);border-color:var(--accent); }.button.primary { color:#fff;background:var(--accent);border-color:var(--accent); }.button.danger { color:var(--bad); }.button[disabled] { opacity:.45;cursor:default; }
+    .status { display:flex;align-items:center;gap:9px;padding:7px clamp(16px,4vw,40px);background:var(--panel2);border-bottom:1px solid var(--line);color:var(--muted);font:10px var(--mono); }.dot { width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite; }.dot.paused { background:var(--warn);animation:none; }.status .spacer { margin-left:auto;color:var(--faint); } @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.35} }
+    .shell { display:grid;grid-template-columns:minmax(0,1fr) 285px;gap:22px;max-width:1320px;margin:0 auto;padding:30px clamp(16px,4vw,40px) 90px; } main{min-width:0}.eyebrow{margin:0 0 5px;color:var(--accent);font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase}h2{margin:0;font:400 clamp(25px,4vw,34px)/1.1 var(--serif)}.lede{max-width:710px;margin:10px 0 22px;color:var(--muted);font-size:14px}
+    .card { background:var(--panel);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow); }.head { display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:15px 18px 12px;border-bottom:1px solid var(--line); }.head h3{margin:0;font:400 19px var(--serif)}.label{color:var(--faint);font:10px var(--mono);letter-spacing:.1em;text-transform:uppercase}.body{padding:16px 18px}
+    .runmeta { display:flex;flex-wrap:wrap;gap:6px;margin-bottom:15px }.chip{padding:3px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);color:var(--muted);font:10px var(--mono)}.chip.accent{color:var(--accent);border-color:var(--accent)}
+    .prose { padding:2px 5px 12px;font:17px/1.68 var(--serif) }.prose p{margin:0 0 1em}.prose p:last-child{margin-bottom:0}.cursor{display:inline-block;width:7px;height:19px;margin-left:3px;background:var(--accent);vertical-align:-3px;animation:pulse 1s ease-in-out infinite}.draftnote{display:flex;align-items:center;gap:7px;margin:6px 0 0;color:var(--accent);font:10px var(--mono)}
+    .consult { margin:18px 0;padding:13px 15px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;font-size:13px }.consult-head{display:flex;justify-content:space-between;gap:10px}.consult h4{margin:0;color:var(--accent);font:600 11px var(--mono);letter-spacing:.05em}.consult .attempt{color:var(--faint);font:10px var(--mono)}.consult .situation{margin:9px 0;color:var(--muted)}.consult .question{padding:9px 10px;background:var(--panel);border-radius:7px;font-family:var(--serif)}.consult .answer{margin-top:9px;color:var(--muted)}.consult .answer strong{color:var(--ink);font-weight:500}.verdict{margin-top:9px;color:var(--good);font:10px var(--mono);text-transform:uppercase}
+    .reader { border-color:var(--accent) }.reader .question{font-size:15px}.options{display:grid;gap:7px;margin-top:12px}.option{padding:9px 10px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;text-align:left;font-size:12px}.option:hover{border-color:var(--accent)}
+    .budget{border-color:var(--warn)}.budget .question{background:var(--warn-soft)}.budget input{width:74px;padding:7px 8px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;font:12px var(--mono)}
+    aside{position:sticky;top:94px;display:grid;gap:14px}.side{padding:15px}.side h3{margin:0 0 11px;color:var(--faint);font:10px var(--mono);letter-spacing:.11em;text-transform:uppercase}.stat{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px}.stat:last-child{border-bottom:0}.stat span{color:var(--muted)}.stat strong{font:11px var(--mono)}.bar{height:4px;margin:10px 0 14px;background:var(--line);border-radius:999px;overflow:hidden}.bar i{display:block;width:62%;height:100%;background:var(--accent)}.side-actions{display:grid;gap:8px;margin-top:14px}.notice{padding:9px 10px;background:var(--good-soft);border-radius:8px;color:var(--good);font-size:12px}.side-copy{margin:0;color:var(--muted);font-size:12px}.control-row{display:flex;gap:7px}.control-row .button{flex:1}
+    .state-controls{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 14px}.state-controls .button{font-size:9px}.state-controls .button.active{color:var(--accent);border-color:var(--accent)}
+    @media(max-width:900px){.shell{grid-template-columns:1fr}aside{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}.side:last-child{grid-column:1/-1}}
+    @media(max-width:680px){.topbar{flex-wrap:wrap}.brand{flex-basis:100%}.tabs{order:3;width:100%}.tab{flex:1}.shell{padding-top:22px}.body,.head{padding-left:14px;padding-right:14px}aside{grid-template-columns:1fr}.side:last-child{grid-column:auto}.prose{font-size:16px}.status{flex-wrap:wrap}.status .spacer{flex-basis:100%;margin-left:0}}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><h1>story-writer</h1><p>live chapter · the writer is drafting</p></div>
+    <nav class="tabs" aria-label="run views"><button class="tab active">write</button><button class="tab">read</button><button class="tab">shelf</button></nav>
+    <button class="button" id="theme" type="button">theme</button>
+  </header>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">WRITER is composing · live</span><span class="spacer">doorway · chapter 1 · run 2026-08-20T14:32</span></div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">chapter 1 · the doorway</p>
+      <h2>The rain has found the threshold</h2>
+      <p class="lede">The writer drafts only up to the next meaningful choice. Dialogue and deliberate action arrive through character consultation.</p>
+
+      <div class="state-controls" aria-label="mockup states">
+        <button class="button active" data-state="draft">drafting</button>
+        <button class="button" data-state="consult">consult</button>
+        <button class="button" data-state="reader">reader choice</button>
+        <button class="button" data-state="budget">budget</button>
+      </div>
+
+      <section class="card">
+        <div class="head"><div><span class="label">live prose</span><h3 id="sectionTitle">A draft is arriving</h3></div><span class="label" id="stepLabel">step 7</span></div>
+        <div class="body">
+          <div class="runmeta"><span class="chip accent">POV RIVEN</span><span class="chip">~640 / 700 words</span><span class="chip">2 consults</span><span class="chip">interactive on</span></div>
+          <div class="prose" id="prose"><p>The doorway was not open when Riven reached it. That was the first fact she could trust. The rain had darkened the stone around the frame, but the threshold itself was dry.</p><p>Behind her, the road fell away into mist. Ahead, somewhere beyond the unlit room, a hinge gave a small and patient click<span class="cursor"></span></p></div>
+          <div class="draftnote" id="draftNote"><span class="dot"></span>writer is composing · 18 seconds · 214 characters</div>
+
+          <div class="consult" id="consultCard">
+            <div class="consult-head"><h4>CONSULT · MERRITT</h4><span class="attempt">attempt 1</span></div>
+            <p class="situation">The door has opened by itself. Riven is outside. Merritt is inside the room and heard the hinge.</p>
+            <div class="question"><span class="label">writer asks</span><br>Do you pull the door shut, knowing Riven is on the other side?</div>
+            <p class="answer"><strong>Merritt says:</strong> “Not yet.” He keeps one hand on the latch and waits for her to speak first.</p>
+            <div class="verdict">accepted · action + speech folded into the next draft</div>
+          </div>
+
+          <div class="consult reader" id="readerCard" hidden>
+            <div class="consult-head"><h4>READER DIRECTION</h4><span class="attempt">step 8</span></div>
+            <div class="question">The writer has stopped at the doorway. Which pressure should the scene follow?</div>
+            <div class="options"><button class="option">Riven enters before Merritt can decide.</button><button class="option">Merritt names what is waiting inside.</button><button class="option">The road behind Riven becomes impossible to return to.</button></div>
+          </div>
+
+          <div class="consult budget" id="budgetCard" hidden>
+            <div class="consult-head"><h4>STEP BUDGET SPENT</h4><span class="attempt">24 steps</span></div>
+            <div class="question">The scene is not finished. How many more steps should the writer have?</div>
+            <div class="control-row" style="margin-top:12px"><input id="moreSteps" type="number" min="0" value="8"><button class="button primary" id="continue" type="button">give steps</button><button class="button" id="stopBudget" type="button">stop</button></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside>
+      <section class="card side">
+        <h3>run controls</h3>
+        <div class="stat"><span>phase</span><strong id="phase">writing</strong></div><div class="stat"><span>steps</span><strong id="steps">7 / 24</strong></div><div class="stat"><span>words</span><strong>640 / 700</strong></div><div class="stat"><span>model</span><strong>qwen3.6</strong></div>
+        <div class="bar"><i></i></div>
+        <div class="control-row"><button class="button" id="pause" type="button">pause</button><button class="button danger" id="stop" type="button">stop</button></div>
+        <div class="side-actions"><button class="button" id="reader" type="button">consult me</button><button class="button" id="model" type="button">change model</button></div>
+      </section>
+      <section class="card side">
+        <h3>scene question</h3><p class="side-copy">Will Riven cross the threshold before Merritt tells her what is inside?</p>
+        <div class="notice" style="margin-top:12px">The writer does not know their personas. It must ask for their choices.</div>
+      </section>
+      <section class="card side">
+        <h3>cast in scene</h3><div class="stat"><span>RIVEN</span><strong>can see · move</strong></div><div class="stat"><span>MERRITT</span><strong>cannot hear</strong></div><div class="stat"><span>consulted</span><strong>2 / 2</strong></div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const dot = document.querySelector("#dot");
+    const status = document.querySelector("#statusText");
+    const phase = document.querySelector("#phase");
+    const sectionTitle = document.querySelector("#sectionTitle");
+    const stepLabel = document.querySelector("#stepLabel");
+    const draftNote = document.querySelector("#draftNote");
+    const consultCard = document.querySelector("#consultCard");
+    const readerCard = document.querySelector("#readerCard");
+    const budgetCard = document.querySelector("#budgetCard");
+
+    function showState(state) {
+      document.querySelectorAll("[data-state]").forEach(b => b.classList.toggle("active", b.dataset.state === state));
+      consultCard.hidden = state !== "consult" && state !== "draft";
+      readerCard.hidden = state !== "reader";
+      budgetCard.hidden = state !== "budget";
+      const drafting = state === "draft";
+      dot.classList.toggle("paused", state === "budget");
+      draftNote.style.display = drafting ? "flex" : "none";
+      phase.textContent = state === "consult" ? "consulting" : state === "reader" ? "reader wait" : state === "budget" ? "budget wait" : "writing";
+      sectionTitle.textContent = state === "consult" ? "A choice is being checked" : state === "reader" ? "The reader chooses the pressure" : state === "budget" ? "Continue the scene" : "A draft is arriving";
+      stepLabel.textContent = state === "budget" ? "24 steps" : state === "reader" ? "step 8" : "step 7";
+      status.textContent = state === "consult" ? "MERRITT is answering · writer is waiting" : state === "reader" ? "waiting on reader direction" : state === "budget" ? "step budget spent · waiting for instruction" : "WRITER is composing · live";
+    }
+
+    document.querySelectorAll("[data-state]").forEach(b => b.addEventListener("click", () => showState(b.dataset.state)));
+    document.querySelector("#theme").addEventListener("click", () => { root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark"; });
+    document.querySelectorAll(".option").forEach(b => b.addEventListener("click", () => { b.textContent = "selected · " + b.textContent; b.style.borderColor = "var(--good)"; status.textContent = "reader direction sent · writer will continue"; }));
+    document.querySelector("#pause").addEventListener("click", e => { e.currentTarget.textContent = e.currentTarget.textContent === "pause" ? "resume" : "pause"; dot.classList.toggle("paused"); status.textContent = e.currentTarget.textContent === "resume" ? "run paused at next boundary" : "WRITER is composing · live"; });
+    document.querySelector("#stop").addEventListener("click", () => { status.textContent = "stop requested · finishing the current model call"; dot.classList.add("paused"); });
+    document.querySelector("#reader").addEventListener("click", () => showState("reader"));
+    document.querySelector("#model").addEventListener("click", () => { status.textContent = "model control · pause the run before changing model"; });
+    document.querySelector("#continue").addEventListener("click", () => { const n = Math.max(0, Number(document.querySelector("#moreSteps").value) || 0); status.textContent = n ? `budget extended by ${n} steps · writer will continue` : "stop requested at budget boundary"; showState(n ? "draft" : "budget"); });
+    document.querySelector("#stopBudget").addEventListener("click", () => { status.textContent = "stopped at budget boundary · partial prose remains in the run"; dot.classList.add("paused"); });
+  </script>
+</body>
+</html>

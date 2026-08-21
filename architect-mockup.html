@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>story-writer | architect mockup</title>
+  <style>
+    :root {
+      --bg: #eceff4;
+      --panel: #fff;
+      --panel-2: #f4f6fa;
+      --ink: #161b22;
+      --muted: #5b6675;
+      --faint: #8a94a3;
+      --line: #dbe1ea;
+      --accent: #0d6f8b;
+      --accent-soft: #e5f3f6;
+      --warn: #a2650c;
+      --warn-soft: #fff4df;
+      --bad: #b03a30;
+      --good: #2c7a4b;
+      --good-soft: #e8f5ed;
+      --shadow: 0 1px 2px rgba(20,32,52,.05), 0 8px 26px rgba(20,32,52,.07);
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --serif: Georgia, "Iowan Old Style", "Palatino Linotype", ui-serif, serif;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #0d1117;
+      --panel: #151b24;
+      --panel-2: #11161e;
+      --ink: #dfe6f0;
+      --muted: #8b97a8;
+      --faint: #6a7686;
+      --line: #242c38;
+      --accent: #4fc3dd;
+      --accent-soft: #12313a;
+      --warn: #e0a84a;
+      --warn-soft: #3a2b13;
+      --bad: #ef7a6e;
+      --good: #5fce87;
+      --good-soft: #123321;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.35);
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 14px;
+      min-height: 62px; padding: 10px clamp(16px, 4vw, 40px); background: var(--panel); border-bottom: 1px solid var(--line); }
+    .brand { margin-right: auto; min-width: 0; }
+    .brand h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: .01em; }
+    .brand p { margin: 1px 0 0; color: var(--muted); font-size: 12px; }
+    .tabs { display: flex; gap: 4px; }
+    .tab, .button { color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+      padding: 7px 10px; font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+    .tab { background: transparent; border-color: transparent; }
+    .tab.active { color: var(--ink); background: var(--panel-2); border-color: var(--line); }
+    .button:hover, .tab:hover { color: var(--ink); border-color: var(--accent); }
+    .button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+    .button.primary:hover { filter: brightness(.92); }
+    .button.ghost { background: transparent; }
+    .button.danger { color: var(--bad); }
+
+    .statusbar { display: flex; align-items: center; gap: 9px; padding: 7px clamp(16px, 4vw, 40px);
+      color: var(--muted); background: var(--panel-2); border-bottom: 1px solid var(--line); font: 10px var(--mono); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+    .status-dot.busy { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+    .statusbar .spacer { margin-left: auto; color: var(--faint); }
+
+    .shell { display: grid; grid-template-columns: minmax(0, 1fr) 285px; gap: 22px; max-width: 1320px; margin: 0 auto; padding: 30px clamp(16px, 4vw, 40px) 90px; }
+    main { min-width: 0; }
+    .eyebrow { margin: 0 0 5px; color: var(--accent); font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    h2 { margin: 0; font: 400 clamp(25px, 4vw, 34px)/1.1 var(--serif); }
+    .lede { max-width: 650px; margin: 10px 0 22px; color: var(--muted); font-size: 14px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr); gap: 14px; align-items: start; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; box-shadow: var(--shadow); }
+    .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+    .card-head h3 { margin: 0; font: 400 20px var(--serif); }
+    .label { color: var(--faint); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .card-body { padding: 16px 18px; }
+
+    .chapter-strip { display: flex; gap: 7px; margin: 0 0 14px; overflow-x: auto; }
+    .chapter { min-width: 122px; padding: 9px 11px; color: var(--muted); background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; text-align: left; }
+    .chapter.active { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+    .chapter strong { display: block; font: 11px var(--mono); }
+    .chapter span { display: block; margin-top: 3px; font-size: 11px; }
+
+    .scene { padding: 14px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+    .scene h4 { margin: 0; font: 18px var(--serif); }
+    .scene-meta { margin: 3px 0 14px; color: var(--faint); font: 10px var(--mono); }
+    .question { padding: 10px 12px; border-left: 2px solid var(--accent); color: var(--ink); font-family: var(--serif); }
+    .question .label { display: block; margin-bottom: 2px; }
+
+    .cast { display: grid; gap: 8px; margin-top: 15px; }
+    .person { padding: 10px 11px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; }
+    .person-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .person-name { color: var(--accent); font: 600 12px var(--mono); }
+    .change { color: var(--good); font: 10px var(--mono); }
+    .person p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .tag { display: inline-block; margin: 7px 5px 0 0; padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--faint); font: 10px var(--mono); }
+    .tag.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+
+    .round { min-height: 250px; }
+    .round p { margin: 0; color: var(--muted); font-size: 13px; }
+    .round-question { margin: 14px 0; padding: 12px 13px; border-left: 2px solid var(--warn); background: var(--warn-soft); }
+    .round-question .label { color: var(--warn); }
+    .round-question p { margin-top: 4px; color: var(--ink); font-family: var(--serif); font-size: 15px; }
+    textarea { display: block; width: 100%; min-height: 92px; resize: vertical; padding: 11px 12px; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; }
+    textarea::placeholder { color: var(--faint); }
+    .composer-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .composer-foot .hint { margin-right: auto; color: var(--faint); font-size: 11px; }
+    .thinking { display: none; align-items: center; gap: 7px; color: var(--accent); font: 11px var(--mono); }
+    .thinking.show { display: flex; }
+    .thinking i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+
+    .round-result { display: grid; gap: 8px; margin-top: 14px; }
+    .result-row { display: flex; gap: 10px; padding: 8px 10px; background: var(--panel-2); border-radius: 7px; font-size: 12px; }
+    .result-row strong { min-width: 62px; color: var(--good); font: 10px var(--mono); text-transform: uppercase; }
+    .result-row span { color: var(--muted); }
+    .problem { margin-top: 12px; padding: 9px 10px; color: var(--warn); background: var(--warn-soft); border-radius: 7px; font-size: 12px; }
+
+    aside { position: sticky; top: 94px; display: grid; gap: 14px; }
+    .side-card { padding: 15px; }
+    .side-card h3 { margin: 0 0 11px; color: var(--faint); font: 10px var(--mono); letter-spacing: .11em; text-transform: uppercase; }
+    .stat { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+    .stat:last-child { border-bottom: 0; }
+    .stat span { color: var(--muted); }
+    .stat strong { font: 11px var(--mono); }
+    .side-copy { margin: 0; color: var(--muted); font-size: 12px; }
+    .side-actions { display: grid; gap: 8px; margin-top: 14px; }
+    .notice { padding: 10px 11px; color: var(--good); background: var(--good-soft); border-radius: 8px; font-size: 12px; }
+
+    .scaffold-only { display: none; }
+    body[data-mode="scaffold"] .handoff-only { display: none; }
+    body[data-mode="scaffold"] .scaffold-only { display: block; }
+    body[data-mode="scaffold"] .chapter-strip { display: none; }
+    body[data-mode="scaffold"] .workspace { grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr); }
+
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; }
+      aside { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .side-card:last-child { grid-column: 1 / -1; }
+    }
+    @media (max-width: 680px) {
+      .topbar { flex-wrap: wrap; }
+      .brand { flex-basis: 100%; }
+      .tabs { order: 3; width: 100%; }
+      .tab { flex: 1; }
+      .workspace { grid-template-columns: 1fr; }
+      aside { grid-template-columns: 1fr; }
+      .side-card:last-child { grid-column: auto; }
+      .shell { padding-top: 22px; }
+      .card-head, .card-body { padding-left: 14px; padding-right: 14px; }
+      .composer-foot { align-items: stretch; flex-wrap: wrap; }
+      .composer-foot .hint { flex-basis: 100%; }
+      .composer-foot .button { flex: 1; }
+    }
+  </style>
+</head>
+<body data-mode="handoff">
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>architect workspace · proposal before prose</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <button class="tab active" data-mode-button="handoff">next chapter</button>
+      <button class="tab" data-mode-button="scaffold">new story</button>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">ready · handoff is local and single-user</span>
+    <span class="spacer">architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <section class="handoff-only">
+        <p class="eyebrow">architect handoff</p>
+        <h2>Prepare chapter 2</h2>
+        <p class="lede">The engine carries no agent memory between chapters. Re-author the people and the pressure from what chapter 1 actually established.</p>
+      </section>
+      <section class="scaffold-only">
+        <p class="eyebrow">new story</p>
+        <h2>Find the pressure in the idea</h2>
+        <p class="lede">Give the architect a rough situation. It will ask for the one fact it needs, or commit to a complete story proposal.</p>
+      </section>
+
+      <div class="workspace">
+        <section class="card proposal-card">
+          <div class="card-head">
+            <div>
+              <span class="label handoff-only">proposed next chapter</span>
+              <span class="label scaffold-only">story proposal</span>
+              <h3 id="proposalTitle">The Last Signal</h3>
+            </div>
+            <button class="button ghost" type="button" id="details">details</button>
+          </div>
+          <div class="card-body">
+            <div class="chapter-strip handoff-only">
+              <button class="chapter" type="button"><strong>✓ chapter 1</strong><span>accepted · 812 words</span></button>
+              <button class="chapter active" type="button"><strong>chapter 2</strong><span>being prepared</span></button>
+              <button class="chapter" type="button" disabled><strong>chapter 3</strong><span>not defined</span></button>
+            </div>
+            <div class="scene">
+              <h4 id="scenePlace">The storm room</h4>
+              <p class="scene-meta">chapter 2 · ~760 words · POV IVO</p>
+              <div class="question"><span class="label">dramatic question</span>Will Ivo expose the falsified log before the relief crew arrives?</div>
+              <div class="cast">
+                <div class="person">
+                  <div class="person-top"><span class="person-name">IVO</span><span class="change">goal changed</span></div>
+                  <p>Wants to force the truth into the open, even if it ends his career.</p>
+                  <span class="tag">knows: the log was altered</span>
+                </div>
+                <div class="person">
+                  <div class="person-top"><span class="person-name">MARA</span><span class="change">restriction added</span></div>
+                  <p>Still protects the station, but can no longer hear the warning bell.</p>
+                  <span class="tag warn">cannot: hearing</span>
+                </div>
+              </div>
+            </div>
+            <div class="round-result handoff-only" id="changeList">
+              <div class="result-row"><strong>changed</strong><span>IVO.goal · MARA.restrictions · scene_2.question</span></div>
+              <div class="result-row"><strong>note</strong><span>The chapter made Ivo's suspicion certain. Mara's loss is now consequential.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3 id="roundTitle">Review the proposal</h3>
+            </div>
+            <span class="label" id="roundKind">edits</span>
+          </div>
+          <div class="card-body">
+            <div class="handoff-only" id="handoffRound">
+              <p>The architect has translated chapter 1 into a proposed cast and scene. Ask for a correction, or accept the handoff.</p>
+              <div class="round-question">
+                <span class="label">architect note</span>
+                <p>“Ivo's goal is no longer to keep the station safe. It is to make the falsification impossible to deny.”</p>
+              </div>
+            </div>
+            <div class="scaffold-only" id="scaffoldRound">
+              <div class="round-question">
+                <span class="label">architect question</span>
+                <p>Who is affected if the signal is not logged?</p>
+              </div>
+            </div>
+            <textarea id="message" placeholder="Ask for a change or add context..."></textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends · Shift+Enter adds a line</span>
+              <span class="thinking" id="thinking"><i></i> architect is thinking…</span>
+              <button class="button" id="send" type="button">send</button>
+            </div>
+            <div class="problem">No blocking problems. Warnings stay visible until the next round.</div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>handoff state</h3>
+        <div class="stat"><span>story</span><strong>doorway</strong></div>
+        <div class="stat"><span>preparing</span><strong>chapter 2</strong></div>
+        <div class="stat"><span>source prose</span><strong>1 chapter</strong></div>
+        <div class="stat"><span>unsaved changes</span><strong id="editedState">yes</strong></div>
+        <div class="side-actions handoff-only">
+          <button class="button primary" id="accept" type="button">accept handoff</button>
+          <button class="button ghost" id="write" type="button" hidden>write chapter 2</button>
+          <button class="button danger" id="abandon" type="button">abandon</button>
+        </div>
+        <div class="side-actions scaffold-only">
+          <button class="button primary" id="scaffoldAccept" type="button">accept and choose folder</button>
+          <button class="button danger" id="scaffoldAbandon" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>principle</h3>
+        <p class="side-copy">Agent history does not cross chapters. The story definition is the continuity mechanism.</p>
+        <div class="notice" style="margin-top:12px">The architect proposes. The author accepts. The writer runs afterward.</div>
+      </section>
+
+      <section class="card side-card">
+        <h3>prototype controls</h3>
+        <p class="side-copy">This static mockup does not call the API. Use these controls to preview the main states.</p>
+        <div class="side-actions">
+          <button class="button" id="questionState" type="button">show question state</button>
+          <button class="button" id="editsState" type="button">show edits state</button>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const body = document.body;
+    const statusDot = document.querySelector("#statusDot");
+    const statusText = document.querySelector("#statusText");
+    const thinking = document.querySelector("#thinking");
+    const roundTitle = document.querySelector("#roundTitle");
+    const roundKind = document.querySelector("#roundKind");
+    const handoffRound = document.querySelector("#handoffRound");
+    const scaffoldRound = document.querySelector("#scaffoldRound");
+    const message = document.querySelector("#message");
+    const editedState = document.querySelector("#editedState");
+    const accept = document.querySelector("#accept");
+    const write = document.querySelector("#write");
+
+    function setBusy(isBusy) {
+      thinking.classList.toggle("show", isBusy);
+      statusDot.classList.toggle("busy", isBusy);
+      statusText.textContent = isBusy ? "architect is working · controls are temporarily locked" : "ready · handoff is local and single-user";
+      document.querySelectorAll("button").forEach(button => {
+        if (!["theme", "questionState", "editsState"].includes(button.id)) button.disabled = isBusy;
+      });
+      if (!isBusy) {
+        document.querySelectorAll("button").forEach(button => button.disabled = button.id === "write" && button.hidden);
+      }
+    }
+
+    function setRound(kind) {
+      const question = kind === "question";
+      roundTitle.textContent = question ? "Answer the architect" : "Review the proposal";
+      roundKind.textContent = question ? "question" : "edits";
+      handoffRound.innerHTML = question
+        ? '<p>The architect needs one fact before it can safely re-author the next chapter.</p><div class="round-question"><span class="label">architect question</span><p>Did Ivo actually learn that the log was falsified, or did he only suspect it?</p></div>'
+        : '<p>The architect has translated chapter 1 into a proposed cast and scene. Ask for a correction, or accept the handoff.</p><div class="round-question"><span class="label">architect note</span><p>“Ivo\'s goal is no longer to keep the station safe. It is to make the falsification impossible to deny.”</p></div>';
+      scaffoldRound.innerHTML = question
+        ? '<div class="round-question"><span class="label">architect question</span><p>Who is affected if the signal is not logged?</p></div>'
+        : '<p>The architect has a complete proposal. Ask for a correction or accept it as the starting point.</p>';
+      message.placeholder = question ? "Answer the architect's question..." : "Ask for a change or add context...";
+    }
+
+    document.querySelectorAll("[data-mode-button]").forEach(button => button.addEventListener("click", () => {
+      const mode = button.dataset.modeButton;
+      body.dataset.mode = mode;
+      document.querySelectorAll("[data-mode-button]").forEach(item => item.classList.toggle("active", item === button));
+      document.querySelector("#proposalTitle").textContent = mode === "scaffold" ? "The Last Signal" : "The Last Signal";
+      document.querySelector("#scenePlace").textContent = mode === "scaffold" ? "The lighthouse" : "The storm room";
+      setRound(mode === "scaffold" ? "question" : "edits");
+    }));
+
+    document.querySelector("#theme").addEventListener("click", () => {
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+    document.querySelector("#questionState").addEventListener("click", () => setRound("question"));
+    document.querySelector("#editsState").addEventListener("click", () => setRound("edits"));
+    document.querySelector("#send").addEventListener("click", () => {
+      if (!message.value.trim()) { message.focus(); return; }
+      setBusy(true);
+      window.setTimeout(() => { setBusy(false); message.value = ""; setRound("edits"); }, 850);
+    });
+    document.querySelector("#accept").addEventListener("click", () => {
+      accept.hidden = true;
+      write.hidden = false;
+      editedState.textContent = "written";
+      statusText.textContent = "handoff accepted · chapter 2 is ready to write";
+    });
+    write.addEventListener("click", () => {
+      write.textContent = "chapter 2 selected";
+      write.disabled = true;
+      statusText.textContent = "chapter 2 selected · the run can begin";
+    });
+    document.querySelector("#abandon").addEventListener("click", () => statusText.textContent = "handoff abandoned · no story file was changed");
+    document.querySelector("#scaffoldAccept").addEventListener("click", () => statusText.textContent = "proposal accepted · choose a story folder to continue");
+    document.querySelector("#scaffoldAbandon").addEventListener("click", () => statusText.textContent = "scaffold abandoned · no story file was written");
+  </script>
+</body>
+</html>

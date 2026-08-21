@@ -31,8 +31,16 @@ export function renderSession() {
   p.textContent = APP.session.paused ? "resume" : APP.session.pausing ? "pausing…" : "pause";
   const ms = $("modelSelect");
   ms.disabled = APP.session.running && !APP.session.paused;
-  if (document.activeElement !== ms) ms.value = APP.session.model || "";
+  if (document.activeElement !== ms) setModelSelect(ms);
 }
+
+/** Assign the select only a value its options actually contain -- assigning a model the fresh
+ *  /models list no longer has leaves selectedIndex at -1, which renders as a blank control
+ *  rather than falling back to "story default". */
+const setModelSelect = ms => {
+  const want = APP.session.model || "";
+  ms.value = want && [...ms.options].some(o => o.value === want) ? want : "";
+};
 export const disarm = () => { clearTimeout(APP.armed); APP.armed = 0; renderSession(); };
 
 export async function loadModels() {
@@ -43,7 +51,8 @@ export async function loadModels() {
     const ms = $("modelSelect");
     const cur = ms.value;
     ms.innerHTML = '<option value="">story default</option>' + modelOptionsHtml(APP.modelIds);
-    ms.value = APP.session.model || cur || "";
+    const want = APP.session.model || cur || "";
+    ms.value = want && [...ms.options].some(o => o.value === want) ? want : "";
     if ((APP.scaffold.active || APP.ideaOpen) && !APP.ivHidden) APP.render();
   } catch {}
 }

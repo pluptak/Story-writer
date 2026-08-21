@@ -15,6 +15,6 @@
     "engine/engine-state.ts", "engine/config-util.ts", "engine/json-extract.ts", "engine/skills.ts",
     "engine/llm-client.ts", "engine/agent.ts", "engine/story-format.ts", "engine/story-spec.ts",
     "engine/preflight.ts", "engine/consult.ts", "engine/architect.ts", "engine/scene-loop.ts",
-    "server/server.ts", "server/run-control-routes.ts", "server/scaffold-routes.ts", "server/http-util.ts"
+    "server/server.ts", "server/run-control-routes.ts", "server/scaffold-routes.ts", "server/next-chapter-routes.ts", "server/run-log-routes.ts", "server/story-read-routes.ts", "server/story-edit-routes.ts", "server/http-util.ts"
   ]
 }

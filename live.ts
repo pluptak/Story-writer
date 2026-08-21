@@ -29,6 +29,8 @@ export function armRun() {
 // -- LIVE EVENT BUS --------------------------------------------------------
 export interface RunMeta {
   story: string;
+  chapter: number;
+  chapters: number;
   characters: Array<{ name: string; skills: string[]; restrictions: string[] }>;
   target: number;
   question: string;
@@ -38,12 +40,16 @@ export type LiveFrame =
   | ({ seq: number } & RunEvent)
   | { t: "composing"; who: string; secs: number; chars: number }
   | { t: "idle" }
+  | { t: "agent_stats"; who: string; model: string; durationMs: number;
+      promptTokens: number | null; completionTokens: number | null }
   | { t: "continue_prompt"; steps: number; budget: number; suggested: number }
   | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean;
       paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
       interactive: boolean }
   | { t: "run_reset" }
-  | { t: "scaffold"; state: unknown };
+  | { t: "run_error"; message: string }
+  | { t: "scaffold"; state: unknown }
+  | { t: "handoff"; state: unknown };
 
 export const sseClients = new Set<{ write: (s: string) => void }>();
 export const liveHistory: Array<{ seq: number } & RunEvent> = [];

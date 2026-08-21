@@ -15,7 +15,7 @@ export function runEndedModalHtml() {
                aria-label="run ended">
     <section class="picker iv runended">
       <div class="iv-head"><h2>${esc(verdict)}</h2></div>
-      <p class="sub">${e.words} words · ${e.steps} steps</p>
+      <p class="sub">${esc(e.words)} words · ${esc(e.steps)} steps</p>
       <div class="btns" style="margin-top:14px">
         <button class="btn primary" id="runended-shelf">back to shelf</button>
         <button class="btn" id="runended-stay">stay here</button>

@@ -35,7 +35,6 @@
   .tab:hover { color:var(--ink); }
   .tab.current { color:var(--ink); background:var(--panel-2); border-color:var(--line); }
   .tab[hidden] { display:none; }
-  .tab[disabled] { opacity:.4; cursor:default; }
   .tabdot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent);
             margin-left:6px; vertical-align:middle; animation:pulse 1.2s ease-in-out infinite; }
   .tabdot[hidden] { display:none; }
@@ -73,6 +72,13 @@
   .sessionbar[hidden] { display:none; }
   .sessionbar #modelSelect { max-width:260px; }
   .sessionbar #stop { margin-left:auto; }
+  /* in the rail it is a control group in a card, not a bar across the window */
+  .rail .sessionbar { padding:12px 0 0; margin-top:12px; border-bottom:0;
+                      border-top:1px solid var(--line); background:none; gap:7px; }
+  .rail .sessionbar .btn { flex:1 1 auto; }
+  .rail .sessionbar #modelSelect { flex:1 1 100%; max-width:none; width:100%; min-width:0; }
+  .rail .sessionbar #stop { margin-left:0; }
+  .rail .sessionbar .ctrl-err { flex:1 1 100%; }
   .ctrl-err { font-family:var(--mono); font-size:11px; color:var(--bad); }
   .ctrl-err:empty { display:none; }
 
@@ -89,8 +95,11 @@
   .ribbon:not([hidden]) { display:flex; }
   body[data-view="read"] { background:color-mix(in srgb, var(--bg) 88%, var(--panel-2)); }
 
-  .layout { display:grid; grid-template-columns:minmax(0,1fr) 260px; align-items:start; }
-  @media (max-width: 900px) { .layout { grid-template-columns:1fr; } .rail { display:none; } }
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 285px; align-items:start; }
+  /* The rail carries the run controls now, so it stacks on a narrow screen instead of vanishing --
+     hiding it would take away the only way to stop a run. The `position` half of that has to come
+     after the `.rail` rule below, not here, or equal specificity lets source order undo it. */
+  @media (max-width: 900px) { .layout { grid-template-columns:1fr; } }
 
   .page { padding:28px clamp(16px,4vw,40px) 140px; max-width:730px; margin:0 auto; width:100%; }
   .prose { font-family:var(--serif); font-size:17.5px; line-height:1.66; }
@@ -117,8 +126,10 @@
   .consult .tag.flag  { color:var(--bad);  border-color:var(--bad); }
   .consult .tag.asked { color:var(--accent); border-color:var(--accent); }
 
-  .body { background:var(--panel); border:1px solid var(--line); border-radius:12px;
-          padding:14px 16px; box-shadow:var(--shadow); font-size:13.5px; }
+  /* scoped to .consult: a bare `.body` here leaked into the live page's .prosecard .body,
+     which only overrides padding -- the prose got an accidental nested card */
+  .consult > .body { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+                     padding:14px 16px; box-shadow:var(--shadow); font-size:13.5px; }
   .attempt + .attempt { margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); }
   .attempt h4 { margin:0 0 8px; font-family:var(--mono); font-size:10px; letter-spacing:.1em;
                 text-transform:uppercase; color:var(--faint); font-weight:600; }
@@ -141,19 +152,50 @@
   .note { font-family:var(--mono); font-size:11px; color:var(--muted); text-align:center;
           margin:22px 0; letter-spacing:.03em; }
   .note.end { color:var(--accent); }
+  .note.exit { color:var(--warn); }
 
-  .rail { position:sticky; top:52px; padding:24px 20px; font-size:12px; }
+  /* a group reaction: several present-but-not-acting characters answered one shared beat at once */
+  .reaction { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+              border-radius:12px; padding:13px 16px; box-shadow:var(--shadow); margin:16px 0; font-size:13.5px; }
+  .reaction .rxlabel { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+                       color:var(--accent); margin-bottom:8px; }
+  .reaction .rxone { padding:8px 0; }
+  .reaction .rxone + .rxone { border-top:1px dashed var(--line); }
+  .reaction .rxwho { color:var(--accent); font-weight:600; font-family:var(--mono); font-size:11px; letter-spacing:.04em; }
+  .reaction .thought { color:var(--faint); font-style:italic; margin-top:3px; }
+  .reaction .thought.dim { color:var(--muted); font-style:normal; font-family:var(--mono); font-size:10.5px; opacity:.85; }
+  .reaction .action { color:var(--good); margin-top:3px; }
+
+  /* min-width:0 lets the aside shrink to its fixed 285px track -- without it an unbreakable
+     string inside (a long model id in the stats, say) forces the rail wider than the track
+     and scrolls the whole page sideways */
+  .rail { position:sticky; top:52px; padding:24px 20px; font-size:12px; display:grid; gap:14px;
+          min-width:0; }
+  @media (max-width: 900px) { .rail { position:static; } }
+  .side { background:var(--panel); border:1px solid var(--line); border-radius:13px;
+          padding:15px; box-shadow:var(--shadow); min-width:0; overflow-wrap:break-word; }
+  .side[hidden] { display:none; }
   .rail h3 { font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase;
              color:var(--faint); margin:0 0 10px; font-weight:600; }
-  .stat { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); }
-  .stat .n { font-family:var(--mono); color:var(--ink); }
+  .stat { display:flex; justify-content:space-between; gap:10px; padding:5px 0;
+          border-bottom:1px solid var(--line); min-width:0; }
+  .stat > span { min-width:0; }
+  .stat .n { font-family:var(--mono); color:var(--ink); overflow-wrap:anywhere; }
   .stat .n.warn { color:var(--warn); } .stat .n.bad { color:var(--bad); }
   .bar { height:4px; background:var(--line); border-radius:999px; overflow:hidden; margin:10px 0 16px; }
   .bar > i { display:block; height:100%; background:var(--accent); border-radius:999px; transition:width .3s; }
   .composing { margin-top:18px; font-family:var(--mono); font-size:11px; color:var(--accent); }
   .composing .who { font-weight:600; }
   .composing i { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--accent);
-                 margin-right:5px; animation:pulse 1.2s ease-in-out infinite; }
+                  margin-right:5px; animation:pulse 1.2s ease-in-out infinite; }
+  .agentstats { margin-top:2px; padding-top:12px; border-top:1px solid var(--line); }
+  .agentstats-head, .agentstat { display:grid; grid-template-columns:minmax(0,1fr) 30px 44px minmax(0,1.2fr);
+                                 gap:5px; align-items:baseline; }
+  .agentstats-head { color:var(--faint); font-family:var(--mono); font-size:9px; text-transform:uppercase;
+                     letter-spacing:.05em; padding-bottom:4px; }
+  .agentstat { border-top:1px solid var(--line); padding:5px 0; font-family:var(--mono); font-size:10px;
+               color:var(--muted); overflow-wrap:anywhere; }
+  .agentstat-who { color:var(--ink); font-weight:600; overflow:hidden; text-overflow:ellipsis; }
 
   /* a reader consult: the writer stopped to ask you which way the scene goes */
   .reader { background:var(--panel); border:1px solid var(--accent); border-radius:12px;
@@ -198,6 +240,9 @@
   .runs { display:flex; flex-wrap:wrap; gap:6px; }
   .runbtn { font-size:10px; padding:4px 8px; }
   .runbtn.current { color:var(--accent); border-color:var(--accent); background:var(--panel-2); }
+  /* grouped by chapter: the label is a left column, the runs wrap beside it */
+  .rungroup { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
+  .rungroup > .hint { flex:0 0 auto; min-width:62px; }
   /* the read tab's chrome -- just the loaded run's cast, reusing the shelf card's .row spacing */
   .readchrome .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; }
 
@@ -208,6 +253,10 @@
   .scenerow .sc-q { font-size:13.5px; }
   .scenerow .sc-meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:4px; }
   .scenerow .btn { margin-top:10px; }
+  .scenerow .tag { font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:999px;
+                   border:1px solid var(--line); color:var(--faint); margin-left:6px; }
+  .scenerow .tag.written { color:var(--good); border-color:var(--good); }
+  .scenerow .tag.next { color:var(--accent); border-color:var(--accent); }
 
   /* the character card -- reuses the story page's .row for its can/cannot line */
   .charcard .row { display:flex; flex-wrap:wrap; gap:10px; font-size:12.5px; margin-top:6px; }
@@ -230,7 +279,7 @@
   #iv-hide { font-family:var(--mono); font-size:16px; line-height:1; padding:4px 8px; flex:none; }
   .iv .lead { font-family:var(--serif); font-size:15.5px; margin:0 0 12px; color:var(--muted); }
   .iv .said, .story .said { font-family:var(--mono); font-size:11px; color:var(--faint); margin:10px 0 0; }
-  .iv .said.bad, .story .said.bad { color:var(--bad); } .iv .said.good { color:var(--good); }
+  .iv .said.bad, .story .said.bad { color:var(--bad); } .iv .said.good, .story .said.good { color:var(--good); }
   .iv .asked { border-left:2px solid var(--warn); padding-left:12px; margin:14px 0 0; }
   .iv .asked .k { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
                   color:var(--warn); display:block; margin-bottom:3px; }
@@ -257,6 +306,43 @@
   .who .line .yes { color:var(--good); } .who .line .no { color:var(--bad); }
   .who .persona { font-size:12.5px; color:var(--muted); margin-top:6px; white-space:pre-wrap; }
   .who .persona.clip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+  /* ── handoff panel ───────────────────────────────────────
+     The ask-for-change box and its buttons stick to the bottom of the window while the proposal
+     and cast scroll above it -- the input stays put while the artifact being reviewed moves.
+     Scoped to .hbar/.hcast/.hchange so the interview modal's shared .who/.said keep their look. */
+  .hbar { position:sticky; bottom:0; z-index:5; margin-top:16px; padding:12px 14px;
+          background:var(--panel); border:1px solid var(--line); border-radius:12px;
+          box-shadow:0 -8px 20px rgba(0,0,0,.14), var(--shadow); }
+  .hbar .field { margin-top:0; }
+  .hbar .btns { margin-top:10px; }
+  .hbar .thinking { margin-top:8px; }
+  .hbar .said { margin-top:8px; }
+  /* pendingAsk on the handoff page sits under .picker.story, not .iv -- give it the same
+     distinct treatment the interview's question gets */
+  .story .asked { border-left:2px solid var(--warn); padding-left:12px; margin:14px 0 0; }
+  .story .asked .k { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+                     color:var(--warn); display:block; margin-bottom:3px; }
+
+  /* applied / ignored / flag rounds as scannable rows instead of faint hint lines */
+  .hchanges { display:grid; gap:6px; }
+  .hchange { display:flex; gap:9px; align-items:baseline; background:var(--panel);
+             border:1px solid var(--line); border-radius:9px; padding:7px 11px; font-size:12.5px; }
+  .hchange .hmark { font-family:var(--mono); font-size:11px; flex:none; }
+  .hchange.ok .hmark { color:var(--good); }
+  .hchange.no { border-color:color-mix(in srgb, var(--bad) 35%, var(--line)); }
+  .hchange.no .hmark { color:var(--bad); }
+  .hchange.flag { border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
+  .hchange.flag .hmark { color:var(--warn); }
+  .hchange .hfield { font-family:var(--mono); font-size:11px; color:var(--accent); }
+  .hchange .hdiff { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px;
+                    word-break:break-word; }
+  .hchange .hdiff .arrow { color:var(--faint); }
+
+  /* the cast as a card grid rather than divider-separated full-width rows */
+  .hcast { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px; }
+  .hcast .who { border:1px solid var(--line); border-radius:12px; background:var(--panel);
+                box-shadow:var(--shadow); padding:11px 13px; margin-top:0; }
 
   .field { display:flex; flex-direction:column; gap:9px; margin-top:14px; }
   .field label { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
@@ -287,6 +373,32 @@
   .empty.starting h2 em { font-style:italic; color:var(--accent); }
   .empty.starting .thinking { display:inline-flex; align-items:center; gap:8px; font-size:14px; }
   .empty.starting .hint { margin-top:14px; font-size:12px; opacity:.7; }
+
+  /* ── editor ─────────────────────────────────────────────── */
+  .editor { max-width:800px; margin:0 auto; }
+  .editor-section { margin-bottom:12px; border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  .editor-section summary { font-family:var(--mono); font-size:11px; font-weight:600;
+                            text-transform:uppercase; letter-spacing:.08em; cursor:pointer;
+                            padding:4px 0; color:var(--muted); }
+  .editor-scene, .editor-char { border:1px solid var(--line); border-radius:6px; padding:10px 12px;
+                                margin-bottom:8px; background:var(--panel-2); }
+  .editor-scene h4, .editor-char h4 { font-family:var(--mono); font-size:12px; margin:0 0 6px;
+                                      color:var(--ink); }
+  .editor-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .editor-row .field { flex:1; min-width:140px; }
+  .editor .field textarea { min-height:50px; }
+  .editor .field input[type=text], .editor .field input[type=number],
+  .editor .field textarea, .editor .field select {
+    font-size:13px; padding:5px 8px; border:1px solid var(--line); border-radius:4px;
+    background:var(--panel); color:var(--ink); width:100%; box-sizing:border-box; }
+  .editor .field input[type=checkbox] { width:auto; margin-top:6px; }
+  .editor .field label { display:block; font-family:var(--mono); font-size:10px;
+                         text-transform:uppercase; letter-spacing:.08em; color:var(--faint);
+                         margin-bottom:2px; }
+  .editor .field.half { max-width:50%; }
+  .editor .field.third { max-width:33.33%; }
+  .editor .prob { font-size:11px; margin:2px 0; }
+
   .drop { position:fixed; inset:0; background:color-mix(in srgb,var(--accent) 14%,transparent);
           border:3px dashed var(--accent); display:none; place-items:center; z-index:20;
           font-family:var(--mono); color:var(--ink); }
@@ -299,3 +411,124 @@
   .prompt.on { display:flex; }
   .prompt input { width:64px; font-family:var(--mono); font-size:13px; padding:5px 8px;
                   border:1px solid var(--line); border-radius:7px; background:var(--panel-2); color:var(--ink); }
+
+  .timeline { display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:6px 20px;
+              border-bottom:1px solid var(--line); background:var(--panel); font-family:var(--mono); font-size:11px; }
+  .timeline[hidden] { display:none; }
+  .timeline .tl-label { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--faint);
+                        margin-right:4px; font-weight:600; }
+  .timeline .tl-marker { font-family:var(--mono); font-size:10px; padding:2px 8px; border-radius:999px;
+                         border:1px solid var(--line); background:var(--panel-2); color:var(--muted);
+                         cursor:pointer; }
+  .timeline .tl-marker:hover { border-color:var(--accent); color:var(--ink); }
+  .timeline .tl-marker.retried { color:var(--warn); border-color:var(--warn); }
+  .timeline .tl-marker.capped { background:color-mix(in srgb, var(--bad) 18%, var(--panel-2));
+                                border-color:var(--bad); color:var(--bad); }
+  .timeline .tl-marker.retried.capped { background:color-mix(in srgb, var(--bad) 28%, var(--panel-2)); }
+
+  /* the read tab's per-agent panel -- reuses .cards/.divider/.hint/.said from the story page */
+  .agents { margin-top: 18px; }
+  .agentrow { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+              padding:13px 15px; box-shadow:var(--shadow); }
+  .agentrow .ag-name { font-size:13.5px; }
+  .agentrow .ag-name .tag { font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:999px;
+                            border:1px solid var(--line); color:var(--faint); margin-left:6px; }
+  .agentrow .ag-name .tag.writer { color:var(--accent); border-color:var(--accent); }
+  .agentrow .ag-meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:4px; }
+  .agentrow .btn { margin-top:10px; }
+  .calls { display:flex; flex-wrap:wrap; gap:6px; }
+  .callbtn { font-size:10px; padding:4px 8px; }
+  .callbtn.current { color:var(--accent); border-color:var(--accent); background:var(--panel-2); }
+  .callbody { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+  .callbody .msg { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+                   padding:10px 12px; font-size:12.5px; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .callbody .msg.reply { border-color:var(--accent); }
+  .callbody .msg-role { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+                        text-transform:uppercase; color:var(--faint); margin-bottom:5px; }
+
+  /* the live writer page: headline block, then the prose in a card. `.head`/`.body`/`.label` are
+     scoped to .prosecard on purpose -- other components already use those names. */
+  .livehead { margin-bottom: 22px; }
+  .livehead .eyebrow { font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+                       text-transform:uppercase; color:var(--accent); margin:0 0 6px; }
+  .livehead h2 { font-family:var(--serif); font-weight:400; font-size:clamp(23px,3.6vw,31px);
+                 line-height:1.14; margin:0; }
+  .livehead .lede { max-width:620px; margin:11px 0 0; color:var(--muted); font-size:13.5px; }
+  .prosecard { background:var(--panel); border:1px solid var(--line); border-radius:13px;
+               box-shadow:var(--shadow); }
+  .prosecard .head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+                     padding:15px 18px 12px; border-bottom:1px solid var(--line); }
+  .prosecard .head h3 { font-family:var(--serif); font-weight:400; font-size:18px; margin:3px 0 0; }
+  .prosecard .label { font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+                      text-transform:uppercase; color:var(--faint); }
+  .prosecard .body { padding:16px 18px; }
+  .prosecard .runmeta { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:15px; }
+  .prosecard .metachip { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:999px;
+                         border:1px solid var(--line); background:var(--panel-2); color:var(--muted); }
+
+  /* the story reader — accepted prose, chapter by chapter, no controls */
+  .reader-view .reader-chapter { margin-bottom:18px; scroll-margin-top:64px; }
+
+  /* story-wide search over the loaded prose */
+  .reader-view .reader-search { margin:4px 0 14px; }
+  .reader-view .reader-search input[type=text] {
+    font-family:var(--sans); font-size:14px; line-height:1.5; color:var(--ink); width:100%;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .reader-view .reader-search input[type=text]:focus { outline:none; border-color:var(--accent); }
+  .reader-view .reader-count { font-family:var(--mono); font-size:10px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--faint); margin:0 0 8px; }
+  .reader-view .reader-noresult { font-size:13px; color:var(--muted); margin:0 0 12px; }
+  .reader-view .reader-hits { display:flex; flex-direction:column; gap:6px; margin-bottom:20px; }
+  .reader-view .reader-hit { display:flex; gap:10px; align-items:baseline; text-align:left; width:100%;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:8px 11px;
+    color:var(--ink); cursor:pointer; font:inherit; }
+  .reader-view .reader-hit:hover { border-color:var(--accent); }
+  .reader-view .reader-hit:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .reader-view .hit-ch { font-family:var(--mono); font-size:10px; color:var(--faint);
+    flex:none; padding-top:1px; }
+  .reader-view .hit-line { font-size:13.5px; color:var(--muted); }
+  .reader-view .hit-line mark { background:var(--accent); color:var(--panel); border-radius:3px;
+    padding:0 2px; }
+
+  /* the live character sheet — authored cast, read-only, in the rail */
+  .cast-sheet { margin-top:18px; }
+  .cast-sheet h3 { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--faint); margin:0 0 8px; }
+  .cast-sheet .cast-note { font-size:12px; color:var(--muted); margin:0; }
+  .cast-sheet .cast-note.bad { color:var(--bad); }
+  .cast-card { border:1px solid var(--line); border-radius:10px; background:var(--panel-2);
+    padding:9px 11px; margin-bottom:8px; }
+  .cast-card .cast-name { font-family:var(--mono); font-size:11px; color:var(--ink); margin-bottom:6px; }
+  .cast-card .cast-field { margin-bottom:5px; }
+  .cast-card .cast-field span { font-family:var(--mono); font-size:9px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--faint); display:block; margin-bottom:1px; }
+  .cast-card .cast-field p { font-size:12.5px; color:var(--muted); margin:0; line-height:1.45; }
+  .cast-card .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
+  .cast-card .cast-tags .yes { font-family:var(--mono); font-size:10px; color:var(--good); }
+  .cast-card .cast-tags .no { font-family:var(--mono); font-size:10px; color:var(--bad); }
+
+  .compare-panes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
+  .compare-pane { min-width:0; border:1px solid var(--line); border-radius:13px; background:var(--panel); padding:16px; }
+  .compare-pane > h3 { font-family:var(--mono); font-size:11px; font-weight:400; color:var(--faint);
+    margin:0 0 12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .compare-pane .picker { padding:0; border:0; background:transparent; }
+  .compare-pane .picker h2 { display:none; }
+  .compare-pane .prose { margin-top:14px; }
+  .prose-diff-card { margin-bottom:16px; padding:14px 16px; border:1px solid var(--line); border-radius:13px;
+    background:var(--panel-2); }
+  .prose-diff-card .label { font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--faint); margin-bottom:10px; }
+  .prose-diff { font-family:var(--serif); font-size:16px; line-height:1.65; white-space:pre-wrap; }
+  .prose-diff .diff-added { background:color-mix(in srgb, var(--good) 24%, transparent); color:var(--ink); }
+  .prose-diff .diff-removed { background:color-mix(in srgb, var(--bad) 24%, transparent); color:var(--ink);
+    text-decoration:line-through; }
+
+  @media (max-width: 900px) {
+    .compare-panes { grid-template-columns:1fr; }
+  }
+
+  /* a pulse is decoration only -- still it for anyone who asks the OS for less motion */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation:none !important; transition:none !important; }
+  }
+

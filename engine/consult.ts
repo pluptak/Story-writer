@@ -72,6 +72,101 @@ export function normalizeConsult(raw: {
 
   return { ok: true, req: { character, situation, question, wants } };
 }
+
+/** The outcome of checking a reaction fan-out: one sendable request per reactor, or a single refusal. */
+export type ReactionCheck = { ok: true; reqs: ConsultRequest[] } | { ok: false; why: string };
+
+/**
+ * Validate a reaction fan-out: a shared situation/question asked of several reactors at once. Each
+ * reactor resolves to an ordinary `ConsultRequest` — reusing `normalizeConsult`'s gate per reactor,
+ * with `wants` pinned to "reaction" — so a reactor with too thin a situation is refused just as a
+ * lone consult would be. A per-reactor `situation` overrides the shared one (someone who only heard it).
+ */
+export function normalizeReactionConsult(raw: {
+  reactors?: unknown; situation?: unknown; question?: unknown;
+}): ReactionCheck {
+  const shared = String(raw.situation ?? "").trim();
+  const question = String(raw.question ?? "").trim();
+  const list = Array.isArray(raw.reactors) ? raw.reactors : [];
+  if (!list.length) return { ok: false, why: P.badReaction.noReactors() };
+
+  const reqs: ConsultRequest[] = [];
+  for (const r of list) {
+    const name = String((r as any)?.name ?? (typeof r === "string" ? r : "")).trim();
+    if (!name) return { ok: false, why: P.badReaction.namelessReactor() };
+    const situation = String((r as any)?.situation ?? "").trim() || shared;
+    const check = normalizeConsult({ character: name, situation, question, wants: "reaction" });
+    if (!check.ok) return { ok: false, why: check.why };
+    reqs.push(check.req);
+  }
+  return { ok: true, reqs };
+}
+
+/**
+ * The judge's `revised` folded over the request it replaces, and checked by exactly the same gate a
+ * first consult goes through — a field the judge left out keeps its previous value.
+ *
+ * A revision used to skip the check entirely, which is how a re-ask of "What do you do?" reached a
+ * character that the front door had already refused.
+ */
+export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>): ConsultCheck {
+  return normalizeConsult({
+    character: prev.character,
+    situation: String(rev.situation ?? "").trim() || prev.situation,
+    question: String(rev.question ?? "").trim() || prev.question,
+    wants: canonWants(rev.wants) ?? prev.wants,
+  });
+}
+/**
+ * What the asked-for shape requires the reply to actually carry, or null when the reply satisfies it.
+ *
+ * `reaction` is the one shape a thought alone answers — it asks what something lands on them as, and
+ * that happens behind the eyes. Every other shape asks for something that reaches the page, and a
+ * thought on its own leaves the scene exactly where it was: an answer in form, nothing in substance.
+ */
+export function missingShape(
+  wants: ConsultWants | "", r: { speech: string; action: string },
+): ConsultWants | null {
+  if (wants === "speech" && !r.speech) return "speech";
+  if (wants === "action" && !r.action) return "action";
+  if (wants === "decision" && !r.speech && !r.action) return "decision";
+  return null;
+}
+
+// -- READING WHAT THE AUTHOR-SIDE AGENTS SEND BACK -------------------------
+// Both return null for "that is not this kind of reply at all", which is the caller's cue to ask
+// once more rather than to quietly take a default.
+
+/** The judge's verdict, or null when the reply carries no verdict — it answered in another shape. */
+export function parseVerdict(o: Record<string, unknown>): "accept" | "retry" | null {
+  if (!("verdict" in o)) return null;
+  const v = String(o.verdict ?? "").trim().toLowerCase();
+  if (!v) return null;
+  return v === "retry" ? "retry" : "accept";
+}
+
+/** The clarifier's answer — "" when it answered with nothing, null when it did not answer at all. */
+export function parseClarifyAnswer(o: Record<string, unknown>): string | null {
+  return "answer" in o ? String(o.answer ?? "").trim() : null;
+}
+
+/**
+ * The batch judge's per-reactor verdicts, keyed by lowercased name → promotable. A reactor the judge
+ * omits, or a malformed reply, yields no entry — the caller reads a missing entry as "not promotable",
+ * so a volunteered deed lapses safely rather than reaching the page unchecked.
+ */
+export function parseBatchVerdict(o: Record<string, unknown>): Map<string, boolean> {
+  const out = new Map<string, boolean>();
+  const arr = Array.isArray(o.verdicts) ? o.verdicts : [];
+  for (const v of arr) {
+    const name = String((v as any)?.name ?? "").trim().toLowerCase();
+    if (!name) continue;
+    const p = (v as any)?.promotable;
+    out.set(name, p === true || String(p).trim().toLowerCase() === "true");
+  }
+  return out;
+}
+
 /** A character's answer: what they thought/said/did, what they claimed to use, and any clarification trail. */
 export interface ConsultReply {
   character: string;
@@ -162,8 +257,10 @@ export async function consult(
     const note    = String(o.note ?? "").trim();
     const claimed = asList(o.skills_used);
     const unknown = claimed.filter(s => !have.has(canonSkill(s)));
+    const shortOf = missingShape(req.wants, { speech, action });
     const why = !thought && !speech && !action ? "returned nothing usable"
               : unknown.length ? `used ${unknown.map(s => `"${s}"`).join(", ")}`
+              : shortOf ? `was asked for ${shortOf} and gave none`
               : "";
     if (why && !repaired) {
       repaired = true;
@@ -171,6 +268,7 @@ export async function consult(
       extra.push({ role: "assistant", content: raw.trim() },
                  { role: "user", content: unknown.length
                    ? P.skillCheck(unknown, [...have.values()])
+                   : shortOf ? P.shapeCheck(shortOf)
                    : P.EMPTY_REPLY });
       continue;
     }

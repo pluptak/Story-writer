@@ -15,7 +15,7 @@ extraction, agent/history windowing, markdown parsing and config-validation poli
 as source; the Director / Warden / Ledger / WorldState machinery was not. **Nothing here imports or
 references that repo** — keep it that way.
 
-## Docs — open the one, not the set
+## Documentation
 
 One concept per file. Read the relevant one before an architectural change, and keep it in sync
 afterwards.
@@ -23,14 +23,21 @@ afterwards.
 | doc | read it when |
 | --- | --- |
 | [GUI-SPEC.md](GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
-| [SPEC-E-editor.md](SPEC-E-editor.md) | *proposed, not built* — the story editor: making the GUI write an existing story, not just read one |
-| [SPEC-H-handoff.md](SPEC-H-handoff.md) | *proposed, not built* — one run per chapter, and the architect handoff that re-authors the cast between them; owns the plan for `runChapter`, `renderStory` and the removed `CharacterDef.goals[]` |
-| [SPEC-GUI-MULTISCENE.md](SPEC-GUI-MULTISCENE.md) | wiring the viewer to multi-chapter stories — *needs revision*: written before one-run-per-chapter, and `story_end` no longer exists |
+| [Writer.MD](Writer.MD) | the writer's role, the reader seat, and the live-run screen |
+| [Architect.MD](Architect.MD) | the architect — both modes, the handoff's behaviour and edit surface, and its two GUI screens |
+| [GUI-CHECKLIST.md](GUI-CHECKLIST.md) | you changed anything under `server/gui/` — the manual pass that stands in for the GUI tests this repo does not have |
+| [PLANS.md](PLANS.md) | anything not built yet — every proposal, follow-up and known weak spot |
+| [defaults.md](defaults.md) | what `defaults.json` settles before a story exists |
 
-> DESIGN.md, PROTOCOL.md, LOOP.md, STORY-FORMAT.md, RUN-RECORD.md, VIEWER-UI.md, SPEC-S-scaffold.md,
-> CLI.md and GOTCHAS.md are gone — deleted in `da3cf00` ("comments clean-up", 2026-08-14), which also
-> stripped code from `live.ts`/`prompts.ts`/`server.ts`/`story-writer.ts`/`tests/writer.test.ts`. Their
-> content is recoverable from git history if a topic needs its own file again.
+The repository has no separate protocol, story-format, run-record, or scaffold specifications — the
+Zod schema in `engine/story-schema.ts` is the story format's own definition. Keep the route contract in
+`GUI-SPEC.md`, the live writer screen in `Writer.MD`, the architect and the handoff in `Architect.MD`,
+and everything unbuilt in `PLANS.md` rather than copying those details into this file.
+
+**That table is the whole set — resist adding a row to it.** A plan goes in `PLANS.md`, never in a
+file of its own; when it ships, its behaviour moves into whichever surface document owns it and **its
+entry in `PLANS.md` is deleted**, because git history is where implementation notes belong. That is
+the rule the `SPEC-*.md` sprawl broke.
 
 ## Working process
 
@@ -49,8 +56,11 @@ Change is delivered in **small, independently-pausable blocks**, not whole featu
 ## Commands
 
 ```bash
-npx tsx story-writer.ts stories/doorway
+npx tsx story-writer.ts stories/doorway --chapter=1
 ```
+
+One run writes **one chapter**. Between chapters, `--next-chapter` opens the architect handoff that
+re-authors the cast for the next one ([Architect.MD](Architect.MD)).
 
 Requires **LM Studio running locally** at `http://localhost:1234/v1` with the story's models loaded.
 
@@ -63,7 +73,8 @@ split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `skill
 build on those in turn;
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
 the `HOST` object. Separately, `story-writer.ts` → [server/server.ts](server/server.ts) →
-{`run-control-routes.ts`, `scaffold-routes.ts`} → `http-util.ts` → (nothing), all under
+{`run-control-routes.ts`, `scaffold-routes.ts`, `next-chapter-routes.ts`, `run-log-routes.ts`, `story-read-routes.ts`, `story-edit-routes.ts`} →
+`http-util.ts` → (nothing), all under
 [server/](server/) — nothing in that chain imports `story-writer.ts` or any `engine/` module at run
 time. `prompts.ts`, `ansi.ts` and `live.ts` stay at the repo root because both chains import them;
 where `live.ts` needs an engine type (`Agent`, `RunEvent`) it reaches into `engine/agent.ts` /
@@ -76,24 +87,28 @@ way.**
 | --- | --- |
 | [story-writer.ts](story-writer.ts) | the composition root: CLI flags, the story picker, the scaffold console UI, `runAndSave`, the `HOST` object handed to `server/server.ts` |
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
-| [engine/config-util.ts](engine/config-util.ts) | kv-map config parsing (`num`/`bool`/`enumOf`, currently exercised only by `tests/writer.test.ts`) and the shared `slugify` |
+| [engine/config-util.ts](engine/config-util.ts) | kv-map config parsing (`num`/`bool`/`enumOf`) and the shared `slugify` |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
-| [engine/skills.ts](engine/skills.ts) | the general skill catalog and a story's `skills:`/`restrictions:` overrides |
+| [engine/skills.ts](engine/skills.ts) | the general skill catalog, the named restriction bundles, and a story's `skills:`/`restrictions:` overrides |
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
 | [engine/story-format.ts](engine/story-format.ts) | loading and validating `story.json` (against `story-schema.ts`), building a `StoryConfig`, discovering stories on disk |
-| [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` and the other story files |
+| [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` |
 | [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
 | [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
-| [engine/architect.ts](engine/architect.ts) | building the architect agent and running the interactive story-building conversation |
+| [engine/architect.ts](engine/architect.ts) | building the architect agent, the interactive story-building conversation, and the between-chapters handoff that re-authors the cast |
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
 | [prompts.ts](prompts.ts) | every word said to a model |
 | [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: static files (from `server/gui/`), SSE, and dispatch to the route modules |
 | [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
-| [server/http-util.ts](server/http-util.ts) | the `json()` response helper and `readJsonBody()`, shared by server.ts and the route modules |
-| [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview) |
+| [server/next-chapter-routes.ts](server/next-chapter-routes.ts) | `/next-chapter` and `/next-chapter/*` — the architect handoff, server side |
+| [server/run-log-routes.ts](server/run-log-routes.ts) | `/runs/llm` and `/runs/llm/file` — a retained run's per-agent LLM transcripts, read-only by construction |
+| [server/story-read-routes.ts](server/story-read-routes.ts) | `/cast` (GET) — the full cast for the live screen's character sheet, models omitted; read-only, available while a run is in flight |
+| [server/story-edit-routes.ts](server/story-edit-routes.ts) | `/story/edit` (GET), `/story/check`, `/story/save`, `/story/suggest` (POST) — the `story.json` form editor; load, validate, save, and a stateless architect suggestion call. Refuses with `409` while a run is in flight |
+| [server/http-util.ts](server/http-util.ts) | the `json()` response helper, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
+| [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
 | [ansi.ts](ansi.ts) | terminal colours |
 
@@ -102,7 +117,9 @@ the draft, or anyone else's replies. Every other rule follows from protecting th
 
 **Agents** are all the same generic `Agent` class (windowed history + rolling `digest`), differing
 only by system prompt, model and temperature: **writer** (0.8) and one **character** (0.9) per entry
-in `story.json`'s `characters[]`.
+in `story.json`'s `characters[]`, plus two author-side helpers that share the writer's voice but hold
+one response schema each — the **judge** (0.3, no history) and the **clarifier** (one per scene). Why
+they are separate agents rather than sections of the writer's prompt is in [Writer.MD](Writer.MD).
 
 The one invariant to hold while editing the engine: **`consult()` never touches `agent.history`** —
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean

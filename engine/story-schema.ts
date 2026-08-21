@@ -1,21 +1,28 @@
 /** ZOD SCHEMA for story.json — the single validated JSON story format. */
 import { z } from "zod";
 
-const thinkLevel = z.enum(["low", "medium", "high"]);
+/** All supported thinking levels. "off" suppresses reasoning; "default" means "send nothing". */
+export const THINK_LEVELS = ["off", "low", "medium", "high", "default"] as const;
+export type ThinkLevel = (typeof THINK_LEVELS)[number];
 
-/** One scene's definition: where it is, the question it answers, whose perception, length, and roster. */
-export const SceneDef = z.object({
+const thinkLevel = z.enum(THINK_LEVELS);
+
+/** One scene's definition: where it is, the question it answers, whose perception, length, roster, and optional per-scene overrides. */
+export const SceneDef = z.strictObject({
   place: z.string().default(""),
   question: z.string().default(""),
   pov: z.string().default(""),
   length: z.number().min(1).default(700),
   roster: z.array(z.string()).default([]),
+  /** Writer-only overrides for this one scene; unset falls back to `models.writer` / `thinking.writer`. */
+  writerModel: z.string().optional(),
+  writerThink: thinkLevel.optional(),
 });
 
 export type SceneDef = z.infer<typeof SceneDef>;
 
-/** One character as authored: name, model, persona, what they know, their goal, skills and restrictions. */
-export const CharacterDef = z.object({
+/** One character as authored: name, model, persona, what they know, their goal, skills, restrictions, and optional per-character retry ceiling. */
+export const CharacterDef = z.strictObject({
   name: z.string().min(1),
   model: z.string().default(""),
   persona: z.string().default(""),
@@ -23,12 +30,14 @@ export const CharacterDef = z.object({
   goal: z.string().default(""),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
+  /** This character's chapter-wide retry ceiling; unset falls back to `config.maxCharacterRetries`. */
+  maxRetries: z.number().int().min(0).optional(),
 });
 
 export type CharacterDef = z.infer<typeof CharacterDef>;
 
 /** How much reasoning each agent uses: writer, character, and the summarizer. */
-export const ThinkingConfig = z.object({
+export const ThinkingConfig = z.strictObject({
   writer: thinkLevel.default("low"),
   character: thinkLevel.default("low"),
   summary: thinkLevel.default("low"),
@@ -37,7 +46,7 @@ export const ThinkingConfig = z.object({
 export type ThinkingConfig = z.infer<typeof ThinkingConfig>;
 
 /** Model selection: a default for everyone, with writer and summary overrides. */
-export const ModelsConfig = z.object({
+export const ModelsConfig = z.strictObject({
   default: z.string().default("qwen3.6-35b-a3b"),
   writer: z.string().optional(),
   summary: z.string().optional(),
@@ -45,8 +54,8 @@ export const ModelsConfig = z.object({
 
 export type ModelsConfig = z.infer<typeof ModelsConfig>;
 
-/** Run configuration: retries, clarifications, pacing, timeouts, and thinking levels. */
-export const RunConfig = z.object({
+/** Run configuration: retries, clarifications, pacing, timeouts, per-character retry ceiling, and thinking levels. */
+export const RunConfig = z.strictObject({
   retries: z.number().int().min(0).default(2),
   clarifications: z.number().int().min(0).default(2),
   maxSteps: z.number().int().min(1).default(24),
@@ -57,16 +66,20 @@ export const RunConfig = z.object({
   requestTimeout: z.number().int().min(1).default(120),
   attempts: z.number().int().min(1).default(3),
   maxTokens: z.number().int().min(1).default(2000),
+  /** Cumulative retries one character may cost per chapter before replies are force-accepted; unset means no ceiling. */
+  maxCharacterRetries: z.number().int().min(0).optional(),
 }).prefault(() => ({}));
 
 export type RunConfig = z.infer<typeof RunConfig>;
 
-/** The whole story.json: title, premise, 1-3 scenes, cast, run config, and models. */
-export const StoryJson = z.object({
+/** The whole story.json: title, premise, one scene per chapter, cast, run config, and models. */
+export const StoryJson = z.strictObject({
   title: z.string().default(""),
   premise: z.string().default(""),
-  scenes: z.array(SceneDef).min(1).max(3).prefault(() => [{}]),
+  scenes: z.array(SceneDef).min(1).prefault(() => [{}]),
   writerStyle: z.string().default(""),
+  /** World truths known to anyone who would know them — the writer sees these as THE FACTS. */
+  facts: z.array(z.string()).default([]),
   characters: z.array(CharacterDef).default([]),
   config: RunConfig,
   models: ModelsConfig.prefault(() => ({})),

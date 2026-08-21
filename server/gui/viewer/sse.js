@@ -2,9 +2,12 @@ import { $, post } from "./util.js";
 import { APP, LIVEV } from "./state.js";
 import { build } from "./events.js";
 import { setSrc, renderRail } from "./hud.js";
+import { clearReaderDrafts } from "./blocks.js";
 import { go, parseHash, parseHashParams, syncHash } from "./nav.js";
 import { renderSession, disarm, loadModels } from "./session.js";
 import { loadStories, loadRun } from "./saved-runs.js";
+import { loadReader } from "./reader.js";
+import { loadDeepLinkedComparison, loadComparisonRuns } from "./compare.js";
 import { disarmAccept } from "./interview.js";
 
 export function loadDeepLinkedRun() {
@@ -12,6 +15,13 @@ export function loadDeepLinkedRun() {
   const dir = params.get("dir"), id = params.get("id");
   if (!dir || !id) return Promise.resolve(false);
   return loadRun(dir, id);
+}
+
+export function loadDeepLinkedReader() {
+  const params = parseHashParams();
+  const dir = params.get("dir");
+  if (!dir) return;
+  loadReader(dir);
 }
 
 export const sessionFrom = j => ({ running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking,
@@ -27,7 +37,14 @@ export async function tryHttp() {
     loadModels();
     if (j.awaitingContinue) showPrompt(j.awaitingContinue);
     // An interview may already be open — a reload in the middle of one must land back in it.
-    try { APP.scaffold = await (await fetch("/scaffold")).json(); } catch {}
+    // Independent endpoints, fetched concurrently; either may fail without affecting the other.
+    const [scaf, hand] = await Promise.allSettled([
+      fetch("/scaffold").then(r => r.json()),
+      fetch("/next-chapter").then(r => r.json()),
+    ]);
+    if (scaf.status === "fulfilled") APP.scaffold = scaf.value;
+    if (hand.status === "fulfilled") APP.handoff = hand.value;
+    if (APP.handoff.active) APP.handoffDir = APP.handoff.dir;
     // Respect an explicit hash (a reload, a bookmark, a deep link) -- the shelf is a real
     // destination now, not just a place the session parks you, so there is no case left where it
     // has to be rewritten. With nothing asked for, land on the scene if one is running, the hub
@@ -35,8 +52,19 @@ export async function tryHttp() {
     const wanted = parseHash();
     APP.view = wanted || (APP.session.running ? "live" : "shelf");
     if (APP.view === "story") APP.storyDir = parseHashParams().get("dir") || "";
+    if (APP.view === "handoff") APP.handoffDir = APP.handoffDir || parseHashParams().get("dir") || "";
+  if (APP.view === "edit") {
+    const params = parseHashParams();
+    APP.editNew = params.get("new") === "1";
+    APP.editDir = params.get("dir") || "";
+  }
+    if (APP.view === "readstory") loadDeepLinkedReader();     // sets READER.dir and starts the fetch
     if (APP.view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
-    if (APP.view === "read" || APP.view === "shelf" || APP.view === "story") loadStories();
+    if (APP.view === "compare") loadDeepLinkedComparison();
+    if (APP.view === "readstory" || APP.view === "read" || APP.view === "compare" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff" || APP.view === "edit") {
+      await loadStories();
+      if (APP.view === "compare") { loadDeepLinkedComparison(); loadComparisonRuns(); }
+    }
     syncHash();
     APP.render();
     startSSE();
@@ -54,6 +82,21 @@ export function startSSE() {
     let f; try { f = JSON.parse(m.data); } catch { return; }
     if (f.t === "composing") { APP.composing = f; if (APP.view === "live") renderRail(LIVEV, build(LIVEV)); return; }
     if (f.t === "idle") { APP.composing = null; if (APP.view === "live") renderRail(LIVEV, build(LIVEV)); return; }
+    if (f.t === "agent_stats") {
+      const prior = LIVEV.agentStats[f.who] || { who:f.who, model:f.model, calls:0, durationMs:0,
+        promptTokens:0, completionTokens:0, tokenCalls:0 };
+      prior.model = f.model;
+      prior.calls++;
+      prior.durationMs += Math.max(0, Number(f.durationMs) || 0);
+      if (Number.isFinite(f.promptTokens) && Number.isFinite(f.completionTokens)) {
+        prior.promptTokens += f.promptTokens;
+        prior.completionTokens += f.completionTokens;
+        prior.tokenCalls++;
+      }
+      LIVEV.agentStats[f.who] = prior;
+      if (APP.view === "live") renderRail(LIVEV, build(LIVEV));
+      return;
+    }
     if (f.t === "continue_prompt") { showPrompt(f); return; }
     if (f.t === "run_state") {
       const wasPicking = APP.session.picking, wasRunning = APP.session.running;
@@ -75,7 +118,12 @@ export function startSSE() {
         APP.picked = ""; APP.storyModel = ""; APP.storyError = "";
       }
       let moved = false;
-      if (!wasRunning && APP.session.running) { go("live"); moved = true; }
+      if (!wasRunning && APP.session.running) {
+        // A run starting is not the user navigating. Following it to the live page is right from
+        // the shelf or a finished scene, but from the editor it fires the dirty-guard confirm with
+        // no action of yours behind it -- there, stay put and let the tab dot say a run is on.
+        if (APP.view !== "edit") { go("live"); moved = true; }
+      }
       else if (wasRunning && !APP.session.running && APP.view === "live") {
         // The run just ended while it was on screen -- offer the choice explicitly instead of
         // silently deleting the "run controls vanish" behaviour that used to be the only sign.
@@ -93,13 +141,32 @@ export function startSSE() {
       if (!APP.scaffold.problems || !APP.scaffold.problems.length) disarmAccept(); else APP.render();
       return;
     }
+    // The engine failed to load or run the story. Clear the pending pick and show the error on the
+    // story page. runError survives picking-edge resets (which clear storyError), so it stays visible.
+    if (f.t === "run_error") {
+      APP.runError = f.message;
+      APP.picked = "";
+      APP.render();
+      return;
+    }
+    if (f.t === "handoff") {
+      // Same reason as the scaffold frame above: a round is a minute of model call, and the POST
+      // response only ever reaches whoever sent it.
+      APP.handoff = f.state || { active:false };
+      if (APP.handoff.active) APP.handoffDir = APP.handoff.dir;
+      APP.render();
+      return;
+    }
     if (f.t === "run_reset") {
       // A new story in the same session. Replay only helps clients that connect after it; one
       // already attached has to be told, or the next scene renders glued onto the last one.
-      LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.open = new Set(); APP.composing = null;
-      APP.awaitingReader = false; APP.runEnded = null;
+      LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.agentStats = {}; APP.composing = null;
+      APP.awaitingReader = false; APP.runEnded = null; APP.runError = "";
+      clearReaderDrafts();
       fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (APP.view === "live") APP.render(); } }).catch(() => {});
-      go("live");
+      // Same rule as the run-start edge below: never yank you out of the editor -- least of all
+      // through its dirty-guard confirm, which would pop with no navigation of yours behind it.
+      if (APP.view !== "edit") go("live");
       return;
     }
     // A replayed event is one we already have. `seq` is stamped once by publish(), so it is the
