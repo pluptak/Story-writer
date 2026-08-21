@@ -4,6 +4,7 @@ import { castChips } from "./shelf.js";
 import { loadRun } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { go } from "./nav.js";
+import { prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paras } from "./blocks.js";
 
 // ---- the story page ----------------------------------------------------------
@@ -11,6 +12,8 @@ import { paras } from "./blocks.js";
 // back on it) -- this is where the play confirmation used to live, now with room for what it is
 // scaffolded to grow into: a scene list (below) and, later, a story editor. Reached only by clicking
 // a shelf card; "back to shelf" is the only way out, same as before.
+
+let chapterReq = 0;
 
 /** The story's scenes, numbered -- scene N is chapter N, written or not (`card.chapters` is which
  *  ones exist on disk). `scene` is the legacy singular the shelf still reads. */
@@ -138,6 +141,7 @@ export function storyPageHtml() {
     <div class="btns" style="margin-top:18px">
       <button class="btn" id="story-edit">edit story</button>
       ${(s.chapters?.length) ? `<button class="btn" id="story-read-story">read story</button>` : ""}
+      ${(s.runs?.length >= 2) ? `<button class="btn" id="story-compare">compare runs</button>` : ""}
       <span class="spacer"></span>
       <button class="btn" id="story-back">back to shelf</button>
     </div>
@@ -154,18 +158,26 @@ export function wireStoryPage(page) {
   for (const b of page.querySelectorAll(".scenewrite"))
     b.addEventListener("click", () => playChosen(APP.storyDir, APP.storyModel, Number(b.dataset.chapter)));
 
+  // A slow earlier read must never overwrite a faster later click's chapter -- last click wins.
+  // Module-level: wireStoryPage re-runs on every render, so a closure-scoped token would reset
+  // under a fetch still in flight and let the stale response through.
   for (const b of page.querySelectorAll(".chapterread"))
     b.addEventListener("click", async () => {
       const n = Number(b.dataset.chapter), dir = APP.storyDir;
+      const req = ++chapterReq;
       if (APP.chapter?.dir === dir && APP.chapter.n === n) {
         APP.chapter = null; APP.chapterError = ""; APP.render(); return;
       }
       APP.chapterError = "";
       try {
         const r = await fetch(`/chapter?dir=${encodeURIComponent(dir)}&n=${n}`);
+        if (req !== chapterReq) return;
         if (!r.ok) throw 0;
         APP.chapter = { dir, n, text: await r.text() };
-      } catch { APP.chapter = { dir, n, text: "" }; APP.chapterError = "that chapter would not load"; }
+      } catch {
+        if (req !== chapterReq) return;
+        APP.chapter = { dir, n, text: "" }; APP.chapterError = "that chapter would not load";
+      }
       APP.render();
     });
 
@@ -187,13 +199,20 @@ export function wireStoryPage(page) {
     go("readstory"); loadReader(APP.storyDir);
   });
 
+  const compare = page.querySelector("#story-compare");
+  if (compare) compare.addEventListener("click", () => {
+    prepareComparison(APP.storyDir);
+    go("compare");
+    loadComparisonRuns();
+  });
+
   for (const b of page.querySelectorAll(".runbtn"))
     b.addEventListener("click", async () => {
       b.disabled = true;
       const ok = await loadRun(APP.storyDir, b.dataset.run);
-      if (!ok) { APP.storyError = "could not load that run"; APP.render(); return; }
-      APP.storyError = "";
-      go("read");
+      // null = superseded by a newer click; that click owns the read tab, so say and do nothing
+      if (ok === false) { APP.storyError = "could not load that run"; APP.render(); return; }
+      if (ok) { APP.storyError = ""; go("read"); }
     });
 }
 

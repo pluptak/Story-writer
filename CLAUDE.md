@@ -73,7 +73,7 @@ split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `skill
 build on those in turn;
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
 the `HOST` object. Separately, `story-writer.ts` → [server/server.ts](server/server.ts) →
-{`run-control-routes.ts`, `scaffold-routes.ts`, `next-chapter-routes.ts`, `run-log-routes.ts`} →
+{`run-control-routes.ts`, `scaffold-routes.ts`, `next-chapter-routes.ts`, `run-log-routes.ts`, `story-read-routes.ts`, `story-edit-routes.ts`} →
 `http-util.ts` → (nothing), all under
 [server/](server/) — nothing in that chain imports `story-writer.ts` or any `engine/` module at run
 time. `prompts.ts`, `ansi.ts` and `live.ts` stay at the repo root because both chains import them;
@@ -105,6 +105,8 @@ way.**
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
 | [server/next-chapter-routes.ts](server/next-chapter-routes.ts) | `/next-chapter` and `/next-chapter/*` — the architect handoff, server side |
 | [server/run-log-routes.ts](server/run-log-routes.ts) | `/runs/llm` and `/runs/llm/file` — a retained run's per-agent LLM transcripts, read-only by construction |
+| [server/story-read-routes.ts](server/story-read-routes.ts) | `/cast` (GET) — the full cast for the live screen's character sheet, models omitted; read-only, available while a run is in flight |
+| [server/story-edit-routes.ts](server/story-edit-routes.ts) | `/story/edit` (GET), `/story/check`, `/story/save`, `/story/suggest` (POST) — the `story.json` form editor; load, validate, save, and a stateless architect suggestion call. Refuses with `409` while a run is in flight |
 | [server/http-util.ts](server/http-util.ts) | the `json()` response helper, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
 | [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |

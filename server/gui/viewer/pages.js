@@ -13,6 +13,7 @@ import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { interviewModalHtml, wireInterview } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
+import { comparisonPageHtml, wireComparison } from "./compare.js";
 import { go, generating } from "./nav.js";
 import { renderSession } from "./session.js";
 
@@ -38,7 +39,7 @@ function renderNav() {
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
-  const shown = APP.view === "story" || APP.view === "handoff" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
+  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
     const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
@@ -106,6 +107,13 @@ function renderReader(page) {
   page.innerHTML = readerPageHtml();
   $("railstats").innerHTML = "";
   wireReaderPage(page);
+  setFoldable(false);
+}
+
+function renderComparison(page) {
+  page.innerHTML = comparisonPageHtml();
+  $("railstats").innerHTML = "";
+  wireComparison(page);
   setFoldable(false);
 }
 
@@ -290,6 +298,7 @@ export function render() {
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
+  else if (APP.view === "compare") renderComparison(page);
   else if (APP.view === "edit") renderEdit(page);
   else if (APP.view === "readstory") renderReader(page);
   else if (APP.view === "read") renderRead(page, blocks);

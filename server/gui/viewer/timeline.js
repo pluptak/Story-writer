@@ -19,7 +19,7 @@ export function renderTimeline(blocks) {
     const capped = !!b.capped;
     const cls = "tl-marker" + (retried ? " retried" : "") + (capped ? " capped" : "");
     const title = `${b.who}${retried ? ` · ${b.attempts.length - 1} retr${b.attempts.length > 2 ? "ies" : "y"}` : ""}${capped ? " · capped" : ""}`;
-    return `<button class="${cls}" data-seq="${b.seq}" title="${esc(title)}">${esc(b.who)}</button>`;
+    return `<button class="${cls}" data-seq="${esc(b.seq)}" title="${esc(title)}">${esc(b.who)}</button>`;
   }).join("");
 }
 

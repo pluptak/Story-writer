@@ -6,8 +6,8 @@
 This document owns the architect: its role, the between-chapters handoff behaviour, and the two
 screens that drive it (the scaffold interview and the handoff panel). The route contract stays in
 [`GUI-SPEC.md`](GUI-SPEC.md), which is the single source of truth for request bodies, replies and SSE
-state. The proposed `story.json` form editor ([`PLANS.md`](PLANS.md) plan 1) is a different screen —
-its architect panel edits an in-memory draft and is not the handoff.
+state. The proposed `story.json` form editor ([`GUI-SPEC.md`](GUI-SPEC.md) §Story editor) is a different
+screen — its architect panel edits an in-memory draft and is not the handoff.
 
 ## Role
 

@@ -1,6 +1,7 @@
 // DOM/network primitives with no app-state dependency of their own.
 export const $ = id => document.getElementById(id);
-export const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+export const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 export const basename = p => (p || "").replace(/^.*[\\/]/, "");
 export const fmtRun = r => {
   const when = new Date(r.mtimeMs).toLocaleString(undefined,

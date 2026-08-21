@@ -1,4 +1,5 @@
 <!doctype html>
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>story-writer — run viewer</title>
@@ -21,7 +22,7 @@
 </div>
 <div class="ribbon" id="ribbon" hidden></div>
 <div class="srcbar"><span class="dot" id="dot"></span><span id="src">nothing loaded</span><span id="where"></span>
-  <span id="notice"></span></div>
+  <span id="notice" role="status"></span></div>
 <div class="timeline" id="timeline" hidden></div>
 
 <div class="layout">
@@ -36,7 +37,7 @@
         <button class="btn" id="pause" hidden>pause</button>
         <button class="btn" id="consultMe" hidden>consult me</button>
         <button class="btn" id="stop" hidden>stop run</button>
-        <span class="ctrl-err" id="sessionNotice"></span>
+        <span class="ctrl-err" id="sessionNotice" role="status"></span>
       </div>
     </section>
     <section class="side" id="castcard" hidden>

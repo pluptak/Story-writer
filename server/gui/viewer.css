@@ -35,7 +35,6 @@
   .tab:hover { color:var(--ink); }
   .tab.current { color:var(--ink); background:var(--panel-2); border-color:var(--line); }
   .tab[hidden] { display:none; }
-  .tab[disabled] { opacity:.4; cursor:default; }
   .tabdot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent);
             margin-left:6px; vertical-align:middle; animation:pulse 1.2s ease-in-out infinite; }
   .tabdot[hidden] { display:none; }
@@ -127,8 +126,10 @@
   .consult .tag.flag  { color:var(--bad);  border-color:var(--bad); }
   .consult .tag.asked { color:var(--accent); border-color:var(--accent); }
 
-  .body { background:var(--panel); border:1px solid var(--line); border-radius:12px;
-          padding:14px 16px; box-shadow:var(--shadow); font-size:13.5px; }
+  /* scoped to .consult: a bare `.body` here leaked into the live page's .prosecard .body,
+     which only overrides padding -- the prose got an accidental nested card */
+  .consult > .body { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+                     padding:14px 16px; box-shadow:var(--shadow); font-size:13.5px; }
   .attempt + .attempt { margin-top:14px; padding-top:14px; border-top:1px dashed var(--line); }
   .attempt h4 { margin:0 0 8px; font-family:var(--mono); font-size:10px; letter-spacing:.1em;
                 text-transform:uppercase; color:var(--faint); font-weight:600; }
@@ -165,15 +166,21 @@
   .reaction .thought.dim { color:var(--muted); font-style:normal; font-family:var(--mono); font-size:10.5px; opacity:.85; }
   .reaction .action { color:var(--good); margin-top:3px; }
 
-  .rail { position:sticky; top:52px; padding:24px 20px; font-size:12px; display:grid; gap:14px; }
+  /* min-width:0 lets the aside shrink to its fixed 285px track -- without it an unbreakable
+     string inside (a long model id in the stats, say) forces the rail wider than the track
+     and scrolls the whole page sideways */
+  .rail { position:sticky; top:52px; padding:24px 20px; font-size:12px; display:grid; gap:14px;
+          min-width:0; }
   @media (max-width: 900px) { .rail { position:static; } }
   .side { background:var(--panel); border:1px solid var(--line); border-radius:13px;
-          padding:15px; box-shadow:var(--shadow); }
+          padding:15px; box-shadow:var(--shadow); min-width:0; overflow-wrap:break-word; }
   .side[hidden] { display:none; }
   .rail h3 { font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase;
              color:var(--faint); margin:0 0 10px; font-weight:600; }
-  .stat { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); }
-  .stat .n { font-family:var(--mono); color:var(--ink); }
+  .stat { display:flex; justify-content:space-between; gap:10px; padding:5px 0;
+          border-bottom:1px solid var(--line); min-width:0; }
+  .stat > span { min-width:0; }
+  .stat .n { font-family:var(--mono); color:var(--ink); overflow-wrap:anywhere; }
   .stat .n.warn { color:var(--warn); } .stat .n.bad { color:var(--bad); }
   .bar { height:4px; background:var(--line); border-radius:999px; overflow:hidden; margin:10px 0 16px; }
   .bar > i { display:block; height:100%; background:var(--accent); border-radius:999px; transition:width .3s; }
@@ -187,7 +194,7 @@
   .agentstats-head { color:var(--faint); font-family:var(--mono); font-size:9px; text-transform:uppercase;
                      letter-spacing:.05em; padding-bottom:4px; }
   .agentstat { border-top:1px solid var(--line); padding:5px 0; font-family:var(--mono); font-size:10px;
-               color:var(--muted); }
+               color:var(--muted); overflow-wrap:anywhere; }
   .agentstat-who { color:var(--ink); font-weight:600; overflow:hidden; text-overflow:ellipsis; }
 
   /* a reader consult: the writer stopped to ask you which way the scene goes */
@@ -272,7 +279,7 @@
   #iv-hide { font-family:var(--mono); font-size:16px; line-height:1; padding:4px 8px; flex:none; }
   .iv .lead { font-family:var(--serif); font-size:15.5px; margin:0 0 12px; color:var(--muted); }
   .iv .said, .story .said { font-family:var(--mono); font-size:11px; color:var(--faint); margin:10px 0 0; }
-  .iv .said.bad, .story .said.bad { color:var(--bad); } .iv .said.good { color:var(--good); }
+  .iv .said.bad, .story .said.bad { color:var(--bad); } .iv .said.good, .story .said.good { color:var(--good); }
   .iv .asked { border-left:2px solid var(--warn); padding-left:12px; margin:14px 0 0; }
   .iv .asked .k { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
                   color:var(--warn); display:block; margin-bottom:3px; }
@@ -299,6 +306,43 @@
   .who .line .yes { color:var(--good); } .who .line .no { color:var(--bad); }
   .who .persona { font-size:12.5px; color:var(--muted); margin-top:6px; white-space:pre-wrap; }
   .who .persona.clip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+  /* ── handoff panel ───────────────────────────────────────
+     The ask-for-change box and its buttons stick to the bottom of the window while the proposal
+     and cast scroll above it -- the input stays put while the artifact being reviewed moves.
+     Scoped to .hbar/.hcast/.hchange so the interview modal's shared .who/.said keep their look. */
+  .hbar { position:sticky; bottom:0; z-index:5; margin-top:16px; padding:12px 14px;
+          background:var(--panel); border:1px solid var(--line); border-radius:12px;
+          box-shadow:0 -8px 20px rgba(0,0,0,.14), var(--shadow); }
+  .hbar .field { margin-top:0; }
+  .hbar .btns { margin-top:10px; }
+  .hbar .thinking { margin-top:8px; }
+  .hbar .said { margin-top:8px; }
+  /* pendingAsk on the handoff page sits under .picker.story, not .iv -- give it the same
+     distinct treatment the interview's question gets */
+  .story .asked { border-left:2px solid var(--warn); padding-left:12px; margin:14px 0 0; }
+  .story .asked .k { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+                     color:var(--warn); display:block; margin-bottom:3px; }
+
+  /* applied / ignored / flag rounds as scannable rows instead of faint hint lines */
+  .hchanges { display:grid; gap:6px; }
+  .hchange { display:flex; gap:9px; align-items:baseline; background:var(--panel);
+             border:1px solid var(--line); border-radius:9px; padding:7px 11px; font-size:12.5px; }
+  .hchange .hmark { font-family:var(--mono); font-size:11px; flex:none; }
+  .hchange.ok .hmark { color:var(--good); }
+  .hchange.no { border-color:color-mix(in srgb, var(--bad) 35%, var(--line)); }
+  .hchange.no .hmark { color:var(--bad); }
+  .hchange.flag { border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
+  .hchange.flag .hmark { color:var(--warn); }
+  .hchange .hfield { font-family:var(--mono); font-size:11px; color:var(--accent); }
+  .hchange .hdiff { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px;
+                    word-break:break-word; }
+  .hchange .hdiff .arrow { color:var(--faint); }
+
+  /* the cast as a card grid rather than divider-separated full-width rows */
+  .hcast { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px; }
+  .hcast .who { border:1px solid var(--line); border-radius:12px; background:var(--panel);
+                box-shadow:var(--shadow); padding:11px 13px; margin-top:0; }
 
   .field { display:flex; flex-direction:column; gap:9px; margin-top:14px; }
   .field label { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
@@ -339,14 +383,14 @@
   .editor-scene, .editor-char { border:1px solid var(--line); border-radius:6px; padding:10px 12px;
                                 margin-bottom:8px; background:var(--panel-2); }
   .editor-scene h4, .editor-char h4 { font-family:var(--mono); font-size:12px; margin:0 0 6px;
-                                      color:var(--text); }
+                                      color:var(--ink); }
   .editor-row { display:flex; gap:8px; flex-wrap:wrap; }
   .editor-row .field { flex:1; min-width:140px; }
   .editor .field textarea { min-height:50px; }
   .editor .field input[type=text], .editor .field input[type=number],
   .editor .field textarea, .editor .field select {
     font-size:13px; padding:5px 8px; border:1px solid var(--line); border-radius:4px;
-    background:var(--panel); color:var(--text); width:100%; box-sizing:border-box; }
+    background:var(--panel); color:var(--ink); width:100%; box-sizing:border-box; }
   .editor .field input[type=checkbox] { width:auto; margin-top:6px; }
   .editor .field label { display:block; font-family:var(--mono); font-size:10px;
                          text-transform:uppercase; letter-spacing:.08em; color:var(--faint);
@@ -462,3 +506,21 @@
   .cast-card .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
   .cast-card .cast-tags .yes { font-family:var(--mono); font-size:10px; color:var(--good); }
   .cast-card .cast-tags .no { font-family:var(--mono); font-size:10px; color:var(--bad); }
+
+  .compare-panes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
+  .compare-pane { min-width:0; border:1px solid var(--line); border-radius:13px; background:var(--panel); padding:16px; }
+  .compare-pane > h3 { font-family:var(--mono); font-size:11px; font-weight:400; color:var(--faint);
+    margin:0 0 12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .compare-pane .picker { padding:0; border:0; background:transparent; }
+  .compare-pane .picker h2 { display:none; }
+  .compare-pane .prose { margin-top:14px; }
+
+  @media (max-width: 900px) {
+    .compare-panes { grid-template-columns:1fr; }
+  }
+
+  /* a pulse is decoration only -- still it for anyone who asks the OS for less motion */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation:none !important; transition:none !important; }
+  }
+

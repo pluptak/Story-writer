@@ -2,10 +2,12 @@ import { $, post } from "./util.js";
 import { APP, LIVEV } from "./state.js";
 import { build } from "./events.js";
 import { setSrc, renderRail } from "./hud.js";
+import { clearReaderDrafts } from "./blocks.js";
 import { go, parseHash, parseHashParams, syncHash } from "./nav.js";
 import { renderSession, disarm, loadModels } from "./session.js";
 import { loadStories, loadRun } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
+import { loadDeepLinkedComparison, loadComparisonRuns } from "./compare.js";
 import { disarmAccept } from "./interview.js";
 
 export function loadDeepLinkedRun() {
@@ -54,7 +56,11 @@ export async function tryHttp() {
     if (APP.view === "edit") APP.editDir = parseHashParams().get("dir") || "";
     if (APP.view === "readstory") loadDeepLinkedReader();     // sets READER.dir and starts the fetch
     if (APP.view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
-    if (APP.view === "readstory" || APP.view === "read" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff" || APP.view === "edit") loadStories();
+    if (APP.view === "compare") loadDeepLinkedComparison();
+    if (APP.view === "readstory" || APP.view === "read" || APP.view === "compare" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff" || APP.view === "edit") {
+      await loadStories();
+      if (APP.view === "compare") { loadDeepLinkedComparison(); loadComparisonRuns(); }
+    }
     syncHash();
     APP.render();
     startSSE();
@@ -108,7 +114,12 @@ export function startSSE() {
         APP.picked = ""; APP.storyModel = ""; APP.storyError = "";
       }
       let moved = false;
-      if (!wasRunning && APP.session.running) { go("live"); moved = true; }
+      if (!wasRunning && APP.session.running) {
+        // A run starting is not the user navigating. Following it to the live page is right from
+        // the shelf or a finished scene, but from the editor it fires the dirty-guard confirm with
+        // no action of yours behind it -- there, stay put and let the tab dot say a run is on.
+        if (APP.view !== "edit") { go("live"); moved = true; }
+      }
       else if (wasRunning && !APP.session.running && APP.view === "live") {
         // The run just ended while it was on screen -- offer the choice explicitly instead of
         // silently deleting the "run controls vanish" behaviour that used to be the only sign.
@@ -145,10 +156,13 @@ export function startSSE() {
     if (f.t === "run_reset") {
       // A new story in the same session. Replay only helps clients that connect after it; one
       // already attached has to be told, or the next scene renders glued onto the last one.
-      LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.open = new Set(); LIVEV.agentStats = {}; APP.composing = null;
+      LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.agentStats = {}; APP.composing = null;
       APP.awaitingReader = false; APP.runEnded = null; APP.runError = "";
+      clearReaderDrafts();
       fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (APP.view === "live") APP.render(); } }).catch(() => {});
-      go("live");
+      // Same rule as the run-start edge below: never yank you out of the editor -- least of all
+      // through its dirty-guard confirm, which would pop with no navigation of yours behind it.
+      if (APP.view !== "edit") go("live");
       return;
     }
     // A replayed event is one we already have. `seq` is stamped once by publish(), so it is the

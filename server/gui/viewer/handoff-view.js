@@ -91,16 +91,18 @@ export function handoffPageHtml() {
       <p class="sub">preparing chapter ${s.chapter}${s.model ? " · " + esc(s.model) : ""}</p>
       <div class="said bad">that round failed (${esc(s.last.error)}) — nothing changed</div>
       ${APP.handoffError ? `<div class="said bad">${esc(APP.handoffError)}</div>` : ""}
-      <div class="field"><label for="h-say">or ask for a change instead</label>
-        <textarea id="h-say" ${s.busy ? "disabled" : ""} rows="2"
-          placeholder="a smaller request than the opening round">${esc(hdraft.say)}</textarea></div>
-      ${s.busy ? `<div class="thinking"><i></i>thinking about it…</div>` : ""}
-      <div class="btns" style="margin-top:14px">
-        <button class="btn primary" id="h-retry"${s.busy ? " disabled" : ""}>try again</button>
-        <button class="btn" id="h-send"${s.busy ? " disabled" : ""}>send</button>
-        <button class="btn" id="h-abandon">${APP.hAbandonArmed ? "abandon — sure?" : "abandon"}</button>
-        <span class="spacer"></span>
-        <button class="btn" id="h-back">back to the story</button>
+      <div class="hbar">
+        <div class="field"><label for="h-say">or ask for a change instead</label>
+          <textarea id="h-say" ${s.busy ? "disabled" : ""} rows="2"
+            placeholder="a smaller request than the opening round">${esc(hdraft.say)}</textarea></div>
+        ${s.busy ? `<div class="thinking"><i></i>thinking about it…</div>` : ""}
+        <div class="btns">
+          <button class="btn primary" id="h-retry"${s.busy ? " disabled" : ""}>try again</button>
+          <button class="btn" id="h-send"${s.busy ? " disabled" : ""}>send</button>
+          <button class="btn" id="h-abandon">${APP.hAbandonArmed ? "abandon — sure?" : "abandon"}</button>
+          <span class="spacer"></span>
+          <button class="btn" id="h-back">back to the story</button>
+        </div>
       </div>
     </section>`;
   }
@@ -142,19 +144,24 @@ export function handoffPageHtml() {
     };
     body.push(`<div class="divider"><span>changes to review</span></div>`);
     if (s.last.applied.length) {
-      body.push(s.last.applied.map(a => {
-        return `<p class="hint">✓ ${esc(a.field)} <span class="dim">${esc(changeValue(a.before))} → ${esc(changeValue(a.after))}</span></p>`;
-      }).join(""));
+      body.push(`<div class="hchanges">` + s.last.applied.map(a => `
+        <div class="hchange ok"><span class="hmark">✓</span>
+          <div><code class="hfield">${esc(a.field)}</code>
+            <div class="hdiff">${esc(changeValue(a.before))} <span class="arrow">→</span> ${esc(changeValue(a.after))}</div>
+          </div>
+        </div>`).join("") + `</div>`);
     } else {
       body.push(`<p class="hint">nothing changed yet</p>`);
     }
     if (s.last.ignored.length) {
       body.push(`<div class="divider"><span>not applied</span></div>`);
-      body.push(s.last.ignored.map(x => `<div class="said bad">✗ ${esc(x)}</div>`).join(""));
+      body.push(`<div class="hchanges">` + s.last.ignored.map(x => `
+        <div class="hchange no"><span class="hmark">✗</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
     }
     if ((s.last.flags || []).length) {
       body.push(`<div class="divider"><span>continuity flags · advisory</span></div>`);
-      body.push((s.last.flags || []).map(x => `<div class="said">⚑ ${esc(x)}</div>`).join(""));
+      body.push(`<div class="hchanges">` + (s.last.flags || []).map(x => `
+        <div class="hchange flag"><span class="hmark">⚑</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
     }
     if (s.last.note) {
       body.push(`<p class="sub">${esc(s.last.note)}</p>`);
@@ -181,7 +188,8 @@ export function handoffPageHtml() {
 
   // Cast
   body.push(`<div class="divider"><span>cast</span></div>`);
-  if (s.spec?.characters) {
+  if (s.spec?.characters?.length) {
+    body.push(`<div class="hcast">`);
     for (const c of s.spec.characters) {
       body.push(`<div class="who">
         <div class="nm">${esc(c.name)}</div>
@@ -190,9 +198,12 @@ export function handoffPageHtml() {
         ${c.restrictions?.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
       </div>`);
     }
+    body.push(`</div>`);
   }
 
-  // Textarea
+  // The ask-for-change box and its buttons stick to the bottom of the window while the proposal
+  // and cast scroll above -- the input stays put while the artifact being reviewed moves.
+  body.push(`<div class="hbar">`);
   body.push(`<div class="field"><label for="h-say">ask for a change</label>
     <textarea id="h-say" ${s.busy ? "disabled" : ""} placeholder="e.g. Ivo should not know about the log yet.">${esc(hdraft.say)}</textarea></div>`);
 
@@ -215,6 +226,7 @@ export function handoffPageHtml() {
   btnRow.push(`<span class="spacer"></span>`);
   btnRow.push(`<button class="btn" id="h-back">back</button>`);
   body.push(`<div class="btns">${btnRow.join("")}</div>`);
+  body.push(`</div>`);
 
   return `<section class="picker story">
     ${body.join("")}

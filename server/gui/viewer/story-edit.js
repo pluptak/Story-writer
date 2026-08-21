@@ -4,8 +4,8 @@
  * debounces validation through /story/check, and saves through /story/save.
  */
 
-import { esc, post, modelOptionsHtml } from "./util.js";
-import { APP, draft, FIELDS } from "./state.js";
+import { esc, post } from "./util.js";
+import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 
 // Dirty-guard: warn before closing the tab / navigating away
@@ -18,7 +18,10 @@ addEventListener("beforeunload", e => {
 const fld = (id, label, value, type) =>
   `<div class="field${type === "half" ? " half" : type === "third" ? " third" : ""}">` +
   `<label for="${id}">${label}</label>` +
-  (type === "textarea" || (value != null && value.length > 80)
+  (type === "model"
+    ? `<input id="${id}" type="text" value="${esc(value ?? "")}" list="model-list"`
+      + ` placeholder="model id — the datalist suggests what LM Studio has loaded">`
+    : type === "textarea" || (value != null && value.length > 80)
     ? `<textarea id="${id}" rows="${type === "small" ? 3 : 5}">${esc(value ?? "")}</textarea>`
     : type === "number"
     ? `<input id="${id}" type="number" value="${esc(String(value ?? ""))}">`
@@ -43,15 +46,19 @@ function deepEq(a, b) {
   try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
 }
 
-/** Debounced check against the server. */
+/** Debounced check against the server. The token makes the newest request win: two checks in
+ *  flight can answer out of order, and a stale failure would otherwise disable Save (or a stale
+ *  success clear issues a newer check had flagged) until the next keystroke. */
+let checkReq = 0;
 function scheduleCheck() {
   if (APP.editCheckTimer) clearTimeout(APP.editCheckTimer);
   APP.editCheckTimer = setTimeout(doCheck, 400);
 }
 
 async function doCheck() {
+  const req = ++checkReq;
   const j = await post("/story/check", { story: APP.editDraft }, false);
-  if (!j) return;
+  if (!j || req !== checkReq) return;
   if (j.ok === false) {
     APP.editIssues = j.issues || [];
   } else {
@@ -168,10 +175,10 @@ function modelsHtml() {
   const modelOpts = `<datalist id="model-list">${(APP.modelIds || []).map(id => `<option value="${esc(id)}">`).join("")}</datalist>`;
   return `<details class="editor-section"><summary>Models</summary>
     <div class="editor-row">
-      ${fld("models-default", "Default", def, "half")}
-      ${fld("models-writer", "Writer (optional)", m.writer ?? "", "half")}
+      ${fld("models-default", "Default", def, "model")}
+      ${fld("models-writer", "Writer (optional)", m.writer ?? "", "model")}
     </div>
-    ${fld("models-summary", "Summary (optional)", m.summary ?? "", "half")}
+    ${fld("models-summary", "Summary (optional)", m.summary ?? "", "model")}
     ${modelOpts}
     ${issuesHtml("models")}
   </details>`;
@@ -209,6 +216,7 @@ function editToolbarHtml() {
  *  running away: wireStoryEditor() starts the load and runs on EVERY render, so without a flag
  *  saying one is already in flight, the render this schedules would start another. */
 export async function loadEditor(dir) {
+  APP.editFor = dir;           // claimed up front: renders while the fetch is in flight must not re-trigger
   APP.editError = "";
   APP.editIssues = [];
   APP.editWarnings = [];
@@ -329,38 +337,13 @@ function setDirty() {
   APP.editDirty = !deepEq(APP.editStory, APP.editDraft);
 }
 
-function readField(id) {
-  const el = document.getElementById(id);
-  if (!el) return null;
-  if (el.type === "checkbox") return el.checked;
-  if (el.type === "number") return el.value === "" ? "" : Number(el.value);
-  return el.value;
-}
-
-function pathToDraft(fieldPath) {
-  const parts = fieldPath.split("-");  // e.g. "scene-1-place" → ["scene", "1", "place"]
-  let obj = APP.editDraft;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    if (key.match(/^\d+$/)) {
-      const idx = Number(key) - 1;
-      if (!obj[idx]) obj[idx] = {};
-      obj = obj[idx];
-    } else {
-      if (obj[key] == null) obj[key] = {};
-      obj = obj[key];
-    }
-  }
-  return { obj, key: parts[parts.length - 1], idx: parts.length };
-}
-
 function applyField(id, value) {
-  // Map element IDs to editDraft paths
+  // Map element IDs to editDraft paths. "edit-facts" is deliberately absent: it needs line
+  // splitting into an array, handled by its own branch below -- a map entry here would shadow it.
   const map = {
     "edit-title": "title",
     "edit-premise": "premise",
     "edit-writerStyle": "writerStyle",
-    "edit-facts": "facts",
     "models-default": "models.default",
     "models-writer": "models.writer",
     "models-summary": "models.summary",
@@ -442,9 +425,10 @@ function applyField(id, value) {
 }
 
 export function wireStoryEditor(page) {
-  // Back button
+  // Back button -- mutates nothing before go(): the dirty guard in nav.js owns the confirm, and
+  // clearing editDirty here (as this used to) silently discarded unsaved changes with one click.
   const back = page.querySelector("#edit-back");
-  if (back) back.addEventListener("click", () => { APP.editDirty = false; APP.editDir = ""; go("story"); });
+  if (back) back.addEventListener("click", () => go("story"));
 
   // All inputs write to draft
   const inputs = page.querySelectorAll("input, textarea, select");
@@ -511,8 +495,11 @@ export function wireStoryEditor(page) {
     APP.render();
   });
 
-  // Start loading if not already loaded — never while one is already in flight
-  if (!APP.editStory && !APP.editLoading && APP.editDir && !APP.editError) {
+  // Start loading if not already loaded for THIS story — never while one is already in flight.
+  // Keyed by editFor, not editStory: a draft left over from another story must trigger a fresh
+  // load here, never render as if it were this story's. No editError clause: a refusal that
+  // belonged to another story must not block this one -- loadEditor clears it.
+  if (APP.editFor !== APP.editDir && !APP.editLoading && APP.editDir) {
     loadEditor(APP.editDir);
   }
 }

@@ -7,16 +7,19 @@ import { basename } from "./util.js";
 // (`.field = x`, `.add()`/`.delete()`) don't need that: a plain `export const` already lets
 // any importer reach in and change them.
 //
-const newStore = () => ({ events: [], seen: new Set(), meta: null, open: new Set(), source: "", isLive: false, label: "", dir: "", id: "", agentStats: {} });
+export const newStore = () => ({ events: [], seen: new Set(), meta: null, source: "", isLive: false, label: "", dir: "", id: "", agentStats: {}, loadReq: 0 });
+export const newAgentState = () => ({ agents: null, agentsError: "", transcript: null, transcriptError: "", callOpen: -1 });
 
 export const LIVEV = newStore();          // the running (or just-finished) scene
 export const READV = newStore();          // a saved run, loaded read-only
+export const COMPAREV = { a: newStore(), b: newStore(), loading: false, error: "", key: "" };
+export const COMPARE_AGENTS = { a: newAgentState(), b: newAgentState() };
 export const READER = {                  // the story reader view: accepted prose by chapter
   dir: "", chapters: [], loading: false, error: "", query: "",
 };
 
 export const APP = {
-  view: "live",               // which page is showing: shelf | story | live | read | readstory | handoff | edit
+  view: "live",               // which page is showing: shelf | story | live | read | readstory | compare | handoff | edit
   live: false,                 // attached to a running engine, as opposed to a static/file:// load
   session: { running:false, stopping:false, where:"", picking:false, armed:false,
              paused:false, pausing:false, model:null, interactive:true },  // the process, not the story
@@ -27,6 +30,10 @@ export const APP = {
   storyDir: "",                 // a shelf card was clicked; the story page is showing this dir
   storyModel: "",               // a model chosen on the story page, overriding the story's own default
   storyError: "",               // the last refusal of /select or /model, said out loud on the story page
+  compareDir: "",               // story whose retained runs are being compared
+  compareA: "",                 // first retained run selected for comparison
+  compareB: "",                 // second retained run selected for comparison
+  compareError: "",             // invalid or incomplete comparison selection
   chapter: null,                // {dir, n, text}: a written chapter opened inline on the story page.
                                  // It carries its own dir because reaching the shelf by the tab does
                                  // not clear it -- chapter 1 of one story must never render under
@@ -67,6 +74,9 @@ export const APP = {
   hAbandonArmed: 0,            // so does throwing it away
   // Story editor state
   editDir: "",                 // which story is being edited
+  editFor: "",                 // which story editStory/editDraft were loaded FOR -- the load trigger
+                                // keys on this, not on editStory being null, or story A's draft
+                                // survives into story B's editor and can be saved over B
   editStory: null,             // the loaded story.json (Zod-parsed)
   editLoading: false,          // a /story/edit fetch is in flight. The editor starts its own load
                                 // from its wiring, which runs on every render -- without this, the
@@ -112,7 +122,9 @@ export const runningReason = () => APP.session.running ? "a scene is being writt
 // any button would clear a tracked value before the re-render it triggered.
 export const draft = { idea:"", say:"", folder:"", model:"", length:"" };
 export const hdraft = { say:"" };
-export const FIELDS = /^[fh]-(idea|say|folder|model|length)$/;
+// r-say-N is the live reader consult's own-answer box (blocks.js) -- it holds half-typed text too,
+// and the SSE frames that arrive while the run waits on you re-render just as eagerly.
+export const FIELDS = /^[fh]-(idea|say|folder|model|length)$|^r-say-\d+$/;
 
 /** Which consults are expanded, by seq — shared across pages on purpose: it is a reading
  *  preference ("I like things opened up"), not a fact tied to one particular run. */

@@ -186,6 +186,9 @@ async function sendSay() {
 async function startInterview() {
   const idea = draft.idea.trim();
   if (!idea) return;
+  // A second Enter (or Enter + clicking the button) while the first POST is in flight must not
+  // overwrite the optimistic busy state and race a second /scaffold/start — same guard sendSay has.
+  if (APP.scaffold.busy) return;
   APP.scaffoldError = "";
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model };
   APP.render();
@@ -246,8 +249,12 @@ export function wireInterview(page) {
     const unsent = !!draft.say.trim();
     const flagged = !!(APP.scaffold.problems && APP.scaffold.problems.length);
     if ((unsent || flagged) && !APP.acceptArmed) { APP.acceptArmed = setTimeout(disarmAccept, 5000); APP.render(); return; }
+    if (APP.scaffold.busy) return;   // a double-click must not POST accept twice
     clearTimeout(APP.acceptArmed); APP.acceptArmed = 0;
-    postScaffold("accept", {});
+    const j = await postScaffold("accept", {});
+    // A clean accept is done with this story -- clear its idea so the next interview does not open
+    // pre-filled with it (the abandon path has always done this).
+    if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.render(); }
   });
 }
 
