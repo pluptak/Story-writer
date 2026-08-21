@@ -29,6 +29,20 @@ export function catalogBlock(catalog: Readonly<Record<string, string>>): string 
     + Object.entries(catalog).map(([n, m]) => `  ${n} -- ${m}`).join("\n");
 }
 
+/** The special-skill bible: prefer these by name; bespoke skills are allowed but must carry a meaning. */
+export function bibleBlock(bible: Readonly<Record<string, string>>): string {
+  return `THE SKILL BIBLE -- special skills beyond the general list. PREFER one of these by its exact `
+    + `name; it already carries its meaning. Write a bespoke "name :: meaning" only when nothing here fits:\n`
+    + Object.entries(bible).map(([n, m]) => `  ${n} -- ${m}`).join("\n");
+}
+
+/** The restriction catalog: named penalties and everything each disables. */
+export function penaltyBlock(penalties: Readonly<Record<string, readonly string[]>>): string {
+  return `THE RESTRICTION CATALOG -- a restriction may be a single skill name, or a named PENALTY that `
+    + `disables every skill listed after it:\n`
+    + Object.entries(penalties).map(([p, skills]) => `  ${p} -- removes: ${skills.join(", ")}`).join("\n");
+}
+
 // -- ARCHITECT -------------------------------------------------------------
 
 export const ARCHITECT_FORMAT = `You design scenes for a writing engine, from an author's rough idea.
@@ -98,16 +112,21 @@ characters   -- Every character costs consults out of a fixed step budget, so ad
                 whether they are closer to it or further away -- this is never shown to the writer
                 or evaluated by anyone outside the character's own agent. What makes a scene work is
                 two characters' goals genuinely colliding, not just being different.
-  skills     -- abilities BEYOND the general list below. "name :: what it means". Give someone
-                something the other cannot do. Do NOT restate a general skill under a new name:
-                "watching :: seeing the lens turn" is just sight, and adds nothing.
-  restrictions      -- general skills this character does NOT have. MUST be names from the general list.
-                 One character who cannot see, or cannot speak, or cannot move, will do more for a
+  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by its exact
+                name -- it already carries its meaning. Write a bespoke "name :: what it means"
+                ONLY when nothing in the bible fits; an unknown bare name with no meaning will be
+                flagged back. Give someone something the other cannot do. Do NOT restate a general
+                skill under a new name: "watching :: seeing the lens turn" is just sight, and adds
+                nothing.
+  restrictions -- what this character does NOT have. A single skill name (general, bible, or one of
+                 this character's own skills), OR a named penalty from THE RESTRICTION CATALOG below,
+                 which disables EVERY skill it lists -- often more than one, and sometimes special
+                 skills too. One character who cannot see, or cannot speak, or cannot move, will do more for a
                  scene than any amount of backstory. AT LEAST ONE character must have a restriction,
                  unless the idea makes that genuinely impossible. It earns its place only
-                if it can actually bite in THIS scene -- prefer one that creates an information or
-                action asymmetry (she can't see the signal he's watching for; he can't hear the
-                alarm she can) over one the scene never puts to the test.
+                 if it can actually bite in THIS scene -- prefer one that creates an information or
+                 action asymmetry (she can't see the signal he's watching for; he can't hear the
+                 alarm she can) over one the scene never puts to the test.
 ask          -- see FIRST DECIDE above. Either this is your whole reply and everything else is
                 empty, or it is "". Do not send a full story with a question attached: if you had
                 enough to propose, you had enough not to ask.
@@ -149,8 +168,14 @@ export function workedExample(storyMd: string, personaMd: string): string {
     + `and one of its persona files:\n\n${personaMd.trim()}`;
 }
 
-export function architectSystem(catalog: Readonly<Record<string, string>>, example: string): string {
-  return `${ARCHITECT_FORMAT}\n\n${catalogBlock(catalog)}` + (example ? `\n\n${example}` : "");
+export function architectSystem(
+  catalog: Readonly<Record<string, string>>,
+  bible: Readonly<Record<string, string>>,
+  penalties: Readonly<Record<string, readonly string[]>>,
+  example: string,
+): string {
+  return `${ARCHITECT_FORMAT}\n\n${catalogBlock(catalog)}\n\n${bibleBlock(bible)}\n\n${penaltyBlock(penalties)}`
+    + (example ? `\n\n${example}` : "");
 }
 
 export const architectIdea = (idea: string) => `[THE IDEA]\n${idea}`;
@@ -259,7 +284,8 @@ these people, you write into their definitions now or it is lost:
   - someone who died, left, or is simply not in the next scene is dropped from that scene's "roster".
     They stay in the cast; the roster is what decides who is in the room;
   - someone who lost a capability -- an arm, their nerve, the lantern -- gains a restriction, and
-    restrictions must be names from the general skill list.
+    restrictions must be names from the general skill list, the skill bible, that character's own
+    skills, or a restriction-catalog penalty.
 
 [THE PREMISE]
 ${premise}

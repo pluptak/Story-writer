@@ -246,6 +246,24 @@ describe("ScaffoldSession.accept", () => {
       assert.equal((await quiet(() => s.accept("the fog signal, again"))).kind, "written");
     } finally { await rm(tmp, { recursive: true, force: true }); }
   });
+
+  it("keeps nothing on disk when the accepted story does not load", async () => {
+    const tmp = await mkdtemp(join(tmpdir(), "scaffold-"));
+    try {
+      const s = scaffold([STORY, { edits: [] }, { edits: [] },
+        { edits: [{ field: "premise", value: "" }] }], tmp);
+      await s.propose();
+      const e = await s.say("empty the premise");
+      assert.equal(e.kind, "edits");
+      const r = await quiet(() => s.accept());
+      assert.ok(r.kind === "unloadable", `expected unloadable, got ${r.kind}`);
+      assert.match(r.error, /premise/i);
+
+      const wrote = await readFile(join(tmp, "the-fog-signal", "story.json"), "utf8")
+        .then(() => true).catch(() => false);
+      assert.equal(wrote, false, "a scaffold whose preflight fails must leave nothing behind");
+    } finally { await rm(tmp, { recursive: true, force: true }); }
+  });
 });
 
 // -- THE HANDOFF -----------------------------------------------------------

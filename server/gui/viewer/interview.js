@@ -160,7 +160,7 @@ async function postScaffold(what, payload) {
   if (j && j.active !== undefined) { APP.scaffoldError = ""; APP.scaffold = j; APP.render(); return j; }
   if (j && j.ok) { APP.scaffoldError = ""; APP.render(); return j; }        // abandon, and a clean accept
   APP.scaffoldError =
-    j && j.kind === "unloadable"   ? `written to ${j.dir}, but it does not load — ${j.error}`
+    j && j.kind === "unloadable"   ? `it does not load, so nothing was kept — ${j.error}`
     : j && j.kind === "needs_folder" ? ""                            // the folder question renders itself
     : reasonOr(j, "that did not go through");
   APP.render();

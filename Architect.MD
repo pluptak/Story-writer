@@ -25,6 +25,26 @@ The architect is a normal `Agent` with its own prompt, history, model, thinking 
 (`0.9`). The surrounding engine extracts JSON, normalizes it into a `StorySpec`, applies only supported
 edits, and reports non-fatal problems separately from model errors.
 
+## Skills and restrictions
+
+The architect's system prompt carries three in-code catalogs from `engine/skills.ts`:
+
+- **`SKILL_CATALOG`** — the eight general skills every character has unless a restriction removes them.
+- **`SPECIAL_SKILL_CATALOG`** — the skill bible: special skills with canonical spellings and meanings
+  (`lockpicking`, `climbing`, `sleight-of-hand`). A resolved skill is tagged `bible` when its name
+  matches; an entry not in the bible stays **custom** and keeps its authored `name :: meaning`.
+  Bespoke per-story skills are first-class — but one that is neither a bible skill nor carries a
+  `:: meaning` is reported back to the author as a non-fatal problem rather than silently kept.
+- **`RESTRICTION_CATALOG`** — named penalties and the set of skills each disables (`deprived`,
+  `anosmic`, `insensate`, `bound`, `hands-bound`). A penalty may reach **special** skills, so it can
+  remove far more than the same-named skill could.
+
+Precedence in `resolveSkills`: a skill named directly in both `skills` and `restrictions` is handed
+back (the character HAS it); a skill disabled *via* a catalog penalty is removed even if `skills`
+names it. Normalization accepts restriction names from the general list, the penalty list, the bible,
+or the character's own declared skills — anything else is dropped with a problem line. Promotion of
+bespoke skills into a shared, approvable bible is planned work ([`PLANS.md`](PLANS.md)).
+
 ## Operating principle
 
 Agent history does not carry between chapters. Agents are rebuilt for every chapter and no character
@@ -254,8 +274,6 @@ imports engine modules directly.
   proposed chapter. `GET /chapter?dir=&n=` serves the prose, so nothing is blocked at the API, but the
   word counts mean one fetch per chapter. Tracked in [`PLANS.md`](PLANS.md).
 - `specView` omits `config`, `models` and per-character `model` — needed only if a panel shows them.
-- Scaffold acceptance is not transactional: a story that writes but fails preflight is left on disk as
-  `kind: "unloadable"`, unlike the handoff, which puts back exactly what was there.
 - A **scaffold** architect receives a hard-coded worked example from `stories/doorway` (~1,870
   estimated tokens); making it story-independent is what stands between that prompt and being
   portable. A **handoff** architect no longer gets it — the handoff prompt names every edit field
@@ -268,7 +286,8 @@ imports engine modules directly.
 - Only one architect round may be in flight per session; a second round gets `409`.
 - A handoff cannot run while a chapter run is active — the run is reading the file the handoff rewrites.
 - Accepting a handoff rewrites `story.json`, so the GUI shows the target story and chapter clearly.
-- A failed handoff preflight restores the previous `story.json`.
+- A failed preflight at accept time puts things back: the handoff restores the previous `story.json`,
+  and the scaffold removes the folder it had just created, so nothing unloadable is left on disk.
 - The GUI does not expose raw filesystem paths; it uses the story directories the API discovered.
 
 ## Out of scope

@@ -201,13 +201,13 @@ async function acceptAtConsole(session: ScaffoldSession,
       folder = said;
       continue;
     }
-    console.log(`\n${C.green}Written:${C.reset} ${r.dir}/ ${C.dim}(${r.files.join(", ")})${C.reset}`);
-    for (const w of r.warnings) console.log(`   ${C.yellow}⚠${C.reset} ${w}`);
     if (r.kind === "unloadable") {
-      console.log(`${C.red}It was written, but it does not load: ${r.error}${C.reset}`);
-      console.log(`${C.dim}Fix it by hand in ${r.dir}/, or keep refining and accept again.${C.reset}`);
+      console.log(`\n${C.red}The story was written to ${r.dir}/, but it does not load: ${r.error}${C.reset}`);
+      console.log(`${C.dim}Nothing was kept — keep refining and accept again.${C.reset}`);
       return "";
     }
+    console.log(`\n${C.green}Written:${C.reset} ${r.dir}/ ${C.dim}(${r.files.join(", ")})${C.reset}`);
+    for (const w of r.warnings) console.log(`   ${C.yellow}⚠${C.reset} ${w}`);
     return r.dir;
   }
 }
@@ -538,7 +538,7 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
     story: dir, chapter, chapters: sceneCount, target: targetScene.length, question: targetScene.question,
     characters: sc.characters.map(c => ({
       name: c.name,
-      skills: c.skills.filter(s => s.source === "story").map(s => s.name),
+      skills: c.skills.filter(s => s.source !== "general").map(s => s.name),
       restrictions: restrictionsOf(c.skills),
     })),
   };

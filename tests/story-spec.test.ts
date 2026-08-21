@@ -34,6 +34,31 @@ describe("normalizeSpec", () => {
     assert.match(problems.join(" "), /telepathy/);
   });
 
+  it("keeps a restriction that names a penalty, a bible skill, or the character's own skill", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, characters: [{ ...base.characters[0],
+        skills: ["lockpicking :: picks locks"], restrictions: "deprived | bound | lockpicking" }] });
+    assert.deepEqual(spec.characters[0].restrictions, ["deprived", "bound", "lockpicking"]);
+    assert.equal(problems.filter(p => /restrictions/.test(p)).length, 0);
+  });
+
+  it("still drops a restriction naming an undeclared bespoke skill", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, characters: [{ ...base.characters[0], skills: [], restrictions: ["fire"] }] });
+    assert.deepEqual(spec.characters[0].restrictions, []);
+    assert.match(problems.join(" "), /fire/);
+  });
+
+  it("flags a bespoke skill that is neither a bible skill nor carries a :: meaning", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, characters: [{ ...base.characters[0], skills: ["whispercraft", "chewing :: grinding through what others cannot", "lockpicking"] }] });
+    assert.deepEqual(spec.characters[0].skills,
+                     ["whispercraft", "chewing :: grinding through what others cannot", "lockpicking"]);
+    assert.equal(problems.filter(p => /whispercraft/.test(p)).length, 1, "the unknown bare name is flagged");
+    assert.ok(!problems.some(p => /chewing/.test(p)), "a custom skill WITH a meaning is legitimate");
+    assert.ok(!problems.some(p => /lockpicking/.test(p)), "a bible skill needs no authored meaning");
+  });
+
   it("clears a pov that is not one of the characters", () => {
     const { spec, problems } = normalizeSpec({ ...base, scene: { ...base.scene, pov: "NOBODY" } });
     assert.equal(spec.scenes[0].pov, "");

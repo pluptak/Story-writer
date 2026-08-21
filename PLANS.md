@@ -34,12 +34,15 @@ run, which is the owner's to make, batched.
   the author, but `architectChange` sends only the author's text and the spec — so an architect that
   invents a field (`scene_1` rather than `scene_1.question`, observed) can repeat it every round.
   Feeding refusals into the next prompt is the fix; it touches `prompts.ts`, so it is its own block.
-- **Scaffold acceptance is not transactional.** A new story that writes but fails preflight is left on
-  disk as `kind: "unloadable"`. The handoff restores the previous file in the same situation; the
-  scaffold should match it.
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round now refuses with the numbers rather than letting the model return nothing, but a
   long story needs a correspondingly large context window loaded.
+- **Approvable, promotable skill bible.** The in-code `SPECIAL_SKILL_CATALOG` is the seed; the second
+  half of the plan is a shared, persistent bible that bespoke per-story `custom` skills can be
+  **promoted** into — natural home alongside `defaults.json`, loaded by `loadDefaults` and merged over
+  the in-code seed. The architect may **propose** a bible addition; it lands only after the owner
+  **approves** it — a real gate distinct from accepting the story. That gate is what turns "prefer an
+  existing skill" into a hard constraint; until it exists, custom skills stay allowed.
 
 ## Writing-quality follow-ups
 

@@ -7,7 +7,7 @@ import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG } from "./skills.ts";
+import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, type StorySpec } from "./story-spec.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
@@ -29,7 +29,9 @@ async function architectExample(): Promise<string> {
  * shape it demonstrates is the whole-story reply a handoff must *not* send.
  */
 export async function buildArchitect(d: Defaults, withExample = true): Promise<Agent> {
-  const system = P.architectSystem(SKILL_CATALOG, withExample ? await architectExample() : "");
+  const system = P.architectSystem(
+    SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG,
+    withExample ? await architectExample() : "");
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
   a.think = d.thinking.architect;
   return a;
@@ -228,9 +230,13 @@ export class ScaffoldSession {
 
     const pf = await runPreflight(dir);
     const warnings = pf.warnings.map(w => w.trim());
-    return pf.ok
-      ? { kind: "written", dir, files, warnings }
-      : { kind: "unloadable", dir, files, error: pf.error ?? "unknown", warnings };
+    if (!pf.ok) {
+      // Transactional, like the handoff: this folder did not exist before accept() made it, so
+      // putting back exactly what was there means leaving nothing behind.
+      await rm(abs, { recursive: true, force: true });
+      return { kind: "unloadable", dir, files, error: pf.error ?? "unknown", warnings };
+    }
+    return { kind: "written", dir, files, warnings };
   }
 }
 

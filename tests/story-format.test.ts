@@ -504,7 +504,7 @@ describe("stories/doorway", () => {
     const sc = await quiet(() => loadStory("stories/doorway"));
     assert.deepEqual(sc.characters.map(c => c.name), ["RIVEN", "MERRITT"]);
     const riven = sc.characters[0], merritt = sc.characters[1];
-    assert.ok(riven.skills.some(s => s.name === "lockpicking" && s.source === "story"));
+    assert.ok(riven.skills.some(s => s.name === "lockpicking" && s.source === "bible"));
     assert.ok(!merritt.skills.some(s => s.name === "sight"));
     assert.ok(sc.scenes[0].question);
     assert.ok(sc.premise.length > 100);

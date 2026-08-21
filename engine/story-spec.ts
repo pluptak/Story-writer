@@ -1,7 +1,7 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
 import { C } from "../ansi.ts";
 import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG, canonSkill, splitMeaning } from "./skills.ts";
+import { SKILL_CATALOG, RESTRICTION_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
 import { StoryJson, RunConfig, type SceneDef, type CharacterDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
@@ -44,14 +44,25 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     if (!name) { problems.push("a character came back with no name — dropped"); continue; }
     if (seen.has(name.toLowerCase())) { problems.push(`two characters called "${name}" — kept the first`); continue; }
     seen.add(name.toLowerCase());
+    const skills = asStrings(c?.skills);
+    for (const entry of skills) {
+      const { text, meaning } = splitMeaning(entry);
+      if (bibleMeaningOf(text) === undefined && !meaning)
+        problems.push(`${name} has skill "${text}" — not a bible skill, and it carries no ":: meaning", so nobody can tell what it lets them do`);
+    }
     const restrictions = asStrings(c?.restrictions ?? c?.lacks).filter(l => {
-      const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === canonSkill(splitMeaning(l).text));
-      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a general skill, so it would remove nothing`);
+      const r = splitMeaning(l).text;
+      const rk = canonSkill(r);
+      const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === rk)
+        || Object.keys(RESTRICTION_CATALOG).some(p => canonSkill(p) === rk)
+        || bibleMeaningOf(r) !== undefined
+        || skills.some(s => canonSkill(splitMeaning(s).text) === rk);
+      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a known skill or penalty, so it would remove nothing`);
       return ok;
     });
     characters.push({
       name, model: String(c?.model ?? "").trim(), persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
-      goal: String(c?.goal ?? "").trim(), skills: asStrings(c?.skills), restrictions,
+      goal: String(c?.goal ?? "").trim(), skills, restrictions,
       ...(Number.isInteger(c?.maxRetries) && c.maxRetries >= 0 ? { maxRetries: c.maxRetries } : {}),
     });
     if (!c?.persona) problems.push(`${name} has no persona`);
