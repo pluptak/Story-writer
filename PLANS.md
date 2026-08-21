@@ -124,23 +124,12 @@ structural diff of the consult sequence — the two panes already let a reader c
 Found by reading the run logs of `stories/the-watchfire` against the writer's own rules. Each is a
 place where the engine permits something the prompts forbid.
 
-- **A scene that passes its target length does not end, and degenerates while it runs on.** One
-  chapter aimed at 750 words ran to 2,237 across 53 steps on four granted budget extensions; 37 of
-  those steps came after the target was passed, and 14 of the run's 17 refused consults were in that
-  tail — all of them `"What do you do?"`. Before the target the refusal rate was ordinary. So the
-  overrun is the disease and the degenerate consults are the symptom: a writer with no fork left to
-  ask about keeps asking anyway. `writeInstruction`'s "You are at length — bring the scene to its
-  end" is evidently too soft to close a scene on its own.
 - **`reaction` is never used.** Zero consults of 76 across three runs asked for one; the split is
   decision 49, speech 22, action 5. It is the one shape that lets a present-but-not-acting character
   stay a person, and it is also the honest thing to ask when there is no fork — exactly the situation
   that currently produces `"What do you do?"`. The neglect nudge in `writeInstruction` should name it.
-- **Restrictions govern answers but not narration.** `consult.ts` machine-checks a character's
-  `skills_used`, but nothing checks the prose. `writerSystem` states that a CANNOT governs narration
-  too, and the very first sentence of the first written chapter of The Watchfire is "The tower smells
-  of old pine dust and hot metal" — POV ADAN, whose one restriction is `smell`. A lint over draft
-  prose for the POV character's restricted senses would have caught it; a warning is probably right,
-  not a hard refusal.
+  The group-reaction fan-out (see [Writer.MD](Writer.MD)) now gives the writer a distinct, cheap reason
+  to reach for `reaction`; whether it actually shifts the split is still to be measured on a live run.
 - **The judge and the clarifier are named `WRITER`,** so they share the writer's transcript and, now
   that per-call stats exist, its stats row too — one line blending three jobs at three temperatures.
   Splitting them needs `llmLogEntry`'s `role` rule widened past `name === "WRITER" ? … : "character"`

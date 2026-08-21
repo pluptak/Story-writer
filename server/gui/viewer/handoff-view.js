@@ -1,6 +1,16 @@
-import { esc } from "./util.js";
+import { esc, modelOptionsHtml } from "./util.js";
 import { APP, storyName, hdraft, runningReason } from "./state.js";
 import { wordsPovHtml } from "./story-page.js";
+
+// The architect default (defaults.json's models.architect) is repo-wide, not per-story, so it can
+// name a model this story never asked for and that may not even be loaded -- the dropdown lets a
+// round be started with a model actually known to work instead.
+function handoffModelSelectHtml() {
+  return `<select id="h-model" class="btn" title="model to prepare this chapter with">
+    <option value=""${APP.handoffModel ? "" : " selected"}>architect default${APP.modelDefault ? " · " + esc(APP.modelDefault) : ""}</option>
+    ${modelOptionsHtml(APP.modelIds, APP.handoffModel)}
+  </select>`;
+}
 
 export function handoffPageHtml() {
   // Screen 4: no story chosen
@@ -46,6 +56,7 @@ export function handoffPageHtml() {
       ${APP.handoffError ? `<div class="said bad">${esc(APP.handoffError)}</div>` : ""}
       <div class="btns" style="margin-top:18px">
         <button class="btn primary" id="h-start"${busy ? ` disabled title="${esc(busy)}"` : ""}>prepare the next chapter</button>
+        ${handoffModelSelectHtml()}
         <span class="spacer"></span>
         <button class="btn" id="h-back">back to the story</button>
       </div>

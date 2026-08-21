@@ -51,9 +51,10 @@ export async function tryHttp() {
     APP.view = wanted || (APP.session.running ? "live" : "shelf");
     if (APP.view === "story") APP.storyDir = parseHashParams().get("dir") || "";
     if (APP.view === "handoff") APP.handoffDir = APP.handoffDir || parseHashParams().get("dir") || "";
+    if (APP.view === "edit") APP.editDir = parseHashParams().get("dir") || "";
     if (APP.view === "readstory") loadDeepLinkedReader();     // sets READER.dir and starts the fetch
     if (APP.view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
-    if (APP.view === "readstory" || APP.view === "read" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff") loadStories();
+    if (APP.view === "readstory" || APP.view === "read" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff" || APP.view === "edit") loadStories();
     syncHash();
     APP.render();
     startSSE();

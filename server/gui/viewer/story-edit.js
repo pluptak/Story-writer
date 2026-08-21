@@ -205,7 +205,9 @@ function editToolbarHtml() {
   </div>`;
 }
 
-/** Fetch the story and load it into the editor store. */
+/** Fetch the story and load it into the editor store. `editLoading` is what keeps this from
+ *  running away: wireStoryEditor() starts the load and runs on EVERY render, so without a flag
+ *  saying one is already in flight, the render this schedules would start another. */
 export async function loadEditor(dir) {
   APP.editError = "";
   APP.editIssues = [];
@@ -213,12 +215,23 @@ export async function loadEditor(dir) {
   APP.editStory = null;
   APP.editDraft = null;
   APP.editDirty = false;
-  APP.render();
+  APP.editLoading = true;
 
-  const r = await fetch(`/story/edit?dir=${encodeURIComponent(dir)}`);
-  const j = await r.json();
+  let r, j;
+  try {
+    r = await fetch(`/story/edit?dir=${encodeURIComponent(dir)}`);
+    j = await r.json();
+  } catch {
+    APP.editLoading = false;
+    APP.editError = "could not load story";
+    APP.render();
+    return;
+  }
+  APP.editLoading = false;
   if (!j.ok) {
-    APP.editError = j.error || "could not load story";
+    // `error` is a story that would not parse; `reason` is the route refusing outright
+    // ("cannot edit while a run is in flight") -- both have to reach the page.
+    APP.editError = j.error || j.reason || "could not load story";
     APP.editRaw = j.raw || null;
     APP.render();
     return;
@@ -242,6 +255,13 @@ export function storyEditHtml() {
       ${errorBannerHtml()}
       ${APP.editRaw ? `<div class="said bad" style="margin-bottom:12px">The file could not be parsed — here is the raw content:</div>
         <pre style="white-space:pre-wrap;font-size:13px">${esc(JSON.stringify(APP.editRaw, null, 2))}</pre>` : ""}
+      <div class="btns" style="margin-top:14px"><button class="btn" id="edit-back">back to story</button></div>
+    </section>`;
+  }
+
+  if (!APP.editDir) {
+    return `<section class="picker story"><h2>Edit story</h2>
+      <p class="hint">No story chosen — open one from the shelf and edit it from there.</p>
       <div class="btns" style="margin-top:14px"><button class="btn" id="edit-back">back to story</button></div>
     </section>`;
   }
@@ -491,8 +511,8 @@ export function wireStoryEditor(page) {
     APP.render();
   });
 
-  // Start loading if not already loaded
-  if (!APP.editStory && APP.editDir && !APP.editError) {
+  // Start loading if not already loaded — never while one is already in flight
+  if (!APP.editStory && !APP.editLoading && APP.editDir && !APP.editError) {
     loadEditor(APP.editDir);
   }
 }

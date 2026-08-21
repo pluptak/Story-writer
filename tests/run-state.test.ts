@@ -5,10 +5,11 @@ import assert from "node:assert/strict";
 import { loadStory } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
-import { wrapWriter, writerCast, runChapter, writeScene } from "../engine/scene-loop.ts";
+import { wrapWriter, writerCast, runChapter, writeScene, type RunEvent } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
 import type { Skill } from "../engine/skills.ts";
-import { complete } from "../engine/llm-client.ts";
+import { complete, NET } from "../engine/llm-client.ts";
+import { ENGINE } from "../engine/engine-state.ts";
 import { LIVE, runState, resetLive, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
@@ -276,6 +277,228 @@ describe("retry ceiling", () => {
       assert.ok(se, "scene_end was logged");
       assert.deepEqual(se.retries, {}, "no retries happened because the run was stopped");
     } finally {
+      armRun();
+      resetLive();
+    }
+  });
+});
+
+// -- LENGTH HARD CAP ---------------------------------------------------------
+describe("a scene that never ends", () => {
+  it("is forced closed at twice its target length, however many times the writer says scene_done: false", async () => {
+    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sd = { ...sc.scenes[0], length: 40, roster: [] };
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;   // the non-streaming completion is the simpler shape to script
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ prose: "word ".repeat(25).trim(), scene_done: false }) } }],
+    }))) as any;
+
+    armRun();
+    try {
+      const r = await writeScene(
+        sd, 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        30, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log,
+      );
+
+      assert.equal(r.done, true, "the scene closes even though the writer never sent scene_done: true");
+      assert.ok(r.words >= 80, "closed at or past twice the 40-word target");
+      assert.ok(r.steps < 30, "closed well under the step budget — length, not steps, ended it");
+      const forced = events.find(e => e.t === "forced_end") as any;
+      assert.ok(forced, "forced_end was logged");
+      assert.equal(forced.target, 40);
+      assert.ok(!events.some(e => e.t === "budget"), "never hit the step-budget path");
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+});
+
+// -- THE NARRATION LINT -------------------------------------------------------
+describe("the narration lint", () => {
+  const sc0 = () => quiet(() => loadStory("stories/doorway"));
+
+  /** Routes a mocked completion by which system prompt asked for it — the writer's own `[WRITE]`
+   *  loop and the lint's stateless check share one fetch mock, so call order alone can't tell them
+   *  apart once a redraft happens. Each branch advances its own counter independently. */
+  function scriptedFetch(opts: {
+    writerReplies: Record<string, unknown>[];
+    lintReplies?: Record<string, unknown>[];
+    lintFails?: boolean;
+  }) {
+    let writerCall = 0, lintCall = 0;
+    const fetchMock = (async (_url: string, init: any) => {
+      const body = JSON.parse(String(init.body));
+      const sys = String(body.messages?.[0]?.content ?? "");
+      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
+        if (opts.lintFails) { lintCall++; throw new Error("simulated lint outage"); }
+        const content = JSON.stringify(opts.lintReplies![lintCall++]);
+        return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
+      }
+      const content = JSON.stringify(opts.writerReplies[writerCall++]);
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
+    }) as any;
+    return { fetchMock, calls: () => ({ writerCall, lintCall }) };
+  }
+
+  it("redrafts once when the writer invents a line for someone not consulted, and keeps the redraft", async () => {
+    const sc = await sc0();
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+
+    const flaggedProse = `Riven reaches for the door. "No," Merritt says, without looking up.`;
+    const cleanProse = `Riven reaches for the door and waits, listening for Merritt's crate to creak.`;
+    const { fetchMock, calls } = scriptedFetch({
+      writerReplies: [
+        { prose: flaggedProse, scene_done: false },
+        { prose: cleanProse, scene_done: true },
+      ],
+      lintReplies: [
+        { ok: false, why: "MERRITT was given a line — THE ONE RULE — nobody asked them." },
+        { ok: true },
+      ],
+    });
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = fetchMock;
+
+    armRun();
+    try {
+      const r = await writeScene(
+        sc.scenes[0], 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log,
+      );
+
+      assert.equal(r.done, true);
+      assert.deepEqual(r.prose, [cleanProse], "the redraft is what's on the page, not the flagged draft");
+
+      const flags = events.filter(e => e.t === "narration_flag") as any[];
+      assert.equal(flags.length, 1, "flagged once, then passed clean");
+      assert.equal(flags[0].retried, false);
+      assert.match(flags[0].why, /MERRITT/);
+
+      const drafts = events.filter(e => e.t === "draft") as any[];
+      assert.equal(drafts.length, 1, "the flagged draft never got its own draft event");
+      assert.equal(drafts[0].prose, cleanProse);
+
+      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 });
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+
+  it("accepts the piece anyway when the redraft is flagged too — the lint warns, it never blocks", async () => {
+    const sc = await sc0();
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+
+    const firstProse = `Riven reaches for the door. "No," Merritt says, without looking up.`;
+    const redraftProse = `Riven reaches for the door. Merritt already knows, and says so.`;
+    const { fetchMock, calls } = scriptedFetch({
+      writerReplies: [
+        { prose: firstProse, scene_done: false },
+        { prose: redraftProse, scene_done: true },
+      ],
+      lintReplies: [
+        { ok: false, why: "MERRITT was given a line nobody asked for." },
+        { ok: false, why: "MERRITT was given a line nobody asked for, again." },
+      ],
+    });
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = fetchMock;
+
+    armRun();
+    try {
+      const r = await writeScene(
+        sc.scenes[0], 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log,
+      );
+
+      assert.equal(r.done, true, "a scene that keeps failing the lint still finishes, never blocked");
+      assert.deepEqual(r.prose, [redraftProse], "the still-flagged redraft is accepted, not discarded");
+
+      const flags = events.filter(e => e.t === "narration_flag") as any[];
+      assert.equal(flags.length, 2);
+      assert.equal(flags[0].retried, false);
+      assert.equal(flags[1].retried, true, "the second flag is reported as the spent retry");
+
+      const drafts = events.filter(e => e.t === "draft") as any[];
+      assert.equal(drafts.length, 1);
+      assert.equal(drafts[0].prose, redraftProse);
+
+      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 }, "one redraft only, however the lint calls it");
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+
+  it("accepts the writer's draft unmodified when the lint call itself fails", async () => {
+    const sc = await sc0();
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+
+    const prose = `Riven crosses the corridor and tries the door.`;
+    const { fetchMock, calls } = scriptedFetch({
+      writerReplies: [{ prose, scene_done: true }],
+      lintFails: true,
+    });
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    const origRetries = NET.retries;
+    ENGINE.stream = false;
+    NET.retries = 0;   // don't let the lint's own retry/backoff slow this down
+    globalThis.fetch = fetchMock;
+
+    armRun();
+    try {
+      const r = await writeScene(
+        sc.scenes[0], 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log,
+      );
+
+      assert.equal(r.done, true);
+      assert.deepEqual(r.prose, [prose], "the writer's only draft is accepted as-is");
+      assert.ok(!events.some(e => e.t === "narration_flag"), "a lint that never answers is never a flag");
+
+      const drafts = events.filter(e => e.t === "draft") as any[];
+      assert.equal(drafts.length, 1);
+
+      assert.equal(calls().writerCall, 1, "the lint's own failure never costs a redraft");
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      NET.retries = origRetries;
       armRun();
       resetLive();
     }

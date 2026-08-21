@@ -23,7 +23,8 @@ import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, runPreflight, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import {
-  buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest, type ScaffoldRound, type NextChapterSession,
+  buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
+  type ScaffoldRound, type NextChapterSession, type AutoStage, type AutoPass,
 } from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
 
@@ -146,8 +147,29 @@ function showSpec(spec: StorySpec, problems: string[], note = "", full = false) 
 
 const SCAFFOLD_HINT = "Try saying more about who is in the scene and what is at stake.";
 
+/** What each automatic pass is doing, for the CLI to print while it's in flight. This text is never
+ *  sent to a model, so it does not belong in prompts.ts. */
+const STAGE_LABEL: Record<AutoStage, string> = {
+  fillGaps: "Filling in roster and facts…",
+  verify: "Verifying consistency…",
+};
+
+/** Print what each automatic fill-gaps/verify pass did, before the round's own outcome. */
+function showAuto(auto?: AutoPass[]) {
+  for (const a of auto ?? []) {
+    const label = a.stage === "fillGaps" ? "fill-in" : "verify";
+    if (a.outcome !== "edits") {
+      console.log(`${C.dim}${label}: ${a.outcome === "failed" ? a.note : "nothing to add"}${C.reset}`);
+      continue;
+    }
+    if (a.applied.length) console.log(`${C.dim}${label} changed:${C.reset} ${a.applied.map(x => x.field).join(", ")}`);
+    for (const ig of a.ignored) console.log(`${C.yellow}⚠${C.reset} ${label} ignored ${ig}`);
+  }
+}
+
 /** Print whatever a round did. The session decided it; this only says it out loud. */
 function showRound(s: { spec: StorySpec; problems: string[] }, r: ScaffoldRound, hint = SCAFFOLD_HINT) {
+  showAuto((r as { auto?: AutoPass[] }).auto);
   switch (r.kind) {
     case "failed":
       console.log(`${C.red}That round failed (${r.error}) — nothing changed.${C.reset}`); return;
@@ -205,9 +227,10 @@ async function runScaffoldCli() {
   if (!idea.trim()) { console.log("Nothing to work with."); return; }
 
   const session = await newScaffoldSession(idea);
+  const onStage = (stage: AutoStage) => console.log(`${C.dim}${STAGE_LABEL[stage]}${C.reset}`);
 
   console.log(`${C.dim}\nthinking about it (${session.defaults.models.architect})…${C.reset}`);
-  showRound(session, await session.propose());
+  showRound(session, await session.propose(onStage));
 
   if (!process.stdin.isTTY) return;
 
@@ -247,7 +270,7 @@ async function runScaffoldCli() {
         continue;
       }
 
-      showRound(session, await session.say(said));
+      showRound(session, await session.say(said, onStage));
     }
   } finally { rl2.close(); }
 }
@@ -263,7 +286,8 @@ async function runHandoffCli(dir: string) {
   setWhere(`preparing chapter ${s.chapter} of ${dir}`, false);
   console.log(`\n${C.bold}${dir}${C.reset} ${C.dim}— ${s.chapters.length} chapter(s) written · `
     + `preparing chapter ${s.chapter} (${s.defaults.models.architect})…${C.reset}`);
-  showRound(s, await s.propose(), HANDOFF_HINT);
+  const onStage = (stage: AutoStage) => console.log(`${C.dim}${STAGE_LABEL[stage]}${C.reset}`);
+  showRound(s, await s.propose(onStage), HANDOFF_HINT);
 
   if (!process.stdin.isTTY) return;
 

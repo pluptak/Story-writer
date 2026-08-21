@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  consult, normalizeConsult, canonWants, parseVerdict, parseClarifyAnswer, missingShape,
+  consult, normalizeConsult, normalizeReactionConsult, canonWants, parseVerdict, parseBatchVerdict, parseClarifyAnswer, missingShape,
   reviseConsult, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
 } from "../engine/consult.ts";
 import * as P from "../prompts.ts";
@@ -140,6 +140,45 @@ describe("neglectedCast", () => {
   it("is case-insensitive against how lastAsked is keyed", () => {
     assert.deepEqual(neglectedCast(["Merritt"], new Map([["merritt", 3]]), 6, 3), ["Merritt"]);
   });
+
+  it("stops flagging a character once they are dropped from the active cast", () => {
+    // writeScene passes the shrinking `active` set here, so an exited character never surfaces again.
+    const lastAsked = new Map([["riven", 4]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 5, 3), ["MERRITT"]);
+    assert.deepEqual(neglectedCast(["RIVEN"], lastAsked, 5, 3), []);
+  });
+});
+
+describe("writeInstruction", () => {
+  const base = { maxProseWords: 140, overran: 0, neglected: [] as string[], hardCap: false };
+
+  it("says nothing about length under 85% of target", () => {
+    const msg = P.writeInstruction({ ...base, words: 50, target: 100 });
+    assert.doesNotMatch(msg, /budget|at length|well past/);
+  });
+
+  it("warns softly between 85% and target", () => {
+    const msg = P.writeInstruction({ ...base, words: 90, target: 100 });
+    assert.match(msg, /almost out of budget/);
+  });
+
+  it("says to end once at or past target", () => {
+    const msg = P.writeInstruction({ ...base, words: 100, target: 100 });
+    assert.match(msg, /at length — bring the scene to its end/);
+  });
+
+  it("escalates past 130% of target", () => {
+    const msg = P.writeInstruction({ ...base, words: 131, target: 100 });
+    assert.match(msg, /well past length/);
+    assert.doesNotMatch(msg, /at length — bring the scene to its end/);
+  });
+
+  it("demands an unconditional close when hardCap is set, overriding the softer tiers", () => {
+    const msg = P.writeInstruction({ ...base, words: 250, target: 100, hardCap: true });
+    assert.match(msg, /LAST PIECE OF THE SCENE/);
+    assert.match(msg, /"scene_done": true/);
+    assert.doesNotMatch(msg, /well past length/);
+  });
 });
 
 describe("canonWants", () => {
@@ -187,6 +226,62 @@ describe("judgeRequest", () => {
   });
 });
 
+describe("narrationLintRequest", () => {
+  const base = {
+    pov: "RIVEN", prose: "Riven crossed the room and reached for the door.",
+    granted: [] as { character: string; speech: string; action: string }[],
+    consult: null as { character?: string; reactors?: string[]; situation: string; question: string } | null,
+  };
+
+  it("carries the POV and the drafted prose", () => {
+    const s = P.narrationLintRequest(base);
+    assert.match(s, /RIVEN/);
+    assert.match(s, /Riven crossed the room and reached for the door\./);
+  });
+
+  it("shows nobody has been granted anything yet", () => {
+    assert.match(P.narrationLintRequest(base), /\(nobody yet\)/);
+  });
+
+  it("lists each granted line and deed", () => {
+    const s = P.narrationLintRequest({ ...base,
+      granted: [{ character: "MERRITT", speech: "No.", action: "" }, { character: "RIVEN", speech: "", action: "steps back" }] });
+    assert.match(s, /MERRITT -- said: No\./);
+    assert.match(s, /RIVEN -- did: steps back/);
+  });
+
+  it("omits the consult section entirely when there is no outgoing consult", () => {
+    assert.doesNotMatch(P.narrationLintRequest(base), /CONSULT OPENED/);
+  });
+
+  it("names a single character asked, with the situation and question", () => {
+    const s = P.narrationLintRequest({ ...base,
+      consult: { character: "MERRITT", situation: "Your purse is gone from your coat.", question: "What do you do?" } });
+    assert.match(s, /CONSULT OPENED BY THIS PIECE/);
+    assert.match(s, /asking: MERRITT/);
+    assert.match(s, /situation given: Your purse is gone from your coat\./);
+    assert.match(s, /question: What do you do\?/);
+  });
+
+  it("lists reactors instead of a single character for a fan-out", () => {
+    const s = P.narrationLintRequest({ ...base,
+      consult: { reactors: ["ELARA", "MIRA"], situation: "s", question: "q" } });
+    assert.match(s, /reactors: ELARA, MIRA/);
+  });
+});
+
+describe("narrationFlagged", () => {
+  it("carries the reason verbatim", () => {
+    assert.match(P.narrationFlagged("MERRITT was given a line nobody asked for."),
+                 /MERRITT was given a line nobody asked for\./);
+  });
+
+  it("tells the writer to redraft rather than continue", () => {
+    assert.match(P.narrationFlagged("why"), /[Rr]edraft/);
+    assert.match(P.narrationFlagged("why"), /not written to the page/);
+  });
+});
+
 describe("the retry template", () => {
   it("names every field a retry has to carry", () => {
     // A field absent from the template is a field the model does not send: `wants` was missing from
@@ -205,6 +300,31 @@ describe("the retry template", () => {
 
   it("tells the judge that only a reaction is answered by a thought", () => {
     assert.match(P.JUDGE_FORMAT, /Only\s+a reaction is answered by a thought alone/);
+  });
+});
+
+describe("the narration lint format", () => {
+  it("names the two reply shapes", () => {
+    assert.match(P.NARRATION_LINT_FORMAT, /"ok":\s*true/);
+    assert.match(P.NARRATION_LINT_FORMAT, /"ok":\s*false/);
+  });
+
+  it("names THE ONE RULE, CANNOT, and situation concreteness as what it checks", () => {
+    assert.match(P.NARRATION_LINT_FORMAT, /THE ONE RULE/);
+    assert.match(P.NARRATION_LINT_FORMAT, /CANNOT/);
+    assert.match(P.NARRATION_LINT_FORMAT, /consequence/);
+  });
+
+  it("tells it to pass when in doubt, so it does not over-trigger", () => {
+    assert.match(P.NARRATION_LINT_FORMAT, /When in doubt, pass it/);
+  });
+});
+
+describe("narrationLintSystem", () => {
+  it("carries the cast's can/cannot block", () => {
+    const s = P.narrationLintSystem([{ name: "RIVEN", can: ["lockpicking"], cannot: ["sight"] }]);
+    assert.match(s, /RIVEN -- can: lockpicking/);
+    assert.match(s, /CANNOT: sight/);
   });
 });
 
@@ -263,6 +383,36 @@ describe("parseVerdict", () => {
     assert.equal(parseVerdict({ prose: "the door swings wide" }), null);
     assert.equal(parseVerdict({}), null);
     assert.equal(parseVerdict({ verdict: "" }), null);
+  });
+});
+
+describe("parseBatchVerdict", () => {
+  it("keys promotable flags by lowercased name", () => {
+    const m = parseBatchVerdict({ verdicts: [
+      { name: "ELARA", promotable: true }, { name: "Mira", promotable: false },
+    ]});
+    assert.equal(m.get("elara"), true);
+    assert.equal(m.get("mira"), false);
+  });
+
+  it("reads the string \"true\" as promotable, anything else as not", () => {
+    const m = parseBatchVerdict({ verdicts: [
+      { name: "A", promotable: "true" }, { name: "B", promotable: "no" }, { name: "C", promotable: 1 },
+    ]});
+    assert.equal(m.get("a"), true);
+    assert.equal(m.get("b"), false);
+    assert.equal(m.get("c"), false);
+  });
+
+  it("leaves an omitted reactor with no entry, read as not promotable", () => {
+    const m = parseBatchVerdict({ verdicts: [{ name: "ELARA", promotable: true }] });
+    assert.equal(m.get("mira"), undefined);
+  });
+
+  it("yields an empty map for a malformed reply, so every deed lapses safely", () => {
+    assert.equal(parseBatchVerdict({}).size, 0);
+    assert.equal(parseBatchVerdict({ verdicts: "nope" }).size, 0);
+    assert.equal(parseBatchVerdict({ verdicts: [{ promotable: true }] }).size, 0);  // nameless, skipped
   });
 });
 
@@ -442,5 +592,54 @@ describe("normalizeConsult", () => {
       assert.ok(!r.ok);
       assert.ok(r.why.length > 60, "a one-word complaint teaches nothing");
     }
+  });
+});
+
+describe("normalizeReactionConsult", () => {
+  const shared = "The service door explodes inward off its hinges, wood and dust across the floor.";
+  const question = "What does that land on you as?";
+
+  it("gives every reactor the shared situation, pinned to reaction", () => {
+    const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }, { name: "MIRA" }], situation: shared, question });
+    assert.ok(r.ok);
+    assert.equal(r.reqs.length, 2);
+    assert.deepEqual(r.reqs.map(x => x.character), ["ELARA", "MIRA"]);
+    for (const req of r.reqs) {
+      assert.equal(req.situation, shared);
+      assert.equal(req.wants, "reaction");
+    }
+  });
+
+  it("lets a reactor override the situation (someone who only heard it)", () => {
+    const heard = "From the next room, a splintering crash and a rush of cold air under the door.";
+    const r = normalizeReactionConsult({
+      reactors: [{ name: "ELARA" }, { name: "MIRA", situation: heard }], situation: shared, question,
+    });
+    assert.ok(r.ok);
+    assert.equal(r.reqs[0].situation, shared);
+    assert.equal(r.reqs[1].situation, heard);
+  });
+
+  it("accepts a bare string reactor", () => {
+    const r = normalizeReactionConsult({ reactors: ["ELARA"], situation: shared, question });
+    assert.ok(r.ok);
+    assert.equal(r.reqs[0].character, "ELARA");
+  });
+
+  it("refuses an empty reactor list", () => {
+    const r = normalizeReactionConsult({ reactors: [], situation: shared, question });
+    assert.ok(!r.ok);
+    assert.match(r.why, /reactors/);
+  });
+
+  it("refuses a nameless reactor", () => {
+    const r = normalizeReactionConsult({ reactors: [{ situation: shared }], situation: shared, question });
+    assert.ok(!r.ok);
+    assert.match(r.why, /name/i);
+  });
+
+  it("holds each reactor to the same situation floor a lone consult faces", () => {
+    const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }], situation: "It is loud.", question });
+    assert.ok(!r.ok);
   });
 });

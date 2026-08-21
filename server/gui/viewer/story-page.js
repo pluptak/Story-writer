@@ -170,7 +170,14 @@ export function wireStoryPage(page) {
     });
 
   const handoff = page.querySelector("#story-handoff");
-  if (handoff) handoff.addEventListener("click", () => { APP.handoffDir = APP.storyDir; go("handoff"); });
+  if (handoff) handoff.addEventListener("click", () => {
+    APP.handoffDir = APP.storyDir;
+    // Preselect the story's own model over the architect default -- it's the one already known
+    // to load, whereas the architect default (defaults.json, story-independent) may not be.
+    const def = (APP.stories || []).find(s => s.dir === APP.storyDir)?.defaultModel || "";
+    APP.handoffModel = (def && APP.modelIds.includes(def)) ? def : "";
+    go("handoff");
+  });
 
   const edit = page.querySelector("#story-edit");
   if (edit) edit.addEventListener("click", () => { APP.editDir = APP.storyDir; go("edit"); });

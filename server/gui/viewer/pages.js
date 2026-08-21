@@ -109,11 +109,29 @@ function renderReader(page) {
   setFoldable(false);
 }
 
-function renderEdit(page, keepFocus) {
+// The editor repaints whole on every render -- including the one 400ms after a keystroke, when
+// /story/check answers. Focus, caret and which sections are unfolded are carried across by hand,
+// or typing a premise would jump out of the field and collapse the section around it.
+function renderEdit(page) {
+  const active = document.activeElement;
+  const focused = active && page.contains(active) && active.id ? active.id : "";
+  const caret = focused && typeof active.selectionStart === "number"
+    ? [active.selectionStart, active.selectionEnd] : null;
+  const folds = [...page.querySelectorAll("details.editor-section")].map(d => d.open);
+
   page.innerHTML = storyEditHtml();
   $("railstats").innerHTML = "";
   wireStoryEditor(page);
-  restoreFocus(page, keepFocus);
+
+  const sections = page.querySelectorAll("details.editor-section");
+  if (folds.length === sections.length) sections.forEach((d, i) => { d.open = folds[i]; });
+  if (focused) {
+    const el = page.querySelector("#" + focused);
+    if (el && !el.disabled) {
+      el.focus();
+      if (caret) try { el.setSelectionRange(caret[0], caret[1]); } catch {}
+    }
+  }
   setFoldable(false);
 }
 
@@ -272,7 +290,7 @@ export function render() {
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
-  else if (APP.view === "edit") renderEdit(page, keepFocus);
+  else if (APP.view === "edit") renderEdit(page);
   else if (APP.view === "readstory") renderReader(page);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);

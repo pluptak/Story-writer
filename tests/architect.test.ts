@@ -87,7 +87,9 @@ describe("ScaffoldSession", () => {
   });
 
   it("keeps the note as well when a round both notes and asks", async () => {
-    const s = scaffold([STORY, { edits: [{ field: "scene.length", value: 800 }], note: "shortened the premise", ask: "Colder or warmer?" }]);
+    // The two automatic passes after propose()'s proposal each consume one script entry first.
+    const s = scaffold([STORY, { edits: [] }, { edits: [] },
+      { edits: [{ field: "scene.length", value: 800 }], note: "shortened the premise", ask: "Colder or warmer?" }]);
     await s.propose();
     const r = await s.say("tighten it");
     assert.equal((r as { note: string }).note, "shortened the premise — it also asks: Colder or warmer?");
@@ -101,7 +103,8 @@ describe("ScaffoldSession", () => {
   });
 
   it("sends a patch once a story exists, against the spec the ENGINE holds", async () => {
-    const s = scaffold([STORY, { edits: [{ field: "scene.length", value: 900 }] }]);
+    // The two automatic passes after propose()'s proposal each consume one script entry first.
+    const s = scaffold([STORY, { edits: [] }, { edits: [] }, { edits: [{ field: "scene.length", value: 900 }] }]);
     await s.propose();
 
     const req = s.request("make it longer");
@@ -120,7 +123,8 @@ describe("ScaffoldSession", () => {
   });
 
   it("changes nothing when the architect asks a question mid-refinement", async () => {
-    const s = scaffold([STORY, { ask: "Longer how — more beats, or slower ones?" }]);
+    // The two automatic passes after propose()'s proposal each consume one script entry first.
+    const s = scaffold([STORY, { edits: [] }, { edits: [] }, { ask: "Longer how — more beats, or slower ones?" }]);
     await s.propose();
     const before = structuredClone(s.spec);
     const r = await s.say("make it longer");
@@ -130,7 +134,9 @@ describe("ScaffoldSession", () => {
   });
 
   it("clears the outstanding question once a round answers it", async () => {
-    const s = scaffold([STORY, { ask: "Longer how?" }, { edits: [{ field: "scene.length", value: 1200 }] }]);
+    // The two automatic passes after propose()'s proposal each consume one script entry first.
+    const s = scaffold([STORY, { edits: [] }, { edits: [] },
+      { ask: "Longer how?" }, { edits: [{ field: "scene.length", value: 1200 }] }]);
     await s.propose();
     await s.say("make it longer");
     assert.equal(s.pendingAsk, "Longer how?");
@@ -145,6 +151,59 @@ describe("ScaffoldSession", () => {
     const r = await s.say("change something");   // the script is spent, so the call throws
     assert.equal(r.kind, "failed");
     assert.deepEqual(s.spec, before);
+  });
+});
+
+describe("ScaffoldSession automatic fill-gaps/verify passes", () => {
+  it("fills roster and facts automatically after a proposal, then verifies them", async () => {
+    const s = scaffold([STORY,
+      { edits: [{ field: "scene.roster", value: ["ASTER", "BRAE"] },
+                { field: "add_fact", value: "The lamp has not gone dark in forty years." }] },
+      { edits: [], note: "nothing needed fixing" }]);
+    const r = await s.propose();
+    assert.equal(r.kind, "proposal");
+    assert.deepEqual(s.spec.scenes[0].roster, ["ASTER", "BRAE"]);
+    assert.deepEqual(s.spec.facts, ["The lamp has not gone dark in forty years."]);
+    const auto = (r as { auto?: { stage: string; outcome: string }[] }).auto;
+    assert.deepEqual(auto?.map(a => a.stage), ["fillGaps", "verify"]);
+    assert.deepEqual(auto?.map(a => a.outcome), ["edits", "edits"]);   // an empty edits list is still "edits"
+  });
+
+  it("aborts the automatic passes and surfaces a question, but keeps the proposal that already landed", async () => {
+    const s = scaffold([STORY, { ask: "Is Brae in this scene?" }]);
+    const r = await s.propose();
+    assert.equal(r.kind, "question");
+    assert.equal(s.pendingAsk, "Is Brae in this scene?");
+    assert.equal(s.spec.title, "The Fog Signal", "pass 1's proposal survives even though pass 2 had to ask");
+  });
+
+  it("keeps the proposal when the fill-gaps and verify passes themselves fail outright", async () => {
+    const s = scaffold([STORY]);   // nothing scripted for either automatic pass
+    const r = await s.propose();
+    assert.equal(r.kind, "proposal");
+    const auto = (r as { auto?: { stage: string; outcome: string }[] }).auto;
+    assert.deepEqual(auto?.map(a => a.outcome), ["failed", "failed"]);
+  });
+
+  it("records a verify pass that found nothing to fix", async () => {
+    const s = scaffold([STORY,
+      { edits: [{ field: "scene.roster", value: ["ASTER", "BRAE"] }] },
+      { note: "looks consistent" }]);
+    const r = await s.propose();
+    const auto = (r as { auto?: { stage: string; outcome: string }[] }).auto;
+    assert.deepEqual(auto?.map(a => a.outcome), ["edits", "nothing"]);
+  });
+
+  it("runs the automatic passes when a proposal arrives via say() after a clarifying question, not only via propose()", async () => {
+    const s = scaffold([{ ask: "Is this a ghost story or a fraud story?" }, STORY,
+      { edits: [{ field: "scene.roster", value: ["ASTER", "BRAE"] }] },
+      { edits: [] }]);
+    await s.propose();
+    const r = await s.say("a fraud story");
+    assert.equal(r.kind, "proposal");
+    assert.deepEqual(s.spec.scenes[0].roster, ["ASTER", "BRAE"]);
+    const auto = (r as { auto?: { stage: string }[] }).auto;
+    assert.equal(auto?.length, 2);
   });
 });
 
@@ -353,6 +412,48 @@ describe("NextChapterSession", () => {
     assert.equal((await s.propose()).kind, "nothing");
     assert.equal(s.edited, false);
     assert.equal((await s.say("well?")).kind, "failed");   // the script is spent, so the call throws
+  });
+
+  it("targets the chapter being prepared when filling gaps and verifying, not an earlier scene", async () => {
+    const s = handoff([{ edits: [{ field: "characters.ASTER.goal", value: "Get off the rock." }] },
+                       { edits: [] }, { edits: [] }]);
+    assert.equal(s.chapter, 2);
+    await s.propose();
+    const fillGapsPrompt = s.architect.history[2].content;
+    assert.match(fillGapsPrompt, /scene_2\.roster/);
+    assert.doesNotMatch(fillGapsPrompt, /scene_1\.roster/);
+    const verifyPrompt = s.architect.history[4].content;
+    assert.match(verifyPrompt, /scene_2\.roster/);
+  });
+
+  it("refuses a fill-gaps edit that would rewrite the already-written chapter's scene", async () => {
+    const two = quietSync(() => applyEdits(spec, { edits: [{ field: "add_scene", value: { question: "And then?" } }] })).spec;
+    const s = handoff([
+      { edits: [{ field: "characters.ASTER.goal", value: "Get off the rock." }] },
+      { edits: [{ field: "scene_1.roster", value: ["ASTER"] },
+                { field: "scene_2.roster", value: ["ASTER", "BRAE"] }] },
+      { edits: [] },
+    ], two);
+    const r = await s.propose();
+    assert.equal(r.kind, "edits");
+    const auto = (r as { auto?: { stage: string; applied: { field: string }[]; ignored: string[] }[] }).auto;
+    const fillGaps = auto?.[0];
+    assert.deepEqual(fillGaps?.applied.map(a => a.field), ["scene_2.roster"]);
+    assert.match(fillGaps?.ignored.join(" ") ?? "", /scene_1\.roster . chapter 1 is already written/);
+    assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["ASTER.goal"],
+                     "pass 1's legitimate edit still lands");
+  });
+
+  it("keeps edited true when an automatic pass has to ask, since pass 1's edits already landed", async () => {
+    const s = handoff([
+      { edits: [{ field: "characters.ASTER.goal", value: "Get off the rock." }] },
+      { ask: "Is Brae also in this scene?" },
+    ]);
+    const r = await s.propose();
+    assert.equal(r.kind, "question");
+    assert.equal(s.pendingAsk, "Is Brae also in this scene?");
+    assert.equal(s.edited, true);
+    assert.equal(s.spec.characters[0].goal, "Get off the rock.", "pass 1's edit is not rolled back");
   });
 });
 

@@ -3,7 +3,7 @@
 **Status: built.** [`story-page.js`](server/gui/viewer/story-page.js),
 [`blocks.js`](server/gui/viewer/blocks.js), [`events.js`](server/gui/viewer/events.js),
 [`hud.js`](server/gui/viewer/hud.js) and [`timeline.js`](server/gui/viewer/timeline.js) render drafts,
-consults, retries and accepted answers off `/events`, in the layout
+consults, retries, accepted answers, group reactions and character exits off `/events`, in the layout
 [`writer-mockup.html`](writer-mockup.html) proposed. What is left is listed under
 [Remaining work](#remaining-work).
 
@@ -71,9 +71,62 @@ the eyes. A thought offered against any of the other three is not a quiet answer
 question, and it is treated as one: the character is asked again, and if it comes back the same the
 writer is told nobody answered rather than handed an accepted answer with nothing in it.
 
+### Group reactions
+
+When a beat lands on more than one person at once, the writer can fan a **reaction** out to several of
+them instead of consulting one at a time: in place of `consult.character` it sends `consult.reactors`,
+a list of names, with a shared `situation` any reactor may override (someone who only *heard* it).
+This is a second beat, never simultaneous with the action it reacts to — the action is an ordinary
+consult that resolved first — so the fan-out rides the prose turn that narrates the aftermath and
+costs **one step however many react**. Each reactor is a genuinely isolated consult (`normalizeReactionConsult`
+holds each to the same situation floor a lone consult faces, and no reactor ever sees another's reply,
+so the asymmetry is unbroken), and the writer is handed all of them together to write as one beat.
+
+A reactor may volunteer an **action** alongside its thought. The writer promotes **at most one** of
+those into the scene by naming that character in `promote` on its next reply; the promoted deed is
+folded into that character's history as canon, and every un-promoted deed stays a private impulse —
+only the thought is folded, so the page and the character's memory never disagree. Which volunteered
+deeds are even offered for promotion is decided by **one** batch-judge call over all of them (a
+thought is never judged — it always satisfies the reaction floor); a deed that reaches through a
+CANNOT is not offered. No volunteered deed ⇒ no judge call at all.
+
+### Length is a budget, not a suggestion
+
+Each `[WRITE]` carries the running word count against the scene's target and escalates as the gap
+grows: a soft warning at 85% of target, "bring the scene to its end" at target, and a harder line —
+no new consult but the one choice the scene's question still turns on — past 130%. None of that is
+enforcement; it is the writer being told, and a writer mid-scene can keep finding one more fork to ask
+about (`engine/scene-loop.ts`'s `HARD_CAP_MULT`). At **twice** the target, the engine stops asking: the
+`[WRITE]` says this is the last piece, and once that reply comes back the scene is marked done
+regardless of what `scene_done` says — logged as `forced_end`, rendered as a note. The writer still
+gets that one last reply to close on its own terms; the engine just no longer takes "not yet" for an
+answer past that point.
+
+### The narration lint
+
+Every drafted piece is checked once, before it is committed to the page: did it hand a line, a deed,
+or meaningful stillness to someone not already granted it this scene (THE ONE RULE); did it narrate
+the point-of-view character perceiving through a sense their CANNOT list removes; and, if the same
+reply opens a consult or reaction fan-out, does the `situation` it hands the character name the
+concrete fact just established rather than only its consequence. A flag sends the writer back for one
+redraft from the same `[WRITE]` instruction — nothing has reached `pieces[]`, the writer's own history,
+or the log yet, so this is a clean redo, not an undo. A retry that is also flagged, or that fails
+outright, is accepted anyway and logged as `narration_flag` — the lint warns; it never blocks the scene
+(`engine/scene-loop.ts`'s `NARRATION_LINT_RETRIES`).
+
+### Writing a character out
+
+The writer can end a character's presence in the scene with an `exit` field naming them. They are
+dropped from the active cast — not consulted again, and no longer surfaced by the neglect nudge — but
+a world-caused removal (a trapdoor, the floor giving way) is the writer's to narrate, while the
+*choice* that carried them into it still had to be asked for first. Exiting the **point-of-view**
+character ends the chapter: the between-chapters architect handoff re-authors the cast from there,
+reading the exit out of the prose it already consumes, so no separate signal reaches it.
+
 One run writes one chapter. A run can finish normally, stop when its step budget is exhausted, pause
-for more budget, wait for reader direction, be stopped by the user, or end because of a model/runtime
-failure.
+for more budget, wait for reader direction, be stopped by the user, be forced closed for running twice
+past its target length (see "Length is a budget, not a suggestion" above), or end because of a
+model/runtime failure.
 
 ## The reader seat
 

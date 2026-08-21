@@ -39,7 +39,7 @@ async function startHandoff() {
   APP.handoffError = "";
   APP.handoff = { active:true, busy:true, dir: APP.handoffDir, chapter:0, problems:[] };
   APP.render();
-  const j = await postHandoff("start", { dir: APP.handoffDir });
+  const j = await postHandoff("start", { dir: APP.handoffDir, model: APP.handoffModel });
   // A refusal leaves an optimistic "busy" that nothing will ever clear -- fall back to the start
   // screen, with the refusal already in handoffError, or the page hangs until a reload.
   if (!j || j.active === undefined) { APP.handoff = { active:false }; APP.render(); }
@@ -100,6 +100,9 @@ export function wireHandoff(page) {
   const say = page.querySelector("#h-say");
   if (say) say.addEventListener("input", () => { hdraft.say = say.value; });
   onKey("h-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendHSay(); } });
+
+  const model = page.querySelector("#h-model");
+  if (model) model.addEventListener("change", () => { APP.handoffModel = model.value; });
 
   on("h-start", startHandoff);
   on("h-retry", retryHandoff);

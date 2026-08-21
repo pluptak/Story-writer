@@ -37,11 +37,23 @@ export async function buildArchitect(d: Defaults, withExample = true): Promise<A
 
 // -- SCAFFOLD SESSION ------------------------------------------------------
 
+/** Which of the two automatic follow-up passes ran, for the CLI/SSE to label. */
+export type AutoStage = "fillGaps" | "verify";
+
+/** What one automatic fill-gaps/verify pass did, folded into the round that triggered it. */
+export type AutoPass = {
+  stage: AutoStage;
+  applied: { field: string; before: unknown; after: unknown }[];
+  ignored: string[];
+  note: string;
+  outcome: "edits" | "nothing" | "failed";
+};
+
 /** What one exchange with the architect produced, for the CLI/SSE to announce. */
 export type ScaffoldRound =
-  | { kind: "proposal"; note: string }
-  | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string }
-  | { kind: "question"; ask: string }
+  | { kind: "proposal"; note: string; auto?: AutoPass[] }
+  | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string; auto?: AutoPass[] }
+  | { kind: "question"; ask: string; auto?: AutoPass[] }
   | { kind: "nothing"; why: string }
   | { kind: "failed"; error: string };
 
@@ -70,6 +82,51 @@ function withAsk(out: Record<string, any>): string {
   const ask = String(out.ask ?? "").trim();
   if (!ask) return note;
   return note ? `${note} — it also asks: ${ask}` : `it also asks: ${ask}`;
+}
+
+/**
+ * Run the fill-gaps and verify passes after a successful proposal, before a human sees it: neither
+ * ARCHITECT_FORMAT nor architectNextChapter's own message ever asks for scene.roster or story-level
+ * facts, so nothing gets authored unless these dedicated passes ask for it. A question from either
+ * pass aborts the sequence and is surfaced exactly like any other blocking ask; whatever the earlier
+ * pass already applied stays on the spec. A failed or empty pass never discards a good proposal — it
+ * is recorded as an AutoPass with outcome "failed"/"nothing" instead.
+ */
+async function runAutoPasses(
+  architect: Agent, spec: StorySpec, sceneField: string,
+  onStage?: (stage: AutoStage) => void,
+  refuse?: (edits: any[]) => { edits: any[]; refused: string[] },
+): Promise<{ spec: StorySpec; problems: string[]; auto: AutoPass[]; question?: string }> {
+  let cur = spec;
+  let problems: string[] = [];
+  const auto: AutoPass[] = [];
+  const specJson = (s: StorySpec) => JSON.stringify({ ...s, writer_style: s.writerStyle }, null, 1);
+
+  const runStage = async (stage: AutoStage, prompt: string): Promise<string | undefined> => {
+    onStage?.(stage);
+    const r = await architectRound(architect, prompt);
+    if ("error" in r) {
+      auto.push({ stage, applied: [], ignored: [], note: `the ${stage} pass failed: ${r.error}`, outcome: "failed" });
+      return undefined;
+    }
+    const ask = String(r.out.ask ?? "").trim();
+    if (ask && !r.out.edits) return ask;                    // abort signal -- surfaced as this round's question
+    if (!Array.isArray(r.out.edits)) {
+      auto.push({ stage, applied: [], ignored: [], note: withAsk(r.out), outcome: "nothing" });
+      return undefined;
+    }
+    const guarded = refuse ? refuse(r.out.edits) : { edits: r.out.edits, refused: [] as string[] };
+    const e = applyEdits(cur, { edits: guarded.edits });
+    cur = e.spec; problems = e.problems;
+    auto.push({ stage, applied: e.applied, ignored: [...guarded.refused, ...e.ignored], note: withAsk(r.out), outcome: "edits" });
+    return undefined;
+  };
+
+  let ask = await runStage("fillGaps", P.architectFillGaps(specJson(cur), sceneField));
+  if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
+  ask = await runStage("verify", P.architectVerify(specJson(cur), sceneField));
+  if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
+  return { spec: cur, problems, auto };
 }
 
 /** One interactive story-building conversation: propose, refine via edits, and accept to disk. */
@@ -107,16 +164,27 @@ export class ScaffoldSession {
     return { kind: "proposal", note: withAsk(out) };
   }
 
-  async propose(): Promise<ScaffoldRound> {
-    const r = await this.round("");
-    return "error" in r ? { kind: "failed", error: r.error } : this.takeProposal(r.out);
+  /** Runs the automatic fill-gaps/verify passes right after a proposal lands, whether reached via
+   *  propose() or via say() following a clarifying question. Any other round kind passes through untouched. */
+  private async afterProposal(base: ScaffoldRound, onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+    if (base.kind !== "proposal") return base;
+    const r = await runAutoPasses(this.architect, this.spec, "scene", onStage);
+    this.spec = r.spec; this.problems = r.problems;
+    if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
+    this.pendingAsk = "";
+    return { ...base, auto: r.auto };
   }
 
-  async say(text: string): Promise<ScaffoldRound> {
+  async propose(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+    const r = await this.round("");
+    return "error" in r ? { kind: "failed", error: r.error } : this.afterProposal(this.takeProposal(r.out), onStage);
+  }
+
+  async say(text: string, onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
     const wasPatch = this.haveStory();
     const r = await this.round(text);
     if ("error" in r) return { kind: "failed", error: r.error };
-    if (!wasPatch) return this.takeProposal(r.out);
+    if (!wasPatch) return this.afterProposal(this.takeProposal(r.out), onStage);
 
     const back = String(r.out.ask ?? "").trim();
     if (back && !r.out.edits) { this.pendingAsk = back; return { kind: "question", ask: back }; }
@@ -225,8 +293,10 @@ export class NextChapterSession {
     return { kind: "edits", applied: e.applied, ignored: [...guarded.refused, ...e.ignored], flags, note: withAsk(r.out) };
   }
 
-  /** The handoff request itself: the premise, the chapters as written, and the story as it stands. */
-  async propose(): Promise<ScaffoldRound> {
+  /** The handoff request itself: the premise, the chapters as written, and the story as it stands.
+   *  A successful edits round is then run through the same fill-gaps/verify passes as the scaffold,
+   *  targeting the scene this handoff is preparing -- never an earlier, already-written one. */
+  async propose(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
     const prompt = P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters);
     const info = await modelInfo();
     const short = info && contextShortfall(info.get(this.architect.model),
@@ -234,7 +304,14 @@ export class NextChapterSession {
     if (short) return { kind: "failed", error:
       `this round needs about ${short.needs} tokens and ${this.architect.model} is loaded with ${short.has} — `
       + `raise its context length in LM Studio and try again` };
-    return this.take(await architectRound(this.architect, prompt));
+    const base = this.take(await architectRound(this.architect, prompt));
+    if (base.kind !== "edits") return base;
+
+    const r = await runAutoPasses(this.architect, this.spec, `scene_${this.chapter}`, onStage, edits => this.refuse(edits));
+    this.spec = r.spec; this.problems = r.problems;
+    if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
+    this.pendingAsk = "";
+    return { ...base, auto: r.auto };
   }
 
   /** A follow-up from the author, in the same edits-only format. */

@@ -111,11 +111,22 @@ The architect first checks whether the idea explains:
 If either is missing, it asks one load-bearing question. Otherwise it proposes the complete story.
 Follow-up messages produce structured edits and preserve fields that were not mentioned.
 
+A proposal that lands is not the end of the round. Two automatic passes run immediately after, before
+the author ever sees it: **fill the gaps** (the scene's `roster` and the story's `facts` are never part
+of the initial proposal's own format, so a dedicated pass asks for them) and **verify** (the architect
+re-reads its own draft for a roster name that doesn't match the cast, a fact that just restates one
+character's private `knows`, a restriction that never bites, a POV outside the roster). Either pass may
+ask instead of editing — that aborts the sequence and surfaces as this round's question exactly like
+any other ask, with whatever the earlier passes already applied kept on the spec.
+
 ### Handoff
 
 The architect receives the premise, all accepted `chapters/<n>.md` files, and the current normalized
 story definition. It prepares the chapter after the highest written chapter. It may update the cast,
 scene roster, scene definition, and story structure, but it must not write the next chapter's prose.
+
+The same fill-the-gaps and verify passes run automatically here too, immediately after the handoff's
+own proposal, targeting the scene being prepared (`scene_<n>`, never an earlier written one).
 
 The author can refine the proposal conversationally. Accepting writes `story.json`; it does not start
 the next run. The GUI must offer the prepared chapter as a separate action.
@@ -133,6 +144,11 @@ Which rounds each mode can produce — the bodies and the state each route publi
 The handoff never returns `proposal`. Its first round is already an edit list against the story on
 disk, so the proposed-next-chapter panel renders from `spec` and `last.applied`, never from a
 proposal round.
+
+A round reaching either mode's caller may also carry an optional `auto` array — one entry per
+automatic fill-gaps/verify pass that ran, each with the same `applied`/`ignored`/`note` shape as an
+edits round plus `stage` (`"fillGaps"` | `"verify"`) and `outcome` (`"edits"` | `"nothing"` |
+`"failed"`). It is additive: a round with no `auto` field behaved exactly as before.
 
 ```text
 scaffold: start → proposal → say/refine → accept (folder) → run

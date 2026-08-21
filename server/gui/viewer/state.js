@@ -54,6 +54,9 @@ export const APP = {
   scaffoldError: "",            // the last refusal from /scaffold/*, said out loud in the modal
   handoff: { active:false },   // the between-chapters handoff, from /next-chapter and its SSE frames
   handoffDir: "",              // which story the handoff page is showing
+  handoffModel: "",             // a model chosen on the handoff start screen, overriding the
+                                 // architect default -- seeded to the story's own default model
+                                 // (when it's loaded) the moment the handoff page is opened
   handoffError: "",            // the last refusal from /next-chapter/*, said on the handoff page
   handoffDone: null,           // accepted: {dir, chapter, warnings[]} -- the server drops its session
                                 // on accept, so the "chapter N is prepared" state has to live here
@@ -65,6 +68,9 @@ export const APP = {
   // Story editor state
   editDir: "",                 // which story is being edited
   editStory: null,             // the loaded story.json (Zod-parsed)
+  editLoading: false,          // a /story/edit fetch is in flight. The editor starts its own load
+                                // from its wiring, which runs on every render -- without this, the
+                                // render that load schedules starts another one, forever.
   editWarnings: [],            // warnings from load
   editError: "",               // load/validation error
   editDraft: null,             // modified version (=== editStory initially)

@@ -73,6 +73,35 @@ export function normalizeConsult(raw: {
   return { ok: true, req: { character, situation, question, wants } };
 }
 
+/** The outcome of checking a reaction fan-out: one sendable request per reactor, or a single refusal. */
+export type ReactionCheck = { ok: true; reqs: ConsultRequest[] } | { ok: false; why: string };
+
+/**
+ * Validate a reaction fan-out: a shared situation/question asked of several reactors at once. Each
+ * reactor resolves to an ordinary `ConsultRequest` — reusing `normalizeConsult`'s gate per reactor,
+ * with `wants` pinned to "reaction" — so a reactor with too thin a situation is refused just as a
+ * lone consult would be. A per-reactor `situation` overrides the shared one (someone who only heard it).
+ */
+export function normalizeReactionConsult(raw: {
+  reactors?: unknown; situation?: unknown; question?: unknown;
+}): ReactionCheck {
+  const shared = String(raw.situation ?? "").trim();
+  const question = String(raw.question ?? "").trim();
+  const list = Array.isArray(raw.reactors) ? raw.reactors : [];
+  if (!list.length) return { ok: false, why: P.badReaction.noReactors() };
+
+  const reqs: ConsultRequest[] = [];
+  for (const r of list) {
+    const name = String((r as any)?.name ?? (typeof r === "string" ? r : "")).trim();
+    if (!name) return { ok: false, why: P.badReaction.namelessReactor() };
+    const situation = String((r as any)?.situation ?? "").trim() || shared;
+    const check = normalizeConsult({ character: name, situation, question, wants: "reaction" });
+    if (!check.ok) return { ok: false, why: check.why };
+    reqs.push(check.req);
+  }
+  return { ok: true, reqs };
+}
+
 /**
  * The judge's `revised` folded over the request it replaces, and checked by exactly the same gate a
  * first consult goes through — a field the judge left out keeps its previous value.
@@ -119,6 +148,23 @@ export function parseVerdict(o: Record<string, unknown>): "accept" | "retry" | n
 /** The clarifier's answer — "" when it answered with nothing, null when it did not answer at all. */
 export function parseClarifyAnswer(o: Record<string, unknown>): string | null {
   return "answer" in o ? String(o.answer ?? "").trim() : null;
+}
+
+/**
+ * The batch judge's per-reactor verdicts, keyed by lowercased name → promotable. A reactor the judge
+ * omits, or a malformed reply, yields no entry — the caller reads a missing entry as "not promotable",
+ * so a volunteered deed lapses safely rather than reaching the page unchecked.
+ */
+export function parseBatchVerdict(o: Record<string, unknown>): Map<string, boolean> {
+  const out = new Map<string, boolean>();
+  const arr = Array.isArray(o.verdicts) ? o.verdicts : [];
+  for (const v of arr) {
+    const name = String((v as any)?.name ?? "").trim().toLowerCase();
+    if (!name) continue;
+    const p = (v as any)?.promotable;
+    out.set(name, p === true || String(p).trim().toLowerCase() === "true");
+  }
+  return out;
 }
 
 /** A character's answer: what they thought/said/did, what they claimed to use, and any clarification trail. */

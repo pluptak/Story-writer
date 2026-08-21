@@ -12,6 +12,7 @@ import type { NextChapterSession, ScaffoldRound, HandoffAccept } from "../engine
 let HANDOFF: NextChapterSession | null = null;
 let handoffBusy = false;                   // one architect at a time
 let handoffLast: ScaffoldRound | null = null;
+let handoffStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is running, if any
 
 function handoffState(host: ServerHost) {
   if (!HANDOFF) return { active: false };
@@ -20,6 +21,7 @@ function handoffState(host: ServerHost) {
     dir: HANDOFF.dir,
     chapter: HANDOFF.chapter,
     busy: handoffBusy,
+    stage: handoffStage,
     edited: HANDOFF.edited,
     pendingAsk: HANDOFF.pendingAsk,
     problems: HANDOFF.problems,
@@ -73,12 +75,12 @@ export async function handleNextChapterRoutes(
       HANDOFF = await host.newHandoffSession(dir, model);
       setWhere(`preparing chapter ${HANDOFF.chapter} of ${dir}`, false);
       publishHandoff(host);
-      handoffLast = await HANDOFF.propose();
+      handoffLast = await HANDOFF.propose(stage => { handoffStage = stage; publishHandoff(host); });
     } catch (e) {
       HANDOFF = null;
-      handoffBusy = false; publishHandoff(host);
+      handoffBusy = false; handoffStage = ""; publishHandoff(host);
       json(res, 400, { ok: false, reason: (e as Error).message }); return true;
-    } finally { handoffBusy = false; }
+    } finally { handoffBusy = false; handoffStage = ""; }
     publishHandoff(host);
     json(res, 200, handoffState(host));
 

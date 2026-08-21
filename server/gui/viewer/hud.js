@@ -83,6 +83,7 @@ export function renderRail(store, blocks) {
     ${live ? stat("model", esc(APP.session.model || "story default")) : ""}
     <div class="bar"><i style="width:${pct}%"></i></div>
     ${stat("consults", consults.length)}
+    ${count("reaction_fanout") ? stat("reactions", count("reaction_fanout")) : ""}
     ${stat("asked back", count("clarify"))}
     ${stat("retries", retries, retries ? "warn" : "")}
     ${stat("skill flags", flags, flags ? "bad" : "")}

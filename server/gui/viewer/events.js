@@ -29,15 +29,35 @@ export function build(store) {
         if (rb) rb.answer = e.answer;
         break;
       }
+      case "reaction_fanout":
+        cur = null;  // a group reaction is its own block, never folded into an open consult
+        blocks.push({ kind:"reaction", seq:e.seq, situation:e.situation, reactors:e.reactors||[], reacted:[], promoted:null });
+        break;
+      case "reaction": {
+        const rb = lastOf(blocks, "reaction");
+        if (rb) rb.reacted.push({ name:e.character, thought:e.thought, action:e.action });
+        break;
+      }
+      case "promote": {
+        const rb = lastOf(blocks, "reaction");
+        if (rb) rb.promoted = { character:e.character, action:e.action };
+        break;
+      }
+      case "exit": blocks.push({ kind:"exit", seq:e.seq, character:e.character, pov:!!e.pov }); break;
       case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
       case "schema_mismatch": blocks.push({ kind:"note", seq:e.seq, text:`the ${e.call} call for ${e.character} came back in the wrong shape — asked again` }); break;
       case "model_changed": blocks.push({ kind:"note", seq:e.seq, text:`model switched to ${e.model}` }); break;
+      case "forced_end": blocks.push({ kind:"note", seq:e.seq, text:`scene forced to a close — ${e.words} words against a ${e.target}-word target` }); break;
+      case "narration_flag": blocks.push({ kind:"note", seq:e.seq,
+        text: e.retried ? `narration flagged again after a redraft — ${e.why} — kept anyway`
+                        : `narration flagged — ${e.why} — redrafting`, }); break;
       case "scene_end": blocks.push({ kind:"end", seq:e.seq, ...e }); break;
     }
   }
   return blocks;
 }
 const last = c => c && c.attempts[c.attempts.length - 1];
+const lastOf = (blocks, kind) => { for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i].kind === kind) return blocks[i]; return null; };
 
 /** Turn a saved or dropped `writing-log.jsonl` into a store's `events`, then re-render. */
 export function ingest(text, store) {

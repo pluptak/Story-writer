@@ -91,13 +91,35 @@ async function sendReaderAnswer(seq, answer) {
   if (!j || j.ok === false) { APP.readerError = { seq, text: reasonOr(j, "that did not go through") }; APP.render(); }
 }
 
+/** One group reaction: a shared beat several present-but-not-acting characters answered at once.
+ *  Each shows its thought; the one deed the writer promoted is marked acted, the rest stay impulses. */
+function renderReaction(b) {
+  const rows = b.reacted.map(r => {
+    const promoted = b.promoted && b.promoted.character.toLowerCase() === r.name.toLowerCase();
+    const act = r.action
+      ? (promoted ? `<div class="action">acted: ${esc(r.action)}</div>`
+                  : `<div class="thought dim">impulse, not taken: ${esc(r.action)}</div>`)
+      : "";
+    return `<div class="rxone"><div class="rxwho">${esc(r.name)}</div>
+      <div class="thought">${esc(r.thought)}</div>${act}</div>`;
+  }).join("");
+  return `<div class="reaction" data-seq="${b.seq}">
+    <div class="rxlabel">the others react</div>
+    ${b.situation ? `<div class="kv dim"><span class="k">to</span><span class="v">${esc(b.situation)}</span></div>` : ""}
+    ${rows}
+  </div>`;
+}
+
 /** A block, rendered for whichever page is showing it. `interactive` gates the one thing that
  *  differs: a saved run's reader consult (if any) is a record, not a live question. */
 export function renderBlock(b, interactive) {
   if (b.kind === "prose") return `<div class="piece${b.salvaged ? " salvaged" : ""}">${
     b.salvaged ? `<div class="salvnote">recovered from a truncated draft</div>` : ""}${paras(b.text)}</div>`;
   if (b.kind === "consult") return renderConsult(b);
+  if (b.kind === "reaction") return renderReaction(b);
   if (b.kind === "reader") return renderReader(b, interactive);
+  if (b.kind === "exit") return `<div class="note exit" data-seq="${b.seq}">${esc(b.character)} left the scene${
+    b.pov ? " — the point of view; the chapter ends here" : ""}</div>`;
   if (b.kind === "note") return `<div class="note">${esc(b.text)}</div>`;
   if (b.kind === "end") return `<div class="note end">${verdictText(b)} · ${b.words} words · ${b.steps} steps</div>`;
   return "";

@@ -201,7 +201,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 
 ```
 GET  /scaffold
-  → { active:false } | { active:true, idea, busy, haveStory, pendingAsk, problems[],
+  → { active:false } | { active:true, idea, busy, stage, haveStory, pendingAsk, problems[],
                           last: ScaffoldRound | null, needsFolder, model, spec }
 
 ScaffoldRound =
@@ -220,6 +220,11 @@ POST /scaffold/accept { folder? }        → { ok:true, kind:"written", dir, fil
                                             | { ok:false, kind:"unloadable"|"needs_folder"|"no_story", ... }
 POST /scaffold/abandon                   → drops the session unconditionally, always { ok:true }
 ```
+
+`stage` is `""` while the main proposal/edit round itself is running, then briefly `"fillGaps"` or
+`"verify"` while each automatic follow-up pass runs after a successful round, and `""` again once the
+whole exchange settles.
+
 One session at a time (`scaffoldBusy` is a module-level lock — a second `POST` while a round is in
 flight gets `409`). `accept` only resolves the parked story pick on `kind: "written"`; every other
 outcome leaves the interview open for another `/scaffold/say`. Every scaffold route also republishes
@@ -230,7 +235,7 @@ one more small state machine layered on the same "poll once, then follow SSE" pa
 
 ```
 GET  /next-chapter
-  → { active:false } | { active:true, dir, chapter, busy, edited, pendingAsk, problems[],
+  → { active:false } | { active:true, dir, chapter, busy, stage, edited, pendingAsk, problems[],
                           last: ScaffoldRound | null, model, spec }
 
 POST /next-chapter/start   { dir, model? }  → opens the handoff on a discovered story and runs the

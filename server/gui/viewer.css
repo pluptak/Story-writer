@@ -151,6 +151,19 @@
   .note { font-family:var(--mono); font-size:11px; color:var(--muted); text-align:center;
           margin:22px 0; letter-spacing:.03em; }
   .note.end { color:var(--accent); }
+  .note.exit { color:var(--warn); }
+
+  /* a group reaction: several present-but-not-acting characters answered one shared beat at once */
+  .reaction { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+              border-radius:12px; padding:13px 16px; box-shadow:var(--shadow); margin:16px 0; font-size:13.5px; }
+  .reaction .rxlabel { font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+                       color:var(--accent); margin-bottom:8px; }
+  .reaction .rxone { padding:8px 0; }
+  .reaction .rxone + .rxone { border-top:1px dashed var(--line); }
+  .reaction .rxwho { color:var(--accent); font-weight:600; font-family:var(--mono); font-size:11px; letter-spacing:.04em; }
+  .reaction .thought { color:var(--faint); font-style:italic; margin-top:3px; }
+  .reaction .thought.dim { color:var(--muted); font-style:normal; font-family:var(--mono); font-size:10.5px; opacity:.85; }
+  .reaction .action { color:var(--good); margin-top:3px; }
 
   .rail { position:sticky; top:52px; padding:24px 20px; font-size:12px; display:grid; gap:14px; }
   @media (max-width: 900px) { .rail { position:static; } }
