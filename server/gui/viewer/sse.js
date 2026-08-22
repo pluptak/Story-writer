@@ -194,6 +194,10 @@ export function startSSE() {
       }
     });
   };
+  // `open` fires on the first connect AND on every auto-reconnect, so it is what puts the dot back
+  // to "live" after an onerror -- without it the srcbar stays "reconnecting…" for the rest of the
+  // session even though events have resumed.
+  es.onopen = () => setSrc(LIVEV, "live", true);
   es.onerror = () => setSrc(LIVEV, "live (reconnecting…)", false);
 }
 

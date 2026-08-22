@@ -285,6 +285,17 @@ describe("/story/suggest (POST)", () => {
     // Host side treats empty string as valid input
     assert.equal(suggestCalls, 1);
   });
+
+  it("refuses while a run is in flight, without touching the architect", async () => {
+    resetLive(); LIVE.running = true; armRun(); suggestCalls = 0;
+    try {
+      const r = await callRoute(handleStoryEditRoutes, "/story/suggest",
+        { spec: DOORWAY, text: "make it darker" }, makeHost());
+      assert.equal(r.code, 409);
+      assert.match(r.body.reason, /run is in flight/);
+      assert.equal(suggestCalls, 0);
+    } finally { LIVE.running = false; resetLive(); }
+  });
 });
 
 // -- SECTION ----

@@ -70,10 +70,8 @@ document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target instanceof Element && e.target.matches("[data-char-name]")) {
     e.preventDefault();
     openCharCard(e.target);
-  } else if (e.key === "Escape") {
-    // Topmost first -- the character card can be opened on top of the run-ended modal (its own pill
-    // is right there in the header), and one Escape should only ever close what is actually on top.
-    if (APP.charCard) { APP.charCard = null; APP.render(); }
-    else if (APP.runEnded) { APP.runEnded = null; APP.render(); }
   }
+  // Escape is NOT handled here: chrome.js owns it centrally and closes the topmost of ALL modal
+  // backdrops (interview, character card, run-ended). A second handler here would close the char
+  // card and then let chrome.js close whatever sat beneath it on the very same keypress.
 });

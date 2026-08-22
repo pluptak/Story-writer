@@ -131,7 +131,11 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         for (const ev of liveHistory) res.write(`data: ${JSON.stringify(ev)}\n\n`);
         res.write(`data: ${JSON.stringify(runState())}\n\n`);
         sseClients.add(res);
-        req.on("close", () => sseClients.delete(res));
+        const dropClient = () => sseClients.delete(res);
+        req.on("close", dropClient);
+        // Without an `error` listener, an async socket failure (EPIPE/ECONNRESET on a half-dead
+        // viewer) emits an unhandled 'error' event that would crash the whole process.
+        res.on("error", dropClient);
 
       } else if (path === "/run") {
         json(res, 200, {

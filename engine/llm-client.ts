@@ -53,16 +53,21 @@ class LmError extends Error {
 
 const retryableStatus = (s: number) => s === 408 || s === 409 || s === 425 || s === 429 || s >= 500;
 
-async function withRetry<T>(what: string, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>): Promise<T> {
   let last: unknown;
   for (let attempt = 0; ; attempt++) {
     if (RUN.stopped) throw new StoppedError();
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), NET.timeoutMs);
+    // An IDLE deadline, not a total-duration cap: `heartbeat()` pushes it back on each sign of
+    // progress, so a long-but-streaming generation is never aborted mid-reply -- only a stalled
+    // connection that goes NET.timeoutMs without a byte is.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const heartbeat = () => { clearTimeout(timer); timer = setTimeout(() => ac.abort(), NET.timeoutMs); };
+    heartbeat();
     const onStop = () => ac.abort();
     RUN.abort.signal.addEventListener("abort", onStop, { once: true });
     try {
-      return await fn(ac.signal);
+      return await fn(ac.signal, heartbeat);
     } catch (e) {
       if (RUN.stopped) throw new StoppedError();
       last = e;
@@ -114,7 +119,7 @@ export async function complete(model: string, messages: Msg[], temperature: numb
 /** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
 export async function completeStream(model: string, messages: Msg[], temperature: number,
                                      onDelta: (d: string) => void, think: ThinkLevel = "low"): Promise<Completion> {
-  return withRetry(`${model} stream`, async signal => {
+  return withRetry(`${model} stream`, async (signal, heartbeat) => {
     const res = await postChat(requestBody(model, messages, temperature, true, think), signal);
     if (!res.body) throw new LmError(`LM Studio returned no stream body`, undefined, true);
     const reader = (res.body as any).getReader();
@@ -124,6 +129,7 @@ export async function completeStream(model: string, messages: Msg[], temperature
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        heartbeat();  // a chunk arrived -- the model is still answering, so push the idle deadline back
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";

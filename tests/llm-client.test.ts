@@ -2,7 +2,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { complete, completeStream } from "../engine/llm-client.ts";
+import { complete, completeStream, NET } from "../engine/llm-client.ts";
 import { RUN, stopRun, armRun } from "../live.ts";
 
 /** Helper to create a ReadableStream from an array of chunks. */
@@ -141,6 +141,39 @@ describe("completeStream SSE frame parsing", () => {
                                         (d) => deltas.push(d));
     assert.equal(result.text, '{"result":"kept"}');
     assert.deepEqual(deltas, ['{"result":"kept"}']);
+  });
+
+  it("does not abort a slow but steadily-streaming generation (idle timeout, not total duration)", async () => {
+    // The window is short and each chunk lands well inside it, but the whole stream runs past it:
+    // only an idle deadline that resets per chunk survives this. A total-duration cap aborts mid-stream.
+    const saved = { timeoutMs: NET.timeoutMs, retries: NET.retries, backoffMs: NET.backoffMs };
+    NET.timeoutMs = 250; NET.retries = 0; NET.backoffMs = 0;
+    armRun();
+    const N = 15, gap = 25; // ~375ms of steady streaming vs a 250ms window
+    try {
+      globalThis.fetch = (async (_url: unknown, opts: { signal?: AbortSignal }) => {
+        const signal = opts?.signal;
+        let i = 0;
+        const stream = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            await new Promise((r) => setTimeout(r, gap));
+            if (signal?.aborted) { controller.error(new Error("aborted")); return; }  // real fetch does this
+            if (i < N) {
+              controller.enqueue(new TextEncoder().encode(`data: {"choices":[{"delta":{"content":"${i}."}}]}\n\n`));
+              i++;
+            } else {
+              controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+              controller.close();
+            }
+          },
+        });
+        return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+      }) as any;
+      const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {});
+      assert.equal(result.text, Array.from({ length: N }, (_, i) => `${i}.`).join(""));
+    } finally {
+      Object.assign(NET, saved);
+    }
   });
 
   it("rethrows stream error when RUN.stopped (stops recovery on line 122)", async () => {

@@ -118,6 +118,21 @@ async function architectDefaults(model = ""): Promise<Defaults> {
   return d;
 }
 
+/** Apply the architect's knobs for the length of `fn`, then restore the engine knobs it touched.
+ *  Keeps a stateless suggestion from leaving the architect's token cap/timeouts behind — unlike a
+ *  scaffold or handoff session, which owns the console until it hands off to a run that re-applies
+ *  the story's own config. `architectModel` is pure for the same reason; so is this. */
+async function withArchitectDefaults<T>(model: string, fn: (d: Defaults) => Promise<T>): Promise<T> {
+  const saved = { stream: ENGINE.stream, debug: ENGINE.debug, maxTokens: ENGINE.maxTokens,
+                  timeoutMs: NET.timeoutMs, retries: NET.retries };
+  try {
+    return await fn(await architectDefaults(model));
+  } finally {
+    ENGINE.stream = saved.stream; ENGINE.debug = saved.debug; ENGINE.maxTokens = saved.maxTokens;
+    NET.timeoutMs = saved.timeoutMs; NET.retries = saved.retries;
+  }
+}
+
 async function newScaffoldSession(idea: string, model = ""): Promise<ScaffoldSession> {
   const d = await architectDefaults(model);
   return new ScaffoldSession(await buildArchitect(d), d, idea);
@@ -483,13 +498,14 @@ const HOST: ServerHost = {
     return { ok: true, warnings };
   },
   suggestEdits: async (spec, text) => {
-    const d = await architectDefaults(flag("model") ?? "");
     const specObj = spec as StorySpec;
     try {
-      const r = await statelessSuggest(d, specObj, String(text ?? ""));
-      if (r.kind === "failed") return { ok: false, error: r.error };
-      if (r.kind === "question") return { ok: true, kind: "question", ask: r.ask };
-      return { ok: true, kind: "edits", applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
+      return await withArchitectDefaults(flag("model") ?? "", async d => {
+        const r = await statelessSuggest(d, specObj, String(text ?? ""));
+        if (r.kind === "failed") return { ok: false as const, error: r.error };
+        if (r.kind === "question") return { ok: true as const, kind: "question" as const, ask: r.ask };
+        return { ok: true as const, kind: "edits" as const, applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
+      });
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }

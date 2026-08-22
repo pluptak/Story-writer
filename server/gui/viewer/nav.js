@@ -41,8 +41,10 @@ export const syncHash = () => {
  *  with no engine behind it at all, which has nothing but a saved run to show. */
 export function go(v) {
   if (!APP.live && v !== "read" && v !== "readstory" && v !== "compare") v = "read";
-  // Dirty guard: confirm before leaving the editor with unsaved changes
-  if (v !== "edit" && APP.editDirty && !confirm("Discard unsaved changes?")) return;
+  // Dirty guard: confirm before leaving the editor with unsaved changes. On cancel, put the URL
+  // back: a hashchange (browser back, a bookmark) has already moved location.hash, so without this
+  // the address bar would show the page we refused to go to while the editor stays on screen.
+  if (v !== "edit" && APP.editDirty && !confirm("Discard unsaved changes?")) { syncHash(); return; }
   // Actually leaving the editor clears its state -- "discard" has to mean discard. Without this
   // the guard re-prompts on every later navigation, beforeunload keeps warning on tab close, and
   // the surviving draft can be saved into whichever story is opened next.

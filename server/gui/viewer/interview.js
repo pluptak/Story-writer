@@ -271,7 +271,6 @@ function acceptIntoFolder() {
   if (folder) postScaffold("accept", { folder });
 }
 
-// Escape closes the interview modal the same way the backdrop and × do — hides, never abandons.
-document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && (APP.scaffold.active || APP.ideaOpen) && !APP.ivHidden) { APP.ivHidden = true; APP.render(); }
-});
+// Escape is handled centrally in chrome.js: when the interview backdrop is topmost it sets
+// APP.ivHidden -- the same "hide, never abandon" path the backdrop and × use. Handling it here too
+// let one keypress close the interview AND a modal stacked above or below it.

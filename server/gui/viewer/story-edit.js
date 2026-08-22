@@ -293,6 +293,15 @@ export function storyEditHtml() {
   }
 
   if (!APP.editDraft) {
+    // A new-story draft with no scaffold behind it -- a reloaded or bookmarked #/edit?new=1 after
+    // the interview is gone -- will never resolve: there is nothing on the server to load. Say so
+    // and offer a way out, rather than a back-button-less "loading…" that hangs forever.
+    if (APP.editNew && !APP.scaffold?.spec) {
+      return `<section class="picker story"><h2>New story</h2>
+        <p class="hint">This draft is no longer available — start a new one from the shelf.</p>
+        <div class="btns" style="margin-top:14px"><button class="btn" id="edit-loading-back">back to the shelf</button></div>
+      </section>`;
+    }
     const name = APP.editNew ? "New story" : APP.stories?.find(s => s.dir === APP.editDir)?.name || APP.editDir;
     return `<section class="picker story"><h2>Edit ${esc(name)}</h2>
       <p class="thinking"><i></i>loading…</p></section>`;
@@ -447,6 +456,10 @@ export function wireStoryEditor(page) {
   // clearing editDirty here (as this used to) silently discarded unsaved changes with one click.
   const back = page.querySelector("#edit-back");
   if (back) back.addEventListener("click", () => go("story"));
+  // The dead-end escape for a new-story draft with nothing behind it -- there is no "story" to go
+  // back to, so it lands on the shelf.
+  const loadingBack = page.querySelector("#edit-loading-back");
+  if (loadingBack) loadingBack.addEventListener("click", () => go("shelf"));
 
   // All inputs write to draft
   const inputs = page.querySelectorAll("input, textarea, select");

@@ -1,6 +1,8 @@
 /** Routes for the HTTP server: next-chapter handoff and run control. */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { Readable } from "node:stream";
+import type { IncomingMessage } from "node:http";
 
 import { normalizeSpec } from "../engine/story-spec.ts";
 import { NextChapterSession } from "../engine/architect.ts";
@@ -155,6 +157,16 @@ describe("readJsonBody", () => {
     await assert.rejects(
       () => readJsonBody(req),
       (e: Error) => e instanceof HttpError && (e as HttpError).status === 400);
+  });
+
+  it("reassembles a multi-byte UTF-8 char split across Buffer chunks", async () => {
+    // "é" is 0xC3 0xA9; split the body so one byte lands in each chunk, the way a socket can.
+    const bytes = Buffer.from(JSON.stringify({ s: "é" }), "utf8");
+    const cut = bytes.indexOf(0xa9);
+    const req = Readable.from([bytes.subarray(0, cut), bytes.subarray(cut)]) as unknown as IncomingMessage;
+    (req as { method?: string }).method = "POST";
+    const result = await readJsonBody(req);
+    assert.deepEqual(result, { s: "é" });
   });
 });
 
