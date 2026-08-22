@@ -26,10 +26,11 @@ run, which is the owner's to make, batched.
 ## Architect follow-ups
 
 - **The worked example still costs the scaffold a quarter of its prompt.** `architectExample()`
-  hard-codes `stories/doorway/story.json`, ~1,870 estimated tokens. The handoff no longer carries it
-  (`buildArchitect(d, false)`), which is where the context pressure actually was; the scaffold still
-  does, because it has no story yet to demonstrate the format with. Making it story-independent is
-  what is left.
+  reads `tests/fixtures/doorway/story.json`, ~1,870 estimated tokens. The handoff no longer carries
+  it (`buildArchitect(d, false)`), which is where the context pressure actually was; the scaffold
+  still does, because a whole-story proposal has no story yet to demonstrate the format with. The
+  staged walk embeds each stage's fields inline instead, so the example matters most to `--oneshot`;
+  whether the one-shot path can drop or shrink it is what is left.
 - **Refused edits are never told to the model.** `applyEdits` and `refuse()` report ignored fields to
   the author, but `architectChange` sends only the author's text and the spec — so an architect that
   invents a field (`scene_1` rather than `scene_1.question`, observed) can repeat it every round.
@@ -37,20 +38,12 @@ run, which is the owner's to make, batched.
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round now refuses with the numbers rather than letting the model return nothing, but a
   long story needs a correspondingly large context window loaded.
-- **Skeleton → flesh scaffold proposal, if the cast outgrows one generation.** The scaffold already
-  proposes in stages — a load-bearing question, the whole-story proposal, then the fill-gaps and verify
-  passes — and each pass targets a specific thing one-shot generation drops (`roster`/`facts`, then
-  self-audit). This is the *next* such split, held behind evidence rather than built now. When the cast
-  grows large (5+ characters, or multi-scene chapters), the whole-story proposal has to hold every
-  character's `persona`/`knows`/`goal`/`skills` in one generation, which is where depth thins first.
-  The split: round A proposes premise, writer style, the scene(s) with their questions, and a cast
-  *list* with one-line roles; round B fleshes each character against a now-fixed skeleton. It keeps the
-  scene↔cast coherence decision in a single call (a cast-first pipeline tends to produce a cast that
-  ignores the scene's question) while lifting the per-character load off it. Cost: one extra round, and
-  a slightly weaker ability to tune the scene question against fully-drawn characters — recoverable in
-  refinement. **Don't build it speculatively:** reach for it only once a live run shows shallow personas
-  or a cast that doesn't serve the scene, the same way fill-gaps and verify earned their place. Touches
-  `prompts.ts` and `architect.ts`'s proposal path, so it is its own block behind a live run.
+- **Staged-scaffold follow-ups**, held behind live-run evidence like everything else in that
+  pipeline: the **verify** pass could flag a cast where nobody has any restrictions (two early live
+  runs produced restriction-less casts; `normalizeSpec` warns but nothing pushes back); the console
+  has no way to ask an empty gate to re-propose itself (edits vocabulary covers it, awkwardly); and
+  the story editor has no view of the session's **tension** sentence, which steers the cast and scene
+  stages but lives only in the conversation.
 - **Approvable, promotable skill bible.** The in-code `SPECIAL_SKILL_CATALOG` is the seed; the second
   half of the plan is a shared, persistent bible that bespoke per-story `custom` skills can be
   **promoted** into — natural home alongside `defaults.json`, loaded by `loadDefaults` and merged over

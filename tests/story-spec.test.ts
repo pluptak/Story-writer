@@ -17,7 +17,10 @@ describe("normalizeSpec", () => {
   const base = {
     title: "Doorway", premise: "A corridor at 3am.",
     scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700 },
-    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: ["lockpicking :: picks locks"], restrictions: [] }],
+    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.",
+      belief: "The back door is still unlocked.", impulse: "When challenged, shows the crate label first.",
+      voice: ["\"I deliver. What happens after is not my department.\""],
+      skills: ["lockpicking :: picks locks"], restrictions: [] }],
   };
 
   it("accepts a well-formed proposal with no complaints", () => {
@@ -25,6 +28,22 @@ describe("normalizeSpec", () => {
     assert.deepEqual(problems, []);
     assert.equal(spec.scenes[0].pov, "RIVEN");
     assert.deepEqual(spec.characters[0].skills, ["lockpicking :: picks locks"]);
+  });
+
+  it("requires a belief, an impulse and voice samples on every character", () => {
+    const { problems } = normalizeSpec({
+      ...base, characters: [{ ...base.characters[0], belief: "", impulse: "", voice: [] }] });
+    const joined = problems.join(" ");
+    assert.match(joined, /no belief/);
+    assert.match(joined, /no impulse/);
+    assert.match(joined, /no voice samples/);
+  });
+
+  it("caps voice at three samples and says so", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, characters: [{ ...base.characters[0], voice: ["one", "two", "three", "four"] }] });
+    assert.deepEqual(spec.characters[0].voice, ["one", "two", "three"]);
+    assert.match(problems.join(" "), /first 3/);
   });
 
   it("drops a restriction that names no general skill, and says why", () => {
@@ -95,11 +114,11 @@ describe("normalizeSpec", () => {
 
   it("notices a persona that restates the structured fields", () => {
     const bled = { ...base, characters: [{ ...base.characters[0],
-      persona: "A courier. VOICE: economical. KNOWS: the code changed. RESTRICTIONS: None." }] };
+      persona: "A courier. VOICE: economical. KNOWS: the code changed. BELIEF: something. RESTRICTIONS: None." }] };
     assert.match(normalizeSpec(bled).problems.join(" "), /restates/);
     // A persona using the labelled headings the format actually asks for is fine.
     const ok = { ...base, characters: [{ ...base.characters[0],
-      persona: "A courier. VOICE: economical. UNDER PRESSURE: politer, not louder." }] };
+      persona: "A courier. UNDER PRESSURE: politer, not louder." }] };
     assert.ok(!normalizeSpec(ok).problems.some(p => /restates/.test(p)));
   });
 
@@ -169,11 +188,53 @@ describe("applyEdits", () => {
     assert.equal(r.applied[0].field, "MERRITT.persona");
   });
 
+  it("renames a character, and the roster and pov follow", () => {
+    const r = edit("characters.RIVEN.name", "QUINN");
+    assert.deepEqual(r.spec.characters.map(c => c.name), ["QUINN", "MERRITT"]);
+    assert.equal(r.spec.scenes[0].pov, "QUINN");
+    assert.deepEqual([r.applied[0].field, r.applied[0].before, r.applied[0].after], ["RIVEN.name", "RIVEN", "QUINN"]);
+    assert.equal(spec.characters[0].name, "RIVEN", "the input spec must not be mutated");
+
+    const rostered = normalizeSpec({
+      title: "Doorway", premise: "A corridor at 3am.",
+      scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700,
+               roster: ["RIVEN", "MERRITT"] },
+      characters: spec.characters.map(c => ({ ...c })),
+    }).spec;
+    const rr = quietSync(() => applyEdits(rostered, { edits: [{ field: "characters.riven.name", value: "Quinn" }] }));
+    assert.deepEqual(rr.spec.scenes[0].roster, ["Quinn", "MERRITT"]);
+
+    // One round may rename and then address the old name -- later edits follow the rename.
+    const multi = quietSync(() => applyEdits(rostered, { edits: [
+      { field: "characters.RIVEN.name", value: "QUINN" },
+      { field: "characters.riven.knows", value: "The code changed twice." },
+    ] }));
+    assert.equal(multi.spec.characters[0].name, "QUINN");
+    assert.equal(multi.spec.characters[0].knows, "The code changed twice.");
+    assert.deepEqual(multi.ignored, []);
+
+    const dup = quietSync(() => applyEdits(r.spec, { edits: [{ field: "characters.QUINN.name", value: "merritt" }] }));
+    assert.match(dup.ignored.join(" "), /already in the cast/);
+    const blank = edit("characters.RIVEN.name", "   ");
+    assert.match(blank.ignored.join(" "), /renamed to nothing/);
+
+    // Models copy the <NAME> placeholder literally sometimes; the engine unwraps it.
+    const brack = edit("characters.<MERRITT>.goal", "Get promoted.");
+    assert.equal(brack.spec.characters[1].goal, "Get promoted.");
+  });
+
   it("takes skills and restrictions as a list or a pipe-separated string", () => {
     assert.deepEqual(edit("characters.RIVEN.skills", ["climbing", "keys :: by feel"]).spec.characters[0].skills,
                      ["climbing", "keys :: by feel"]);
     assert.deepEqual(edit("characters.RIVEN.restrictions", "hearing | smell").spec.characters[0].restrictions,
                      ["hearing", "smell"]);
+  });
+
+  it("takes voice as a list or a pipe-separated string", () => {
+    assert.deepEqual(edit("characters.RIVEN.voice", ["one line", "another"]).spec.characters[0].voice,
+                     ["one line", "another"]);
+    assert.deepEqual(edit("characters.RIVEN.voice", "a line | b line").spec.characters[0].voice,
+                     ["a line", "b line"]);
   });
 
   it("reports an unknown field instead of guessing at it", () => {
@@ -369,6 +430,8 @@ describe("renderStory round trip", () => {
     writer_style: "Third person limited. Present tense.",
     characters: [
       { name: "ELIAS", persona: "The senior keeper.\n\nThirty years of it.", knows: "The radio only receives.",
+        belief: "The relief boat is merely late, not lost.", impulse: "When the light fails, winds it by hand before saying a word.",
+        voice: ["\"She has been late before. She has never been lost.\""],
         skills: ["writelog :: drafting entries in correct naval syntax"], restrictions: [] },
       { name: "MARA", persona: "The junior keeper.", knows: "The fog signal has not fired in eleven days.",
         skills: [], restrictions: ["hearing"] },
@@ -397,6 +460,9 @@ describe("renderStory round trip", () => {
       const elias = sc.characters[0], mara = sc.characters[1];
       assert.equal(elias.knows, spec.characters[0].knows);
       assert.ok(elias.persona.includes("Thirty years of it."));
+      assert.equal(elias.belief, "The relief boat is merely late, not lost.");
+      assert.equal(elias.impulse, "When the light fails, winds it by hand before saying a word.");
+      assert.deepEqual(elias.voice, ["\"She has been late before. She has never been lost.\""]);
       // The two things that would silently change the SCENE if they were lost:
       assert.ok(elias.skills.some(s => s.name === "writelog" && s.meaning.startsWith("drafting entries")));
       assert.ok(!mara.skills.some(s => s.name === "hearing"), "a restriction must survive as a real absence");
@@ -416,7 +482,7 @@ describe("renderStory round trip", () => {
   });
 
   it("renders back every config key, models block and per-character model the story file declared", async () => {
-    const original = JSON.parse(await readFile(join(ROOT, "stories/doorway/story.json"), "utf8"));
+    const original = JSON.parse(await readFile(join(ROOT, "tests/fixtures/doorway/story.json"), "utf8"));
     const { spec } = normalizeSpec(original);
     const rendered = JSON.parse(renderStory(spec, { default: "unused-fallback" })["story.json"]);
 

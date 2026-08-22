@@ -195,6 +195,9 @@ export function handoffPageHtml() {
         <div class="nm">${esc(c.name)}</div>
         ${c.goal ? `<div class="line"><span class="k">goal</span>${esc(c.goal)}</div>` : ""}
         ${c.knows ? `<div class="line"><span class="k">knows</span>${esc(c.knows)}</div>` : ""}
+        ${c.belief ? `<div class="line"><span class="k">believes</span>${esc(c.belief)}</div>` : ""}
+        ${c.impulse ? `<div class="line"><span class="k">impulse</span>${esc(c.impulse)}</div>` : ""}
+        ${(c.voice || []).map(v => `<div class="line"><span class="k">says</span>“${esc(v)}”</div>`).join("")}
         ${c.restrictions?.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
       </div>`);
     }

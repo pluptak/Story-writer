@@ -52,11 +52,15 @@ export function castSheetHtml() {
     const restr = (c.restrictions || []).map(r =>
       `<span class="no" title="cannot ${esc(r)}">no ${esc(r)}</span>`).join(" ");
     const tags = skills || restr ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}</div>` : "";
+    const voice = (c.voice || []).map(v => `<p class="cast-voice">“${esc(v)}”</p>`).join("");
     return `<div class="cast-card">
       <div class="cast-name">${esc(c.name)}</div>
       ${field("persona", c.persona)}
       ${field("knows", c.knows)}
       ${field("goal", c.goal)}
+      ${field("belief", c.belief)}
+      ${field("impulse", c.impulse)}
+      ${voice}
       ${tags}
     </div>`;
   }).join("");

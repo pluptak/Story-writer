@@ -121,11 +121,12 @@ export const runningReason = () => APP.session.running ? "a scene is being writt
 // here and are written back in; focus is read off the document as the render begins, rather than
 // tracked through focus/blur -- removing a focused node does not reliably fire blur, and a click on
 // any button would clear a tracked value before the re-render it triggered.
-export const draft = { idea:"", say:"", folder:"", model:"", length:"" };
+export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"" };
 export const hdraft = { say:"" };
+
+export const FIELDS = /^[fh]-(idea|say|folder|model|mode|length)$|^r-say-\d+$/;
 // r-say-N is the live reader consult's own-answer box (blocks.js) -- it holds half-typed text too,
 // and the SSE frames that arrive while the run waits on you re-render just as eagerly.
-export const FIELDS = /^[fh]-(idea|say|folder|model|length)$|^r-say-\d+$/;
 
 /** Which consults are expanded, by seq — shared across pages on purpose: it is a reading
  *  preference ("I like things opened up"), not a fact tied to one particular run. */

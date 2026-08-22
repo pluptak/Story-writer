@@ -132,7 +132,8 @@ Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and clic
 - [ ] **Dirty guard.** With unsaved changes, click **back to story**. A `confirm()` dialog warns about unsaved changes. Cancel stays on the editor; confirm navigates away.
 - [ ] **Dirty guard — browser close.** With unsaved changes, close the tab. The browser fires `beforeunload` with a confirmation. (Hard to automate; verify once.)
 - [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
-- [ ] **Character editor.** Change a character's persona, knows, or goal. Add a skill. Verify after save.
+- [ ] **Character editor.** Change a character's persona, knows, or goal. Set a belief, an impulse, and one or two voice lines (one per line in the voice box). Add a skill. Verify after save.
+- [ ] **Character card warnings.** Clear a character's belief, impulse, and voice. After ~400ms `/story/check` shows the three "has no …" warnings; refilling them clears them again.
 - [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
 - [ ] **Models editor.** Expand the models section. Change `default` model, save, reload.
 - [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
@@ -262,10 +263,11 @@ In the reader (section 10), using the search box above the prose.
 Needs a run, so pair it with section 2. A read-only panel in the live rail.
 
 - [ ] **It appears while a run is live.** Below the rail's stats, a **cast** panel with a card per
-      character in the run, each showing persona / knows / goal and the character's `+skill` /
-      `no restriction` tags.
+      character in the run, each showing persona / knows / goal / belief / impulse / voice samples
+      and the character's `+skill` / `no restriction` tags.
 - [ ] **It carries authored data the pills do not.** The header cast pills know only skills and
-      restrictions; this panel shows `knows` and `goal` too — proof it is the `/cast` fetch, not the
+      restrictions; this panel shows `knows`, `goal`, `belief`, `impulse` and the quoted voice lines
+      too — proof it is the `/cast` fetch, not the
       `scene_start` names. (Pick a story whose characters have a non-empty `knows`.)
 - [ ] **Read-only.** No inputs, no buttons, nothing to click — it is for the human reviewing what a
       consult was working from, never an edit surface.

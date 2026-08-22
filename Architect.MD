@@ -17,7 +17,9 @@ make character decisions inside a scene.
 It has two modes:
 
 - **Scaffold**: turn a rough idea into a new `story.json` through questions, a proposal, refinements,
-  and an explicit accept action.
+  and an explicit accept action. The scaffold itself has two walks: **staged** — the default — runs
+  the idea through a gated checklist (story → cast → settings → scene) where each stage is proposed
+  only after the author approved the last; **oneshot** proposes the whole story in one round.
 - **Handoff**: run between chapters, read the accepted chapter prose, and re-author the story
   definition for the next chapter.
 
@@ -89,9 +91,18 @@ The architect can edit the fields supported by `engine/story-spec.ts`:
 - story metadata: `title`, `premise`, and `writerStyle`
 - scenes: `scene_<n>.place`, `question`, `pov`, `length`, and `roster`
 - scene structure: `add_scene` and `remove_scene`
-- characters: `persona`, `knows`, `goal`, `skills`, and `restrictions`
+- characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`, and `restrictions`
 - cast membership: `add_character` and `remove_character`
 - story facts: `add_fact`, `remove_fact`, and an indexed update of `facts[n]`
+
+Every character carries the three psychology fields — a possibly-false `belief`, one conditional
+`impulse` ("when X → Y"), and up to three quoted `voice` samples — alongside `persona`, `knows`,
+and `goal`. They are required: `normalizeSpec` reports their absence as problems, so a handoff that
+adds a character without them is flagged back. The engine renders them into the character's system
+prompt (`WHAT YOU BELIEVE` / `WHEN PRESSURED, YOU` / past-words voice lines); it never resolves them
+through the skill system, which stays purely about capabilities. The handoff also treats a disproved
+belief as carry-forward state: when the chapters break what someone believed, the architect is asked
+to re-author the belief, not leave the slot empty.
 
 Removing the last scene is refused. Two things are refused because they would rewrite history:
 removing a scene that already has accepted prose, since renumbering would make existing
@@ -123,21 +134,52 @@ about the story that resulted, flags are observations about the prose that alrea
 
 ### Scaffold
 
-The architect first checks whether the idea explains:
+The session runs one of two walks, chosen when it opens.
 
-- who is in the scene
-- what is at stake
+**Staged (the default) — a gated checklist.** The four gates:
 
-If either is missing, it asks one load-bearing question. Otherwise it proposes the complete story.
-Follow-up messages produce structured edits and preserve fields that were not mentioned.
+- **story** — title, premise, the load-bearing *tension*, story-level facts.
+- **cast** — full character objects, authored against that tension, as they walk into scene 1.
+  Character development is never authored forward; the handoff owns it once real prose exists.
+- **settings** — `writer_style`.
+- **scene** — scene 1 fully (place, question sharpened against the finished cast, pov, length,
+  roster); later scenes may be sketched as question-only provisional entries.
 
-A proposal that lands is not the end of the round. Two automatic passes run immediately after, before
-the author ever sees it: **fill the gaps** (the scene's `roster` and the story's `facts` are never part
-of the initial proposal's own format, so a dedicated pass asks for them) and **verify** (the architect
-re-reads its own draft for a roster name that doesn't match the cast, a fact that just restates one
-character's private `knows`, a restriction that never bites, a POV outside the roster). Either pass may
-ask instead of editing — that aborts the sequence and surfaces as this round's question exactly like
-any other ask, with whatever the earlier passes already applied kept on the spec.
+`propose()` opens the first gate; `approve()` passes the open gate and proposes the next stage's
+content in one call; refinement (`say`) applies edits within the open gate — back-edits to earlier
+stages included — and never moves the pointer. **The engine holds the gate**: approve refuses while
+a question stands (`pendingAsk`), when the open gate's content never landed ("has not landed"), and
+past the last gate ("checklist is complete"). A question pins its gate; answering it feeds
+`[THE AUTHOR ANSWERS]` into history and re-runs that stage's prompt. Three asks within one gate get
+an OVERRIDE line; passing a gate resets the ask budget.
+
+The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
+and what is at stake between them, the architect asks instead of proposing.
+
+Each stage's reply merges into the draft so far — fields it names win, everything landed earlier
+survives. The scene stage owns every scene at once: scene 1 in full, later ones as sketches, because
+whatever the chapters actually do re-authors them. After the scene lands, the **verify** pass runs
+once — pov among the roster, a restriction that bites: checks that only mean anything once every
+side of the story exists. The fill-gaps pass has no job here; its roster and facts are asked by their
+own stages. Problems a half-built draft always has ("no characters at all", "scene 1 has no
+question") are suppressed until their owning stage has run.
+
+The load-bearing **tension** sentence coined at the story stage is session state, not a story.json
+field: it steers the cast stage's prompt, sharpens the scene stage's, and change rounds may edit it
+by field name without it ever reaching the file.
+
+**Oneshot** keeps the original single-round behaviour: one whole-story proposal followed immediately
+by the two automatic passes below, then conversational refinement. Chosen with `--oneshot`, or
+`mode: "oneshot"` on `/scaffold/start`.
+
+A proposal that lands (either walk) is not the end of the round. Two automatic passes run before the
+author sees it, as far as each walk needs them: **fill the gaps** (the scene's `roster` and the
+story's `facts` are never part of the whole-story proposal's own format, so a dedicated pass asks for
+them) and **verify** (the architect re-reads its own draft for a roster name that doesn't match the
+cast, a fact that just restates one character's private `knows`, a restriction that never bites, a
+POV outside the roster). Either pass may ask instead of editing — that aborts the sequence and
+surfaces as this round's question exactly like any other ask, with whatever the earlier passes
+already applied kept on the spec.
 
 ### Handoff
 
@@ -161,6 +203,9 @@ Which rounds each mode can produce — the bodies and the state each route publi
 | scaffold | `proposal` \| `edits` \| `question` \| `nothing` \| `failed` |
 | handoff | `edits` \| `question` \| `nothing` \| `failed` |
 
+A staged scaffold round also carries `stage` — the checklist gate the round belongs to
+(`"story"` | `"cast"` | `"settings"` | `"scene"`), so callers can label it without tracking state.
+
 The handoff never returns `proposal`. Its first round is already an edit list against the story on
 disk, so the proposed-next-chapter panel renders from `spec` and `last.applied`, never from a
 proposal round.
@@ -168,10 +213,13 @@ proposal round.
 A round reaching either mode's caller may also carry an optional `auto` array — one entry per
 automatic fill-gaps/verify pass that ran, each with the same `applied`/`ignored`/`note` shape as an
 edits round plus `stage` (`"fillGaps"` | `"verify"`) and `outcome` (`"edits"` | `"nothing"` |
-`"failed"`). It is additive: a round with no `auto` field behaved exactly as before.
+`"failed"`). It is additive: a round with no `auto` field behaved exactly as before. A staged
+session's rounds only ever carry the verify entry, once, after the scene stage.
 
 ```text
-scaffold: start → proposal → say/refine → accept (folder) → run
+staged:   start → story → approve → cast → approve → settings → approve → scene (+verify)
+          any gate: say/refine ↺ · a question pins its gate until answered · accept (folder) → run
+oneshot:  start → proposal → say/refine → accept (folder) → run
 handoff:  start → edits    → say/refine → accept → select prepared chapter → run
                                        ↘ abandon
 ```
@@ -209,10 +257,23 @@ of missing work.
 Behaviour the redesign must keep:
 
 - The idea field is shown only before the first proposal; it can overlay the empty story editor.
-- While `/scaffold/start` or `/scaffold/say` is running, sending is disabled and `.thinking` shows.
-- A `question` round focuses the answer field and labels it as the architect's question.
+  Beside the model choice, the idea screen offers **how it proposes**: "stage by stage" (the staged
+  checklist) or "the whole story at once" (oneshot).
+- A staged session renders the checklist — story / cast / settings / scene chips with the open gate
+  highlighted and passed gates ticked — above the phase stepper; a one-shot session renders the
+  stepper alone.
+- While `/scaffold/start`, `/scaffold/say` or `/scaffold/approve` is running, sending is disabled and
+  `.thinking` shows.
+- A `question` round focuses the answer field and labels it as the architect's question; while it
+  stands, everything typed is the answer and the approve button is hidden.
+- The **approve & continue** button passes the open gate and proposes the next stage's content. It is
+  hidden at the last gate — there approve has nothing left to open, and accept is the move.
+  Refinement never advances a gate: only this button does.
 - A `proposal` or `edits` round updates the scaffold draft; after the first proposal the draft is
-  reviewed through the existing story editor without clearing the conversation context.
+  reviewed through the existing story editor without clearing the conversation context. Provisional
+  later scenes from the scene stage render as questions under "later scenes · provisional".
+- Round labels carry their gate (`[cast] changed: …`) so the author can tell refinement from
+  stage proposals apart.
 - `problems` are shown beneath the proposal; warnings do not prevent further refinement.
 - Accept opens a folder-name step when the server returns `needs_folder`, and does not disappear until
   the server returns `kind: "written"`. In editor review, field changes are synced back to the open
@@ -260,13 +321,20 @@ the two have similar round shapes and different lifecycle rules.
 ## Console and HTTP surfaces
 
 ```bash
+npx tsx story-writer.ts --new                      # the staged checklist (the default walk)
+npx tsx story-writer.ts --new --oneshot            # the whole-story proposal
 npx tsx story-writer.ts stories/example --next-chapter
 npx tsx story-writer.ts stories/example --chapter=2
 ```
 
-The HTTP equivalents are `GET /next-chapter` and `POST /next-chapter/{start,say,accept,abandon}`,
-specified in [`GUI-SPEC.md`](GUI-SPEC.md). The server reaches the engine through `ServerHost` and never
-imports engine modules directly.
+At the console a staged session prints its checklist after every round; bare enter approves the open
+gate, `accept` writes `story.json`, `?` shows the draft in full, `q` abandons. Once every gate has
+landed, bare enter becomes accept.
+
+The HTTP equivalents are `GET /scaffold`, `POST /scaffold/{start,say,approve,set,accept,abandon}`,
+`GET /next-chapter` and `POST /next-chapter/{start,say,accept,abandon}`, specified in
+[`GUI-SPEC.md`](GUI-SPEC.md). The server reaches the engine through `ServerHost` and never imports
+engine modules directly.
 
 ## Remaining work
 
@@ -274,10 +342,11 @@ imports engine modules directly.
   proposed chapter. `GET /chapter?dir=&n=` serves the prose, so nothing is blocked at the API, but the
   word counts mean one fetch per chapter. Tracked in [`PLANS.md`](PLANS.md).
 - `specView` omits `config`, `models` and per-character `model` — needed only if a panel shows them.
-- A **scaffold** architect receives a hard-coded worked example from `stories/doorway` (~1,870
-  estimated tokens); making it story-independent is what stands between that prompt and being
-  portable. A **handoff** architect no longer gets it — the handoff prompt names every edit field
-  inline and resends the real story each round, so the example was the format said twice.
+- A **scaffold** architect receives a hard-coded worked example from `tests/fixtures/doorway`
+  (~1,870 estimated tokens) — the one story committed with the engine, since everything under
+  `stories/` is the user's own content and gitignored. A **handoff** architect no longer gets it —
+  the handoff prompt names every edit field inline and resends the real story each round, so the
+  example was the format said twice.
 
 ## Safety and product constraints
 

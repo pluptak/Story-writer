@@ -36,7 +36,10 @@ export interface ServerHost {
   loadedModelIds(): Promise<string[] | null>;
   /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
   architectModel(): Promise<string>;
-  newScaffoldSession(idea: string, model?: string): Promise<ScaffoldSession>;
+  /** `mode` picks the scaffold's walk: "staged" runs the gated checklist
+   *  (story → cast → settings → scene, an author approval between stages); "oneshot" is the
+   *  whole-story proposal. Omitted means staged. */
+  newScaffoldSession(idea: string, model?: string, mode?: "oneshot" | "staged"): Promise<ScaffoldSession>;
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
   directEdit(spec: StorySpec, field: string, value: unknown):
@@ -58,6 +61,7 @@ export interface ServerHost {
   fullCast(dir: string): Promise<{
     ok: true; characters: {
       name: string; persona: string; knows: string; goal: string;
+      belief: string; impulse: string; voice: string[];
       skills: { text: string; meaning: string }[]; restrictions: string[];
     }[];
   } | {

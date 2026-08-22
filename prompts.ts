@@ -45,6 +45,55 @@ export function penaltyBlock(penalties: Readonly<Record<string, readonly string[
 
 // -- ARCHITECT -------------------------------------------------------------
 
+/** The per-character field documentation, shared by the whole-story proposal format and the
+ *  staged scaffold's cast stage -- one source of truth for what a character is made of. */
+const CHARACTER_FIELDS = `  name       -- one word, capitalised, how the writer will refer to them.
+  persona    -- who they are: history in a line or two, then how they hold themselves. Concrete and
+                particular. Around 100 words. Write it addressed to them ("You have...") or about
+                them, either way, but never as a summary of their arc -- they must be able to act from
+                it, not perform it. PROSE ONLY: do not restate knows, goal, belief, impulse, voice,
+                skills or restrictions inside it. Those are separate fields and the engine renders them
+                itself; a persona that also says "RESTRICTIONS: none" contradicts the skill list the
+                character is actually given.
+  knows      -- what they know walking in that the other characters do not. This is where a scene
+                gets its friction.
+  goal       -- what they want tonight, in their own terms, phrased so an outcome can be MEASURED
+                against it ("every course served" -- not "do a good job"). Only the character themself
+                ever weighs whether they are closer to it or further away -- this is never shown to the
+                writer or evaluated by anyone outside the character's own agent. What makes a scene work
+                is two characters' goals genuinely colliding, not just being different.
+  belief     -- REQUIRED. One load-bearing conviction they walk in with, in their own terms --
+                and it may be false. A false belief fills the slot the real fact would occupy: a
+                character who must not know the murder happened does not get "doesnt know"; she gets
+                "believes he died peacefully in his sleep". Never write a negation ("does not know
+                about X") -- the negation names the thing and hands it to them.
+  impulse    -- REQUIRED. One conditional behaviour rule: "when X -> Y", where X is a pressure this
+                scene can actually apply. This is a trait as behaviour: not "proud" but "when offered
+                kindness, deflects with payment first, stories second".
+  voice      -- REQUIRED. One to three short lines of dialogue in their own words. Models imitate
+                samples far better than adjectives; one real line sets register faster than a
+                paragraph describing it.
+  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by its exact
+                name -- it already carries its meaning. Write a bespoke "name :: what it means"
+                ONLY when nothing in the bible fits; an unknown bare name with no meaning will be
+                flagged back. Give someone something the other cannot do. Do NOT restate a general
+                skill under a new name: "watching :: seeing the lens turn" is just sight, and adds
+                nothing.
+  restrictions -- what this character does NOT have. A single skill name (general, bible, or one of
+                 this character's own skills), OR a named penalty from THE RESTRICTION CATALOG below,
+                 which disables EVERY skill it lists -- often more than one, and sometimes special
+                 skills too. One character who cannot see, or cannot speak, or cannot move, will do more for a
+                 scene than any amount of backstory. AT LEAST ONE character must have a restriction,
+                 unless the idea makes that genuinely impossible. It earns its place only
+                 if it can actually bite in THIS scene -- prefer one that creates an information or
+                 action asymmetry (she can't see the signal he's watching for; he can't hear the
+                 alarm she can) over one the scene never puts to the test.`;
+
+const ASYMMETRY_RULES = `DESIGN FOR ASYMMETRY. Two people who can both see, both move and both talk, who want compatible
+things, produce a scene where nothing has to be asked. Give them different senses, different
+authority, different information, or different stakes. At least one real imbalance -- and where you
+can, make their goals actually collide: what one of them needs is what stands in the other's way.`;
+
 export const ARCHITECT_FORMAT = `You design scenes for a writing engine, from an author's rough idea.
 
 HOW THE ENGINE WORKS, because it changes what makes a good design: a writer agent drafts the scene,
@@ -78,6 +127,7 @@ Reply with ONE JSON object and nothing else:
  "scene": {"place": "...", "question": "...", "pov": "NAME", "length": 700},
  "writer_style": "...",
  "characters": [{"name": "NAME", "persona": "...", "knows": "...", "goal": "...",
+                 "belief": "...", "impulse": "when X -> Y", "voice": ["one line they would actually say"],
                  "skills": ["lockpicking :: opening a mechanical lock without its key"],
                  "restrictions": ["sight"]}],
  "ask": "",
@@ -98,35 +148,7 @@ characters   -- Every character costs consults out of a fixed step budget, so ad
                 with two. Four is the maximum. A character who is present but not the one acting is
                 still worth the cast slot: the writer can ask what they see, or what it lands on them
                 as ("wants": "reaction"), without ever needing them to speak or move. For each:
-  name       -- one word, capitalised, how the writer will refer to them.
-  persona    -- who they are: history in a line or two, then VOICE (how they talk), then how they
-                are UNDER PRESSURE. Concrete and particular. Around 150 words. Write it addressed
-                to them ("You have...") or about them, either way, but never as a summary of their
-                arc -- they must be able to act from it, not perform it. PROSE ONLY: do not restate
-                knows, goal, skills or restrictions inside it. Those are separate fields and the engine
-                renders them itself; a persona that also says "RESTRICTIONS: none" contradicts the skill
-                list the character is actually given.
-  knows      -- what they know walking in that the other characters do not. This is where a scene
-                gets its friction.
-  goal       -- what they want tonight, in their own terms. Only the character themself ever weighs
-                whether they are closer to it or further away -- this is never shown to the writer
-                or evaluated by anyone outside the character's own agent. What makes a scene work is
-                two characters' goals genuinely colliding, not just being different.
-  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by its exact
-                name -- it already carries its meaning. Write a bespoke "name :: what it means"
-                ONLY when nothing in the bible fits; an unknown bare name with no meaning will be
-                flagged back. Give someone something the other cannot do. Do NOT restate a general
-                skill under a new name: "watching :: seeing the lens turn" is just sight, and adds
-                nothing.
-  restrictions -- what this character does NOT have. A single skill name (general, bible, or one of
-                 this character's own skills), OR a named penalty from THE RESTRICTION CATALOG below,
-                 which disables EVERY skill it lists -- often more than one, and sometimes special
-                 skills too. One character who cannot see, or cannot speak, or cannot move, will do more for a
-                 scene than any amount of backstory. AT LEAST ONE character must have a restriction,
-                 unless the idea makes that genuinely impossible. It earns its place only
-                 if it can actually bite in THIS scene -- prefer one that creates an information or
-                 action asymmetry (she can't see the signal he's watching for; he can't hear the
-                 alarm she can) over one the scene never puts to the test.
+${CHARACTER_FIELDS}
 ask          -- see FIRST DECIDE above. Either this is your whole reply and everything else is
                 empty, or it is "". Do not send a full story with a question attached: if you had
                 enough to propose, you had enough not to ask.
@@ -144,19 +166,21 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
     scene.place · scene.question · scene.pov · scene.length · scene.roster
     scene_<n>.place · ...      (the same fields on the nth scene; scene_1 and scene are the same one)
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
-    characters.<NAME>.skills · characters.<NAME>.restrictions     (value is a list)
+    characters.<NAME>.belief · characters.<NAME>.impulse · characters.<NAME>.voice   (voice: a list)
+    characters.<NAME>.skills · characters.<NAME>.restrictions     (skills, restrictions: lists)
+    characters.<NAME>.name     (renames them -- roster and pov follow; rewrite any prose that
+                                speaks of them under the old name in the same round)
     add_character      (value is a whole character object, as above)
     remove_character   (value is the name)
     add_scene          (value is a whole scene object: place, question, pov, length, roster)
     remove_scene       (value is the scene number)
 
-  Any other field name is ignored, and the author is told it was. If the change they asked for is
-  ambiguous enough that you would be guessing at what they meant, use "ask" and change nothing.
+  Any other field name is ignored, and the author is told it was. "ask" and "note" are your reply
+  keys below -- they are never story fields, and naming them in an edit is always wrong. If the
+  change they asked for is ambiguous enough that you would be guessing at what they meant, use
+  "ask" and change nothing.
 
-DESIGN FOR ASYMMETRY. Two people who can both see, both move and both talk, who want compatible
-things, produce a scene where nothing has to be asked. Give them different senses, different
-authority, different information, or different stakes. At least one real imbalance -- and where you
-can, make their goals actually collide: what one of them needs is what stands in the other's way.
+${ASYMMETRY_RULES}
 
 Do not write the scene. Do not write dialogue. You are designing the people and the pressure; the
 writer and the characters do the rest.
@@ -190,6 +214,164 @@ export const architectMore = (userText: string, idea: string, insist: boolean) =
         + `interesting reading of this and commit to it. `
       : ``)
   + `Propose the whole story now, in the full format.`;
+
+// -- THE STAGED SCAFFOLD -----------------------------------------------------
+// The scaffold can run as a gated checklist instead of one whole-story proposal:
+// idea -> story -> cast -> settings -> scene, the author approving each stage before the next
+// opens. Each function below is ONE round-trip: it asks for only that stage's fields, carries
+// the draft so far, and states where the checklist stands so nothing ahead of the gate gets
+// proposed. The whole-story format above stays untouched -- it remains the "propose it all" mode.
+//
+// "tension" is the load-bearing conflict sentence coined at the story stage; it is not a story.json
+// field of its own -- it steers the cast and the scene question, then lives folded into the premise.
+
+export type ScaffoldStage = "story" | "cast" | "settings" | "scene";
+
+/** Prepended to a staged round once one stage has asked MAX_ASKS questions without proposing -- the
+ *  staged counterpart of [MORE]'s OVERRIDE line, so a gate cannot stall on questions forever. */
+export const STAGE_INSIST =
+  `OVERRIDE: you have asked several times without proposing. Do not ask anything else -- choose the `
+  + `most interesting reading of what the author has given you and commit to it now.`;
+
+const STAGE_ORDER: readonly ScaffoldStage[] = ["story", "cast", "settings", "scene"];
+
+const checklistLine = (stage: ScaffoldStage) => {
+  const i = STAGE_ORDER.indexOf(stage);
+  const rest = STAGE_ORDER.slice(i + 1);
+  return `[THE CHECKLIST] ${STAGE_ORDER.map((s, k) => k < i ? s : k === i ? s.toUpperCase() : s).join(" -> ")}. `
+    + `You are on "${stage}" (stage ${i + 1} of ${STAGE_ORDER.length}`
+    + (rest.length ? `; still ahead: ${rest.join(", ")}` : ``) + `). `
+    + `Propose ONLY this stage's fields -- every later stage belongs to a round the author has `
+    + `not approved yet, and anything you send for one will be dropped.`;
+};
+
+const STAGE_RULES = `FIRST DECIDE: propose, or ask?
+
+  If something load-bearing for YOUR stage is genuinely missing or ambiguous, ASK INSTEAD OF
+  PROPOSING -- reply with ONLY:
+
+      {"ask": "your one question"}
+
+  One question, the most load-bearing one, everything else empty. Asking is not a failure to
+  answer; it is the answer. It is the same move the characters make inside a running scene.
+  If you have what you need, do NOT ask. Propose, and commit.
+
+Reply with ONE JSON object and nothing else, in YOUR stage's shape above -- never the
+whole-story shape from your instructions. Fields of other stages are dropped if you send them.
+
+CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+export const architectStoryStage = (idea: string) => `${checklistLine("story")}
+
+[THE IDEA]
+${idea}
+
+YOUR STAGE: the story's frame, and nothing else --
+
+{"title": "...",
+ "premise": "...",
+ "tension": "...",
+ "facts": ["..."],
+ "ask": "",
+ "note": ""}
+
+title    -- three words or fewer, concrete.
+premise  -- the situation, the place, the hour, the pressure. Enough that a writer could open
+            on it cold. A few short paragraphs. Say what the scene is NOT about too, if it keeps
+            it honest.
+tension  -- ONE sentence naming the load-bearing conflict: who wants what, against what
+            opposition. This decides who belongs in the cast and sharpens the scene's question,
+            so make it a collision between people, not a mood or a theme. The later stages are
+            built on exactly these words -- spend care here.
+facts    -- truths true of the world at large that nobody in particular walks in holding.
+            Empty is fine when none clear that bar; a fact only one person knows belongs in
+            their "knows" when their stage comes, not here.
+
+FIRST DECIDE gate: does the idea tell you WHO is in the scene, and WHAT IS AT STAKE between
+them? If either is missing, use "ask" and send nothing else -- you would be inventing the thing
+the author cares most about. "Two lighthouse keepers" names who, and nothing at stake.
+
+${STAGE_RULES}`;
+
+export const architectCastStage = (premise: string, tension: string, specSoFar: string) =>
+`${checklistLine("cast")}
+
+[THE PREMISE]
+${premise}
+
+[THE TENSION]
+${tension}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+YOUR STAGE: the cast, and nothing else --
+
+{"characters": [
+   {"name": "NAME", "persona": "...", "knows": "...", "goal": "...",
+    "belief": "...", "impulse": "when X -> Y", "voice": ["one line they would actually say"],
+    "skills": ["lockpicking :: opening a mechanical lock without its key"],
+    "restrictions": ["sight"]}],
+ "ask": "",
+ "note": ""}
+
+characters -- Every character costs consults out of a fixed step budget, so add a third or fourth
+              only when they have their own stake in THE TENSION -- not because the cast feels thin
+              with two. Four is the maximum. These people exist to put that tension under strain:
+              their goals collide inside it, their knowledge splits along it, their restrictions
+              bite because of it. Author each of them AS THEY WALK INTO SCENE 1 -- what anyone
+              becomes later is re-authored after real chapters exist, never today. For each:
+${CHARACTER_FIELDS}
+
+${ASYMMETRY_RULES} And make the asymmetry serve THE TENSION: an imbalance the scene never puts
+to the test is decoration.
+
+${STAGE_RULES}`;
+
+export const architectSettingsStage = (specSoFar: string) => `${checklistLine("settings")}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+YOUR STAGE: the house style, and nothing else --
+
+{"writer_style": "...", "ask": "", "note": ""}
+
+writer_style -- house style: person, tense, what to do with dialogue, what to leave out. Ground
+               it in the premise and the tension -- a confession and a farce are narrated
+               differently, and saying which this is does more than listing rules.
+
+${STAGE_RULES}`;
+
+export const architectSceneStage = (specSoFar: string) => `${checklistLine("scene")}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+YOUR STAGE: the scene(s), and nothing else --
+
+{"scene": {"place": "...", "question": "...", "pov": "NAME", "length": 700},
+ "later_scenes": [],
+ "ask": "",
+ "note": ""}
+
+scene.place    -- one line. Where and when.
+scene.question -- the dramatic question scene 1 has to answer, phrased so it CAN be answered in
+                 the length given. Not a theme; a question with an outcome. Sharpen it against
+                 the finished cast: it should be the exact point where their colliding goals
+                 force someone to choose.
+scene.pov      -- whose perception we are inside. One of the character names, and one of the
+                 people actually present in the room.
+scene.length   -- words. 600-900 unless the idea demands otherwise.
+later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"question": "..."}
+                 and NOTHING else. Provisional pressure points, so the author can see the arc --
+                 not commitments. No place, no pov, no length, no outcomes: whatever the chapters
+                 actually do decides what the next scene really is, and a later handoff re-authors
+                 these from scratch. Never sketch character development forward -- who anyone
+                 becomes is written by what happens, not planned. Omit entirely when the story is
+                 complete in one scene.
+
+${STAGE_RULES}`;
 
 // -- THE TWO AUTOMATIC FOLLOW-UP PASSES ------------------------------------
 // Run automatically after a successful whole-story proposal or handoff re-authoring
@@ -279,8 +461,10 @@ these people, you write into their definitions now or it is lost:
   - someone who learned something has it in their "knows", in their own terms;
   - someone whose goal was met, or became impossible, needs a new one, or they will play a finished
     goal again as if nothing happened;
+  - someone whose belief the chapters disproved needs a new one -- a belief is load-bearing, and an
+    empty one leaves them guessing at why anything matters; keep it capable of being false;
   - someone changed by what they did -- hardened, broken, in someone's debt -- has it in their
-    persona, which you edit only where the chapter actually changed them;
+    persona and their "impulse", which you edit only where the chapter actually changed them;
   - someone who died, left, or is simply not in the next scene is dropped from that scene's "roster".
     They stay in the cast; the roster is what decides who is in the room;
   - someone who lost a capability -- an arm, their nerve, the lantern -- gains a restriction, and
@@ -317,8 +501,12 @@ Reply with edits only, and nothing else:
 {"edits": [{"field": "characters.NAME.goal", "value": "..."}], "flags": [], "ask": "", "note": ""}
 
   title · premise · writer_style
-  characters.<NAME>.persona · .knows · .goal · .skills · .restrictions   (skills, restrictions: lists)
-  add_character      (a whole character object, in the full format)
+  characters.<NAME>.persona · .knows · .goal · .belief · .impulse · .skills · .restrictions
+  characters.<NAME>.voice                                            (a list)
+  characters.<NAME>.name     (renames them -- roster and pov follow; rewrite any prose that
+                              speaks of them under the old name in the same round)
+  add_character      (a whole character object: every field REQUIRED -- persona, knows, goal,
+                      belief, impulse, voice, skills, restrictions)
   remove_character   (the name)
   scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
    add_scene          (a whole scene object: place, question, pov, length, roster)
@@ -396,13 +584,20 @@ export function characterSystem(p: {
   skills: { name: string; meaning: string }[];
   knows: string;
   goal: string;
+  belief?: string;
+  impulse?: string;
+  voice?: string[];
 }): string {
   const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n");
+  const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
   const extras = [
     p.place ? `WHERE YOU ARE: ${p.place}` : "",
     `YOUR SKILLS (all of what you can do; nothing else):\n${menu}`,
     p.knows ? `WHAT YOU KNOW COMING INTO THIS: ${p.knows}` : "",
-    p.goal  ? `WHAT YOU WANT TONIGHT: ${p.goal}` : "",
+    p.goal ? `WHAT YOU WANT TONIGHT: ${p.goal}` : "",
+    p.belief?.trim() ? `WHAT YOU BELIEVE: ${p.belief.trim()}` : "",
+    p.impulse?.trim() ? `WHEN PRESSURED, YOU: ${p.impulse.trim()}` : "",
+    voiceLines ? `HOW YOU SPEAK (your own past words):\n${voiceLines}` : "",
   ].filter(Boolean).join("\n\n");
   return `${CHARACTER_FORMAT}\n\n${p.persona.trim()}\n\n${extras}`;
 }

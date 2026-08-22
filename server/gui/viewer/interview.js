@@ -19,6 +19,13 @@ const modelField = () =>
       ${APP.modelIds.map(id => `<option value="${esc(id)}"${draft.model === id ? " selected" : ""}>${esc(id)}</option>`).join("")}
     </select></div>`;
 
+const modeField = () =>
+  `<div class="field"><label for="f-mode">how it proposes</label>
+    <select id="f-mode">
+      <option value="staged"${draft.mode !== "oneshot" ? " selected" : ""}>stage by stage — you approve each part</option>
+      <option value="oneshot"${draft.mode === "oneshot" ? " selected" : ""}>the whole story at once</option>
+    </select></div>`;
+
 function castHtml(spec) {
   return spec.characters.map(c => {
     const can = c.skills.map(s => esc(s.text) + (s.meaning ? ` <span style="color:var(--faint)">— ${esc(s.meaning)}</span>` : "")).join(", ");
@@ -27,6 +34,10 @@ function castHtml(spec) {
       ${can ? `<div class="line"><span class="k yes">can also</span>${can}</div>` : ""}
       ${c.restrictions.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
       ${c.knows ? `<div class="line"><span class="k">knows</span>${esc(c.knows)}</div>` : ""}
+      ${c.goal ? `<div class="line"><span class="k">goal</span>${esc(c.goal)}</div>` : ""}
+      ${c.belief ? `<div class="line"><span class="k">believes</span>${esc(c.belief)}</div>` : ""}
+      ${c.impulse ? `<div class="line"><span class="k">impulse</span>${esc(c.impulse)}</div>` : ""}
+      ${(c.voice || []).map(v => `<div class="line"><span class="k">says</span>“${esc(v)}”</div>`).join("")}
       <div class="persona${APP.personasFull ? "" : " clip"}">${esc(c.persona)}</div>
     </div>`;
   }).join("");
@@ -39,11 +50,16 @@ const lengthHtml = (spec, busy) =>
 function proposalHtml(spec, busy) {
   const bits = [spec.scene.place, spec.scene.pov ? `pov ${spec.scene.pov}` : ""]
     .filter(Boolean).map(esc).join(" · ");
+  // Later scenes in a staged draft are provisional question sketches -- the handoff re-authors
+  // them against what the chapters actually did, so they render as questions and nothing else.
+  const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
   return `<div class="proposal">
     <h3>${esc(spec.title || "(untitled)")}</h3>
     <div class="where">${bits}${bits ? " · " : ""}${lengthHtml(spec, busy)}</div>
     <p class="premise">${esc(spec.premise || "(no premise)")}</p>
     <p class="q"><b>the question this scene answers</b>${esc(spec.scene.question || "(none)")}</p>
+    ${sketches.length ? `<div class="who"><div class="nm">later scenes · provisional</div>${
+      sketches.map(sc => `<p class="q">${esc(sc.question)}</p>`).join("")}</div>` : ""}
     ${castHtml(spec)}
     ${spec.writerStyle && APP.personasFull
       ? `<div class="who"><div class="nm">house style</div><div class="persona">${esc(spec.writerStyle)}</div></div>` : ""}
@@ -60,17 +76,37 @@ function stepperHtml(s) {
   ).join("")}</div>`;
 }
 
+const GATES = ["story", "cast", "settings", "scene"];
+
+/** The staged checklist as gate chips -- the same four words the console prints. Only a staged
+ *  session has a gate; a one-shot session keeps the plain describe/review stepper alone. */
+function checklistHtml(s) {
+  if (!GATES.includes(s.gate)) return "";
+  const cur = GATES.indexOf(s.gate);
+  return `<div class="steps">${GATES.map((g, i) =>
+    `<span class="step${i < cur ? " done" : i === cur ? " current" : ""}" title="${
+      i < cur ? "approved" : i === cur ? "the open gate" : "not yet approved"}">${g}</span>`
+  ).join("")}</div>`;
+}
+
 /** What the last round did, said plainly. Mirrors showRound() at the console. */
 function lastHtml(last) {
   if (!last) return "";
+  const at = last.stage ? `<span class="hint">[${esc(last.stage)}] </span>` : "";
   if (last.kind === "failed")  return `<div class="said bad">that round failed (${esc(last.error)}) — nothing changed</div>`;
-  if (last.kind === "nothing") return `<div class="said bad">it didn't come back with a story — try saying who is in the scene and what is at stake</div>`;
+  if (last.kind === "nothing") {
+    if (/review the draft and accept/.test(last.why))
+      return `<div class="said good">checklist complete — review the draft, then accept</div>`;
+    if (/has not landed/.test(last.why))
+      return `<div class="said bad">this stage has nothing yet — ${esc(last.why)}</div>`;
+    return `<div class="said bad">${at}it didn't come back with anything — try saying who is in the scene and what is at stake</div>`;
+  }
   if (last.kind === "edits") {
     const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
     const ig = last.ignored.map(x => `<div class="said bad">ignored ${esc(x)}</div>`).join("");
-    return `<div class="said good">${changed}</div>${ig}`;
+    return `<div class="said good">${at}${changed}</div>${ig}`;
   }
-  if (last.kind === "proposal" && last.note) return `<div class="said">note: ${esc(last.note)}</div>`;
+  if (last.kind === "proposal" && last.note) return `<div class="said">${at}note: ${esc(last.note)}</div>`;
   return "";
 }
 
@@ -85,6 +121,7 @@ function interviewHtml() {
       <p class="sub">as much or as little as you like — it will ask if it needs more</p>
       ${fld("f-idea", "the idea", draft.idea, 4, false, IDEA_PLACEHOLDER)}
       ${modelField()}
+      ${modeField()}
       ${err}
       <div class="btns"><button class="btn primary" id="iv-start">propose a story</button>
         <button class="btn" id="iv-back">back to the shelf</button>
@@ -125,6 +162,11 @@ function interviewHtml() {
       : unsent ? "discard what you typed and write it"
       : `accept over ${flags} flag(s)`;
     row.push(`<button class="btn${unsent || !s.haveStory ? " primary" : ""}" id="iv-say">send</button>`);
+    // The staged checklist's explicit gate: refinement never advances it, and neither does anything
+    // but this button. Hidden at the last gate -- there approve has nothing left to open, and
+    // accept is the move.
+    if (s.gate && GATES.indexOf(s.gate) < GATES.length - 1 && !answering)
+      row.push(`<button class="btn${!unsent ? " primary" : ""}" id="iv-approve">approve &amp; continue</button>`);
     if (acceptable) row.push(`<button class="btn${unsent || APP.acceptArmed ? "" : " primary"}${
       APP.acceptArmed ? " armed" : ""}" id="iv-accept">${acceptLabel}</button>`);
   }
@@ -138,6 +180,7 @@ function interviewHtml() {
   return `<section class="picker iv">
     <div class="iv-head"><h2>${s.haveStory ? "Does this look right?" : "A new story"}</h2>
       <button class="btn" id="iv-hide" title="close — keeps the interview going, reopen from the shelf">×</button></div>
+    ${checklistHtml(s)}
     ${stepperHtml(s)}
     <p class="sub">${esc(s.idea)}${s.model ? ` <span class="hint">· built by ${esc(s.model)}</span>` : ""}</p>
     ${body.join("")}
@@ -190,10 +233,12 @@ async function startInterview() {
   // A second Enter (or Enter + clicking the button) while the first POST is in flight must not
   // overwrite the optimistic busy state and race a second /scaffold/start — same guard sendSay has.
   if (APP.scaffold.busy) return;
+  const mode = draft.mode === "oneshot" ? "oneshot" : "staged";
   APP.scaffoldError = "";
-  APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model };
+  APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
+                   mode, gate: mode === "staged" ? "story" : null };
   APP.render();
-  const j = await postScaffold("start", { idea, model: draft.model });
+  const j = await postScaffold("start", { idea, model: draft.model, mode });
   // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear — it has
   // to fall back to the idea box, with the idea still in it, or the modal hangs until a reload.
   if (!j || j.active === undefined) { APP.scaffold = { active:false }; APP.ideaOpen = true; APP.render(); }
@@ -215,6 +260,8 @@ export function wireInterview(page) {
   }
   const model = page.querySelector("#f-model");
   if (model) model.addEventListener("change", () => { draft.model = model.value; });
+  const modeSel = page.querySelector("#f-mode");
+  if (modeSel) modeSel.addEventListener("change", () => { draft.mode = modeSel.value; });
   const len = page.querySelector("#f-length");
   if (len) len.addEventListener("change", async () => {
     const j = await postScaffold("set", { field:"scene.length", value:Math.round(Number(len.value)) });
@@ -233,6 +280,12 @@ export function wireInterview(page) {
   on("iv-hide", () => { APP.ivHidden = true; APP.render(); });
   on("iv-start", startInterview);
   on("iv-say", sendSay);
+  on("iv-approve", async () => {
+    // The gate's explicit pass, mirroring bare-enter at the console: one click opens the next
+    // stage's proposal. A double-click must not POST approve twice.
+    if (APP.scaffold.busy) return;
+    await postScaffold("approve", {});
+  });
   on("iv-full", () => { APP.personasFull = !APP.personasFull; APP.render(); });
   on("iv-abandon", () => {
     // Abandoning throws away every round of an interview at once, and nothing on the server keeps

@@ -38,6 +38,13 @@ const thinkSelect = (id, label, current) => {
   return `<div class="field"><label for="${id}">${label}</label><select id="${id}">${opts}</select></div>`;
 };
 
+/** Voice samples: one line of dialogue per line of the textarea; the schema caps them at three. */
+const voiceFld = (i, voice) => {
+  const lines = Array.isArray(voice) ? voice.join("\n") : "";
+  return `<div class="field"><label for="char-${i}-voice">Voice (one sample per line, max 3)</label>` +
+    `<textarea id="char-${i}-voice" rows="3">${esc(lines)}</textarea></div>`;
+};
+
 /** Deep clone an object by serialising it — Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -148,6 +155,11 @@ function characterCardsHtml() {
         ${fld(`char-${i}-knows`, "Knows", c.knows, "half")}
         ${fld(`char-${i}-goal`, "Goal", c.goal, "half")}
       </div>
+      <div class="editor-row">
+        ${fld(`char-${i}-belief`, "Belief (may be false)", c.belief ?? "", "half")}
+        ${fld(`char-${i}-impulse`, 'Impulse ("when X → Y")', c.impulse ?? "", "half")}
+      </div>
+      ${voiceFld(i, c.voice)}
       <div class="editor-row">
         ${fld(`char-${i}-skills`, "Skills (comma-separated)", skills, "half")}
         ${fld(`char-${i}-restrictions`, "Restrictions (comma-separated)", restrictions, "half")}
@@ -417,6 +429,8 @@ function applyField(id, value) {
       APP.editDraft.characters[idx].skills = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
     } else if (field === "restrictions") {
       APP.editDraft.characters[idx].restrictions = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+    } else if (field === "voice") {
+      APP.editDraft.characters[idx].voice = value.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 3);
     } else if (field === "maxRetries") {
       APP.editDraft.characters[idx].maxRetries = value === "" ? undefined : Number(value);
     } else {

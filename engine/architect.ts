@@ -15,7 +15,9 @@ import { estimateTokens } from "./llm-client.ts";
 
 async function architectExample(): Promise<string> {
   try {
-    const md = await readFile(joinPath(ROOT, "stories/doorway/story.json"), "utf8");
+    // The one story committed to the repo (everything under stories/ is the user's and gitignored),
+    // kept as a fixture so the worked example ships with the engine rather than depending on local content.
+    const md = await readFile(joinPath(ROOT, "tests/fixtures/doorway/story.json"), "utf8");
     const story = JSON.parse(md);
     const persona = story.characters.find((c: any) => c.name === "RIVEN")?.persona || "";
     return P.workedExample(md, persona);
@@ -51,12 +53,13 @@ export type AutoPass = {
   outcome: "edits" | "nothing" | "failed";
 };
 
-/** What one exchange with the architect produced, for the CLI/SSE to announce. */
+/** What one exchange with the architect produced, for the CLI/SSE to announce. Staged rounds carry
+ *  `stage`, the checklist gate the round belongs to. */
 export type ScaffoldRound =
-  | { kind: "proposal"; note: string; auto?: AutoPass[] }
-  | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string; auto?: AutoPass[] }
-  | { kind: "question"; ask: string; auto?: AutoPass[] }
-  | { kind: "nothing"; why: string }
+  | { kind: "proposal"; note: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
+  | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
+  | { kind: "question"; ask: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
+  | { kind: "nothing"; why: string; stage?: P.ScaffoldStage | "done" }
   | { kind: "failed"; error: string };
 
 /** The outcome of trying to write the accepted story to disk. */
@@ -92,12 +95,15 @@ function withAsk(out: Record<string, any>): string {
  * facts, so nothing gets authored unless these dedicated passes ask for it. A question from either
  * pass aborts the sequence and is surfaced exactly like any other blocking ask; whatever the earlier
  * pass already applied stays on the spec. A failed or empty pass never discards a good proposal — it
- * is recorded as an AutoPass with outcome "failed"/"nothing" instead.
+ * is recorded as an AutoPass with outcome "failed"/"nothing" instead. `passes` selects which run:
+ * the one-shot scaffold and the handoff want both; the staged checklist asks for roster and facts
+ * in its own stages, so its scene stage runs the verify pass only.
  */
 async function runAutoPasses(
   architect: Agent, spec: StorySpec, sceneField: string,
   onStage?: (stage: AutoStage) => void,
   refuse?: (edits: any[]) => { edits: any[]; refused: string[] },
+  passes: readonly AutoStage[] = ["fillGaps", "verify"],
 ): Promise<{ spec: StorySpec; problems: string[]; auto: AutoPass[]; question?: string }> {
   let cur = spec;
   let problems: string[] = [];
@@ -124,14 +130,24 @@ async function runAutoPasses(
     return undefined;
   };
 
-  let ask = await runStage("fillGaps", P.architectFillGaps(specJson(cur), sceneField));
-  if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
-  ask = await runStage("verify", P.architectVerify(specJson(cur), sceneField));
-  if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
+  for (const stage of passes) {
+    const prompt = stage === "fillGaps"
+      ? P.architectFillGaps(specJson(cur), sceneField)
+      : P.architectVerify(specJson(cur), sceneField);
+    const ask = await runStage(stage, prompt);
+    if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
+  }
   return { spec: cur, problems, auto };
 }
 
-/** One interactive story-building conversation: propose, refine via edits, and accept to disk. */
+/** One interactive story-building conversation: propose, refine via edits, and accept to disk.
+ *
+ *  Two modes. "oneshot" is the original whole-story proposal plus conversational refinement;
+ *  "staged" runs the same conversation as a gated checklist -- idea → story → cast → settings →
+ *  scene -- where propose() opens the first gate, approve() passes a gate and proposes the next
+ *  stage's content, say() refines within the open gate (back-edits to earlier stages included),
+ *  and accept() is unchanged. The engine holds the gate pointer, so refinement never advances a
+ *  stage by accident and no stage runs without the author's approval. */
 export class ScaffoldSession {
   spec: StorySpec = normalizeSpec({}).spec;    // nothing proposed yet
   problems: string[] = [];
@@ -139,8 +155,21 @@ export class ScaffoldSession {
   asks = 0;                                    // consecutive questions with no story to show for them
   static readonly MAX_ASKS = 3;
 
+  /** Staged mode only: which gate of the checklist is open -- "story", "cast", "settings", "scene".
+   *  Null until propose() starts the checklist. The checklist landing in full does not close it;
+   *  accept() ends the story, not approve(). */
+  stage: P.ScaffoldStage | null = null;
+
+  /** Staged mode only: the load-bearing tension sentence coined at the story stage. Not a story.json
+   *  field of its own -- it steers the cast stage's prompt so the cast is authored against something,
+   *  and sharpens the scene stage's question. */
+  tension = "";
+
+  private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "scene"];
+
   constructor(public architect: Agent, public defaults: Defaults, public idea: string,
-              public storiesDir: string = joinPath(ROOT, "stories")) {}
+              public storiesDir: string = joinPath(ROOT, "stories"),
+              public mode: "oneshot" | "staged" = "oneshot") {}
 
   haveStory(): boolean { return this.spec.characters.length > 0; }
 
@@ -163,6 +192,126 @@ export class ScaffoldSession {
   }
 
   private round(userText: string) { return architectRound(this.architect, this.request(userText)); }
+
+  // -- THE STAGED CHECKLIST ---------------------------------------------------
+
+  private specJsonText(): string {
+    return JSON.stringify({ ...this.spec, writer_style: this.spec.writerStyle }, null, 1);
+  }
+
+  private stagedPrompt(stage: P.ScaffoldStage): string {
+    const json = this.specJsonText();
+    const insist = this.asks >= ScaffoldSession.MAX_ASKS ? `${P.STAGE_INSIST}\n\n` : "";
+    switch (stage) {
+      case "story": return insist + P.architectStoryStage(this.idea);
+      case "cast": return insist + P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json);
+      case "settings": return insist + P.architectSettingsStage(json);
+      case "scene": return insist + P.architectSceneStage(json);
+    }
+  }
+
+  private static stageHasContent(stage: P.ScaffoldStage, out: Record<string, any>): boolean {
+    switch (stage) {
+      case "story": return Boolean(String(out.premise ?? "").trim() || String(out.title ?? "").trim());
+      case "cast": return Array.isArray(out.characters) && out.characters.length > 0;
+      case "settings": return Boolean(String(out.writer_style ?? "").trim());
+      case "scene": return Boolean(out.scene && typeof out.scene === "object");
+    }
+  }
+
+  /** Fold one stage's reply into the draft so far: what the reply names wins, everything already on
+   *  the spec survives untouched. The scene stage owns every scene at once -- scene 1 in full, later
+   *  ones as question-only sketches, because whatever the chapters actually do re-authors them. */
+  private mergedRaw(stage: P.ScaffoldStage, out: Record<string, any>): Record<string, any> {
+    const raw: any = { ...this.spec, writer_style: this.spec.writerStyle };
+    if (stage === "story") {
+      if (String(out.title ?? "").trim()) raw.title = String(out.title).trim();
+      if (String(out.premise ?? "").trim()) raw.premise = String(out.premise).trim();
+      if (Array.isArray(out.facts)) raw.facts = out.facts.map((f: unknown) => String(f).trim()).filter(Boolean);
+    } else if (stage === "cast") {
+      raw.characters = Array.isArray(out.characters) ? out.characters : [];
+    } else if (stage === "settings") {
+      raw.writer_style = String(out.writer_style ?? "").trim();
+    } else {
+      const later = (Array.isArray(out.later_scenes) ? out.later_scenes : [])
+        .filter((s: unknown): s is Record<string, unknown> => Boolean(s) && typeof s === "object")
+        .map(s => ({ question: String(s.question ?? "").trim() }));
+      raw.scenes = [out.scene ?? {}, ...later];
+    }
+    return raw;
+  }
+
+  /** Problems a half-built story always has are not news: before the cast lands there are no
+   *  characters, and before the scene lands there is no question for anything to answer. Those are
+   *  suppressed; everything else shows verbatim. */
+  private static visibleProblems(spec: StorySpec, problems: string[]): string[] {
+    const castIn = spec.characters.length > 0;
+    const sceneIn = Boolean(spec.scenes[0]?.question.trim());
+    return problems.filter(p =>
+      !(!castIn && p === "no characters at all")
+      && !(!sceneIn && /has no question/.test(p))
+      && !(!sceneIn && /is not one of the characters/.test(p)));
+  }
+
+  private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
+    const ask = String(out.ask ?? "").trim();
+    if (!ScaffoldSession.stageHasContent(stage, out)) {
+      if (ask) { this.pendingAsk = ask; this.asks++; return { kind: "question", ask, stage }; }
+      return { kind: "nothing", why: `the reply contained neither ${stage} content nor a question`, stage };
+    }
+    this.pendingAsk = ""; this.asks = 0;
+    if (stage === "story" && String(out.tension ?? "").trim())
+      this.tension = String(out.tension).trim();
+    const n = normalizeSpec(this.mergedRaw(stage, out));
+    this.spec = n.spec;
+    this.problems = ScaffoldSession.visibleProblems(this.spec, n.problems);
+    return { kind: "proposal", note: withAsk(out), stage };
+  }
+
+  /** One gate's proposal round. After the scene lands, the verify pass runs once: its checks --
+   *  pov among the roster, a restriction that bites -- only mean anything once every side exists. */
+  private async runGate(stage: P.ScaffoldStage, onStage?: (s: AutoStage) => void): Promise<ScaffoldRound> {
+    const r = await architectRound(this.architect, this.stagedPrompt(stage));
+    if ("error" in r) return { kind: "failed", error: r.error };
+    const base = this.takeStaged(stage, r.out);
+    if (!(stage === "scene" && base.kind === "proposal")) return base;
+    const v = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, ["verify"]);
+    this.spec = v.spec; this.problems = v.problems;
+    if (v.question !== undefined) { this.pendingAsk = v.question; return { kind: "question", ask: v.question, stage, auto: v.auto }; }
+    this.pendingAsk = "";
+    return { ...base, auto: v.auto };
+  }
+
+  /** What the open gate is still missing, or null once its owning content has landed. A gate that
+   *  never produced anything must not be waved through to a "complete" checklist. */
+  private gateMissing(): string | null {
+    switch (this.stage) {
+      case "story": return this.spec.title.trim() || this.spec.premise.trim() ? null : "no title or premise yet";
+      case "cast": return this.spec.characters.length ? null : "no cast yet";
+      case "settings": return this.spec.writerStyle.trim() ? null : "no writer style yet";
+      case "scene": return this.spec.scenes[0]?.question.trim() ? null : "no scene question yet";
+      default: return null;
+    }
+  }
+
+  /** Staged mode only: pass the open gate and propose the next stage's content. */
+  async approve(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+    if (this.mode !== "staged")
+      return { kind: "failed", error: "this scaffold session is not running the staged checklist" };
+    if (!this.stage)
+      return { kind: "failed", error: "the checklist has not started — call propose() first" };
+    if (this.pendingAsk)
+      return { kind: "nothing", why: "answer the architect's question before passing this gate", stage: this.stage };
+    const missing = this.gateMissing();
+    if (missing)
+      return { kind: "nothing", why: `"${this.stage}" has not landed (${missing}) — refine it, answer any outstanding question, and try again`, stage: this.stage };
+    const next = ScaffoldSession.CHECKLIST[ScaffoldSession.CHECKLIST.indexOf(this.stage) + 1];
+    if (!next)
+      return { kind: "nothing", why: "the checklist is complete — review the draft and accept", stage: this.stage };
+    this.stage = next;
+    this.pendingAsk = ""; this.asks = 0;
+    return this.runGate(next, onStage);
+  }
 
   private takeProposal(out: Record<string, any>): ScaffoldRound {
     const n = normalizeSpec(out);
@@ -188,11 +337,52 @@ export class ScaffoldSession {
   }
 
   async propose(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+    if (this.mode === "staged") {
+      if (this.stage)
+        return { kind: "nothing", why: "the checklist already started — refine with say(), or advance it with approve()", stage: this.stage };
+      this.stage = "story";
+      return this.runGate("story", onStage);
+    }
     const r = await this.round("");
     return "error" in r ? { kind: "failed", error: r.error } : this.afterProposal(this.takeProposal(r.out), onStage);
   }
 
   async say(text: string, onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+    if (this.mode === "staged") {
+      if (!this.stage)
+        return { kind: "failed", error: "the checklist has not started — call propose() first" };
+      // An answer to an open question goes into history, then the stage's own prompt asks again --
+      // a stage reply is not an edit list, so [CHANGE] would be the wrong instruction for it.
+      if (this.pendingAsk) {
+        this.architect.hear(P.authorAnswers(text));
+        return this.runGate(this.stage, onStage);
+      }
+      const r = await architectRound(this.architect, P.architectChange(text, this.specJsonText()));
+      if ("error" in r) return { kind: "failed", error: r.error };
+      const back = String(r.out.ask ?? "").trim();
+      if (back && !Array.isArray(r.out.edits)) { this.pendingAsk = back; return { kind: "question", ask: back, stage: this.stage }; }
+      if (!Array.isArray(r.out.edits))
+        return { kind: "nothing", why: withAsk(r.out) || "the reply was neither edits nor a question", stage: this.stage };
+      // "tension" is the staged conversation's own coinage -- the story stage names it, so change
+      // rounds may too. It lives on the session (it steers later stage prompts), not in story.json,
+      // so it never goes through applyEdits; everything else does.
+      const raw = r.out.edits as { field?: unknown; value?: unknown }[];
+      const named = raw.filter(x => String(x?.field ?? "").trim().toLowerCase() !== "tension");
+      const coined = raw.find(x => String(x?.field ?? "").trim().toLowerCase() === "tension");
+      const appliedExtra: { field: string; before: unknown; after: unknown }[] = [];
+      if (coined !== undefined) {
+        const after = String(coined.value ?? "").trim();
+        if (after && after !== this.tension) {
+          appliedExtra.push({ field: "tension", before: this.tension, after });
+          this.tension = after;
+        }
+      }
+      const e = applyEdits(this.spec, { ...r.out, edits: named });
+      this.spec = e.spec;
+      this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems);
+      this.pendingAsk = "";
+      return { kind: "edits", applied: [...appliedExtra, ...e.applied], ignored: e.ignored, flags: [], note: withAsk(r.out), stage: this.stage };
+    }
     const wasPatch = this.haveStory();
     const r = await this.round(text);
     if ("error" in r) return { kind: "failed", error: r.error };

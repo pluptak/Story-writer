@@ -8,7 +8,10 @@ A **story writer** engine. A writer agent drafts one scene from a premise and, w
 next turns on a character's choice, **consults** that character's agent. The character may ask for a
 fact it was not given before answering; the writer accepts the answer or rewrites the question and
 asks a **fresh instance** that never learns it was rejected. Everything about a particular story
-lives in [stories/](stories/); the engine knows nothing about any of it.
+lives in [stories/](stories/) — the user's own content, gitignored — and the engine knows nothing
+about any of it. The one exception is [tests/fixtures/doorway/](tests/fixtures/doorway/), the single
+story committed with the engine: it is the architect's worked example (`architectExample()`) and the
+shared fixture the deterministic tests load, so neither depends on whatever the user keeps locally.
 
 This is a **fork** of the "Multimodel AI roleplay" game-master engine. The transport, JSON
 extraction, agent/history windowing, markdown parsing and config-validation policy were carried over

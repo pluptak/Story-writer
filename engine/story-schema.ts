@@ -21,13 +21,23 @@ export const SceneDef = z.strictObject({
 
 export type SceneDef = z.infer<typeof SceneDef>;
 
-/** One character as authored: name, model, persona, what they know, their goal, skills, restrictions, and optional per-character retry ceiling. */
+/** One character as authored: name, model, persona, what they know, their goal, what they believe,
+ *  how they act under pressure, voice samples, skills, restrictions, and optional per-character retry ceiling.
+ *  The psychology fields (goal/belief/impulse/voice) are rendered text only — the skill system never resolves them. */
 export const CharacterDef = z.strictObject({
   name: z.string().min(1),
   model: z.string().default(""),
   persona: z.string().default(""),
   knows: z.string().default(""),
   goal: z.string().default(""),
+  /** One load-bearing conviction, possibly false — fills the slot the real fact would occupy. */
+  belief: z.string().default(""),
+  /** One conditional behaviour rule: "when X → Y". */
+  impulse: z.string().default(""),
+  /** Up to three lines of dialogue in the character's own words; models imitate samples better than
+   *  adjectives. Extras past three are dropped on load — matching `normalizeSpec`'s truncate-and-keep
+   *  — rather than rejecting the whole story, so both load paths converge on the same cap. */
+  voice: z.array(z.string()).default([]).transform(v => v.slice(0, 3)),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
   /** This character's chapter-wide retry ceiling; unset falls back to `config.maxCharacterRetries`. */
