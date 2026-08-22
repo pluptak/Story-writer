@@ -5,33 +5,82 @@ import { castSheetHtml } from "./cast-sheet.js";
 // The two small "paint a fixed chrome region from store state" pieces -- the `#src`/`#dot` source
 // indicator and the `#rail` progress panel -- as opposed to `#page`, which `pages.js` owns.
 
+const chapterSuffix = m => (m && m.chapters > 1) ? ` · chapter ${m.chapter} of ${m.chapters}` : "";
+
+/** The breadcrumb for the current view: earlier crumbs are clickable ancestors, the last is where
+ *  you are. Ancestor links appear only with an engine attached — the shelf and a story page are not
+ *  reachable without one (go() would just rewrite them to the read tab). */
+function crumbsFor() {
+  const name = dir => storyName(dir) || basename(dir) || "a story";
+  if (!APP.live) {
+    if (APP.view === "readstory") return [{ label: "reading " + name(READER.dir) }];
+    return [{ label: (READV.source || "nothing loaded") + chapterSuffix(READV.meta) }];
+  }
+  const shelf = { label: "shelf", view: "shelf" };
+  switch (APP.view) {
+    case "shelf":     return [{ label: "choosing a story" }];
+    case "story":     return [shelf, { label: name(APP.storyDir) }];
+    case "edit":      return APP.editNew
+                        ? [shelf, { label: "new story" }]
+                        : [shelf, { label: name(APP.editDir), view: "story", dir: APP.editDir }, { label: "edit story" }];
+    case "handoff":   return [shelf, { label: name(APP.handoffDir), view: "story", dir: APP.handoffDir }, { label: "prepare chapter" }];
+    case "compare":   return [shelf, { label: name(APP.compareDir), view: "story", dir: APP.compareDir }, { label: "compare runs" }];
+    case "readstory": return [shelf, { label: name(READER.dir), view: "story", dir: READER.dir }, { label: "read story" }];
+    case "read": {
+      const d = READV.dir;
+      if (!d) return [shelf, { label: (READV.source || "a run") + chapterSuffix(READV.meta) }];
+      return [shelf, { label: name(d), view: "story", dir: d }, { label: "saved run" + chapterSuffix(READV.meta) }];
+    }
+    case "live": {
+      const d = LIVEV.meta?.story;
+      if (!d) return [shelf, { label: "writing" }];
+      return [shelf, { label: name(d) }, { label: "writing" + chapterSuffix(LIVEV.meta) }];
+    }
+    default:          return [{ label: "nothing loaded" }];
+  }
+}
+
 export function paintSrcbar() {
-  if (APP.view === "shelf") { $("src").textContent = "choosing a story"; $("dot").className = "dot"; return; }
-  if (APP.view === "story") {
-    const name = storyName(APP.storyDir);
-    $("src").textContent = name ? `looking at ${name}` : "looking at a story";
-    $("dot").className = "dot";
-    return;
-  }
-  if (APP.view === "readstory") {
-    const name = storyName(READER.dir) || basename(READER.dir) || "reader";
-    $("src").textContent = `reading ${name}`;
-    $("dot").className = "dot";
-    return;
-  }
+  const crumbs = crumbsFor();
+  $("src").innerHTML = crumbs.map((c, i) => {
+    const last = i === crumbs.length - 1;
+    const clickable = !last && (c.view || c.dir);
+    const attrs = clickable
+      ? ` class="crumb" role="link" tabindex="0" data-view="${esc(c.view || "story")}" data-dir="${esc(c.dir || "")}"`
+      : ` class="crumb${last ? " here" : ""}"`;
+    return `<span${attrs}>${esc(c.label)}</span>`;
+  }).join(`<span class="crumb-sep">›</span>`);
   const store = APP.view === "read" ? READV : LIVEV;
-  // Which chapter this is, when the story has more than one -- the same condition the CLI uses for
-  // its own run header, so the two cannot disagree. RunMeta carries chapter/chapters.
-  const m = store.meta;
-  const which = m && m.chapters > 1 ? ` · chapter ${m.chapter} of ${m.chapters}` : "";
-  $("src").textContent = (store.source || "nothing loaded") + which;
-  $("dot").className = "dot" + (store.isLive ? " live" : "");
+  const isLive = (APP.view === "read" || APP.view === "live") && store.isLive;
+  $("dot").className = "dot" + (isLive ? " live" : "");
 }
 export function setSrc(store, text, isLive) { store.source = text; store.isLive = isLive; paintSrcbar(); }
 
 const BASE_TITLE = document.title;
+/** The browser tab tracks what is on screen -- so two tabs are tellable apart, and a reader-ask
+ *  marker is visible even when the tab is in the background. The "asked" prefix stays outermost. */
 export function paintTitle() {
-  document.title = APP.awaitingReader ? "● you're asked — " + BASE_TITLE : BASE_TITLE;
+  const ctx = titleContext();
+  const base = ctx ? `${ctx} — ${BASE_TITLE}` : BASE_TITLE;
+  document.title = APP.awaitingReader ? "● you're asked — " + base : base;
+}
+function titleContext() {
+  switch (APP.view) {
+    case "story":     return storyName(APP.storyDir);
+    case "handoff":   return "handoff · " + storyName(APP.handoffDir);
+    case "edit":      return APP.editNew ? "new story" : "editing " + storyName(APP.editDir);
+    case "readstory": return "reading " + (storyName(READER.dir) || basename(READER.dir));
+    case "compare":   return "compare · " + storyName(APP.compareDir);
+    case "read":
+    case "live": {
+      const store = APP.view === "read" ? READV : LIVEV;
+      const name = storyName(store === LIVEV ? store.meta?.story : store.dir);
+      const m = store.meta;
+      const chap = m && m.chapters > 1 ? ` · chapter ${m.chapter}` : "";
+      return name ? name + chap : "";
+    }
+    default: return "";
+  }
 }
 
 /** What the run is doing right now, in the mockup's vocabulary. Derived rather than sent: the engine

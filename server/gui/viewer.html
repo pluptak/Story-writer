@@ -13,12 +13,12 @@
 <div class="topbar">
   <div class="brand"><h1 id="title">story-writer</h1><div class="q" id="question"></div></div>
   <nav class="tabs" id="tabs">
-    <button class="tab" id="tab-shelf" data-view="shelf" hidden>shelf</button>
-    <button class="tab" id="tab-live" data-view="live" hidden>write<span class="tabasked" id="tabasked" hidden>· asked</span><span class="tabdot" id="tabdot" hidden></span></button>
-    <button class="tab" id="tab-read" data-view="read" hidden>read</button>
+    <button class="tab" id="tab-shelf" data-view="shelf" title="browse and choose a story" hidden>shelf</button>
+    <button class="tab" id="tab-live" data-view="live" title="the scene being written now" hidden>write<span class="tabasked" id="tabasked" hidden>· asked</span><span class="tabdot" id="tabdot" hidden></span></button>
+    <button class="tab" id="tab-read" data-view="read" title="a saved run, read-only" hidden>read</button>
   </nav>
-  <button class="btn" id="expand">expand all</button>
-  <button class="btn" id="theme">theme</button>
+  <button class="btn" id="expand" title="expand or collapse every block" aria-pressed="false">expand all</button>
+  <button class="btn" id="theme" title="switch colour theme" aria-pressed="false">theme</button>
 </div>
 <div class="ribbon" id="ribbon" hidden></div>
 <div class="srcbar"><span class="dot" id="dot"></span><span id="src">nothing loaded</span><span id="where"></span>
@@ -32,11 +32,12 @@
       <h3>run controls</h3>
       <div id="railstats"></div>
       <div class="sessionbar" id="sessionbar" hidden>
-        <select class="btn" id="modelSelect"><option value="">story default</option></select>
-        <button class="btn" id="interactive">interactive</button>
-        <button class="btn" id="pause" hidden>pause</button>
-        <button class="btn" id="consultMe" hidden>consult me</button>
-        <button class="btn" id="stop" hidden>stop run</button>
+        <select class="btn" id="modelSelect" title="override the model for the rest of this run"
+                aria-label="override the model for the rest of this run"><option value="">story default</option></select>
+        <button class="btn" id="interactive" title="toggle whether the run stops to ask you">interactive</button>
+        <button class="btn" id="pause" hidden title="pause or resume at the next step boundary">pause</button>
+        <button class="btn" id="consultMe" hidden title="answer the next consult yourself">consult me</button>
+        <button class="btn" id="stop" hidden title="end the scene early — click twice to confirm">stop run</button>
         <span class="ctrl-err" id="sessionNotice" role="status"></span>
       </div>
     </section>
@@ -51,7 +52,7 @@
 <div class="drop" id="drop">drop a writing-log.jsonl</div>
 <div class="prompt" id="prompt">
   <span id="promptText">The step budget is spent.</span>
-  <input id="promptN" type="number" min="0" value="8">
+  <input id="promptN" type="number" min="0" value="8" aria-label="how many more steps to allow">
   <button class="btn" id="promptGo">give steps</button>
   <button class="btn" id="promptStop">stop</button>
 </div>

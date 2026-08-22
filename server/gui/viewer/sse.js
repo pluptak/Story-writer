@@ -202,6 +202,9 @@ function showPrompt(p) {
   $("promptText").textContent = `${p.steps} steps used and the scene is not finished.`;
   $("promptN").value = p.suggested || 8;
   $("prompt").classList.add("on");
+  // The decision is one keypress now that Enter submits -- put the cursor in the field, text
+  // selected, so typing a different number or hitting Enter needs no reach for the mouse.
+  const n = $("promptN"); n.focus(); n.select();
 }
 const answerPrompt = async n => {
   $("prompt").classList.remove("on");
@@ -209,3 +212,6 @@ const answerPrompt = async n => {
 };
 $("promptGo").onclick = () => answerPrompt(Math.max(0, parseInt($("promptN").value, 10) || 0));
 $("promptStop").onclick = () => answerPrompt(0);
+// Enter in the step field is the same as clicking "give steps" -- typing a number and reaching for
+// the mouse is the slow path for what is a one-key decision.
+$("promptN").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("promptGo").click(); } });

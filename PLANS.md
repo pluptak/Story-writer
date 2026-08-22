@@ -37,6 +37,20 @@ run, which is the owner's to make, batched.
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round now refuses with the numbers rather than letting the model return nothing, but a
   long story needs a correspondingly large context window loaded.
+- **Skeleton → flesh scaffold proposal, if the cast outgrows one generation.** The scaffold already
+  proposes in stages — a load-bearing question, the whole-story proposal, then the fill-gaps and verify
+  passes — and each pass targets a specific thing one-shot generation drops (`roster`/`facts`, then
+  self-audit). This is the *next* such split, held behind evidence rather than built now. When the cast
+  grows large (5+ characters, or multi-scene chapters), the whole-story proposal has to hold every
+  character's `persona`/`knows`/`goal`/`skills` in one generation, which is where depth thins first.
+  The split: round A proposes premise, writer style, the scene(s) with their questions, and a cast
+  *list* with one-line roles; round B fleshes each character against a now-fixed skeleton. It keeps the
+  scene↔cast coherence decision in a single call (a cast-first pipeline tends to produce a cast that
+  ignores the scene's question) while lifting the per-character load off it. Cost: one extra round, and
+  a slightly weaker ability to tune the scene question against fully-drawn characters — recoverable in
+  refinement. **Don't build it speculatively:** reach for it only once a live run shows shallow personas
+  or a cast that doesn't serve the scene, the same way fill-gaps and verify earned their place. Touches
+  `prompts.ts` and `architect.ts`'s proposal path, so it is its own block behind a live run.
 - **Approvable, promotable skill bible.** The in-code `SPECIAL_SKILL_CATALOG` is the seed; the second
   half of the plan is a shared, persistent bible that bespoke per-story `custom` skills can be
   **promoted** into — natural home alongside `defaults.json`, loaded by `loadDefaults` and merged over

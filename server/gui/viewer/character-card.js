@@ -28,7 +28,7 @@ export function characterCardModalHtml() {
                aria-label="${esc(c.name)}">
     <section class="picker iv charcard">
       <div class="iv-head"><h2>${esc(c.name)}</h2>
-        <button class="btn" id="charcard-close" title="close">×</button></div>
+        <button class="btn" id="charcard-close" title="close" aria-label="close">×</button></div>
       ${(c.can.length || c.cannot.length) ? `<div class="row">
         ${c.can.length ? `<span class="yes">can also ${esc(c.can.join(", "))}</span>` : ""}
         ${c.cannot.length ? `<span class="no">cannot ${esc(c.cannot.join(", "))}</span>` : ""}</div>` : ""}
