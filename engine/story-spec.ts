@@ -1,8 +1,8 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
 import { C } from "../ansi.ts";
 import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG, canonSkill, splitMeaning } from "./skills.ts";
-import { StoryJson, RunConfig, type SceneDef, type CharacterDef } from "./story-schema.ts";
+import { SKILL_CATALOG, RESTRICTION_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
+import { StoryJson, RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef, type CharacterDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
 
@@ -17,6 +17,7 @@ export interface StorySpec {
   models: { default: string; writer: string; summary: string };
   characters: Array<{
     name: string; model: string; persona: string; knows: string; goal: string;
+    belief: string; impulse: string; voice: string[];
     skills: string[]; restrictions: string[]; maxRetries?: number;
   }>;
 }
@@ -25,6 +26,19 @@ const asStrings = (v: unknown): string[] =>
   Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean)
   : typeof v === "string" ? v.split("|").map(s => s.trim()).filter(Boolean)
   : [];
+
+/** The belief/impulse/voice fields are required by convention, not by schema (so old stories still load).
+ *  Both `normalizeSpec` (architect proposals) and the saved-story check surface their absence from here,
+ *  so the wording lives in one place. */
+export function characterPsychologyWarnings(
+  name: string, belief: string, impulse: string, voice: string[],
+): string[] {
+  const out: string[] = [];
+  if (!belief.trim()) out.push(`${name} has no belief — one load-bearing conviction, possibly false`);
+  if (!impulse.trim()) out.push(`${name} has no impulse — one conditional rule: "when X → Y"`);
+  if (!voice.length) out.push(`${name} has no voice samples — 1 to 3 lines of dialogue in their own words`);
+  return out;
+}
 
 /** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing. */
 export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] } {
@@ -44,19 +58,36 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     if (!name) { problems.push("a character came back with no name — dropped"); continue; }
     if (seen.has(name.toLowerCase())) { problems.push(`two characters called "${name}" — kept the first`); continue; }
     seen.add(name.toLowerCase());
+    const skills = asStrings(c?.skills);
+    for (const entry of skills) {
+      const { text, meaning } = splitMeaning(entry);
+      if (bibleMeaningOf(text) === undefined && !meaning)
+        problems.push(`${name} has skill "${text}" — not a bible skill, and it carries no ":: meaning", so nobody can tell what it lets them do`);
+    }
     const restrictions = asStrings(c?.restrictions ?? c?.lacks).filter(l => {
-      const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === canonSkill(splitMeaning(l).text));
-      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a general skill, so it would remove nothing`);
+      const r = splitMeaning(l).text;
+      const rk = canonSkill(r);
+      const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === rk)
+        || Object.keys(RESTRICTION_CATALOG).some(p => canonSkill(p) === rk)
+        || bibleMeaningOf(r) !== undefined
+        || skills.some(s => canonSkill(splitMeaning(s).text) === rk);
+      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a known skill or penalty, so it would remove nothing`);
       return ok;
     });
+    const voice = asStrings(c?.voice);
+    if (voice.length > 3) { voice.length = 3; problems.push(`${name} came back with more than 3 voice samples — keeping the first 3`); }
+    const belief = String(c?.belief ?? "").trim(), impulse = String(c?.impulse ?? "").trim();
     characters.push({
       name, model: String(c?.model ?? "").trim(), persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
-      goal: String(c?.goal ?? "").trim(), skills: asStrings(c?.skills), restrictions,
+      goal: String(c?.goal ?? "").trim(),
+      belief, impulse, voice,
+      skills, restrictions,
       ...(Number.isInteger(c?.maxRetries) && c.maxRetries >= 0 ? { maxRetries: c.maxRetries } : {}),
     });
     if (!c?.persona) problems.push(`${name} has no persona`);
-    else if (/\b(RESTRICTIONS|LACKS|KNOWS|SKILLS|GOAL)\s*:/.test(String(c.persona)))
-      problems.push(`${name}'s persona restates knows/goal/skills/restrictions — the engine renders those, and the persona will contradict them`);
+    else if (/\b(RESTRICTIONS|LACKS|KNOWS|SKILLS|GOAL|BELIEF|IMPULSE|VOICE)\s*:/.test(String(c.persona)))
+      problems.push(`${name}'s persona restates knows/goal/belief/impulse/voice/skills/restrictions — the engine renders those, and the persona will contradict them`);
+    problems.push(...characterPsychologyWarnings(name, belief, impulse, voice));
   }
   if (!characters.length) problems.push("no characters at all");
   if (characters.length > 4) { problems.push(`${characters.length} characters — keeping the first 4`); characters.length = 4; }
@@ -72,6 +103,9 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       pov: povOk ? pov : "",
       length: Number.isFinite(lengthRaw) && lengthRaw >= 1 ? Math.round(lengthRaw) : 700,
       roster: Array.isArray(s.roster) ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [],
+      ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
+      ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
+        ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),
     };
   };
 
@@ -114,9 +148,31 @@ export function applyEdits(spec: StorySpec, raw: any): {
   type Work = Applied & { key: string; snapshot: unknown; resolve?: (next: StorySpec) => unknown };
   const work: Work[] = [], ignored: string[] = [];
   const draft: any = JSON.parse(JSON.stringify({ ...spec, writer_style: spec.writerStyle, scenes: spec.scenes }));
-  const edits = Array.isArray(raw?.edits) ? raw.edits : [];
-  const findChar = (name: string) =>
-    draft.characters.find((c: any) => String(c.name).toLowerCase() === name.trim().toLowerCase());
+  const rawEdits = Array.isArray(raw?.edits) ? raw.edits : [];
+  // The canonical edit shape is {"field": "...", "value": ...}. Some models instead emit a single
+  // object whose KEYS are the field names ({"title": "...", "premise": "..."}). Expand those into the
+  // canonical field/value pairs so the edit is applied instead of being silently dropped as "an edit
+  // with no field".
+  const edits = rawEdits.flatMap((e: any) => {
+    if (e && typeof e === "object" && !Array.isArray(e) && typeof e.field !== "string") {
+      return Object.entries(e).map(([k, v]) => ({ field: k, value: v }));
+    }
+    return [e];
+  });
+  // One round may rename a character and then address them by the old name ("rewrite the prose
+  // under the old name in the same round") -- later edits follow renames made earlier in the list.
+  const renames = new Map<string, string>();
+  const findChar = (name: string) => {
+    let key = name.trim().toLowerCase();
+    for (let hops = 0; hops <= renames.size; hops++) {
+      const c = draft.characters.find((c: any) => String(c.name).toLowerCase() === key);
+      if (c) return c;
+      const next = renames.get(key);
+      if (!next) return undefined;
+      key = next;
+    }
+    return undefined;
+  };
   const normalizedDraft = () => normalizeSpec(draft).spec;
   const add = (entry: Omit<Work, "after"> & { after?: unknown }) => work.push(entry as Work);
   const scalarResolver = (key: string, resolve: (next: StorySpec) => unknown, before: unknown, field = key) => {
@@ -139,6 +195,12 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const before = normalizedDraft().writerStyle;
       draft.writer_style = scalar();
       scalarResolver("writer_style", next => next.writerStyle, before, "writer_style");
+      continue;
+    }
+    if (field === "facts") {
+      const before = normalizedDraft().facts;
+      draft.facts = asStrings(value);
+      scalarResolver("facts", next => next.facts, before, "facts");
       continue;
     }
 
@@ -201,13 +263,41 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
-    const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|skills|restrictions|lacks)$/);
+    const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|belief|impulse|voice|skills|restrictions|lacks|name)$/);
     if (cm) {
-      const c = findChar(cm[1]);
-      if (!c) { ignored.push(`${field} — no character called "${cm[1]}"`); continue; }
+      // Models copy the <NAME> placeholder literally sometimes; unwrap it rather than refuse.
+      const who = cm[1].replace(/^<+/, "").replace(/>+$/, "").trim() || cm[1];
+      const c = findChar(who);
+      if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
+
+      // A rename carries the structural references with it: who a roster names, whose perception
+      // a scene sits inside. Prose that speaks of the person under the old name is the architect's
+      // to rewrite, not the engine's.
+      if (cm[2] === "name") {
+        const fresh = scalar();
+        if (!fresh) { ignored.push(`${field} — a character cannot be renamed to nothing`); continue; }
+        if (fresh.toLowerCase() !== c.name.toLowerCase() && findChar(fresh)) {
+          ignored.push(`${field} — "${fresh}" is already in the cast`); continue;
+        }
+        const before = normalizedDraft().characters.find(x => x.name.toLowerCase() === c.name.toLowerCase())?.name;
+        const old = c.name;
+        c.name = fresh;
+        renames.set(old.toLowerCase(), fresh.toLowerCase());
+        for (const sc of draft.scenes) {
+          if (String(sc.pov ?? "").trim().toLowerCase() === old.toLowerCase()) sc.pov = fresh;
+          sc.roster = ((sc.roster ?? []) as string[])
+            .map(r => String(r).trim().toLowerCase() === old.toLowerCase() ? fresh : r);
+        }
+        scalarResolver(`character:${old.toLowerCase()}.name`,
+          next => next.characters.find(x => x.name.toLowerCase() === fresh.toLowerCase())?.name,
+          before, `${old}.name`);
+        continue;
+      }
+
       const targetField = cm[2] === "lacks" ? "restrictions" : cm[2];
       const before = (normalizedDraft().characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.[targetField];
-      c[targetField] = (targetField === "skills" || targetField === "restrictions") ? asStrings(value) : scalar();
+      const LIST_FIELDS = new Set(["skills", "restrictions", "voice"]);
+      c[targetField] = LIST_FIELDS.has(targetField) ? asStrings(value) : scalar();
       const key = `character:${c.name.toLowerCase()}.${targetField}`;
       scalarResolver(key, next => (next.characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.[targetField], before, `${c.name}.${targetField}`);
       continue;
@@ -242,6 +332,71 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const before = normalizedDraft().facts[idx];
       draft.facts[idx] = scalar();
       scalarResolver(`fact:${idx}`, next => next.facts[idx], before, `updated fact ${factMatch[1]}`);
+      continue;
+    }
+
+    // -- TECHNICAL EDITS ----------------------------------------------------
+    // The "technical" checklist stage authors these; they must also be editable by an in-gate
+    // [CHANGE] so a refinement round can tweak what the stage proposed. Option (a): models.* is
+    // NOT authored here (it stays resolved from defaults.json / the user), so only `default` may
+    // be set, and `writer`/`summary` are left to the author.
+    if (field.startsWith("config.") && field.split(".").length === 2) {
+      const key = field.slice(6);
+      const NUM = new Set(["retries", "clarifications", "maxSteps", "maxProseWords",
+        "requestTimeout", "attempts", "maxTokens", "maxCharacterRetries"]);
+      const BOOL = new Set(["stream", "debug"]);
+      if (!NUM.has(key) && !BOOL.has(key)) { ignored.push(`${field} — not an editable config key`); continue; }
+      const before = (normalizedDraft().config as any)?.[key];
+      draft.config = draft.config || {};
+      if (NUM.has(key)) {
+        const n = Number(value);
+        draft.config[key] = (value === "" || !Number.isFinite(n)) ? undefined : Math.round(n);
+      } else {
+        draft.config[key] = Boolean(value);
+      }
+      scalarResolver(`config:${key}`, next => (next.config as any)?.[key], before, field);
+      continue;
+    }
+    if (field.startsWith("config.thinking.")) {
+      const key = field.slice("config.thinking.".length);
+      if (!["writer", "character", "summary"].includes(key)) { ignored.push(`${field} — not an editable thinking key`); continue; }
+      const before = (normalizedDraft().config?.thinking as any)?.[key];
+      draft.config = draft.config || {};
+      draft.config.thinking = draft.config.thinking || {};
+      draft.config.thinking[key] = scalar();
+      scalarResolver(`config.thinking:${key}`, next => (next.config?.thinking as any)?.[key], before, field);
+      continue;
+    }
+    if (field.startsWith("models.")) {
+      const key = field.slice(7);
+      if (!["default", "writer", "summary"].includes(key)) { ignored.push(`${field} — not an editable models key`); continue; }
+      const before = (normalizedDraft().models as any)?.[key];
+      draft.models = draft.models || {};
+      draft.models[key] = scalar() || undefined;
+      scalarResolver(`models:${key}`, next => (next.models as any)?.[key], before, field);
+      continue;
+    }
+    const techScene = field.match(/^scene(?:_(\d+))?\.writer(Think|Model)$/);
+    if (techScene) {
+      const idx = techScene[1] ? Number(techScene[1]) - 1 : 0;
+      if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
+      const sub = techScene[2] === "Think" ? "writerThink" : "writerModel";
+      const before = (normalizedDraft().scenes[idx] as any)?.[sub];
+      draft.scenes[idx][sub] = scalar() || undefined;
+      scalarResolver(`scene:${idx}.${sub}`, next => (next.scenes[idx] as any)?.[sub], before, field);
+      continue;
+    }
+    const charMax = field.match(/^characters\.(.+)\.maxRetries$/);
+    if (charMax) {
+      const who = charMax[1].replace(/^<+/, "").replace(/>+$/, "").trim() || charMax[1];
+      const c = findChar(who);
+      if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
+      const before = (normalizedDraft().characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.maxRetries;
+      const target = draft.characters.find((x: any) => String(x.name).toLowerCase() === c.name.toLowerCase());
+      if (target) target.maxRetries = (value === "" || value == null) ? undefined : Number(value);
+      scalarResolver(`character:${c.name.toLowerCase()}.maxRetries`,
+        next => (next.characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.maxRetries,
+        before, `${c.name}.maxRetries`);
       continue;
     }
 
@@ -299,6 +454,9 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     persona: c.persona,
     knows: c.knows,
     goal: c.goal,
+    belief: c.belief,
+    impulse: c.impulse,
+    voice: c.voice,
     skills: c.skills,
     restrictions: c.restrictions,
     ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),
@@ -340,7 +498,10 @@ export function renderSpec(spec: StorySpec, full = false): string {
     if (c.restrictions.length)  lines.push(`  ${C.red}cannot:${C.reset}   ${c.restrictions.join(", ")}`);
     if (c.knows)         lines.push(`  ${C.dim}knows:${C.reset}    ${c.knows}`);
     if (c.goal)          lines.push(`  ${C.dim}wants:${C.reset}    ${c.goal}`);
+    if (c.belief)        lines.push(`  ${C.dim}believes:${C.reset} ${c.belief}`);
+    if (c.impulse)       lines.push(`  ${C.dim}impulse:${C.reset}  ${c.impulse}`);
     lines.push(full ? `\n${c.persona}\n` : `  ${C.dim}${c.persona.replace(/\s+/g, " ").slice(0, 140)}…${C.reset}`);
+    for (const v of full ? c.voice : []) lines.push(`  ${C.dim}says:${C.reset}     "${v}"`);
     return lines.join("\n");
   }).join("\n");
   return head + cast + (spec.writerStyle && full ? `\n\n${C.bold}House style${C.reset}\n${spec.writerStyle}\n` : "");
@@ -353,6 +514,7 @@ export function specView(spec: StorySpec) {
     facts: spec.facts, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
       name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,
+      belief: c.belief, impulse: c.impulse, voice: c.voice,
       skills: c.skills.map(s => splitMeaning(s)),
       restrictions: c.restrictions,
       ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),

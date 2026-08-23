@@ -19,6 +19,9 @@
     --shadow:0 1px 2px rgba(20,32,52,.05),0 6px 20px rgba(20,32,52,.06); }
 
   * { box-sizing: border-box; }
+  /* native form controls (checkboxes, number spinners, the select caret) pick up the theme accent */
+  :root { accent-color:var(--accent); }
+  ::selection { background:color-mix(in srgb, var(--accent) 28%, transparent); }
   body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.5;
          -webkit-font-smoothing:antialiased; }
 
@@ -33,6 +36,7 @@
          color:var(--muted); background:transparent; border:1px solid transparent; border-radius:8px;
          padding:6px 10px; cursor:pointer; }
   .tab:hover { color:var(--ink); }
+  .tab:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .tab.current { color:var(--ink); background:var(--panel-2); border-color:var(--line); }
   .tab[hidden] { display:none; }
   .tabdot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent);
@@ -56,7 +60,7 @@
          padding:6px 10px; border-radius:8px; cursor:pointer; }
   .btn:hover { color:var(--ink); border-color:var(--accent); }
   .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .btn[disabled] { opacity:.4; cursor:default; }
+  .btn[disabled] { opacity:.4; cursor:not-allowed; }
   .btn[disabled]:hover { color:var(--muted); border-color:var(--line); }
   .btn[hidden] { display:none; }
   /* armed: the second click is the one that ends a scene, so it has to look different from the first */
@@ -85,6 +89,13 @@
   .srcbar { display:flex; align-items:center; gap:8px; padding:6px 20px; border-bottom:1px solid var(--line);
             background:var(--panel-2); font-family:var(--mono); font-size:11px; color:var(--muted); }
   .dot { width:7px; height:7px; border-radius:50%; background:var(--good); }
+  #src { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+  .crumb { color:var(--muted); }
+  .crumb[data-view] { cursor:pointer; }
+  .crumb[data-view]:hover { color:var(--ink); text-decoration:underline; }
+  .crumb[data-view]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  .crumb.here { color:var(--ink); }
+  .crumb-sep { color:var(--faint); }
   #notice { color:var(--bad); margin-left:auto; text-align:right; }
   .dot.live { background:var(--accent); animation:pulse 1.6s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
@@ -219,7 +230,7 @@
           padding:13px 15px; box-shadow:var(--shadow); }
   .card:hover { border-color:var(--accent); }
   .card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .card[disabled] { cursor:default; opacity:.75; }
+  .card[disabled] { cursor:not-allowed; opacity:.75; }
   .card[disabled]:hover { border-color:var(--line); }
   .card .name { font-family:var(--mono); font-size:12.5px; font-weight:600; }
   .card .q { font-size:13.5px; margin:4px 0 0; }
@@ -506,6 +517,7 @@
   .cast-card .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
   .cast-card .cast-tags .yes { font-family:var(--mono); font-size:10px; color:var(--good); }
   .cast-card .cast-tags .no { font-family:var(--mono); font-size:10px; color:var(--bad); }
+  .cast-card .cast-voice { font-size:12.5px; color:var(--muted); font-style:italic; margin:3px 0 0; line-height:1.45; }
 
   .compare-panes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
   .compare-pane { min-width:0; border:1px solid var(--line); border-radius:13px; background:var(--panel); padding:16px; }
@@ -517,7 +529,12 @@
   .prose-diff-card { margin-bottom:16px; padding:14px 16px; border:1px solid var(--line); border-radius:13px;
     background:var(--panel-2); }
   .prose-diff-card .label { font-family:var(--mono); font-size:10px; letter-spacing:.1em;
-    text-transform:uppercase; color:var(--faint); margin-bottom:10px; }
+    text-transform:uppercase; color:var(--faint); margin-bottom:10px;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .diff-legend { display:inline-flex; gap:6px; margin-left:auto; }
+  .diff-legend > span { padding:0 5px; border-radius:4px; letter-spacing:.04em; color:var(--ink); }
+  .diff-legend .diff-added { background:color-mix(in srgb, var(--good) 24%, transparent); }
+  .diff-legend .diff-removed { background:color-mix(in srgb, var(--bad) 24%, transparent); }
   .prose-diff { font-family:var(--serif); font-size:16px; line-height:1.65; white-space:pre-wrap; }
   .prose-diff .diff-added { background:color-mix(in srgb, var(--good) 24%, transparent); color:var(--ink); }
   .prose-diff .diff-removed { background:color-mix(in srgb, var(--bad) 24%, transparent); color:var(--ink);
@@ -532,3 +549,181 @@
     * { animation:none !important; transition:none !important; }
   }
 
+  /* --- interaction polish: micro-transitions + clearer tab/card states --- */
+  .btn, .tab, .chip, .card, .crumb[data-view] {
+    transition: color .12s ease, background-color .12s ease, border-color .12s ease,
+                box-shadow .14s ease, transform .14s ease;
+  }
+  .tab.current { box-shadow: inset 0 -2px 0 var(--accent); }
+  .card:not([disabled]):hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+
+  /* ── scaffold page (the --new interview) ─────────────────────────────────────
+     Every rule here is scoped under `.scpage` because the mockup reuses class names the
+     rest of the viewer already owns — `.card`, `.cast`, `.thinking`. The soft tints are
+     one color-mix definition each so they track the theme without a per-theme :root block.
+     Base styling ported from mockups/architect/mockup.css. */
+  :root {
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--panel-2));
+    --warn-soft:   color-mix(in srgb, var(--warn) 15%, var(--panel-2));
+    --bad-soft:    color-mix(in srgb, var(--bad) 14%, var(--panel-2));
+    --good-soft:   color-mix(in srgb, var(--good) 15%, var(--panel-2));
+  }
+  .btn.danger { color:var(--bad); }
+  .btn.danger:hover { border-color:var(--bad); }
+
+  /* The scaffold view has no run controls, so it drops the rail and breaks out of the 730px page
+     column the other pages sit in -- the mockup's wide proposal+sidebar layout needs the room. */
+  body[data-view="scaffold"] .layout { grid-template-columns:1fr; }
+  body[data-view="scaffold"] .rail { display:none; }
+  body[data-view="scaffold"] .page { max-width:none; margin:0; padding:0; }
+
+  .scpage { max-width:1320px; margin:0 auto; padding:22px clamp(16px,4vw,40px) 90px; }
+  .scpage .eyebrow { font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 5px; }
+  .scpage > .sc-head h2 { font-family:var(--serif); font-weight:400; font-size:clamp(23px,3.6vw,31px);
+    line-height:1.15; margin:0; }
+  .scpage > .sc-head .lede { max-width:640px; margin:10px 0 20px; color:var(--muted); font-size:13.5px; }
+
+  /* status strip: walk / gate / on-disk, always visible */
+  .scpage .statusbar { display:flex; align-items:center; gap:9px; margin:0 0 18px; padding:7px 12px;
+    color:var(--muted); background:var(--panel-2); border:1px solid var(--line); border-radius:9px;
+    font-family:var(--mono); font-size:10px; }
+  .scpage .status-dot { width:7px; height:7px; border-radius:50%; background:var(--good); flex:none; }
+  .scpage .status-dot.busy { background:var(--accent); animation:pulse 1.2s ease-in-out infinite; }
+  .scpage .statusbar .spacer { margin-left:auto; color:var(--faint); }
+
+  /* the two-column shell: proposal+conversation, then the state sidebar */
+  .scpage .shell { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; align-items:start; }
+  .scpage .workspace { min-width:0; display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
+
+  .scpage .card { min-width:0; background:var(--panel); border:1px solid var(--line); border-radius:13px;
+    box-shadow:var(--shadow); }
+  /* min-width:0 lets the head's long "draft so far · story ✓ · …" label wrap instead of forcing the
+     card wider than its column (grid/flex children are min-width:auto by default). */
+  .scpage .card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; padding:15px 18px 12px; border-bottom:1px solid var(--line); }
+  .scpage .card-head > div { min-width:0; }
+  .scpage .card-head h3 { font-family:var(--serif); font-weight:400; font-size:20px; margin:0; }
+  .scpage .label { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); }
+  .scpage .card-body { padding:16px 18px; }
+  .scpage .card-body > p { margin:0; color:var(--muted); font-size:13px; }
+
+  /* checklist chips (staged walk) */
+  .scpage .checklist { display:flex; gap:7px; margin:0 0 14px; overflow-x:auto; padding-bottom:2px; }
+  .scpage .gate { display:flex; align-items:center; gap:7px; min-width:max-content; padding:7px 11px;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:999px; color:var(--muted);
+    font-family:var(--mono); font-size:10px; letter-spacing:.07em; text-transform:uppercase; }
+  .scpage .gate.done { color:var(--good); border-color:var(--good); background:var(--good-soft); }
+  .scpage .gate.open { color:var(--ink); border-color:var(--accent); background:var(--accent-soft); }
+  .scpage .gate i { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+  .scpage .gate.open i { animation:pulse 1.2s ease-in-out infinite; }
+
+  /* proposal panel: scene, question, facts, cast */
+  .scpage .stage-section { margin-top:16px; padding-top:15px; border-top:1px solid var(--line); }
+  .scpage .stage-section:first-child { margin-top:0; padding-top:0; border-top:0; }
+  .scpage .stage-section.current { margin:-2px -4px 4px; padding:13px 14px;
+    border:1px solid var(--accent); border-radius:10px; background:var(--accent-soft); }
+  .scpage .stage-section.current + .stage-section { margin-top:18px; }
+  .scpage .stage-section > .label { display:block; margin-bottom:9px; }
+  .scpage .stage-section.current > .label { color:var(--accent); }
+  .scpage .stage-copy { margin:0; color:var(--muted); font-size:13px; white-space:pre-wrap; }
+  .scpage .scene { padding:14px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; }
+  .scpage .scene h4 { font-family:var(--serif); font-size:18px; margin:0; }
+  .scpage .scene-meta { margin:3px 0 14px; color:var(--faint); font-family:var(--mono); font-size:10px; }
+  .scpage .question { padding:10px 12px; border-left:2px solid var(--accent); color:var(--ink);
+    font-family:var(--serif); }
+  .scpage .question .label { display:block; margin-bottom:2px; }
+  .scpage .facts { margin-top:12px; display:grid; gap:5px; }
+  .scpage .technical { margin-top:15px; padding:12px; background:var(--panel-2);
+    border:1px solid var(--line); border-radius:9px; }
+  .scpage .technical .facts { margin-top:8px; }
+  .scpage .fact { display:flex; gap:9px; font-size:12px; color:var(--muted); }
+  .scpage .fact strong { min-width:46px; color:var(--faint); font-family:var(--mono); font-size:10px;
+    line-height:1.7; text-transform:uppercase; font-weight:400; }
+
+  .scpage .cast { display:grid; gap:8px; margin-top:15px; }
+  .scpage .person { padding:10px 11px; background:var(--panel); border:1px solid var(--line);
+    border-radius:9px; }
+  .scpage .person-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .scpage .person-name { color:var(--accent); font-family:var(--mono); font-size:12px; font-weight:600; }
+  .scpage .change { color:var(--good); font-family:var(--mono); font-size:10px; }
+  .scpage .person p { margin:5px 0 0; color:var(--muted); font-size:12px; }
+  .scpage .tag { display:inline-block; margin:7px 5px 0 0; padding:2px 6px; border:1px solid var(--line);
+    border-radius:999px; color:var(--faint); font-family:var(--mono); font-size:10px; }
+  .scpage .tag.warn { color:var(--warn); border-color:var(--warn); background:var(--warn-soft); }
+
+  /* conversation round */
+  .scpage .round-note { margin:14px 0; padding:12px 13px; border-left:2px solid var(--accent);
+    background:var(--accent-soft); }
+  .scpage .round-note .label { color:var(--accent); }
+  .scpage .round-note p { margin:4px 0 0; color:var(--ink); font-family:var(--serif); font-size:15px; }
+  .scpage .round-question { margin:14px 0; padding:12px 13px; border-left:2px solid var(--warn);
+    background:var(--warn-soft); }
+  .scpage .round-question .label { color:var(--warn); }
+  .scpage .round-question p { margin:4px 0 0; color:var(--ink); font-family:var(--serif); font-size:15px; }
+
+  .scpage textarea, .scpage input[type=text] { display:block; width:100%; padding:11px 12px;
+    font-family:var(--sans); font-size:14px; line-height:1.5; color:var(--ink); background:var(--panel-2);
+    border:1px solid var(--line); border-radius:9px; }
+  .scpage textarea { min-height:92px; resize:vertical; }
+  .scpage textarea:focus, .scpage input[type=text]:focus { outline:none; border-color:var(--accent); }
+  .scpage textarea[disabled], .scpage input[disabled] { opacity:.5; }
+  .scpage .composer-foot { display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .scpage .composer-foot .hint { margin-right:auto; }
+  /* scoped .thinking: the global one is always shown; here it toggles with .show */
+  .scpage .thinking { display:none; align-items:center; gap:7px; margin:0; }
+  .scpage .thinking.show { display:inline-flex; }
+
+  .scpage .prob { color:var(--warn); background:var(--warn-soft); border-radius:7px; padding:9px 10px;
+    font-size:12px; margin-top:12px; }
+  .scpage .said.bad { color:var(--bad); background:var(--bad-soft); border-radius:7px; padding:9px 10px;
+    font-size:12px; margin-top:12px; }
+  .scpage .said.good { color:var(--good); background:var(--good-soft); border-radius:7px; padding:9px 10px;
+    font-size:12px; margin-top:12px; }
+
+  /* round result list (accept-time problems) */
+  .scpage .result-block { margin-top:14px; padding:10px 12px; background:var(--panel-2);
+    border:1px solid var(--line); border-radius:9px; }
+  .scpage .result-block > .label { display:block; margin-bottom:8px; color:var(--warn); }
+  .scpage .plain-list { display:grid; gap:5px; margin:0; padding:0 0 0 16px; font-size:12px; color:var(--muted); }
+
+  /* state sidebar */
+  .scpage aside { position:sticky; top:16px; display:grid; gap:14px; align-self:start; }
+  .scpage .side-card { padding:15px; }
+  .scpage .side-card h3 { margin:0 0 11px; color:var(--faint); font-family:var(--mono); font-size:10px;
+    letter-spacing:.11em; text-transform:uppercase; }
+  .scpage .stat { display:flex; justify-content:space-between; gap:12px; padding:7px 0;
+    border-bottom:1px solid var(--line); font-size:12px; }
+  .scpage .stat:last-of-type { border-bottom:0; }
+  .scpage .stat span { color:var(--muted); }
+  .scpage .stat strong { font-family:var(--mono); font-size:11px; font-weight:600; text-align:right; }
+  .scpage .side-copy { margin:0; color:var(--muted); font-size:12px; }
+  .scpage .side-actions { display:grid; gap:8px; margin-top:14px; }
+  .scpage .side-actions .btn { text-align:center; }
+  .scpage .notice { margin-top:12px; padding:10px 11px; color:var(--good); background:var(--good-soft);
+    border-radius:8px; font-size:12px; }
+
+  /* the idea step, still a modal over an empty scaffold shell */
+  .iv .field-label { display:block; margin:14px 0 6px; font-family:var(--mono); font-size:10px;
+    letter-spacing:.09em; text-transform:uppercase; color:var(--faint); }
+  .iv .choice-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .iv .choice { position:relative; display:block; padding:12px 13px; background:var(--panel-2);
+    border:1px solid var(--line); border-radius:10px; cursor:pointer; }
+  .iv .choice input { position:absolute; opacity:0; }
+  .iv .choice b { display:block; font-size:13px; }
+  .iv .choice span { display:block; margin-top:3px; color:var(--muted); font-size:11.5px; }
+  .iv .choice.selected { border-color:var(--accent); background:var(--accent-soft); }
+
+  @media (max-width: 900px) {
+    /* mobile: proposal before conversation is already the DOM order; drop the sidebar under it.
+       minmax(0,1fr) — a bare 1fr is minmax(auto,1fr), whose content-based minimum lets a wide card
+       push the track past the viewport. */
+    .scpage .shell { grid-template-columns:minmax(0,1fr); }
+    .scpage aside { position:static; order:2; }
+    .iv .choice-grid { grid-template-columns:1fr; }
+  }
+  @media (max-width: 680px) {
+    .scpage .composer-foot { flex-wrap:wrap; align-items:stretch; }
+    .scpage .composer-foot .hint { flex-basis:100%; }
+  }

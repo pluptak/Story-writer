@@ -19,7 +19,7 @@ export function pickerHtml() {
     const card = `<button class="card" data-dir="${esc(s.dir)}"${dead ? " disabled" : ""}>
       <div class="name">${esc(s.name)}</div>
       ${s.ok ? `<p class="q">${esc(s.scene?.question || "(no scene question)")}</p>
-                <p class="pre">${esc(s.premise || "")}</p>
+                <p class="pre"${s.premise ? ` title="${esc(s.premise)}"` : ""}>${esc(s.premise || "")}</p>
                 <div class="row">${castChips(s.characters, s.dir)}<span class="meta">~${s.scene?.length ?? "?"} words
                   · ${s.maxSteps ?? "?"} steps${s.scene?.pov ? " · pov " + esc(s.scene.pov) : ""}</span></div>`
               : `<div class="bad">does not load — ${esc(s.error || "unknown error")}</div>`}
@@ -32,7 +32,9 @@ export function pickerHtml() {
     <div class="name">${APP.scaffold.active ? "↩ continue new story…" : "＋ start a new story"}</div>
     <p class="q">${APP.scaffold.active ? `back to "${esc(APP.scaffold.idea || "")}"` : "describe an idea and have one built"}</p>
   </button>`;
-  const divider = cards ? `<div class="divider"><span>or pick an existing one</span></div>` : "";
+  const divider = cards
+    ? `<div class="divider"><span>or pick an existing one</span></div>`
+    : `<p class="hint" style="text-align:center;margin:14px 0 0">no stories on the shelf yet — start one above</p>`;
 
   return `<section class="picker">
     <h2>Choose a story</h2>
@@ -52,13 +54,8 @@ export function wirePicker(page, openStory, openNew = null) {
       APP.storyDir = b.dataset.dir; APP.storyModel = ""; APP.storyError = ""; APP.runError = ""; openStory();
     } });
   for (const b of page.querySelectorAll(".card[data-new]"))
-    b.addEventListener("click", () => {
-      // Already going server-side (one ScaffoldSession, GUI-SPEC §5.1) -- this reopens the modal
-      // rather than starting a second interview. Clearing ivHidden unconditionally matters: a
-      // dismissal that happened before scaffold.active went true (still just APP.ideaOpen) left
-      // ivHidden set with nothing else to clear it, so a second click here has to.
-      APP.ivHidden = false;
-      if (openNew) openNew();
-      else { if (!APP.scaffold.active) APP.ideaOpen = true; APP.render(); }
-    });
+    // Opens the scaffold page (`openNew`, injected by the shelf -- importing nav.js here would close
+    // a module cycle). One ScaffoldSession lives on the server (GUI-SPEC §5.1), so a session already
+    // running is continued there rather than started again; the card relabels itself to say so.
+    b.addEventListener("click", () => { if (openNew) openNew(); });
 }

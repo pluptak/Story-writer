@@ -246,6 +246,186 @@ describe("ScaffoldSession.accept", () => {
       assert.equal((await quiet(() => s.accept("the fog signal, again"))).kind, "written");
     } finally { await rm(tmp, { recursive: true, force: true }); }
   });
+
+  it("keeps nothing on disk when the accepted story does not load", async () => {
+    const tmp = await mkdtemp(join(tmpdir(), "scaffold-"));
+    try {
+      const s = scaffold([STORY, { edits: [] }, { edits: [] },
+        { edits: [{ field: "premise", value: "" }] }], tmp);
+      await s.propose();
+      const e = await s.say("empty the premise");
+      assert.equal(e.kind, "edits");
+      const r = await quiet(() => s.accept());
+      assert.ok(r.kind === "unloadable", `expected unloadable, got ${r.kind}`);
+      assert.match(r.error, /premise/i);
+
+      const wrote = await readFile(join(tmp, "the-fog-signal", "story.json"), "utf8")
+        .then(() => true).catch(() => false);
+      assert.equal(wrote, false, "a scaffold whose preflight fails must leave nothing behind");
+    } finally { await rm(tmp, { recursive: true, force: true }); }
+  });
+});
+
+// -- THE STAGED CHECKLIST ---------------------------------------------------
+describe("ScaffoldSession, staged", () => {
+  const STORY_STAGE = {
+    title: STORY.title,
+    premise: STORY.premise,
+    tension: "Aster wants the log kept honest; Brae wants the night buried.",
+    facts: ["The lamp has not gone dark in forty years."],
+  };
+  const CAST_STAGE = { characters: STORY.characters };
+  const SETTINGS_STAGE = { writer_style: STORY.writer_style };
+  const TECHNICAL_STAGE = {
+    config: { retries: 3, clarifications: 1, maxSteps: 30, maxProseWords: 120,
+              thinking: { writer: "medium" }, maxCharacterRetries: 5 },
+    characters: [{ name: STORY.characters[0].name, maxRetries: 2 }],
+    scenes: [{ writerThink: "high" }],
+  };
+  const SCENE_STAGE = { scene: STORY.scene, later_scenes: [{ question: "Does the relief boat come?" }] };
+
+  const stage = (script: unknown[]) =>
+    new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
+                        SCAFFOLD_DEFAULTS, "two lighthouse keepers", undefined, "staged");
+  const gateOf = (r: { kind: string; stage?: string }) => r.stage;
+
+  it("walks the checklist one approved gate at a time, merging as it goes", async () => {
+    const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
+                     { edits: [], note: "it holds together" }]);
+
+    const first = await s.propose();
+    assert.equal(first.kind, "proposal");
+    assert.equal(gateOf(first), "story");
+    assert.equal(s.spec.title, "The Fog Signal");
+    assert.deepEqual(s.spec.facts, ["The lamp has not gone dark in forty years."]);
+    assert.equal(s.tension, STORY_STAGE.tension);
+    assert.equal(s.haveStory(), false);
+
+    const cast = await s.approve();
+    assert.equal(gateOf(cast), "cast");
+    assert.equal(s.spec.characters.length, 2);
+    assert.equal(s.spec.title, "The Fog Signal", "earlier stages survive the merge");
+    assert.equal(s.asks, 0, "passing a gate resets the question budget");
+
+    await s.approve();                                   // settings
+    assert.equal(s.spec.writerStyle, SETTINGS_STAGE.writer_style);
+
+    const tech = await s.approve();                      // technical
+    assert.equal(gateOf(tech), "technical");
+    assert.equal(s.spec.config.retries, 3, "technical config overrides land");
+    assert.equal(s.spec.config.maxCharacterRetries, 5);
+    assert.equal(s.spec.characters[0].maxRetries, 2, "per-character maxRetries land");
+    assert.equal(s.spec.scenes[0].writerThink, "high", "per-scene writerThink lands");
+
+    const scene = await s.approve();
+    assert.equal(gateOf(scene), "scene");
+    assert.equal(s.spec.scenes[0].question, STORY.scene.question);
+    assert.equal(s.spec.scenes[1]?.question, "Does the relief boat come?", "later sketches land as scenes");
+    assert.equal(s.spec.scenes[1]?.place, "", "a sketch carries nothing but its question");
+
+    // The verify pass runs after the scene lands; fill-gaps has no job in a staged run.
+    assert.deepEqual((scene as { auto?: { stage: string }[] }).auto?.map(a => a.stage), ["verify"]);
+    const heard = s.architect.history.map(h => h.content).join("\n");
+    assert.match(heard, /\[VERIFY\]/);
+    assert.doesNotMatch(heard, /\[FILL\]/);
+
+    const done = await s.approve();
+    assert.equal(done.kind, "nothing");
+    assert.match((done as { why: string }).why, /review the draft and accept/);
+  });
+
+  it("does not report a half-built draft's missing pieces as problems", async () => {
+    const s = stage([STORY_STAGE]);
+    await s.propose();
+    for (const noise of [/no characters at all/, /has no question/, /not one of the characters/])
+      assert.ok(!s.problems.some(p => noise.test(p)), `${noise} leaked: ${JSON.stringify(s.problems)}`);
+    assert.ok(s.problems.length === 0, `unexpected problems: ${JSON.stringify(s.problems)}`);
+
+    const full = stage([STORY_STAGE, { characters: [{ name: "ASTER" }] }]);
+    await full.propose();
+    await full.approve();
+    assert.ok(full.problems.some(p => /ASTER has no persona/.test(p)),
+              "real warnings about a landed stage show verbatim");
+  });
+
+  it("a question pins its gate, and the author's answer re-runs that stage", async () => {
+    const s = stage([{ ask: "Ghost story or fraud story?" }, STORY_STAGE]);
+    const first = await s.propose();
+    assert.equal(first.kind, "question");
+    assert.equal(gateOf(first), "story");
+    assert.equal(s.pendingAsk, "Ghost story or fraud story?");
+
+    const blocked = await s.approve();
+    assert.equal(blocked.kind, "nothing");
+    assert.match((blocked as { why: string }).why, /answer the architect's question/);
+    assert.equal(s.stage, "story", "the gate did not move");
+
+    const second = await s.say("a fraud story");
+    assert.equal(second.kind, "proposal");
+    assert.equal(s.stage, "story", "the answer re-proposed the same gate");
+    assert.equal(s.spec.title, "The Fog Signal");
+    assert.match(s.architect.history[2].content, /\[THE AUTHOR ANSWERS\] a fraud story/);
+  });
+
+  it("refuses to start the checklist twice", async () => {
+    const s = stage([STORY_STAGE]);
+    await s.propose();
+    const again = await s.propose();
+    assert.equal(again.kind, "nothing");
+    assert.match((again as { why: string }).why, /already started/);
+  });
+
+  it("will not pass a gate whose content never landed", async () => {
+    const s = stage([STORY_STAGE, { note: "hm, thinking" }]);
+    await s.propose();
+    const first = await s.approve();            // the cast round comes back as neither content nor question
+    assert.equal(first.kind, "nothing");
+    assert.equal(s.stage, "cast");
+    const blocked = await s.approve();          // the gate is still empty
+    assert.equal(blocked.kind, "nothing");
+    assert.match((blocked as { why: string }).why, /"cast" has not landed \(no cast yet\)/);
+    assert.equal(s.stage, "cast");
+  });
+
+  it("say() refines within the open gate and may reach back to an earlier stage", async () => {
+    const s = stage([STORY_STAGE, CAST_STAGE, { edits: [{ field: "premise", value: "Revised premise." }] }]);
+    await s.propose();
+    await s.approve();
+    const r = await s.say("sharpen the premise");
+    assert.equal(r.kind, "edits");
+    assert.equal(gateOf(r), "cast", "refinement never advances the gate");
+    assert.equal(s.spec.premise, "Revised premise.");
+    assert.equal(s.spec.characters.length, 2, "the landed cast survived the back-edit");
+  });
+
+  it("lets refinement rounds re-coin the tension the story stage named", async () => {
+    const s = stage([STORY_STAGE, CAST_STAGE,
+      { edits: [{ field: "tension", value: "Brae wants the log kept honest instead." },
+                { field: "premise", value: "Revised premise." }] }]);
+    await s.propose();
+    await s.approve();
+    const r = await s.say("swap who wants what");
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["tension", "premise"]);
+    assert.equal((r as { ignored: string[] }).ignored.join(" "), "", `unexpected ignores`);
+    assert.equal(s.tension, "Brae wants the log kept honest instead.");
+
+    // The re-coined tension steers the next stage's prompt.
+    await s.approve();
+    assert.match(s.architect.history.at(-2)!.content, /Brae wants the log kept honest instead\./);
+  });
+
+  it("insists once a gate has asked three times without proposing", async () => {
+    const ask = { ask: "Which of the two is it?" };
+    const s = stage([ask, ask, ask, STORY_STAGE]);
+    assert.equal((await s.propose()).kind, "question");
+    await s.say("a");
+    await s.say("b");
+    const r = await s.say("c");
+    assert.equal(r.kind, "proposal");
+    assert.match(s.architect.history.at(-2)!.content, /OVERRIDE: you have asked several times/);
+    assert.equal(s.asks, 0);
+  });
 });
 
 // -- THE HANDOFF -----------------------------------------------------------

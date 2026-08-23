@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>handoff · edits available</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>architect handoff · the last signal</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <a class="tab" href="scaffold-1-start.html">new story</a>
+      <button class="tab active" type="button">next chapter</button>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot"></span>
+    <span>ready · handoff is local and single-user · edited: yes</span>
+    <span class="spacer">story: the-last-signal · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">architect handoff</p>
+      <h2>Chapter 1, translated into story state</h2>
+      <p class="lede">New knowledge became `knows`, a lost capability became `restrictions`, and new
+        pressure revised scene 2. Applied, ignored, flags and problems are four different lists in four
+        separate blocks.</p>
+
+      <div class="workspace">
+        <!-- proposal before conversation; on mobile this column comes first -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">proposed next chapter</span>
+              <h3>The Last Signal — chapter 2</h3>
+            </div>
+            <button class="button ghost" type="button">details</button>
+          </div>
+          <div class="card-body">
+            <div class="scene">
+              <h4>The relief boat</h4>
+              <p class="scene-meta">chapter 2 · ~760 words · POV IVO · roster: IVO, MARA</p>
+              <div class="question"><span class="label">dramatic question</span>Will Ivo expose the falsified log before the relief crew arrives?</div>
+              <div class="cast">
+                <div class="person">
+                  <div class="person-top"><span class="person-name">IVO</span><span class="change">goal changed · knows +1</span></div>
+                  <p>Wants to force the truth into the open, even if it ends his career.</p>
+                  <span class="tag">knows: the log was altered</span>
+                </div>
+                <div class="person">
+                  <div class="person-top"><span class="person-name">MARA</span><span class="change">restriction added</span></div>
+                  <p>Still protects the station, but can no longer hear the warning bell.</p>
+                  <span class="tag warn">cannot: hearing (insensate)</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top:14px">
+              <span class="label">chapters written</span>
+              <div class="chapters-list">
+                <div class="chapter-row"><span class="n">✓ ch 1</span><span>the storm log</span><span class="w">812 words</span></div>
+                <div class="chapter-row prep"><span class="n">· ch 2</span><span>the relief boat — being prepared</span><span class="w">draft</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3>[handoff] changed: IVO.goal, MARA.restrictions, scene_2.question …</h3>
+            </div>
+            <span class="label">edits</span>
+          </div>
+          <div class="card-body">
+            <div class="round-note">
+              <span class="label">architect note</span>
+              “Ivo's goal is no longer to keep the station safe. It is to make the falsification
+              impossible to deny.”
+            </div>
+
+            <div class="result-blocks">
+              <div class="result-block applied">
+                <span class="label">applied · before → after</span>
+                <div class="diff">
+                  <div class="diff-row"><span class="field">IVO.goal</span><br>
+                    <span class="before">keep the station safe through the winter</span>
+                    <span class="arrow">→</span>
+                    <span class="after">make the falsification impossible to deny</span></div>
+                  <div class="diff-row"><span class="field">MARA.restrictions[+]</span><br>
+                    <span class="before">—</span> <span class="arrow">→</span>
+                    <span class="after">insensate (fever took her hearing on page 3)</span></div>
+                  <div class="diff-row"><span class="field">scene_2.roster[−]</span><br>
+                    <span class="before">ALDOUS</span> <span class="arrow">→</span>
+                    <span class="after">(absent from the next chapter)</span></div>
+                  <div class="diff-row structural"><span class="field">scene_3 added:</span>
+{ "place": "The harbour office", "question": "Does the counterslip arrive before the reader?", "length": "~600", "roster": ["IVO"] }</div>
+                </div>
+              </div>
+
+              <div class="result-block ignored">
+                <span class="label">ignored · refused by the engine, not an error</span>
+                <ul class="plain-list">
+                  <li>scene_1.place — chapter 1 has accepted prose; editing it would rewrite history</li>
+                </ul>
+              </div>
+
+              <div class="result-block flags">
+                <span class="label">flags · advisory, never resolved through edits</span>
+                <ul class="plain-list">
+                  <li>ch. 2 prose has Aldous answering the bell, but his knows[] never establishes he heard it</li>
+                </ul>
+              </div>
+
+              <div class="result-block problems">
+                <span class="label">problems · validation warnings on the resulting story</span>
+                <ul class="plain-list">
+                  <li>MARA's belief still names a hearing she can no longer use — consider re-authoring it</li>
+                </ul>
+              </div>
+            </div>
+
+            <textarea placeholder="Ask for a change or add context..."></textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends · Shift+Enter adds a line</span>
+              <span class="thinking"><i></i> architect is thinking…</span>
+              <button class="button" type="button">send</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>handoff state</h3>
+        <div class="stat"><span>story</span><strong>the-last-signal</strong></div>
+        <div class="stat"><span>preparing</span><strong>chapter 2</strong></div>
+        <div class="stat"><span>edited</span><strong>yes</strong></div>
+        <div class="stat"><span>written</span><strong>not yet</strong></div>
+        <div class="side-actions">
+          <button class="button primary" id="acceptBtn" type="button">accept handoff</button>
+          <button class="button danger" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>drift warning</h3>
+        <p class="side-copy">Each written chapter is compared against its chapters/&lt;n&gt;.json snapshot;
+          a scene changed since by hand is said here, not undone.</p>
+        <div class="notice" style="margin-top:12px">Accept writes story.json and preflights it — it does not start a run.</div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+    document.querySelector("#acceptBtn").addEventListener("click", () => {
+      window.location.href = "handoff-4-accepted.html";
+    });
+  </script>
+</body>
+</html>

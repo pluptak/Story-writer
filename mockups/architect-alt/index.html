@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>architect mockup set · alt · index</title>
+    <link rel="stylesheet" href="mockup.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <h1>story-writer</h1>
+        <p>architect flow · alternative styling · night desk</p>
+      </div>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="hub">
+    <p class="eyebrow">the architect's two modes and their states</p>
+    <h2>Nine screens, one visual language</h2>
+    <p class="lede">Alternative styling: a dark-first “night desk” theme — flat hairline panels instead of
+      rounded shadowed cards, an amber accent, serif-forward type, gates as underlined steps. Same markup
+      and screens as the base set; only <code>mockup.css</code> differs. The toggle flips to a warm paper
+      light theme.</p>
+
+    <div class="section-head">scaffold — the `--new` interview</div>
+    <div class="hub-grid">
+      <a class="hub-card" href="scaffold-1-start.html">
+        <span class="label">step 1 · modal</span>
+        <b>The idea step</b>
+        <p>Rough idea, model choice, and how it proposes: stage by stage (staged) or the whole story at once (oneshot). Overlays the empty story editor.</p>
+      </a>
+      <a class="hub-card" href="scaffold-2-story-gate.html">
+        <span class="label">step 2 · staged, gate open</span>
+        <b>Story gate proposal</b>
+        <p>The checklist renders above the round: story / cast / settings / scene. Title, premise, tension and facts have landed; approve &amp; continue opens the cast gate.</p>
+      </a>
+      <a class="hub-card" href="scaffold-3-question.html">
+        <span class="label">step 3 · question pins its gate</span>
+        <b>A standing question</b>
+        <p>The FIRST DECIDE gate failed to land — the architect asks instead of proposing. Everything typed is the answer; the approve button hides until it is answered.</p>
+      </a>
+      <a class="hub-card" href="scaffold-4-cast-gate.html">
+        <span class="label">step 4 · mid-checklist</span>
+        <b>Cast gate landed</b>
+        <p>Story ticked, cast proposed with the three psychology fields, settings gate now open. Refinement never advances a gate; only approve does.</p>
+      </a>
+      <a class="hub-card" href="scaffold-5-accept-folder.html">
+        <span class="label">step 5 · accept</span>
+        <b>Folder-name step</b>
+        <p>`needs_folder` — accept does not disappear until the server answers `kind:"written"`. Nothing is on disk yet.</p>
+      </a>
+    </div>
+
+    <div class="section-head">handoff — preparing the next chapter</div>
+    <div class="hub-grid">
+      <a class="hub-card" href="handoff-1-preparing.html">
+        <span class="label">state 1 · busy</span>
+        <b>Preparing</b>
+        <p>`.thinking` shows; Accept and Send are disabled; Abandon stays available. A second round in flight would be a 409.</p>
+      </a>
+      <a class="hub-card" href="handoff-2-edits.html">
+        <span class="label">state 2 · edits available</span>
+        <b>Four separate lists</b>
+        <p>`applied` as labelled before → after lines, `ignored`, advisory `flags`, and `problems` — four different blocks, never merged.</p>
+      </a>
+      <a class="hub-card" href="handoff-3-question.html">
+        <span class="label">state 3 · pendingAsk</span>
+        <b>An unanswered question</b>
+        <p>Visually distinct from an ordinary suggestion. It blocks a meaningful proposal until answered, but writes nothing.</p>
+      </a>
+      <a class="hub-card" href="handoff-4-accepted.html">
+        <span class="label">state 4 · written</span>
+        <b>Accepted</b>
+        <p>`story.json` rewritten and preflighted. Offers to write the prepared chapter via /select — the handoff itself never starts a run.</p>
+      </a>
+    </div>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

@@ -17,18 +17,28 @@ let scaffoldStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is
 
 function scaffoldState(host: ServerHost) {
   if (!SCAFFOLD) return { active: false };
+  const haveDraft = Boolean(
+    SCAFFOLD.spec.title || SCAFFOLD.spec.premise || SCAFFOLD.spec.characters.length
+    || SCAFFOLD.spec.writerStyle || SCAFFOLD.spec.facts.length
+    || SCAFFOLD.spec.scenes.some(scene => scene.place || scene.question || scene.pov),
+  );
   return {
     active: true,
     idea: SCAFFOLD.idea,
+    mode: SCAFFOLD.mode,
     busy: scaffoldBusy,
     stage: scaffoldStage,
+    gate: SCAFFOLD.stage,          // staged mode only: the checklist gate that is open
+    tension: SCAFFOLD.tension,     // the load-bearing conflict the story stage coined; session state,
+                                   // never a story.json field, so it reaches the GUI only through here
+    haveDraft,
     haveStory: SCAFFOLD.haveStory(),
     pendingAsk: SCAFFOLD.pendingAsk,
     problems: SCAFFOLD.problems,
     last: scaffoldLast,
     needsFolder: scaffoldFolderAsk,
     model: SCAFFOLD.defaults.models.architect,
-    spec: SCAFFOLD.haveStory() ? host.specView(SCAFFOLD.spec) : null,
+    spec: haveDraft ? host.specView(SCAFFOLD.spec) : null,
   };
 }
 
@@ -48,7 +58,7 @@ export async function handleScaffoldRoutes(
 
   const o = await readJsonBody(req);
   const what = path.slice("/scaffold/".length);
-  if (!["start", "say", "accept", "abandon", "set"].includes(what)) {
+  if (!["start", "say", "approve", "accept", "abandon", "set"].includes(what)) {
     json(res, 404, { ok: false, reason: `no such scaffold action: ${what}` });
 
   } else if (what === "abandon") {
@@ -71,7 +81,8 @@ export async function handleScaffoldRoutes(
     }
     scaffoldBusy = true; scaffoldLast = null; scaffoldFolderAsk = "";
     try {
-      SCAFFOLD = await host.newScaffoldSession(idea, model);
+      const mode = o.mode === "oneshot" ? "oneshot" : "staged";
+      SCAFFOLD = await host.newScaffoldSession(idea, model, mode);
       setWhere("building a new story", false);
       publishScaffold(host);
       scaffoldLast = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(host); });
@@ -104,6 +115,16 @@ export async function handleScaffoldRoutes(
     if (!text) { json(res, 400, { ok: false, reason: "say something" }); return true; }
     scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold(host);
     try { scaffoldLast = await SCAFFOLD.say(text, stage => { scaffoldStage = stage; publishScaffold(host); }); }
+    catch (e) { scaffoldLast = { kind: "failed", error: (e as Error).message }; }
+    finally { scaffoldBusy = false; scaffoldStage = ""; }
+    publishScaffold(host);
+    json(res, 200, scaffoldState(host));
+
+  } else if (what === "approve") {
+    // Pass the open checklist gate and propose the next stage's content. The engine refuses on a
+    // one-shot session and while the gate is empty or a question stands; those come back as rounds.
+    scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold(host);
+    try { scaffoldLast = await SCAFFOLD.approve(stage => { scaffoldStage = stage; publishScaffold(host); }); }
     catch (e) { scaffoldLast = { kind: "failed", error: (e as Error).message }; }
     finally { scaffoldBusy = false; scaffoldStage = ""; }
     publishScaffold(host);

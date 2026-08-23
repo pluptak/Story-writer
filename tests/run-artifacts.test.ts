@@ -269,7 +269,7 @@ describe("LLM interaction log", () => {
 // -- PROMPTS ---------------------------------------------------------------
 describe("prompt construction", () => {
   it("a character is told its skills and its place, and NOT the premise", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const merritt = sc.characters.find(c => c.name === "MERRITT")!;
     const p = wrapCharacter(merritt, sc.scenes[0].place);
     assert.match(p, /hearing/);
@@ -279,7 +279,7 @@ describe("prompt construction", () => {
   });
 
   it("the writer is told what each character cannot do, and no personas", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
     assert.match(p, /MERRITT[\s\S]{0,200}CANNOT: sight/);
     assert.ok(!p.includes("night porter at Kessel's for nine years"),
@@ -287,14 +287,14 @@ describe("prompt construction", () => {
   });
 
   it("the writer is told that stillness is a choice and that pressure may not be resolved first", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
     assert.match(p, /HOLDING STILL IS A CHOICE/);
     assert.match(p, /YOU MAY NOT RESOLVE THE PRESSURE BEFORE YOU ASK ABOUT IT/);
   });
 
   it("the writer is given the closed `wants` vocabulary, not an invitation to phrase one", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
     for (const w of CONSULT_WANTS) assert.match(p, new RegExp(`\\b${w}\\b`));
     assert.match(p, /EXACTLY ONE of these four words/);
@@ -304,7 +304,7 @@ describe("prompt construction", () => {
 // -- PACING ----------------------------------------------------------------
 describe("max_prose_words", () => {
   it("defaults to a real ceiling — several pieces inside one scene's length", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     assert.equal(sc.maxProseWords, 140);
     assert.ok(sc.maxProseWords * 3 <= sc.scenes[0].length,
               "a cap that a scene fits into in one or two pieces is not a cap");

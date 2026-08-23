@@ -18,12 +18,12 @@ import { NET } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
   loadDefaults, writtenChapters, type StoryConfig, type Defaults,
 } from "./engine/story-format.ts";
-import { directEdit, renderSpec, specView, type StorySpec } from "./engine/story-spec.ts";
+import { directEdit, renderSpec, specView, characterPsychologyWarnings, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, runPreflight, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import {
-  buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
+  buildArchitect, configureArchitectDebug, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type ScaffoldRound, type NextChapterSession, type AutoStage, type AutoPass,
 } from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
@@ -33,8 +33,11 @@ const CLI = process.argv.slice(2);
 const PREFLIGHT = CLI.includes("--preflight");
 const SERVE = CLI.includes("--serve");
 const PORT = Number(CLI.find(a => a.startsWith("--port="))?.slice(7)) || 8080;
+const architectDebugLog = CLI.find(a => a.startsWith("--architect-debug-log="))
+  ?.slice("--architect-debug-log=".length) ?? "";
 let STORY_DIR = CLI.find(a => !a.startsWith("--")) ?? "";
 ENGINE.serve = SERVE;
+configureArchitectDebug(CLI.includes("--architect-debug") || !!architectDebugLog, architectDebugLog);
 
 const CHARACTER_PALETTE = [C.cyan, C.yellow, C.green, C.magenta];
 
@@ -118,9 +121,25 @@ async function architectDefaults(model = ""): Promise<Defaults> {
   return d;
 }
 
-async function newScaffoldSession(idea: string, model = ""): Promise<ScaffoldSession> {
+/** Apply the architect's knobs for the length of `fn`, then restore the engine knobs it touched.
+ *  Keeps a stateless suggestion from leaving the architect's token cap/timeouts behind — unlike a
+ *  scaffold or handoff session, which owns the console until it hands off to a run that re-applies
+ *  the story's own config. `architectModel` is pure for the same reason; so is this. */
+async function withArchitectDefaults<T>(model: string, fn: (d: Defaults) => Promise<T>): Promise<T> {
+  const saved = { stream: ENGINE.stream, debug: ENGINE.debug, maxTokens: ENGINE.maxTokens,
+                  timeoutMs: NET.timeoutMs, retries: NET.retries };
+  try {
+    return await fn(await architectDefaults(model));
+  } finally {
+    ENGINE.stream = saved.stream; ENGINE.debug = saved.debug; ENGINE.maxTokens = saved.maxTokens;
+    NET.timeoutMs = saved.timeoutMs; NET.retries = saved.retries;
+  }
+}
+
+async function newScaffoldSession(idea: string, model = "",
+                                  mode: "oneshot" | "staged" = "oneshot"): Promise<ScaffoldSession> {
   const d = await architectDefaults(model);
-  return new ScaffoldSession(await buildArchitect(d), d, idea);
+  return new ScaffoldSession(await buildArchitect(d), d, idea, undefined, mode);
 }
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
@@ -154,6 +173,19 @@ const STAGE_LABEL: Record<AutoStage, string> = {
   verify: "Verifying consistency…",
 };
 
+/** The staged checklist as text: passed gates ticked, the open gate bold, the rest dim.
+ *  Console-only decoration — nothing here is ever said to a model. */
+const CHECKLIST_ORDER = ["story", "cast", "settings", "technical", "scene"] as const;
+
+function checklistLine(stage: string | null): string {
+  const cur = stage ? CHECKLIST_ORDER.indexOf(stage as typeof CHECKLIST_ORDER[number]) : -1;
+  return CHECKLIST_ORDER.map((s, i) =>
+    i < cur ? `${C.green}✓ ${s}${C.reset}`
+    : i === cur ? `${C.bold}${s}${C.reset}`
+    : `${C.dim}${s}${C.reset}`
+  ).join(` ${C.dim}·${C.reset} `);
+}
+
 /** Print what each automatic fill-gaps/verify pass did, before the round's own outcome. */
 function showAuto(auto?: AutoPass[]) {
   for (const a of auto ?? []) {
@@ -176,8 +208,12 @@ function showRound(s: { spec: StorySpec; problems: string[] }, r: ScaffoldRound,
     case "question":
       console.log(`\n${C.yellow}It needs to know:${C.reset} ${r.ask}`); return;
     case "nothing":
-      console.log(`\n${C.yellow}Nothing came back to apply — ${r.why}.${C.reset} `
-        + `${C.dim}${hint}${C.reset}`); return;
+      if (/review the draft and accept/.test(r.why))
+        console.log(`\n${C.green}Checklist complete — review the draft above, then [enter] or "accept".${C.reset}`);
+      else
+        console.log(`\n${C.yellow}Nothing came back to apply — ${r.why}.${C.reset} `
+          + `${C.dim}${hint}${C.reset}`);
+      return;
     case "proposal":
       showSpec(s.spec, s.problems, r.note); return;
     case "edits":
@@ -201,21 +237,23 @@ async function acceptAtConsole(session: ScaffoldSession,
       folder = said;
       continue;
     }
-    console.log(`\n${C.green}Written:${C.reset} ${r.dir}/ ${C.dim}(${r.files.join(", ")})${C.reset}`);
-    for (const w of r.warnings) console.log(`   ${C.yellow}⚠${C.reset} ${w}`);
     if (r.kind === "unloadable") {
-      console.log(`${C.red}It was written, but it does not load: ${r.error}${C.reset}`);
-      console.log(`${C.dim}Fix it by hand in ${r.dir}/, or keep refining and accept again.${C.reset}`);
+      console.log(`\n${C.red}The story was written to ${r.dir}/, but it does not load: ${r.error}${C.reset}`);
+      console.log(`${C.dim}Nothing was kept — keep refining and accept again.${C.reset}`);
       return "";
     }
+    console.log(`\n${C.green}Written:${C.reset} ${r.dir}/ ${C.dim}(${r.files.join(", ")})${C.reset}`);
+    for (const w of r.warnings) console.log(`   ${C.yellow}⚠${C.reset} ${w}`);
     return r.dir;
   }
 }
 
 async function runScaffoldCli() {
+  // Staged is the default walk; --oneshot keeps the whole-story proposal in one round.
+  const stagedMode = !CLI.includes("--oneshot");
   const preset = flag("idea");
   if (!preset && !process.stdin.isTTY) throw new Error("--new needs a terminal, or an --idea=\"...\" to work from.");
-  setWhere("building a new story — at the console", false);
+  setWhere(stagedMode ? "building a new story — gated checklist at the console" : "building a new story — at the console", false);
 
   let idea = preset ?? "";
   if (!idea) {
@@ -226,51 +264,91 @@ async function runScaffoldCli() {
   }
   if (!idea.trim()) { console.log("Nothing to work with."); return; }
 
-  const session = await newScaffoldSession(idea);
+  const session = await newScaffoldSession(idea, "", stagedMode ? "staged" : "oneshot");
   const onStage = (stage: AutoStage) => console.log(`${C.dim}${STAGE_LABEL[stage]}${C.reset}`);
 
   console.log(`${C.dim}\nthinking about it (${session.defaults.models.architect})…${C.reset}`);
   showRound(session, await session.propose(onStage));
 
-  if (!process.stdin.isTTY) return;
+  if (!process.stdin.isTTY) {
+    // A scripted run has no one to pass gates, so a staged session walks the whole checklist.
+    if (session.mode === "staged")
+      while (session.stage && !session.pendingAsk)
+        showRound(session, await session.approve(onStage));
+    return;
+  }
 
   const rl2 = createInterface({ input: process.stdin, output: process.stdout });
   try {
     for (;;) {
+      const isStaged = session.mode === "staged";
+      // Every stage landed and nothing is asked: the checklist's job is done, so [enter] now means
+      // accept -- the same bare-enter the one-shot flow has always used at this point.
+      const lastStage = CHECKLIST_ORDER[CHECKLIST_ORDER.length - 1];
+      const stagedComplete = isStaged && session.stage === lastStage && !session.pendingAsk
+        && Boolean(session.spec.scenes[0]?.question.trim());
+      if (isStaged) console.log(`\n${C.dim}checklist:${C.reset} ${checklistLine(session.stage)}`);
       const prompt = session.pendingAsk
         ? `\n${C.dim}your answer (or "q" to abort): ${C.reset}`
-        : session.haveStory()
-          ? `\n${C.dim}[enter] accept · "?" personas in full · "q" abort · or say what to change${C.reset}\n${C.dim}> ${C.reset}`
-          : `\n${C.dim}say more about it, or "q" to abort${C.reset}\n${C.dim}> ${C.reset}`;
+        : isStaged
+          ? stagedComplete
+            ? `\n${C.dim}[enter] accept & write story.json · "?" full detail · "q" abort · or say what to change${C.reset}\n${C.dim}> ${C.reset}`
+            : `\n${C.dim}[enter] approve & continue · accept: write story.json · "?" full detail · "q" abort`
+              + `\n${C.dim}or say what to change${C.reset}\n${C.dim}> ${C.reset}`
+          : session.haveStory()
+            ? `\n${C.dim}[enter] accept · "?" personas in full · "q" abort · or say what to change${C.reset}\n${C.dim}> ${C.reset}`
+            : `\n${C.dim}say more about it, or "q" to abort${C.reset}\n${C.dim}> ${C.reset}`;
       const said = (await rl2.question(prompt)).trim();
 
       if (said.toLowerCase() === "q") { console.log("Abandoned. Nothing written."); return; }
-      if (!said && !session.haveStory()) continue;   // nothing to accept, and silence answers nothing
-      if (!said && session.pendingAsk) continue;     // it asked; silence is not an answer
-      if (!said) {
-        if (session.problems.length) {
-          const sure = (await rl2.question(`${C.yellow}${session.problems.length} thing(s) flagged above. `
-            + `Accept anyway? [y/N] ${C.reset}`)).trim().toLowerCase();
-          if (sure !== "y") continue;
-        }
-        const dir = await acceptAtConsole(session, rl2);
-        if (!dir) continue;                       // could not settle on a folder; back to refining
-        rl2.close();
-        const sc = await loadStory(dir, LIVE.modelOverride ?? undefined);
-        ENGINE.stream = sc.stream; ENGINE.debug = sc.debug;
-        NET.timeoutMs = sc.requestTimeout * 1000;
-        NET.retries = sc.attempts - 1;
-        ENGINE.maxTokens = sc.maxTokens;
-        return runAndSave(sc, dir, 1);
-      }
       if (said === "?") {
         // Don't spend a model call showing nothing.
         if (session.haveStory()) showSpec(session.spec, [], "", true);
         else console.log(`${C.dim}Nothing to show yet.${C.reset}`);
         continue;
       }
+      if (isStaged && session.pendingAsk) {
+        // The architect's question stands: whatever is typed IS the answer to it.
+        showRound(session, await session.say(said, onStage));
+        continue;
+      }
+      let accepting = false;
+      if (!said) {
+        if (isStaged && !stagedComplete) {
+          // Approval is never inferred from anything but the bare enter.
+          console.log(`${C.dim}\npassing the gate (${session.defaults.models.architect})…${C.reset}`);
+          showRound(session, await session.approve(onStage));
+          continue;
+        }
+        if (!isStaged) {
+          if (!session.haveStory()) continue;   // nothing to accept, and silence answers nothing
+          if (session.pendingAsk) continue;     // it asked; silence is not an answer
+        }
+        accepting = true;
+      } else if (isStaged && said.toLowerCase() === "accept") {
+        accepting = true;
+        if (!session.haveStory()) { console.log(`${C.dim}Nothing to accept yet.${C.reset}`); continue; }
+        if (session.stage !== lastStage)
+          console.log(`${C.dim}(the checklist is not finished — accepting what exists so far)${C.reset}`);
+      } else {
+        showRound(session, await session.say(said, onStage));
+        continue;
+      }
 
-      showRound(session, await session.say(said, onStage));
+      if (session.problems.length) {
+        const sure = (await rl2.question(`${C.yellow}${session.problems.length} thing(s) flagged above. `
+          + `Accept anyway? [y/N] ${C.reset}`)).trim().toLowerCase();
+        if (sure !== "y") continue;
+      }
+      const dir = await acceptAtConsole(session, rl2);
+      if (!dir) continue;                       // could not settle on a folder; back to refining
+      rl2.close();
+      const sc = await loadStory(dir, LIVE.modelOverride ?? undefined);
+      ENGINE.stream = sc.stream; ENGINE.debug = sc.debug;
+      NET.timeoutMs = sc.requestTimeout * 1000;
+      NET.retries = sc.attempts - 1;
+      ENGINE.maxTokens = sc.maxTokens;
+      return runAndSave(sc, dir, 1);
     }
   } finally { rl2.close(); }
 }
@@ -398,6 +476,11 @@ async function loadStoryJson(dir: string): Promise<
   return { ok: true, story: result.data };
 }
 
+/** The psychology fields are REQUIRED on every character: surfaced as editor/check warnings so an
+ *  old or hand-edited story is told what its cards are missing. Shares its wording with normalizeSpec. */
+const characterCardWarnings = (parsed: StoryJson): string[] =>
+  parsed.characters.flatMap(c => characterPsychologyWarnings(c.name, c.belief, c.impulse, c.voice));
+
 const HOST: ServerHost = {
   storyCards, selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
   newScaffoldSession, newHandoffSession, directEdit, specView,
@@ -413,6 +496,7 @@ const HOST: ServerHost = {
     for (const [i, s] of parsed.scenes.entries()) {
       if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
     }
+    warnings.push(...characterCardWarnings(parsed));
     return { ok: true, story: parsed, warnings };
   },
   fullCast: async (dir) => {
@@ -422,6 +506,7 @@ const HOST: ServerHost = {
       ok: true,
       characters: loaded.story.characters.map(c => ({
         name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
+        belief: c.belief, impulse: c.impulse, voice: c.voice,
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
       })),
@@ -442,6 +527,7 @@ const HOST: ServerHost = {
     for (const [i, s] of parsed.scenes.entries()) {
       if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
     }
+    warnings.push(...characterCardWarnings(parsed));
     return { ok: true, warnings };
   },
   saveStory: async (dir, story) => {
@@ -483,13 +569,14 @@ const HOST: ServerHost = {
     return { ok: true, warnings };
   },
   suggestEdits: async (spec, text) => {
-    const d = await architectDefaults(flag("model") ?? "");
     const specObj = spec as StorySpec;
     try {
-      const r = await statelessSuggest(d, specObj, String(text ?? ""));
-      if (r.kind === "failed") return { ok: false, error: r.error };
-      if (r.kind === "question") return { ok: true, kind: "question", ask: r.ask };
-      return { ok: true, kind: "edits", applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
+      return await withArchitectDefaults(flag("model") ?? "", async d => {
+        const r = await statelessSuggest(d, specObj, String(text ?? ""));
+        if (r.kind === "failed") return { ok: false as const, error: r.error };
+        if (r.kind === "question") return { ok: true as const, kind: "question" as const, ask: r.ask };
+        return { ok: true as const, kind: "edits" as const, applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
+      });
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
@@ -538,7 +625,7 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
     story: dir, chapter, chapters: sceneCount, target: targetScene.length, question: targetScene.question,
     characters: sc.characters.map(c => ({
       name: c.name,
-      skills: c.skills.filter(s => s.source === "story").map(s => s.name),
+      skills: c.skills.filter(s => s.source !== "general").map(s => s.name),
       restrictions: restrictionsOf(c.skills),
     })),
   };

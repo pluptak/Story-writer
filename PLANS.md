@@ -26,20 +26,30 @@ run, which is the owner's to make, batched.
 ## Architect follow-ups
 
 - **The worked example still costs the scaffold a quarter of its prompt.** `architectExample()`
-  hard-codes `stories/doorway/story.json`, ~1,870 estimated tokens. The handoff no longer carries it
-  (`buildArchitect(d, false)`), which is where the context pressure actually was; the scaffold still
-  does, because it has no story yet to demonstrate the format with. Making it story-independent is
-  what is left.
+  reads `tests/fixtures/doorway/story.json`, ~1,870 estimated tokens. The handoff no longer carries
+  it (`buildArchitect(d, false)`), which is where the context pressure actually was; the scaffold
+  still does, because a whole-story proposal has no story yet to demonstrate the format with. The
+  staged walk embeds each stage's fields inline instead, so the example matters most to `--oneshot`;
+  whether the one-shot path can drop or shrink it is what is left.
 - **Refused edits are never told to the model.** `applyEdits` and `refuse()` report ignored fields to
   the author, but `architectChange` sends only the author's text and the spec — so an architect that
   invents a field (`scene_1` rather than `scene_1.question`, observed) can repeat it every round.
   Feeding refusals into the next prompt is the fix; it touches `prompts.ts`, so it is its own block.
-- **Scaffold acceptance is not transactional.** A new story that writes but fails preflight is left on
-  disk as `kind: "unloadable"`. The handoff restores the previous file in the same situation; the
-  scaffold should match it.
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round now refuses with the numbers rather than letting the model return nothing, but a
   long story needs a correspondingly large context window loaded.
+- **Staged-scaffold follow-ups**, held behind live-run evidence like everything else in that
+  pipeline: the **verify** pass could flag a cast where nobody has any restrictions (two early live
+  runs produced restriction-less casts; `normalizeSpec` warns but nothing pushes back); the console
+  has no way to ask an empty gate to re-propose itself (edits vocabulary covers it, awkwardly); and
+  the story editor has no view of the session's **tension** sentence, which steers the cast and scene
+  stages but lives only in the conversation.
+- **Approvable, promotable skill bible.** The in-code `SPECIAL_SKILL_CATALOG` is the seed; the second
+  half of the plan is a shared, persistent bible that bespoke per-story `custom` skills can be
+  **promoted** into — natural home alongside `defaults.json`, loaded by `loadDefaults` and merged over
+  the in-code seed. The architect may **propose** a bible addition; it lands only after the owner
+  **approves** it — a real gate distinct from accepting the story. That gate is what turns "prefer an
+  existing skill" into a hard constraint; until it exists, custom skills stay allowed.
 
 ## Writing-quality follow-ups
 

@@ -132,7 +132,8 @@ Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and clic
 - [ ] **Dirty guard.** With unsaved changes, click **back to story**. A `confirm()` dialog warns about unsaved changes. Cancel stays on the editor; confirm navigates away.
 - [ ] **Dirty guard — browser close.** With unsaved changes, close the tab. The browser fires `beforeunload` with a confirmation. (Hard to automate; verify once.)
 - [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
-- [ ] **Character editor.** Change a character's persona, knows, or goal. Add a skill. Verify after save.
+- [ ] **Character editor.** Change a character's persona, knows, or goal. Set a belief, an impulse, and one or two voice lines (one per line in the voice box). Add a skill. Verify after save.
+- [ ] **Character card warnings.** Clear a character's belief, impulse, and voice. After ~400ms `/story/check` shows the three "has no …" warnings; refilling them clears them again.
 - [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
 - [ ] **Models editor.** Expand the models section. Change `default` model, save, reload.
 - [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
@@ -262,10 +263,11 @@ In the reader (section 10), using the search box above the prose.
 Needs a run, so pair it with section 2. A read-only panel in the live rail.
 
 - [ ] **It appears while a run is live.** Below the rail's stats, a **cast** panel with a card per
-      character in the run, each showing persona / knows / goal and the character's `+skill` /
-      `no restriction` tags.
+      character in the run, each showing persona / knows / goal / belief / impulse / voice samples
+      and the character's `+skill` / `no restriction` tags.
 - [ ] **It carries authored data the pills do not.** The header cast pills know only skills and
-      restrictions; this panel shows `knows` and `goal` too — proof it is the `/cast` fetch, not the
+      restrictions; this panel shows `knows`, `goal`, `belief`, `impulse` and the quoted voice lines
+      too — proof it is the `/cast` fetch, not the
       `scene_start` names. (Pick a story whose characters have a non-empty `knows`.)
 - [ ] **Read-only.** No inputs, no buttons, nothing to click — it is for the human reviewing what a
       consult was working from, never an edit surface.
@@ -302,6 +304,41 @@ before starting this section. The comparison is opened from the story page's **c
 - [ ] **Responsive layout.** Resize below 900px. The panes stack vertically and the diff remains readable.
 - [ ] **Single-run regression.** Open a retained run through the ordinary **read** action. It still has
       its original one-pane view and its original shared agent transcript behavior.
+
+## 14. The scaffold interview — the new-story page
+
+The `#/scaffold` route. Most of the layout and state machine can be driven engine-free (see the next
+section); the rounds themselves need the architect model. Nothing here destroys a run — accept creates
+a *new* story folder — so it can go anywhere in the pass.
+
+- [ ] **Open it.** Shelf → **start a new story**. The idea step is a modal over an empty scaffold
+      shell: the idea box, two "how it proposes" radio cards (**stage by stage** selected), the model
+      select, and **propose →**. Escape or a backdrop click returns to the shelf. The card now reads
+      **continue new story…** — clicking it comes back to the same session.
+- [ ] **Staged walk.** After **propose →**, the story stage lands (title, premise, tension, facts — no
+      cast yet). Its proposal card immediately shows those fields, and the composer says *what should
+      change?*, not *say more about it*. The checklist shows *story* open, the rest upcoming; the sidebar
+      reads walk *staged* · open gate *story* · on disk *nothing yet*. **approve & continue →** opens
+      *cast*, then *settings*, *technical*, and *scene*, ticking each passed gate. House style and run
+      settings appear in a highlighted current-stage section at the top of the proposal as their gates
+      land; the earlier stages remain below it. The button is gone at the *scene* gate.
+- [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
+      to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
+      Answering re-runs that stage.
+- [ ] **Refinement stays put.** Type a change and **send**: it applies within the open gate and the
+      checklist pointer does not move. Round labels carry the gate (`[cast] changed: …`).
+- [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no checklist**,
+      sidebar walk *one-shot*.
+- [ ] **Edit in full.** The sidebar's **edit in full →** opens the schema editor on the same draft;
+      a change there is reflected on the proposal card when you come **back to interview**.
+- [ ] **Accept.** The sidebar's **accept & choose folder** opens the folder step in the main column
+      (**write story.json →**). On success the run starts and the page follows to the live screen.
+      Accepting over unsent text or a `problems` flag takes a confirming second click.
+- [ ] **Abandon** (second click) drops the session and returns to the shelf.
+- [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
+      server, not the tab.
+- [ ] **Responsive.** Below 900px the sidebar stacks under the proposal; at 375px there is **no
+      horizontal scrollbar**.
 
 ## Checking the viewer without an engine
 

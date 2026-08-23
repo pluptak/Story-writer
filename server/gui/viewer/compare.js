@@ -122,7 +122,8 @@ export function comparisonPageHtml() {
     ${error ? `<div class="said bad">${esc(error)}</div>` : `<p class="hint">${esc(fmtRun(a || {}))} versus ${esc(fmtRun(b || {}))}</p>`}
     <div class="divider"><span>comparison</span></div>
     ${COMPAREV.error ? `<div class="said bad">${esc(COMPAREV.error)}</div>` : COMPAREV.loading ? `<p class="thinking"><i></i>reading both runs…</p>`
-      : `<div class="prose-diff-card"><div class="label">accepted prose diff</div>${diffHtml(assembledProse(COMPAREV.a), assembledProse(COMPAREV.b))}</div>
+      : `<div class="prose-diff-card"><div class="label">accepted prose diff
+           <span class="diff-legend"><span class="diff-added">only in second</span> <span class="diff-removed">only in first</span></span></div>${diffHtml(assembledProse(COMPAREV.a), assembledProse(COMPAREV.b))}</div>
          <div class="compare-panes">${paneHtml(COMPAREV.a, fmtRun(a || {}), "a")}${paneHtml(COMPAREV.b, fmtRun(b || {}), "b")}</div>`}
   </section>`;
 }

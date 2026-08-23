@@ -133,7 +133,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
           characters: sc.characters.map(c => ({
             name: c.name,
             skills: c.skills.length,
-            added: c.skills.filter(s => s.source === "story").map(s => s.name),
+            added: c.skills.filter(s => s.source !== "general").map(s => s.name),
             restrictions: restrictionsOf(c.skills),
           })),
           scene: sc.scenes[0],

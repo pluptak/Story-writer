@@ -16,6 +16,9 @@ export interface CharacterDef {
   persona: string;
   knows: string;
   goal: string;
+  belief: string;
+  impulse: string;
+  voice: string[];
   skills: Skill[];
   maxRetries?: number;
 }
@@ -85,6 +88,9 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       persona: c.persona,
       knows: c.knows,
       goal: c.goal,
+      belief: c.belief,
+      impulse: c.impulse,
+      voice: c.voice,
       skills: resolveSkills(name, c.skills.join(" | "), c.restrictions.join(" | ")),
       maxRetries: c.maxRetries,
     });

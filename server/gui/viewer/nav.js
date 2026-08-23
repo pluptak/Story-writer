@@ -7,7 +7,7 @@ export const generating = () => APP.live && APP.session.running && !APP.session.
 
 export const parseHash = () => {
   const path = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return /^(shelf|story|live|read|readstory|compare|handoff|edit)$/.test(path) ? path : null;
+  return /^(shelf|story|live|read|readstory|compare|handoff|edit|scaffold)$/.test(path) ? path : null;
 };
 export const parseHashParams = () => {
   const qs = location.hash.replace(/^#\/?/, "").split("?")[1] || "";
@@ -20,6 +20,7 @@ export const parseHashParams = () => {
 const hashFor = () => {
   if (APP.view === "story" && APP.storyDir) return `#/story?dir=${encodeURIComponent(APP.storyDir)}`;
   if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
+  if (APP.view === "scaffold") return "#/scaffold";
   if (APP.view === "edit" && APP.editNew) return "#/edit?new=1";
   if (APP.view === "edit" && APP.editDir) return `#/edit?dir=${encodeURIComponent(APP.editDir)}`;
   if (APP.view === "readstory" && READER.dir) return `#/readstory?dir=${encodeURIComponent(READER.dir)}`;
@@ -41,8 +42,10 @@ export const syncHash = () => {
  *  with no engine behind it at all, which has nothing but a saved run to show. */
 export function go(v) {
   if (!APP.live && v !== "read" && v !== "readstory" && v !== "compare") v = "read";
-  // Dirty guard: confirm before leaving the editor with unsaved changes
-  if (v !== "edit" && APP.editDirty && !confirm("Discard unsaved changes?")) return;
+  // Dirty guard: confirm before leaving the editor with unsaved changes. On cancel, put the URL
+  // back: a hashchange (browser back, a bookmark) has already moved location.hash, so without this
+  // the address bar would show the page we refused to go to while the editor stays on screen.
+  if (v !== "edit" && APP.editDirty && !confirm("Discard unsaved changes?")) { syncHash(); return; }
   // Actually leaving the editor clears its state -- "discard" has to mean discard. Without this
   // the guard re-prompts on every later navigation, beforeunload keeps warning on tab close, and
   // the surviving draft can be saved into whichever story is opened next.

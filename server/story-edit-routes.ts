@@ -3,14 +3,11 @@
  * `/story/edit` (GET), `/story/check` (POST), `/story/save` (POST).
  */
 
-import { writeFile, rename } from "node:fs/promises";
-import { join as joinPath } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { LIVE } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
-import { StoryJson } from "../engine/story-schema.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleStoryEditRoutes(
@@ -59,6 +56,7 @@ export async function handleStoryEditRoutes(
 
   if (path === "/story/suggest" && req.method === "POST") {
     const o = await readJsonBody(req);
+    if (LIVE.running) { json(res, 409, { ok: false, reason: "cannot suggest while a run is in flight" }); return true; }
     const r = await host.suggestEdits(o.spec, String(o.text ?? ""));
     json(res, 200, r);
     return true;

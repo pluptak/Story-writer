@@ -76,7 +76,7 @@ export function readerPageHtml() {
   const body = [`<h2>${esc(name)}</h2>`];
   body.push(`<div class="reader-search">
     <input type="text" id="reader-q" placeholder="search this story" value="${esc(READER.query || "")}"
-      autocomplete="off" spellcheck="false">
+      aria-label="search this story" autocomplete="off" spellcheck="false">
   </div>
   <div id="reader-results">${resultsHtml()}</div>`);
   for (const ch of READER.chapters) {
@@ -162,5 +162,14 @@ export function wireReaderPage(page) {
     READER.query = q.value;
     results.innerHTML = resultsHtml();
     wireHits();
+  });
+  // Escape empties the box; Enter jumps to the first hit -- both let a search finish without the
+  // mouse, the same keyboard flow the hit buttons already give once you tab to them.
+  if (q && results) q.addEventListener("keydown", e => {
+    if (e.key === "Escape" && q.value) {
+      q.value = ""; READER.query = ""; results.innerHTML = ""; e.stopPropagation();
+    } else if (e.key === "Enter") {
+      e.preventDefault(); results.querySelector(".reader-hit")?.click();
+    }
   });
 }

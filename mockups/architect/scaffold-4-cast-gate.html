@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>scaffold · cast gate landed</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>new story · staged checklist</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <button class="tab active" type="button">new story</button>
+      <a class="tab" href="handoff-2-edits.html">next chapter</a>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot"></span>
+    <span>ready · staged walk · nothing is on disk until accept</span>
+    <span class="spacer">gate: settings · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">scaffold · staged</p>
+      <h2>Cast proposed against the tension</h2>
+      <p class="lede">Characters are authored as they walk into scene 1 — development is never authored
+        forward; the handoff owns it once real prose exists. Approve &amp; continue opens settings.</p>
+
+      <div class="workspace">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">draft so far · story ✓ · [cast]</span>
+              <h3>The Last Signal</h3>
+            </div>
+            <span class="label">proposal</span>
+          </div>
+          <div class="card-body">
+            <div class="cast">
+              <div class="person">
+                <div class="person-top"><span class="person-name">ALDOUS</span><span class="change">new</span></div>
+                <p>The keeper who falsified the log. Twenty-two winters in this tower; the storm was his last.</p>
+                <span class="tag">belief: the harbour never reads past the signature</span>
+                <span class="tag">impulse: when questioned → deflect to procedure</span>
+                <span class="tag">voice: “The page says what it says.”</span>
+                <span class="tag">skills: climbing, weather-sense</span>
+                <span class="tag warn">restriction: deprived (sleep)</span>
+              </div>
+              <div class="person">
+                <div class="person-top"><span class="person-name">IVO</span><span class="change">new</span></div>
+                <p>The substitute keeper, hired on the strength of a clean record — and sent early because of it.</p>
+                <span class="tag">belief: an honest log protects its keeper</span>
+                <span class="tag">impulse: when pressured → write everything down</span>
+                <span class="tag">voice: “Show me the page you signed.”</span>
+                <span class="tag">skills: climbing, lockpicking :: taught himself around sealed stores</span>
+              </div>
+            </div>
+            <div class="prob">A bespoke skill without `:: meaning` and not in the bible comes back as a
+              non-fatal problem rather than being silently kept.</div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3>[cast] changed: add_character ×2</h3>
+            </div>
+            <span class="label">proposal</span>
+          </div>
+          <div class="card-body">
+            <div class="round-note">
+              <span class="label">architect note</span>
+              “Both men believe they are protecting the light. Only one of them believes he already
+              failed to.”
+            </div>
+
+            <div class="checklist" aria-label="checklist position">
+              <span class="gate done"><i></i>story ✓</span>
+              <span class="gate open"><i></i>cast</span>
+              <span class="gate"><i></i>settings</span>
+              <span class="gate"><i></i>scene</span>
+            </div>
+
+            <textarea placeholder="Refine within the cast gate — or back-edit the story stage..."></textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends · Shift+Enter adds a line</span>
+              <span class="thinking"><i></i> architect is thinking…</span>
+              <button class="button" type="button">send</button>
+              <button class="button primary" type="button">approve &amp; continue →</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>scaffold state</h3>
+        <div class="stat"><span>walk</span><strong>staged</strong></div>
+        <div class="stat"><span>tension</span><strong>coined</strong></div>
+        <div class="stat"><span>open gate</span><strong>cast</strong></div>
+        <div class="stat"><span>on disk</span><strong>nothing yet</strong></div>
+        <div class="side-actions">
+          <button class="button primary" type="button">accept and choose folder</button>
+          <button class="button danger" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>psychology fields</h3>
+        <p class="side-copy">Every character carries a possibly-false belief, one conditional impulse,
+          and up to three quoted voice samples — required by normalizeSpec, rendered into that
+          character's system prompt alone.</p>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

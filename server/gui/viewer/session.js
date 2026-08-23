@@ -53,7 +53,7 @@ export async function loadModels() {
     ms.innerHTML = '<option value="">story default</option>' + modelOptionsHtml(APP.modelIds);
     const want = APP.session.model || cur || "";
     ms.value = want && [...ms.options].some(o => o.value === want) ? want : "";
-    if ((APP.scaffold.active || APP.ideaOpen) && !APP.ivHidden) APP.render();
+    if (APP.view === "scaffold") APP.render();   // the idea modal's model select just gained options
   } catch {}
 }
 

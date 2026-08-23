@@ -1,0 +1,990 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>story-writer | studio GUI mockup</title>
+  <style>
+    :root {
+      --shell: #111412;
+      --shell-2: #191d1a;
+      --shell-3: #222723;
+      --paper: #f0eee7;
+      --paper-2: #e6e3d9;
+      --ink: #171a18;
+      --reverse: #f2f1eb;
+      --muted: #999f98;
+      --paper-muted: #626861;
+      --line: #343a35;
+      --paper-line: #cfcdc4;
+      --signal: #c7f36b;
+      --signal-ink: #17200c;
+      --coral: #ff876f;
+      --blue: #85b8ff;
+      --warning: #f2c66d;
+      --danger: #ff8d8d;
+      --sans: "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
+      --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, serif;
+      --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    }
+
+    :root[data-theme="light"] {
+      --shell: #e7e5dd;
+      --shell-2: #f3f1ea;
+      --shell-3: #dad8d0;
+      --paper: #fffefa;
+      --paper-2: #f0eee7;
+      --ink: #171a18;
+      --reverse: #1a1d1a;
+      --muted: #656b65;
+      --paper-muted: #626861;
+      --line: #c8c7bf;
+      --paper-line: #d7d4ca;
+      --signal: #4f7100;
+      --signal-ink: #fff;
+      --coral: #c74532;
+      --blue: #286ebc;
+      --warning: #986b0e;
+      --danger: #b43e3e;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--shell); }
+    body { margin: 0; min-height: 100vh; color: var(--reverse); background: var(--shell); font-family: var(--sans); }
+    button, select, textarea, input { font: inherit; }
+    button, select { color: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible {
+      outline: 2px solid var(--signal);
+      outline-offset: 2px;
+    }
+    [hidden] { display: none !important; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 228px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 22px 16px 16px;
+      border-right: 1px solid var(--line);
+      background: var(--shell-2);
+      z-index: 10;
+    }
+    .wordmark { display: flex; align-items: center; gap: 10px; padding: 0 8px 30px; }
+    .mark { display: grid; grid-template-columns: repeat(2, 6px); gap: 3px; }
+    .mark i { width: 6px; height: 6px; background: var(--signal); }
+    .mark i:nth-child(2), .mark i:nth-child(3) { opacity: .35; }
+    .wordmark b { font-size: 15px; letter-spacing: -.02em; }
+    .wordmark span { display: block; margin-top: 1px; color: var(--muted); font: 9px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+
+    .nav-label { margin: 0 10px 8px; color: var(--muted); font: 9px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+    .nav-list { display: grid; gap: 3px; }
+    .nav-button {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px;
+      border: 0;
+      border-radius: 5px;
+      color: var(--muted);
+      background: transparent;
+      text-align: left;
+      font-size: 13px;
+    }
+    .nav-button:hover { color: var(--reverse); background: var(--shell-3); }
+    .nav-button.active { color: var(--reverse); background: var(--shell-3); }
+    .nav-button.active::before { content: ""; position: absolute; left: 0; width: 3px; height: 24px; background: var(--signal); }
+    .nav-icon { color: var(--muted); font: 11px var(--mono); }
+    .nav-button.active .nav-icon { color: var(--signal); }
+    .nav-count { min-width: 20px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 999px; text-align: center; font: 9px var(--mono); }
+    .nav-spacer { flex: 1; }
+
+    .connection { padding: 14px 10px 10px; border-top: 1px solid var(--line); }
+    .connection-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 12%, transparent); }
+    .connection small { display: block; margin: 5px 0 0 15px; color: var(--muted); font: 9px var(--mono); }
+
+    .theme-button {
+      margin-top: 12px;
+      width: 100%;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--muted);
+      background: transparent;
+      text-align: left;
+      font: 9px var(--mono);
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .theme-button:hover { color: var(--reverse); border-color: var(--muted); }
+
+    .shell { min-width: 0; }
+    .commandbar {
+      position: sticky;
+      top: 0;
+      z-index: 8;
+      display: flex;
+      align-items: center;
+      min-height: 58px;
+      gap: 14px;
+      padding: 9px clamp(18px, 3vw, 34px);
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--shell) 92%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .crumbs { min-width: 0; margin-right: auto; }
+    .crumbs b { display: block; overflow: hidden; color: var(--reverse); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+    .crumbs span { display: block; margin-top: 2px; color: var(--muted); font: 9px var(--mono); letter-spacing: .06em; }
+    .shortcut { color: var(--muted); font: 9px var(--mono); white-space: nowrap; }
+    .shortcut kbd { padding: 2px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; background: var(--shell-2); font: inherit; }
+
+    .compact-button, .primary-button, .danger-button {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--shell-2);
+      font: 9px var(--mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .compact-button:hover { border-color: var(--muted); }
+    .primary-button { color: var(--signal-ink); border-color: var(--signal); background: var(--signal); font-weight: 700; }
+    .primary-button:hover { filter: brightness(1.07); }
+    .danger-button { color: var(--danger); background: transparent; }
+    .danger-button:hover { border-color: var(--danger); }
+
+    .view { min-height: calc(100vh - 58px); }
+    .view-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 34px clamp(18px, 4vw, 52px) 25px;
+    }
+    .kicker { margin: 0 0 7px; color: var(--signal); font: 9px var(--mono); letter-spacing: .18em; text-transform: uppercase; }
+    .view-head h1 { max-width: 820px; margin: 0; font: 400 clamp(27px, 4vw, 46px)/1.03 var(--serif); letter-spacing: -.035em; }
+    .view-head .intro { max-width: 640px; margin: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .view-stat { flex: none; min-width: 170px; padding: 0 0 4px 18px; border-left: 1px solid var(--line); }
+    .view-stat span { display: block; color: var(--muted); font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .view-stat b { display: block; margin-top: 5px; font: 400 24px var(--serif); }
+
+    /* Library */
+    .library-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 28px;
+      padding: 0 clamp(18px, 4vw, 52px) 70px;
+    }
+    .section-rule { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; color: var(--muted); font: 9px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    .section-rule::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+    .story-list { border-top: 1px solid var(--line); }
+    .story-row {
+      display: grid;
+      grid-template-columns: 42px minmax(160px, .7fr) minmax(220px, 1.3fr) 96px 26px;
+      align-items: center;
+      gap: 18px;
+      width: 100%;
+      padding: 18px 8px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--reverse);
+      background: transparent;
+      text-align: left;
+    }
+    .story-row:hover { background: var(--shell-2); }
+    .story-number { color: var(--muted); font: 10px var(--mono); }
+    .story-title b { display: block; font: 400 18px var(--serif); }
+    .story-title span, .story-question, .story-meta { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .story-title span, .story-meta { font-family: var(--mono); font-size: 9px; }
+    .story-arrow { color: var(--signal); font: 15px var(--mono); }
+    .new-story {
+      display: grid;
+      place-items: center;
+      min-height: 260px;
+      padding: 24px;
+      border: 1px dashed var(--line);
+      background: var(--shell-2);
+      text-align: center;
+    }
+    .new-story .plus { display: grid; place-items: center; width: 40px; height: 40px; margin: 0 auto 18px; border: 1px solid var(--signal); border-radius: 50%; color: var(--signal); font: 20px var(--mono); }
+    .new-story h2 { margin: 0; font: 400 20px var(--serif); }
+    .new-story p { margin: 8px auto 18px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+    /* Live writer */
+    .live-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 292px;
+      align-items: start;
+      gap: 0;
+      border-top: 1px solid var(--line);
+    }
+    .manuscript-wrap { min-width: 0; padding: 30px clamp(18px, 4vw, 54px) 90px; }
+    .manuscript {
+      max-width: 780px;
+      margin: 0 auto;
+      color: var(--ink);
+      background: var(--paper);
+      box-shadow: 0 18px 60px rgba(0,0,0,.28);
+    }
+    .manuscript-head { display: flex; justify-content: space-between; gap: 18px; padding: 17px 24px 14px; border-bottom: 1px solid var(--paper-line); }
+    .manuscript-label { color: var(--paper-muted); font: 9px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .manuscript-head b { display: block; margin-top: 3px; font: 400 19px var(--serif); }
+    .manuscript-body { padding: clamp(28px, 5vw, 56px) clamp(24px, 7vw, 76px) 48px; }
+    .run-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 30px; }
+    .run-tag { padding: 3px 7px; border: 1px solid var(--paper-line); border-radius: 2px; color: var(--paper-muted); font: 8px var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+    .prose { font: 17.5px/1.78 var(--serif); }
+    .prose p { margin: 0 0 1.2em; }
+    .cursor { display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; background: #688e1f; vertical-align: -.15em; animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .consult-line { margin: 26px 0; border-top: 1px solid var(--paper-line); }
+    .consult-line summary { display: flex; align-items: center; gap: 9px; margin-top: -9px; color: var(--paper-muted); cursor: pointer; list-style: none; font: 8px var(--mono); letter-spacing: .11em; text-transform: uppercase; }
+    .consult-line summary::-webkit-details-marker { display: none; }
+    .consult-line summary span { padding: 2px 7px; background: var(--paper); }
+    .consult-line summary b { color: #3d6912; }
+    .consult-body { margin-top: 12px; padding: 14px 16px; border-left: 3px solid #729b24; background: var(--paper-2); font-size: 11px; line-height: 1.55; }
+    .consult-body dl { display: grid; grid-template-columns: 72px 1fr; gap: 6px 12px; margin: 0; }
+    .consult-body dt { color: var(--paper-muted); font: 8px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .consult-body dd { margin: 0; }
+    .consult-result { margin-top: 11px; color: #3d6912; font: 8px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+    .composing-line { display: flex; align-items: center; gap: 8px; margin-top: 28px; color: #52751c; font: 9px var(--mono); }
+    .composing-line i { width: 20px; height: 1px; background: #52751c; animation: compose 1.4s ease-in-out infinite; transform-origin: left; }
+    @keyframes compose { 0%,100% { transform: scaleX(.25); } 50% { transform: scaleX(1); } }
+
+    .inspector { position: sticky; top: 58px; min-width: 0; max-height: calc(100vh - 58px); overflow-y: auto; padding: 26px 20px 50px; border-left: 1px solid var(--line); }
+    .inspector-title { margin: 0 0 13px; color: var(--muted); font: 9px var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+    .phase-switch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-bottom: 22px; }
+    .phase-button { padding: 6px 4px; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); background: transparent; font: 8px var(--mono); text-transform: uppercase; }
+    .phase-button.active { color: var(--signal-ink); border-color: var(--signal); background: var(--signal); }
+    .meter { display: grid; grid-template-columns: 1fr auto; gap: 5px; margin-bottom: 16px; }
+    .meter span { color: var(--muted); font-size: 11px; }
+    .meter b { font: 10px var(--mono); }
+    .meter-track { grid-column: 1 / -1; height: 3px; background: var(--line); }
+    .meter-track i { display: block; width: 68%; height: 100%; background: var(--signal); }
+    .stats { margin-bottom: 22px; border-top: 1px solid var(--line); }
+    .stat { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+    .stat b { color: var(--reverse); font: 9px var(--mono); text-align: right; overflow-wrap: anywhere; }
+    .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .control-grid .wide { grid-column: 1 / -1; }
+    .control-grid select { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--shell-2); font: 9px var(--mono); }
+    .cast-list { display: grid; gap: 8px; margin-top: 10px; }
+    .cast-person { padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--shell-2); }
+    .cast-person b { color: var(--signal); font: 10px var(--mono); letter-spacing: .08em; }
+    .cast-person p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+
+    .interruption { margin: 28px 0 0; padding: 17px; border: 1px solid var(--warning); color: var(--reverse); background: var(--shell-2); }
+    .interruption .interruption-label { color: var(--warning); font: 9px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .interruption h3 { margin: 7px 0 12px; font: 400 19px var(--serif); }
+    .direction-list { display: grid; gap: 6px; }
+    .direction { padding: 9px 10px; border: 1px solid var(--line); border-radius: 3px; color: var(--reverse); background: var(--shell); text-align: left; font-size: 11px; }
+    .direction:hover { border-color: var(--warning); }
+
+    /* Architect */
+    .architect-layout {
+      display: grid;
+      grid-template-columns: 176px minmax(0, 1fr) 310px;
+      min-height: calc(100vh - 58px);
+      border-top: 1px solid var(--line);
+    }
+    .stage-rail { padding: 28px 20px; border-right: 1px solid var(--line); }
+    .stage-rail h2 { margin: 0 0 20px; color: var(--muted); font: 9px var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+    .stage-list { position: relative; display: grid; gap: 4px; }
+    .stage-list::before { content: ""; position: absolute; left: 7px; top: 12px; bottom: 12px; width: 1px; background: var(--line); }
+    .stage {
+      position: relative;
+      display: grid;
+      grid-template-columns: 15px 1fr;
+      gap: 10px;
+      padding: 8px 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .stage i { z-index: 1; width: 15px; height: 15px; border: 1px solid var(--line); border-radius: 50%; background: var(--shell); }
+    .stage.done { color: var(--reverse); }
+    .stage.done i { border-color: var(--signal); background: var(--signal); box-shadow: inset 0 0 0 4px var(--shell); }
+    .stage.open { color: var(--signal); font-weight: 600; }
+    .stage.open i { border: 4px solid var(--signal); }
+    .stage small { display: block; margin-top: 2px; color: var(--muted); font: 8px var(--mono); }
+
+    .proposal-wrap { min-width: 0; padding: 28px clamp(18px, 4vw, 48px) 90px; }
+    .proposal-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .proposal-head h2 { margin: 0; font: 400 clamp(24px, 3vw, 34px)/1.1 var(--serif); }
+    .proposal-head p { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
+    .proposal-paper { color: var(--ink); background: var(--paper); box-shadow: 0 18px 60px rgba(0,0,0,.24); }
+    .proposal-section { padding: 25px clamp(20px, 4vw, 42px); border-bottom: 1px solid var(--paper-line); }
+    .proposal-section:last-child { border-bottom: 0; }
+    .proposal-section.current { border-left: 4px solid var(--coral); }
+    .proposal-section-label { color: var(--paper-muted); font: 8px var(--mono); letter-spacing: .15em; text-transform: uppercase; }
+    .proposal-section h3 { margin: 7px 0 9px; font: 400 24px var(--serif); }
+    .proposal-section p { margin: 0; color: var(--paper-muted); font-size: 12px; line-height: 1.6; }
+    .tension { margin-top: 17px; padding: 12px 14px; border-left: 3px solid var(--coral); background: var(--paper-2); color: var(--ink); font: italic 15px/1.5 var(--serif); }
+    .fact-row { display: grid; grid-template-columns: 72px 1fr; gap: 12px; padding: 8px 0; border-top: 1px solid var(--paper-line); font-size: 11px; }
+    .fact-row:first-of-type { margin-top: 15px; }
+    .fact-row b { color: var(--paper-muted); font: 8px var(--mono); text-transform: uppercase; }
+    .character-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin-top: 14px; background: var(--paper-line); border: 1px solid var(--paper-line); }
+    .character { padding: 15px; background: var(--paper); }
+    .character b { color: #477314; font: 9px var(--mono); letter-spacing: .1em; }
+    .character p { margin-top: 6px; font-size: 11px; }
+    .character small { display: block; margin-top: 8px; color: var(--paper-muted); font: 8px/1.5 var(--mono); }
+
+    .round-panel { position: sticky; top: 58px; max-height: calc(100vh - 58px); overflow-y: auto; padding: 28px 20px 25px; border-left: 1px solid var(--line); background: var(--shell-2); }
+    .round-panel h2 { margin: 6px 0 10px; font: 400 22px var(--serif); }
+    .round-panel > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .architect-note { margin: 18px 0; padding: 13px 14px; border-left: 2px solid var(--blue); background: var(--shell); }
+    .architect-note span { color: var(--blue); font: 8px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .architect-note p { margin: 7px 0 0; font: italic 14px/1.5 var(--serif); }
+    .round-panel textarea { width: 100%; min-height: 100px; resize: vertical; padding: 11px; border: 1px solid var(--line); border-radius: 4px; color: var(--reverse); background: var(--shell); font-size: 12px; line-height: 1.5; }
+    .round-panel textarea::placeholder { color: var(--muted); }
+    .composer-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .composer-actions button:first-child { flex: 1; }
+    .round-status { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font: 8px var(--mono); }
+    .round-status b { color: var(--signal); }
+    .accept-panel { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .accept-panel p { margin: 0 0 11px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .accept-panel button { width: 100%; }
+
+    @media (max-width: 1080px) {
+      .app { grid-template-columns: 72px minmax(0, 1fr); }
+      .nav { padding-inline: 10px; }
+      .wordmark { justify-content: center; padding-inline: 0; }
+      .wordmark > div:last-child, .nav-label, .nav-button > span:not(.nav-icon), .nav-count, .connection-line span, .connection small, .theme-button span { display: none; }
+      .nav-button { display: grid; grid-template-columns: 1fr; place-items: center; padding: 11px 4px; }
+      .theme-button { text-align: center; }
+      .architect-layout { grid-template-columns: 150px minmax(0, 1fr); }
+      .round-panel { position: static; grid-column: 1 / -1; max-height: none; border-top: 1px solid var(--line); border-left: 0; }
+    }
+
+    @media (max-width: 820px) {
+      .library-grid, .live-layout { grid-template-columns: 1fr; }
+      .library-grid { gap: 34px; }
+      .new-story { min-height: 190px; }
+      .story-row { grid-template-columns: 32px minmax(130px, .75fr) minmax(180px, 1.25fr) 22px; }
+      .story-meta { display: none; }
+      .inspector { position: static; max-height: none; border-top: 1px solid var(--line); border-left: 0; }
+      .architect-layout { grid-template-columns: 1fr; }
+      .stage-rail { border-right: 0; border-bottom: 1px solid var(--line); }
+      .stage-list { grid-template-columns: repeat(5, minmax(70px, 1fr)); overflow-x: auto; }
+      .stage-list::before { left: 7px; right: 7px; top: 15px; bottom: auto; width: auto; height: 1px; }
+      .stage { grid-template-columns: 15px; align-content: start; }
+      .round-panel { grid-column: auto; }
+    }
+
+    @media (max-width: 620px) {
+      .app { display: block; padding-bottom: 65px; }
+      .nav { position: fixed; inset: auto 0 0; width: 100%; height: 65px; padding: 6px 10px; border-top: 1px solid var(--line); border-right: 0; }
+      .wordmark, .nav-label, .nav-spacer, .connection, .theme-button { display: none; }
+      .nav-list { grid-template-columns: repeat(3, 1fr); height: 100%; }
+      .nav-button { gap: 1px; padding: 4px; text-align: center; }
+      .nav-button > span:not(.nav-icon) { display: block; font-size: 9px; }
+      .nav-button.active::before { top: 0; left: auto; width: 28px; height: 2px; }
+      .commandbar { min-height: 52px; padding-inline: 15px; }
+      .shortcut, .commandbar .compact-button { display: none; }
+      .view { min-height: calc(100vh - 117px); }
+      .view-head { display: block; padding: 25px 16px 20px; }
+      .view-head h1 { font-size: 29px; }
+      .view-stat { margin-top: 20px; padding-left: 0; border-left: 0; }
+      .view-stat b { font-size: 18px; }
+      .library-grid { padding: 0 16px 50px; }
+      .story-row { grid-template-columns: 28px minmax(0, 1fr) 18px; gap: 10px; padding: 15px 4px; }
+      .story-question, .story-meta { display: none; }
+      .manuscript-wrap { padding: 18px 12px 45px; }
+      .manuscript-head { padding-inline: 15px; }
+      .manuscript-body { padding: 30px 20px 38px; }
+      .prose { font-size: 16px; }
+      .consult-body dl { grid-template-columns: 1fr; gap: 3px; }
+      .consult-body dd + dt { margin-top: 6px; }
+      .architect-layout { min-height: calc(100vh - 52px); }
+      .stage-rail { padding: 20px 16px; }
+      .proposal-wrap { padding: 23px 12px 42px; }
+      .proposal-head { display: block; padding-inline: 4px; }
+      .proposal-head .compact-button { margin-top: 12px; }
+      .character-grid { grid-template-columns: 1fr; }
+      .round-panel { padding-inline: 16px; }
+      .composer-actions { flex-wrap: wrap; }
+      .composer-actions button { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="nav">
+      <div class="wordmark">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <div><b>story-writer</b><span>local studio</span></div>
+      </div>
+      <p class="nav-label">Workspace</p>
+      <nav class="nav-list" aria-label="Mockup views">
+        <button class="nav-button" type="button" data-view="library"><span class="nav-icon">01</span><span>Library</span><span class="nav-count">4</span></button>
+        <button class="nav-button active" type="button" data-view="live"><span class="nav-icon">02</span><span>Live chapter</span><span class="nav-count">1</span></button>
+        <button class="nav-button" type="button" data-view="architect"><span class="nav-icon">03</span><span>Architect</span><span class="nav-count">3</span></button>
+      </nav>
+      <div class="nav-spacer"></div>
+      <div class="connection">
+        <div class="connection-line"><i class="pulse"></i><span>LM Studio connected</span></div>
+        <small>127.0.0.1:1234</small>
+        <button class="theme-button" id="theme" type="button"><span>Switch paper tone</span></button>
+      </div>
+    </aside>
+
+    <div class="shell">
+      <header class="commandbar">
+        <div class="crumbs"><b id="commandTitle">The Last Signal / Chapter 2</b><span id="commandStatus">LIVE - WRITER COMPOSING - STEP 7</span></div>
+        <span class="shortcut"><kbd>Ctrl</kbd> <kbd>K</kbd> commands</span>
+        <button class="compact-button" type="button" id="expand">Expand consults</button>
+      </header>
+
+      <main>
+        <section class="view" id="libraryView" hidden>
+          <header class="view-head">
+            <div><p class="kicker">Story library</p><h1>Choose a world to return to.</h1><p class="intro">Written chapters, retained runs, and stories still waiting for their first scene.</p></div>
+            <div class="view-stat"><span>On this machine</span><b>4 stories</b></div>
+          </header>
+          <div class="library-grid">
+            <section>
+              <div class="section-rule" id="libraryRule">Recently opened</div>
+              <div class="story-list" id="storyList"></div>
+            </section>
+            <aside class="new-story">
+              <div><span class="plus">+</span><h2>Start from pressure</h2><p>The architect turns a rough situation into a cast, facts, and a scene question.</p><button class="primary-button" type="button" data-open-architect>New story</button></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="liveView">
+          <header class="view-head">
+            <div><p class="kicker">Chapter 2 of 3 / Live run</p><h1>Will Ivo expose the falsified log before the relief crew arrives?</h1><p class="intro">The writer owns narration and pressure. Character choices arrive through isolated consultations.</p></div>
+            <div class="view-stat"><span>Current phase</span><b id="phaseHeadline">Drafting</b></div>
+          </header>
+
+          <div class="live-layout">
+            <div class="manuscript-wrap">
+              <article class="manuscript">
+                <header class="manuscript-head"><div><span class="manuscript-label">Live manuscript</span><b id="manuscriptTitle">A draft is arriving</b></div><span class="manuscript-label">step 7</span></header>
+                <div class="manuscript-body">
+                  <div class="run-tags" id="runTags"></div>
+                  <div class="prose" id="prose"></div>
+                  <div class="composing-line" id="composing" hidden><i></i><span id="composingText"></span></div>
+                </div>
+              </article>
+
+              <section class="interruption" id="readerInterruption" hidden>
+                <span class="interruption-label">The writer wants your call</span><h3>Which pressure should the scene follow?</h3>
+                <div class="direction-list"><button class="direction" type="button">Make the approaching crew force Ivo to act now.</button><button class="direction" type="button">Follow what Mara has hidden in the lower drawer.</button><button class="direction" type="button">Let the original log contradict them both.</button></div>
+              </section>
+            </div>
+
+            <aside class="inspector">
+              <h2 class="inspector-title">Prototype state</h2>
+              <div class="phase-switch"><button class="phase-button active" type="button" data-phase="draft">Draft</button><button class="phase-button" type="button" data-phase="consult">Consult</button><button class="phase-button" type="button" data-phase="reader">Reader</button></div>
+              <h2 class="inspector-title">Run</h2>
+              <div class="meter"><span>Word target</span><b id="wordPct">0%</b><div class="meter-track"><i id="wordBar" style="width:0%"></i></div></div>
+              <div class="stats"><div class="stat"><span>Steps</span><b id="statSteps">0 / 0</b></div><div class="stat"><span>Model</span><b id="statModel">—</b></div><div class="stat"><span>Consults</span><b id="statConsults">0</b></div><div class="stat"><span>Elapsed</span><b id="statElapsed">00:00</b></div></div>
+              <div class="control-grid"><button class="compact-button" id="pause" type="button">Pause</button><button class="compact-button" type="button" id="consultMe">Consult me</button><select class="wide" id="modelSelect" aria-label="Model override"><option value="">Story default</option></select><button class="danger-button wide" id="stop" type="button">Stop run</button></div>
+              <h2 class="inspector-title" style="margin-top:28px">Cast in scene</h2>
+              <div class="cast-list" id="castList"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="architectView" hidden>
+          <header class="view-head">
+            <div><p class="kicker">Architect / Staged scaffold</p><h1>Build the story in decisions, not forms.</h1><p class="intro">The proposal remains the primary artifact. Approve one gate at a time or refine the open gate without advancing it.</p></div>
+            <div class="view-stat"><span>Open gate</span><b id="gateHeadline">Cast</b></div>
+          </header>
+
+          <div class="architect-layout">
+            <aside class="stage-rail">
+              <h2>Staged walk</h2>
+              <div class="stage-list" id="stageList"></div>
+            </aside>
+
+            <div class="proposal-wrap">
+              <header class="proposal-head"><div><h2 id="proposalTitle">New story</h2><p id="proposalSub">Nothing on disk yet</p></div><button class="compact-button" type="button" id="architectAbandon" hidden>Abandon</button></header>
+              <article class="proposal-paper" id="proposalPaper"></article>
+            </div>
+
+            <aside class="round-panel">
+              <form class="architect-start" id="architectStart" hidden>
+                <span class="kicker">Start an interview</span><h2>From pressure</h2>
+                <p>Describe a rough situation. The architect turns it into a cast, facts, and a scene question.</p>
+                <textarea id="ideaInput" aria-label="Story idea" placeholder="A lighthouse keeper finds the outgoing keeper falsified the only signal log…" style="width:100%;min-height:90px;resize:vertical;padding:11px;border:1px solid var(--line);border-radius:4px;color:var(--reverse);background:var(--shell);font-size:12px;line-height:1.5"></textarea>
+                <div class="composer-actions" style="margin-top:8px">
+                  <select id="architectModel" aria-label="Architect model" style="flex:1;min-width:0;padding:7px;border:1px solid var(--line);border-radius:4px;background:var(--shell-2);font:9px var(--mono)"></select>
+                  <select id="architectMode" aria-label="Walk mode" style="padding:7px;border:1px solid var(--line);border-radius:4px;background:var(--shell-2);font:9px var(--mono)"><option value="staged">Staged</option><option value="oneshot">One-shot</option></select>
+                </div>
+                <div class="composer-actions"><button class="primary-button" type="submit" id="architectBegin" style="flex:1">Begin</button></div>
+                <div class="round-status"><span id="architectStartStatus">SESSION NOT WAITING</span></div>
+              </form>
+
+              <div class="architect-session" id="architectSession" hidden>
+                <span class="kicker" id="roundKicker">Architect round</span><h2 id="roundHeadline">—</h2><p id="roundIntro"></p>
+                <div class="architect-note" id="architectNote" hidden><span>Architect note</span><p></p></div>
+                <textarea id="roundInput" aria-label="Architect message" placeholder="What should change?"></textarea>
+                <div class="composer-actions"><button class="compact-button" type="button" id="roundSend" style="flex:1">Send refinement</button><button class="primary-button" type="button" id="approveGate">Approve + continue</button></div>
+                <div class="round-status"><span>ENTER SENDS / SHIFT+ENTER LINE</span><b id="roundReady">READY</b></div>
+                <div class="accept-panel"><p id="acceptHint">Approve the gates, then accept to write the story.</p><button class="compact-button" type="button" id="acceptStory" style="width:100%">Accept and choose folder</button></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+    const API = {
+      async get(p) { const r = await fetch(p); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); },
+      async post(p, body) {
+        const r = await fetch(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+        return r.json();
+      }
+    };
+
+    const APP = {
+      run: null, state: null, models: null, stories: [], scaffold: null,
+      blocks: [], seenSeq: new Set(), openConsult: null, readerPending: null,
+      cast: null, castDir: "", castLoading: false,
+      words: 0, steps: 0, consults: 0, runStart: null
+    };
+
+    // -- view switching -----------------------------------------------------
+    function showView(name) {
+      $$(".view").forEach(v => { v.hidden = v.id !== name + "View"; });
+      $$("[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === name));
+      $("#expand").hidden = name !== "live";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    function showPhase(phase) {
+      const copy = {
+        draft: ["Drafting", "A draft is arriving"],
+        consult: ["Consulting", "A choice is being checked"],
+        reader: ["Reader wait", "The writer wants your call"]
+      };
+      $$("[data-phase]").forEach(b => b.classList.toggle("active", b.dataset.phase === phase));
+      $("#phaseHeadline").textContent = copy[phase][0];
+      $("#manuscriptTitle").textContent = copy[phase][1];
+      if (phase === "reader" && APP.readerPending) renderReader();
+      else $("#readerInterruption").hidden = phase !== "reader" || !APP.readerPending;
+    }
+
+    // -- SSE + frame dispatch ----------------------------------------------
+    function connect() {
+      const es = new EventSource("/events");
+      es.onmessage = ev => { try { handleFrame(JSON.parse(ev.data)); } catch (_) {} };
+      es.onerror = () => {};
+    }
+    function handleFrame(f) {
+      // /events replays the current run after every reconnect. A sequence number makes replay
+      // safe to consume without duplicating manuscript paragraphs or consults.
+      if (f.seq !== undefined) {
+        if (APP.seenSeq.has(f.seq)) return;
+        APP.seenSeq.add(f.seq);
+      }
+      switch (f.t) {
+        case "run_state": APP.state = Object.assign({}, APP.state, f); onState(); break;
+        case "run_reset": resetRun(); break;
+        case "run_error": APP.error = f.message; renderError(); break;
+        case "composing": showComposing(f); break;
+        case "idle": hideComposing(); break;
+        case "scene_start": onSceneStart(f); break;
+        case "draft": onDraft(f); break;
+        case "consult": onConsult(f); break;
+        case "answer": onAnswer(f); break;
+        case "reader_ask": onReaderAsk(f); break;
+        case "reader_answer": onReaderAnswer(); break;
+        case "scaffold": APP.scaffold = f.state; renderArchitect(); break;
+        default: break;
+      }
+    }
+
+    function resetRun() {
+      APP.blocks = []; APP.seenSeq.clear(); APP.openConsult = null; APP.readerPending = null;
+      APP.cast = null; APP.castDir = ""; APP.castLoading = false;
+      APP.words = 0; APP.steps = 0; APP.consults = 0; APP.runStart = null;
+      refreshRun(); renderLive();
+    }
+
+    async function refreshRun() {
+      try {
+        const snapshot = await API.get("/run");
+        APP.run = snapshot.run;
+        APP.state = snapshotState(snapshot);
+        onState();
+      } catch (_) {}
+    }
+
+    // -- library ------------------------------------------------------------
+    function renderLibrary() {
+      const list = $("#storyList");
+      if (!APP.stories.length) {
+        list.innerHTML = '<div class="story-row" style="cursor:default"><span class="story-title"><b>No stories discovered</b><span>run a story first</span></span></div>';
+      } else {
+        list.innerHTML = APP.stories.map((c, i) => {
+          const runs = (c.runs || []).length;
+          const chap = (c.chapters && c.chapters.length) ? c.chapters.length + " chapters" : "unwritten";
+          const title = c.title || c.name;
+          const q = c.scene && c.scene.question ? c.scene.question : (c.premise || "");
+          return `<button class="story-row" type="button" data-dir="${esc(c.dir)}">
+            <span class="story-number">${String(i + 1).padStart(2, "0")}</span>
+            <span class="story-title"><b>${esc(title)}</b><span>${esc(c.name)}</span></span>
+            <span class="story-question">${esc(q)}</span>
+            <span class="story-meta">${chap}<br>${runs} runs</span>
+            <span class="story-arrow">-&gt;</span></button>`;
+        }).join("");
+        $$("#storyList .story-row").forEach(b => b.addEventListener("click", () => selectStory(b.dataset.dir)));
+      }
+      const lc = $('[data-view="library"] .nav-count'); if (lc) lc.textContent = APP.stories.length;
+    }
+    async function selectStory(dir) {
+      if (APP.state && APP.state.picking) {
+        const result = await postAction("/select", { dir });
+        if (result && result.ok) showView("live");
+      } else {
+        showView("live");
+      }
+    }
+
+    // -- live ---------------------------------------------------------------
+    function onSceneStart(f) {
+      APP.blocks = []; APP.openConsult = null; APP.readerPending = null;
+      APP.cast = null; APP.castDir = ""; APP.castLoading = false;
+      APP.run = APP.run || {};
+      APP.run.story = f.story; APP.run.characters = f.characters; APP.run.target = f.target;
+      renderLive();
+    }
+    function onDraft(f) {
+      APP.blocks.push({ type: "prose", text: f.prose || "" });
+      APP.words = f.words || APP.words; APP.steps = f.step || APP.steps;
+      renderManuscript(); renderLiveStats();
+    }
+    function onConsult(f) {
+      const block = { type: "consult", character: f.character, situation: f.situation, question: f.question, wants: f.wants, answer: null };
+      APP.blocks.push(block); APP.openConsult = block; APP.consults++;
+      renderManuscript(); renderLiveStats();
+    }
+    function onAnswer(f) {
+      const block = [...APP.blocks].reverse().find(b => b.type === "consult" && b.answer === null && b.character === f.character) || APP.openConsult;
+      if (block) {
+        block.answer = { thought: f.thought, speech: f.speech, action: f.action, note: f.note };
+        renderManuscript();
+      }
+    }
+    function onReaderAsk(f) {
+      APP.readerPending = { framing: f.framing, options: f.options || [] };
+      renderReader();
+    }
+    function onReaderAnswer() {
+      APP.readerPending = null;
+      const ir = $("#readerInterruption");
+      ir.hidden = true; ir.querySelector(".direction-list").innerHTML = "";
+      $("#commandStatus").textContent = "LIVE - READER DIRECTION TAKEN";
+    }
+    function renderReader() {
+      const ir = $("#readerInterruption");
+      if (!APP.readerPending) { ir.hidden = true; return; }
+      ir.hidden = false;
+      ir.querySelector("h3").textContent = APP.readerPending.framing || "Which pressure should the scene follow?";
+      const dl = ir.querySelector(".direction-list");
+      const opts = APP.readerPending.options.length ? APP.readerPending.options : ["Continue as the writer suggests."];
+      dl.innerHTML = opts.map(o => `<button class="direction" type="button">${esc(o)}</button>`).join("");
+      $$("#readerInterruption .direction").forEach(b => b.addEventListener("click", async () => {
+        $$("#readerInterruption .direction").forEach(x => x.style.borderColor = "");
+        b.style.borderColor = "var(--signal)";
+        await API.post("/reader-answer", { answer: b.textContent });
+      }));
+      if ($('[data-view="live"]').classList.contains("active")) showPhase("reader");
+    }
+    function consultHtml(b) {
+      const c = b.answer
+        ? `<div class="consult-result">Accepted - speech + action folded into the scene</div>`
+        : "";
+      const body = b.answer
+        ? `<dl><dt>Situation</dt><dd>${esc(b.situation)}</dd><dt>Writer asks</dt><dd>${esc(b.question)}</dd>`
+          + `<dt>${esc(b.character)}</dt><dd>${esc([b.answer.speech, b.answer.action].filter(Boolean).join(" "))}</dd></dl>${c}`
+        : `<dl><dt>Situation</dt><dd>${esc(b.situation)}</dd><dt>Writer asks</dt><dd>${esc(b.question)}</dd></dl><div class="consult-result">Awaiting answer…</div>`;
+      return `<details class="consult-line" open><summary><span>Consult / <b>${esc(b.character)}</b> / ${b.answer ? "accepted" : "pending"}</span></summary><div class="consult-body">${body}</div></details>`;
+    }
+    function renderManuscript() {
+      const prose = $("#prose");
+      prose.innerHTML = APP.blocks.map(b => {
+        if (b.type === "prose") return `<p>${esc(b.text)}</p>`;
+        if (b.type === "consult") return consultHtml(b);
+        return "";
+      }).join("");
+    }
+    function showComposing(f) {
+      const el = $("#composing"); el.hidden = false;
+      $("#composingText").textContent = `${f.who || "writer"} composing / ${f.secs || 0}s / ${f.chars || 0} chars`;
+    }
+    function hideComposing() { $("#composing").hidden = true; }
+
+    function renderLive() {
+      const meta = APP.run;
+      if (meta) {
+        $("#commandTitle").textContent = `${meta.story || ""} / Chapter ${meta.chapter || "?"}`;
+        $("#manuscriptTitle").textContent = meta.question || "A draft is arriving";
+        const h1 = $("#liveView .view-head h1"); if (h1) h1.textContent = meta.question || "A draft is arriving";
+        if (meta.story && APP.castDir !== meta.story && !APP.castLoading) loadCast(meta.story);
+        const cast = APP.cast || meta.characters || [];
+        $("#castList").innerHTML = cast.map(c =>
+          `<div class="cast-person"><b>${esc((c.name || "").toUpperCase())}</b><p>${esc(c.persona || c.goal || "")}</p></div>`).join("");
+      }
+      renderManuscript(); renderLiveStats();
+    }
+    async function loadCast(dir) {
+      APP.castDir = dir; APP.castLoading = true;
+      try {
+        const result = await API.get("/cast?dir=" + encodeURIComponent(dir));
+        if (result.ok) { APP.cast = result.characters || []; renderLive(); }
+      } catch (_) {}
+      finally { APP.castLoading = false; }
+    }
+    function renderLiveStats() {
+      const meta = APP.run;
+      const target = (meta && meta.target) || 0;
+      const pct = target ? Math.min(100, Math.round((APP.words / target) * 100)) : 0;
+      $("#wordPct").textContent = pct + "%";
+      $("#wordBar").style.width = pct + "%";
+      $("#statSteps").textContent = `${APP.steps} / ${target || "?"}`;
+      $("#statModel").textContent = (APP.state && APP.state.model) || "—";
+      $("#statConsults").textContent = APP.consults + " accepted";
+      $("#statElapsed").textContent = elapsed();
+    }
+    function elapsed() {
+      if (!APP.runStart) return "00:00";
+      const s = Math.floor((Date.now() - APP.runStart) / 1000);
+      return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    }
+
+    function onState() {
+      const st = APP.state || {};
+      if (st.running && !APP.runStart) APP.runStart = Date.now();
+      if (!st.running) APP.runStart = null;
+      // pause button
+      const pause = $("#pause");
+      pause.textContent = (st.paused || st.pausing) ? "Resume" : "Pause";
+      pause.disabled = !st.running;
+      $("#stop").disabled = !st.running;
+      $("#consultMe").disabled = !(st.running && st.interactive);
+      $("#modelSelect").disabled = !(st.running && (st.paused || st.pausing));
+      const lvc = $('[data-view="live"] .nav-count'); if (lvc) lvc.textContent = st.running ? 1 : 0;
+      // command status
+      let status = "IDLE";
+      if (st.picking) status = "PICKER WAITING";
+      else if (st.running && st.pausing) status = "LIVE - PAUSED AT STEP BOUNDARY";
+      else if (st.running && st.paused) status = "LIVE - PAUSED";
+      else if (st.running && st.armed) status = "LIVE - READER ARMED";
+      else if (st.running) status = `LIVE - WRITER COMPOSING - STEP ${APP.steps}`;
+      $("#commandStatus").textContent = status;
+      // connection
+      renderConnection();
+      renderLibrary(); renderLive(); renderArchitect();
+    }
+
+    // -- architect ----------------------------------------------------------
+    const GATES = ["story", "cast", "settings", "technical", "scene"];
+    function renderArchitect() {
+      const s = APP.scaffold;
+      const startForm = $("#architectStart");
+      const session = $("#architectSession");
+      if (!s || !s.active) {
+        startForm.hidden = !(APP.state && APP.state.picking);
+        session.hidden = true;
+        $("#architectAbandon").hidden = true;
+        $("#stageList").innerHTML = "";
+        $("#proposalPaper").innerHTML = '<section class="proposal-section"><p style="color:var(--paper-muted)">No interview open. Start one from the panel, or wait for the picker to offer a new story.</p></section>';
+        const lv = $('[data-view="architect"] .nav-count'); if (lv) lv.textContent = "3";
+        return;
+      }
+      startForm.hidden = true; session.hidden = false;
+      $("#architectAbandon").hidden = false;
+      const idx = GATES.indexOf(s.gate);
+      $("#stageList").innerHTML = GATES.map((g, i) => {
+        const cls = g === s.gate ? "stage open" : (i < idx || (s.gate === null && s.haveStory)) ? "stage done" : "stage";
+        const small = g === s.gate ? "open now" : (i < idx ? "approved" : "waiting");
+        return `<div class="${cls}"><i></i><span>${cap(g)}<small>${small}</small></span></div>`;
+      }).join("");
+      $("#gateHeadline").textContent = s.gate ? cap(s.gate) : "Done";
+      renderProposal(s);
+      // round panel
+      $("#roundKicker").textContent = "Architect round / " + ((s.last && s.last.kind) || "proposal");
+      $("#roundHeadline").textContent = roundHeadline(s);
+      $("#roundIntro").textContent = roundIntro(s);
+      const note = $("#architectNote");
+      if (s.last && s.last.note) { note.hidden = false; note.querySelector("p").textContent = s.last.note; }
+      else note.hidden = true;
+      $("#roundReady").textContent = s.busy ? "WORKING" : "READY";
+      $("#approveGate").disabled = s.busy || s.mode === "oneshot" || !s.haveStory;
+      $("#acceptStory").disabled = s.busy || !s.haveStory;
+      $("#acceptHint").textContent = s.needsFolder ? "Pick a folder name, then accept." : "Approve the gates, then accept to write the story.";
+      const lv = $('[data-view="architect"] .nav-count'); if (lv) lv.textContent = String(GATES.length);
+    }
+    function roundHeadline(s) {
+      const k = s.last && s.last.kind;
+      if (k === "edits") return "Edits applied";
+      if (k === "question") return "Architect asks";
+      if (k === "nothing") return "No change";
+      if (k === "failed") return "Failed";
+      if (k === "proposal") return "Proposal landed";
+      return s.gate ? cap(s.gate) + " gate" : "Draft";
+    }
+    function roundIntro(s) {
+      if (s.last && s.last.kind === "question" && s.last.ask) return s.last.ask;
+      if (s.pendingAsk) return s.pendingAsk;
+      if (s.gate) return `Refine within the ${s.gate} gate, back-edit earlier stages, or approve to continue.`;
+      return "Refine, then accept to write the story.";
+    }
+    function renderProposal(s) {
+      const spec = s.spec;
+      const paper = $("#proposalPaper");
+      if (!spec) {
+        paper.innerHTML = '<section class="proposal-section"><p style="color:var(--paper-muted)">The architect is still drafting…</p></section>';
+        return;
+      }
+      $("#proposalTitle").textContent = spec.title || "Untitled";
+      $("#proposalSub").textContent = s.haveStory ? "Draft proposal" : "Nothing on disk yet";
+      const open = s.gate;
+      const storySec = `<section class="proposal-section ${open === "story" ? "current" : ""}">
+        <span class="proposal-section-label">Story / ${open === "story" ? "open gate" : "approved"}</span>
+        <h3>${esc(spec.title || "(untitled)")}</h3>
+        <p>${esc(spec.premise || "(no premise)")}</p>
+        ${s.tension ? `<div class="tension">${esc(s.tension)}</div>` : ""}
+        ${(spec.facts || []).map((f, i) => `<div class="fact-row"><b>Fact ${String(i + 1).padStart(2, "0")}</b><span>${esc(f)}</span></div>`).join("")}
+      </section>`;
+      const castSec = `<section class="proposal-section ${open === "cast" ? "current" : ""}">
+        <span class="proposal-section-label">Cast / ${open === "cast" ? "open gate" : (open && GATES.indexOf(open) > 1 ? "approved" : "later")}</span>
+        <h3>${(spec.characters || []).length} in the cast</h3>
+        <div class="character-grid">
+          ${(spec.characters || []).map(c => `<div class="character"><b>${esc((c.name || "").toUpperCase())}</b>
+            <p>${esc(c.persona || "")}</p>
+            <small>${esc(c.belief ? "BELIEF / " + c.belief : "")}${c.impulse ? "<br>IMPULSE / " + c.impulse : ""}${c.voice && c.voice.length ? "<br>VOICE / " + c.voice.map(esc).join(" / ") : ""}</small></div>`).join("")}
+        </div>
+      </section>`;
+      const scene = spec.scene || {};
+      const sceneSec = `<section class="proposal-section ${open === "scene" ? "current" : ""}">
+        <span class="proposal-section-label">Scene / Scene / ${open === "scene" ? "open gate" : "later"}</span>
+        <h3>${esc(scene.place || "(no place)")}</h3>
+        <p>${esc(scene.question || "(no question)")}</p>
+        <div class="fact-row"><b>POV</b><span>${esc(scene.pov || "—")}</span></div>
+        <div class="fact-row"><b>Length</b><span>${esc(scene.length || "?")} words</span></div>
+      </section>`;
+      paper.innerHTML = storySec + castSec + sceneSec;
+    }
+
+    // -- connection ---------------------------------------------------------
+    function renderConnection() {
+      const m = APP.models;
+      const line = $(".connection-line");
+      const pulse = line.querySelector(".pulse");
+      const label = line.querySelector("span");
+      if (m && m.reachable) { pulse.style.background = "var(--signal)"; label.textContent = "LM Studio connected"; }
+      else { pulse.style.background = "var(--danger)"; label.textContent = "LM Studio unreachable"; }
+    }
+    function renderError() {
+      const ir = $("#readerInterruption");
+      ir.hidden = false;
+      ir.querySelector("h3").textContent = "Run error";
+      ir.querySelector(".direction-list").innerHTML = `<div style="color:var(--danger);font-size:11px">${esc(APP.error || "unknown error")}</div>`;
+    }
+
+    function fillModelSelectors() {
+      const ids = (APP.models && APP.models.ids) || [];
+      $("#modelSelect").innerHTML = '<option value="">Story default</option>' + ids.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join("");
+      $("#architectModel").innerHTML = '<option value="">Architect default</option>' + ids.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join("");
+      if (APP.models && APP.models.architect) {
+        $("#architectModel").value = APP.models.architect;
+      }
+    }
+
+    // -- controls -----------------------------------------------------------
+    $("#pause").addEventListener("click", async () => {
+      const st = APP.state || {};
+      if (st.paused || st.pausing) await API.post("/resume"); else await API.post("/pause");
+    });
+    $("#stop").addEventListener("click", () => API.post("/stop"));
+    $("#consultMe").addEventListener("click", () => API.post("/consult-me"));
+    $("#modelSelect").addEventListener("change", async () => { await API.post("/model", { model: $("#modelSelect").value }); });
+
+    $$("[data-phase]").forEach(b => b.addEventListener("click", () => showPhase(b.dataset.phase)));
+    $$("[data-open-live]").forEach(b => b.addEventListener("click", () => showView("live")));
+    $$("[data-open-architect]").forEach(b => b.addEventListener("click", () => showView("architect")));
+
+    $("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "light" ? "dark" : "light";
+    });
+    $("#expand").addEventListener("click", event => {
+      const cons = $$(".consult-line");
+      const open = cons.length ? !cons[0].open : true;
+      cons.forEach(c => c.open = open);
+      event.currentTarget.textContent = open ? "Collapse consults" : "Expand consults";
+    });
+
+    // architect controls
+    $("#architectStart").addEventListener("submit", async e => {
+      e.preventDefault();
+      const idea = $("#ideaInput").value.trim();
+      if (!idea) return;
+      await API.post("/scaffold/start", { idea, model: $("#architectModel").value, mode: $("#architectMode").value });
+    });
+    $("#roundSend").addEventListener("click", sendRound);
+    $("#roundInput").addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendRound(); }
+    });
+    async function sendRound() {
+      const text = $("#roundInput").value.trim();
+      if (!text) return;
+      $("#roundInput").value = "";
+      await API.post("/scaffold/say", { text });
+    }
+    $("#approveGate").addEventListener("click", () => API.post("/scaffold/approve"));
+    $("#acceptStory").addEventListener("click", async () => {
+      const folder = prompt("Folder name for the new story (optional):", "");
+      await API.post("/scaffold/accept", { folder: folder || "" });
+    });
+    $("#architectAbandon").addEventListener("click", () => API.post("/scaffold/abandon"));
+
+    // -- boot ---------------------------------------------------------------
+    async function boot() {
+      connect();
+      try { APP.run = await API.get("/run"); } catch (_) {}
+      try { APP.models = await API.get("/models"); } catch (_) {}
+      try { const r = await API.get("/stories"); APP.stories = r.stories || []; if (APP.state) APP.state.picking = r.picking; } catch (_) {}
+      try { APP.scaffold = await API.get("/scaffold"); } catch (_) {}
+      APP.state = snapshotState(APP.run);
+      fillModelSelectors();
+      renderLibrary(); renderLive(); renderArchitect(); onState();
+      const v = new URLSearchParams(location.search).get("view");
+      if (v) showView(v);
+      setInterval(renderLiveStats, 1000);
+    }
+    function snapshotState(run) {
+      if (!run) return { running: false, picking: false, paused: false, pausing: false, armed: false, model: null, interactive: true, awaitingContinue: false };
+      return {
+        running: !!run.running, picking: !!run.picking, paused: false, pausing: false,
+        armed: !!run.armed, model: run.model || null, interactive: run.interactive !== false,
+        awaitingContinue: !!run.awaitingContinue
+      };
+    }
+    boot();
+  </script>
+</body>
+</html>

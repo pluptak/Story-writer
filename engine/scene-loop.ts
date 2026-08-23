@@ -17,10 +17,11 @@ import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live
 import { ENGINE, progressDone } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
-/** The system prompt for one character agent: their persona, place, skills, knowledge and goal. */
+/** The system prompt for one character agent: their persona, place, skills, knowledge, goal, belief, impulse and voice. */
 export function wrapCharacter(def: CharacterDef, place: string): string {
   return P.characterSystem({
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
+    belief: def.belief, impulse: def.impulse, voice: def.voice,
   });
 }
 

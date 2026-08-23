@@ -79,7 +79,7 @@ describe("LIVE.interactive", () => {
 // -- CHAPTER VALIDATION ----
 describe("runChapter validation", () => {
   it("rejects a chapter number below 1, naming the valid range", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     await assert.rejects(() => runChapter(sc, 0, () => {}),
                          (e: Error) => {
                            assert.match(e.message, /1\.\.1/);
@@ -88,7 +88,7 @@ describe("runChapter validation", () => {
   });
 
   it("rejects a chapter number above the scene count", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     await assert.rejects(() => runChapter(sc, 2, () => {}),
                          (e: Error) => {
                            assert.match(e.message, /1\.\.1/);
@@ -97,7 +97,7 @@ describe("runChapter validation", () => {
   });
 
   it("rejects a non-integer chapter number", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     await assert.rejects(() => runChapter(sc, 1.5, () => {}),
                          (e: Error) => {
                            assert.match(e.message, /integer/);
@@ -108,7 +108,7 @@ describe("runChapter validation", () => {
 
 describe("per-scene writer overrides", () => {
   it("wins over story-wide writer settings without making an LLM call", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const sd = { ...sc.scenes[0], writerModel: "scene-model", writerThink: "high" as const };
 
     armRun();
@@ -131,7 +131,7 @@ describe("per-scene writer overrides", () => {
   });
 
   it("falls back to story-wide writer settings when overrides are absent", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
 
     armRun();
     stopRun();
@@ -240,7 +240,7 @@ describe("retry ceiling", () => {
     const parsed = StoryJson.parse(raw);
     assert.equal(parsed.config.maxCharacterRetries, 3);
 
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     assert.equal(sc.maxCharacterRetries, undefined); // the existing story has no ceiling
   });
 
@@ -259,7 +259,7 @@ describe("retry ceiling", () => {
     // Stopping the run before calling writeScene means the writer never generates,
     // so retries never happen. This test validates the plumbing: the parameter
     // reaches writeScene without error, and no retries are recorded.
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
     const log = (e: RunEvent) => events.push(e);
 
@@ -286,7 +286,7 @@ describe("retry ceiling", () => {
 // -- LENGTH HARD CAP ---------------------------------------------------------
 describe("a scene that never ends", () => {
   it("is forced closed at twice its target length, however many times the writer says scene_done: false", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const sd = { ...sc.scenes[0], length: 40, roster: [] };
     const events: RunEvent[] = [];
     const log = (e: RunEvent) => events.push(e);
@@ -326,7 +326,7 @@ describe("a scene that never ends", () => {
 
 // -- THE NARRATION LINT -------------------------------------------------------
 describe("the narration lint", () => {
-  const sc0 = () => quiet(() => loadStory("stories/doorway"));
+  const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
 
   /** Routes a mocked completion by which system prompt asked for it — the writer's own `[WRITE]`
    *  loop and the lint's stateless check share one fetch mock, so call order alone can't tell them

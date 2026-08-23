@@ -1,10 +1,10 @@
 /**
  * Deterministic suite for story format loading and validation.
  */
-import { describe, it } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, readFile, copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -31,6 +31,14 @@ describe("StoryJson schema", () => {
     assert.equal(r.config.maxSteps, 24);
     assert.equal(r.config.thinking.writer, "low");
     assert.equal(r.models.default, "qwen3.6-35b-a3b");
+  });
+
+  it("keeps only the first three voice samples on load instead of rejecting the whole story", () => {
+    const r = StoryJson.safeParse({
+      characters: [{ name: "X", voice: ["one", "two", "three", "four"] }],
+    });
+    assert.equal(r.success, true, "a fourth voice line must not sink the story — normalizeSpec truncates too");
+    if (r.success) assert.deepEqual(r.data.characters[0].voice, ["one", "two", "three"]);
   });
 
   it("wants at least one scene, and puts no ceiling on how many chapters a story runs to", () => {
@@ -282,7 +290,7 @@ describe("loadStory warnings", () => {
   });
 
   it("exposes the title from story.json", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     assert.equal(sc.title, "Doorway");
   });
 
@@ -498,22 +506,39 @@ describe("loadDefaults", () => {
   });
 });
 
-// -- SHIPPED STORY ---------------------------------------------------------
-describe("stories/doorway", () => {
+// -- THE COMMITTED REFERENCE STORY -----------------------------------------
+// stories/* is the user's own content and gitignored; tests/fixtures/doorway is the one story
+// committed with the engine, doubling as the architect's worked example. See engine/architect.ts.
+describe("the doorway fixture", () => {
   it("loads, and is built so both the clarification path and the skill check are reachable", async () => {
-    const sc = await quiet(() => loadStory("stories/doorway"));
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     assert.deepEqual(sc.characters.map(c => c.name), ["RIVEN", "MERRITT"]);
     const riven = sc.characters[0], merritt = sc.characters[1];
-    assert.ok(riven.skills.some(s => s.name === "lockpicking" && s.source === "story"));
+    assert.ok(riven.skills.some(s => s.name === "lockpicking" && s.source === "bible"));
     assert.ok(!merritt.skills.some(s => s.name === "sight"));
     assert.ok(sc.scenes[0].question);
     assert.ok(sc.premise.length > 100);
   });
+});
 
-  it("is discoverable, and the fixture is not", async () => {
+// -- STORY DISCOVERY (scans the real stories/ dir) -------------------------
+// discoverStories/selectableStory scan stories/, which is gitignored and empty on a fresh checkout,
+// so these synthesize a throwaway story there from the committed fixture, exercise the scan, and
+// remove it — self-contained rather than depending on whatever the author has under stories/ locally.
+describe("story discovery", () => {
+  const probe = "stories/__discovery_probe__";
+  before(async () => {
+    await rm(join(ROOT, probe), { recursive: true, force: true });
+    await mkdir(join(ROOT, probe), { recursive: true });
+    await copyFile(join(ROOT, "tests/fixtures/doorway/story.json"), join(ROOT, probe, "story.json"));
+  });
+  after(async () => { await rm(join(ROOT, probe), { recursive: true, force: true }); });
+
+  it("discovers a story under stories/, and never the tests/fixtures tree", async () => {
     const found = await discoverStories();
-    assert.ok(found.includes("stories/doorway"));
+    assert.ok(found.includes(probe), `expected ${probe} among ${JSON.stringify(found)}`);
     assert.ok(!found.some(d => d.includes("badstory")));
+    assert.ok(!found.some(d => d.startsWith("tests/")), "the fixtures tree is not a story source");
   });
 
   it("never offers to build a story when there is no terminal", async () => {
@@ -523,26 +548,24 @@ describe("stories/doorway", () => {
       const picked = await chooseStory("");
       assert.notEqual(picked, NEW_STORY);
       assert.equal(picked, (await discoverStories())[0]);
-      assert.equal(await chooseStory("stories/doorway"), "stories/doorway");
+      assert.equal(await chooseStory(probe), probe);
     } finally {
       if (orig) Object.defineProperty(process.stdin, "isTTY", orig);
     }
   });
-});
 
-// -- CHOOSING FROM OUTSIDE THE PROCESS -------------------------------------
-describe("selectableStory", () => {
   it("resolves a discovered story, by full path or bare folder name", async () => {
-    assert.equal(await selectableStory("stories/doorway"), "stories/doorway");
-    assert.equal(await selectableStory("doorway"), "stories/doorway");
-    assert.equal(await selectableStory("stories/doorway/"), "stories/doorway");
-    assert.equal(await selectableStory("stories\\doorway"), "stories/doorway",
+    assert.equal(await selectableStory(probe), probe);
+    assert.equal(await selectableStory("__discovery_probe__"), probe);
+    assert.equal(await selectableStory(probe + "/"), probe);
+    assert.equal(await selectableStory("stories\\__discovery_probe__"), probe,
                  "a Windows separator names the same story, not a different one");
   });
 
   it("refuses anything the engine did not discover", async () => {
     for (const bad of ["", "   ", "../../etc/passwd", "stories/../story-writer.ts", "stories",
-                       "stories/nope", "/etc/passwd", "C:/Windows/System32", "tests/fixtures/badstory"]) {
+                       "stories/nope", "/etc/passwd", "C:/Windows/System32", "tests/fixtures/badstory",
+                       "tests/fixtures/doorway"]) {
       assert.equal(await selectableStory(bad), null, `must refuse ${JSON.stringify(bad)}`);
     }
   });

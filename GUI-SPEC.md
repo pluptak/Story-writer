@@ -53,6 +53,7 @@ GET  /              → server/gui/viewer.html
 GET  /viewer.css     → server/gui/viewer.css
 GET  /viewer.js      → server/gui/viewer.js
 GET  /viewer/{name}.js  → server/gui/viewer/{name}.js   (flat filenames only, regex allowlist)
+GET  /studio           → mockups/studio/index.html        (static dev/preview route — not part of the product surface)
 ```
 
 These four lines are the **entire** coupling between the API and the specific GUI in this repo. They
@@ -219,30 +220,55 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 
 ```
 GET  /scaffold
-  → { active:false } | { active:true, idea, busy, stage, haveStory, pendingAsk, problems[],
-                          last: ScaffoldRound | null, needsFolder, model, spec }
+  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, haveDraft, haveStory, pendingAsk,
+                          problems[], last: ScaffoldRound | null, needsFolder, model, spec }
 
 ScaffoldRound =
-  | { kind:"proposal"; note }
-  | { kind:"edits"; applied:{field:string;before:unknown;after:unknown}[]; ignored[]; flags:string[]; note }
-  | { kind:"question"; ask }
-  | { kind:"nothing"; why }
+  | { kind:"proposal"; note; stage? }        — staged rounds carry the gate they belong to
+  | { kind:"edits"; applied:{field:string;before:unknown;after:unknown}[]; ignored[]; flags:string[]; note; stage? }
+  | { kind:"question"; ask; stage? }
+  | { kind:"nothing"; why; stage? }
   | { kind:"failed"; error }
 
-POST /scaffold/start  { idea, model? }   → only while picking; opens a session, runs the first propose
-POST /scaffold/say    { text }           → free-text turn; may return edits, a question, or a proposal
-POST /scaffold/set    { field, value }   → direct edit, bypassing the model — today `field` may only
+POST /scaffold/start    { idea, model?, mode? } → only while picking; opens a session and runs the
+                                                  first proposal. `mode` picks the walk:
+                                                  "staged" (the default) runs the gated checklist —
+                                                   story → cast → settings → technical → scene, an author approval
+                                                  between stages — and "oneshot" is the whole-story
+                                                  proposal. The state's `gate` names the open stage
+                                                  ("story"…"scene"), null on a one-shot session.
+POST /scaffold/say      { text }           → free-text turn; may return edits, a question, or a proposal.
+                                             In staged mode it refines within the open gate (back-edits
+                                             to earlier stages included) or answers `pendingAsk`.
+POST /scaffold/approve                     → staged mode only: pass the open gate and propose the next
+                                             stage's content. Refused as a round (not an HTTP error):
+                                             on a one-shot session (`kind:"failed"`), while a question
+                                             stands, when the gate's content never landed
+                                             (`kind:"nothing"`, "has not landed"), or past the last gate
+                                             ("checklist is complete").
+POST /scaffold/set      { field, value }   → direct edit, bypassing the model — today `field` may only
                                              be `"scene.length"` (`DIRECT_FIELDS`); alternatively
                                              `{ story }` replaces the in-memory draft from the full
                                              schema-aware editor. Neither form writes a story directory.
-POST /scaffold/accept { folder? }        → { ok:true, kind:"written", dir, files[], warnings[] }
+POST /scaffold/accept   { folder? }        → { ok:true, kind:"written", dir, files[], warnings[] }
                                             | { ok:false, kind:"unloadable"|"needs_folder"|"no_story", ... }
-POST /scaffold/abandon                   → drops the session unconditionally, always { ok:true }
+POST /scaffold/abandon                     → drops the session unconditionally, always { ok:true }
 ```
 
 `stage` is `""` while the main proposal/edit round itself is running, then briefly `"fillGaps"` or
 `"verify"` while each automatic follow-up pass runs after a successful round, and `""` again once the
-whole exchange settles.
+whole exchange settles. A one-shot session runs both passes after its proposal; a staged session asks
+for roster and facts in its own stages, so only `"verify"` ever appears there, once after the scene
+stage lands. Do not confuse it with `gate`, which is the checklist position and persists between rounds.
+
+`tension` is the load-bearing conflict sentence the staged story stage coins. It is session state, never
+a `story.json` field, so it reaches the GUI only through this state object — read-only, for display; the
+architect edits it by field name (see `/scaffold/say`) but it never lands on disk. Empty on a one-shot
+session and until the story stage names it.
+
+`haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
+be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its
+stricter meaning: a cast exists and the draft is eligible for the edit and accept flows.
 
 One session at a time (`scaffoldBusy` is a module-level lock — a second `POST` while a round is in
 flight gets `409`). `accept` only resolves the parked story pick on `kind: "written"`; every other
@@ -394,7 +420,7 @@ What a replacement would actually need to reproduce, none of it GUI-specific:
 What is **not** available through this API, and would need a new route (a `ServerHost` addition, not a
 GUI trick) rather than being derivable client-side: editing a story's files field by field
 (`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts),
-reading a story's full cast — `knows`, `goal` and `persona` — for a story that is not in a scaffold or
+reading a story's full cast — `knows`, `goal`, `belief`, `impulse`, `voice` and `persona` — for a story that is not in a scaffold or
 handoff session, starting a run without going through the picker/scaffold handshake, or anything about
 a run that already fell out of `MAX_RUNS` retention. The first two are proposed in
 [PLANS.md](PLANS.md) (plans 1 and 2C), which is also where the routes they would add are drafted.

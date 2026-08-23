@@ -2,14 +2,17 @@ import { esc, reasonOr } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 
-// ---- the interview ------------------------------------------------------
-const fld = (id, label, value, rows, disabled, placeholder = "") =>
-  `<div class="field"><label for="${id}">${label}</label>
-    <textarea id="${id}" ${disabled ? "disabled" : ""} rows="${rows}"
-              placeholder="${esc(placeholder)}">${esc(value)}</textarea></div>`;
+// ---- the scaffold interview --------------------------------------------------
+// One page, three things always visible: the proposed story, the current round, and a state
+// sidebar that owns accept and abandon. The idea step is still a modal, shown over an empty
+// scaffold shell until the first proposal lands. Base styling ported from mockups/architect.
 
 const IDEA_PLACEHOLDER =
   "e.g. A locksmith is asked to open a door they installed years ago, for someone they don't recognise.";
+
+const GATES = ["story", "cast", "settings", "technical", "scene"];
+
+// ── the idea step (modal) ────────────────────────────────────────────────────
 
 const modelField = () =>
   `<div class="field"><label for="f-model">built by</label>
@@ -19,136 +22,357 @@ const modelField = () =>
       ${APP.modelIds.map(id => `<option value="${esc(id)}"${draft.model === id ? " selected" : ""}>${esc(id)}</option>`).join("")}
     </select></div>`;
 
-function castHtml(spec) {
-  return spec.characters.map(c => {
-    const can = c.skills.map(s => esc(s.text) + (s.meaning ? ` <span style="color:var(--faint)">— ${esc(s.meaning)}</span>` : "")).join(", ");
-    return `<div class="who">
-      <div class="nm">${esc(c.name)}</div>
-      ${can ? `<div class="line"><span class="k yes">can also</span>${can}</div>` : ""}
-      ${c.restrictions.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
-      ${c.knows ? `<div class="line"><span class="k">knows</span>${esc(c.knows)}</div>` : ""}
-      <div class="persona${APP.personasFull ? "" : " clip"}">${esc(c.persona)}</div>
-    </div>`;
-  }).join("");
-}
+const modeChoice = (value, title, blurb) => {
+  const on = value === "oneshot" ? draft.mode === "oneshot" : draft.mode !== "oneshot";
+  return `<label class="choice${on ? " selected" : ""}">
+    <input type="radio" name="mode" value="${value}"${on ? " checked" : ""}>
+    <b>${title}</b><span>${blurb}</span></label>`;
+};
 
-const lengthHtml = (spec, busy) =>
-  `~<input type="number" id="f-length" class="lenbox" min="100" max="10000" step="50"
-     ${busy ? "disabled" : ""} value="${esc(draft.length !== "" ? draft.length : spec.scene.length)}"> words`;
-
-function proposalHtml(spec, busy) {
-  const bits = [spec.scene.place, spec.scene.pov ? `pov ${spec.scene.pov}` : ""]
-    .filter(Boolean).map(esc).join(" · ");
-  return `<div class="proposal">
-    <h3>${esc(spec.title || "(untitled)")}</h3>
-    <div class="where">${bits}${bits ? " · " : ""}${lengthHtml(spec, busy)}</div>
-    <p class="premise">${esc(spec.premise || "(no premise)")}</p>
-    <p class="q"><b>the question this scene answers</b>${esc(spec.scene.question || "(none)")}</p>
-    ${castHtml(spec)}
-    ${spec.writerStyle && APP.personasFull
-      ? `<div class="who"><div class="nm">house style</div><div class="persona">${esc(spec.writerStyle)}</div></div>` : ""}
+function ideaModalHtml() {
+  const err = APP.scaffoldError ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
+  return `<div class="modal-backdrop" id="iv-backdrop" role="dialog" aria-modal="true" aria-label="new story">
+    <section class="picker iv">
+      <h2>Give the architect the rough idea</h2>
+      <p class="sub">A situation, not a plot — it will find the pressure in it, and ask if it needs more.</p>
+      <div class="field"><label for="f-idea">the idea</label>
+        <textarea id="f-idea" rows="4" placeholder="${esc(IDEA_PLACEHOLDER)}">${esc(draft.idea)}</textarea></div>
+      <label class="field-label">how it proposes</label>
+      <div class="choice-grid">
+        ${modeChoice("staged", "stage by stage",
+            "The gated checklist: story → cast → settings → scene, an approval between each.")}
+        ${modeChoice("oneshot", "the whole story at once",
+            "One complete proposal, then conversational refinement.")}
+      </div>
+      ${modelField()}
+      ${err}
+      <div class="btns"><button class="btn primary" id="iv-start">propose →</button>
+        <button class="btn" id="iv-back">back to the shelf</button>
+        <span class="hint">ctrl/⌘ + ↵</span></div>
+    </section>
   </div>`;
 }
 
-/** Where the interview stands, derived from state already on hand -- nothing new to track. A round
- *  can repeat indefinitely between Describe and Review, so this marks progress, not a countdown. */
-function stepperHtml(s) {
-  const stage = !s.active || !s.haveStory ? 0 : s.needsFolder ? 2 : 1;
-  const steps = ["describe", "review", "name & write"];
-  return `<div class="steps">${steps.map((label, i) =>
-    `<span class="step${i === stage ? " current" : i < stage ? " done" : ""}">${esc(label)}</span>`
+// ── the proposal panel ────────────────────────────────────────────────────────
+
+function castHtml(spec) {
+  return `<div class="cast">${spec.characters.map(c => {
+    const tag = (t, cls = "") => `<span class="tag${cls}">${t}</span>`;
+    const skills = c.skills.map(s => esc(s.text) + (s.meaning ? ` :: ${esc(s.meaning)}` : "")).join(", ");
+    return `<div class="person">
+      <div class="person-top"><span class="person-name">${esc(c.name)}</span></div>
+      ${c.persona ? `<p>${esc(c.persona)}</p>` : ""}
+      ${c.knows ? tag(`knows: ${esc(c.knows)}`) : ""}
+      ${c.goal ? tag(`goal: ${esc(c.goal)}`) : ""}
+      ${c.belief ? tag(`belief: ${esc(c.belief)}`) : ""}
+      ${c.impulse ? tag(`impulse: ${esc(c.impulse)}`) : ""}
+      ${(c.voice || []).map(v => tag(`voice: “${esc(v)}”`)).join("")}
+      ${skills ? tag(`skills: ${skills}`) : ""}
+      ${c.restrictions.map(r => tag(`restriction: ${esc(r)}`, " warn")).join("")}
+      ${c.maxRetries !== undefined ? tag(`retry limit: ${esc(c.maxRetries)}`) : ""}
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function sceneHtml(spec) {
+  const sc = spec.scene;
+  if (!sc || !(sc.place || sc.question || sc.pov)) return "";
+  const meta = [sc.length ? `~${sc.length} words` : "", sc.pov ? `POV ${esc(sc.pov)}` : ""]
+    .filter(Boolean).join(" · ");
+  return `<div class="scene">
+    ${sc.place ? `<h4>${esc(sc.place)}</h4>` : ""}
+    <p class="scene-meta">scene 1${meta ? " · " + meta : ""}</p>
+    ${sc.question ? `<div class="question"><span class="label">dramatic question</span>${esc(sc.question)}</div>` : ""}
+  </div>`;
+}
+
+function factsHtml(spec) {
+  const facts = spec.facts || [];
+  if (!facts.length) return "";
+  return `<div class="facts">${facts.map(f =>
+    `<div class="fact"><strong>fact</strong><span>${esc(f)}</span></div>`).join("")}</div>`;
+}
+
+function technicalHtml(spec) {
+  const config = spec.config || {};
+  const value = v => typeof v === "object" && v !== null
+    ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(" · ")
+    : String(v);
+  const rows = Object.entries(config).map(([key, val]) =>
+    `<div class="fact"><strong>${esc(key)}</strong><span>${esc(value(val))}</span></div>`).join("");
+  if (!rows) return "";
+  return `<div class="technical"><span class="label">run settings</span><div class="facts">${rows}</div></div>`;
+}
+
+function gateReached(s, gate) {
+  if (!s.gate) return true;
+  return GATES.indexOf(s.gate) >= GATES.indexOf(gate);
+}
+
+function stageSection(name, body, current) {
+  if (!body) return "";
+  return `<div class="stage-section${current ? " current" : ""}">
+    <span class="label">${current ? "current stage · " : ""}${esc(name)}</span>${body}
+  </div>`;
+}
+
+/** The stage tag that labels what the draft is showing — a passed gate leaves a tick, the open one
+ *  is named in brackets. One-shot has no gate, so the label is just "draft so far". */
+function draftLabel(s) {
+  if (!s.gate) return "draft so far";
+  const passed = GATES.slice(0, GATES.indexOf(s.gate)).map(g => `${g} ✓`).join(" · ");
+  return `draft so far · ${passed ? passed + " · " : ""}[${s.gate}]`;
+}
+
+function proposalHtml(s) {
+  const spec = s.spec;
+  const story = [
+    spec.premise ? `<p class="stage-copy">${esc(spec.premise)}</p>` : "",
+    s.tension ? `<div class="question"><span class="label">load-bearing tension</span>${esc(s.tension)}</div>` : "",
+    factsHtml(spec),
+  ].join("");
+  const cast = spec.characters.length ? castHtml(spec) : "";
+  const settings = spec.writerStyle && gateReached(s, "settings")
+    ? `<p class="stage-copy">${esc(spec.writerStyle)}</p>` : "";
+  const technical = gateReached(s, "technical") ? technicalHtml(spec) : "";
+  let scene = sceneHtml(spec);
+  // Later scenes are provisional question sketches -- the handoff re-authors them, so they render
+  // as questions and nothing else.
+  const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
+  if (sketches.length) scene += `<div style="margin-top:14px"><span class="label">later scenes · provisional</span>${
+    sketches.map(sc => `<div class="question" style="margin-top:6px">${esc(sc.question)}</div>`).join("")}</div>`;
+
+  const content = { story, cast, settings, technical, scene };
+  const order = s.gate && GATES.includes(s.gate)
+    ? [s.gate, ...GATES.filter(g => g !== s.gate)]
+    : GATES;
+  const bits = order.map(g => stageSection(g, content[g], g === s.gate)).filter(Boolean);
+  for (const p of (s.problems || [])) bits.push(`<div class="prob">⚠ ${esc(p)}</div>`);
+  return `<section class="card">
+    <div class="card-head">
+      <div><span class="label">${esc(draftLabel(s))}</span><h3>${esc(spec.title || "(untitled)")}</h3></div>
+      <span class="label">${s.gate && GATES.indexOf(s.gate) === GATES.length - 1 ? "ready" : "proposal"}</span>
+    </div>
+    <div class="card-body">${bits.join("")}</div>
+  </section>`;
+}
+
+// ── the checklist (staged) ────────────────────────────────────────────────────
+
+function checklistHtml(s) {
+  if (!GATES.includes(s.gate)) return "";
+  const cur = GATES.indexOf(s.gate);
+  return `<div class="checklist" aria-label="checklist position">${GATES.map((g, i) =>
+    `<span class="gate${i < cur ? " done" : i === cur ? " open" : ""}"><i></i>${g}${i < cur ? " ✓" : ""}</span>`
   ).join("")}</div>`;
 }
+
+// ── the round narration ───────────────────────────────────────────────────────
 
 /** What the last round did, said plainly. Mirrors showRound() at the console. */
 function lastHtml(last) {
   if (!last) return "";
-  if (last.kind === "failed")  return `<div class="said bad">that round failed (${esc(last.error)}) — nothing changed</div>`;
-  if (last.kind === "nothing") return `<div class="said bad">it didn't come back with a story — try saying who is in the scene and what is at stake</div>`;
+  const at = last.stage ? `<span class="hint">[${esc(last.stage)}] </span>` : "";
+  if (last.kind === "failed")  return `<div class="said bad">${at}that round failed (${esc(last.error)}) — nothing changed</div>`;
+  if (last.kind === "nothing") {
+    if (/review the draft and accept/.test(last.why))
+      return `<div class="said good">${at}checklist complete — review the draft, then accept</div>`;
+    if (/has not landed/.test(last.why))
+      return `<div class="said bad">${at}this stage has nothing yet — ${esc(last.why)}</div>`;
+    return `<div class="said bad">${at}it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}</div>`;
+  }
   if (last.kind === "edits") {
     const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
     const ig = last.ignored.map(x => `<div class="said bad">ignored ${esc(x)}</div>`).join("");
-    return `<div class="said good">${changed}</div>${ig}`;
+    const note = last.note ? `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>` : "";
+    return `${note}<div class="said good">${at}${changed}</div>${ig}`;
   }
-  if (last.kind === "proposal" && last.note) return `<div class="said">note: ${esc(last.note)}</div>`;
+  if (last.kind === "proposal")
+    return last.note ? `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>` : "";
   return "";
 }
 
-function interviewHtml() {
-  const s = APP.scaffold;
-  const err = APP.scaffoldError ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
-  // Not started: just the idea box.
-  if (!s.active) {
-    return `<section class="picker iv">
-      <h2>A new story</h2>
-      ${stepperHtml(s)}
-      <p class="sub">as much or as little as you like — it will ask if it needs more</p>
-      ${fld("f-idea", "the idea", draft.idea, 4, false, IDEA_PLACEHOLDER)}
-      ${modelField()}
-      ${err}
-      <div class="btns"><button class="btn primary" id="iv-start">propose a story</button>
-        <button class="btn" id="iv-back">back to the shelf</button>
-        <span class="hint">ctrl/⌘ + ↵</span></div>
-    </section>`;
-  }
-
+/** The conversation card: last round's outcome, the checklist, and the composer — or, while a
+ *  question stands, the question and an answer box with the approve button withheld. */
+function roundHtml(s) {
   const busy = !!s.busy;
   const answering = !!s.pendingAsk;
-  const body = [];
+  const parts = [];
 
-  if (s.spec) body.push(proposalHtml(s.spec, busy));
-  body.push(lastHtml(s.last));
-  for (const p of (s.problems || [])) body.push(`<div class="prob">⚠ ${esc(p)}</div>`);
-  if (answering) body.push(`<div class="asked"><span class="k">it needs to know</span>${esc(s.pendingAsk)}</div>`);
-  body.push(err);
-
-  if (busy) body.push(`<div class="thinking"><i></i>thinking about it…</div>`);
-
-  if (s.needsFolder && !busy) {
-    body.push(`<div class="asked"><span class="k">where should it go</span>${esc(s.needsFolder)}</div>
-      <div class="field"><label for="f-folder">folder name</label>
-        <input type="text" id="f-folder" value="${esc(draft.folder)}"></div>
-      <div class="btns"><button class="btn primary" id="iv-folder">write it there</button>
-        <span class="hint">↵</span></div>`);
+  if (answering) {
+    parts.push(`<div class="round-question"><span class="label">the architect's question</span><p>${esc(s.pendingAsk)}</p></div>`);
+  } else {
+    parts.push(lastHtml(s.last));
   }
-  const row = [];
+  parts.push(checklistHtml(s));
+
   if (!busy) {
-    // Unsent text is the whole reason the row is ordered this way: accepting writes the story from
-    // the SPEC, so anything still sitting in this box is thrown away by it.
-    const unsent = !!draft.say.trim();
-    const flags = (s.problems || []).length;
-    body.push(fld("f-say", answering ? "your answer" : s.haveStory ? "what should change?" : "say more about it",
-                  draft.say, 3, false));
-    // The folder question owns acceptance while it is open — "write it there" IS the accept.
-    const acceptable = s.haveStory && !s.needsFolder;
-    const acceptLabel = !APP.acceptArmed ? "accept &amp; write it"
-      : unsent ? "discard what you typed and write it"
-      : `accept over ${flags} flag(s)`;
-    row.push(`<button class="btn${unsent || !s.haveStory ? " primary" : ""}" id="iv-say">send</button>`);
-    if (acceptable) row.push(`<button class="btn${unsent || APP.acceptArmed ? "" : " primary"}${
-      APP.acceptArmed ? " armed" : ""}" id="iv-accept">${acceptLabel}</button>`);
+    const label = answering ? "your answer" : s.haveDraft ? "what should change?" : "say more about it";
+    parts.push(`<label class="field-label" for="f-say">${label}</label>
+      <textarea id="f-say" rows="3">${esc(draft.say)}</textarea>`);
   }
-  if (s.spec) row.push(`<button class="btn" id="iv-full">${APP.personasFull ? "shorter" : "personas in full"}</button>`);
-  if (!busy) row.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
-  row.push(`<span class="spacer"></span>`);
-  row.push(`<button class="btn${APP.abandonArmed ? " armed" : ""}" id="iv-abandon">${
-    APP.abandonArmed ? "abandon — sure?" : "abandon"}</button>`);
-  body.push(`<div class="btns">${row.join("")}</div>`);
 
-  return `<section class="picker iv">
-    <div class="iv-head"><h2>${s.haveStory ? "Does this look right?" : "A new story"}</h2>
-      <button class="btn" id="iv-hide" title="close — keeps the interview going, reopen from the shelf">×</button></div>
-    ${stepperHtml(s)}
-    <p class="sub">${esc(s.idea)}${s.model ? ` <span class="hint">· built by ${esc(s.model)}</span>` : ""}</p>
-    ${body.join("")}
+  const foot = [];
+  const busyDot = `<span class="thinking${busy ? " show" : ""}"><i></i>the architect is thinking…</span>`;
+  if (!busy) {
+    foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
+    foot.push(busyDot);
+    if (answering) {
+      foot.push(`<button class="btn primary" id="iv-say">send answer →</button>`);
+    } else {
+      const unsent = !!draft.say.trim();
+      foot.push(`<button class="btn${unsent ? " primary" : ""}" id="iv-say">send</button>`);
+      // approve passes the open gate; hidden at the last gate and while a question stands.
+      if (s.gate && GATES.indexOf(s.gate) < GATES.length - 1)
+        foot.push(`<button class="btn${unsent ? "" : " primary"}" id="iv-approve">approve &amp; continue →</button>`);
+    }
+  } else {
+    foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
+    foot.push(busyDot);
+  }
+
+  const headline = answering ? "Answer the architect" : "Refine or approve";
+  const tag = answering ? "question" + (s.gate ? ` · [${s.gate}]` : "")
+                        : s.last?.kind === "proposal" ? "proposal" : "round";
+  return `<section class="card">
+    <div class="card-head">
+      <div><span class="label">architect</span><h3>${headline}</h3></div>
+      <span class="label">${esc(tag)}</span>
+    </div>
+    <div class="card-body">
+      ${parts.join("")}
+      <div class="composer-foot">${foot.join("")}</div>
+    </div>
   </section>`;
 }
 
-export function interviewModalHtml() {
-  return (APP.scaffold.active || APP.ideaOpen) && !APP.ivHidden
-    ? `<div class="modal-backdrop" id="iv-backdrop" role="dialog" aria-modal="true"
-            aria-label="new story">${interviewHtml()}</div>` : "";
+/** The accept step, when the server has asked for a folder name. Owns acceptance while it is open —
+ *  "write story.json →" IS the accept. */
+function folderHtml(s) {
+  return `<section class="card">
+    <div class="card-head">
+      <div><span class="label">accept</span><h3>Name the story folder</h3></div>
+      <span class="label">needs_folder</span>
+    </div>
+    <div class="card-body">
+      <p>${esc(s.needsFolder)}</p>
+      <label class="field-label" for="f-folder">story folder</label>
+      <input type="text" id="f-folder" value="${esc(draft.folder)}">
+      <div class="composer-foot">
+        <span class="hint">nothing is written until this answers</span>
+        <span class="thinking${s.busy ? " show" : ""}"><i></i>writing &amp; preflighting…</span>
+        <button class="btn primary" id="iv-folder">write story.json →</button>
+      </div>
+    </div>
+  </section>`;
 }
+
+// ── the sidebar ────────────────────────────────────────────────────────────────
+
+function sidebarHtml(s) {
+  const walk = s.mode === "oneshot" ? "one-shot" : "staged";
+  const stat = (k, v) => `<div class="stat"><span>${k}</span><strong>${esc(v)}</strong></div>`;
+  const stats = [stat("walk", walk)];
+  if (s.mode !== "oneshot") {
+    stats.push(stat("open gate", s.pendingAsk ? `${s.gate} (asked)` : s.gate || "—"));
+    if (s.tension) stats.push(stat("tension", "coined"));
+  }
+  stats.push(stat("on disk", s.needsFolder ? "pending accept" : "nothing yet"));
+
+  const actions = [];
+  const acceptable = s.haveStory && !s.needsFolder && !s.busy;
+  if (s.haveStory && !s.needsFolder)
+    actions.push(`<button class="btn" id="iv-edit">edit in full →</button>`);
+  if (acceptable) {
+    const unsent = !!draft.say.trim();
+    const flags = (s.problems || []).length;
+    const label = !APP.acceptArmed ? "accept &amp; choose folder"
+      : unsent ? "discard what you typed and write it"
+      : `accept over ${flags} flag(s)`;
+    actions.push(`<button class="btn primary${APP.acceptArmed ? " armed" : ""}" id="iv-accept">${label}</button>`);
+  }
+  actions.push(`<button class="btn danger${APP.abandonArmed ? " armed" : ""}" id="iv-abandon">${
+    APP.abandonArmed ? "abandon — sure?" : "abandon"}</button>`);
+
+  const helper = s.mode === "oneshot"
+    ? `<div class="side-card card"><h3>principle</h3>
+        <p class="side-copy">The architect proposes; you accept. Nothing writes itself until you name a folder.</p></div>`
+    : `<div class="side-card card"><h3>the gates</h3>
+        <p class="side-copy"><b>story</b> — title, premise, tension, facts.<br>
+          <b>cast</b> — characters as they walk into scene 1.<br>
+          <b>settings</b> — house style.<br>
+          <b>technical</b> — run settings and retry limits.<br>
+          <b>scene</b> — scene 1 in full; later ones as sketches.<br><br>
+          Refinement stays within the open gate; only <b>approve</b> advances it.</p></div>`;
+
+  return `<aside>
+    <div class="side-card card">
+      <h3>scaffold state</h3>
+      ${stats.join("")}
+      <div class="side-actions">${actions.join("")}</div>
+    </div>
+    ${helper}
+  </aside>`;
+}
+
+// ── page assembly ─────────────────────────────────────────────────────────────
+
+function activePageHtml(s) {
+  const workspace = [];
+  if (s.spec) workspace.push(proposalHtml(s));
+  workspace.push(s.needsFolder ? folderHtml(s) : roundHtml(s));
+  const err = APP.scaffoldError && !s.needsFolder ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
+
+  const statusText = s.busy ? "the architect is working…"
+    : s.pendingAsk ? "a question pins this gate until you answer it"
+    : s.needsFolder ? "name the folder — nothing is written until you do"
+    : "ready · nothing is on disk until you accept";
+  const spacer = (s.mode === "oneshot" ? "one-shot walk" : `gate: ${s.gate || "—"}`)
+    + (s.model ? ` · built by ${esc(s.model)}` : "");
+  const headline = s.pendingAsk ? "The architect has a question"
+    : s.haveDraft ? "Does this look right?" : "Your story is taking shape";
+
+  return `
+    <div class="sc-head">
+      <p class="eyebrow">scaffold · ${s.mode === "oneshot" ? "one-shot" : "staged"}</p>
+      <h2>${headline}</h2>
+      <p class="lede">${esc(s.idea || "")}</p>
+    </div>
+    <div class="statusbar">
+      <span class="status-dot${s.busy || s.needsFolder ? " busy" : ""}"></span>
+      <span>${statusText}</span>
+      <span class="spacer">${spacer}</span>
+    </div>
+    <div class="shell">
+      <div class="workspace">${err}${workspace.join("")}</div>
+      ${sidebarHtml(s)}
+    </div>`;
+}
+
+/** The whole page. An accept in flight shows a writing state rather than falling back to the idea
+ *  modal in the window between the {active:false} SSE frame and the run starting. */
+function scaffoldPageHtml() {
+  const s = APP.scaffold;
+  if (APP.scaffoldAccepting) {
+    return `<div class="scpage"><div class="shell"><div class="workspace"><section class="card">
+      <div class="card-body"><p class="thinking show"><i></i>writing story.json and preflighting…</p></div>
+    </section></div></div></div>`;
+  }
+  if (!s.active) {
+    return `<div class="scpage">
+      <div class="sc-head"><p class="eyebrow">scaffold interview</p>
+        <h2>Nothing proposed yet</h2>
+        <p class="lede">Describe an idea below. The editor stays empty until the first proposal lands.</p></div>
+      ${ideaModalHtml()}
+    </div>`;
+  }
+  return `<div class="scpage">${activePageHtml(s)}</div>`;
+}
+
+// The render entry point. `pages.js` calls these two.
+export function scaffoldHtml() { return scaffoldPageHtml(); }
+
+// ── posting & wiring ──────────────────────────────────────────────────────────
 
 async function postScaffold(what, payload) {
   let j = null;
@@ -160,8 +384,8 @@ async function postScaffold(what, payload) {
   if (j && j.active !== undefined) { APP.scaffoldError = ""; APP.scaffold = j; APP.render(); return j; }
   if (j && j.ok) { APP.scaffoldError = ""; APP.render(); return j; }        // abandon, and a clean accept
   APP.scaffoldError =
-    j && j.kind === "unloadable"   ? `written to ${j.dir}, but it does not load — ${j.error}`
-    : j && j.kind === "needs_folder" ? ""                            // the folder question renders itself
+    j && j.kind === "unloadable"     ? `it does not load, so nothing was kept — ${j.error}`
+    : j && j.kind === "needs_folder" ? ""                            // the folder step renders itself
     : reasonOr(j, "that did not go through");
   APP.render();
   return j;
@@ -172,11 +396,8 @@ async function postScaffold(what, payload) {
 export const disarmAccept  = () => { clearTimeout(APP.acceptArmed);  APP.acceptArmed  = 0; APP.render(); };
 const disarmAbandon = () => { clearTimeout(APP.abandonArmed); APP.abandonArmed = 0; APP.render(); };
 
-/**
- * A change, sent. **The text stays in the draft until the round actually lands.** It used to be
- * cleared before the POST, so a 409 or a dropped connection lost what you had written with nothing
- * said about it — the same failure as accepting over an unsent change, arriving a different way.
- */
+/** A change, sent. The text stays in the draft until the round actually lands, so a 409 or a dropped
+ *  connection does not lose what you had written with nothing said about it. */
 async function sendSay() {
   const text = draft.say.trim();
   if (!text || APP.scaffold.busy) return;
@@ -186,92 +407,94 @@ async function sendSay() {
 
 async function startInterview() {
   const idea = draft.idea.trim();
-  if (!idea) return;
-  // A second Enter (or Enter + clicking the button) while the first POST is in flight must not
-  // overwrite the optimistic busy state and race a second /scaffold/start — same guard sendSay has.
-  if (APP.scaffold.busy) return;
+  if (!idea || APP.scaffold.busy) return;
+  const mode = draft.mode === "oneshot" ? "oneshot" : "staged";
   APP.scaffoldError = "";
-  APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model };
+  APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
+                   mode, gate: mode === "staged" ? "story" : null };
   APP.render();
-  const j = await postScaffold("start", { idea, model: draft.model });
-  // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear — it has
-  // to fall back to the idea box, with the idea still in it, or the modal hangs until a reload.
-  if (!j || j.active === undefined) { APP.scaffold = { active:false }; APP.ideaOpen = true; APP.render(); }
-  else if (j.spec) {
-    APP.ivHidden = true;
-    APP.editNew = true; APP.editDir = "";
-    go("edit");
+  const j = await postScaffold("start", { idea, model: draft.model, mode });
+  // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear — fall back
+  // to an inactive session so the idea modal comes back with the idea still in it.
+  if (!j || j.active === undefined) { APP.scaffold = { active:false }; APP.render(); }
+}
+
+async function acceptStory() {
+  // Two things make accepting deliberate. UNSENT TEXT: the story is written from the spec, so
+  // whatever is still in the box would be silently thrown away. A COMPLAINT: allowed to accept over
+  // — they are judgements about the design — but it takes a confirming second click.
+  const unsent = !!draft.say.trim();
+  const flagged = !!(APP.scaffold.problems && APP.scaffold.problems.length);
+  if ((unsent || flagged) && !APP.acceptArmed) { APP.acceptArmed = setTimeout(disarmAccept, 5000); APP.render(); return; }
+  if (APP.scaffold.busy) return;
+  clearTimeout(APP.acceptArmed); APP.acceptArmed = 0;
+  APP.scaffoldAccepting = true; APP.render();
+  const j = await postScaffold("accept", {});
+  if (j && j.ok) {
+    // A clean accept resolves the parked pick and starts the run — follow it to the live screen.
+    draft.idea = draft.say = draft.folder = "";
+    APP.scaffoldAccepting = false;
+    go("live");
+  } else {
+    // needs_folder or a refusal: back to the page, which renders the folder step or the error.
+    APP.scaffoldAccepting = false; APP.render();
   }
 }
 
-export function wireInterview(page) {
+/** Accept into a named folder — the answer to needs_folder. A blank name is not an answer. */
+async function acceptIntoFolder() {
+  const folder = draft.folder.trim();
+  if (!folder || APP.scaffold.busy) return;
+  APP.scaffoldAccepting = true; APP.render();
+  const j = await postScaffold("accept", { folder });
+  if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.scaffoldAccepting = false; go("live"); }
+  else { APP.scaffoldAccepting = false; APP.render(); }
+}
+
+export function wireScaffold(page) {
   const on = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("click", fn); };
   const onKey = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("keydown", fn); };
   const plain = e => !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing;
-  // Keep what is being typed across the re-renders that SSE frames cause.
-  for (const [id, key] of [["f-idea","idea"], ["f-say","say"], ["f-folder","folder"], ["f-length","length"]]) {
+
+  // Keep what is being typed across the re-renders SSE frames cause.
+  for (const [id, key] of [["f-idea","idea"], ["f-say","say"], ["f-folder","folder"]]) {
     const el = page.querySelector("#" + id);
     if (el) el.addEventListener("input", () => { draft[key] = el.value; });
   }
   const model = page.querySelector("#f-model");
   if (model) model.addEventListener("change", () => { draft.model = model.value; });
-  const len = page.querySelector("#f-length");
-  if (len) len.addEventListener("change", async () => {
-    const j = await postScaffold("set", { field:"scene.length", value:Math.round(Number(len.value)) });
-    if (j && j.active !== undefined) draft.length = "";
-    APP.render();
-  });
-  // Enter sends. There was no keyboard path to "send" at all, which is exactly what made the
-  // primary button — accept — read as the default for a box whose entire purpose is a change.
+  for (const r of page.querySelectorAll('input[name="mode"]'))
+    r.addEventListener("change", () => { if (r.checked) { draft.mode = r.value; APP.render(); } });
+
+  // Enter sends; the idea box is a paragraph, so there the modifier sends and Enter is a newline.
   onKey("f-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendSay(); } });
-  // The idea is a paragraph, not a line, so here Enter stays a newline and the modifier sends.
-  onKey("f-idea", e => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); startInterview(); }
-  });
+  onKey("f-idea", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); startInterview(); } });
   onKey("f-folder", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); acceptIntoFolder(); } });
-  on("iv-back", () => { APP.ideaOpen = false; APP.render(); });
-  on("iv-hide", () => { APP.ivHidden = true; APP.render(); });
+
+  on("iv-back", () => go("shelf"));
   on("iv-start", startInterview);
   on("iv-say", sendSay);
-  on("iv-full", () => { APP.personasFull = !APP.personasFull; APP.render(); });
+  on("iv-approve", async () => {
+    // The gate's explicit pass: one click opens the next stage. A double-click must not POST twice.
+    if (APP.scaffold.busy) return;
+    await postScaffold("approve", {});
+  });
+  on("iv-edit", () => {
+    // The optional full editor for the same in-memory draft — it syncs back through /scaffold/set.
+    APP.editNew = true; APP.editDir = "";
+    go("edit");
+  });
   on("iv-abandon", () => {
-    // Abandoning throws away every round of an interview at once, and nothing on the server keeps
-    // a copy. It gets the same confirming second click accepting does.
+    // Abandoning throws away the whole interview; nothing on the server keeps a copy, so it gets a
+    // confirming second click.
     if (!APP.abandonArmed) { APP.abandonArmed = setTimeout(disarmAbandon, 4000); APP.render(); return; }
     clearTimeout(APP.abandonArmed); APP.abandonArmed = 0;
     postScaffold("abandon", {}).then(() => {
-      APP.scaffold = { active:false }; APP.ideaOpen = false; APP.ivHidden = false; APP.scaffoldError = "";
+      APP.scaffold = { active:false }; APP.scaffoldError = "";
       draft.idea = draft.say = draft.folder = "";
-      APP.render();
+      go("shelf");
     });
   });
   on("iv-folder", acceptIntoFolder);
-  on("iv-accept", async () => {
-    // Two things make accepting deliberate rather than the button that happens to be nearest.
-    // UNSENT TEXT: the story is written from the spec, so whatever is still in the box would be
-    // silently thrown away. A COMPLAINT: allowed to accept over — they are judgements about the
-    // design, not errors — but it takes a second click, as it takes a second keypress at the
-    // console.
-    const unsent = !!draft.say.trim();
-    const flagged = !!(APP.scaffold.problems && APP.scaffold.problems.length);
-    if ((unsent || flagged) && !APP.acceptArmed) { APP.acceptArmed = setTimeout(disarmAccept, 5000); APP.render(); return; }
-    if (APP.scaffold.busy) return;   // a double-click must not POST accept twice
-    clearTimeout(APP.acceptArmed); APP.acceptArmed = 0;
-    const j = await postScaffold("accept", {});
-    // A clean accept is done with this story -- clear its idea so the next interview does not open
-    // pre-filled with it (the abandon path has always done this).
-    if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.render(); }
-  });
+  on("iv-accept", acceptStory);
 }
-
-/** Accept into a named folder — the answer to `needs_folder`. A blank name is not an answer, so it
- *  does nothing rather than re-asking the same question. */
-function acceptIntoFolder() {
-  const folder = draft.folder.trim();
-  if (folder) postScaffold("accept", { folder });
-}
-
-// Escape closes the interview modal the same way the backdrop and × do — hides, never abandons.
-document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && (APP.scaffold.active || APP.ideaOpen) && !APP.ivHidden) { APP.ivHidden = true; APP.render(); }
-});

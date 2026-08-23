@@ -38,6 +38,13 @@ const thinkSelect = (id, label, current) => {
   return `<div class="field"><label for="${id}">${label}</label><select id="${id}">${opts}</select></div>`;
 };
 
+/** Voice samples: one line of dialogue per line of the textarea; the schema caps them at three. */
+const voiceFld = (i, voice) => {
+  const lines = Array.isArray(voice) ? voice.join("\n") : "";
+  return `<div class="field"><label for="char-${i}-voice">Voice (one sample per line, max 3)</label>` +
+    `<textarea id="char-${i}-voice" rows="3">${esc(lines)}</textarea></div>`;
+};
+
 /** Deep clone an object by serialising it — Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -149,6 +156,11 @@ function characterCardsHtml() {
         ${fld(`char-${i}-goal`, "Goal", c.goal, "half")}
       </div>
       <div class="editor-row">
+        ${fld(`char-${i}-belief`, "Belief (may be false)", c.belief ?? "", "half")}
+        ${fld(`char-${i}-impulse`, 'Impulse ("when X → Y")', c.impulse ?? "", "half")}
+      </div>
+      ${voiceFld(i, c.voice)}
+      <div class="editor-row">
         ${fld(`char-${i}-skills`, "Skills (comma-separated)", skills, "half")}
         ${fld(`char-${i}-restrictions`, "Restrictions (comma-separated)", restrictions, "half")}
       </div>
@@ -226,7 +238,7 @@ function editToolbarHtml() {
     ${action}
     <button class="btn" id="edit-revert"${APP.editDirty ? "" : " disabled"}>revert</button>
     <span class="spacer"></span>
-    <button class="btn" id="edit-back">back to story</button>
+    <button class="btn" id="edit-back">${APP.editNew ? "back to interview" : "back to story"}</button>
   </div>`;
 }
 
@@ -293,6 +305,15 @@ export function storyEditHtml() {
   }
 
   if (!APP.editDraft) {
+    // A new-story draft with no scaffold behind it -- a reloaded or bookmarked #/edit?new=1 after
+    // the interview is gone -- will never resolve: there is nothing on the server to load. Say so
+    // and offer a way out, rather than a back-button-less "loading…" that hangs forever.
+    if (APP.editNew && !APP.scaffold?.spec) {
+      return `<section class="picker story"><h2>New story</h2>
+        <p class="hint">This draft is no longer available — start a new one from the shelf.</p>
+        <div class="btns" style="margin-top:14px"><button class="btn" id="edit-loading-back">back to the shelf</button></div>
+      </section>`;
+    }
     const name = APP.editNew ? "New story" : APP.stories?.find(s => s.dir === APP.editDir)?.name || APP.editDir;
     return `<section class="picker story"><h2>Edit ${esc(name)}</h2>
       <p class="thinking"><i></i>loading…</p></section>`;
@@ -408,6 +429,8 @@ function applyField(id, value) {
       APP.editDraft.characters[idx].skills = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
     } else if (field === "restrictions") {
       APP.editDraft.characters[idx].restrictions = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+    } else if (field === "voice") {
+      APP.editDraft.characters[idx].voice = value.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 3);
     } else if (field === "maxRetries") {
       APP.editDraft.characters[idx].maxRetries = value === "" ? undefined : Number(value);
     } else {
@@ -445,8 +468,14 @@ function applyField(id, value) {
 export function wireStoryEditor(page) {
   // Back button -- mutates nothing before go(): the dirty guard in nav.js owns the confirm, and
   // clearing editDirty here (as this used to) silently discarded unsaved changes with one click.
+  // A scaffold draft ("edit in full") has no story on disk to go back to -- it returns to the
+  // scaffold page, which still holds the in-memory session.
   const back = page.querySelector("#edit-back");
-  if (back) back.addEventListener("click", () => go("story"));
+  if (back) back.addEventListener("click", () => go(APP.editNew ? "scaffold" : "story"));
+  // The dead-end escape for a new-story draft with nothing behind it -- there is no "story" to go
+  // back to, so it lands on the shelf.
+  const loadingBack = page.querySelector("#edit-loading-back");
+  if (loadingBack) loadingBack.addEventListener("click", () => go("shelf"));
 
   // All inputs write to draft
   const inputs = page.querySelectorAll("input, textarea, select");

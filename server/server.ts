@@ -36,7 +36,10 @@ export interface ServerHost {
   loadedModelIds(): Promise<string[] | null>;
   /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
   architectModel(): Promise<string>;
-  newScaffoldSession(idea: string, model?: string): Promise<ScaffoldSession>;
+  /** `mode` picks the scaffold's walk: "staged" runs the gated checklist
+   *  (story → cast → settings → scene, an author approval between stages); "oneshot" is the
+   *  whole-story proposal. Omitted means staged. */
+  newScaffoldSession(idea: string, model?: string, mode?: "oneshot" | "staged"): Promise<ScaffoldSession>;
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
   directEdit(spec: StorySpec, field: string, value: unknown):
@@ -58,6 +61,7 @@ export interface ServerHost {
   fullCast(dir: string): Promise<{
     ok: true; characters: {
       name: string; persona: string; knows: string; goal: string;
+      belief: string; impulse: string; voice: string[];
       skills: { text: string; meaning: string }[]; restrictions: string[];
     }[];
   } | {
@@ -122,6 +126,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         // rather than a `..`-blacklist check, since that's the shape the folder actually has.
         const file = path.match(viewerModule)![1];
         await serveFile(res, new URL(`./gui/viewer/${file}`, import.meta.url), "application/javascript; charset=utf-8");
+      } else if (path === "/studio" || path === "/studio/") {
+        await serveFile(res, new URL("../mockups/studio/index.html", import.meta.url), "text/html; charset=utf-8");
       } else if (path === "/events") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
@@ -131,7 +137,11 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         for (const ev of liveHistory) res.write(`data: ${JSON.stringify(ev)}\n\n`);
         res.write(`data: ${JSON.stringify(runState())}\n\n`);
         sseClients.add(res);
-        req.on("close", () => sseClients.delete(res));
+        const dropClient = () => sseClients.delete(res);
+        req.on("close", dropClient);
+        // Without an `error` listener, an async socket failure (EPIPE/ECONNRESET on a half-dead
+        // viewer) emits an unhandled 'error' event that would crash the whole process.
+        res.on("error", dropClient);
 
       } else if (path === "/run") {
         json(res, 200, {

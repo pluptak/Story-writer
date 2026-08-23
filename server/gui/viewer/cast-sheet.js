@@ -49,13 +49,18 @@ export function castSheetHtml() {
   const cards = roster.map(c => {
     const skills = (c.skills || []).map(s =>
       `<span class="yes" title="${esc(s.meaning || "")}">+${esc(s.text)}</span>`).join(" ");
-    const restr = (c.restrictions || []).map(r => `<span class="no">no ${esc(r)}</span>`).join(" ");
+    const restr = (c.restrictions || []).map(r =>
+      `<span class="no" title="cannot ${esc(r)}">no ${esc(r)}</span>`).join(" ");
     const tags = skills || restr ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}</div>` : "";
+    const voice = (c.voice || []).map(v => `<p class="cast-voice">“${esc(v)}”</p>`).join("");
     return `<div class="cast-card">
       <div class="cast-name">${esc(c.name)}</div>
       ${field("persona", c.persona)}
       ${field("knows", c.knows)}
       ${field("goal", c.goal)}
+      ${field("belief", c.belief)}
+      ${field("impulse", c.impulse)}
+      ${voice}
       ${tags}
     </div>`;
   }).join("");
