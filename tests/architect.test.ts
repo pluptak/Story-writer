@@ -276,6 +276,12 @@ describe("ScaffoldSession, staged", () => {
   };
   const CAST_STAGE = { characters: STORY.characters };
   const SETTINGS_STAGE = { writer_style: STORY.writer_style };
+  const TECHNICAL_STAGE = {
+    config: { retries: 3, clarifications: 1, maxSteps: 30, maxProseWords: 120,
+              thinking: { writer: "medium" }, maxCharacterRetries: 5 },
+    characters: [{ name: STORY.characters[0].name, maxRetries: 2 }],
+    scenes: [{ writerThink: "high" }],
+  };
   const SCENE_STAGE = { scene: STORY.scene, later_scenes: [{ question: "Does the relief boat come?" }] };
 
   const stage = (script: unknown[]) =>
@@ -284,7 +290,7 @@ describe("ScaffoldSession, staged", () => {
   const gateOf = (r: { kind: string; stage?: string }) => r.stage;
 
   it("walks the checklist one approved gate at a time, merging as it goes", async () => {
-    const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, SCENE_STAGE,
+    const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
                      { edits: [], note: "it holds together" }]);
 
     const first = await s.propose();
@@ -303,6 +309,13 @@ describe("ScaffoldSession, staged", () => {
 
     await s.approve();                                   // settings
     assert.equal(s.spec.writerStyle, SETTINGS_STAGE.writer_style);
+
+    const tech = await s.approve();                      // technical
+    assert.equal(gateOf(tech), "technical");
+    assert.equal(s.spec.config.retries, 3, "technical config overrides land");
+    assert.equal(s.spec.config.maxCharacterRetries, 5);
+    assert.equal(s.spec.characters[0].maxRetries, 2, "per-character maxRetries land");
+    assert.equal(s.spec.scenes[0].writerThink, "high", "per-scene writerThink lands");
 
     const scene = await s.approve();
     assert.equal(gateOf(scene), "scene");

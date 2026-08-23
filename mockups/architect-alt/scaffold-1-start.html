@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>scaffold · the idea step</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>new story · scaffold interview</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <button class="tab active" type="button">new story</button>
+      <a class="tab" href="handoff-2-edits.html">next chapter</a>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot"></span>
+    <span>no scaffold session · nothing is on disk</span>
+    <span class="spacer">architect model · gemma-4-12b</span>
+  </div>
+
+  <!-- The empty story editor sits underneath; the idea step overlays it as a modal. -->
+  <div class="shell" aria-hidden="true" style="opacity:.45">
+    <main>
+      <p class="eyebrow">new story</p>
+      <h2>Nothing proposed yet</h2>
+      <p class="lede">The editor behind this modal is empty until the first proposal lands.</p>
+    </main>
+  </div>
+
+  <div class="modal-backdrop">
+    <section class="card picker iv" aria-label="start a new story">
+      <p class="eyebrow">scaffold interview</p>
+      <h2>Give the architect the rough idea</h2>
+      <p class="sub">A situation, not a plot. The architect will find the pressure in it — asking for
+        whatever single fact it needs before it proposes.</p>
+
+      <label class="label field-label" for="idea">the idea</label>
+      <textarea id="idea" placeholder="A lighthouse keeper falsifies the storm log the night a relief crew is due..."></textarea>
+
+      <label class="label field-label" style="margin-top:14px">how it proposes</label>
+      <div class="choice-grid">
+        <label class="choice selected">
+          <input type="radio" name="mode" value="staged" checked>
+          <b>stage by stage</b>
+          <span>The gated checklist: story → cast → settings → scene, an approval between each.</span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="mode" value="oneshot">
+          <b>the whole story at once</b>
+          <span>One complete proposal, then conversational refinement.</span>
+        </label>
+      </div>
+
+      <div class="modal-foot">
+        <span class="hint">POST /scaffold/start · only while picking</span>
+        <select aria-label="model"><option>gemma-4-12b</option><option>qwen3-30b-a3b</option></select>
+        <button class="button primary" type="button">propose →</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+    document.querySelectorAll(".choice input").forEach(input => {
+      input.addEventListener("change", () => {
+        document.querySelectorAll(".choice").forEach(c => c.classList.toggle("selected", c.querySelector("input").checked));
+      });
+    });
+  </script>
+</body>
+</html>

@@ -54,13 +54,8 @@ export function wirePicker(page, openStory, openNew = null) {
       APP.storyDir = b.dataset.dir; APP.storyModel = ""; APP.storyError = ""; APP.runError = ""; openStory();
     } });
   for (const b of page.querySelectorAll(".card[data-new]"))
-    b.addEventListener("click", () => {
-      // Already going server-side (one ScaffoldSession, GUI-SPEC §5.1) -- this reopens the modal
-      // rather than starting a second interview. Clearing ivHidden unconditionally matters: a
-      // dismissal that happened before scaffold.active went true (still just APP.ideaOpen) left
-      // ivHidden set with nothing else to clear it, so a second click here has to.
-      APP.ivHidden = false;
-      if (openNew) openNew();
-      else { if (!APP.scaffold.active) APP.ideaOpen = true; APP.render(); }
-    });
+    // Opens the scaffold page (`openNew`, injected by the shelf -- importing nav.js here would close
+    // a module cycle). One ScaffoldSession lives on the server (GUI-SPEC §5.1), so a session already
+    // running is continued there rather than started again; the card relabels itself to say so.
+    b.addEventListener("click", () => { if (openNew) openNew(); });
 }

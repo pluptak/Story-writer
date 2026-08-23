@@ -188,6 +188,17 @@ describe("applyEdits", () => {
     assert.equal(r.applied[0].field, "MERRITT.persona");
   });
 
+  it("accepts edits whose keys are field names instead of {field,value} pairs", () => {
+    const r = edit("title", "The Campfire Betrayal"); // establish a baseline
+    const refined = quietSync(() => applyEdits(r.spec, {
+      edits: [{ title: "The Sword's Weight", premise: "They mean to take the blade.", facts: ["isolation"] }],
+    }));
+    assert.equal(refined.spec.title, "The Sword's Weight");
+    assert.equal(refined.spec.premise, "They mean to take the blade.");
+    assert.deepEqual(refined.spec.facts, ["isolation"]);
+    assert.equal(refined.ignored.length, 0, `expected no ignored edits, got: ${refined.ignored.join("; ")}`);
+  });
+
   it("renames a character, and the roster and pov follow", () => {
     const r = edit("characters.RIVEN.name", "QUINN");
     assert.deepEqual(r.spec.characters.map(c => c.name), ["QUINN", "MERRITT"]);

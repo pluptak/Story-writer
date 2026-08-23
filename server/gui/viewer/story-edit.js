@@ -238,7 +238,7 @@ function editToolbarHtml() {
     ${action}
     <button class="btn" id="edit-revert"${APP.editDirty ? "" : " disabled"}>revert</button>
     <span class="spacer"></span>
-    <button class="btn" id="edit-back">back to story</button>
+    <button class="btn" id="edit-back">${APP.editNew ? "back to interview" : "back to story"}</button>
   </div>`;
 }
 
@@ -468,8 +468,10 @@ function applyField(id, value) {
 export function wireStoryEditor(page) {
   // Back button -- mutates nothing before go(): the dirty guard in nav.js owns the confirm, and
   // clearing editDirty here (as this used to) silently discarded unsaved changes with one click.
+  // A scaffold draft ("edit in full") has no story on disk to go back to -- it returns to the
+  // scaffold page, which still holds the in-memory session.
   const back = page.querySelector("#edit-back");
-  if (back) back.addEventListener("click", () => go("story"));
+  if (back) back.addEventListener("click", () => go(APP.editNew ? "scaffold" : "story"));
   // The dead-end escape for a new-story draft with nothing behind it -- there is no "story" to go
   // back to, so it lands on the shelf.
   const loadingBack = page.querySelector("#edit-loading-back");

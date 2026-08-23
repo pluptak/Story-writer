@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>scaffold · a standing question</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>new story · staged checklist · question stands</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <button class="tab active" type="button">new story</button>
+      <a class="tab" href="handoff-2-edits.html">next chapter</a>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot"></span>
+    <span>pendingAsk · the question pins its gate until it is answered</span>
+    <span class="spacer">gate: cast · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">scaffold · staged</p>
+      <h2>The architect asked instead of proposing</h2>
+      <p class="lede">The idea did not explain who is in the scene and what is at stake between them, so
+        the FIRST DECIDE gate failed. Everything typed now is the answer — and while the question
+        stands, approve is hidden.</p>
+
+      <div class="workspace">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">draft so far · [story] landed</span>
+              <h3>The Last Signal</h3>
+            </div>
+            <span class="label">unchanged</span>
+          </div>
+          <div class="card-body">
+            <p style="margin:0;color:var(--muted);font-size:13px">
+              A lighthouse keeper falsifies the storm log the night a relief crew is due, and the
+              substitute keeper must decide what the record is for.
+            </p>
+            <div class="question" style="margin-top:14px">
+              <span class="label">load-bearing tension (session state)</span>
+              One man needs the log to be false; the other was hired because it was true.
+            </div>
+            <div class="prob">The draft has not changed this round — a question writes nothing.</div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3>Answer the architect</h3>
+            </div>
+            <span class="label">question · [cast]</span>
+          </div>
+          <div class="card-body">
+            <div class="round-question">
+              <span class="label">the architect's question</span>
+              Who is actually standing in the lighthouse that night — does the substitute arrive before
+              the storm, or only afterwards? I cannot cast the scene until I know who witnesses the log.
+            </div>
+
+            <textarea placeholder="Answer the architect's question...">He arrives during it — soaked, half-drowned, and finds Aldous already drying the page by the stove.</textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends the answer · feeds [THE AUTHOR ANSWERS]</span>
+              <span class="thinking"><i></i> architect is thinking…</span>
+              <button class="button primary" type="button">send answer →</button>
+            </div>
+
+            <div class="said.bad">While pendingAsk stands there is no approve button — answering re-runs
+              this stage's prompt. Three asks within one gate earn an OVERRIDE line; passing a gate
+              resets the ask budget (1 used here).</div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>scaffold state</h3>
+        <div class="stat"><span>walk</span><strong>staged</strong></div>
+        <div class="stat"><span>open gate</span><strong>cast</strong></div>
+        <div class="stat"><span>pendingAsk</span><strong>yes</strong></div>
+        <div class="stat"><span>on disk</span><strong>nothing yet</strong></div>
+        <div class="side-actions">
+          <button class="button primary" type="button" disabled>approve &amp; continue</button>
+          <button class="button danger" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>principle</h3>
+        <p class="side-copy">A question blocks a meaningful proposal until answered, but it never edits
+          the draft by itself. The gate holds.</p>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>scaffold · the folder-name step</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>new story · accept</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <button class="tab active" type="button">new story</button>
+      <a class="tab" href="handoff-2-edits.html">next chapter</a>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot busy"></span>
+    <span>needs_folder · nothing is written until this step answers kind:"written"</span>
+    <span class="spacer">checklist complete · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">scaffold · staged · checklist complete</p>
+      <h2>All four gates have landed</h2>
+      <p class="lede">Past the last gate approve has nothing left to open — accept is the move. The
+        verify pass ran once after the scene stage; its findings sit beneath the proposal.</p>
+
+      <div class="workspace">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">final draft · ready to write</span>
+              <h3>The Last Signal</h3>
+            </div>
+            <span class="label">4 gates ✓</span>
+          </div>
+          <div class="card-body">
+            <div class="scene">
+              <h4>The lighthouse, during</h4>
+              <p class="scene-meta">scene 1 · ~700 words · POV IVO</p>
+              <div class="question"><span class="label">dramatic question</span>Will Ivo sign a page he knows is false?</div>
+            </div>
+            <div class="prob" style="margin-top:14px">verify: POV IVO stands in the roster ✓ · Aldous's
+              sleep deprivation bites on the dawn watch ✓</div>
+
+            <div class="result-blocks">
+              <div class="result-block problems">
+                <span class="label">problems (non-blocking)</span>
+                <ul class="plain-list">
+                  <li>skill "weather-sense" is not in the bible and carries no :: meaning — it was dropped</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">accept</span>
+              <h3>Name the story folder</h3>
+            </div>
+            <span class="label">needs_folder</span>
+          </div>
+          <div class="card-body">
+            <p>The server answered `kind:"needs_folder"` — choose where `story.json` lands. If preflight
+              fails after the write, the folder just created is removed, so nothing unloadable is left
+              on disk.</p>
+
+            <label class="label field-label" for="folder" style="margin-top:14px">story folder</label>
+            <input id="folder" type="text" value="the-last-signal">
+
+            <div class="composer-foot">
+              <span class="hint">POST /scaffold/accept { folder }</span>
+              <span class="thinking"><i></i> writing &amp; preflighting…</span>
+              <button class="button primary" type="button">write story.json →</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>scaffold state</h3>
+        <div class="stat"><span>walk</span><strong>staged</strong></div>
+        <div class="stat"><span>gates passed</span><strong>4 of 4</strong></div>
+        <div class="stat"><span>on disk</span><strong>pending accept</strong></div>
+        <div class="side-actions">
+          <button class="button danger" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>principle</h3>
+        <p class="side-copy">Accept does not disappear until the server returns `kind:"written"`.
+          Accepting also resolves the parked story pick — that handshake is what lets the next run
+          begin.</p>
+        <div class="notice" style="margin-top:12px">The architect proposes. The author accepts. Nothing writes itself.</div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

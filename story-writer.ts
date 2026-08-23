@@ -172,7 +172,7 @@ const STAGE_LABEL: Record<AutoStage, string> = {
 
 /** The staged checklist as text: passed gates ticked, the open gate bold, the rest dim.
  *  Console-only decoration — nothing here is ever said to a model. */
-const CHECKLIST_ORDER = ["story", "cast", "settings", "scene"] as const;
+const CHECKLIST_ORDER = ["story", "cast", "settings", "technical", "scene"] as const;
 
 function checklistLine(stage: string | null): string {
   const cur = stage ? CHECKLIST_ORDER.indexOf(stage as typeof CHECKLIST_ORDER[number]) : -1;
@@ -281,7 +281,8 @@ async function runScaffoldCli() {
       const isStaged = session.mode === "staged";
       // Every stage landed and nothing is asked: the checklist's job is done, so [enter] now means
       // accept -- the same bare-enter the one-shot flow has always used at this point.
-      const stagedComplete = isStaged && session.stage === "scene" && !session.pendingAsk
+      const lastStage = CHECKLIST_ORDER[CHECKLIST_ORDER.length - 1];
+      const stagedComplete = isStaged && session.stage === lastStage && !session.pendingAsk
         && Boolean(session.spec.scenes[0]?.question.trim());
       if (isStaged) console.log(`\n${C.dim}checklist:${C.reset} ${checklistLine(session.stage)}`);
       const prompt = session.pendingAsk
@@ -324,7 +325,7 @@ async function runScaffoldCli() {
       } else if (isStaged && said.toLowerCase() === "accept") {
         accepting = true;
         if (!session.haveStory()) { console.log(`${C.dim}Nothing to accept yet.${C.reset}`); continue; }
-        if (session.stage !== "scene")
+        if (session.stage !== lastStage)
           console.log(`${C.dim}(the checklist is not finished — accepting what exists so far)${C.reset}`);
       } else {
         showRound(session, await session.say(said, onStage));

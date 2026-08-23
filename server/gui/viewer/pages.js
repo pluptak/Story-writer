@@ -11,7 +11,7 @@ import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
-import { interviewModalHtml, wireInterview } from "./interview.js";
+import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
 import { go, generating } from "./nav.js";
@@ -26,7 +26,9 @@ function restoreFocus(page, id) {
       return;
     }
   }
-  const first = page.querySelector(".iv #f-folder:not([disabled]), .iv textarea:not([disabled])");
+  const first = page.querySelector(
+    ".iv #f-folder:not([disabled]), .iv textarea:not([disabled]), " +
+    ".scpage #f-folder:not([disabled]), .scpage #f-say:not([disabled])");
   if (first) first.focus();
 }
 
@@ -39,7 +41,7 @@ function renderNav() {
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
-  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
+  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" || APP.view === "scaffold" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
     const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
@@ -81,14 +83,19 @@ function paintRibbon() {
 }
 
 function renderShelf(page, keepFocus) {
-  page.innerHTML = pickerHtml() + interviewModalHtml();
+  page.innerHTML = pickerHtml();
   $("railstats").innerHTML = "";
-  wirePicker(page, () => go("story"), () => {
-    APP.editNew = true; APP.editDir = "";
-    if (APP.scaffold.active && APP.scaffold.spec) APP.ivHidden = true;
-    else if (!APP.scaffold.active) APP.ideaOpen = true;
-    go("edit");
-  }); wireInterview(page); wireModal(page);
+  // The new-story card opens the scaffold page (a route now, not a modal); an interview already
+  // running on the server is continued there rather than started again.
+  wirePicker(page, () => go("story"), () => go("scaffold"));
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+}
+
+function renderScaffold(page, keepFocus) {
+  page.innerHTML = scaffoldHtml();
+  $("railstats").innerHTML = "";
+  wireScaffold(page); wireModal(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
@@ -132,10 +139,9 @@ function renderEdit(page) {
     ? [active.selectionStart, active.selectionEnd] : null;
   const folds = [...page.querySelectorAll("details.editor-section")].map(d => d.open);
 
-  page.innerHTML = storyEditHtml() + interviewModalHtml();
+  page.innerHTML = storyEditHtml();
   $("railstats").innerHTML = "";
   wireStoryEditor(page);
-  wireInterview(page);
 
   const sections = page.querySelectorAll("details.editor-section");
   if (folds.length === sections.length) sections.forEach((d, i) => { d.open = folds[i]; });
@@ -265,9 +271,10 @@ function renderRead(page, blocks) {
   renderRail(READV, blocks);
 }
 
-/** Backdrop click closes (hides) the interview modal, same as the × button — never abandons. */
+/** Backdrop click on the idea modal returns to the shelf — the interview lives on the server, so
+ *  leaving the page never abandons it; the shelf's "continue new story…" card comes back to it. */
 function wireModal(page) {
-  wireBackdropClose(page, "iv-backdrop", () => { APP.ivHidden = true; APP.render(); });
+  wireBackdropClose(page, "iv-backdrop", () => go("shelf"));
 }
 
 function setFoldable(foldable) {
@@ -306,6 +313,7 @@ export function render() {
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
   else if (APP.view === "compare") renderComparison(page);
   else if (APP.view === "edit") renderEdit(page);
+  else if (APP.view === "scaffold") renderScaffold(page, keepFocus);
   else if (APP.view === "readstory") renderReader(page);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);

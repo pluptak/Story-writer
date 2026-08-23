@@ -20,8 +20,9 @@ function crumbsFor() {
   switch (APP.view) {
     case "shelf":     return [{ label: "choosing a story" }];
     case "story":     return [shelf, { label: name(APP.storyDir) }];
+    case "scaffold":  return [shelf, { label: "new story" }];
     case "edit":      return APP.editNew
-                        ? [shelf, { label: "new story" }]
+                        ? [shelf, { label: "new story", view: "scaffold" }, { label: "edit in full" }]
                         : [shelf, { label: name(APP.editDir), view: "story", dir: APP.editDir }, { label: "edit story" }];
     case "handoff":   return [shelf, { label: name(APP.handoffDir), view: "story", dir: APP.handoffDir }, { label: "prepare chapter" }];
     case "compare":   return [shelf, { label: name(APP.compareDir), view: "story", dir: APP.compareDir }, { label: "compare runs" }];
@@ -68,6 +69,7 @@ function titleContext() {
   switch (APP.view) {
     case "story":     return storyName(APP.storyDir);
     case "handoff":   return "handoff · " + storyName(APP.handoffDir);
+    case "scaffold":  return "new story";
     case "edit":      return APP.editNew ? "new story" : "editing " + storyName(APP.editDir);
     case "readstory": return "reading " + (storyName(READER.dir) || basename(READER.dir));
     case "compare":   return "compare · " + storyName(APP.compareDir);

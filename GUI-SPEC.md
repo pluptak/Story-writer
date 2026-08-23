@@ -219,7 +219,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 
 ```
 GET  /scaffold
-  → { active:false } | { active:true, idea, mode, busy, stage, gate, haveStory, pendingAsk,
+  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, haveStory, pendingAsk,
                           problems[], last: ScaffoldRound | null, needsFolder, model, spec }
 
 ScaffoldRound =
@@ -259,6 +259,11 @@ POST /scaffold/abandon                     → drops the session unconditionally
 whole exchange settles. A one-shot session runs both passes after its proposal; a staged session asks
 for roster and facts in its own stages, so only `"verify"` ever appears there, once after the scene
 stage lands. Do not confuse it with `gate`, which is the checklist position and persists between rounds.
+
+`tension` is the load-bearing conflict sentence the staged story stage coins. It is session state, never
+a `story.json` field, so it reaches the GUI only through this state object — read-only, for display; the
+architect edits it by field name (see `/scaffold/say`) but it never lands on disk. Empty on a one-shot
+session and until the story stage names it.
 
 One session at a time (`scaffoldBusy` is a module-level lock — a second `POST` while a round is in
 flight gets `409`). `accept` only resolves the parked story pick on `kind: "written"`; every other

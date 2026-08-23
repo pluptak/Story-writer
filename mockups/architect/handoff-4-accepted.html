@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>handoff · accepted</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>architect handoff · the last signal · written</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <a class="tab" href="scaffold-1-start.html">new story</a>
+      <button class="tab active" type="button">next chapter</button>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot"></span>
+    <span>kind:"written" · story.json rewritten and preflighted · session stays open for refinement</span>
+    <span class="spacer">story: the-last-signal · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">architect handoff · accepted</p>
+      <h2>Chapter 2 is prepared</h2>
+      <p class="lede">`story.json` on disk now carries the re-authored cast and scene. The handoff never
+        starts a run — writing the prepared chapter is a separate action, offered here.</p>
+
+      <div class="workspace">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">prepared chapter · now in story.json</span>
+              <h3>The Last Signal — chapter 2</h3>
+            </div>
+            <span class="label">✓ written</span>
+          </div>
+          <div class="card-body">
+            <div class="scene">
+              <h4>The relief boat</h4>
+              <p class="scene-meta">chapter 2 · ~760 words · POV IVO · roster: IVO, MARA</p>
+              <div class="question"><span class="label">dramatic question</span>Will Ivo expose the falsified log before the relief crew arrives?</div>
+            </div>
+
+            <div style="margin-top:14px">
+              <span class="label">chapters written</span>
+              <div class="chapters-list">
+                <div class="chapter-row"><span class="n">✓ ch 1</span><span>the storm log</span><span class="w">812 words</span></div>
+                <div class="chapter-row"><span class="n">· ch 2</span><span>the relief boat — prepared, unwritten</span><span class="w">ready</span></div>
+              </div>
+            </div>
+            <div class="notice" style="margin-top:14px">Preflight passed after the write — the file on
+              disk is loadable. Had it failed, exactly what was there before would have been put back.</div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3>Accepted — what next</h3>
+            </div>
+            <span class="label">written</span>
+          </div>
+          <div class="card-body">
+            <p>The handoff can keep going: further rounds refine `story.json` again, each accept rewriting
+            and preflighting in turn.</p>
+            <div class="round-note">
+              <span class="label">architect note</span>
+              “Mara's silence is now load-bearing. If you want the bell to matter again, that is a new
+              consequence — say so and I will author it honestly.”
+            </div>
+
+            <textarea placeholder="Keep refining, or leave it as accepted..."></textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends · Shift+Enter adds a line</span>
+              <span class="thinking"><i></i> architect is thinking…</span>
+              <button class="button" type="button">send</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>handoff state</h3>
+        <div class="stat"><span>story</span><strong>the-last-signal</strong></div>
+        <div class="stat"><span>prepared</span><strong>chapter 2</strong></div>
+        <div class="stat"><span>written</span><strong>yes</strong></div>
+        <div class="side-actions">
+          <!-- calls POST /select { dir, chapter } — only while parked at the picker -->
+          <button class="button primary" type="button">write chapter 2 →</button>
+          <button class="button ghost" type="button">back to stories</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>principle</h3>
+        <p class="side-copy">The write button is disabled unless the session is parked at the picker.
+          Starting a chapter automatically after accepting is out of scope by design.</p>
+        <div class="notice" style="margin-top:12px">One run writes one chapter. Chapter 2 will be run like any other.</div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

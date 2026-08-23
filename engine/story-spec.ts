@@ -2,7 +2,7 @@
 import { C } from "../ansi.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, RESTRICTION_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
-import { StoryJson, RunConfig, type SceneDef, type CharacterDef } from "./story-schema.ts";
+import { StoryJson, RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef, type CharacterDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
 
@@ -103,6 +103,9 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       pov: povOk ? pov : "",
       length: Number.isFinite(lengthRaw) && lengthRaw >= 1 ? Math.round(lengthRaw) : 700,
       roster: Array.isArray(s.roster) ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [],
+      ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
+      ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
+        ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),
     };
   };
 
@@ -145,7 +148,17 @@ export function applyEdits(spec: StorySpec, raw: any): {
   type Work = Applied & { key: string; snapshot: unknown; resolve?: (next: StorySpec) => unknown };
   const work: Work[] = [], ignored: string[] = [];
   const draft: any = JSON.parse(JSON.stringify({ ...spec, writer_style: spec.writerStyle, scenes: spec.scenes }));
-  const edits = Array.isArray(raw?.edits) ? raw.edits : [];
+  const rawEdits = Array.isArray(raw?.edits) ? raw.edits : [];
+  // The canonical edit shape is {"field": "...", "value": ...}. Some models instead emit a single
+  // object whose KEYS are the field names ({"title": "...", "premise": "..."}). Expand those into the
+  // canonical field/value pairs so the edit is applied instead of being silently dropped as "an edit
+  // with no field".
+  const edits = rawEdits.flatMap((e: any) => {
+    if (e && typeof e === "object" && !Array.isArray(e) && typeof e.field !== "string") {
+      return Object.entries(e).map(([k, v]) => ({ field: k, value: v }));
+    }
+    return [e];
+  });
   // One round may rename a character and then address them by the old name ("rewrite the prose
   // under the old name in the same round") -- later edits follow renames made earlier in the list.
   const renames = new Map<string, string>();
@@ -182,6 +195,12 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const before = normalizedDraft().writerStyle;
       draft.writer_style = scalar();
       scalarResolver("writer_style", next => next.writerStyle, before, "writer_style");
+      continue;
+    }
+    if (field === "facts") {
+      const before = normalizedDraft().facts;
+      draft.facts = asStrings(value);
+      scalarResolver("facts", next => next.facts, before, "facts");
       continue;
     }
 
@@ -313,6 +332,71 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const before = normalizedDraft().facts[idx];
       draft.facts[idx] = scalar();
       scalarResolver(`fact:${idx}`, next => next.facts[idx], before, `updated fact ${factMatch[1]}`);
+      continue;
+    }
+
+    // -- TECHNICAL EDITS ----------------------------------------------------
+    // The "technical" checklist stage authors these; they must also be editable by an in-gate
+    // [CHANGE] so a refinement round can tweak what the stage proposed. Option (a): models.* is
+    // NOT authored here (it stays resolved from defaults.json / the user), so only `default` may
+    // be set, and `writer`/`summary` are left to the author.
+    if (field.startsWith("config.") && field.split(".").length === 2) {
+      const key = field.slice(6);
+      const NUM = new Set(["retries", "clarifications", "maxSteps", "maxProseWords",
+        "requestTimeout", "attempts", "maxTokens", "maxCharacterRetries"]);
+      const BOOL = new Set(["stream", "debug"]);
+      if (!NUM.has(key) && !BOOL.has(key)) { ignored.push(`${field} — not an editable config key`); continue; }
+      const before = (normalizedDraft().config as any)?.[key];
+      draft.config = draft.config || {};
+      if (NUM.has(key)) {
+        const n = Number(value);
+        draft.config[key] = (value === "" || !Number.isFinite(n)) ? undefined : Math.round(n);
+      } else {
+        draft.config[key] = Boolean(value);
+      }
+      scalarResolver(`config:${key}`, next => (next.config as any)?.[key], before, field);
+      continue;
+    }
+    if (field.startsWith("config.thinking.")) {
+      const key = field.slice("config.thinking.".length);
+      if (!["writer", "character", "summary"].includes(key)) { ignored.push(`${field} — not an editable thinking key`); continue; }
+      const before = (normalizedDraft().config?.thinking as any)?.[key];
+      draft.config = draft.config || {};
+      draft.config.thinking = draft.config.thinking || {};
+      draft.config.thinking[key] = scalar();
+      scalarResolver(`config.thinking:${key}`, next => (next.config?.thinking as any)?.[key], before, field);
+      continue;
+    }
+    if (field.startsWith("models.")) {
+      const key = field.slice(7);
+      if (!["default", "writer", "summary"].includes(key)) { ignored.push(`${field} — not an editable models key`); continue; }
+      const before = (normalizedDraft().models as any)?.[key];
+      draft.models = draft.models || {};
+      draft.models[key] = scalar() || undefined;
+      scalarResolver(`models:${key}`, next => (next.models as any)?.[key], before, field);
+      continue;
+    }
+    const techScene = field.match(/^scene(?:_(\d+))?\.writer(Think|Model)$/);
+    if (techScene) {
+      const idx = techScene[1] ? Number(techScene[1]) - 1 : 0;
+      if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
+      const sub = techScene[2] === "Think" ? "writerThink" : "writerModel";
+      const before = (normalizedDraft().scenes[idx] as any)?.[sub];
+      draft.scenes[idx][sub] = scalar() || undefined;
+      scalarResolver(`scene:${idx}.${sub}`, next => (next.scenes[idx] as any)?.[sub], before, field);
+      continue;
+    }
+    const charMax = field.match(/^characters\.(.+)\.maxRetries$/);
+    if (charMax) {
+      const who = charMax[1].replace(/^<+/, "").replace(/>+$/, "").trim() || charMax[1];
+      const c = findChar(who);
+      if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
+      const before = (normalizedDraft().characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.maxRetries;
+      const target = draft.characters.find((x: any) => String(x.name).toLowerCase() === c.name.toLowerCase());
+      if (target) target.maxRetries = (value === "" || value == null) ? undefined : Number(value);
+      scalarResolver(`character:${c.name.toLowerCase()}.maxRetries`,
+        next => (next.characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.maxRetries,
+        before, `${c.name}.maxRetries`);
       continue;
     }
 

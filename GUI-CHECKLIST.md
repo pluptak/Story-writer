@@ -305,6 +305,38 @@ before starting this section. The comparison is opened from the story page's **c
 - [ ] **Single-run regression.** Open a retained run through the ordinary **read** action. It still has
       its original one-pane view and its original shared agent transcript behavior.
 
+## 14. The scaffold interview — the new-story page
+
+The `#/scaffold` route. Most of the layout and state machine can be driven engine-free (see the next
+section); the rounds themselves need the architect model. Nothing here destroys a run — accept creates
+a *new* story folder — so it can go anywhere in the pass.
+
+- [ ] **Open it.** Shelf → **start a new story**. The idea step is a modal over an empty scaffold
+      shell: the idea box, two "how it proposes" radio cards (**stage by stage** selected), the model
+      select, and **propose →**. Escape or a backdrop click returns to the shelf. The card now reads
+      **continue new story…** — clicking it comes back to the same session.
+- [ ] **Staged walk.** After **propose →**, the story stage lands (title, premise, tension, facts — no
+      cast yet). The checklist shows *story* open, the rest upcoming; the sidebar reads walk *staged* ·
+      open gate *story* · on disk *nothing yet*. **approve & continue →** opens *cast*, then *settings*,
+      then *scene*, ticking each passed gate. The button is gone at the *scene* gate.
+- [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
+      to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
+      Answering re-runs that stage.
+- [ ] **Refinement stays put.** Type a change and **send**: it applies within the open gate and the
+      checklist pointer does not move. Round labels carry the gate (`[cast] changed: …`).
+- [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no checklist**,
+      sidebar walk *one-shot*.
+- [ ] **Edit in full.** The sidebar's **edit in full →** opens the schema editor on the same draft;
+      a change there is reflected on the proposal card when you come **back to interview**.
+- [ ] **Accept.** The sidebar's **accept & choose folder** opens the folder step in the main column
+      (**write story.json →**). On success the run starts and the page follows to the live screen.
+      Accepting over unsent text or a `problems` flag takes a confirming second click.
+- [ ] **Abandon** (second click) drops the session and returns to the shelf.
+- [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
+      server, not the tab.
+- [ ] **Responsive.** Below 900px the sidebar stacks under the proposal; at 375px there is **no
+      horizontal scrollbar**.
+
 ## Checking the viewer without an engine
 
 Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the

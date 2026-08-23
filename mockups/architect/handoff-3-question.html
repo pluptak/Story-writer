@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>handoff · pendingAsk</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>architect handoff · the last signal</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <a class="tab" href="scaffold-1-start.html">new story</a>
+      <button class="tab active" type="button">next chapter</button>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot busy"></span>
+    <span>pendingAsk · blocks a meaningful proposal until answered · writes nothing</span>
+    <span class="spacer">story: the-last-signal · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">architect handoff</p>
+      <h2>The architect needs one fact first</h2>
+      <p class="lede">The chapters do not establish whether Aldous knew the log was false. The architect
+        must not invent an unsupported consequence — it asks rather than putting an unverified fact into
+        the story.</p>
+
+      <div class="workspace">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">proposed next chapter · unchanged this round</span>
+              <h3>Chapter 2 — waiting on an answer</h3>
+            </div>
+            <span class="label">no edits yet</span>
+          </div>
+          <div class="card-body">
+            <div class="scene">
+              <h4>The relief boat</h4>
+              <p class="scene-meta">chapter 2 · ~760 words · POV IVO</p>
+              <div class="question"><span class="label">dramatic question (current)</span>Will Ivo sign the counterslip before the harbour office reads the log?</div>
+            </div>
+            <div class="prob">The draft is untouched — pendingAsk writes nothing until it is answered.</div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3>Answer before I re-author the cast</h3>
+            </div>
+            <span class="label">question · distinct from a suggestion</span>
+          </div>
+          <div class="card-body">
+            <div class="round-question">
+              <span class="label">the architect's question</span>
+              Did Aldous know the log was false when he signed the counterslip, or did he only suspect
+              the storm entry had been rewritten? Chapter 1 shows him drying the page but never says
+              what he believed about it.
+            </div>
+            <p style="margin-top:12px">Your answer becomes durable state — `belief` or `knows` — not just
+              conversation.</p>
+
+            <textarea placeholder="Answer the architect's question..."></textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends · Shift+Enter adds a line</span>
+              <span class="thinking"><i></i> architect is thinking…</span>
+              <button class="button primary" type="button">send answer →</button>
+            </div>
+
+            <div class="said.bad">Accept is disabled while the question stands: accepting now would write
+              a cast the architect itself flagged as unverified.</div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>handoff state</h3>
+        <div class="stat"><span>story</span><strong>the-last-signal</strong></div>
+        <div class="stat"><span>preparing</span><strong>chapter 2</strong></div>
+        <div class="stat"><span>pendingAsk</span><strong>yes</strong></div>
+        <div class="side-actions">
+          <button class="button primary" type="button" disabled>accept handoff</button>
+          <button class="button danger" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>principle</h3>
+        <p class="side-copy">The same fill-the-gaps and verify passes run here too, immediately after the
+          handoff's own proposal, targeting scene_&lt;n&gt; — never an already-written one.</p>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

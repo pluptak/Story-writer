@@ -7,7 +7,7 @@ export const generating = () => APP.live && APP.session.running && !APP.session.
 
 export const parseHash = () => {
   const path = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return /^(shelf|story|live|read|readstory|compare|handoff|edit)$/.test(path) ? path : null;
+  return /^(shelf|story|live|read|readstory|compare|handoff|edit|scaffold)$/.test(path) ? path : null;
 };
 export const parseHashParams = () => {
   const qs = location.hash.replace(/^#\/?/, "").split("?")[1] || "";
@@ -20,6 +20,7 @@ export const parseHashParams = () => {
 const hashFor = () => {
   if (APP.view === "story" && APP.storyDir) return `#/story?dir=${encodeURIComponent(APP.storyDir)}`;
   if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
+  if (APP.view === "scaffold") return "#/scaffold";
   if (APP.view === "edit" && APP.editNew) return "#/edit?new=1";
   if (APP.view === "edit" && APP.editDir) return `#/edit?dir=${encodeURIComponent(APP.editDir)}`;
   if (APP.view === "readstory" && READER.dir) return `#/readstory?dir=${encodeURIComponent(READER.dir)}`;

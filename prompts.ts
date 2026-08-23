@@ -168,12 +168,16 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.belief · characters.<NAME>.impulse · characters.<NAME>.voice   (voice: a list)
     characters.<NAME>.skills · characters.<NAME>.restrictions     (skills, restrictions: lists)
-    characters.<NAME>.name     (renames them -- roster and pov follow; rewrite any prose that
-                                speaks of them under the old name in the same round)
-    add_character      (value is a whole character object, as above)
-    remove_character   (value is the name)
-    add_scene          (value is a whole scene object: place, question, pov, length, roster)
-    remove_scene       (value is the scene number)
+     characters.<NAME>.name     (renames them -- roster and pov follow; rewrite any prose that
+                                 speaks of them under the old name in the same round)
+     config.<key> · config.thinking.<writer|character|summary>   (the engine's run knobs)
+     models.default · models.writer · models.summary
+     scene_<n>.writerModel · scene_<n>.writerThink   (optional per-scene writer overrides)
+     characters.<NAME>.maxRetries   (optional per-character consult-retry ceiling)
+     add_character      (value is a whole character object, as above)
+     remove_character   (value is the name)
+     add_scene          (value is a whole scene object: place, question, pov, length, roster)
+     remove_scene       (value is the scene number)
 
   Any other field name is ignored, and the author is told it was. "ask" and "note" are your reply
   keys below -- they are never story fields, and naming them in an edit is always wrong. If the
@@ -225,7 +229,7 @@ export const architectMore = (userText: string, idea: string, insist: boolean) =
 // "tension" is the load-bearing conflict sentence coined at the story stage; it is not a story.json
 // field of its own -- it steers the cast and the scene question, then lives folded into the premise.
 
-export type ScaffoldStage = "story" | "cast" | "settings" | "scene";
+export type ScaffoldStage = "story" | "cast" | "settings" | "technical" | "scene";
 
 /** Prepended to a staged round once one stage has asked MAX_ASKS questions without proposing -- the
  *  staged counterpart of [MORE]'s OVERRIDE line, so a gate cannot stall on questions forever. */
@@ -233,7 +237,7 @@ export const STAGE_INSIST =
   `OVERRIDE: you have asked several times without proposing. Do not ask anything else -- choose the `
   + `most interesting reading of what the author has given you and commit to it now.`;
 
-const STAGE_ORDER: readonly ScaffoldStage[] = ["story", "cast", "settings", "scene"];
+const STAGE_ORDER: readonly ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene"];
 
 const checklistLine = (stage: ScaffoldStage) => {
   const i = STAGE_ORDER.indexOf(stage);
@@ -369,7 +373,41 @@ later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"que
                  actually do decides what the next scene really is, and a later handoff re-authors
                  these from scratch. Never sketch character development forward -- who anyone
                  becomes is written by what happens, not planned. Omit entirely when the story is
-                 complete in one scene.
+  complete in one scene.
+
+  ${STAGE_RULES}`;
+
+export const architectTechnicalStage = (specSoFar: string) => `${checklistLine("technical")}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+YOUR STAGE: the engine's own run settings, and nothing else --
+
+{"config": {"retries": 2, "clarifications": 2, "maxSteps": 24, "maxProseWords": 140,
+            "thinking": {"writer": "low", "character": "low", "summary": "low"},
+            "requestTimeout": 120, "attempts": 3, "maxTokens": 2000,
+            "maxCharacterRetries": null, "stream": true, "debug": false},
+ "characters": [{"name": "NAME", "maxRetries": null}],
+ "scenes": [{"writerThink": "low"}],
+ "ask": "",
+ "note": ""}
+
+config -- the engine's own knobs, not the story's. Send only what you would actually change;
+         omit or null anything you are happy to leave at its default.
+  retries / clarifications / maxSteps / maxProseWords -- pacing and how many times a stuck step
+         may retry before the writer forces a way forward.
+  thinking -- how much the writer, each character, and the chapter summarizer reason. One of
+         off / low / medium / high / default (default means: send nothing, let LM Studio decide).
+  requestTimeout / attempts / maxTokens -- network and generation ceilings.
+  maxCharacterRetries -- optional cap on how many consult retries ONE character may cost per
+         chapter before their answer is force-accepted; omit or null for no ceiling.
+characters.<NAME>.maxRetries -- optional per-character retry ceiling; omit or null to fall back
+         to config.maxCharacterRetries.
+scenes[].writerThink -- optional per-scene override of the writer's reasoning level.
+
+Models are deliberately NOT your stage -- they are resolved from the engine's defaults and the
+author's own setup, never authored here, because you cannot see which models are loaded.
 
 ${STAGE_RULES}`;
 

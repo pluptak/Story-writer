@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>handoff · preparing</title>
+  <link rel="stylesheet" href="mockup.css">
+  <style>
+    /* preparing: Accept and Send are locked; Abandon stays reachable */
+    .locked { opacity: .5; pointer-events: none; }
+  </style>
+</head>
+<body data-state="preparing">
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>architect handoff · the last signal</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <a class="tab" href="scaffold-1-start.html">new story</a>
+      <button class="tab active" type="button">next chapter</button>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot busy"></span>
+    <span>the architect is reading every accepted chapter · one round at a time (409 otherwise)</span>
+    <span class="spacer">story: the-last-signal · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">architect handoff</p>
+      <h2>Prepare chapter 2</h2>
+      <p class="lede">The engine carries no agent memory between chapters. The handoff reads the premise,
+        all accepted prose and the current story definition, then re-authors what chapter 1 actually
+        established.</p>
+
+      <div class="workspace">
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">proposed next chapter · from spec.scenes[1]</span>
+              <h3>Chapter 2 — being prepared</h3>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="scene">
+              <h4>The relief boat</h4>
+              <p class="scene-meta">chapter 2 · ~760 words · POV IVO</p>
+              <div class="question"><span class="label">dramatic question</span>Will Ivo sign the counterslip before the harbour office reads the log?</div>
+            </div>
+            <div class="prob">The proposed chapter renders from the spec, not from a proposal round — the
+              handoff's first move is already an edit list against the story on disk.</div>
+          </div>
+        </section>
+
+        <section class="card round locked">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3>Reading chapters/1.md …</h3>
+            </div>
+            <span class="label">busy</span>
+          </div>
+          <div class="card-body">
+            <div class="thinking show"><i></i> architect is thinking… reading accepted prose and the current definition</div>
+
+            <textarea placeholder="Send is disabled while a round is in flight…"></textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends · Shift+Enter adds a line</span>
+              <button class="button" type="button">send</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>handoff state</h3>
+        <div class="stat"><span>story</span><strong>the-last-signal</strong></div>
+        <div class="stat"><span>preparing</span><strong>chapter 2</strong></div>
+        <div class="stat"><span>source prose</span><strong>chapters/1.md</strong></div>
+        <div class="stat"><span>edited</span><strong>no</strong></div>
+        <div class="side-actions">
+          <button class="button primary" type="button" disabled>accept handoff</button>
+          <button class="button danger" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>principle</h3>
+        <p class="side-copy">A handoff cannot run while a chapter run is active — the run is reading the
+          file the handoff rewrites. Every action but abandon answers 409 while that holds.</p>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

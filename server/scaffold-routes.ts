@@ -24,6 +24,8 @@ function scaffoldState(host: ServerHost) {
     busy: scaffoldBusy,
     stage: scaffoldStage,
     gate: SCAFFOLD.stage,          // staged mode only: the checklist gate that is open
+    tension: SCAFFOLD.tension,     // the load-bearing conflict the story stage coined; session state,
+                                   // never a story.json field, so it reaches the GUI only through here
     haveStory: SCAFFOLD.haveStory(),
     pendingAsk: SCAFFOLD.pendingAsk,
     problems: SCAFFOLD.problems,

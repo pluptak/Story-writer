@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>scaffold · story gate proposal</title>
+  <link rel="stylesheet" href="mockup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>story-writer</h1>
+      <p>new story · staged checklist</p>
+    </div>
+    <nav class="tabs" aria-label="architect mode">
+      <button class="tab active" type="button">new story</button>
+      <a class="tab" href="handoff-2-edits.html">next chapter</a>
+      <a class="tab" href="index.html">all screens</a>
+    </nav>
+    <button class="button ghost" id="theme" type="button">theme</button>
+  </header>
+
+  <div class="statusbar">
+    <span class="status-dot"></span>
+    <span>ready · staged walk · nothing is on disk until accept</span>
+    <span class="spacer">gate: story · architect model · gemma-4-12b</span>
+  </div>
+
+  <div class="shell">
+    <main>
+      <p class="eyebrow">scaffold · staged</p>
+      <h2>Story stage proposed</h2>
+      <p class="lede">The first gate has landed. Refinement applies within the open gate — back-edits to
+        earlier stages included — but only approve &amp; continue opens the cast gate.</p>
+
+      <div class="workspace">
+        <!-- proposal before conversation -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <span class="label">draft so far · [story]</span>
+              <h3>The Last Signal</h3>
+            </div>
+            <span class="label">proposal</span>
+          </div>
+          <div class="card-body">
+            <p style="margin:0 0 14px;color:var(--muted);font-size:13px" id="premise">
+              A lighthouse keeper falsifies the storm log the night a relief crew is due, and the
+              substitute keeper must decide what the record is for.
+            </p>
+            <div class="question">
+              <span class="label">load-bearing tension (session state)</span>
+              One man needs the log to be false; the other was hired because it was true.
+            </div>
+            <div class="facts">
+              <div class="fact"><strong>fact</strong><span>The relief boat arrives at dawn, whatever the weather.</span></div>
+              <div class="fact"><strong>fact</strong><span>The log is countersigned by the harbour office, unread.</span></div>
+            </div>
+            <div class="prob">writerStyle and scenes land at their own gates. Problems a half-built draft
+              always has are suppressed until their owning stage has run.</div>
+          </div>
+        </section>
+
+        <section class="card round">
+          <div class="card-head">
+            <div>
+              <span class="label">architect</span>
+              <h3>[story] changed: title, premise, facts×2</h3>
+            </div>
+            <span class="label">proposal</span>
+          </div>
+          <div class="card-body">
+            <p>The idea explained who is in the scene and what is at stake between them, so the FIRST
+              DECIDE gate passed on its own terms.</p>
+            <div class="round-note">
+              <span class="label">architect note</span>
+              “The tension is not whether the storm happened. It is that one signature can make it
+              un-happened.”
+            </div>
+
+            <div class="checklist" aria-label="checklist position">
+              <span class="gate open"><i></i>story</span>
+              <span class="gate"><i></i>cast</span>
+              <span class="gate"><i></i>settings</span>
+              <span class="gate"><i></i>scene</span>
+            </div>
+
+            <textarea placeholder="Refine the open gate — or back-edit an earlier one..."></textarea>
+            <div class="composer-foot">
+              <span class="hint">Enter sends · Shift+Enter adds a line</span>
+              <span class="thinking"><i></i> architect is thinking…</span>
+              <button class="button" type="button">send</button>
+              <button class="button primary" type="button">approve &amp; continue →</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside>
+      <section class="card side-card">
+        <h3>scaffold state</h3>
+        <div class="stat"><span>walk</span><strong>staged</strong></div>
+        <div class="stat"><span>open gate</span><strong>story</strong></div>
+        <div class="stat"><span>ask budget</span><strong>3 remain</strong></div>
+        <div class="stat"><span>on disk</span><strong>nothing yet</strong></div>
+        <div class="side-actions">
+          <button class="button primary" type="button">accept and choose folder</button>
+          <button class="button danger" type="button">abandon</button>
+        </div>
+      </section>
+
+      <section class="card side-card">
+        <h3>the gates</h3>
+        <p class="side-copy"><b>story</b> — title, premise, tension, facts.<br>
+          <b>cast</b> — full characters as they walk into scene 1.<br>
+          <b>settings</b> — writerStyle.<br>
+          <b>scene</b> — scene 1 in full; later ones as sketches.<br><br>
+          Each stage merges into the draft so far — fields it names win, everything landed earlier survives.</p>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelector("#theme").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

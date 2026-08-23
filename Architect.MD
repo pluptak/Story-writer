@@ -226,7 +226,7 @@ handoff:  start → edits    → say/refine → accept → select prepared chapt
 
 ## The screens
 
-The visual prototype is [`architect-mockup.html`](architect-mockup.html) — an interactive static page
+The visual prototype is the [`mockups/architect`](mockups/architect) set — interactive static pages
 covering both modes, question and edit rounds, the accept flow, the theme toggle and the responsive
 layout, without calling the API. **It is the picture; this section is the rules.**
 
@@ -246,38 +246,43 @@ reviewed; the architect input stays sticky at the bottom while the proposal scro
 
 ### Scaffold interview
 
-The initial idea/question step is a modal over the shelf/editor in
-[`interview.js`](server/gui/viewer/interview.js). Once a proposal exists, review is the existing
-schema-aware story editor in [`story-edit.js`](server/gui/viewer/story-edit.js), backed by the
-in-memory scaffold session rather than a story directory. The editor shows the full `story.json`
-format; its confirm action calls scaffold accept, so nothing is written until the author confirms.
-`architect-mockup.html`'s scaffold screen is a **redesign of that working screen**, not a description
-of missing work.
+Built as its own `#/scaffold` route in [`interview.js`](server/gui/viewer/interview.js), reached from
+the shelf's "start a new story" card — which relabels itself "continue new story…" while a session is
+open on the server. The idea step is a modal over an empty scaffold shell; once the first proposal
+lands the page keeps three things visible at all times: the proposed story (a card), the current round
+(a card), and a **scaffold-state sidebar** — walk, open gate, tension, "on disk: nothing yet" — that
+owns **accept** and **abandon**. The view drops the run-controls rail and breaks out of the page column
+the other screens sit in, so the wide proposal-and-sidebar layout has room.
 
-Behaviour the redesign must keep:
+The full schema-aware editor in [`story-edit.js`](server/gui/viewer/story-edit.js) is no longer the
+review surface — it is an optional **edit in full** action from the sidebar, backed by the same
+in-memory session (it syncs field changes back through `/scaffold/set`, and its confirm still calls
+scaffold accept). Neither walk routes there on its own any more; both stay on the scaffold page.
 
-- The idea field is shown only before the first proposal; it can overlay the empty story editor.
-  Beside the model choice, the idea screen offers **how it proposes**: "stage by stage" (the staged
-  checklist) or "the whole story at once" (oneshot).
+Behaviour:
+
+- The idea field is shown only before the first proposal. Beside the model choice, the idea step offers
+  **how it proposes** as two radio cards: "stage by stage" (the staged checklist) or "the whole story
+  at once" (oneshot).
 - A staged session renders the checklist — story / cast / settings / scene chips with the open gate
-  highlighted and passed gates ticked — above the phase stepper; a one-shot session renders the
-  stepper alone.
-- While `/scaffold/start`, `/scaffold/say` or `/scaffold/approve` is running, sending is disabled and
-  `.thinking` shows.
-- A `question` round focuses the answer field and labels it as the architect's question; while it
-  stands, everything typed is the answer and the approve button is hidden.
-- The **approve & continue** button passes the open gate and proposes the next stage's content. It is
-  hidden at the last gate — there approve has nothing left to open, and accept is the move.
-  Refinement never advances a gate: only this button does.
-- A `proposal` or `edits` round updates the scaffold draft; after the first proposal the draft is
-  reviewed through the existing story editor without clearing the conversation context. Provisional
-  later scenes from the scene stage render as questions under "later scenes · provisional".
-- Round labels carry their gate (`[cast] changed: …`) so the author can tell refinement from
-  stage proposals apart.
-- `problems` are shown beneath the proposal; warnings do not prevent further refinement.
-- Accept opens a folder-name step when the server returns `needs_folder`, and does not disappear until
-  the server returns `kind: "written"`. In editor review, field changes are synced back to the open
-  scaffold draft and the same accept path is used.
+  highlighted and passed gates ticked. A one-shot session has no checklist; the status bar and round
+  narration carry its state.
+- While `/scaffold/start`, `/scaffold/say` or `/scaffold/approve` is running, the composer is replaced
+  by `.thinking` and the status dot pulses.
+- A `question` round shows the architect's question distinctly, focuses and relabels the answer field
+  ("your answer" / "send answer →"), and hides the approve button while it stands.
+- The **approve & continue** button, in the composer, passes the open gate and proposes the next
+  stage's content. It is hidden at the last gate and while a question stands. Refinement never advances
+  a gate: only this button does.
+- A `proposal` or `edits` round updates the proposal card in place; the conversation context is never
+  cleared. Provisional later scenes from the scene stage render as questions under "later scenes ·
+  provisional".
+- Round labels carry their gate (`[cast] changed: …`) so refinement reads apart from stage proposals.
+- `problems` are shown inside the proposal card; warnings do not prevent further refinement.
+- Accept lives in the sidebar. It opens a folder-name step in the main column when the server returns
+  `needs_folder`, and does not disappear until the server returns `kind: "written"` — at which point
+  the resolved pick starts the run and the page follows it to the live screen. Accepting over unsent
+  text or a `problems` flag takes a confirming second click.
 
 ### Handoff panel
 

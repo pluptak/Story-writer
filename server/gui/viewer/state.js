@@ -19,7 +19,7 @@ export const READER = {                  // the story reader view: accepted pros
 };
 
 export const APP = {
-  view: "live",               // which page is showing: shelf | story | live | read | readstory | compare | handoff | edit
+  view: "live",               // which page is showing: shelf | story | live | read | readstory | compare | handoff | edit | scaffold
   live: false,                 // attached to a running engine, as opposed to a static/file:// load
   session: { running:false, stopping:false, where:"", picking:false, armed:false,
              paused:false, pausing:false, model:null, interactive:true },  // the process, not the story
@@ -52,9 +52,11 @@ export const APP = {
   charCard: null,               // a character pill was clicked: {name, dir, can, cannot} -- the
                                  // character card modal is up for them
   scaffold: { active:false },  // the interview, from /scaffold and its SSE frames
-  ideaOpen: false,             // "new story…" clicked; no interview on the server yet
-  ivHidden: false,             // the interview modal is closed WITHOUT abandoning it -- reopened
-                                // by the same "new story…" card, which relabels itself while it is true
+  scaffoldAccepting: false,    // an accept is in flight. The server publishes {active:false} BEFORE
+                                // the run starts, so without this the scaffold page would fall back to
+                                // the idea modal in the window between the two.
+  ideaOpen: false,             // kept for compatibility; the scaffold page now owns the idea step
+  ivHidden: false,             // kept for compatibility; the scaffold page is a route, not an overlay
   personasFull: false,
   acceptArmed: 0,               // timer id: accepting over a complaint (or over unsent text) wants a second click
   abandonArmed: 0,              // timer id: so does throwing the whole interview away

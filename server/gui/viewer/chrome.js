@@ -67,8 +67,8 @@ addEventListener("keydown", e => {
   const backdrops = [...document.querySelectorAll(".modal-backdrop")];
   const top = backdrops[backdrops.length - 1];
   if (!top) return;
-  if (top.id === "iv-backdrop") APP.ivHidden = true;
-  else if (top.id === "charcard-backdrop") APP.charCard = null;
+  if (top.id === "iv-backdrop") { e.preventDefault(); go("shelf"); return; }
+  if (top.id === "charcard-backdrop") APP.charCard = null;
   else if (top.id === "runended-backdrop") APP.runEnded = null;
   else return;
   e.preventDefault();

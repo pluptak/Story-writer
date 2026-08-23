@@ -1,5 +1,6 @@
 /** ARCHITECT — builds the architect Agent, and the interactive story-building conversation with it. */
 import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { appendFileSync } from "node:fs";
 import { join as joinPath, relative as relativePath } from "node:path";
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
@@ -69,15 +70,32 @@ export type ScaffoldAccept =
   | { kind: "needs_folder"; reason: string }
   | { kind: "no_story" };
 
+/** Architect debug logging. Off unless `ARCHITECT_DEBUG` is set; writes to stderr and, when
+ *  `ARCHITECT_DEBUG_LOG` names a path, appends there too — so a scaffold conversation (which the
+ *  per-run LLM log skips, and which has no outDir) can still be inspected after the fact. */
+const ARCHITECT_DEBUG = process.env.ARCHITECT_DEBUG;
+const ARCHITECT_DEBUG_LOG = process.env.ARCHITECT_DEBUG_LOG;
+function archLog(...parts: unknown[]) {
+  if (!ARCHITECT_DEBUG) return;
+  const line = parts.map(p => typeof p === "string" ? p : JSON.stringify(p, null, 2)).join(" ");
+  console.error("[ARCHITECT DEBUG]", line);
+  if (ARCHITECT_DEBUG_LOG) { try { appendFileSync(ARCHITECT_DEBUG_LOG, line + "\n"); } catch { /* ignore */ } }
+}
+
 /** One exchange with the architect: say it, take the reply, and pull JSON out of it. */
 async function architectRound(agent: Agent, message: string):
   Promise<{ out: Record<string, any> } | { error: string }> {
   agent.hear(message);
+  archLog(`─── PROMPT (${agent.model}) ───\n${message}`);
   try {
     const reply = await agent.generate(`${C.magenta}ARCHITECT${C.reset}`);
     agent.said(reply.trim());
-    return { out: extractJson(reply) };
+    const out = extractJson(reply);
+    archLog(`─── RAW REPLY ───\n${reply}`);
+    archLog("─── EXTRACTED JSON ───", out);
+    return { out };
   } catch (e) {
+    archLog(`─── ERROR ─── ${(e as Error).message}`);
     return { error: (e as Error).message };
   }
 }
@@ -126,6 +144,7 @@ async function runAutoPasses(
     const guarded = refuse ? refuse(r.out.edits) : { edits: r.out.edits, refused: [] as string[] };
     const e = applyEdits(cur, { edits: guarded.edits });
     cur = e.spec; problems = e.problems;
+    archLog(`AUTOPASS ${stage}: applied=${e.applied.map(a => a.field)} ignored=[${[...guarded.refused, ...e.ignored].join(", ")}]`);
     auto.push({ stage, applied: e.applied, ignored: [...guarded.refused, ...e.ignored], note: withAsk(r.out), outcome: "edits" });
     return undefined;
   };
@@ -149,7 +168,15 @@ async function runAutoPasses(
  *  and accept() is unchanged. The engine holds the gate pointer, so refinement never advances a
  *  stage by accident and no stage runs without the author's approval. */
 export class ScaffoldSession {
-  spec: StorySpec = normalizeSpec({}).spec;    // nothing proposed yet
+  private _spec: StorySpec = normalizeSpec({}).spec;    // nothing proposed yet
+  /** The spec the session is building. A getter/setter so every assignment carries a non-empty
+   *  `models.default` once defaults are known — renderStory() is the only place that resolves it
+   *  today, so without this the new-story review editor (and specView) would show it blank. */
+  get spec(): StorySpec { return this._spec; }
+  set spec(v: StorySpec) {
+    if (v && v.models && !v.models.default) v.models.default = this.defaults.models.default;
+    this._spec = v;
+  }
   problems: string[] = [];
   pendingAsk = "";
   asks = 0;                                    // consecutive questions with no story to show for them
@@ -165,7 +192,7 @@ export class ScaffoldSession {
    *  and sharpens the scene stage's question. */
   tension = "";
 
-  private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "scene"];
+  private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene"];
 
   constructor(public architect: Agent, public defaults: Defaults, public idea: string,
               public storiesDir: string = joinPath(ROOT, "stories"),
@@ -206,6 +233,7 @@ export class ScaffoldSession {
       case "story": return insist + P.architectStoryStage(this.idea);
       case "cast": return insist + P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json);
       case "settings": return insist + P.architectSettingsStage(json);
+      case "technical": return insist + P.architectTechnicalStage(json);
       case "scene": return insist + P.architectSceneStage(json);
     }
   }
@@ -215,6 +243,8 @@ export class ScaffoldSession {
       case "story": return Boolean(String(out.premise ?? "").trim() || String(out.title ?? "").trim());
       case "cast": return Array.isArray(out.characters) && out.characters.length > 0;
       case "settings": return Boolean(String(out.writer_style ?? "").trim());
+      case "technical": return Boolean(out.config && typeof out.config === "object")
+        || Array.isArray(out.characters) || Array.isArray(out.scenes);
       case "scene": return Boolean(out.scene && typeof out.scene === "object");
     }
   }
@@ -232,6 +262,36 @@ export class ScaffoldSession {
       raw.characters = Array.isArray(out.characters) ? out.characters : [];
     } else if (stage === "settings") {
       raw.writer_style = String(out.writer_style ?? "").trim();
+    } else if (stage === "technical") {
+      // Config is a strict schema: strip nulls and any key the schema does not know so a partial
+      // reply cannot fail to parse, then let normalizeSpec re-fill the rest with defaults.
+      const CONFIG_KEYS = new Set(["retries", "clarifications", "maxSteps", "maxProseWords",
+        "stream", "debug", "thinking", "requestTimeout", "attempts", "maxTokens", "maxCharacterRetries"]);
+      const clean: Record<string, unknown> = {};
+      if (out.config && typeof out.config === "object") {
+        for (const [k, v] of Object.entries(out.config)) {
+          if (CONFIG_KEYS.has(k) && v !== null) clean[k] = v;
+        }
+        if (clean.thinking && typeof clean.thinking === "object") {
+          const T = new Set(["writer", "character", "summary"]);
+          clean.thinking = Object.fromEntries(Object.entries(clean.thinking).filter(([k]) => T.has(k)));
+        }
+      }
+      if (Object.keys(clean).length) raw.config = clean;
+      if (Array.isArray(out.characters)) {
+        for (const c of out.characters) {
+          const name = String(c?.name ?? "").trim().toLowerCase();
+          const existing = (raw.characters || []).find((x: any) => String(x.name).toLowerCase() === name);
+          if (existing && Number.isInteger(c?.maxRetries) && (c.maxRetries as number) >= 0)
+            existing.maxRetries = c.maxRetries;
+        }
+      }
+      if (Array.isArray(out.scenes)) {
+        out.scenes.forEach((sc: any, i: number) => {
+          const cur = (raw.scenes || [])[i];
+          if (cur && typeof sc?.writerThink === "string") cur.writerThink = sc.writerThink;
+        });
+      }
     } else {
       const later = (Array.isArray(out.later_scenes) ? out.later_scenes : [])
         .filter((s: unknown): s is Record<string, unknown> => Boolean(s) && typeof s === "object")
@@ -257,12 +317,14 @@ export class ScaffoldSession {
     const ask = String(out.ask ?? "").trim();
     if (!ScaffoldSession.stageHasContent(stage, out)) {
       if (ask) { this.pendingAsk = ask; this.asks++; return { kind: "question", ask, stage }; }
+      archLog(`STAGE ${stage}: NOTHING — neither stage content nor ask. out=`, out);
       return { kind: "nothing", why: `the reply contained neither ${stage} content nor a question`, stage };
     }
     this.pendingAsk = ""; this.asks = 0;
     if (stage === "story" && String(out.tension ?? "").trim())
       this.tension = String(out.tension).trim();
     const n = normalizeSpec(this.mergedRaw(stage, out));
+    archLog(`STAGE ${stage}: content accepted. problems=`, n.problems);
     this.spec = n.spec;
     this.problems = ScaffoldSession.visibleProblems(this.spec, n.problems);
     return { kind: "proposal", note: withAsk(out), stage };
@@ -289,6 +351,7 @@ export class ScaffoldSession {
       case "story": return this.spec.title.trim() || this.spec.premise.trim() ? null : "no title or premise yet";
       case "cast": return this.spec.characters.length ? null : "no cast yet";
       case "settings": return this.spec.writerStyle.trim() ? null : "no writer style yet";
+      case "technical": return null;   // optional stage: config has defaults, so nothing is required
       case "scene": return this.spec.scenes[0]?.question.trim() ? null : "no scene question yet";
       default: return null;
     }
@@ -318,10 +381,12 @@ export class ScaffoldSession {
     if (!n.spec.characters.length) {
       const back = String(out.ask ?? "").trim();
       if (back) { this.pendingAsk = back; this.asks++; return { kind: "question", ask: back }; }
+      archLog("PROPOSAL: NOTHING — no characters and no ask. out=", out);
       return { kind: "nothing", why: "the reply was neither a story nor a question" };
     }
     this.asks = 0; this.pendingAsk = "";
     this.spec = n.spec; this.problems = n.problems;
+    archLog("PROPOSAL: accepted. problems=", n.problems);
     return { kind: "proposal", note: withAsk(out) };
   }
 
