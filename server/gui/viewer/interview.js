@@ -10,7 +10,7 @@ import { go } from "./nav.js";
 const IDEA_PLACEHOLDER =
   "e.g. A locksmith is asked to open a door they installed years ago, for someone they don't recognise.";
 
-const GATES = ["story", "cast", "settings", "scene"];
+const GATES = ["story", "cast", "settings", "technical", "scene"];
 
 // ── the idea step (modal) ────────────────────────────────────────────────────
 
@@ -69,6 +69,7 @@ function castHtml(spec) {
       ${(c.voice || []).map(v => tag(`voice: “${esc(v)}”`)).join("")}
       ${skills ? tag(`skills: ${skills}`) : ""}
       ${c.restrictions.map(r => tag(`restriction: ${esc(r)}`, " warn")).join("")}
+      ${c.maxRetries !== undefined ? tag(`retry limit: ${esc(c.maxRetries)}`) : ""}
     </div>`;
   }).join("")}</div>`;
 }
@@ -92,6 +93,29 @@ function factsHtml(spec) {
     `<div class="fact"><strong>fact</strong><span>${esc(f)}</span></div>`).join("")}</div>`;
 }
 
+function technicalHtml(spec) {
+  const config = spec.config || {};
+  const value = v => typeof v === "object" && v !== null
+    ? Object.entries(v).map(([k, x]) => `${k}: ${x}`).join(" · ")
+    : String(v);
+  const rows = Object.entries(config).map(([key, val]) =>
+    `<div class="fact"><strong>${esc(key)}</strong><span>${esc(value(val))}</span></div>`).join("");
+  if (!rows) return "";
+  return `<div class="technical"><span class="label">run settings</span><div class="facts">${rows}</div></div>`;
+}
+
+function gateReached(s, gate) {
+  if (!s.gate) return true;
+  return GATES.indexOf(s.gate) >= GATES.indexOf(gate);
+}
+
+function stageSection(name, body, current) {
+  if (!body) return "";
+  return `<div class="stage-section${current ? " current" : ""}">
+    <span class="label">${current ? "current stage · " : ""}${esc(name)}</span>${body}
+  </div>`;
+}
+
 /** The stage tag that labels what the draft is showing — a passed gate leaves a tick, the open one
  *  is named in brackets. One-shot has no gate, so the label is just "draft so far". */
 function draftLabel(s) {
@@ -102,20 +126,27 @@ function draftLabel(s) {
 
 function proposalHtml(s) {
   const spec = s.spec;
-  const bits = [];
-  if (spec.premise) bits.push(`<p style="margin:0 0 12px;color:var(--muted);font-size:13px">${esc(spec.premise)}</p>`);
-  if (s.tension) bits.push(
-    `<div class="question"><span class="label">load-bearing tension</span>${esc(s.tension)}</div>`);
-  bits.push(factsHtml(spec));
-  bits.push(sceneHtml(spec));
-  if (spec.characters.length) bits.push(castHtml(spec));
+  const story = [
+    spec.premise ? `<p class="stage-copy">${esc(spec.premise)}</p>` : "",
+    s.tension ? `<div class="question"><span class="label">load-bearing tension</span>${esc(s.tension)}</div>` : "",
+    factsHtml(spec),
+  ].join("");
+  const cast = spec.characters.length ? castHtml(spec) : "";
+  const settings = spec.writerStyle && gateReached(s, "settings")
+    ? `<p class="stage-copy">${esc(spec.writerStyle)}</p>` : "";
+  const technical = gateReached(s, "technical") ? technicalHtml(spec) : "";
+  let scene = sceneHtml(spec);
   // Later scenes are provisional question sketches -- the handoff re-authors them, so they render
   // as questions and nothing else.
   const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
-  if (sketches.length) bits.push(`<div style="margin-top:14px"><span class="label">later scenes · provisional</span>${
-    sketches.map(sc => `<div class="question" style="margin-top:6px">${esc(sc.question)}</div>`).join("")}</div>`);
-  if (spec.writerStyle && APP.personasFull)
-    bits.push(`<div style="margin-top:14px"><span class="label">house style</span><p style="margin:4px 0 0;color:var(--muted);font-size:12.5px;white-space:pre-wrap">${esc(spec.writerStyle)}</p></div>`);
+  if (sketches.length) scene += `<div style="margin-top:14px"><span class="label">later scenes · provisional</span>${
+    sketches.map(sc => `<div class="question" style="margin-top:6px">${esc(sc.question)}</div>`).join("")}</div>`;
+
+  const content = { story, cast, settings, technical, scene };
+  const order = s.gate && GATES.includes(s.gate)
+    ? [s.gate, ...GATES.filter(g => g !== s.gate)]
+    : GATES;
+  const bits = order.map(g => stageSection(g, content[g], g === s.gate)).filter(Boolean);
   for (const p of (s.problems || [])) bits.push(`<div class="prob">⚠ ${esc(p)}</div>`);
   return `<section class="card">
     <div class="card-head">
@@ -176,7 +207,7 @@ function roundHtml(s) {
   parts.push(checklistHtml(s));
 
   if (!busy) {
-    const label = answering ? "your answer" : s.haveStory ? "what should change?" : "say more about it";
+    const label = answering ? "your answer" : s.haveDraft ? "what should change?" : "say more about it";
     parts.push(`<label class="field-label" for="f-say">${label}</label>
       <textarea id="f-say" rows="3">${esc(draft.say)}</textarea>`);
   }
@@ -270,6 +301,7 @@ function sidebarHtml(s) {
         <p class="side-copy"><b>story</b> — title, premise, tension, facts.<br>
           <b>cast</b> — characters as they walk into scene 1.<br>
           <b>settings</b> — house style.<br>
+          <b>technical</b> — run settings and retry limits.<br>
           <b>scene</b> — scene 1 in full; later ones as sketches.<br><br>
           Refinement stays within the open gate; only <b>approve</b> advances it.</p></div>`;
 
@@ -298,7 +330,7 @@ function activePageHtml(s) {
   const spacer = (s.mode === "oneshot" ? "one-shot walk" : `gate: ${s.gate || "—"}`)
     + (s.model ? ` · built by ${esc(s.model)}` : "");
   const headline = s.pendingAsk ? "The architect has a question"
-    : s.haveStory ? "Does this look right?" : "Your story is taking shape";
+    : s.haveDraft ? "Does this look right?" : "Your story is taking shape";
 
   return `
     <div class="sc-head">

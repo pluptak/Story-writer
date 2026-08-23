@@ -23,7 +23,7 @@ import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, runPreflight, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import {
-  buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
+  buildArchitect, configureArchitectDebug, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type ScaffoldRound, type NextChapterSession, type AutoStage, type AutoPass,
 } from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
@@ -33,8 +33,11 @@ const CLI = process.argv.slice(2);
 const PREFLIGHT = CLI.includes("--preflight");
 const SERVE = CLI.includes("--serve");
 const PORT = Number(CLI.find(a => a.startsWith("--port="))?.slice(7)) || 8080;
+const architectDebugLog = CLI.find(a => a.startsWith("--architect-debug-log="))
+  ?.slice("--architect-debug-log=".length) ?? "";
 let STORY_DIR = CLI.find(a => !a.startsWith("--")) ?? "";
 ENGINE.serve = SERVE;
+configureArchitectDebug(CLI.includes("--architect-debug") || !!architectDebugLog, architectDebugLog);
 
 const CHARACTER_PALETTE = [C.cyan, C.yellow, C.green, C.magenta];
 

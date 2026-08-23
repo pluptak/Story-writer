@@ -70,16 +70,20 @@ export type ScaffoldAccept =
   | { kind: "needs_folder"; reason: string }
   | { kind: "no_story" };
 
-/** Architect debug logging. Off unless `ARCHITECT_DEBUG` is set; writes to stderr and, when
- *  `ARCHITECT_DEBUG_LOG` names a path, appends there too — so a scaffold conversation (which the
- *  per-run LLM log skips, and which has no outDir) can still be inspected after the fact. */
-const ARCHITECT_DEBUG = process.env.ARCHITECT_DEBUG;
-const ARCHITECT_DEBUG_LOG = process.env.ARCHITECT_DEBUG_LOG;
+/** Architect debug logging is configured by the composition root's CLI switches. Scaffold
+ *  conversations have no outDir and are skipped by the per-run LLM log, so this separate path can
+ *  write them to stderr and optionally retain them in a file. */
+let architectDebug = false;
+let architectDebugLog = "";
+export function configureArchitectDebug(enabled: boolean, logPath = "") {
+  architectDebug = enabled;
+  architectDebugLog = logPath;
+}
 function archLog(...parts: unknown[]) {
-  if (!ARCHITECT_DEBUG) return;
+  if (!architectDebug) return;
   const line = parts.map(p => typeof p === "string" ? p : JSON.stringify(p, null, 2)).join(" ");
   console.error("[ARCHITECT DEBUG]", line);
-  if (ARCHITECT_DEBUG_LOG) { try { appendFileSync(ARCHITECT_DEBUG_LOG, line + "\n"); } catch { /* ignore */ } }
+  if (architectDebugLog) { try { appendFileSync(architectDebugLog, line + "\n"); } catch { /* ignore */ } }
 }
 
 /** One exchange with the architect: say it, take the reply, and pull JSON out of it. */

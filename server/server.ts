@@ -126,6 +126,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         // rather than a `..`-blacklist check, since that's the shape the folder actually has.
         const file = path.match(viewerModule)![1];
         await serveFile(res, new URL(`./gui/viewer/${file}`, import.meta.url), "application/javascript; charset=utf-8");
+      } else if (path === "/studio" || path === "/studio/") {
+        await serveFile(res, new URL("../mockups/studio/index.html", import.meta.url), "text/html; charset=utf-8");
       } else if (path === "/events") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream", "Cache-Control": "no-cache",

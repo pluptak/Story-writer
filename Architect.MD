@@ -18,7 +18,7 @@ It has two modes:
 
 - **Scaffold**: turn a rough idea into a new `story.json` through questions, a proposal, refinements,
   and an explicit accept action. The scaffold itself has two walks: **staged** — the default — runs
-  the idea through a gated checklist (story → cast → settings → scene) where each stage is proposed
+  the idea through a gated checklist (story → cast → settings → technical → scene) where each stage is proposed
   only after the author approved the last; **oneshot** proposes the whole story in one round.
 - **Handoff**: run between chapters, read the accepted chapter prose, and re-author the story
   definition for the next chapter.
@@ -26,6 +26,11 @@ It has two modes:
 The architect is a normal `Agent` with its own prompt, history, model, thinking level, and temperature
 (`0.9`). The surrounding engine extracts JSON, normalizes it into a `StorySpec`, applies only supported
 edits, and reports non-fatal problems separately from model errors.
+
+For diagnostics, `--architect-debug` writes every architect prompt, raw reply, extracted JSON object,
+and stage decision to stderr. `--architect-debug-log=<path>` enables the same diagnostics and also
+appends them to the named file; it does not need `--architect-debug` alongside it. These logs contain
+the author's complete scaffold or handoff conversation and should be treated as story content.
 
 ## Skills and restrictions
 
@@ -136,12 +141,14 @@ about the story that resulted, flags are observations about the prose that alrea
 
 The session runs one of two walks, chosen when it opens.
 
-**Staged (the default) — a gated checklist.** The four gates:
+**Staged (the default) — a gated checklist.** The five gates:
 
 - **story** — title, premise, the load-bearing *tension*, story-level facts.
 - **cast** — full character objects, authored against that tension, as they walk into scene 1.
   Character development is never authored forward; the handoff owns it once real prose exists.
 - **settings** — `writer_style`.
+- **technical** — run configuration, per-character retry limits, and scene writer thinking levels;
+  model ids continue to come from `defaults.json` or the author.
 - **scene** — scene 1 fully (place, question sharpened against the finished cast, pov, length,
   roster); later scenes may be sketched as question-only provisional entries.
 
@@ -204,7 +211,8 @@ Which rounds each mode can produce — the bodies and the state each route publi
 | handoff | `edits` \| `question` \| `nothing` \| `failed` |
 
 A staged scaffold round also carries `stage` — the checklist gate the round belongs to
-(`"story"` | `"cast"` | `"settings"` | `"scene"`), so callers can label it without tracking state.
+(`"story"` | `"cast"` | `"settings"` | `"technical"` | `"scene"`), so callers can label it without
+tracking state.
 
 The handoff never returns `proposal`. Its first round is already an edit list against the story on
 disk, so the proposed-next-chapter panel renders from `spec` and `last.applied`, never from a
@@ -264,7 +272,7 @@ Behaviour:
 - The idea field is shown only before the first proposal. Beside the model choice, the idea step offers
   **how it proposes** as two radio cards: "stage by stage" (the staged checklist) or "the whole story
   at once" (oneshot).
-- A staged session renders the checklist — story / cast / settings / scene chips with the open gate
+- A staged session renders the checklist — story / cast / settings / technical / scene chips with the open gate
   highlighted and passed gates ticked. A one-shot session has no checklist; the status bar and round
   narration carry its state.
 - While `/scaffold/start`, `/scaffold/say` or `/scaffold/approve` is running, the composer is replaced
@@ -275,8 +283,11 @@ Behaviour:
   stage's content. It is hidden at the last gate and while a question stands. Refinement never advances
   a gate: only this button does.
 - A `proposal` or `edits` round updates the proposal card in place; the conversation context is never
-  cleared. Provisional later scenes from the scene stage render as questions under "later scenes ·
-  provisional".
+  cleared. The first story-stage proposal is visible immediately, before the cast makes the draft
+  acceptable. The open gate is the first, highlighted section of the card, with earlier stages kept
+  below it; settings and technical therefore show the house style and run settings beside the controls
+  used to refine or approve them rather than burying those values below the cast.
+  Provisional later scenes from the scene stage render as questions under "later scenes · provisional".
 - Round labels carry their gate (`[cast] changed: …`) so refinement reads apart from stage proposals.
 - `problems` are shown inside the proposal card; warnings do not prevent further refinement.
 - Accept lives in the sidebar. It opens a folder-name step in the main column when the server returns

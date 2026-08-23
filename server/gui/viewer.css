@@ -620,6 +620,14 @@
   .scpage .gate.open i { animation:pulse 1.2s ease-in-out infinite; }
 
   /* proposal panel: scene, question, facts, cast */
+  .scpage .stage-section { margin-top:16px; padding-top:15px; border-top:1px solid var(--line); }
+  .scpage .stage-section:first-child { margin-top:0; padding-top:0; border-top:0; }
+  .scpage .stage-section.current { margin:-2px -4px 4px; padding:13px 14px;
+    border:1px solid var(--accent); border-radius:10px; background:var(--accent-soft); }
+  .scpage .stage-section.current + .stage-section { margin-top:18px; }
+  .scpage .stage-section > .label { display:block; margin-bottom:9px; }
+  .scpage .stage-section.current > .label { color:var(--accent); }
+  .scpage .stage-copy { margin:0; color:var(--muted); font-size:13px; white-space:pre-wrap; }
   .scpage .scene { padding:14px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; }
   .scpage .scene h4 { font-family:var(--serif); font-size:18px; margin:0; }
   .scpage .scene-meta { margin:3px 0 14px; color:var(--faint); font-family:var(--mono); font-size:10px; }
@@ -627,6 +635,9 @@
     font-family:var(--serif); }
   .scpage .question .label { display:block; margin-bottom:2px; }
   .scpage .facts { margin-top:12px; display:grid; gap:5px; }
+  .scpage .technical { margin-top:15px; padding:12px; background:var(--panel-2);
+    border:1px solid var(--line); border-radius:9px; }
+  .scpage .technical .facts { margin-top:8px; }
   .scpage .fact { display:flex; gap:9px; font-size:12px; color:var(--muted); }
   .scpage .fact strong { min-width:46px; color:var(--faint); font-family:var(--mono); font-size:10px;
     line-height:1.7; text-transform:uppercase; font-weight:400; }

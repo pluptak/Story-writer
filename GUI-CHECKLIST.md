@@ -316,9 +316,12 @@ a *new* story folder — so it can go anywhere in the pass.
       select, and **propose →**. Escape or a backdrop click returns to the shelf. The card now reads
       **continue new story…** — clicking it comes back to the same session.
 - [ ] **Staged walk.** After **propose →**, the story stage lands (title, premise, tension, facts — no
-      cast yet). The checklist shows *story* open, the rest upcoming; the sidebar reads walk *staged* ·
-      open gate *story* · on disk *nothing yet*. **approve & continue →** opens *cast*, then *settings*,
-      then *scene*, ticking each passed gate. The button is gone at the *scene* gate.
+      cast yet). Its proposal card immediately shows those fields, and the composer says *what should
+      change?*, not *say more about it*. The checklist shows *story* open, the rest upcoming; the sidebar
+      reads walk *staged* · open gate *story* · on disk *nothing yet*. **approve & continue →** opens
+      *cast*, then *settings*, *technical*, and *scene*, ticking each passed gate. House style and run
+      settings appear in a highlighted current-stage section at the top of the proposal as their gates
+      land; the earlier stages remain below it. The button is gone at the *scene* gate.
 - [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
       to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
       Answering re-runs that stage.

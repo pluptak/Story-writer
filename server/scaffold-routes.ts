@@ -17,6 +17,11 @@ let scaffoldStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is
 
 function scaffoldState(host: ServerHost) {
   if (!SCAFFOLD) return { active: false };
+  const haveDraft = Boolean(
+    SCAFFOLD.spec.title || SCAFFOLD.spec.premise || SCAFFOLD.spec.characters.length
+    || SCAFFOLD.spec.writerStyle || SCAFFOLD.spec.facts.length
+    || SCAFFOLD.spec.scenes.some(scene => scene.place || scene.question || scene.pov),
+  );
   return {
     active: true,
     idea: SCAFFOLD.idea,
@@ -26,13 +31,14 @@ function scaffoldState(host: ServerHost) {
     gate: SCAFFOLD.stage,          // staged mode only: the checklist gate that is open
     tension: SCAFFOLD.tension,     // the load-bearing conflict the story stage coined; session state,
                                    // never a story.json field, so it reaches the GUI only through here
+    haveDraft,
     haveStory: SCAFFOLD.haveStory(),
     pendingAsk: SCAFFOLD.pendingAsk,
     problems: SCAFFOLD.problems,
     last: scaffoldLast,
     needsFolder: scaffoldFolderAsk,
     model: SCAFFOLD.defaults.models.architect,
-    spec: SCAFFOLD.haveStory() ? host.specView(SCAFFOLD.spec) : null,
+    spec: haveDraft ? host.specView(SCAFFOLD.spec) : null,
   };
 }
 

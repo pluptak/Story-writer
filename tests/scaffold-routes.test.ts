@@ -53,7 +53,9 @@ describe("/scaffold routes", () => {
     assert.equal(opened.body.active, true);
     assert.equal(opened.body.mode, "staged");
     assert.equal(opened.body.gate, "story");
-    assert.equal(opened.body.spec, null, "no cast yet -- nothing for the editor to review");
+    assert.equal(opened.body.haveDraft, true);
+    assert.equal(opened.body.spec.title, "The Fog Signal", "the first gate is visible before the cast lands");
+    assert.equal(opened.body.spec.premise, "Two keepers, one lamp.");
     assert.equal(opened.body.haveStory, false);
 
     const next = await post("/scaffold/approve", {}, h);
@@ -70,6 +72,14 @@ describe("/scaffold routes", () => {
     LIVE.awaitingPick = true;
     const opened = await post("/scaffold/start", { idea: "two lighthouse keepers" }, host([STORY_STAGE]));
     assert.equal(opened.body.mode, "staged");
+  });
+
+  it("keeps the draft hidden when the architect asks before authoring anything", async () => {
+    LIVE.awaitingPick = true;
+    const opened = await post("/scaffold/start", { idea: "two lighthouse keepers" }, host([{ ask: "Which keeper lied?" }]));
+    assert.equal(opened.body.haveDraft, false);
+    assert.equal(opened.body.spec, null);
+    assert.equal(opened.body.pendingAsk, "Which keeper lied?");
   });
 
   it("approve on a one-shot session is a failed round, not a crash", async () => {

@@ -53,6 +53,7 @@ GET  /              → server/gui/viewer.html
 GET  /viewer.css     → server/gui/viewer.css
 GET  /viewer.js      → server/gui/viewer.js
 GET  /viewer/{name}.js  → server/gui/viewer/{name}.js   (flat filenames only, regex allowlist)
+GET  /studio           → mockups/studio/index.html        (static dev/preview route — not part of the product surface)
 ```
 
 These four lines are the **entire** coupling between the API and the specific GUI in this repo. They
@@ -219,7 +220,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 
 ```
 GET  /scaffold
-  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, haveStory, pendingAsk,
+  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, haveDraft, haveStory, pendingAsk,
                           problems[], last: ScaffoldRound | null, needsFolder, model, spec }
 
 ScaffoldRound =
@@ -232,7 +233,7 @@ ScaffoldRound =
 POST /scaffold/start    { idea, model?, mode? } → only while picking; opens a session and runs the
                                                   first proposal. `mode` picks the walk:
                                                   "staged" (the default) runs the gated checklist —
-                                                  story → cast → settings → scene, an author approval
+                                                   story → cast → settings → technical → scene, an author approval
                                                   between stages — and "oneshot" is the whole-story
                                                   proposal. The state's `gate` names the open stage
                                                   ("story"…"scene"), null on a one-shot session.
@@ -264,6 +265,10 @@ stage lands. Do not confuse it with `gate`, which is the checklist position and 
 a `story.json` field, so it reaches the GUI only through this state object — read-only, for display; the
 architect edits it by field name (see `/scaffold/say`) but it never lands on disk. Empty on a one-shot
 session and until the story stage names it.
+
+`haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
+be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its
+stricter meaning: a cast exists and the draft is eligible for the edit and accept flows.
 
 One session at a time (`scaffoldBusy` is a module-level lock — a second `POST` while a round is in
 flight gets `409`). `accept` only resolves the parked story pick on `kind: "written"`; every other
