@@ -122,6 +122,13 @@ export const storyName = dir => (APP.stories || []).find(s => s.dir === dir)?.na
  *  round-tripping to find out. Empty string when nothing is running. */
 export const runningReason = () => APP.session.running ? "a scene is being written — stop it first" : "";
 
+/** The server keeps one handoff session at a time, but the handoff PAGE is about one story
+ *  (`handoffDir`, from the URL). A session left open on story A must not render under story B when
+ *  B's page is opened by URL/reload — treat it as "nothing open" when the dirs disagree, the same
+ *  guard the story page uses (`APP.handoff.dir === s.dir`). */
+export const handoffForPage = () =>
+  APP.handoff.active && APP.handoff.dir === APP.handoffDir ? APP.handoff : { active: false };
+
 // Re-render is whole, which would otherwise eat what you are typing mid-round. Drafts live out
 // here and are written back in; focus is read off the document as the render begins, rather than
 // tracked through focus/blur -- removing a focused node does not reliably fire blur, and a click on

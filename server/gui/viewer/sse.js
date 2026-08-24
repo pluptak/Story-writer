@@ -52,7 +52,10 @@ export async function tryHttp() {
     const wanted = parseHash();
     APP.view = wanted || (APP.session.running ? "live" : "shelf");
     if (APP.view === "story") APP.storyDir = parseHashParams().get("dir") || "";
-    if (APP.view === "handoff") APP.handoffDir = APP.handoffDir || parseHashParams().get("dir") || "";
+    // The URL wins for the handoff page: a reload/bookmark of #/handoff?dir=X is asking for X, even
+    // if the server still holds a session left open on a different story (handoffForPage then draws
+    // the start screen for X rather than the other story's proposal).
+    if (APP.view === "handoff") APP.handoffDir = parseHashParams().get("dir") || APP.handoff.dir || "";
   if (APP.view === "edit") {
     const params = parseHashParams();
     APP.editNew = params.get("new") === "1";
@@ -153,7 +156,11 @@ export function startSSE() {
       // Same reason as the scaffold frame above: a round is a minute of model call, and the POST
       // response only ever reaches whoever sent it.
       APP.handoff = f.state || { active:false };
-      if (APP.handoff.active) APP.handoffDir = APP.handoff.dir;
+      // Don't let a frame retarget the handoff page: which story it shows is pinned by the URL, and
+      // the server may be driving a session for a different story. Seed handoffDir only for other
+      // views, and only when nothing has pinned it yet. handoffForPage() keeps a mismatched session
+      // from rendering here regardless.
+      if (APP.handoff.active && APP.view !== "handoff") APP.handoffDir = APP.handoffDir || APP.handoff.dir;
       APP.render();
       return;
     }

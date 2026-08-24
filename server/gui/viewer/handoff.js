@@ -1,5 +1,5 @@
 import { reasonOr } from "./util.js";
-import { APP, hdraft } from "./state.js";
+import { APP, hdraft, handoffForPage } from "./state.js";
 import { choose } from "./story-page.js";
 import { go } from "./nav.js";
 import { handoffPageHtml } from "./handoff-view.js";
@@ -123,7 +123,7 @@ export function wireHandoff(page) {
   // The word counts for the "chapters written" list load lazily, once the round has a spec and so a
   // chapter number to prepare. wireHandoff re-runs on every render; the dir+chapter key stops that
   // from restarting the fetch, and loadHandoffChapters sets the key before its first await.
-  const s = APP.handoff;
+  const s = handoffForPage();
   if (s.active && s.spec && s.chapter > 1 &&
       (APP.handoffChapters?.dir !== APP.handoffDir || APP.handoffChapters?.chapter !== s.chapter)) {
     loadHandoffChapters(APP.handoffDir, s.chapter, s.spec);

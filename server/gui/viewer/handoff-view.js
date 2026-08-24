@@ -1,5 +1,5 @@
 import { esc, modelOptionsHtml } from "./util.js";
-import { APP, storyName, hdraft, runningReason } from "./state.js";
+import { APP, storyName, hdraft, runningReason, handoffForPage } from "./state.js";
 import { wordsPovHtml } from "./story-page.js";
 
 // The architect default (defaults.json's models.architect) is repo-wide, not per-story, so it can
@@ -38,15 +38,19 @@ export function handoffPageHtml() {
     </section>`;
   }
 
+  // The active session, but only when it belongs to the story this page shows -- the server holds
+  // one handoff at a time, and it may be open on a different story than the URL names.
+  const s = handoffForPage();
+
   // Screen 2: nothing open. The accept case gets here first -- the server pushes {active:false}
   // before it answers the POST -- and must not be offered a start button it would race.
-  if (!APP.handoff.active && APP.handoffAccepting) {
+  if (!s.active && APP.handoffAccepting) {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <div class="thinking"><i></i>writing story.json…</div>
     </section>`;
   }
-  if (!APP.handoff.active) {
+  if (!s.active) {
     // Every handoff action but abandon is 409 while a run is in flight -- the run is reading the
     // file the handoff would rewrite. Said here rather than round-tripping to find out.
     const busy = runningReason();
@@ -63,8 +67,7 @@ export function handoffPageHtml() {
     </section>`;
   }
 
-  // Screen 3: active handoff
-  const s = APP.handoff;
+  // Screen 3: active handoff (`s` is set above, guarded to this page's story)
 
   // The optimistic state `startHandoff` sets has no spec -- every real frame carries one. Until the
   // first round lands there is no chapter number to name and nothing proposed to draw, and that wait
