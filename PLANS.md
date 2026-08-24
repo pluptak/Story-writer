@@ -67,6 +67,41 @@ place where the engine permits something the prompts forbid.
   Splitting them needs `llmLogEntry`'s `role` rule widened past `name === "WRITER" ? … : "character"`
   and a `.tag` colour per role; see [Writer.MD](Writer.MD).
 
+## Asymmetry follow-ups
+
+Found by asking how the engine handles stories where several characters face interdependent
+choices without seeing each other's reasoning. Each is a place where the engine permits something
+the asymmetry forbids.
+
+- **No simultaneity guard on sequential consults.** The reaction fan-out shares one situation blind
+  (`normalizeReactionConsult`), but ordinary sequential consults let the writer fold character A's
+  just-received answer into B's situation unchecked. The fix starts in `prompts.ts`
+  (`writeInstruction`): when more than one character faces the same fork, each consult's situation
+  may only contain facts that predate every answer in the beat. Whether anything engine-side should
+  also enforce it (a heuristic check in `scene-loop.ts` flagging a consult whose situation contains
+  another character's accepted answer from the same beat) is the open fork — detection is heuristic
+  and may not be worth the false positives.
+- **The clarifier has no per-character knowledge boundary.** A character's `need` question is answered
+  from whatever the writer knows (`consult.ts`, via the `clarify` seat), including facts that
+  character has no in-fiction way to hold. Fix shape: the writer's clarify-answer instruction gains
+  the rule "answer only from facts this character could know"; the stronger variant — passing the
+  character's `knows`/`belief` alongside the request so the seat can actually be checked — touches
+  `scene-loop.ts`'s clarifier construction and is its own block if ever wanted.
+- **Learned facts don't survive the handoff mechanically.** If chapter 2 turns on "she betrayed me
+  last round", landing that in `belief` depends on the architect remembering prose. Proposal: an
+  optional per-character `learned:` field in the handoff spec (what changed for them this chapter),
+  which `story-spec.ts` normalizes and folds into `knows:`/`belief:` at render time — no change to
+  `story.json` itself. Touches `architect.ts` (vocabulary), `story-spec.ts` (normalize/render), and
+  `prompts.ts`.
+
+A possible future improvement, parked because it adds runtime cost rather than closing a gap: a
+fourth judge variant beside `newJudge`/`newBatchJudge`/`newNarrationJudge` (0.3, no history, one
+response schema) asked whether the scene honoured both characters' stated choices at a shared fork —
+one extra LLM call per multi-character fork if it were ever wanted.
+
+(The unused reaction fan-out these stories would lean on most is tracked above under Writing-quality
+follow-ups.)
+
 ## Reliability follow-ups
 
 - **The viewer has no automated coverage at all.** `npm test` covers the engine and the route modules;
