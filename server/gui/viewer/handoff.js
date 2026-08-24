@@ -23,6 +23,33 @@ async function postHandoff(what, payload) {
   return j;
 }
 
+/** The "chapters written" list beside the proposed chapter needs a word count per chapter, one
+ *  fetch each. They never change within a handoff session -- accepting rewrites story.json, not the
+ *  prose already on disk -- so this runs once per (dir, prepared-chapter) and caches the result.
+ *  Chapter numbers come from the story card, filtered to those below the one being prepared, so a
+ *  gap in the written chapters does not turn into a 404. */
+async function loadHandoffChapters(dir, chapter, spec) {
+  APP.handoffChapters = { dir, chapter, loading: true, items: [] };
+  APP.render();
+  const card = (APP.stories || []).find(s => s.dir === dir);
+  const numbers = (card?.chapters || []).filter(n => n < chapter).sort((a, b) => a - b);
+  const items = [];
+  for (const n of numbers) {
+    const place = spec?.scenes?.[n - 1]?.place || "";
+    try {
+      const r = await fetch(`/chapter?dir=${encodeURIComponent(dir)}&n=${n}`);
+      if (!r.ok) items.push({ n, place, words: null, error: true });
+      else items.push({ n, place, words: (((await r.text()).match(/\S+/g)) || []).length, error: false });
+    } catch {
+      items.push({ n, place, words: null, error: true });
+    }
+    // A later dir/chapter started while this awaited -- bow out, like reader.js does.
+    if (APP.handoffChapters?.dir !== dir || APP.handoffChapters?.chapter !== chapter) return;
+  }
+  APP.handoffChapters = { dir, chapter, loading: false, items };
+  APP.render();
+}
+
 const disarm = key => { clearTimeout(APP[key]); APP[key] = 0; APP.render(); };
 
 /** First click arms a confirming second click within `ms`; the second click disarms and runs
@@ -93,6 +120,15 @@ async function writePrepared() {
 }
 
 export function wireHandoff(page) {
+  // The word counts for the "chapters written" list load lazily, once the round has a spec and so a
+  // chapter number to prepare. wireHandoff re-runs on every render; the dir+chapter key stops that
+  // from restarting the fetch, and loadHandoffChapters sets the key before its first await.
+  const s = APP.handoff;
+  if (s.active && s.spec && s.chapter > 1 &&
+      (APP.handoffChapters?.dir !== APP.handoffDir || APP.handoffChapters?.chapter !== s.chapter)) {
+    loadHandoffChapters(APP.handoffDir, s.chapter, s.spec);
+  }
+
   const on = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("click", fn); };
   const onKey = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("keydown", fn); };
   const plain = e => !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing;

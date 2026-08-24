@@ -17,9 +17,6 @@ run, which is the owner's to make, batched.
 
 ## Smaller viewer work
 
-- **The chapters-written column on the handoff panel.** `GET /chapter?dir=&n=` serves the prose, so
-  nothing is blocked at the API, but the word counts mean one fetch per chapter. Designed in
-  [`Architect.MD`](Architect.MD).
 - **Keep current-run rendering scoped to one chapter.** Aggregate story-level totals only when the UI
   is explicitly showing more than one run.
 

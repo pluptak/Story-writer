@@ -322,6 +322,13 @@ The proposed chapter renders from `spec.scenes[chapter - 1]`, and the story page
 handoff would prepare from `/stories`'s `scenes[]` and `chapters: number[]` — which is also what hides
 the action for a story with nothing written.
 
+Beside it, a **chapters-written list** shows each accepted chapter as `✓ ch N · place · NNN words`,
+closed by a `· ch N — being prepared` row for the chapter in flight. The word counts mean one
+`GET /chapter?dir=&n=` fetch each, so the list loads lazily once a round carries a spec and arrives
+shortly after the round itself; it is cached per story and prepared-chapter, since accepting rewrites
+`story.json` rather than any prose already on disk. Chapter numbers come from the story card filtered
+below the prepared chapter, so a gap in the written chapters never becomes a 404.
+
 ### Viewer modules
 
 Split the way the scaffold's are:
@@ -359,9 +366,6 @@ engine modules directly.
 
 ## Remaining work
 
-- **The chapters-written column** on the handoff panel — a "✓ Chapter 1 · 812 words" list beside the
-  proposed chapter. `GET /chapter?dir=&n=` serves the prose, so nothing is blocked at the API, but the
-  word counts mean one fetch per chapter. Tracked in [`PLANS.md`](PLANS.md).
 - `specView` omits `config`, `models` and per-character `model` — needed only if a panel shows them.
 - A **scaffold** architect receives a hard-coded worked example from `tests/fixtures/doorway`
   (~1,870 estimated tokens) — the one story committed with the engine, since everything under

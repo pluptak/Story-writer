@@ -126,6 +126,27 @@ export function handoffPageHtml() {
     body.push(`<p class="hint">the architect has not added it yet</p>`);
   }
 
+  // Chapters already written, beside the one being prepared -- one /chapter fetch each for the word
+  // count (handoff.js/loadHandoffChapters), so it arrives shortly after the round does.
+  if (s.chapter > 1) {
+    const hc = APP.handoffChapters;
+    const ready = hc && hc.dir === APP.handoffDir && hc.chapter === s.chapter && !hc.loading;
+    body.push(`<div class="divider"><span>chapters written</span></div>`);
+    if (ready) {
+      const rows = hc.items.map(it => `
+        <div class="hchap"><span class="n">✓ ch ${it.n}</span>
+          <span class="place">${it.place ? esc(it.place) : "—"}</span>
+          <span class="w">${it.error ? "unreadable" : it.words + " words"}</span></div>`);
+      rows.push(`
+        <div class="hchap prep"><span class="n">· ch ${s.chapter}</span>
+          <span class="place">${sc?.place ? esc(sc.place) + " — " : ""}being prepared</span>
+          <span class="w">draft</span></div>`);
+      body.push(`<div class="hchapters">${rows.join("")}</div>`);
+    } else {
+      body.push(`<div class="thinking"><i></i>counting words…</div>`);
+    }
+  }
+
   // Last round results
   if (s.last?.kind === "edits") {
     const changeValue = (value) => {

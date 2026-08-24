@@ -97,6 +97,10 @@ Still on `the-final-meal`, on a written chapter's row.
       about N tokens and <model> is loaded with M" — and the fix is LM Studio's context length, not the
       app. *(To see the worked-example saving for yourself, set the model's context low enough to
       trigger this and compare N against a run of the same story before commit `8f1ea70`.)*
+- [ ] **Chapters written.** Under the proposed chapter, expect a `chapters written` list: one
+      `✓ ch N · place · NNN words` row per accepted chapter (a brief "counting words…" first while the
+      counts fetch), closed by a `· ch 3 — being prepared` row. The word counts match the prose on
+      disk, and the list does not reappear-and-recount on every refinement round.
 - [ ] **History guard.** Tell the architect something like *"change scene 1's question to whether the
       cook ever intended to serve it"*. Expect the edit reported as **ignored**, reading
       `scene_1.question — chapter 1 is already written`, and expect the round to still apply everything

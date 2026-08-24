@@ -72,6 +72,9 @@ export const APP = {
   handoffAccepting: false,     // an accept is in flight. The server publishes {active:false} BEFORE it
                                 // answers the POST, so without this the page falls back to the start
                                 // screen -- with a live start button -- between the two.
+  handoffChapters: null,       // {dir, chapter, loading, items:[{n, place, words, error}]}: the word
+                                // counts for the "chapters written" list, one /chapter fetch each.
+                                // Keyed by dir+prepared-chapter so it refetches when either changes.
   hAcceptArmed: 0,             // timer id: accepting a handoff wants a second click
   hAbandonArmed: 0,            // so does throwing it away
   // Story editor state
