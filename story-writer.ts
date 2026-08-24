@@ -481,6 +481,26 @@ async function loadStoryJson(dir: string): Promise<
   return { ok: true, story: result.data };
 }
 
+/** Write a validated story.json atomically (write .tmp, rename over) and confirm it still loads.
+ *  Shared by saveStory (a full form save) and discardScene (dropping one scene) so there is exactly
+ *  one place that commits story.json to disk. */
+async function persistStoryJson(dir: string, parsed: StoryJson): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const base = resolveStoryDir(dir);
+  const storyPath = joinPath(base, "story.json");
+  const tmpPath = storyPath + ".tmp";
+  const content = JSON.stringify(parsed, null, 2) + "\n";
+  try {
+    await writeFile(tmpPath, content, "utf8");
+    await rename(tmpPath, storyPath);
+  } catch (e) {
+    return { ok: false, reason: `write failed: ${(e as Error).message}` };
+  }
+  // Re-load to confirm (catches silently-corrupt writes on constrained filesystems).
+  try { await loadStory(dir); }
+  catch (e) { return { ok: false, reason: `saved but does not load: ${(e as Error).message}` }; }
+  return { ok: true };
+}
+
 /** The psychology fields are REQUIRED on every character: surfaced as editor/check warnings so an
  *  old or hand-edited story is told what its cards are missing. Shares its wording with normalizeSpec. */
 const characterCardWarnings = (parsed: StoryJson): string[] =>
@@ -548,30 +568,31 @@ const HOST: ServerHost = {
     // Guard: run must not be in flight (already checked by route, but double-check)
     if (LIVE.running) return { ok: false, reason: "a run is in flight", status: 409 };
 
-    // Atomic write: write to .tmp, then rename over story.json
-    const base = resolveStoryDir(dir);
-    const storyPath = joinPath(base, "story.json");
-    const tmpPath = storyPath + ".tmp";
-    const content = JSON.stringify(parsed, null, 2) + "\n";
-    try {
-      await writeFile(tmpPath, content, "utf8");
-      await rename(tmpPath, storyPath);
-    } catch (e) {
-      return { ok: false, reason: `write failed: ${(e as Error).message}` };
-    }
-
-    // Re-load to confirm (catches silently-corrupt writes on constrained filesystems)
-    try {
-      await loadStory(dir);
-    } catch (e) {
-      return { ok: false, reason: `saved but does not load: ${(e as Error).message}` };
-    }
+    const w = await persistStoryJson(dir, parsed);
+    if (!w.ok) return { ok: false, reason: w.reason };
 
     const warnings: string[] = [];
     for (const [i, s] of parsed.scenes.entries()) {
       if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
     }
     return { ok: true, warnings };
+  },
+  discardScene: async (dir, n) => {
+    if (LIVE.running) return { ok: false, reason: "a run is in flight", status: 409 };
+    const loaded = await loadStoryJson(dir);
+    if (!loaded.ok) return { ok: false, reason: `story.json does not load: ${loaded.error}` };
+    const parsed = loaded.story;
+    // Only the last authored scene, and only while unwritten: a written chapter's scene defines its
+    // prose, and removing a middle scene would renumber the chapters after it. `scenes.min(1)` in the
+    // schema means the sole scene can never go.
+    if (parsed.scenes.length <= 1) return { ok: false, reason: "a story must keep at least one scene" };
+    if (n !== parsed.scenes.length) return { ok: false, reason: `only chapter ${parsed.scenes.length} (the last authored scene) can be discarded` };
+    if ((await writtenChapters(dir)).includes(n)) return { ok: false, reason: `chapter ${n} is already written — discarding it would orphan the prose` };
+
+    parsed.scenes = parsed.scenes.slice(0, -1);
+    const w = await persistStoryJson(dir, parsed);
+    if (!w.ok) return { ok: false, reason: w.reason };
+    return { ok: true, chapter: n, scenes: parsed.scenes.length };
   },
   suggestEdits: async (spec, text) => {
     const specObj = spec as StorySpec;

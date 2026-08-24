@@ -41,17 +41,21 @@ export const nextChapterOf = chapters => Math.max(0, ...chapters) + 1;
  *  shared with the handoff's proposed-chapter card (handoff-view.js). */
 export const wordsPovHtml = scene => `~${scene.length ?? "?"} words${scene.pov ? " · pov " + esc(scene.pov) : ""}`;
 
-function sceneRowHtml(scene, chapters, canWrite, why) {
+/** `discardable` is set by the caller for the last authored scene when it is unwritten and not the
+ *  only one -- the one an accepted-but-never-written chapter leaves behind (see nextChapterOf). */
+function sceneRowHtml(scene, chapters, canWrite, why, discardable) {
   const written = chapters.includes(scene.n);
   const open = APP.chapter?.dir === APP.storyDir && APP.chapter.n === scene.n;
   const next = !written && scene.n === nextChapterOf(chapters);
   const tag = written ? `<span class="tag written">written</span>`
             : next ? `<span class="tag next">next</span>` : "";
+  const runWhy = runningReason();   // discard is blocked by a run in flight, not by picking-readiness
   return `<div class="cardwrap"><div class="scenerow">
     <div class="sc-q">${esc(scene.question || "(no scene question)")}${tag}</div>
     <div class="sc-meta">chapter ${scene.n}${scene.place ? " · " + esc(scene.place) : ""} · ${wordsPovHtml(scene)}</div>
     <button class="btn${next ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
     ${written ? `<button class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
+    ${discardable ? `<button class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
     ${open ? `<div class="prose" style="margin-top:12px">${paras(APP.chapter.text)}</div>` : ""}
     ${open && APP.chapterError ? `<div class="said bad">${esc(APP.chapterError)}</div>` : ""}
   </div></div>`;
@@ -131,7 +135,9 @@ export function storyPageHtml() {
     ${(s.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
 
     <div class="divider"><span>scenes</span></div>
-    <div class="cards">${scenesOf(s).map(sc => sceneRowHtml(sc, s.chapters || [], canWrite, why)).join("")}</div>
+    <div class="cards">${scenesOf(s).map((sc, i, arr) =>
+      sceneRowHtml(sc, s.chapters || [], canWrite, why,
+        i === arr.length - 1 && arr.length > 1 && !(s.chapters || []).includes(sc.n))).join("")}</div>
 
     ${handoffRowHtml(s)}
 
@@ -157,6 +163,9 @@ export function wireStoryPage(page) {
 
   for (const b of page.querySelectorAll(".scenewrite"))
     b.addEventListener("click", () => playChosen(APP.storyDir, APP.storyModel, Number(b.dataset.chapter)));
+
+  for (const b of page.querySelectorAll(".scenediscard"))
+    b.addEventListener("click", () => discardChapter(APP.storyDir, Number(b.dataset.chapter)));
 
   // A slow earlier read must never overwrite a faster later click's chapter -- last click wins.
   // Module-level: wireStoryPage re-runs on every render, so a closure-scoped token would reset
@@ -224,6 +233,19 @@ async function playChosen(dir, model, chapter) {
   const mj = await post("/model", { model }, false);
   if (!mj || mj.ok === false) { APP.storyError = reasonOr(mj, "could not set that model"); APP.render(); return; }
   await choose({ dir, chapter });
+}
+
+/** Remove an accepted-but-unwritten chapter's scene from story.json. Only offered for the last
+ *  scene while unwritten (sceneRowHtml), and the server re-checks all of that -- nothing written is
+ *  touched, so a re-prepare puts the chapter back. */
+async function discardChapter(dir, n) {
+  if (!confirm(`Discard chapter ${n}? Its scene is removed from the story. Nothing already written is affected, and you can prepare the chapter again.`)) return;
+  APP.storyError = "";
+  const j = await post("/story/discard", { dir, n }, false);
+  if (!j || j.ok === false) { APP.storyError = reasonOr(j, "could not discard that chapter"); APP.render(); return; }
+  if (APP.chapter?.dir === dir && APP.chapter.n === n) APP.chapter = null;   // a discarded scene has nothing to keep open
+  await loadStories();
+  APP.render();
 }
 
 export async function choose(payload) {

@@ -159,6 +159,8 @@ POST /story/check  { story } → { ok:true, warnings[] }
                                | { ok:false, error, issues[] }
 POST /story/save   { dir, story } → { ok:true, warnings[] }
                                      | { ok:false, reason }
+POST /story/discard { dir, n }    → { ok:true, chapter, scenes }
+                                     | { ok:false, reason }
 POST /story/suggest { spec, text } → { ok:true, kind:"edits",
                                        applied, ignored, problems, note }
                                      | { ok:true, kind:"question", ask }
@@ -175,6 +177,12 @@ definition a live run is reading would be a race.
 
 `/story/save` validates, atomically writes via `.tmp` rename, then re-loads to confirm. Refuses
 with `409` while a run is in flight.
+
+`/story/discard` drops the last authored scene from `story.json` — the undo for an
+accepted-but-never-written chapter the handoff added. Refuses any scene but the last, the sole
+scene (`scenes` is `min(1)`), a chapter already written (its prose would be orphaned), and a run in
+flight. Writes through the same atomic path as `/story/save`. The story page offers it only on the
+trailing unwritten scene's row.
 
 `/story/suggest` is a stateless architect call: given the current story spec and the author's
 instruction in `text`, creates a fresh architect agent, sends the change prompt, and returns the

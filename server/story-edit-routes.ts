@@ -54,6 +54,20 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
+  if (path === "/story/discard" && req.method === "POST") {
+    const o = await readJsonBody(req);
+    const dir = await host.selectableStory(String(o.dir ?? ""));
+    if (!dir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
+    if (LIVE.running) { json(res, 409, { ok: false, reason: "cannot discard while a run is in flight" }); return true; }
+    const n = Number(o.n);
+    if (!Number.isInteger(n) || n < 1) { json(res, 400, { ok: false, reason: "which chapter?" }); return true; }
+
+    const r = await host.discardScene(dir, n);
+    if (!r.ok) json(res, r.status ?? 400, { ok: false, reason: r.reason });
+    else json(res, 200, { ok: true, chapter: r.chapter, scenes: r.scenes });
+    return true;
+  }
+
   if (path === "/story/suggest" && req.method === "POST") {
     const o = await readJsonBody(req);
     if (LIVE.running) { json(res, 409, { ok: false, reason: "cannot suggest while a run is in flight" }); return true; }

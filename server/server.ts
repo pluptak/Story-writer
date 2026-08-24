@@ -80,6 +80,13 @@ export interface ServerHost {
   } | {
     ok: false; reason: string; status?: number
   }>;
+  /** Drop the last authored scene from story.json, undoing an accepted-but-unwritten chapter.
+   *  Refuses the sole scene, any scene but the last, a written chapter, or a run in flight. */
+  discardScene(dir: string, n: number): Promise<{
+    ok: true; chapter: number; scenes: number
+  } | {
+    ok: false; reason: string; status?: number
+  }>;
   /** Stateless architect suggestion: given the current spec and user text, return proposed edits. */
   suggestEdits(spec: unknown, text: string): Promise<{
     ok: true; kind: "edits"; applied: {field:string;before:unknown;after:unknown}[]; ignored: string[];

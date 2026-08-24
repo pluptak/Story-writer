@@ -107,6 +107,11 @@ Still on `the-final-meal`, on a written chapter's row.
       else it proposed. It is an ignored edit, not an error.
 - [ ] **Accept.** No stale flash on accept. `story.json` is rewritten, and the story page now shows a
       scene 3 row offering to write chapter 3.
+- [ ] **Discard the unwritten chapter.** On that same scene 3 row (accepted but not yet written), a
+      red **discard chapter 3** button sits beside **write chapter 3**. It appears only on the last
+      scene while unwritten — written chapters and any earlier scene have none. Click it, confirm the
+      dialog, and the scene 3 row disappears; the row for the last *written* chapter is untouched, and
+      **prepare chapter 3** can add it back. The button is disabled while a run is in flight.
 - [ ] **Try again panel.** Unload the architect's model in LM Studio, then open a handoff. Expect a
       panel offering to retry, not a dead screen. Reload the model afterwards.
 
