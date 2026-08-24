@@ -13,7 +13,8 @@ export const ENGINE = {
   maxTokens: 2000,
   outDir: "",
   llmStreams: new Map<string, WriteStream>(),   // agent name -> this run's open stream
-  llmFilenames: new Set<string>(),               // filenames already claimed this run
+  llmFilenames: new Set<string>(),              // filenames already claimed this run
+  llmDead: new Set<string>(),                   // agents whose transcript stream failed — warned once, then skipped
 };
 
 // TTY only: carriage returns in a redirected log file are worse than silence.

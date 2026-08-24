@@ -7,7 +7,9 @@ import { join } from "node:path";
 
 import { loadStory } from "../engine/story-format.ts";
 import { num } from "../engine/config-util.ts";
-import { llmFilenameFor, llmLogEntry } from "../engine/agent.ts";
+import { llmFilenameFor, llmLogEntry, writeLlmRecord, Agent } from "../engine/agent.ts";
+import { ENGINE } from "../engine/engine-state.ts";
+import { WARN } from "../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
 import { wrapCharacter, wrapWriter, writerCast } from "../engine/scene-loop.ts";
@@ -263,6 +265,42 @@ describe("LLM interaction log", () => {
 
   it("llmFilenameFor: a name that slugifies empty falls back to 'agent'", () => {
     assert.equal(llmFilenameFor("!!!", new Set()), "agent.jsonl");
+  });
+
+  it("writeLlmRecord: a stream that fails warns once, then later records are dropped silently", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    // No llm/ subdir under outDir: opening the transcript stream fails asynchronously.
+    const orig = { outDir: ENGINE.outDir, streams: ENGINE.llmStreams,
+                   names: ENGINE.llmFilenames, dead: ENGINE.llmDead };
+    ENGINE.outDir = dir; ENGINE.llmStreams = new Map();
+    ENGINE.llmFilenames = new Set(); ENGINE.llmDead = new Set();
+    const got: string[] = [];
+    const origSink = WARN.sink;
+    WARN.sink = (...a: unknown[]) => { got.push(a.map(String).join(" ")); };
+    try {
+      const agent = new Agent("TESTER", "m", "s");
+      writeLlmRecord(agent, "t", [{ role: "user", content: "q" }], "{resp}", 5, null);
+      await new Promise(r => setTimeout(r, 50));   // let the failed open fire its error
+      writeLlmRecord(agent, "t2", [], "{resp2}", 5, null);
+      await new Promise(r => setTimeout(r, 20));
+    } finally {
+      WARN.sink = origSink;
+      Object.assign(ENGINE, orig);
+      await rm(dir, { recursive: true, force: true });
+    }
+    assert.equal(got.length, 1, `expected exactly one warning, got ${JSON.stringify(got)}`);
+    assert.match(got[0], /TESTER/);
+    assert.match(got[0], /stopped being written/);
+  });
+
+  it("writeLlmRecord: no outDir means no logging and no warning", () => {
+    const origOut = ENGINE.outDir;
+    ENGINE.outDir = "";
+    try {
+      const got = warnings(() =>
+        writeLlmRecord(new Agent("TESTER", "m", "s"), "t", [], "{r}", 1, null));
+      assert.equal(got.length, 0);
+    } finally { ENGINE.outDir = origOut; }
   });
 });
 

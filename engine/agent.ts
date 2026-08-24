@@ -95,19 +95,30 @@ function emitStats(who: string, model: string, durationMs: number, usage: Comple
   });
 }
 
-function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: string,
-                        durationMs: number, usage: CompletionUsage | null) {
-  if (!ENGINE.outDir || agent.name === "ARCHITECT") return;
+/** Push a record for one agent/model exchange to its transcript stream. A stream that fails warns
+ *  once and is abandoned for the rest of the run — the run itself must never crash on logging. */
+export function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: string,
+                               durationMs: number, usage: CompletionUsage | null) {
+  if (!ENGINE.outDir || agent.name === "ARCHITECT" || ENGINE.llmDead.has(agent.name)) return;
   try {
     let stream = ENGINE.llmStreams.get(agent.name);
     if (!stream) {
       const file = llmFilenameFor(agent.name, ENGINE.llmFilenames);
       stream = createWriteStream(joinPath(ENGINE.outDir, "llm", file), { flags: "w" });
-      stream.on("error", () => {});   // an async write failure must never crash the run
+      stream.on("error", e => killLlmLog(agent.name, e));   // async write failure must never crash the run
       ENGINE.llmStreams.set(agent.name, stream);
     }
     stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response, durationMs, usage)) + "\n");
-  } catch { }
+  } catch (e) {
+    killLlmLog(agent.name, e as Error);
+  }
+}
+
+/** Warn once about an agent's transcript stream dying; later records for that agent are dropped. */
+function killLlmLog(name: string, e: Error) {
+  if (ENGINE.llmDead.has(name)) return;
+  ENGINE.llmDead.add(name);
+  warn(`   (LLM transcript for ${name} stopped being written: ${e.message} — later records are dropped, the run continues)`);
 }
 
 // -- HISTORY WINDOWING -----------------------------------------------------
