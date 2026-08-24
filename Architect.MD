@@ -116,6 +116,11 @@ prose on disk answers the older question. An unnumbered `scene.<field>` means sc
 on the same terms once chapter 1 exists.
 
 A refusal is reported as an ignored edit, not an error — the round still applies everything else.
+The next `[CHANGE]` round also carries the refusals back to the architect in a
+`[REFUSED LAST TIME]` block, so a field the engine will not take is corrected or dropped instead of
+being re-proposed verbatim every round; any round that refuses nothing clears it. The automatic
+fill-gaps/verify passes do not carry refusals — each is a one-shot instruction with no refusal
+history to correct.
 
 ### Drift warning
 

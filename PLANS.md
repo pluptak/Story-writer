@@ -31,10 +31,6 @@ run, which is the owner's to make, batched.
   still does, because a whole-story proposal has no story yet to demonstrate the format with. The
   staged walk embeds each stage's fields inline instead, so the example matters most to `--oneshot`;
   whether the one-shot path can drop or shrink it is what is left.
-- **Refused edits are never told to the model.** `applyEdits` and `refuse()` report ignored fields to
-  the author, but `architectChange` sends only the author's text and the spec — so an architect that
-  invents a field (`scene_1` rather than `scene_1.question`, observed) can repeat it every round.
-  Feeding refusals into the next prompt is the fix; it touches `prompts.ts`, so it is its own block.
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round now refuses with the numbers rather than letting the model return nothing, but a
   long story needs a correspondingly large context window loaded.
@@ -56,12 +52,6 @@ run, which is the owner's to make, batched.
 Found by reading the run logs of `stories/the-watchfire` against the writer's own rules. Each is a
 place where the engine permits something the prompts forbid.
 
-- **`reaction` is never used.** Zero consults of 76 across three runs asked for one; the split is
-  decision 49, speech 22, action 5. It is the one shape that lets a present-but-not-acting character
-  stay a person, and it is also the honest thing to ask when there is no fork — exactly the situation
-  that currently produces `"What do you do?"`. The neglect nudge in `writeInstruction` should name it.
-  The group-reaction fan-out (see [Writer.MD](Writer.MD)) now gives the writer a distinct, cheap reason
-  to reach for `reaction`; whether it actually shifts the split is still to be measured on a live run.
 - **The judge and the clarifier are named `WRITER`,** so they share the writer's transcript and, now
   that per-call stats exist, its stats row too — one line blending three jobs at three temperatures.
   Splitting them needs `llmLogEntry`'s `role` rule widened past `name === "WRITER" ? … : "character"`

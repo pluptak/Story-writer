@@ -186,6 +186,10 @@ export class ScaffoldSession {
   asks = 0;                                    // consecutive questions with no story to show for them
   static readonly MAX_ASKS = 3;
 
+  /** What the last edits round refused or could not apply, fed back once so the architect stops
+   *  repeating a field the engine will not take. Cleared by any edits round that refuses nothing. */
+  private refusedLastRound: string[] = [];
+
   /** Staged mode only: which gate of the checklist is open -- "story", "cast", "settings", "scene".
    *  Null until propose() starts the checklist. The checklist landing in full does not close it;
    *  accept() ends the story, not approve(). */
@@ -211,6 +215,7 @@ export class ScaffoldSession {
     this.problems = n.problems;
     this.pendingAsk = "";
     this.asks = 0;
+    this.refusedLastRound = [];
     return { applied: [{ field: "story", before: null, after: "updated from editor" }], problems: n.problems };
   }
 
@@ -218,7 +223,8 @@ export class ScaffoldSession {
     if (!userText) return P.architectIdea(this.idea);
     if (this.haveStory())
       return P.architectChange(userText,
-        JSON.stringify({ ...this.spec, writer_style: this.spec.writerStyle }, null, 1));
+        JSON.stringify({ ...this.spec, writer_style: this.spec.writerStyle }, null, 1),
+        this.refusedLastRound);
     return P.architectMore(userText, this.idea, this.asks >= ScaffoldSession.MAX_ASKS);
   }
 
@@ -426,7 +432,8 @@ export class ScaffoldSession {
         this.architect.hear(P.authorAnswers(text));
         return this.runGate(this.stage, onStage);
       }
-      const r = await architectRound(this.architect, P.architectChange(text, this.specJsonText()));
+      const r = await architectRound(this.architect,
+        P.architectChange(text, this.specJsonText(), this.refusedLastRound));
       if ("error" in r) return { kind: "failed", error: r.error };
       const back = String(r.out.ask ?? "").trim();
       if (back && !Array.isArray(r.out.edits)) { this.pendingAsk = back; return { kind: "question", ask: back, stage: this.stage }; }
@@ -450,6 +457,7 @@ export class ScaffoldSession {
       this.spec = e.spec;
       this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems);
       this.pendingAsk = "";
+      this.refusedLastRound = e.ignored;
       return { kind: "edits", applied: [...appliedExtra, ...e.applied], ignored: e.ignored, flags: [], note: withAsk(r.out), stage: this.stage };
     }
     const wasPatch = this.haveStory();
@@ -463,6 +471,7 @@ export class ScaffoldSession {
     const e = applyEdits(this.spec, r.out);
     this.spec = e.spec; this.problems = e.problems;
     this.pendingAsk = "";
+    this.refusedLastRound = e.ignored;
     return { kind: "edits", applied: e.applied, ignored: e.ignored, flags: [], note: withAsk(r.out) };
   }
 
@@ -516,6 +525,10 @@ export class NextChapterSession {
   pendingAsk = "";
   edited = false;                              // has any round changed the spec
 
+  /** What the last edits round refused or could not apply, fed back once so the architect stops
+   *  repeating a field the engine will not take. Cleared by any edits round that refuses nothing. */
+  private refusedLastRound: string[] = [];
+
   constructor(public architect: Agent, public defaults: Defaults, public dir: string,
               public spec: StorySpec, public chapters: { n: number; text: string }[]) {}
 
@@ -561,6 +574,7 @@ export class NextChapterSession {
     const e = applyEdits(this.spec, { edits: guarded.edits });
     this.spec = e.spec; this.problems = e.problems; this.pendingAsk = "";
     this.edited = true;
+    this.refusedLastRound = [...guarded.refused, ...e.ignored];
     const flags = Array.isArray(r.out.flags)
       ? r.out.flags.filter((flag): flag is string => typeof flag === "string")
         .map(flag => flag.trim()).filter(Boolean)
@@ -591,7 +605,8 @@ export class NextChapterSession {
 
   /** A follow-up from the author, in the same edits-only format. */
   async say(text: string): Promise<ScaffoldRound> {
-    return this.take(await architectRound(this.architect, P.architectChange(text, this.specJson())));
+    return this.take(await architectRound(this.architect,
+      P.architectChange(text, this.specJson(), this.refusedLastRound)));
   }
 
   /**

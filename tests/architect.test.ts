@@ -122,6 +122,28 @@ describe("ScaffoldSession", () => {
     assert.equal(s.spec.characters.length, 2);
   });
 
+  it("feeds refused edits into the next refinement round, and stops once they apply cleanly", async () => {
+    // The two automatic passes after propose()'s proposal each consume one script entry first.
+    const s = scaffold([STORY, { edits: [] }, { edits: [] },
+      { edits: [{ field: "scene_1", value: "sharper" }] },          // unknown field — refused
+      { edits: [{ field: "scene.length", value: 900 }] },           // applies cleanly, clears the list
+      { edits: [] }]);
+    await s.propose();
+    const bad = await s.say("sharpen scene one");
+    assert.equal(bad.kind, "edits");
+    assert.match((bad as { ignored: string[] }).ignored.join(" "), /unknown field/);
+
+    const users = () => s.architect.history.filter(m => m.role === "user").map(m => m.content);
+    await s.say("make it longer");
+    assert.match(users().at(-1)!, /\[REFUSED LAST TIME\]/);
+    assert.match(users().at(-1)!, /unknown field "scene_1"/);
+    assert.match(users().at(-1)!, /Sending any of them back unchanged/);
+
+    const clean = await s.say("once more");
+    assert.equal(clean.kind, "edits");
+    assert.doesNotMatch(users().at(-1)!, /\[REFUSED LAST TIME\]/);
+  });
+
   it("changes nothing when the architect asks a question mid-refinement", async () => {
     // The two automatic passes after propose()'s proposal each consume one script entry first.
     const s = scaffold([STORY, { edits: [] }, { edits: [] }, { ask: "Longer how — more beats, or slower ones?" }]);
@@ -585,6 +607,25 @@ describe("NextChapterSession", () => {
     assert.match(s.architect.history[2].content, /\[CHANGE\] about the same/);
     assert.equal(s.spec.characters[0].goal, "Reveal the truth.");
     assert.equal(s.pendingAsk, "");
+  });
+
+  it("feeds the last round's refused edits into the next change round, and clears them once clean", async () => {
+    // The handoff's propose() runs fill-gaps and verify after its edits round; each consumes a reply.
+    const s = handoff([{ edits: [{ field: "scene_1.place", value: "the rock" }] },
+                       { edits: [] }, { edits: [] },
+                       { edits: [{ field: "characters.ASTER.goal", value: "Confess." }] },
+                       { edits: [] }]);
+    const first = await quiet(() => s.propose());
+    assert.match((first as { ignored: string[] }).ignored.join(" "), /already written/);
+
+    await s.say("try again");
+    const users = () => s.architect.history.filter(m => m.role === "user").map(m => m.content);
+    assert.match(users().at(-1)!, /\[REFUSED LAST TIME\]/);
+    assert.match(users().at(-1)!, /scene_1\.place — chapter 1 is already written/);
+
+    const second = await quiet(() => s.say("and now something clean"));
+    assert.equal(second.kind, "edits");
+    assert.doesNotMatch(users().at(-1)!, /\[REFUSED LAST TIME\]/);
   });
 
   it("reports a reply that is neither edits nor a question, and a round that fails", async () => {

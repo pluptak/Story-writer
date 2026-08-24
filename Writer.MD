@@ -82,6 +82,11 @@ the eyes. A thought offered against any of the other three is not a quiet answer
 question, and it is treated as one: the character is asked again, and if it comes back the same the
 writer is told nobody answered rather than handed an accepted answer with nothing in it.
 
+The engine nudges as well as gates: a character gone unconsulted too long is named in the next
+`[WRITE]`, and that nudge explicitly offers `reaction` as the honest ask when the moment turns on no
+choice of theirs at all (`prompts.ts`'s `writeInstruction`) — the situation that otherwise produces a
+degenerate "What do you do?".
+
 ### Group reactions
 
 When a beat lands on more than one person at once, the writer can fan a **reaction** out to several of

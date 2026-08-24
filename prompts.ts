@@ -208,8 +208,16 @@ export function architectSystem(
 
 export const architectIdea = (idea: string) => `[THE IDEA]\n${idea}`;
 
-export const architectChange = (userText: string, specJson: string) =>
-  `[CHANGE] ${userText}\n\n[THE STORY AS IT STANDS]\n${specJson}\n\nReply with edits only.`;
+export const architectChange = (userText: string, specJson: string, refused: readonly string[] = []) => {
+  const refusedBlock = refused.length
+    ? `\n\n[REFUSED LAST TIME] These edits from your previous reply were NOT applied:\n`
+      + refused.map(r => `  - ${r}`).join("\n")
+      + `\nSending any of them back unchanged gets it refused again. Fix what each line names -- `
+      + `the right field name, a scene that exists, a character who does -- or drop the edit. Use `
+      + `"ask" if you cannot tell what went wrong.`
+    : "";
+  return `[CHANGE] ${userText}\n\n[THE STORY AS IT STANDS]\n${specJson}${refusedBlock}\n\nReply with edits only.`;
+};
 
 export const architectMore = (userText: string, idea: string, insist: boolean) =>
   `[MORE] ${userText}\n\n[THE IDEA, AGAIN]\n${idea}\n\n`
@@ -1109,8 +1117,10 @@ export const writeInstruction = (p: {
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
     + `gone unconsulted for a while now — if they are still in the scene, ask them something, and ask `
     + `for whatever this moment actually turns on for them: what they decide, what they say, what they `
-    + `do, or what it lands on them as. If the scene's question turns on their choice, they have to be `
-    + `asked for it before the scene can end.` : "");
+    + `do -- or, when this moment asks no choice of them at all and they are simply there while it `
+    + `happens, "reaction": what it lands on them as. A reaction costs less than a forced decision, `
+    + `and it keeps a present character from becoming furniture. If the scene's question turns on `
+    + `their choice, they have to be asked for it before the scene can end.` : "");
 
 export const askReader = (words: number) =>
   `[ASK READER] ${words} words so far. The reader wants to choose the `
