@@ -459,7 +459,15 @@ If you cannot tell who belongs in the scene, or whether anything is a genuine wo
     + `fact, without guessing, use "ask" and send no edits.`;
 }
 
-export function architectVerify(specJson: string, sceneField: string): string {
+export function architectVerify(specJson: string, sceneField: string, knownProblems: string[] = []): string {
+  const flagged = knownProblems.length
+    ? `[ALREADY FLAGGED] These were detected mechanically on the draft below. Fix each one `
+      + `with an edit, or -- if one is a false positive -- leave it and say why in "note":
+
+${knownProblems.map(p => `  - ${p}`).join("\n")}
+
+`
+    : "";
   return `[VERIFY] Before this is shown to the author, audit your own draft below for `
     + `anything that does not actually hold together:
 
@@ -469,12 +477,15 @@ export function architectVerify(specJson: string, sceneField: string): string {
     + `there, not at story level.
   - a restriction that cannot actually bite in this scene -- it creates no asymmetry the `
     + `scene puts to use.
+  - more than one character, and not one of them has any restrictions -- the cast then has `
+    + `no perceptual asymmetry for the consult to bite on. Author at least one load-bearing `
+    + `restriction onto whoever the scene's fork actually turns on.
   - ${sceneField}.pov set to someone who is not in ${sceneField}.roster -- the reader `
     + `would be inside the perception of someone not even placed in the room.
   - anything else you would flag if an author put this in front of you and asked whether `
     + `it holds together.
 
-[THE STORY AS IT STANDS]
+${flagged}[THE STORY AS IT STANDS]
 ${specJson}
 
 Fix what is wrong with edits, in the same format as [CHANGE]. If nothing needs to `

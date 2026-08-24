@@ -156,7 +156,7 @@ async function runAutoPasses(
   for (const stage of passes) {
     const prompt = stage === "fillGaps"
       ? P.architectFillGaps(specJson(cur), sceneField)
-      : P.architectVerify(specJson(cur), sceneField);
+      : P.architectVerify(specJson(cur), sceneField, applyEdits(cur, { edits: [] }).problems);
     const ask = await runStage(stage, prompt);
     if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
   }
