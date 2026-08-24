@@ -225,11 +225,20 @@ describe("runLlmLogs / readLlmLog", () => {
 
 // -- LLM INTERACTION LOG ----------------------------------------------------
 describe("LLM interaction log", () => {
-  it("llmLogEntry: WRITER gets role writer, anyone else gets role character", () => {
-    const w = llmLogEntry({ name: "WRITER", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp", 100, null);
-    assert.equal(w.role, "writer");
-    const c = llmLogEntry({ name: "Anne", model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp", 100, null);
-    assert.equal(c.role, "character");
+  it("llmLogEntry: author-side names get their own role, any other name is a character", () => {
+    const cases: [string, string][] = [
+      ["WRITER", "writer"],
+      ["JUDGE", "judge"],
+      ["BATCH-JUDGE", "batch-judge"],
+      ["NARRATION-JUDGE", "narration-judge"],
+      ["CLARIFIER", "clarifier"],
+      ["MERRITT", "character"],
+      ["ANNE", "character"],
+    ];
+    for (const [name, role] of cases) {
+      const e = llmLogEntry({ name, model: "m" }, "2026-01-01T00-00-00.000Z", [], "resp", 100, null);
+      assert.equal(e.role, role);
+    }
   });
 
   it("llmLogEntry: fields pass through unchanged, including durationMs and usage", () => {

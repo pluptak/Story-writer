@@ -42,8 +42,9 @@ The clarifier is also given the last piece of prose written, so a fact it decide
 contradict the page; and it is forbidden from putting words in a character's mouth, because an answer
 that quotes someone is a line nobody was consulted for. Its answers are bounded by who is asking, not
 by what is true: a fact real but out of that character's reach does not reach them — it answers with
-what would. Both agents log to the writer's transcript and
-both follow a mid-run `/model` swap.
+what would. Each author-side agent logs to its own transcript under its own name (`writer.jsonl`,
+`judge.jsonl`, `batch-judge.jsonl`, `narration-judge.jsonl`, `clarifier.jsonl`), with its own role
+field, live stats row and tag colour — and all follow a mid-run `/model` swap.
 
 Between chapters, the handoff can declare what a chapter taught someone as `characters.<NAME>.learned`;
 the engine folds it into their `knows` verbatim rather than trusting the architect to weave it in

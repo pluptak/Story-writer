@@ -1,6 +1,7 @@
 :root {
     --bg:#eceff4; --panel:#fff; --panel-2:#f4f6fa; --ink:#161b22; --muted:#5b6675; --faint:#8a94a3;
     --line:#dbe1ea; --accent:#0d6f8b; --warn:#a2650c; --bad:#b03a30; --good:#2c7a4b;
+    --judge:#6d54c4; --batch-judge:#a84fb0; --narration-judge:#c2547e; --clarifier:#7d6d14;
     --shadow:0 1px 2px rgba(20,32,52,.05),0 6px 20px rgba(20,32,52,.06);
     --sans: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     --serif: Georgia,"Iowan Old Style","Palatino Linotype",ui-serif,serif;
@@ -9,13 +10,16 @@
   @media (prefers-color-scheme: dark) {
     :root { --bg:#0d1117; --panel:#151b24; --panel-2:#11161e; --ink:#dfe6f0; --muted:#8b97a8; --faint:#6a7686;
       --line:#242c38; --accent:#4fc3dd; --warn:#e0a84a; --bad:#ef7a6e; --good:#5fce87;
+      --judge:#b18cff; --batch-judge:#e08ae0; --narration-judge:#ef8ab0; --clarifier:#cbc04a;
       --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35); }
   }
   :root[data-theme="dark"]{ --bg:#0d1117;--panel:#151b24;--panel-2:#11161e;--ink:#dfe6f0;--muted:#8b97a8;--faint:#6a7686;
     --line:#242c38;--accent:#4fc3dd;--warn:#e0a84a;--bad:#ef7a6e;--good:#5fce87;
+    --judge:#b18cff;--batch-judge:#e08ae0;--narration-judge:#ef8ab0;--clarifier:#cbc04a;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35); }
   :root[data-theme="light"]{ --bg:#eceff4;--panel:#fff;--panel-2:#f4f6fa;--ink:#161b22;--muted:#5b6675;--faint:#8a94a3;
     --line:#dbe1ea;--accent:#0d6f8b;--warn:#a2650c;--bad:#b03a30;--good:#2c7a4b;
+    --judge:#6d54c4;--batch-judge:#a84fb0;--narration-judge:#c2547e;--clarifier:#7d6d14;
     --shadow:0 1px 2px rgba(20,32,52,.05),0 6px 20px rgba(20,32,52,.06); }
 
   * { box-sizing: border-box; }
@@ -445,6 +449,10 @@
   .agentrow .ag-name .tag { font-family:var(--mono); font-size:10px; padding:1px 6px; border-radius:999px;
                             border:1px solid var(--line); color:var(--faint); margin-left:6px; }
   .agentrow .ag-name .tag.writer { color:var(--accent); border-color:var(--accent); }
+  .agentrow .ag-name .tag.judge { color:var(--judge); border-color:var(--judge); }
+  .agentrow .ag-name .tag.batch-judge { color:var(--batch-judge); border-color:var(--batch-judge); }
+  .agentrow .ag-name .tag.narration-judge { color:var(--narration-judge); border-color:var(--narration-judge); }
+  .agentrow .ag-name .tag.clarifier { color:var(--clarifier); border-color:var(--clarifier); }
   .agentrow .ag-meta { font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-top:4px; }
   .agentrow .btn { margin-top:10px; }
   .calls { display:flex; flex-wrap:wrap; gap:6px; }

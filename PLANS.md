@@ -47,16 +47,6 @@ run, which is the owner's to make, batched.
   **approves** it — a real gate distinct from accepting the story. That gate is what turns "prefer an
   existing skill" into a hard constraint; until it exists, custom skills stay allowed.
 
-## Writing-quality follow-ups
-
-Found by reading the run logs of `stories/the-watchfire` against the writer's own rules. Each is a
-place where the engine permits something the prompts forbid.
-
-- **The judge and the clarifier are named `WRITER`,** so they share the writer's transcript and, now
-  that per-call stats exist, its stats row too — one line blending three jobs at three temperatures.
-  Splitting them needs `llmLogEntry`'s `role` rule widened past `name === "WRITER" ? … : "character"`
-  and a `.tag` colour per role; see [Writer.MD](Writer.MD).
-
 ## Asymmetry follow-ups
 
 Found by asking how the engine handles stories where several characters face interdependent
@@ -67,9 +57,6 @@ A possible future improvement, parked because it adds runtime cost rather than c
 fourth judge variant beside `newJudge`/`newBatchJudge`/`newNarrationJudge` (0.3, no history, one
 response schema) asked whether the scene honoured both characters' stated choices at a shared fork —
 one extra LLM call per multi-character fork if it were ever wanted.
-
-(The unused reaction fan-out these stories would lean on most is tracked above under Writing-quality
-follow-ups.)
 
 ## Reliability follow-ups
 

@@ -152,24 +152,25 @@ export async function writeScene(
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
   LIVE.writer = writer; LIVE.log = log;
 
-  // Both author-side helpers are named WRITER so they share the writer's transcript, and both take
-  // `writer.model` at call time so a mid-run /model swap still reaches them.
+  // The author-side helpers each carry their own name, so each gets its own transcript file, stats
+  // row and role tag — and all take `writer.model` at call time so a mid-run /model swap still
+  // reaches them.
   const newJudge = () => {
-    const a = new Agent("WRITER", writer.model, P.judgeSystem(cast), JUDGE_TEMPERATURE);
+    const a = new Agent("JUDGE", writer.model, P.judgeSystem(cast), JUDGE_TEMPERATURE);
     a.think = writer.think;
     return a;
   };
   // Stateless like the judge, but it weighs many volunteered deeds in one call and returns a
   // promotable flag each — so a reaction beat costs at most one judge call, and none when nobody acted.
   const newBatchJudge = () => {
-    const a = new Agent("WRITER", writer.model, P.batchJudgeSystem(cast), JUDGE_TEMPERATURE);
+    const a = new Agent("BATCH-JUDGE", writer.model, P.batchJudgeSystem(cast), JUDGE_TEMPERATURE);
     a.think = writer.think;
     return a;
   };
   // Also stateless: checks the piece just drafted against THE ONE RULE, CANNOT, and (when the reply
   // opens a consult) whether the situation names a concrete fact — before any of it reaches the page.
   const newNarrationJudge = () => {
-    const a = new Agent("WRITER", writer.model, P.narrationLintSystem(cast), JUDGE_TEMPERATURE);
+    const a = new Agent("NARRATION-JUDGE", writer.model, P.narrationLintSystem(cast), JUDGE_TEMPERATURE);
     a.think = writer.think;
     return a;
   };
@@ -179,7 +180,7 @@ export async function writeScene(
   let clarifier: Agent | null = null;
   const theClarifier = () => {
     if (!clarifier) {
-      clarifier = new Agent("WRITER", writer.model,
+      clarifier = new Agent("CLARIFIER", writer.model,
         P.clarifySystem({ premise, scene: sd, facts, cast }), writer.temperature);
       clarifier.think = writer.think;
     }
@@ -213,7 +214,7 @@ export async function writeScene(
     let a = "";
     try {
       for (let tries = 0; ; tries++) {
-        const raw = await cl.generate(`${C.magenta}WRITER${C.reset}`, extra);
+        const raw = await cl.generate(`${C.magenta}CLARIFIER${C.reset}`, extra);
         const answered = parseClarifyAnswer(extractJson(raw));
         if (answered !== null) { a = answered; break; }
         if (tries) break;
@@ -341,7 +342,7 @@ export async function writeScene(
 
       let flagged: string | null = null;
       try {
-        const lintRaw = await newNarrationJudge().generate(`${C.magenta}WRITER${C.reset}`,
+        const lintRaw = await newNarrationJudge().generate(`${C.magenta}NARRATION-JUDGE${C.reset}`,
           [{ role: "user", content: P.narrationLintRequest({
               pov: sd.pov, prose, granted, consult: outgoingConsult }) }]);
         const lj = extractJson(lintRaw);
@@ -448,7 +449,7 @@ export async function writeScene(
         let promotable = new Map<string, boolean>();
         if (volunteered.length && !RUN.stopped) {
           try {
-            const raw = await newBatchJudge().generate(`${C.magenta}WRITER${C.reset}`,
+            const raw = await newBatchJudge().generate(`${C.magenta}BATCH-JUDGE${C.reset}`,
               [{ role: "user", content: P.batchJudgeRequest(volunteered) }]);
             promotable = parseBatchVerdict(extractJson(raw));
           } catch (e) {
@@ -507,7 +508,7 @@ export async function writeScene(
           }];
           try {
             for (let tries = 0; ; tries++) {
-              const judgeRaw = await judge.generate(`${C.magenta}WRITER${C.reset}`, judgeExtra);
+              const judgeRaw = await judge.generate(`${C.magenta}JUDGE${C.reset}`, judgeExtra);
               j = extractJson(judgeRaw);
               judged = parseVerdict(j);
               if (judged || tries) break;

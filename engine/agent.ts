@@ -77,11 +77,19 @@ export function llmFilenameFor(name: string, used: Set<string>): string {
   return f;
 }
 
-/** One JSONL record for an agent/model exchange; WRITER is typed "writer", everyone else "character". */
+/** One JSONL record for an agent/model exchange; author-side names get their own role, everyone else is a character. */
+const ROLES: Record<string, string> = {
+  "WRITER": "writer",
+  "JUDGE": "judge",
+  "BATCH-JUDGE": "batch-judge",
+  "NARRATION-JUDGE": "narration-judge",
+  "CLARIFIER": "clarifier",
+};
+
 export function llmLogEntry(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string,
                             durationMs: number, usage: CompletionUsage | null) {
   return {
-    ts, role: agent.name === "WRITER" ? "writer" : "character", agent: agent.name, model: agent.model,
+    ts, role: ROLES[agent.name] ?? "character", agent: agent.name, model: agent.model,
     prompt, response, durationMs, usage,
   };
 }

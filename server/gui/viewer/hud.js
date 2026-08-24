@@ -89,6 +89,14 @@ function titleContext() {
  *  has no `phase` field (Writer.MD tracks that as a gap). The budget wait is read off the `#prompt`
  *  element's own class because that element IS that state today -- a second copy on APP would be one
  *  more thing to keep in sync, and sse.js clears it from more than one place. */
+/** The coarse HUD word for whoever is composing. The judges collapse into one word here; the
+ *  model-calls panel keeps them apart by their own names. Anything unnamed is a character. */
+const COMPOSING_WORD = {
+  WRITER: "writing",
+  JUDGE: "judging", "BATCH-JUDGE": "judging", "NARRATION-JUDGE": "judging",
+  CLARIFIER: "clarifying",
+};
+
 export function phaseOf(store) {
   if (store !== LIVEV || !APP.live) return "";
   const s = APP.session;
@@ -98,7 +106,7 @@ export function phaseOf(store) {
   if (APP.awaitingReader) return "reader wait";
   if (s.paused) return "paused";
   if (s.pausing) return "pausing";
-  if (APP.composing) return APP.composing.who === "WRITER" ? "writing" : "consulting";
+  if (APP.composing) return COMPOSING_WORD[APP.composing.who] ?? "consulting";
   return "writing";
 }
 
