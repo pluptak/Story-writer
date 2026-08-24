@@ -28,6 +28,7 @@ import {
 } from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
 import { setDebugWrite } from "./engine/json-extract.ts";
+import { warn } from "./engine/warnings.ts";
 
 // json-extract stays engine-free; its debug lines follow ENGINE.debug from here, at call time.
 setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
@@ -419,7 +420,7 @@ async function runOne(dir: string, chapter = 1) {
   if (stepsFlag) {
     const n = Number(stepsFlag);
     if (Number.isInteger(n) && n > 0) sc.maxSteps = n;
-    else console.warn(`   (--steps=${stepsFlag} is not a whole number — using ${sc.maxSteps})`);
+    else warn(`   (--steps=${stepsFlag} is not a whole number — using ${sc.maxSteps})`);
   }
 
   const who = flag("consult");

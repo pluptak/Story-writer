@@ -1,4 +1,6 @@
 /** SKILL CATALOG — the general skills every character has by default, and a story's overrides. */
+import { warn } from "./warnings.ts";
+
 /** The general skill list: every character has all of these unless a story's `restrictions` removes them. */
 export const SKILL_CATALOG: Readonly<Record<string, string>> = Object.freeze({
   movement: "moving your own body through the space you are in",
@@ -100,7 +102,7 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
   }
 
   if (unresolved.length)
-    console.warn(`   (character ${who}: restrictions "${unresolved.join('", "')}" — not a known skill or penalty, so there is nothing to remove; known penalties: ${Object.keys(RESTRICTION_CATALOG).join(", ")}; general skills: ${Object.keys(SKILL_CATALOG).join(", ")})`);
+    warn(`   (character ${who}: restrictions "${unresolved.join('", "')}" — not a known skill or penalty, so there is nothing to remove; known penalties: ${Object.keys(RESTRICTION_CATALOG).join(", ")}; general skills: ${Object.keys(SKILL_CATALOG).join(", ")})`);
 
   const out = new Map<string, Skill>();
   for (const [name, meaning] of Object.entries(SKILL_CATALOG))
@@ -108,14 +110,14 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
 
   for (const entry of split(skillsRaw)) {
     const { text, meaning } = splitMeaning(entry);
-    if (!text) { console.warn(`   (character ${who}: a skills entry has a meaning but no name before the "::" — dropped)`); continue; }
+    if (!text) { warn(`   (character ${who}: a skills entry has a meaning but no name before the "::" — dropped)`); continue; }
     const key = canonSkill(text);
     if (key in SKILL_CATALOG && !restricted.has(key))
-      console.warn(`   (character ${who}: skills "${text}" redeclares a general skill — the story's wording wins)`);
+      warn(`   (character ${who}: skills "${text}" redeclares a general skill — the story's wording wins)`);
     if (restricted.has(key) && !viaPenalty.has(key))
-      console.warn(`   (character ${who}: "${text}" is in both skills and restrictions — added back, so they HAVE it)`);
+      warn(`   (character ${who}: "${text}" is in both skills and restrictions — added back, so they HAVE it)`);
     else if (viaPenalty.has(key)) {
-      console.warn(`   (character ${who}: "${text}" is listed under skills but the "${restricted.get(key)}" penalty removes it)`);
+      warn(`   (character ${who}: "${text}" is listed under skills but the "${restricted.get(key)}" penalty removes it)`);
       continue;
     }
     const bible = bibleMeaningOf(text) ?? "";

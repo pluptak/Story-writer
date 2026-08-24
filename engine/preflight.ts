@@ -4,6 +4,7 @@ import { join as joinPath } from "node:path";
 import { restrictionsOf } from "./skills.ts";
 import { LMSTUDIO_MODELS_URL, LMSTUDIO_REST_MODELS_URL } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
+import { WARN } from "./warnings.ts";
 
 export async function runDirs(storyDir: string): Promise<string[]> {
   try {
@@ -93,8 +94,10 @@ async function fetchModelInfo(timeoutMs: number): Promise<Map<string, ModelInfo>
 export function runPreflight(dir: string): Promise<PreflightResult> {
   const task = preflightChain.then(async (): Promise<PreflightResult> => {
     const warnings: string[] = [];
-    const origWarn = console.warn;
-    console.warn = (...a: unknown[]) => { warnings.push(a.map(String).join(" ")); };
+    // The chain serializes checks, so swapping the sink here cannot capture another story's
+    // warnings — and because it is the engine's own sink, nothing outside a load window is touched.
+    const origSink = WARN.sink;
+    WARN.sink = (...a: unknown[]) => { warnings.push(a.map(String).join(" ")); };
     try {
       const sc = await loadStory(dir);
 
@@ -145,7 +148,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
       };
     } catch (e) {
       return { ok: false, error: (e as Error).message, warnings };
-    } finally { console.warn = origWarn; }
+    } finally { WARN.sink = origSink; }
   });
   preflightChain = task.catch(() => {});   // the chain must survive a check that throws
   return task;

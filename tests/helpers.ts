@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ServerHost } from "../server/server.ts";
 import { Agent } from "../engine/agent.ts";
+import { WARN } from "../engine/warnings.ts";
 
 // -- A MODEL THAT SAYS WHAT YOU TELL IT TO ---------------------------------
 /** Replies straight from a script, so a test never touches a model. Used by the consult tests and
@@ -21,24 +22,25 @@ export class ScriptedAgent extends Agent {
 }
 
 // -- QUIETING WARNINGS -----------------------------------------------------
-// Several loaders warn by design; keep the test output readable.
+// Several loaders warn by design; keep the test output readable. They warn through the engine's
+// sink, so capturing means swapping that — never touching global console.
 export async function quiet<T>(fn: () => Promise<T> | T): Promise<T> {
-  const orig = console.warn;
-  console.warn = () => {};
-  try { return await fn(); } finally { console.warn = orig; }
+  const orig = WARN.sink;
+  WARN.sink = () => {};
+  try { return await fn(); } finally { WARN.sink = orig; }
 }
 
 export function quietSync<T>(fn: () => T): T {
-  const orig = console.warn;
-  console.warn = () => {};
-  try { return fn(); } finally { console.warn = orig; }
+  const orig = WARN.sink;
+  WARN.sink = () => {};
+  try { return fn(); } finally { WARN.sink = orig; }
 }
 
 export function warnings(fn: () => void): string[] {
   const out: string[] = [];
-  const orig = console.warn;
-  console.warn = (...a: unknown[]) => { out.push(a.map(String).join(" ")); };
-  try { fn(); } finally { console.warn = orig; }
+  const orig = WARN.sink;
+  WARN.sink = (...a: unknown[]) => { out.push(a.map(String).join(" ")); };
+  try { fn(); } finally { WARN.sink = orig; }
   return out;
 }
 

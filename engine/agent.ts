@@ -5,6 +5,7 @@ import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
 import { sseWrite } from "../live.ts";
 import { ENGINE, progress, progressDone } from "./engine-state.ts";
+import { warn } from "./warnings.ts";
 import { slugify } from "./config-util.ts";
 import { complete, completeStream, type Msg, type CompletionUsage } from "./llm-client.ts";
 import type { ThinkLevel } from "./story-schema.ts";
@@ -124,6 +125,6 @@ export async function trimHistory(agent: Agent, summarizerModel: string, summari
     ], 0.3, summarizerThink)).text;
     agent.history = recent;
   } catch (e) {
-    console.warn(`   (digest skipped for ${agent.name}: ${(e as Error).message})`);
+    warn(`   (digest skipped for ${agent.name}: ${(e as Error).message})`);
   }
 }

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
 import { C } from "../ansi.ts";
 import { resolveSkills, type Skill } from "./skills.ts";
+import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef, type ThinkLevel } from "./story-schema.ts";
 
 export type { SceneDef } from "./story-schema.ts";
@@ -66,7 +67,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
   if (!parsed.premise.trim())
     throw new Error(`Premise is empty in ${base}/story.json — there is nothing to write.`);
 
-  const warn = (msg: string) => console.warn(`  (${msg})`);
+  const warn = (msg: string) => emitWarn(`  (${msg})`);
 
   const defaultModel = modelOverride || parsed.models.default;
   const models = {

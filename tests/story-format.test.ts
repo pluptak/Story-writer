@@ -14,6 +14,7 @@ import {
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { num, bool, enumOf, slugify } from "../engine/config-util.ts";
+import { WARN } from "../engine/warnings.ts";
 import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
 import { quiet, quietSync, warnings } from "./helpers.ts";
 
@@ -222,10 +223,10 @@ describe("loadStory warnings", () => {
       }), "utf8");
 
       const warns: string[] = [];
-      const orig = console.warn;
-      console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
       let sc;
-      try { sc = await loadStory(dir); } finally { console.warn = orig; }
+      try { sc = await loadStory(dir); } finally { WARN.sink = orig; }
 
       assert.equal(sc.characters.length, 1, "a non-fatal problem must not stop the story from loading");
       assert.ok(!sc.characters[0].skills.some(s => s.name === "telepathy"),
@@ -245,9 +246,9 @@ describe("loadStory warnings", () => {
       }), "utf8");
 
       const warns: string[] = [];
-      const orig = console.warn;
-      console.warn = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
-      try { await loadStory(dir); } finally { console.warn = orig; }
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      try { await loadStory(dir); } finally { WARN.sink = orig; }
 
       assert.match(warns.join(" "), /roster "MERRIT"/);
       assert.ok(!/roster "GHOST"/.test(warns.join(" ")),

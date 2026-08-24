@@ -2,6 +2,7 @@
 import { C } from "../ansi.ts";
 import { RUN, StoppedError } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
+import { warn } from "./warnings.ts";
 import { topLevelObjects } from "./json-extract.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 
@@ -80,7 +81,7 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
       if (!retryable || attempt >= NET.retries) break;
       const wait = NET.backoffMs * 2 ** attempt + Math.floor(Math.random() * 250);
       progressDone();
-      console.warn(`   ${C.yellow}⟳${C.reset} ${what} failed (${(last as Error).message}) — retry `
+      warn(`   ${C.yellow}⟳${C.reset} ${what} failed (${(last as Error).message}) — retry `
         + `${attempt + 1}/${NET.retries} in ${wait}ms`);
       await new Promise(r => setTimeout(r, wait));
     } finally {
@@ -158,7 +159,7 @@ export async function completeStream(model: string, messages: Msg[], temperature
       const sofar = full.trim();
       if (sofar && topLevelObjects(sofar).length) {
         progressDone();
-        console.warn(`   ${C.yellow}⏱${C.reset} ${model} broke off (${(e as Error).message}) but had already `
+        warn(`   ${C.yellow}⏱${C.reset} ${model} broke off (${(e as Error).message}) but had already `
           + `finished a reply — keeping it`);
         return { text: sofar, usage };
       }
