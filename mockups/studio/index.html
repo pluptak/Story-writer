@@ -482,7 +482,16 @@
 
               <section class="interruption" id="readerInterruption" hidden>
                 <span class="interruption-label">The writer wants your call</span><h3>Which pressure should the scene follow?</h3>
-                <div class="direction-list"><button class="direction" type="button">Make the approaching crew force Ivo to act now.</button><button class="direction" type="button">Follow what Mara has hidden in the lower drawer.</button><button class="direction" type="button">Let the original log contradict them both.</button></div>
+                <div class="direction-list"></div>
+              </section>
+
+              <section class="interruption" id="budgetPanel" hidden>
+                <span class="interruption-label">Out of steps</span><h3>The step budget is spent.</h3>
+                <div class="composer-actions">
+                  <input id="budgetN" type="number" min="0" value="8" aria-label="Extra steps" style="width:90px;padding:7px;border:1px solid var(--line);border-radius:4px;color:var(--reverse);background:var(--shell);font:11px var(--mono)">
+                  <button class="primary-button" type="button" id="budgetGo">Give steps</button>
+                  <button class="danger-button" type="button" id="budgetStop">End scene</button>
+                </div>
               </section>
             </div>
 
@@ -558,6 +567,20 @@
       }
     };
 
+    async function postAction(path, body) {
+      try {
+        const result = await API.post(path, body);
+        if (result && result.ok === false) showActionError(result.reason || result.error || "request refused");
+        return result;
+      } catch (e) {
+        showActionError(e.message || "request failed");
+        return null;
+      }
+    }
+    function showActionError(message) {
+      $("#commandStatus").textContent = "ERROR - " + message;
+    }
+
     const APP = {
       run: null, state: null, models: null, stories: [], scaffold: null,
       blocks: [], seenSeq: new Set(), openConsult: null, readerPending: null,
@@ -599,7 +622,12 @@
         APP.seenSeq.add(f.seq);
       }
       switch (f.t) {
-        case "run_state": APP.state = Object.assign({}, APP.state, f); onState(); break;
+        case "run_state":
+          APP.state = Object.assign({}, APP.state, f);
+          if (!f.awaitingContinue) $("#budgetPanel").hidden = true;
+          onState();
+          break;
+        case "continue_prompt": showBudget(f); break;
         case "run_reset": resetRun(); break;
         case "run_error": APP.error = f.message; renderError(); break;
         case "composing": showComposing(f); break;
@@ -619,6 +647,7 @@
       APP.blocks = []; APP.seenSeq.clear(); APP.openConsult = null; APP.readerPending = null;
       APP.cast = null; APP.castDir = ""; APP.castLoading = false;
       APP.words = 0; APP.steps = 0; APP.consults = 0; APP.runStart = null;
+      $("#budgetPanel").hidden = true; $("#readerInterruption").hidden = true;
       refreshRun(); renderLive();
     }
 
@@ -667,7 +696,12 @@
       APP.blocks = []; APP.openConsult = null; APP.readerPending = null;
       APP.cast = null; APP.castDir = ""; APP.castLoading = false;
       APP.run = APP.run || {};
-      APP.run.story = f.story; APP.run.characters = f.characters; APP.run.target = f.target;
+      APP.run.story = f.story; APP.run.chapter = f.chapter || APP.run.chapter;
+      // scene_start carries character names only; keep the richer /run metadata when present,
+      // while still giving the fallback renderer a useful name if this frame arrives first.
+      if (!APP.run.characters || !APP.run.characters.length || typeof APP.run.characters[0] === "string")
+        APP.run.characters = (f.characters || []).map(name => ({ name }));
+      APP.run.target = f.target;
       renderLive();
     }
     function onDraft(f) {
@@ -691,6 +725,21 @@
       APP.readerPending = { framing: f.framing, options: f.options || [] };
       renderReader();
     }
+    function showBudget(f) {
+      $("#budgetPanel").hidden = false;
+      $("#budgetN").value = f.suggested || 8;
+      $("#commandStatus").textContent = `LIVE - ${f.steps} STEPS SPENT - AWAITING BUDGET`;
+      $("#budgetN").focus();
+    }
+    $("#budgetGo").addEventListener("click", async () => {
+      $("#budgetPanel").hidden = true;
+      await postAction("/continue", { steps: Math.max(0, parseInt($("#budgetN").value, 10) || 0) });
+    });
+    $("#budgetStop").addEventListener("click", async () => {
+      $("#budgetPanel").hidden = true;
+      await postAction("/continue", { steps: 0 });
+    });
+    $("#budgetN").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("#budgetGo").click(); } });
     function onReaderAnswer() {
       APP.readerPending = null;
       const ir = $("#readerInterruption");
@@ -708,7 +757,7 @@
       $$("#readerInterruption .direction").forEach(b => b.addEventListener("click", async () => {
         $$("#readerInterruption .direction").forEach(x => x.style.borderColor = "");
         b.style.borderColor = "var(--signal)";
-        await API.post("/reader-answer", { answer: b.textContent });
+        await postAction("/reader-answer", { answer: b.textContent });
       }));
       if ($('[data-view="live"]').classList.contains("active")) showPhase("reader");
     }
@@ -763,7 +812,8 @@
       const pct = target ? Math.min(100, Math.round((APP.words / target) * 100)) : 0;
       $("#wordPct").textContent = pct + "%";
       $("#wordBar").style.width = pct + "%";
-      $("#statSteps").textContent = `${APP.steps} / ${target || "?"}`;
+      const card = meta && APP.stories.find(story => story.dir === meta.story);
+      $("#statSteps").textContent = `${APP.steps} / ${(card && card.maxSteps) || "?"}`;
       $("#statModel").textContent = (APP.state && APP.state.model) || "—";
       $("#statConsults").textContent = APP.consults + " accepted";
       $("#statElapsed").textContent = elapsed();
@@ -917,11 +967,11 @@
     // -- controls -----------------------------------------------------------
     $("#pause").addEventListener("click", async () => {
       const st = APP.state || {};
-      if (st.paused || st.pausing) await API.post("/resume"); else await API.post("/pause");
+      if (st.paused || st.pausing) await postAction("/resume"); else await postAction("/pause");
     });
-    $("#stop").addEventListener("click", () => API.post("/stop"));
-    $("#consultMe").addEventListener("click", () => API.post("/consult-me"));
-    $("#modelSelect").addEventListener("change", async () => { await API.post("/model", { model: $("#modelSelect").value }); });
+    $("#stop").addEventListener("click", () => postAction("/stop"));
+    $("#consultMe").addEventListener("click", () => postAction("/consult-me"));
+    $("#modelSelect").addEventListener("change", async () => { await postAction("/model", { model: $("#modelSelect").value }); });
 
     $$("[data-phase]").forEach(b => b.addEventListener("click", () => showPhase(b.dataset.phase)));
     $$("[data-open-live]").forEach(b => b.addEventListener("click", () => showView("live")));
@@ -943,7 +993,7 @@
       e.preventDefault();
       const idea = $("#ideaInput").value.trim();
       if (!idea) return;
-      await API.post("/scaffold/start", { idea, model: $("#architectModel").value, mode: $("#architectMode").value });
+      await postAction("/scaffold/start", { idea, model: $("#architectModel").value, mode: $("#architectMode").value });
     });
     $("#roundSend").addEventListener("click", sendRound);
     $("#roundInput").addEventListener("keydown", e => {
@@ -953,33 +1003,45 @@
       const text = $("#roundInput").value.trim();
       if (!text) return;
       $("#roundInput").value = "";
-      await API.post("/scaffold/say", { text });
+      await postAction("/scaffold/say", { text });
     }
-    $("#approveGate").addEventListener("click", () => API.post("/scaffold/approve"));
+    $("#approveGate").addEventListener("click", () => postAction("/scaffold/approve"));
     $("#acceptStory").addEventListener("click", async () => {
       const folder = prompt("Folder name for the new story (optional):", "");
-      await API.post("/scaffold/accept", { folder: folder || "" });
+      if (folder === null) return;
+      await postAction("/scaffold/accept", { folder: folder.trim() });
     });
-    $("#architectAbandon").addEventListener("click", () => API.post("/scaffold/abandon"));
+    $("#architectAbandon").addEventListener("click", () => postAction("/scaffold/abandon"));
 
     // -- boot ---------------------------------------------------------------
     async function boot() {
-      connect();
-      try { APP.run = await API.get("/run"); } catch (_) {}
+      try {
+        const snapshot = await API.get("/run");
+        APP.run = snapshot.run;
+        APP.state = snapshotState(snapshot);
+      } catch (_) {
+        APP.state = snapshotState(null);
+      }
       try { APP.models = await API.get("/models"); } catch (_) {}
       try { const r = await API.get("/stories"); APP.stories = r.stories || []; if (APP.state) APP.state.picking = r.picking; } catch (_) {}
       try { APP.scaffold = await API.get("/scaffold"); } catch (_) {}
-      APP.state = snapshotState(APP.run);
       fillModelSelectors();
       renderLibrary(); renderLive(); renderArchitect(); onState();
       const v = new URLSearchParams(location.search).get("view");
-      if (v) showView(v);
+      if (v === "library" || v === "live" || v === "architect") showView(v);
+      else if (APP.scaffold && APP.scaffold.active) showView("architect");
+      else if (APP.state && APP.state.picking) showView("library");
+      else showView("live");
+      // Fetching the snapshot first closes the race where an early SSE frame was
+      // overwritten by stale boot state. Replayed events now catch up safely.
+      connect();
       setInterval(renderLiveStats, 1000);
     }
     function snapshotState(run) {
-      if (!run) return { running: false, picking: false, paused: false, pausing: false, armed: false, model: null, interactive: true, awaitingContinue: false };
+      if (!run) return { running: false, stopping: false, where: "", picking: false, paused: false, pausing: false, armed: false, model: null, interactive: true, awaitingContinue: false };
       return {
-        running: !!run.running, picking: !!run.picking, paused: false, pausing: false,
+        running: !!run.running, stopping: !!run.stopping, where: run.where || "", picking: !!run.picking,
+        paused: !!run.paused, pausing: !!run.pausing,
         armed: !!run.armed, model: run.model || null, interactive: run.interactive !== false,
         awaitingContinue: !!run.awaitingContinue
       };
