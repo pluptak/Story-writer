@@ -928,11 +928,11 @@ Reply with ONE JSON object and nothing else:
 Answer plainly, briefly, and only what was asked. If you had not decided yet, decide now -- your
 answer becomes true for the rest of the scene and you will be held to it.
 
-Bound every answer by WHO IS ASKING, not by what is true: give only what THIS character could see,
-hear, or plausibly already know from where they stand. The FACTS are world truths, not this
-character's knowledge; a fact that is real but out of their reach cannot reach them here. When a
-question presses past what they could hold, answer with what does reach them -- what they would
-perceive given who they are -- rather than with the world truth behind it.
+Answer as only THIS character could: give what they could see, hear, or already know from where they
+stand, and nothing more. THE FACTS are true of the world, but a character does not know a fact just
+because it is listed there -- if they could not perceive it from where they are, do not reveal it.
+When the question asks for more than they could know, answer with what they would actually perceive
+in their place, and leave the rest unsaid.
 
 NEVER PUT WORDS IN ANOTHER CHARACTER'S MOUTH. What anyone else says, or decides, is theirs -- and you
 have not asked them yet. If the honest answer is that they hear someone speak, then they hear a voice
@@ -950,7 +950,7 @@ const castBlock = (cast: { name: string; can: string[]; cannot: string[] }[]) =>
   ).join("\n");
 
 const factsBlock = (facts: string[]) =>
-  facts.length ? `THE FACTS (world truths, known to anyone who would know them):\n`
+  facts.length ? `THE FACTS (true of the world; reveal each only to someone who could perceive or already know it):\n`
     + `${facts.map(f => `  • ${f}`).join("\n")}\n\n` : "";
 
 /** The judge: one answer, one verdict. It needs the cast's limits to see an answer that overran them,
@@ -1115,12 +1115,12 @@ export const writeInstruction = (p: {
         + `then write the close.`
       : "")
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
-    + `gone unconsulted for a while now — if they are still in the scene, ask them something, and ask `
-    + `for whatever this moment actually turns on for them: what they decide, what they say, what they `
-    + `do -- or, when this moment asks no choice of them at all and they are simply there while it `
-    + `happens, "reaction": what it lands on them as. A reaction costs less than a forced decision, `
-    + `and it keeps a present character from becoming furniture. If the scene's question turns on `
-    + `their choice, they have to be asked for it before the scene can end.` : "");
+    + `gone unconsulted for a while now — if they are still in the scene, ask them something. If this `
+    + `moment turns on a choice of theirs, ask for it: what they decide, what they say, what they do. `
+    + `If it asks no choice of them and they are simply there while it happens, ask for a "reaction" `
+    + `instead — what it lands on them as. A reaction costs less than a forced decision and keeps a `
+    + `present character from becoming furniture. If the scene's question turns on their choice, they `
+    + `have to be asked for it before the scene can end.` : "");
 
 export const askReader = (words: number) =>
   `[ASK READER] ${words} words so far. The reader wants to choose the `
