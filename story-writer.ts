@@ -27,6 +27,10 @@ import {
   type ScaffoldRound, type NextChapterSession, type AutoStage, type AutoPass,
 } from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
+import { setDebugWrite } from "./engine/json-extract.ts";
+
+// json-extract stays engine-free; its debug lines follow ENGINE.debug from here, at call time.
+setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
 
 // -- CONFIG ----------------------------------------------------------------
 const CLI = process.argv.slice(2);

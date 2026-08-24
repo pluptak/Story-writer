@@ -1,5 +1,12 @@
 /** JSON EXTRACTION — pulling structured replies (or a prose fallback) out of raw model output. */
-import { ENGINE } from "./engine-state.ts";
+
+/**
+ * Debug lines from the fallback/failure paths. Null by default so this leaf module keeps no
+ * engine dependencies; the composition root wires it to `ENGINE.debug`.
+ */
+export let debugWrite: ((msg: string) => void) | null = null;
+/** The composition root's hook: give extractJson its debug sink. */
+export function setDebugWrite(fn: (msg: string) => void) { debugWrite = fn; }
 
 /** Index just past the closing brace of the object that opens at `start`, or -1 if it never closes. */
 export function balancedObjectEnd(s: string, start: number): number {
@@ -56,11 +63,11 @@ export function extractJson(raw: string): Record<string, any> {
   let m: RegExpExecArray | null;
   while ((m = labelRe.exec(afterThink)) !== null) prose[m[1].toLowerCase()] = m[2].trim();
   if (Object.keys(prose).length > 0) {
-    if (ENGINE.debug) process.stderr.write(`[extractJson prose fallback] keys=${Object.keys(prose).join(",")}\n`);
+    debugWrite?.(`[extractJson prose fallback] keys=${Object.keys(prose).join(",")}\n`);
     return prose;
   }
 
-  if (ENGINE.debug) process.stderr.write(`[extractJson failed] stripped=${JSON.stringify(afterThink.slice(0, 200))}\n`);
+  debugWrite?.(`[extractJson failed] stripped=${JSON.stringify(afterThink.slice(0, 200))}\n`);
   return {};
 }
 

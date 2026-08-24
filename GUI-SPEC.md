@@ -359,7 +359,7 @@ ConsultEvent (engine/consult.ts:80):
   { t:"skill_flag"; character; claimed[]; unknown[] }
   { t:"answer"; character; thought; speech; action; note; skills_used[]; unverified[] }
 
-plus, scene-loop-level:
+plus, scene-loop-level (`chapter` is present on every one of them except `model_changed`):
   { t:"scene_start"; story; characters[]; target }
   { t:"draft"; step; prose; words; consulting; salvaged }
   { t:"bad_consult"; character; why }
@@ -368,9 +368,17 @@ plus, scene-loop-level:
   { t:"accept"; character; attempt; speech; action }
   { t:"retry"; character; attempt; situation; question }
   { t:"budget"; added; budget }
+  { t:"forced_end"; words; target }              — hard length cap hit; the prose was cut off
+  { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
+                                                   the one redraft happened or it was logged and kept
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
   { t:"model_changed"; model }
+  { t:"reaction_fanout"; reactors[]; situation } — group reactions fanned out to these consults
+  { t:"reaction"; character; thought; action }   — an isolated per-reactor consult's answer
+  { t:"promote"; character; action }             — at most one deed promoted into the writer's draft
+  { t:"exit"; character; pov }                   — a character left the cast mid-scene;
+                                                   `pov` true means they were POV and the chapter ends
   { t:"retry_capped"; character; count }
   { t:"scene_end"; steps; words; done; stopped; retries{character:count} }
 ```

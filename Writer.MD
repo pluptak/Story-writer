@@ -159,7 +159,8 @@ The live rail also accumulates completed model calls by agent: call count, avera
 prompt/completion token totals when the provider reports them. Missing token usage is shown as
 unavailable rather than guessed.
 
-The manual pass that verifies all of this is [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) §8.
+The manual pass that verifies all of this is [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) §9; §8 covers
+the read-tab-only per-agent model-call panel.
 
 ## Remaining work
 

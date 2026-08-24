@@ -5,7 +5,7 @@ import { ENGINE, progressDone } from "./engine-state.ts";
 import { topLevelObjects } from "./json-extract.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 
-export const LMSTUDIO_URL = "http://localhost:1234/v1/chat/completions";
+export const LMSTUDIO_URL = process.env.LM_STUDIO_URL ?? "http://localhost:1234/v1/chat/completions";
 export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$/, "/models");
 /** LM Studio's own REST API, which unlike /v1/models reports load state and context length. */
 export const LMSTUDIO_REST_MODELS_URL = LMSTUDIO_URL.replace(/\/v1\/chat\/completions\/?$/, "/api/v0/models");
