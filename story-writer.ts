@@ -644,10 +644,17 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
   await mkdir(joinPath(ENGINE.outDir, "llm"), { recursive: true });
   ENGINE.llmStreams = new Map();
   ENGINE.llmFilenames = new Set();
+  ENGINE.llmDead = new Set();
   const scenePath = joinPath(ENGINE.outDir, "scene.md");
   const logPath = joinPath(ENGINE.outDir, "writing-log.jsonl");
   const logStream = createWriteStream(logPath, { flags: "w" });
-  logStream.on("error", () => {});   // an async write failure must not crash the run
+  // A failed run log warns once and stops receiving events — the run itself must never crash on logging.
+  let logDead = false;
+  logStream.on("error", e => {
+    if (logDead) return;
+    logDead = true;
+    warn(`   (the run log ${logPath} stopped being written: ${(e as Error).message} — later events are dropped, the run continues)`);
+  });
 
   const events: RunEvent[] = [];
   const allPieces: string[] = [];
@@ -667,7 +674,7 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
   try {
     r = await runChapter(sc, chapter, e => {
       events.push(e);
-      logStream.write(JSON.stringify(publish(e)) + "\n");
+      if (!logDead) logStream.write(JSON.stringify(publish(e)) + "\n");
       if (e.t === "draft" && e.prose) {
         allPieces.push(e.prose);
         sceneWrites = sceneWrites.then(() => writeFile(scenePath, allPieces.join("\n\n") + "\n", "utf8")).catch((err: unknown) => {
