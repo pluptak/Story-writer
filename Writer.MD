@@ -40,8 +40,14 @@ any default is taken.
 
 The clarifier is also given the last piece of prose written, so a fact it decides on the spot cannot
 contradict the page; and it is forbidden from putting words in a character's mouth, because an answer
-that quotes someone is a line nobody was consulted for. Both agents log to the writer's transcript and
+that quotes someone is a line nobody was consulted for. Its answers are bounded by who is asking, not
+by what is true: a fact real but out of that character's reach does not reach them — it answers with
+what would. Both agents log to the writer's transcript and
 both follow a mid-run `/model` swap.
+
+Between chapters, the handoff can declare what a chapter taught someone as `characters.<NAME>.learned`;
+the engine folds it into their `knows` verbatim rather than trusting the architect to weave it in
+(`engine/story-spec.ts`).
 
 ## Principle of operation
 
@@ -57,6 +63,11 @@ The writer must:
    the same check the first consult did.
 6. Add only the accepted answer to the writer's history.
 7. Continue the scene from the accepted answer.
+
+When several characters face the same fork, each is asked from the same shared moment: a consult's
+`situation` may only contain facts that predate every answer in the beat. One character's answer
+never becomes part of another's situation — the second one asked blind, and an answer leaked into
+someone else's question decides the fork for them (`prompts.ts`, `WRITER_FORMAT`).
 
 The writer may describe setting, atmosphere, time passing, physical reactions without deliberate
 choice, established facts, and POV perception within the character's capabilities.

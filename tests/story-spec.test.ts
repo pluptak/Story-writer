@@ -122,6 +122,19 @@ describe("normalizeSpec", () => {
     assert.ok(!normalizeSpec(ok).problems.some(p => /restates/.test(p)));
   });
 
+  it("folds a proposal's learned into knows and keeps the field out of the spec", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, characters: [{ ...base.characters[0],
+        knows: "The code changed.", learned: "Merritt took the ledger." }] });
+    assert.equal(spec.characters[0].knows, "The code changed. Merritt took the ledger.");
+    assert.ok(!("learned" in spec.characters[0]));
+    assert.match(problems.join(" "), /learned/);
+
+    // A character with no knows yet still takes it.
+    const fresh = normalizeSpec({ ...base, characters: [{ ...base.characters[0], knows: "", learned: "The door opens inward." }] });
+    assert.equal(fresh.spec.characters[0].knows, "The door opens inward.");
+  });
+
   it("an ask-only reply yields no usable story", () => {
     const { spec } = normalizeSpec({ ask: "Who are these two people, and what do they want?" });
     assert.equal(spec.characters.length, 0);
@@ -197,6 +210,21 @@ describe("applyEdits", () => {
     assert.equal(refined.spec.premise, "They mean to take the blade.");
     assert.deepEqual(refined.spec.facts, ["isolation"]);
     assert.equal(refined.ignored.length, 0, `expected no ignored edits, got: ${refined.ignored.join("; ")}`);
+  });
+
+  it("folds characters.<NAME>.learned into their knows and reports it as a knows change", () => {
+    const r = edit("characters.RIVEN.learned", "Merritt was the one who copied the key.");
+    assert.equal(r.spec.characters[0].knows, "The code changed. Merritt was the one who copied the key.");
+    assert.ok(!("learned" in r.spec.characters[0]));
+    assert.deepEqual([r.applied[0].field, r.applied[0].before, r.applied[0].after],
+      ["RIVEN.learned", "The code changed.", "The code changed. Merritt was the one who copied the key."]);
+    assert.deepEqual(r.ignored, []);
+
+    // An empty learned carries nothing.
+    const blank = edit("characters.RIVEN.learned", "   ");
+    assert.match(blank.ignored.join(" "), /nothing to learn/);
+    const nobody = edit("characters.NOBODY.learned", "Something.");
+    assert.match(nobody.ignored.join(" "), /no character called/);
   });
 
   it("renames a character, and the roster and pov follow", () => {

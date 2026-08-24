@@ -77,8 +77,14 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     const voice = asStrings(c?.voice);
     if (voice.length > 3) { voice.length = 3; problems.push(`${name} came back with more than 3 voice samples — keeping the first 3`); }
     const belief = String(c?.belief ?? "").trim(), impulse = String(c?.impulse ?? "").trim();
+    // A proposal may carry what a chapter taught someone as its own field. It is knowledge, so it
+    // lands in knows verbatim and the field itself never survives normalization into a spec.
+    const knows = String(c?.knows ?? "").trim();
+    const learned = String(c?.learned ?? "").trim();
+    if (learned) problems.push(`${name} arrived with "learned" — folded into their knows`);
     characters.push({
-      name, model: String(c?.model ?? "").trim(), persona: String(c?.persona ?? "").trim(), knows: String(c?.knows ?? "").trim(),
+      name, model: String(c?.model ?? "").trim(), persona: String(c?.persona ?? "").trim(),
+      knows: [knows, learned].filter(Boolean).join(" "),
       goal: String(c?.goal ?? "").trim(),
       belief, impulse, voice,
       skills, restrictions,
@@ -260,6 +266,23 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const before = normalizedDraft().characters[idx];
       draft.characters.splice(idx, 1);
       add({ field: `removed ${name}`, before, after: undefined, key: `removed-character:${name.toLowerCase()}`, snapshot: undefined });
+      continue;
+    }
+
+    // What a chapter taught someone arrives as its own field and is absorbed into their knows on
+    // arrival -- reported as a knows change so the author sees where it landed.
+    const lm = field.match(/^characters\.(.+)\.learned$/);
+    if (lm) {
+      const who = lm[1].replace(/^<+/, "").replace(/>+$/, "").trim() || lm[1];
+      const c = findChar(who);
+      if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
+      const text = scalar();
+      if (!text) { ignored.push(`${field} — nothing to learn was given`); continue; }
+      const before = normalizedDraft().characters.find(x => x.name.toLowerCase() === c.name.toLowerCase())?.knows;
+      c.knows = [String(c.knows ?? "").trim(), text].filter(Boolean).join(" ");
+      scalarResolver(`character:${c.name.toLowerCase()}.knows`,
+        next => next.characters.find(x => x.name.toLowerCase() === c.name.toLowerCase())?.knows,
+        before, `${c.name}.learned`);
       continue;
     }
 

@@ -497,6 +497,9 @@ story file, which is the ONLY thing that crosses between chapters. Whatever the 
 these people, you write into their definitions now or it is lost:
 
   - someone who learned something has it in their "knows", in their own terms;
+  - what the last chapter taught someone can also arrive as characters.<NAME>.learned -- one thing,
+    in a sentence; the engine folds it into their "knows" verbatim. Edit "knows" directly instead
+    when it needs weaving into their own words rather than an appendix;
   - someone whose goal was met, or became impossible, needs a new one, or they will play a finished
     goal again as if nothing happened;
   - someone whose belief the chapters disproved needs a new one -- a belief is load-bearing, and an
@@ -540,6 +543,7 @@ Reply with edits only, and nothing else:
 
   title · premise · writer_style
   characters.<NAME>.persona · .knows · .goal · .belief · .impulse · .skills · .restrictions
+  characters.<NAME>.learned  (one thing the last chapter taught them -- folded into their knows)
   characters.<NAME>.voice                                            (a list)
   characters.<NAME>.name     (renames them -- roster and pov follow; rewrite any prose that
                               speaks of them under the old name in the same round)
@@ -761,6 +765,10 @@ WHEN ASKED TO WRITE -- [WRITE]:
                   here: not the scene so far, not what anyone else thought, not what you are steering
                   toward. Give them enough to answer honestly, and no nudge toward the answer you
                   would prefer. A situation of a few words is not a situation; it will be rejected.
+                  When more than one character faces the same fork, each situation is built from the
+                  same shared moment: only what was true before ANY of them answered. Never fold one
+                  character's answer into another's situation -- the second one asked blind, and an
+                  answer leaked into someone else's question decides the fork for them.
     question   -- what you need to know. NAME THE FORK OR NAME THE COST: "Do you hold the door, or
                   let go?", "Do you say the name, knowing what it admits?", "Do you give them the
                   letter, or keep it?", "Do you step forward, or hold your ground?". "What do you
@@ -912,8 +920,11 @@ Reply with ONE JSON object and nothing else:
 Answer plainly, briefly, and only what was asked. If you had not decided yet, decide now -- your
 answer becomes true for the rest of the scene and you will be held to it.
 
-Never answer with what they should do, and never tell them anything they could not perceive from
-where they are.
+Bound every answer by WHO IS ASKING, not by what is true: give only what THIS character could see,
+hear, or plausibly already know from where they stand. The FACTS are world truths, not this
+character's knowledge; a fact that is real but out of their reach cannot reach them here. When a
+question presses past what they could hold, answer with what does reach them -- what they would
+perceive given who they are -- rather than with the world truth behind it.
 
 NEVER PUT WORDS IN ANOTHER CHARACTER'S MOUTH. What anyone else says, or decides, is theirs -- and you
 have not asked them yet. If the honest answer is that they hear someone speak, then they hear a voice
