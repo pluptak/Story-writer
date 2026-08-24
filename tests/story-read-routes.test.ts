@@ -1,6 +1,9 @@
 /** Story read routes: read-only views of a story's authored definition. */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { LIVE, resetLive } from "../live.ts";
 import { handleStoryReadRoutes } from "../server/story-read-routes.ts";
@@ -63,7 +66,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
 
 describe("/cast (GET)", () => {
   it("leaves other paths alone", async () => {
-    const r = await callGet(handleStoryReadRoutes, "/stories?x=1", makeHost());
+    const r = await callGet(handleStoryReadRoutes, "/nope?x=1", makeHost());
     assert.equal(r.handled, false);
   });
 
@@ -118,6 +121,57 @@ describe("/cast (GET)", () => {
     } finally {
       LIVE.running = false;
       resetLive();
+    }
+  });
+});
+
+describe("/stories (GET)", () => {
+  it("returns the story cards", async () => {
+    const host = makeHost({ storyCards: async () => [{ dir: "stories/doorway", name: "Doorway", ok: true, warnings: [] }] as never });
+    const r = await callGet(handleStoryReadRoutes, "/stories", host);
+    assert.equal(r.code, 200);
+    assert.equal(r.json().stories.length, 1);
+    assert.equal(r.json().stories[0].name, "Doorway");
+  });
+
+  it("reflects whether the session is awaiting a pick", async () => {
+    resetLive();
+    LIVE.awaitingPick = true;
+    try {
+      const r = await callGet(handleStoryReadRoutes, "/stories", makeHost());
+      assert.equal(r.json().picking, true);
+    } finally {
+      resetLive();
+    }
+  });
+});
+
+describe("/chapter (GET)", () => {
+  it("refuses a story it did not discover", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/chapter?dir=../elsewhere&n=1", makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.json().reason, /no such story/);
+  });
+
+  it("refuses a chapter that is not written", async () => {
+    const host = makeHost({ writtenChapters: async () => [1] });
+    const r = await callGet(handleStoryReadRoutes, "/chapter?dir=doorway&n=2", host);
+    assert.equal(r.code, 404);
+    assert.match(r.json().reason, /no such chapter/);
+  });
+
+  it("serves a written chapter's markdown", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "chapter-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "# Chapter one\n\nprose.", "utf8");
+      const host = makeHost({ resolveStoryDir: () => dir, writtenChapters: async () => [1] });
+      const r = await callGet(handleStoryReadRoutes, "/chapter?dir=doorway&n=1", host);
+      assert.equal(r.code, 200);
+      assert.equal(r.headers["Content-Type"], "text/markdown; charset=utf-8");
+      assert.match(r.text, /Chapter one/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

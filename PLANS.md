@@ -61,10 +61,6 @@ one extra LLM call per multi-character fork if it were ever wanted.
   everything under `server/gui/` is verified by reading it and by running
   [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md). Any change there is only as good as the live check that
   followed it.
-- Four routes are handled inline in `server.ts` rather than in a route module (`/stories`, `/chapter`,
-  `/log.jsonl`, `/runs/log`), so `callRoute` in the tests cannot reach them. Their engine-side helpers
-  are tested instead. `tests/helpers.ts` has `callGet` for query-string GET routes, so moving them into
-  a module is all that stands between them and coverage.
 - Add coverage for `runAndSave` write-failure paths if that logic is extracted from the composition root.
 - Keep `liveHistory` growth within a run under observation; it is reset between runs but is currently
   not bounded during a very long run.

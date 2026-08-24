@@ -2,6 +2,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IncomingMessage } from "node:http";
 
 import { normalizeSpec } from "../engine/story-spec.ts";
@@ -451,7 +454,7 @@ describe("/runs/llm routes", () => {
   } as unknown as ServerHost;
 
   it("is not one of its routes", async () => {
-    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/x&id=run-1", host);
+    const r = await callGet(handleRunLogRoutes, "/nope?dir=stories/x&id=run-1", host);
     assert.equal(r.handled, false);
   });
 
@@ -488,5 +491,76 @@ describe("/runs/llm routes", () => {
     const r = await callGet(handleRunLogRoutes, "/runs/llm/file?dir=stories/doorway&id=run-1&file=../writing-log.jsonl", host);
     assert.equal(r.code, 404);
     assert.match(r.json().reason, /no such transcript/);
+  });
+});
+
+// -- SECTION ----
+describe("/runs/log", () => {
+  const makeHost = (base: string): ServerHost => ({
+    selectableStory: async (d: string) => d.startsWith("stories/") ? d : null,
+    resolveStoryDir: () => base,
+    runDirs: async () => ["run-1"],
+  } as unknown as ServerHost);
+
+  it("refuses a story it did not discover", async () => {
+    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=../elsewhere&id=run-1", makeHost("/nowhere"));
+    assert.equal(r.code, 400);
+    assert.match(r.json().reason, /no such story/);
+  });
+
+  it("refuses a run the story does not have", async () => {
+    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=nope", makeHost("/nowhere"));
+    assert.equal(r.code, 404);
+    assert.match(r.json().reason, /no such run/);
+  });
+
+  it("serves a retained run's writing log as ndjson", async () => {
+    const base = await mkdtemp(join(tmpdir(), "runslog-"));
+    try {
+      await mkdir(join(base, "out", "run-1"), { recursive: true });
+      await writeFile(join(base, "out", "run-1", "writing-log.jsonl"), '{"a":1}\n{"a":2}', "utf8");
+      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", makeHost(base));
+      assert.equal(r.code, 200);
+      assert.equal(r.headers["Content-Type"], "application/x-ndjson");
+      assert.equal(r.text.split("\n").filter((l: string) => l).length, 2);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it("404s when the run folder has no writing log", async () => {
+    const base = await mkdtemp(join(tmpdir(), "runslog-"));
+    try {
+      await mkdir(join(base, "out", "run-1"), { recursive: true });
+      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", makeHost(base));
+      assert.equal(r.code, 404);
+      assert.match(r.json().reason, /no writing log/);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+});
+
+// -- SECTION ----
+describe("/log.jsonl", () => {
+  it("404s before a run has an output folder", async () => {
+    const host = { outDir: () => "" } as unknown as ServerHost;
+    const r = await callGet(handleRunLogRoutes, "/log.jsonl", host);
+    assert.equal(r.code, 404);
+    assert.match(r.json().reason, /no run yet/);
+  });
+
+  it("serves the in-progress run's writing log as ndjson", async () => {
+    const out = await mkdtemp(join(tmpdir(), "logjsonl-"));
+    try {
+      await writeFile(join(out, "writing-log.jsonl"), '{"a":1}\n{"a":2}\n{"a":3}', "utf8");
+      const host = { outDir: () => out } as unknown as ServerHost;
+      const r = await callGet(handleRunLogRoutes, "/log.jsonl", host);
+      assert.equal(r.code, 200);
+      assert.equal(r.headers["Content-Type"], "application/x-ndjson");
+      assert.equal(r.text.split("\n").filter((l: string) => l).length, 3);
+    } finally {
+      await rm(out, { recursive: true, force: true });
+    }
   });
 });

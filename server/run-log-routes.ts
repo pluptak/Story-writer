@@ -1,9 +1,14 @@
 /**
- * RUN LOG ROUTES — reading a retained run's per-agent LLM transcripts. Read-only by construction:
- * nothing here can touch a running scene, which is what keeps inspection separate from run control.
+ * RUN LOG ROUTES — reading a run's logs. Read-only by construction: nothing here can touch a running
+ * scene, which is what keeps inspection separate from run control.
+ *   /runs/llm, /runs/llm/file — a retained run's per-agent LLM transcripts.
+ *   /runs/log                 — a retained run's writing-log.jsonl.
+ *   /log.jsonl                — the in-progress run's writing-log.jsonl, or 404 before one exists.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readFile } from "node:fs/promises";
+import { join as joinPath } from "node:path";
 
 import { json } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
@@ -12,7 +17,17 @@ import type { ServerHost } from "./server.ts";
 export async function handleRunLogRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
 ): Promise<boolean> {
-  if (path !== "/runs/llm" && path !== "/runs/llm/file") return false;
+  if (path === "/log.jsonl") {
+    const out = host.outDir();
+    if (!out) { json(res, 404, { ok: false, reason: "no run yet" }); return true; }
+    try {
+      res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+      res.end(await readFile(joinPath(out, "writing-log.jsonl"), "utf8"));
+    } catch { json(res, 404, { ok: false, reason: "no writing log" }); }
+    return true;
+  }
+
+  if (path !== "/runs/llm" && path !== "/runs/llm/file" && path !== "/runs/log") return false;
 
   const query = new URLSearchParams((req.url || "").split("?")[1] || "");
   const storyDir = await host.selectableStory(query.get("dir") || "");
@@ -22,6 +37,14 @@ export async function handleRunLogRoutes(
   const id = query.get("id") || "";
   if (!(await host.runDirs(base)).includes(id)) {
     json(res, 404, { ok: false, reason: "no such run" }); return true;
+  }
+
+  if (path === "/runs/log") {
+    try {
+      res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+      res.end(await readFile(joinPath(base, "out", id, "writing-log.jsonl"), "utf8"));
+    } catch { json(res, 404, { ok: false, reason: "no writing log" }); }
+    return true;
   }
 
   if (path === "/runs/llm") {

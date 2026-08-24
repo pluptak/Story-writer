@@ -4,7 +4,6 @@
 
 import { createServer, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
-import { join as joinPath } from "node:path";
 
 import { C } from "../ansi.ts";
 import { LIVE, RUN, sseClients, liveHistory, runState } from "../live.ts";
@@ -152,9 +151,6 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
           interactive: LIVE.interactive,
         });
 
-      } else if (path === "/stories") {
-        json(res, 200, { stories: await host.storyCards(), picking: LIVE.awaitingPick });
-
       } else if (path === "/select" && req.method === "POST") {
         const o = await readJsonBody(req);
         if (!LIVE.awaitingPick || !LIVE.pickResolve) { json(res, 400, { ok: false, reason: "the session is not waiting on a choice" }); return; }
@@ -190,37 +186,6 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
 
       } else if (await handleRunLogRoutes(req, res, path, host)) {
         // handled
-
-      } else if (path === "/log.jsonl") {
-        try {
-          const out = host.outDir();
-          if (!out) throw new Error("no run yet");
-          res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-          res.end(await readFile(joinPath(out, "writing-log.jsonl"), "utf8"));
-        } catch { res.writeHead(404); res.end(""); }
-
-      } else if (path === "/runs/log") {
-        const query = new URLSearchParams((req.url || "").split("?")[1] || "");
-        const storyDir = await host.selectableStory(query.get("dir") || "");
-        if (!storyDir) { res.writeHead(400); res.end("no such story"); return; }
-        const base = host.resolveStoryDir(storyDir);
-        const id = query.get("id") || "";
-        if (!(await host.runDirs(base)).includes(id)) { res.writeHead(404); res.end("no such run"); return; }
-        try {
-          res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-          res.end(await readFile(joinPath(base, "out", id, "writing-log.jsonl"), "utf8"));
-        } catch { res.writeHead(404); res.end(""); }
-
-      } else if (path === "/chapter") {
-        const query = new URLSearchParams((req.url || "").split("?")[1] || "");
-        const storyDir = await host.selectableStory(query.get("dir") || "");
-        if (!storyDir) { res.writeHead(400); res.end("no such story"); return; }
-        const n = Number(query.get("n"));
-        if (!(await host.writtenChapters(storyDir)).includes(n)) { res.writeHead(404); res.end("no such chapter"); return; }
-        try {
-          res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
-          res.end(await readFile(joinPath(host.resolveStoryDir(storyDir), "chapters", `${n}.md`), "utf8"));
-        } catch { res.writeHead(404); res.end(""); }
 
       } else { res.writeHead(404); res.end("not found"); }
     } catch (e) {
