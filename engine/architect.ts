@@ -676,10 +676,11 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
 // -- STATELESS SUGGEST ------------------------------------------------------
 
 /** A stateless architect call: given the current story spec and the author's instruction, return
- *  proposed edits. Creates a fresh agent per call, so no history carries between invocations. */
+ *  proposed edits — with the edited spec itself, so a GUI can adopt it into its draft. Creates a
+ *  fresh agent per call, so no history carries between invocations. */
 export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
-  Promise<{ kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[];
-            problems: string[]; note: string }
+  Promise<{ kind: "edits"; spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[];
+            ignored: string[]; problems: string[]; note: string }
          | { kind: "question"; ask: string }
          | { kind: "failed"; error: string }> {
   const agent = await buildArchitect(d, false);
@@ -696,7 +697,7 @@ export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
 
   const e = applyEdits(spec, r.out);
   return {
-    kind: "edits", applied: e.applied, ignored: e.ignored, problems: e.problems,
+    kind: "edits", spec: e.spec, applied: e.applied, ignored: e.ignored, problems: e.problems,
     note: String(r.out.note ?? "").trim(),
   };
 }

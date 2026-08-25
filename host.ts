@@ -195,7 +195,7 @@ export const HOST: ServerHost = {
         const r = await statelessSuggest(d, specObj, String(text ?? ""));
         if (r.kind === "failed") return { ok: false as const, error: r.error };
         if (r.kind === "question") return { ok: true as const, kind: "question" as const, ask: r.ask };
-        return { ok: true as const, kind: "edits" as const, applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
+        return { ok: true as const, kind: "edits" as const, spec: r.spec, applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
       });
     } catch (e) {
       return { ok: false, error: (e as Error).message };

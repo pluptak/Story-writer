@@ -15,6 +15,15 @@ addEventListener("beforeunload", e => {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
+/** The suggestion panel belongs to one story's session. Every editor session start calls this, so
+ *  one story's half-asked question never bleeds into another story's editor. */
+function clearSuggest() {
+  APP.editSuggestOpen = false;
+  APP.editSuggestText = "";
+  APP.editSuggestBusy = false;
+  APP.editSuggestResult = null;
+}
+
 const fld = (id, label, value, type) =>
   `<div class="field${type === "half" ? " half" : type === "third" ? " third" : ""}">` +
   `<label for="${id}">${label}</label>` +
@@ -222,7 +231,7 @@ function suggestResultHtml() {
     if (r.ignored.length) parts.push(`<div class="said bad">Could not apply: ${r.ignored.map(i => esc(i)).join(", ")}</div>`);
     if (r.problems.length) parts.push(`<div class="prob">${r.problems.map(p => esc(p)).join("; ")}</div>`);
     if (r.note) parts.push(`<p class="hint">${esc(r.note)}</p>`);
-    parts.push(`<p class="hint" style="margin-top:6px">Review the changes above and edit the fields manually.</p>`);
+    parts.push(`<p class="hint" style="margin-top:6px">The changes are in the form now — review them, then save.</p>`);
     return parts.join("");
   }
   return "";
@@ -254,6 +263,7 @@ export async function loadEditor(dir) {
   APP.editDraft = null;
   APP.editDirty = false;
   APP.editLoading = true;
+  clearSuggest();
 
   let r, j;
   try {
@@ -558,6 +568,14 @@ export function wireStoryEditor(page) {
     const j = await post("/story/suggest", { spec: APP.editDraft, text }, false);
     APP.editSuggestBusy = false;
     APP.editSuggestResult = j || { ok: false, error: "no answer" };
+    // An edits reply carries the architect's edited spec — computed FROM this draft, so adopting
+    // it wholesale keeps any unsaved manual edit that was sent up with it. Without this the form
+    // would show "changes" while Save stayed disabled (nothing actually differed).
+    if (j?.kind === "edits" && j.spec && Array.isArray(j.applied) && j.applied.length) {
+      APP.editDraft = clone(j.spec);
+      setDirty();
+      scheduleCheck();   // re-validate, and sync the new draft into a scaffold session when editNew
+    }
     APP.render();
   });
 
@@ -572,6 +590,7 @@ export function wireStoryEditor(page) {
     APP.editDraft = clone(loaded);
     APP.editWarnings = APP.scaffold.problems || [];
     APP.editIssues = [];
+    clearSuggest();
   } else if (APP.editFor !== APP.editDir && !APP.editLoading && APP.editDir) {
     loadEditor(APP.editDir);
   }

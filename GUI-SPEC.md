@@ -166,7 +166,7 @@ POST /story/save   { dir, story } → { ok:true, warnings[] }
 POST /story/discard { dir, n }    → { ok:true, chapter, scenes }
                                      | { ok:false, reason }
 POST /story/suggest { spec, text } → { ok:true, kind:"edits",
-                                       applied, ignored, problems, note }
+                                       spec, applied, ignored, problems, note }
                                      | { ok:true, kind:"question", ask }
                                      | { ok:false, error }
 ```
@@ -190,8 +190,10 @@ trailing unwritten scene's row.
 
 `/story/suggest` is a stateless architect call: given the current story spec and the author's
 instruction in `text`, creates a fresh architect agent, sends the change prompt, and returns the
-proposed edits. The editor shows the result but the user applies changes manually — the engine
-never writes from a suggestion.
+proposed edits together with the edited `spec`. On an `edits` reply the editor adopts that spec into
+its draft as unsaved changes (the reply was computed from the draft it was sent, so manual edits
+travel with it) and re-validates; nothing reaches disk until a save — the engine never writes from a
+suggestion.
 
 ## Run control
 

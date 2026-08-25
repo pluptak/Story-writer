@@ -87,9 +87,10 @@ export interface ServerHost {
   } | {
     ok: false; reason: string; status?: number
   }>;
-  /** Stateless architect suggestion: given the current spec and user text, return proposed edits. */
+  /** Stateless architect suggestion: given the current spec and user text, return proposed edits
+   *  with the edited spec, for the editor to adopt into its (unsaved) draft. */
   suggestEdits(spec: unknown, text: string): Promise<{
-    ok: true; kind: "edits"; applied: {field:string;before:unknown;after:unknown}[]; ignored: string[];
+    ok: true; kind: "edits"; spec: unknown; applied: {field:string;before:unknown;after:unknown}[]; ignored: string[];
     problems: string[]; note: string
   } | {
     ok: true; kind: "question"; ask: string

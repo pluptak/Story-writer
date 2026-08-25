@@ -192,7 +192,7 @@ Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and clic
 - [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
 - [ ] **Models editor.** Expand the models section. Change `default` model, save, reload.
 - [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
-- [ ] **Architect suggestion.** Expand "Ask the architect". Type a change request, click **suggest**. The button shows "thinking…" then returns results showing applied fields and any problems. *(Requires LM Studio with the architect model loaded.)*
+- [ ] **Architect suggestion.** Expand "Ask the architect". Type a change request, click **suggest**. The button shows "thinking…" then returns results showing applied fields and any problems, and applied edits land in the form as unsaved changes (Save enabled). *(Requires LM Studio with the architect model loaded.)*
 - [ ] **Run-in-flight guard.** Start a run. While it runs, navigate to the editor. Expect: the editor refuses to load with "cannot edit while a run is in flight". Alternately, open a story, start its run, then in another tab open the editor — verify the 409 response.
 - [ ] **Malformed story.** Directly open a story directory that has an unparseable `story.json` (modify one manually to be invalid JSON). The editor loads showing the error and the raw content (or `{ ok: false, error, raw }`).
 - [ ] **No concurrent edit loss.** Open the editor in two tabs. Edit in tab A, save. Tab B still shows stale data. Reload tab B — it gets the saved version.
