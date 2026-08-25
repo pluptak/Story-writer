@@ -81,6 +81,7 @@ export type RunEvent =
   | { t: "reaction"; character: string; thought: string; action: string; chapter: number }
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
+  | { t: "done_deferred"; chapter: number }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
 
 
@@ -206,6 +207,9 @@ export async function writeScene(
   const granted: { character: string; speech: string; action: string }[] = [];
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
+  // Set when a reply declared the scene done with a consult still open and an answer landed: the
+  // scene is held open one more turn so the answer reaches the page, then closes regardless.
+  let closing = false;
 
   // How a character's request for a missing fact is answered, shared by single consults and reaction
   // fan-outs. The clarifier remembers so it stays consistent; the writer remembers so its own
@@ -311,6 +315,7 @@ export async function writeScene(
     let c: Record<string, unknown> | null = null, who = "", exiting = "", promoting = "";
     let fanoutNames: string[] = [], proseWords = 0;
     let stoppedMidLint = false;
+    let answeredContent = false;   // an answer (or reaction bundle) the writer still owes the page
 
     for (let lintAttempt = 0; ; lintAttempt++) {
       d = extractJson(draftRaw, how => {
@@ -478,7 +483,7 @@ export async function writeScene(
           name: x.name, thought: x.thought,
           ...(pendingReactionActions.has(x.name.toLowerCase()) ? { action: x.action } : {}),
         }));
-        if (bundle.length) writer.hear(P.reactionsAnswered(bundle));
+        if (bundle.length) { writer.hear(P.reactionsAnswered(bundle)); answeredContent = true; }
       }
     } else if (who) {
       const def = defOf(who);
@@ -594,6 +599,7 @@ export async function writeScene(
           writer.hear(P.characterAnswered(def.name, P.answerBody(reply)));
           lastAsked.set(def.name.toLowerCase(), steps);
           granted.push({ character: def.name, speech: reply.speech, action: reply.action });
+          answeredContent = true;
           log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
           if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
             + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
@@ -619,7 +625,21 @@ export async function writeScene(
       if (++empties >= 3) { console.log(`${C.red}Writer wrote nothing and asked nobody, three times — stopping.${C.reset}`); break; }
     } else empties = 0;
 
+    // A reply that declares the scene done while its consult is still open closes the door on an
+    // answer still owed to the page. Hold the scene open one more turn so the answer is written in;
+    // whatever that turn produces, the scene closes after it.
+    if (sceneDone && answeredContent && !closing) {
+      sceneDone = false;
+      closing = true;
+      writer.hear(P.answerStillOwed);
+      log({ t: "done_deferred", chapter });
+      console.log(`${C.yellow}(scene done declared with a consult open — holding the scene open `
+        + `to write the answer in)${C.reset}`);
+    }
+
     if (sceneDone) {
+      done = true;
+    } else if (closing) {
       done = true;
     } else if (hardCap) {
       done = true;

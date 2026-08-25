@@ -804,9 +804,10 @@ WHEN ASKED TO WRITE -- [WRITE]:
                 text: never restate or paraphrase its question inside "prose", and never narrate a
                 fork as if it were already hanging in the air -- the reader meets the fork where
                 the answer puts it. Spell every name exactly as given, keep each character's
-                pronouns stable from piece to piece, and never repeat a line of dialogue you have
-                already written verbatim -- if someone would say nearly the same words twice, the
-                second time is yours to cut.
+                pronouns stable from piece to piece, never repeat a line of dialogue you have
+                already written verbatim, and do not lean on the same stage-direction phrase twice
+                -- if her keys jingle in one piece, they do not jingle softly in three more; find
+                the next detail or move on.
   consult    -- omit the field entirely when you do not need one.
     character  -- who you are asking.
     situation  -- what THEY can perceive right now, in your words. They know nothing you do not put
@@ -842,6 +843,9 @@ ${wantsMenuLines}
     by whom if they would know, and how they would notice -- a consequence alone leaves nothing to
     answer honestly from.
   scene_done -- true only when the scene's question has been answered and the last line is written.
+                 NEVER true in a reply that also opens a consult: an answer is still owed, and it
+                 has to reach the page. Declare done in a later reply, after the answer is written
+                 in.
   exit       -- optional: the name of a character who leaves the scene for good in this piece -- they
                 fall, are dragged off, walk out, die. A real departure, not someone going quiet. A
                 character the WORLD removes (a trapdoor opens under them, the floor gives way) is
@@ -1043,11 +1047,12 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
   {"ok": false, "why": "one line, naming who and which rule -- THE ONE RULE, CANNOT, or the situation
    -- it breaks"}
 
-Flag ONLY a clear violation: a line or a deed for someone not already granted it this scene, a
-restricted sense narrated as perceived, another character's thoughts or knowledge stated as fact,
-or a consult whose situation states only a consequence with no concrete fact in it. Do not flag
-prose that merely mentions a character, describes the scene, or narrates an already-granted line or
-deed in different words. When in doubt, pass it: {"ok": true}.
+Work in that order. First list every line of dialogue you find in the piece, then match each one
+against ALREADY GRANTED -- a quoted line nobody was granted is a violation however small or natural
+it reads, so an unmatched quotation is always flagged, never passed. Then check deeds the same way,
+then restricted senses, then the consult's situation. Do not flag prose that merely mentions a
+character, describes the scene, or narrates an already-granted line or deed in different words.
+When in doubt about a description, pass it; when in doubt about a quotation or a deed, flag it.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
@@ -1194,6 +1199,11 @@ export const consultNotSent = (why: string, name: string) =>
 
 export const consultExited = (name: string) =>
   `[GONE] ${name} has left the scene and cannot be asked anything. Work with who is still here.`;
+
+export const answerStillOwed =
+  `[SCENE NOT DONE] You declared the scene done while a consult was still open, and an answer `
+  + `has arrived since. It is not on the page yet. Write it in -- the answer is evidence, and the `
+  + `scene's last line comes after it. Declare done only when that is down.`;
 
 export const narrationFlagged = (why: string) =>
   `[NARRATION FLAGGED] ${why}\n\n`

@@ -57,6 +57,14 @@ one extra LLM call per multi-character fork if it were ever wanted.
 
 ## Reliability follow-ups
 
+- **Small-model coherence limits, observed live and parked.** Two failure classes from the doorway
+  runs that prompt text has not fixed and arguably cannot: the writer contradicting its own
+  established facts (a keyless card-slot lock picked, then opened by "the key turning"; hinges
+  groan-risked, then "well-oiled"), and the judge reading binary forks hyper-literally even with
+  calibration lines in place (rejecting an answer for carrying *extra* fields; rejecting a slide
+  because it stopped short of a literal drop). A fact-ledger check across drafted pieces — one more
+  stateless judge call per piece — is the candidate fix for the first; the second may just be a
+  model-size floor.
 - **The viewer has no automated coverage at all.** `npm test` covers the engine and the route modules;
   everything under `server/gui/` is verified by reading it and by running
   [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md). Any change there is only as good as the live check that

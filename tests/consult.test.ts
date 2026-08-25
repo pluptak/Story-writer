@@ -334,9 +334,11 @@ describe("the narration lint format", () => {
     assert.match(P.NARRATION_LINT_FORMAT, /consequence/);
   });
 
-  it("tells it to pass when in doubt, so it does not over-trigger", () => {
-    assert.match(P.NARRATION_LINT_FORMAT, /When in doubt, pass it/);
-  });
+  it("passes descriptions when in doubt but flags quotations and deeds, so it does not over-trigger",
+    () => {
+      assert.match(P.NARRATION_LINT_FORMAT,
+        /When in doubt about a description, pass it; when in doubt about a quotation or a deed, flag it/);
+    });
 });
 
 describe("narrationLintSystem", () => {
