@@ -41,9 +41,10 @@ export class Agent {
     const prepend = "{";
     const started = Date.now();
     if (!ENGINE.stream) {
-      const { text: raw, usage } = await complete(this.model, msgs, this.temperature, this.think);
+      const { text: raw, usage, reasoning, finishReason, reasoningOnly } =
+        await complete(this.model, msgs, this.temperature, this.think);
       const durationMs = Date.now() - started;
-      writeLlmRecord(this, ts, msgs, raw, durationMs, usage);
+      writeLlmRecord(this, ts, msgs, raw, durationMs, usage, { reasoning, finishReason, reasoningOnly });
       emitStats(this.name, this.model, durationMs, usage);
       return prepend + raw;
     }
@@ -54,14 +55,15 @@ export class Agent {
       sseWrite({ t: "composing", who: this.name, secs, chars });
     };
     paint();
-    const { text: rest, usage } = await completeStream(this.model, msgs, this.temperature, d => {
-      chars += d.length;
-      if (Date.now() - lastPaint > 250) { lastPaint = Date.now(); paint(); }
-    }, this.think);
+    const { text: rest, usage, reasoning, finishReason, reasoningOnly } =
+      await completeStream(this.model, msgs, this.temperature, d => {
+        chars += d.length;
+        if (Date.now() - lastPaint > 250) { lastPaint = Date.now(); paint(); }
+      }, this.think);
     const durationMs = Date.now() - started;
     progressDone();
     sseWrite({ t: "idle" });
-    writeLlmRecord(this, ts, msgs, rest, durationMs, usage);
+    writeLlmRecord(this, ts, msgs, rest, durationMs, usage, { reasoning, finishReason, reasoningOnly });
     emitStats(this.name, this.model, durationMs, usage);
     return prepend + rest;
   }
@@ -86,11 +88,17 @@ const ROLES: Record<string, string> = {
   "CLARIFIER": "clarifier",
 };
 
+/** One JSONL record for an agent/model exchange; author-side names get their own role, everyone else is a character.
+ *  `finish_reason` is always present (null when the server did not say); `reasoning` appears only when the
+ *  chain-of-thought arrived as a separate field, `reasoningOnly: true` only when the whole reply did. */
 export function llmLogEntry(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string,
-                            durationMs: number, usage: CompletionUsage | null) {
+                            durationMs: number, usage: CompletionUsage | null, meta: ReplyMeta = {}) {
   return {
     ts, role: ROLES[agent.name] ?? "character", agent: agent.name, model: agent.model,
     prompt, response, durationMs, usage,
+    finish_reason: meta.finishReason ?? null,
+    ...(meta.reasoning ? { reasoning: meta.reasoning } : {}),
+    ...(meta.reasoningOnly ? { reasoningOnly: true } : {}),
   };
 }
 
@@ -103,10 +111,19 @@ function emitStats(who: string, model: string, durationMs: number, usage: Comple
   });
 }
 
+/** What the transport learned about a reply beyond its text: the chain-of-thought when it arrived
+ *  as a separate field, the server's finish reason, and whether the whole reply came through the
+ *  reasoning channel. Everything optional — absent means "the server said nothing". */
+export interface ReplyMeta {
+  reasoning?: string | null;
+  finishReason?: string | null;
+  reasoningOnly?: boolean;
+}
+
 /** Push a record for one agent/model exchange to its transcript stream. A stream that fails warns
  *  once and is abandoned for the rest of the run — the run itself must never crash on logging. */
 export function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: string,
-                               durationMs: number, usage: CompletionUsage | null) {
+                               durationMs: number, usage: CompletionUsage | null, meta: ReplyMeta = {}) {
   if (!ENGINE.outDir || agent.name === "ARCHITECT" || ENGINE.llmDead.has(agent.name)) return;
   try {
     let stream = ENGINE.llmStreams.get(agent.name);
@@ -116,7 +133,7 @@ export function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response
       stream.on("error", e => killLlmLog(agent.name, e));   // async write failure must never crash the run
       ENGINE.llmStreams.set(agent.name, stream);
     }
-    stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response, durationMs, usage)) + "\n");
+    stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response, durationMs, usage, meta)) + "\n");
   } catch (e) {
     killLlmLog(agent.name, e as Error);
   }

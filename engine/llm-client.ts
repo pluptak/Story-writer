@@ -25,10 +25,32 @@ export interface CompletionUsage {
   completionTokens: number;
 }
 
-/** The result of a completion: the text plus whatever usage the server reported (null when absent). */
+/** The result of a completion: the answer text plus whatever usage the server reported (null when
+ *  absent). `reasoning` carries the model's chain-of-thought when the server delivered it as a
+ *  field separate from the answer — it is never part of `text`. `reasoningOnly` marks the reply
+ *  that arrived entirely through the reasoning channel (some thinking models do this), where the
+ *  fallback made it the answer after all. */
 export interface Completion {
   text: string;
   usage: CompletionUsage | null;
+  reasoning: string | null;
+  finishReason: string | null;
+  reasoningOnly: boolean;
+}
+
+/** What either transport path sees before classification. */
+interface RawReply { content: string; reasoning: string; finishReason: string | null }
+
+/** The one classification rule for what part of a reply is the answer, shared by both transport
+ *  paths so a thinking model behaves identically streamed or buffered: content wins wholesale and
+ *  any separate reasoning is carried alongside it — never concatenated with the text. A reply that
+ *  arrived only as reasoning falls back to being the text, flagged. */
+function assembleReply(r: RawReply): Omit<Completion, "usage"> {
+  const content = r.content.trim();
+  const reason = r.reasoning.trim();
+  if (content)
+    return { text: content, reasoning: reason || null, finishReason: r.finishReason, reasoningOnly: false };
+  return { text: reason, reasoning: null, finishReason: r.finishReason, reasoningOnly: true };
 }
 
 /** Normalize an OpenAI-style `usage` object into our shape, or null when it is missing/invalid. */
@@ -109,11 +131,15 @@ export async function complete(model: string, messages: Msg[], temperature: numb
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal);
     const data = await res.json() as any;
     const choice = data.choices?.[0];
-    const text = (choice?.message?.content || choice?.message?.reasoning_content || "").trim();
-    if (ENGINE.debug) process.stderr.write(`\n[DEBUG complete] model=${model} len=${text.length} src=${choice?.message?.content ? "content" : "reasoning_content"} raw=${JSON.stringify(text.slice(0, 300))}\n`);
+    const assembled = assembleReply({
+      content: typeof choice?.message?.content === "string" ? choice.message.content : "",
+      reasoning: typeof choice?.message?.reasoning_content === "string" ? choice.message.reasoning_content : "",
+      finishReason: typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
+    });
+    if (ENGINE.debug) process.stderr.write(`\n[DEBUG complete] model=${model} len=${assembled.text.length} src=${assembled.reasoningOnly ? "reasoning_content" : "content"} raw=${JSON.stringify(assembled.text.slice(0, 300))}\n`);
     // An empty 200 is the other shape "never replied" takes; spend a retry rather than a caller call.
-    if (!text) throw new LmError(`${model} returned an empty completion`, undefined, true);
-    return { text, usage: parseUsage(data.usage) };
+    if (!assembled.text) throw new LmError(`${model} returned an empty completion`, undefined, true);
+    return { ...assembled, usage: parseUsage(data.usage) };
   });
 }
 
@@ -125,7 +151,9 @@ export async function completeStream(model: string, messages: Msg[], temperature
     if (!res.body) throw new LmError(`LM Studio returned no stream body`, undefined, true);
     const reader = (res.body as any).getReader();
     const decoder = new TextDecoder();
-    let buffer = "", full = "", frameCount = 0, usage: CompletionUsage | null = null;
+    let buffer = "", contentBuf = "", reasonBuf = "", frameCount = 0;
+    let usage: CompletionUsage | null = null, finishReason: string | null = null;
+    const assembled = () => assembleReply({ content: contentBuf, reasoning: reasonBuf, finishReason });
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -142,10 +170,18 @@ export async function completeStream(model: string, messages: Msg[], temperature
           if (payload === "[DONE]") continue;
           try {
             const parsed = JSON.parse(payload);
-            const d = parsed.choices?.[0]?.delta;
-            // Qwen3 thinking models put output in reasoning_content when content is empty
-            const delta = d?.content || d?.reasoning_content || "";
-            if (delta) { full += delta; onDelta(delta); }
+            const choice = parsed.choices?.[0];
+            const d = choice?.delta;
+            // Qwen3 thinking models put output in reasoning_content when content is empty. The two
+            // channels accumulate separately; assembleReply() decides at the end what the answer
+            // was, so reasoning frames can no longer leak into the reply text. The preview (onDelta)
+            // shows both kinds as they arrive.
+            const dc = typeof d?.content === "string" ? d.content : "";
+            const dr = typeof d?.reasoning_content === "string" ? d.reasoning_content : "";
+            if (dc) { contentBuf += dc; onDelta(dc); }
+            else if (dr) { reasonBuf += dr; onDelta(dr); }
+            // finish_reason typically arrives in a final frame after the last delta.
+            if (typeof choice?.finish_reason === "string") finishReason = choice.finish_reason;
             // The usage frame arrives in its own SSE chunk (often with an empty choices array) when
             // stream_options.include_usage is honored; capture it and let the loop continue.
             if (parsed.usage) usage = parseUsage(parsed.usage);
@@ -156,18 +192,18 @@ export async function completeStream(model: string, messages: Msg[], temperature
       }
     } catch (e) {
       if (RUN.stopped) throw e;
-      const sofar = full.trim();
+      const sofar = assembled().text;
       if (sofar && topLevelObjects(sofar).length) {
         progressDone();
         warn(`   ${C.yellow}⏱${C.reset} ${model} broke off (${(e as Error).message}) but had already `
           + `finished a reply — keeping it`);
-        return { text: sofar, usage };
+        return { ...assembled(), usage };
       }
       throw e;
     }
-    if (ENGINE.debug) process.stderr.write(`\n[DEBUG stream done] model=${model} len=${full.length} raw=${JSON.stringify(full.slice(0, 300))}\n`);
-    const text = full.trim();
-    if (!text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
-    return { text, usage };
+    if (ENGINE.debug) process.stderr.write(`\n[DEBUG stream done] model=${model} len=${assembled().text.length} raw=${JSON.stringify(assembled().text.slice(0, 300))}\n`);
+    const out = assembled();
+    if (!out.text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
+    return { ...out, usage };
   });
 }

@@ -260,6 +260,27 @@ describe("LLM interaction log", () => {
     assert.equal(e.durationMs, 100);
   });
 
+  it("llmLogEntry: reasoning, finish_reason and reasoningOnly land in the record when given", () => {
+    const e = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "answer", 100, null,
+      { reasoning: "the chain of thought", finishReason: "stop" });
+    assert.equal(e.finish_reason, "stop");
+    assert.equal(e.reasoning, "the chain of thought");
+    assert.equal(e.reasoningOnly, undefined);
+  });
+
+  it("llmLogEntry: reasoningOnly flags a reply that arrived entirely via the reasoning channel", () => {
+    const e = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "r", 100, null, { reasoningOnly: true });
+    assert.equal(e.reasoningOnly, true);
+    assert.equal(e.reasoning, undefined);
+  });
+
+  it("llmLogEntry: without meta, finish_reason is null and no reasoning keys appear", () => {
+    const e = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "r", 100, null);
+    assert.equal(e.finish_reason, null);
+    assert.equal("reasoning" in e, false);
+    assert.equal("reasoningOnly" in e, false);
+  });
+
   it("llmFilenameFor: slugifies the name", () => {
     assert.equal(llmFilenameFor("Anne", new Set()), "anne.jsonl");
   });

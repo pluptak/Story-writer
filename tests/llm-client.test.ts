@@ -60,6 +60,29 @@ describe("completeStream SSE frame parsing", () => {
                                         (d) => deltas.push(d));
     assert.equal(result.text, "Thinking...");
     assert.deepEqual(deltas, ["Thinking..."]);
+    assert.equal(result.reasoningOnly, true, "a reply that arrived only via reasoning is flagged");
+    assert.equal(result.reasoning, null);
+  });
+
+  it("keeps streamed reasoning frames out of the answer text when content follows", async () => {
+    armRun();
+    const deltas: string[] = [];
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"reasoning_content":"Let me think."}}]}\n\n'),
+        new TextEncoder().encode('data: {"choices":[{"delta":{"reasoning_content":" Yes."}}]}\n\n'),
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"{\\"prose\\":\\"Hi\\"}"}}]}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8,
+                                        (d) => deltas.push(d));
+    assert.equal(result.text, '{"prose":"Hi"}', "the answer is content alone, never reasoning + content");
+    assert.equal(result.reasoning, "Let me think. Yes.", "the excluded CoT is captured");
+    assert.equal(result.reasoningOnly, false);
+    assert.deepEqual(deltas, ["Let me think.", " Yes.", '{"prose":"Hi"}'],
+      "the preview still shows every delta as it arrives");
   });
 
   it("handles frame split across chunk boundaries mid-JSON", async () => {
@@ -295,5 +318,73 @@ describe("completion usage parsing", () => {
     const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {});
     assert.equal(result.text, "Hi");
     assert.equal(result.usage, null);
+  });
+});
+
+// -- REPLY ASSEMBLY ----
+describe("reply assembly (reasoning vs content, finish_reason)", () => {
+  const origFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = origFetch;
+    armRun();
+  });
+
+  it("complete() takes content as the answer and carries separately-delivered reasoning alongside it", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({
+        choices: [{
+          message: { content: "the answer", reasoning_content: "because the model thought so" },
+          finish_reason: "stop",
+        }],
+      }),
+      { headers: { "content-type": "application/json" } },
+    ) as any;
+    const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
+    assert.equal(result.text, "the answer");
+    assert.equal(result.reasoning, "because the model thought so");
+    assert.equal(result.finishReason, "stop");
+    assert.equal(result.reasoningOnly, false);
+  });
+
+  it("complete() surfaces a length cutoff through finish_reason instead of looking like a clean stop", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({
+        choices: [{ message: { content: '{"prose":"cut of' }, finish_reason: "length" }],
+      }),
+      { headers: { "content-type": "application/json" } },
+    ) as any;
+    const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
+    assert.equal(result.text, '{"prose":"cut of');
+    assert.equal(result.finishReason, "length");
+  });
+
+  it("completeStream() captures finish_reason from its final frame", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'),
+        new TextEncoder().encode('data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]),
+      { headers: { "content-type": "text/event-stream" } },
+    ) as any;
+    const result = await completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {});
+    assert.equal(result.text, "Hi");
+    assert.equal(result.finishReason, "length");
+  });
+
+  it("complete() leaves finish_reason null when the server does not send one", async () => {
+    armRun();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: "hello" } }] }),
+      { headers: { "content-type": "application/json" } },
+    ) as any;
+    const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
+    assert.equal(result.finishReason, null);
+    assert.equal(result.reasoning, null);
+    assert.equal(result.reasoningOnly, false);
   });
 });
