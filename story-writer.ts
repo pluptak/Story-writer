@@ -14,24 +14,34 @@ import { LIVE, resetLive, setWhere, publish, sseWrite } from "./live.ts";
 import { startServer, type ServerHost } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { restrictionsOf, splitMeaning } from "./engine/skills.ts";
-import { NET } from "./engine/llm-client.ts";
+import { NET, LMSTUDIO_URL, lmUrlsDerivable } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY,
   loadDefaults, writtenChapters, type StoryConfig, type Defaults,
 } from "./engine/story-format.ts";
 import { directEdit, renderSpec, specView, characterPsychologyWarnings, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson } from "./engine/story-schema.ts";
-import { runDirs, runPreflight, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
+import { runDirs, runPreflight, loadedModelIds, storyCards, runLlmLogs, readLlmLog, contextFit } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import {
   buildArchitect, configureArchitectDebug, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type ScaffoldRound, type NextChapterSession, type AutoStage, type AutoPass,
 } from "./engine/architect.ts";
 import { newCharacterAgent, runChapter, type RunEvent } from "./engine/scene-loop.ts";
+import { setFitWarning } from "./engine/agent.ts";
 import { setDebugWrite } from "./engine/json-extract.ts";
 import { warn } from "./engine/warnings.ts";
 
 // json-extract stays engine-free; its debug lines follow ENGINE.debug from here, at call time.
 setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
+
+// The scene loop's context-fit check needs LM Studio's model info, which lives in preflight —
+// a layer above agent.ts — so the same sink pattern as setDebugWrite wires it in from here.
+setFitWarning(contextFit);
+
+if (!lmUrlsDerivable(LMSTUDIO_URL))
+  warn(`LM_STUDIO_URL (${LMSTUDIO_URL}) does not end in /chat/completions — the /models and `
+    + `/api/v0/models endpoints derived from it will hit the wrong route, and model checks `
+    + `will report "unreachable" no matter what is loaded`);
 
 // -- CONFIG ----------------------------------------------------------------
 const CLI = process.argv.slice(2);
@@ -666,6 +676,7 @@ async function runAndSave(sc: StoryConfig, dir: string, chapter: number = 1) {
   ENGINE.llmStreams = new Map();
   ENGINE.llmFilenames = new Set();
   ENGINE.llmDead = new Set();
+  ENGINE.fitWarned = new Set();
   const scenePath = joinPath(ENGINE.outDir, "scene.md");
   const logPath = joinPath(ENGINE.outDir, "writing-log.jsonl");
   const logStream = createWriteStream(logPath, { flags: "w" });

@@ -6,10 +6,11 @@ import { loadStory } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
 import { wrapWriter, writerCast, runChapter, writeScene, newCharacterAgent, type RunEvent } from "../engine/scene-loop.ts";
-import { Agent } from "../engine/agent.ts";
+import { Agent, setFitWarning } from "../engine/agent.ts";
 import type { Skill } from "../engine/skills.ts";
 import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
+import { WARN } from "../engine/warnings.ts";
 import { LIVE, runState, resetLive, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
@@ -578,6 +579,55 @@ describe("the judge", () => {
       NET.retries = origRetries;
       armRun();
       resetLive();
+    }
+  });
+});
+
+// -- THE CONTEXT-FIT WARNING -----------------------------------------------
+describe("the context-fit warning", () => {
+  it("fires once per model before the call, warns, and logs context_risk", async () => {
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    const origLog = LIVE.log;
+    const origSink = WARN.sink;
+    ENGINE.fitWarned = new Set();
+
+    setFitWarning(async model => ({ message: `${model} is loaded with 4096 tokens and this call needs about 9000`,
+                                    needs: 9000, has: 4096 }));
+    ENGINE.stream = false;
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ choices: [{ message: { content: "hello" } }] })) as any;
+    const warned: string[] = [];
+    WARN.sink = (...a: unknown[]) => { warned.push(a.map(String).join(" ")); };
+    const events: RunEvent[] = [];
+    LIVE.log = e => events.push(e);
+
+    armRun();
+    try {
+      const agent = new Agent("TESTER", "tight-model", "sys", 0);
+      await agent.generate("t");
+      await agent.generate("t");
+      await agent.generate("t");
+
+      assert.equal(warned.filter(w => w.includes("is loaded with 4096")).length, 1,
+        "the same model is warned about exactly once");
+      assert.deepEqual(events.map(e => e.t), ["context_risk"]);
+      const risk = events[0] as any;
+      assert.equal(risk.model, "tight-model");
+      assert.equal(risk.needs, 9000);
+      assert.equal(risk.has, 4096);
+
+      // A different model is not covered by the first one's warning.
+      const other = new Agent("OTHER", "roomy-model", "sys", 0);
+      await other.generate("t");
+      assert.deepEqual(events.map(e => e.t), ["context_risk", "context_risk"]);
+    } finally {
+      setFitWarning(null);
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      LIVE.log = origLog;
+      WARN.sink = origSink;
+      armRun();
     }
   });
 });

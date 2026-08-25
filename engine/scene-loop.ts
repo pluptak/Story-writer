@@ -66,6 +66,7 @@ export type RunEvent =
   | { t: "lint_failed"; why: string; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
+  | { t: "context_risk"; model: string; needs: number; has: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
   | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string; chapter: number }
@@ -312,7 +313,10 @@ export async function writeScene(
     let stoppedMidLint = false;
 
     for (let lintAttempt = 0; ; lintAttempt++) {
-      d = extractJson(draftRaw);
+      d = extractJson(draftRaw, how => {
+        if (how === "prose_fallback")
+          log({ t: "prose_reply", character: writer.name });
+      });
       prose = String(d.prose ?? "").trim();
       salvaged = false;
       if (!prose) {

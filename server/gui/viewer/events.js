@@ -16,6 +16,15 @@ export function build(store) {
       }
       case "clarify":   last(cur)?.qa.push({ q:e.question, a:e.answer }); break;
       case "clarify_failed": last(cur)?.flags.push("asked the author for \"" + e.question + "\" and got nothing back — treated as done answering"); break;
+      case "prose_reply": {
+        // A consult's prose reply flags that block; the writer's draft reply (no consult open) is its own note.
+        if (cur && cur.who === e.character) last(cur)?.flags.push("answered in labelled prose, not JSON");
+        else blocks.push({ kind:"note", seq:e.seq,
+          text:`${e.character} replied in labelled prose rather than JSON — fields were read from it` });
+        break;
+      }
+      case "context_risk": blocks.push({ kind:"note", seq:e.seq,
+        text:`${e.model} is loaded with ${e.has} tokens of context and a call needed about ${e.needs} — empty completions or truncation may follow` }); break;
       case "forced":    last(cur)?.flags.push("answered without the detail it asked for"); break;
       case "repair":    last(cur)?.flags.push("re-asked: " + e.why); break;
       case "skill_flag":last(cur)?.flags.push("used what it cannot do: " + (e.unknown||[]).join(", ")); break;

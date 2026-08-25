@@ -114,7 +114,8 @@ written chapters rather than trusting it.
 The two `/runs/llm` routes read `out/<id>/llm/<agent>.jsonl`, one file per agent, each line
 `{ ts, role, agent, model, prompt, response, durationMs, usage, finish_reason }` — plus `reasoning`
 (the model's chain-of-thought) when the server delivered it as a field separate from the answer,
-and `reasoningOnly: true` when the whole reply arrived through that channel instead. `models` is a
+`reasoningOnly: true` when the whole reply arrived through that channel instead, and
+`broken_off: true` when the reply was salvaged from a stream that broke mid-flight. `models` is a
 list because `/model` can swap a model
 mid-run. **`file` is never validated by the route** — it is passed to the engine, which serves only
 what its own directory listing named, so the allowlist is what is actually on disk rather than a
@@ -367,6 +368,8 @@ ConsultEvent (engine/consult.ts:80):
   { t:"clarify"; character; question; answer }
   { t:"clarify_failed"; character; question }    — the call to answer this never came back;
                                                    no slot spent, nothing fabricated
+  { t:"prose_reply"; character }                 — the reply was read through the labelled-prose
+                                                   fallback rather than as JSON
   { t:"forced"; character }
   { t:"repair"; character; why }
   { t:"skill_flag"; character; claimed[]; unknown[] }
@@ -394,6 +397,9 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"reaction_fanout"; reactors[]; situation } — group reactions fanned out to these consults
   { t:"fanout_skip"; character; why }            — one reactor in a fan-out was skipped: unknown,
                                                    gone from the scene, or its consult call threw
+  { t:"context_risk"; model; needs; has }        — a call went out whose prompt plus reply reserve
+                                                   does not fit the model's loaded context;
+                                                   expect empty completions or truncation
   { t:"reaction"; character; thought; action }   — an isolated per-reactor consult's answer
   { t:"batch_judge_failed"; why }                 — the reaction batch judge call itself threw;
                                                    no volunteered deed from this beat was promoted

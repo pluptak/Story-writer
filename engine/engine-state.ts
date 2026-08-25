@@ -15,6 +15,7 @@ export const ENGINE = {
   llmStreams: new Map<string, WriteStream>(),   // agent name -> this run's open stream
   llmFilenames: new Set<string>(),              // filenames already claimed this run
   llmDead: new Set<string>(),                   // agents whose transcript stream failed — warned once, then skipped
+  fitWarned: new Set<string>(),                 // models the context-fit warning already fired for — once per run
 };
 
 // TTY only: carriage returns in a redirected log file are worse than silence.

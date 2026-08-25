@@ -11,6 +11,11 @@ export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$
 /** LM Studio's own REST API, which unlike /v1/models reports load state and context length. */
 export const LMSTUDIO_REST_MODELS_URL = LMSTUDIO_URL.replace(/\/v1\/chat\/completions\/?$/, "/api/v0/models");
 
+/** Whether the two /models endpoints above can actually be derived from a chat-completions URL:
+ *  both rewrite the trailing path, so an override without that suffix silently points the model
+ *  checks at the chat route. The composition root warns once when an env override breaks this. */
+export const lmUrlsDerivable = (url: string) => /\/chat\/completions\/?$/.test(url.trim());
+
 /** A deliberately pessimistic token estimate -- prose runs about 4 chars/token, the JSON the
  *  architect trades in runs denser, and guessing high is the safe direction for a fit check. */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 3.5);
@@ -36,6 +41,9 @@ export interface Completion {
   reasoning: string | null;
   finishReason: string | null;
   reasoningOnly: boolean;
+  /** True when the stream broke off mid-reply but a finished object was salvaged from what had
+   *  already arrived — the text is real, but it is not the whole reply the model meant to send. */
+  brokenOff: boolean;
 }
 
 /** What either transport path sees before classification. */
@@ -49,8 +57,10 @@ function assembleReply(r: RawReply): Omit<Completion, "usage"> {
   const content = r.content.trim();
   const reason = r.reasoning.trim();
   if (content)
-    return { text: content, reasoning: reason || null, finishReason: r.finishReason, reasoningOnly: false };
-  return { text: reason, reasoning: null, finishReason: r.finishReason, reasoningOnly: true };
+    return { text: content, reasoning: reason || null, finishReason: r.finishReason,
+             reasoningOnly: false, brokenOff: false };
+  return { text: reason, reasoning: null, finishReason: r.finishReason,
+           reasoningOnly: true, brokenOff: false };
 }
 
 /** Normalize an OpenAI-style `usage` object into our shape, or null when it is missing/invalid. */
@@ -152,7 +162,7 @@ export async function complete(model: string, messages: Msg[], temperature: numb
     if (ENGINE.debug) process.stderr.write(`\n[DEBUG complete] model=${model} len=${assembled.text.length} src=${assembled.reasoningOnly ? "reasoning_content" : "content"} raw=${JSON.stringify(assembled.text.slice(0, 300))}\n`);
     // An empty 200 is the other shape "never replied" takes; spend a retry rather than a caller call.
     if (!assembled.text) throw new LmError(`${model} returned an empty completion`, undefined, true);
-    return { ...assembled, usage: parseUsage(data.usage) };
+    return { ...assembled, brokenOff: false, usage: parseUsage(data.usage) };
   });
 }
 
@@ -210,13 +220,13 @@ export async function completeStream(model: string, messages: Msg[], temperature
         progressDone();
         warn(`   ${C.yellow}⏱${C.reset} ${model} broke off (${(e as Error).message}) but had already `
           + `finished a reply — keeping it`);
-        return { ...assembled(), usage };
+        return { ...assembled(), brokenOff: true, usage };
       }
       throw e;
     }
     if (ENGINE.debug) process.stderr.write(`\n[DEBUG stream done] model=${model} len=${assembled().text.length} raw=${JSON.stringify(assembled().text.slice(0, 300))}\n`);
     const out = assembled();
     if (!out.text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
-    return { ...out, usage };
+    return { ...out, brokenOff: false, usage };
   });
 }

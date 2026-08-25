@@ -3,12 +3,13 @@ import { createWriteStream } from "node:fs";
 import { join as joinPath } from "node:path";
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
-import { sseWrite } from "../live.ts";
+import { LIVE, sseWrite } from "../live.ts";
 import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
 import { slugify } from "./config-util.ts";
 import { complete, completeStream, type Msg, type CompletionUsage } from "./llm-client.ts";
 import type { ThinkLevel } from "./story-schema.ts";
+import type { RunEvent } from "./scene-loop.ts";
 
 const WINDOW = { cap: 24, keepRecent: 14 };
 
@@ -35,16 +36,30 @@ export class Agent {
     return [...head, ...this.history, ...extra, { role: "assistant", content: "{" }];
   }
 
+  /** Early warning before the call goes out: when this prompt plus its reply reserve does not fit
+   *  the context the model is actually loaded with, say so once per model — the overflow itself
+   *  would otherwise surface only later, as mysterious empty completions. */
+  private async warnIfContextTight(msgs: Msg[]) {
+    if (!fitWarning || ENGINE.fitWarned.has(this.model)) return;
+    const fit = await fitWarning(this.model, msgs);
+    if (!fit) return;
+    ENGINE.fitWarned.add(this.model);
+    warn(`   ${C.yellow}⚠${C.reset} ${fit.message}`);
+    LIVE.log?.({ t: "context_risk", model: this.model, needs: fit.needs, has: fit.has });
+  }
+
   async generate(label: string, extra: Msg[] = []): Promise<string> {
     const msgs = this.buildMessages(extra);
     const ts = new Date().toISOString();
     const prepend = "{";
     const started = Date.now();
+    await this.warnIfContextTight(msgs);
     if (!ENGINE.stream) {
-      const { text: raw, usage, reasoning, finishReason, reasoningOnly } =
+      const { text: raw, usage, reasoning, finishReason, reasoningOnly, brokenOff } =
         await complete(this.model, msgs, this.temperature, this.think);
       const durationMs = Date.now() - started;
-      writeLlmRecord(this, ts, msgs, raw, durationMs, usage, { reasoning, finishReason, reasoningOnly });
+      writeLlmRecord(this, ts, msgs, raw, durationMs, usage,
+                     { reasoning, finishReason, reasoningOnly, brokenOff });
       emitStats(this.name, this.model, durationMs, usage);
       return prepend + raw;
     }
@@ -55,7 +70,7 @@ export class Agent {
       sseWrite({ t: "composing", who: this.name, secs, chars });
     };
     paint();
-    const { text: rest, usage, reasoning, finishReason, reasoningOnly } =
+    const { text: rest, usage, reasoning, finishReason, reasoningOnly, brokenOff } =
       await completeStream(this.model, msgs, this.temperature, d => {
         chars += d.length;
         if (Date.now() - lastPaint > 250) { lastPaint = Date.now(); paint(); }
@@ -63,11 +78,23 @@ export class Agent {
     const durationMs = Date.now() - started;
     progressDone();
     sseWrite({ t: "idle" });
-    writeLlmRecord(this, ts, msgs, rest, durationMs, usage, { reasoning, finishReason, reasoningOnly });
+    writeLlmRecord(this, ts, msgs, rest, durationMs, usage,
+                   { reasoning, finishReason, reasoningOnly, brokenOff });
     emitStats(this.name, this.model, durationMs, usage);
     return prepend + rest;
   }
 }
+
+// -- CONTEXT-FIT EARLY WARNING ----------------------------------------------
+/** Wired by the composition root (agent.ts must not depend on preflight.ts — the same reason
+ *  json-extract takes a debug sink). Given the model and the messages about to be sent, returns
+ *  what to warn with, or null when nothing is known about the model or the prompt fits. */
+let fitWarning: ((model: string, msgs: Msg[]) =>
+  Promise<{ message: string; needs: number; has: number } | null>) | null = null;
+/** The composition root's hook: give Agent.generate its context-fit checker (null unwires it). */
+export function setFitWarning(
+  fn: ((model: string, msgs: Msg[]) => Promise<{ message: string; needs: number; has: number } | null>) | null,
+) { fitWarning = fn; }
 
 // -- LLM INTERACTION LOG -----------------------------------------------------
 /** A unique llm-log filename for an agent name within this run, suffixing -2, -3, ... on collisions. */
@@ -99,6 +126,7 @@ export function llmLogEntry(agent: { name: string; model: string }, ts: string, 
     finish_reason: meta.finishReason ?? null,
     ...(meta.reasoning ? { reasoning: meta.reasoning } : {}),
     ...(meta.reasoningOnly ? { reasoningOnly: true } : {}),
+    ...(meta.brokenOff ? { broken_off: true } : {}),
   };
 }
 
@@ -118,6 +146,7 @@ export interface ReplyMeta {
   reasoning?: string | null;
   finishReason?: string | null;
   reasoningOnly?: boolean;
+  brokenOff?: boolean;
 }
 
 /** Push a record for one agent/model exchange to its transcript stream. A stream that fails warns

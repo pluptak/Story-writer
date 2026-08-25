@@ -74,6 +74,13 @@ describe("consult", () => {
     assert.ok(!events.some(e => e.t === "clarify"), "nothing was fabricated as an answer");
   });
 
+  it("a reply in labelled prose still answers, and says it did not arrive as JSON", async () => {
+    const { reply, events } = await run([`**speech**: Early enough.\n**action**: I nod.`]);
+    assert.equal(reply.speech, "Early enough.", "the prose fallback's fields are read as ever");
+    assert.ok(events.some(e => e.t === "prose_reply"), "the degraded shape is recorded");
+    assert.deepEqual(events.filter(e => e.t === "prose_reply").length, 1);
+  });
+
   it("re-asks once when a skill is claimed that the character does not have", async () => {
     const { reply, events, agent } = await run([
       `{"action":"I pick the lock.","skills_used":["lockpicking"]}`,

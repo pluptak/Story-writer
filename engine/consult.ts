@@ -183,6 +183,7 @@ export type ConsultEvent =
   | { t: "need"; character: string; question: string }
   | { t: "clarify"; character: string; question: string; answer: string }
   | { t: "clarify_failed"; character: string; question: string }
+  | { t: "prose_reply"; character: string }
   | { t: "forced"; character: string }
   | { t: "repair"; character: string; why: string }
   | { t: "skill_flag"; character: string; claimed: string[]; unknown: string[] }
@@ -214,7 +215,10 @@ export async function consult(
 
   for (;;) {
     const raw = await agent.generate(`${C.cyan}${agent.name}${C.reset}`, extra);
-    const o = extractJson(raw);
+    const o = extractJson(raw, how => {
+      if (how === "prose_fallback")
+        log({ t: "prose_reply", character: req.character });
+    });
     const need = String(o.need ?? "").trim();
 
     // -- the character wants a fact it was not given

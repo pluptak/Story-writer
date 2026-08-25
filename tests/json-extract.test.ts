@@ -31,6 +31,17 @@ describe("extractJson", () => {
   it("returns {} rather than throwing on garbage", () => {
     assert.deepEqual(extractJson("no json at all { unclosed"), {});
   });
+
+  it("reports which path a reply took: JSON, prose fallback, or nothing at all", () => {
+    const seen: string[] = [];
+    const r = (raw: string) => { seen.length = 0; return extractJson(raw, how => seen.push(how)); };
+    r(`{"speech":"hi"}`);
+    assert.deepEqual(seen, ["json"]);
+    r(`**speech**: Early enough.`);
+    assert.deepEqual(seen, ["prose_fallback"]);
+    r("no json at all { unclosed");
+    assert.deepEqual(seen, ["failed"]);
+  });
 });
 
 describe("topLevelObjects", () => {

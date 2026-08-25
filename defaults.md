@@ -3,9 +3,11 @@
 `defaults.json` supplies the architect's settings while a new story is being built. It is used only
 before a `story.json` exists; once a story is loaded, that story's `models` and `config` apply.
 
-The file is optional. If it is missing or invalid, the built-in defaults in
-[`engine/story-format.ts`](engine/story-format.ts) are used. A CLI `--model` override takes priority
-over both sources.
+The file is optional. If it is missing, the built-in defaults in
+[`engine/story-format.ts`](engine/story-format.ts) are used silently; if it exists but cannot be
+read or parsed, the built-ins are used anyway **and a warning names the error** — otherwise a
+broken file would silently swap the configured model for the built-in one. A CLI `--model` override
+takes priority over both sources.
 
 ## Settings
 

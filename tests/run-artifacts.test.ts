@@ -274,6 +274,15 @@ describe("LLM interaction log", () => {
     assert.equal(e.reasoning, undefined);
   });
 
+  it("llmLogEntry: broken_off appears only when the reply was salvaged from a broken stream", () => {
+    const salvaged = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "r", 100, null, { brokenOff: true });
+    assert.equal(salvaged.broken_off, true);
+    const clean = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "r", 100, null, { brokenOff: false });
+    assert.equal("broken_off" in clean, false);
+    const bare = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "r", 100, null);
+    assert.equal("broken_off" in bare, false);
+  });
+
   it("llmLogEntry: without meta, finish_reason is null and no reasoning keys appear", () => {
     const e = llmLogEntry({ name: "Anne", model: "m" }, "t", [], "r", 100, null);
     assert.equal(e.finish_reason, null);

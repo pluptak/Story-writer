@@ -53,11 +53,20 @@ export function visibleReply(raw: string): string {
     : stripped;
 }
 
-/** The structured reply in raw model output: the last top-level JSON object, else a labelled-prose fallback, else {}. */
-export function extractJson(raw: string): Record<string, any> {
+/** How a raw reply was read: as JSON (the normal case), via the labelled-prose fallback, or not at
+ *  all — every field came back empty. The latter two are the quiet degradations callers may want
+ *  to surface where they have logging context this leaf module lacks. */
+export type ExtractHow = "json" | "prose_fallback" | "failed";
+
+/** The structured reply in raw model output: the last top-level JSON object, else a labelled-prose fallback, else {}.
+ *  `report`, when given, says which path was taken — "json" included, so a caller cannot miss the others. */
+export function extractJson(raw: string, report?: (how: ExtractHow) => void): Record<string, any> {
   const afterThink = visibleReply(raw);
   const found = topLevelObjects(afterThink);
-  if (found.length) return found[found.length - 1];
+  if (found.length) {
+    report?.("json");
+    return found[found.length - 1];
+  }
 
   // Prose fallback: model wrote labelled lines instead of JSON.
   const prose: Record<string, string> = {};
@@ -67,10 +76,12 @@ export function extractJson(raw: string): Record<string, any> {
   let m: RegExpExecArray | null;
   while ((m = labelRe.exec(afterThink)) !== null) prose[m[1].toLowerCase()] = m[2].trim();
   if (Object.keys(prose).length > 0) {
+    report?.("prose_fallback");
     debugWrite?.(`[extractJson prose fallback] keys=${Object.keys(prose).join(",")}\n`);
     return prose;
   }
 
+  report?.("failed");
   debugWrite?.(`[extractJson failed] stripped=${JSON.stringify(afterThink.slice(0, 200))}\n`);
   return {};
 }

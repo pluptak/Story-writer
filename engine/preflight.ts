@@ -2,8 +2,9 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { restrictionsOf } from "./skills.ts";
-import { LMSTUDIO_MODELS_URL, LMSTUDIO_REST_MODELS_URL } from "./llm-client.ts";
+import { LMSTUDIO_MODELS_URL, LMSTUDIO_REST_MODELS_URL, estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
+import { ENGINE } from "./engine-state.ts";
 import { WARN } from "./warnings.ts";
 
 export async function runDirs(storyDir: string): Promise<string[]> {
@@ -73,6 +74,24 @@ export function contextShortfall(info: ModelInfo | undefined, promptTokens: numb
   if (!info || !info.loaded || !info.loadedContext) return null;
   const needs = promptTokens + replyTokens;
   return needs > info.loadedContext ? { needs, has: info.loadedContext } : null;
+}
+
+/** The scene loop's early-warning version of the architect's fit check (architect.ts fails its
+ *  round outright; a running scene can only be warned about). Estimates the whole outgoing message
+ *  list against the context the model is actually loaded with, reserving room for the reply.
+ *  Returns null when nothing is known or it fits — an unknown model must not warn. */
+export async function contextFit(model: string, msgs: Msg[]):
+  Promise<{ message: string; needs: number; has: number } | null> {
+  const info = await modelInfo();
+  const short = info && contextShortfall(info.get(model),
+    estimateTokens(msgs.map(m => m.content).join("\n")), ENGINE.maxTokens);
+  if (!short) return null;
+  return {
+    message: `${model} is loaded with ${short.has} tokens of context and this call needs about `
+      + `${short.needs} — expect empty completions or truncation; raise its context length in LM Studio`,
+    needs: short.needs,
+    has: short.has,
+  };
 }
 
 let modelInfoCache: { at: number; info: Promise<Map<string, ModelInfo> | null> } | null = null;

@@ -505,6 +505,34 @@ describe("loadDefaults", () => {
     assert.equal(o.models.default, "forced-model");
     assert.equal(o.models.architect, "forced-model");
   });
+
+  it("a file that exists but will not parse warns instead of silently swapping the model", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "defaults-"));
+    try {
+      const bad = join(dir, "defaults.json");
+      await writeFile(bad, "{ this is not json", "utf8");
+      const captured: string[] = [];
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { captured.push(a.map(String).join(" ")); };
+      let d;
+      try { d = await loadDefaults("", bad); } finally { WARN.sink = orig; }
+      assert.equal(captured.length, 1, "exactly one warning");
+      assert.match(captured[0], /defaults\.json could not be read/);
+      assert.ok(d.models.default, "built-in defaults still apply");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("a missing file stays silent — the ordinary first run", async () => {
+    const captured: string[] = [];
+    const orig = WARN.sink;
+    WARN.sink = (...a: unknown[]) => { captured.push(a.map(String).join(" ")); };
+    let d;
+    try {
+      d = await loadDefaults("", join(tmpdir(), "no-such-defaults-here.json"));
+    } finally { WARN.sink = orig; }
+    assert.deepEqual(captured, []);
+    assert.ok(d.models.default);
+  });
 });
 
 // -- THE COMMITTED REFERENCE STORY -----------------------------------------

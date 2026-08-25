@@ -141,7 +141,9 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
 }
 
 // -- DISCOVERY -------------------------------------------------------------
-/** Every story folder under stories/ that has a loadable story.json, sorted by name. */
+/** Every story folder under stories/ that has a loadable story.json, sorted by name. An absent
+ *  stories/ directory is a fresh checkout and stays silent; any other listing failure warns,
+ *  since an empty shelf would otherwise be indistinguishable from "no stories". */
 export async function discoverStories(): Promise<string[]> {
   const choices: string[] = [];
   try {
@@ -150,7 +152,10 @@ export async function discoverStories(): Promise<string[]> {
       if (!d.isDirectory()) continue;
       try { await readFile(joinPath(ROOT, "stories", d.name, "story.json"), "utf8"); choices.push(`stories/${d.name}`); } catch {}
     }
-  } catch {}
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT")
+      emitWarn(`could not list stories/: ${(e as Error).message}`);
+  }
   return choices;
 }
 
@@ -194,10 +199,17 @@ export interface Defaults {
   thinking: { architect: ThinkLevel };
   requestTimeout: number; attempts: number; maxTokens: number; stream: boolean; debug: boolean;
 }
-/** Read defaults.json, falling back to built-ins; `override` (e.g. --model) beats everything in it. */
-export async function loadDefaults(override = ""): Promise<Defaults> {
+/** Read defaults.json, falling back to built-ins; `override` (e.g. --model) beats everything in it.
+ *  A missing file is the ordinary first run and stays silent; a file that exists but cannot be
+ *  read or parsed would otherwise silently swap the configured model for the built-in one, so it
+ *  warns. `path` is injectable so tests can point this at their own file. */
+export async function loadDefaults(override = "", path = joinPath(ROOT, "defaults.json")): Promise<Defaults> {
   let parsed: any = {};
-  try { parsed = JSON.parse(await readFile(joinPath(ROOT, "defaults.json"), "utf8")); } catch {}
+  try { parsed = JSON.parse(await readFile(path, "utf8")); }
+  catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT")
+      emitWarn(`defaults.json could not be read (${(e as Error).message}) — using built-in defaults`);
+  }
   const def = override || parsed.models?.default || BUILTIN_MODEL;
   return {
     models: { default: def, architect: override || parsed.models?.architect || def },
