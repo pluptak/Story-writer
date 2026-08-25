@@ -94,11 +94,14 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
     } catch (e) {
       if (RUN.stopped) throw new StoppedError();
       last = e;
-      // Our own deadline and dropped connections are worth a retry; a 4xx we caused is not.
+      // Our own deadline, dropped connections, and any failure carrying no HTTP status (fetch
+      // itself, a reply body that never parsed) are worth a retry; a 4xx we caused is not.
+      // Body-parse failures arrive already wrapped as retryable LmErrors by complete(), so nothing
+      // needs name-based special-casing here.
       const aborted = ac.signal.aborted;
       const err = e as LmError;
       const retryable = aborted || err.retryable
-        || (err.status === undefined && e instanceof Error && e.name !== "SyntaxError");
+        || (err.status === undefined && e instanceof Error);
       if (aborted) last = new LmError(`${what}: no reply within ${NET.timeoutMs / 1000}s`, undefined, true);
       if (!retryable || attempt >= NET.retries) break;
       const wait = NET.backoffMs * 2 ** attempt + Math.floor(Math.random() * 250);
@@ -129,7 +132,17 @@ async function postChat(body: string, signal: AbortSignal) {
 export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low"): Promise<Completion> {
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal);
-    const data = await res.json() as any;
+    // Read the body as text first: a 200 whose body will not parse (a proxy error page, LM Studio
+    // dying mid-request) is a transient infrastructure failure, so it becomes a retryable LmError
+    // that names the model and carries a snippet -- not an opaque SyntaxError that kills the call
+    // on its first attempt. An empty body lands in the same bucket as an empty completion.
+    const rawBody = await res.text();
+    let data: any;
+    try { data = JSON.parse(rawBody); }
+    catch {
+      throw new LmError(`${model} sent a non-JSON reply: ${rawBody.slice(0, 120) || "(empty body)"}`,
+                        undefined, true);
+    }
     const choice = data.choices?.[0];
     const assembled = assembleReply({
       content: typeof choice?.message?.content === "string" ? choice.message.content : "",

@@ -388,3 +388,63 @@ describe("reply assembly (reasoning vs content, finish_reason)", () => {
     assert.equal(result.reasoningOnly, false);
   });
 });
+
+// -- RETRY CLASSIFICATION ----
+describe("retry classification (non-JSON reply bodies)", () => {
+  const origFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = origFetch;
+    armRun();
+  });
+
+  it("retries a 200 whose body will not parse, then succeeds", async () => {
+    const saved = { timeoutMs: NET.timeoutMs, retries: NET.retries, backoffMs: NET.backoffMs };
+    NET.timeoutMs = 250; NET.retries = 1; NET.backoffMs = 0;
+    armRun();
+    let calls = 0;
+    try {
+      globalThis.fetch = async () => {
+        calls++;
+        if (calls === 1) return new Response("<!doctype html><html>proxy error page</html>",
+                                            { headers: { "content-type": "text/html" } }) as any;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "second try" } }] })) as any;
+      };
+      const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
+      assert.equal(calls, 2, "the unparseable body spent a retry instead of killing the call");
+      assert.equal(result.text, "second try");
+    } finally {
+      Object.assign(NET, saved);
+    }
+  });
+
+  it("gives up after retries on a persistently non-JSON reply, naming the model and showing a snippet", async () => {
+    const saved = { timeoutMs: NET.timeoutMs, retries: NET.retries, backoffMs: NET.backoffMs };
+    NET.timeoutMs = 250; NET.retries = 0; NET.backoffMs = 0;
+    armRun();
+    try {
+      globalThis.fetch = async () => new Response("<!doctype html><html>gateway timeout page</html>",
+                                                  { headers: { "content-type": "text/html" } }) as any;
+      await assert.rejects(
+        () => complete("test-model", [{ role: "user", content: "test" }], 0.8),
+        (e: Error) => /test-model sent a non-JSON reply/.test(e.message)
+          && e.message.includes("gateway timeout page"));
+    } finally {
+      Object.assign(NET, saved);
+    }
+  });
+
+  it("treats an empty 200 body like an empty completion — retryable, not fatal", async () => {
+    const saved = { timeoutMs: NET.timeoutMs, retries: NET.retries, backoffMs: NET.backoffMs };
+    NET.timeoutMs = 250; NET.retries = 0; NET.backoffMs = 0;
+    armRun();
+    try {
+      globalThis.fetch = async () => new Response("", { headers: { "content-type": "application/json" } }) as any;
+      await assert.rejects(
+        () => complete("test-model", [{ role: "user", content: "test" }], 0.8),
+        (e: Error) => /empty body/.test(e.message));
+    } finally {
+      Object.assign(NET, saved);
+    }
+  });
+});
