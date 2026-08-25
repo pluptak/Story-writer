@@ -62,9 +62,9 @@ export type RunEvent =
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
   | { t: "schema_mismatch"; call: "judge" | "clarify"; character: string; chapter: number }
-  | { t: "judge_failed"; character: string; chapter: number }
-  | { t: "lint_failed"; chapter: number }
-  | { t: "batch_judge_failed"; chapter: number }
+  | { t: "judge_failed"; character: string; why: string; chapter: number }
+  | { t: "lint_failed"; why: string; chapter: number }
+  | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
   | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
@@ -354,7 +354,7 @@ export async function writeScene(
           flagged = String(lj.why ?? "").trim() || "narration was flagged";
         }
       } catch (e) {
-        log({ t: "lint_failed", chapter });
+        log({ t: "lint_failed", why: (e as Error).message, chapter });
         console.log(`${C.yellow}(narration lint call failed: ${(e as Error).message} — accepting)${C.reset}`);
       }
 
@@ -463,7 +463,7 @@ export async function writeScene(
               [{ role: "user", content: P.batchJudgeRequest(volunteered) }]);
             promotable = parseBatchVerdict(extractJson(raw));
           } catch (e) {
-            log({ t: "batch_judge_failed", chapter });
+            log({ t: "batch_judge_failed", why: (e as Error).message, chapter });
             console.log(`${C.red}(reaction judge failed: ${(e as Error).message} — no deeds promoted)${C.reset}`);
           }
         }
@@ -528,7 +528,7 @@ export async function writeScene(
                               { role: "user", content: P.VERDICT_ONLY });
             }
           } catch (e) {
-            log({ t: "judge_failed", character: def.name, chapter });
+            log({ t: "judge_failed", character: def.name, why: (e as Error).message, chapter });
             console.log(`${C.red}(judge call failed: ${(e as Error).message} — accepting)${C.reset}`);
           }
           // A reply that never carried a verdict is not a judgement; taking "accept" is the fallback,

@@ -377,14 +377,14 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"draft"; step; prose; words; consulting; salvaged }
   { t:"bad_consult"; character; why }
   { t:"schema_mismatch"; call:"judge"|"clarify"; character }
-  { t:"judge_failed"; character }                — the judge call itself threw; the answer was
+  { t:"judge_failed"; character; why }            — the judge call itself threw; the answer was
                                                    accepted with no judgement made, not defaulted-to-accept
   { t:"judge"; character; verdict; note; attempt }
   { t:"accept"; character; attempt; speech; action }
   { t:"retry"; character; attempt; situation; question }
   { t:"budget"; added; budget }
   { t:"forced_end"; words; target }              — hard length cap hit; the prose was cut off
-  { t:"lint_failed" }                            — the narration lint call itself threw; the piece
+  { t:"lint_failed"; why }                        — the narration lint call itself threw; the piece
                                                    was accepted unchecked
   { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
                                                    the one redraft happened or it was logged and kept
@@ -395,7 +395,7 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"fanout_skip"; character; why }            — one reactor in a fan-out was skipped: unknown,
                                                    gone from the scene, or its consult call threw
   { t:"reaction"; character; thought; action }   — an isolated per-reactor consult's answer
-  { t:"batch_judge_failed" }                     — the reaction batch judge call itself threw;
+  { t:"batch_judge_failed"; why }                 — the reaction batch judge call itself threw;
                                                    no volunteered deed from this beat was promoted
   { t:"promote"; character; action }             — at most one deed promoted into the writer's draft
   { t:"exit"; character; pov }                   — a character left the cast mid-scene;

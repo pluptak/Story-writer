@@ -47,9 +47,9 @@ export function build(store) {
       case "exit": blocks.push({ kind:"exit", seq:e.seq, character:e.character, pov:!!e.pov }); break;
       case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
       case "schema_mismatch": blocks.push({ kind:"note", seq:e.seq, text:`the ${e.call} call for ${e.character} came back in the wrong shape — asked again` }); break;
-      case "judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the judge call for ${e.character} never came back — accepted with no judgement made` }); break;
-      case "lint_failed": blocks.push({ kind:"note", seq:e.seq, text:`the narration lint call never came back — this piece was accepted unchecked` }); break;
-      case "batch_judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the reaction judge call never came back — no volunteered deed from this beat was promoted` }); break;
+      case "judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the judge call for ${e.character} never came back (${e.why}) — accepted with no judgement made` }); break;
+      case "lint_failed": blocks.push({ kind:"note", seq:e.seq, text:`the narration lint call never came back (${e.why}) — this piece was accepted unchecked` }); break;
+      case "batch_judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the reaction judge call never came back (${e.why}) — no volunteered deed from this beat was promoted` }); break;
       case "fanout_skip": blocks.push({ kind:"note", seq:e.seq, text:`${e.character} was skipped in the group reaction — ${e.why}` }); break;
       case "model_changed": blocks.push({ kind:"note", seq:e.seq, text:`model switched to ${e.model}` }); break;
       case "forced_end": blocks.push({ kind:"note", seq:e.seq, text:`scene forced to a close — ${e.words} words against a ${e.target}-word target` }); break;

@@ -490,7 +490,9 @@ describe("the narration lint", () => {
       assert.equal(r.done, true);
       assert.deepEqual(r.prose, [prose], "the writer's only draft is accepted as-is");
       assert.ok(!events.some(e => e.t === "narration_flag"), "a lint that never answers is never a flag");
-      assert.ok(events.some(e => e.t === "lint_failed"), "the outage itself is still recorded");
+      const lintFailed = events.find(e => e.t === "lint_failed") as any;
+      assert.ok(lintFailed, "the outage itself is still recorded");
+      assert.match(lintFailed.why, /simulated lint outage/);
 
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1);
@@ -562,6 +564,7 @@ describe("the judge", () => {
       const failed = events.find(e => e.t === "judge_failed") as any;
       assert.ok(failed, "judge_failed was logged");
       assert.equal(failed.character, "MERRITT");
+      assert.match(failed.why, /simulated judge outage/);
 
       const judged = events.find(e => e.t === "judge") as any;
       assert.equal(judged.verdict, "accept", "a failed judge call still defaults to accept");
