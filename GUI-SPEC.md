@@ -112,7 +112,10 @@ picker itself would accept, not a raw filesystem path. `/chapter` also validates
 written chapters rather than trusting it.
 
 The two `/runs/llm` routes read `out/<id>/llm/<agent>.jsonl`, one file per agent, each line
-`{ ts, role, agent, model, prompt, response }`. `models` is a list because `/model` can swap a model
+`{ ts, role, agent, model, prompt, response, durationMs, usage, finish_reason }` — plus `reasoning`
+(the model's chain-of-thought) when the server delivered it as a field separate from the answer,
+and `reasoningOnly: true` when the whole reply arrived through that channel instead. `models` is a
+list because `/model` can swap a model
 mid-run. **`file` is never validated by the route** — it is passed to the engine, which serves only
 what its own directory listing named, so the allowlist is what is actually on disk rather than a
 pattern. A run killed before its first generation lists nothing rather than failing. Both are
@@ -362,6 +365,8 @@ ConsultEvent (engine/consult.ts:80):
   { t:"consult"; character; situation; question; wants; attempt }
   { t:"need"; character; question }
   { t:"clarify"; character; question; answer }
+  { t:"clarify_failed"; character; question }    — the call to answer this never came back;
+                                                   no slot spent, nothing fabricated
   { t:"forced"; character }
   { t:"repair"; character; why }
   { t:"skill_flag"; character; claimed[]; unknown[] }
@@ -372,18 +377,26 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"draft"; step; prose; words; consulting; salvaged }
   { t:"bad_consult"; character; why }
   { t:"schema_mismatch"; call:"judge"|"clarify"; character }
+  { t:"judge_failed"; character }                — the judge call itself threw; the answer was
+                                                   accepted with no judgement made, not defaulted-to-accept
   { t:"judge"; character; verdict; note; attempt }
   { t:"accept"; character; attempt; speech; action }
   { t:"retry"; character; attempt; situation; question }
   { t:"budget"; added; budget }
   { t:"forced_end"; words; target }              — hard length cap hit; the prose was cut off
+  { t:"lint_failed" }                            — the narration lint call itself threw; the piece
+                                                   was accepted unchecked
   { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
                                                    the one redraft happened or it was logged and kept
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
   { t:"model_changed"; model }
   { t:"reaction_fanout"; reactors[]; situation } — group reactions fanned out to these consults
+  { t:"fanout_skip"; character; why }            — one reactor in a fan-out was skipped: unknown,
+                                                   gone from the scene, or its consult call threw
   { t:"reaction"; character; thought; action }   — an isolated per-reactor consult's answer
+  { t:"batch_judge_failed" }                     — the reaction batch judge call itself threw;
+                                                   no volunteered deed from this beat was promoted
   { t:"promote"; character; action }             — at most one deed promoted into the writer's draft
   { t:"exit"; character; pov }                   — a character left the cast mid-scene;
                                                    `pov` true means they were POV and the chapter ends
@@ -397,8 +410,13 @@ for that vocabulary, so the API and the model prompt can never drift apart).
 
 `schema_mismatch` says an author-side agent replied in a shape that is not the one its call asked for
 — a judge that wrote prose, a clarifier that returned a verdict. The call is made once more before
-falling back to a default, so the event is a warning about model behaviour, not a failed run. It is
-the only signal that a judgement was defaulted rather than made; see [Writer.MD](Writer.MD).
+falling back to a default, so the event is a warning about model behaviour, not a failed run.
+
+`clarify_failed`, `judge_failed`, `lint_failed`, `batch_judge_failed` and `fanout_skip` are the other
+half of that same signal: the call didn't come back wrong-shaped, it didn't come back at all — LM
+Studio unreachable, timed out, or the model errored outright. Each names exactly where an
+author-side helper's silent fail-open default was taken, so a run can be told apart from one where
+every judgement actually happened; see [Writer.MD](Writer.MD).
 
 ## Replacing the GUI
 

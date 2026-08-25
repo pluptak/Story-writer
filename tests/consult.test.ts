@@ -62,6 +62,18 @@ describe("consult", () => {
     assert.equal(reply.action, "I decide.");
   });
 
+  it("an unreachable clarifier is told the author is done, not fed a fabricated answer", async () => {
+    const { reply, events, agent } = await run([
+      `{"need":"one?"}`, `{"need":"two?"}`, `{"action":"I go anyway.","skills_used":["movement"]}`,
+    ], 2, async () => null);
+    assert.equal(agent.calls, 3, "no wasted retry of the dead clarifier on the second need");
+    assert.equal(reply.clarifications.length, 0, "a failed clarify spends no clarification slot");
+    assert.equal(reply.forced, true);
+    assert.equal(reply.action, "I go anyway.");
+    assert.deepEqual(events.filter(e => e.t === "clarify_failed").length, 1);
+    assert.ok(!events.some(e => e.t === "clarify"), "nothing was fabricated as an answer");
+  });
+
   it("re-asks once when a skill is claimed that the character does not have", async () => {
     const { reply, events, agent } = await run([
       `{"action":"I pick the lock.","skills_used":["lockpicking"]}`,

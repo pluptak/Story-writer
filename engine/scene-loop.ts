@@ -62,6 +62,10 @@ export type RunEvent =
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
   | { t: "schema_mismatch"; call: "judge" | "clarify"; character: string; chapter: number }
+  | { t: "judge_failed"; character: string; chapter: number }
+  | { t: "lint_failed"; chapter: number }
+  | { t: "batch_judge_failed"; chapter: number }
+  | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
   | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string; chapter: number }
@@ -224,7 +228,7 @@ export async function writeScene(
       }
     } catch (e) {
       console.log(`${C.red}(clarification call failed: ${(e as Error).message})${C.reset}`);
-      return "";
+      return null;
     }
     cl.hear(P.characterAsks(r.character, q));
     cl.said(JSON.stringify({ answer: a }));
@@ -350,6 +354,7 @@ export async function writeScene(
           flagged = String(lj.why ?? "").trim() || "narration was flagged";
         }
       } catch (e) {
+        log({ t: "lint_failed", chapter });
         console.log(`${C.yellow}(narration lint call failed: ${(e as Error).message} — accepting)${C.reset}`);
       }
 
@@ -419,7 +424,11 @@ export async function writeScene(
           if (RUN.stopped) break;
           const def = defOf(req.character);
           const persistent = agents.get(req.character.toLowerCase());
-          if (!def || !persistent || !isActive(def.name)) continue;  // unknown or gone — skip quietly
+          if (!def || !persistent || !isActive(def.name)) {
+            log({ t: "fanout_skip", character: req.character,
+                  why: !def ? "no such character" : "left the scene", chapter });
+            continue;   // unknown or gone — skip quietly
+          }
           let reply: ConsultReply;
           try {
             // A reaction is not retried here; its own skill repair is guard enough for the thought.
@@ -429,6 +438,7 @@ export async function writeScene(
               log: e => { if (e.t !== "consult" && e.t !== "answer") log(e); },
             });
           } catch (e) {
+            log({ t: "fanout_skip", character: def.name, why: (e as Error).message, chapter });
             console.log(`${C.red}${def.name}: reaction failed (${(e as Error).message}).${C.reset}`);
             continue;
           }
@@ -453,6 +463,7 @@ export async function writeScene(
               [{ role: "user", content: P.batchJudgeRequest(volunteered) }]);
             promotable = parseBatchVerdict(extractJson(raw));
           } catch (e) {
+            log({ t: "batch_judge_failed", chapter });
             console.log(`${C.red}(reaction judge failed: ${(e as Error).message} — no deeds promoted)${C.reset}`);
           }
         }
@@ -517,6 +528,7 @@ export async function writeScene(
                               { role: "user", content: P.VERDICT_ONLY });
             }
           } catch (e) {
+            log({ t: "judge_failed", character: def.name, chapter });
             console.log(`${C.red}(judge call failed: ${(e as Error).message} — accepting)${C.reset}`);
           }
           // A reply that never carried a verdict is not a judgement; taking "accept" is the fallback,

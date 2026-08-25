@@ -182,14 +182,16 @@ export type ConsultEvent =
   | { t: "consult"; character: string; situation: string; question: string; wants: string; attempt: number }
   | { t: "need"; character: string; question: string }
   | { t: "clarify"; character: string; question: string; answer: string }
+  | { t: "clarify_failed"; character: string; question: string }
   | { t: "forced"; character: string }
   | { t: "repair"; character: string; why: string }
   | { t: "skill_flag"; character: string; claimed: string[]; unknown: string[] }
   | { t: "answer"; character: string; thought: string; speech: string; action: string;
       note: string; skills_used: string[]; unverified: string[] };
 
-/** How the caller answers a character's request for a missing fact. */
-export type Clarifier = (question: string, req: ConsultRequest) => Promise<string>;
+/** How the caller answers a character's request for a missing fact. `null` means the call to answer
+ *  it never came back — unreachable, not "answered with nothing" — and costs no clarification slot. */
+export type Clarifier = (question: string, req: ConsultRequest) => Promise<string | null>;
 
 const asList = (v: unknown): string[] =>
   Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean)
@@ -217,13 +219,24 @@ export async function consult(
 
     // -- the character wants a fact it was not given
     if (need) {
-      if (clarifications.length < opts.clarifications) {
+      // `!forced` gates this branch too: a clarifier that came back null has already moved the
+      // consult onto the forced/repaired ladder, and must not be tried again for the same character
+      // just because the budget was never spent — an unreachable clarifier stays unreachable.
+      if (!forced && clarifications.length < opts.clarifications) {
         log({ t: "need", character: req.character, question: need });
-        const answer = (await opts.clarify(need, req)).trim() || "(no answer)";
-        clarifications.push({ question: need, answer });
-        log({ t: "clarify", character: req.character, question: need, answer });
+        const answer = await opts.clarify(need, req);
+        if (answer === null) {
+          forced = true;
+          log({ t: "clarify_failed", character: req.character, question: need });
+          extra.push({ role: "assistant", content: JSON.stringify({ need }) },
+                     { role: "user", content: P.AUTHOR_DONE_ANSWERING });
+          continue;
+        }
+        const trimmed = answer.trim() || "(no answer)";
+        clarifications.push({ question: need, answer: trimmed });
+        log({ t: "clarify", character: req.character, question: need, answer: trimmed });
         extra.push({ role: "assistant", content: JSON.stringify({ need }) },
-                   { role: "user", content: P.authorAnswers(answer) });
+                   { role: "user", content: P.authorAnswers(trimmed) });
         continue;
       }
       // An author who has stopped answering is a fact about the situation, not a reason to stall.

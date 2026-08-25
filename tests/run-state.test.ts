@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { loadStory } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
-import { wrapWriter, writerCast, runChapter, writeScene, type RunEvent } from "../engine/scene-loop.ts";
+import { wrapWriter, writerCast, runChapter, writeScene, newCharacterAgent, type RunEvent } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
 import type { Skill } from "../engine/skills.ts";
 import { complete, NET } from "../engine/llm-client.ts";
@@ -490,11 +490,85 @@ describe("the narration lint", () => {
       assert.equal(r.done, true);
       assert.deepEqual(r.prose, [prose], "the writer's only draft is accepted as-is");
       assert.ok(!events.some(e => e.t === "narration_flag"), "a lint that never answers is never a flag");
+      assert.ok(events.some(e => e.t === "lint_failed"), "the outage itself is still recorded");
 
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1);
 
       assert.equal(calls().writerCall, 1, "the lint's own failure never costs a redraft");
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      NET.retries = origRetries;
+      armRun();
+      resetLive();
+    }
+  });
+});
+
+// -- THE JUDGE ----------------------------------------------------------
+describe("the judge", () => {
+  it("accepts the answer unjudged and logs judge_failed when the judge call itself fails", async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+
+    const agents = new Map(sc.characters.map(def =>
+      [def.name.toLowerCase(), newCharacterAgent(def, sc.scenes[0].place, sc.thinking.character)]));
+
+    const draft = {
+      prose: "Riven turns to Merritt at the door.",
+      consult: {
+        character: "MERRITT",
+        situation: "Riven turns to face them, asking plainly what they mean to do about the door.",
+        question: "Do you open the door, or refuse?",
+        wants: "decision",
+      },
+      scene_done: true,
+    };
+
+    const fetchMock = (async (_url: string, init: any) => {
+      const body = JSON.parse(String(init.body));
+      const sys = String(body.messages?.[0]?.content ?? "");
+      if (sys.includes("CHECKING ONE ANSWER")) throw new Error("simulated judge outage");
+      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE"))
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ok: true }) } }] }));
+      if (sys.includes("YOU ARE THE AUTHOR. You are writing one scene"))
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(draft) } }] }));
+      // MERRITT's own agent, asked for a decision
+      const content = JSON.stringify({ speech: "I open it.", skills_used: [] });
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
+    }) as any;
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    const origRetries = NET.retries;
+    ENGINE.stream = false;
+    NET.retries = 0;   // don't let the judge's own retry/backoff slow this down
+    globalThis.fetch = fetchMock;
+
+    armRun();
+    try {
+      const r = await writeScene(
+        sc.scenes[0], 1, sc.characters, agents,
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log,
+      );
+
+      assert.equal(r.done, true);
+
+      const failed = events.find(e => e.t === "judge_failed") as any;
+      assert.ok(failed, "judge_failed was logged");
+      assert.equal(failed.character, "MERRITT");
+
+      const judged = events.find(e => e.t === "judge") as any;
+      assert.equal(judged.verdict, "accept", "a failed judge call still defaults to accept");
+
+      const accepted = events.find(e => e.t === "accept") as any;
+      assert.ok(accepted, "MERRITT's answer reached the page despite the judge outage");
+      assert.equal(accepted.speech, "I open it.");
     } finally {
       globalThis.fetch = origFetch;
       ENGINE.stream = origStream;

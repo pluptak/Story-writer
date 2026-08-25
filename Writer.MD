@@ -33,6 +33,15 @@ request with prose often enough to matter, and a reply with no `verdict` used to
 *accept*. A `schema_mismatch` event now records any such reply, and the call is made once more before
 any default is taken.
 
+That covers a reply in the wrong shape. A call that never comes back at all — LM Studio unreachable,
+the request timing out, the model erroring outright — still takes the same fail-open default (an
+unusable answer is accepted, an unlintable piece goes to the page unchecked, a clarifier that cannot
+be reached is treated the same as an author who has stopped answering), but records it under its own
+event instead: `judge_failed`, `lint_failed`, `batch_judge_failed`, `clarify_failed`, `fanout_skip`.
+Distinguishing the two matters because they say different things about the run — one is a model
+occasionally getting the shape wrong, the other is the LM Studio connection itself dropping out from
+under a chapter mid-write.
+
 | | history | temperature | why |
 | --- | --- | --- | --- |
 | judge | none — built per call | `0.3` | it is given the situation, the question, the answer and the cast's limits; a verdict needs no memory, and consistency beats invention |
