@@ -14,7 +14,8 @@ import {
 } from "../engine/story-format.ts";
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
 import { architectNextChapter } from "../prompts.ts";
-import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect } from "../engine/architect.ts";
+import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits } from "../engine/architect.ts";
+import { Agent } from "../engine/agent.ts";
 import { LIVE } from "../live.ts";
 import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
 import { HttpError, readJsonBody } from "../server/http-util.ts";
@@ -635,6 +636,15 @@ describe("NextChapterSession", () => {
     assert.equal((await s.say("well?")).kind, "failed");   // the script is spent, so the call throws
   });
 
+  it("takes a reply written entirely in words as the architect asking", async () => {
+    // Not JSON.stringify'd: the point is a model that never produced an object at all.
+    const s = new NextChapterSession(new ScriptedAgent(["Which scene should I fill the details for?"]),
+                                     SCAFFOLD_DEFAULTS, "stories/doorway", spec, written);
+    const r = await s.propose();
+    assert.equal(r.kind, "question");
+    assert.equal(s.pendingAsk, "Which scene should I fill the details for?");
+  });
+
   it("targets the chapter being prepared when filling gaps and verifying, not an earlier scene", async () => {
     const s = handoff([{ edits: [{ field: "characters.ASTER.goal", value: "Get off the rock." }] },
                        { edits: [] }, { edits: [] }]);
@@ -774,5 +784,41 @@ describe("openNextChapter", () => {
                 "the handoff sends the real story every round; the example is the format said twice");
       assert.ok(s.architect.system.length < scaffolding.system.length);
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- STATELESS SUGGEST -------------------------------------------------------
+describe("suggestEdits", () => {
+  const spec = normalizeSpec(STORY).spec;
+
+  it("applies the edits the architect proposed", async () => {
+    const orig = Agent.prototype.generate;
+    Agent.prototype.generate = async () => JSON.stringify(
+      { edits: [{ field: "scene.question", value: "Does Aster sign the false log?" }], ask: "", note: "" });
+    try {
+      const r = await suggestEdits(SCAFFOLD_DEFAULTS, spec, "sharpen the question");
+      assert.equal(r.kind, "edits");
+      assert.deepEqual((r as { applied: { field: string }[] }).applied.map(a => a.field), ["scene.question"]);
+    } finally { Agent.prototype.generate = orig; }
+  });
+
+  it("takes a reply written entirely in words as the architect asking", async () => {
+    const orig = Agent.prototype.generate;
+    Agent.prototype.generate = async () => "Which scene should I fill the details for?";
+    try {
+      const r = await suggestEdits(SCAFFOLD_DEFAULTS, spec, "fill the details for scene");
+      assert.equal(r.kind, "question");
+      assert.equal((r as { ask: string }).ask, "Which scene should I fill the details for?");
+    } finally { Agent.prototype.generate = orig; }
+  });
+
+  it("still fails a reply that produced JSON of the wrong shape", async () => {
+    const orig = Agent.prototype.generate;
+    Agent.prototype.generate = async () => JSON.stringify({ note: "an edits object, not a list" });
+    try {
+      const r = await suggestEdits(SCAFFOLD_DEFAULTS, spec, "do the thing");
+      assert.equal(r.kind, "failed");
+      assert.match((r as { error: string }).error, /neither edits nor a question/);
+    } finally { Agent.prototype.generate = orig; }
   });
 });

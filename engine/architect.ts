@@ -6,7 +6,7 @@ import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
 import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
-import { extractJson } from "./json-extract.ts";
+import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
@@ -86,22 +86,34 @@ function archLog(...parts: unknown[]) {
   if (architectDebugLog) { try { appendFileSync(architectDebugLog, line + "\n"); } catch { /* ignore */ } }
 }
 
-/** One exchange with the architect: say it, take the reply, and pull JSON out of it. */
+/** One exchange with the architect: say it, take the reply, and pull JSON out of it. `raw` is what
+ *  the reply says once thinking is stripped — the fallback when no structured reply did. */
 async function architectRound(agent: Agent, message: string):
-  Promise<{ out: Record<string, any> } | { error: string }> {
+  Promise<{ out: Record<string, any>; raw: string } | { error: string }> {
   agent.hear(message);
   archLog(`─── PROMPT (${agent.model}) ───\n${message}`);
   try {
     const reply = await agent.generate(`${C.magenta}ARCHITECT${C.reset}`);
     agent.said(reply.trim());
     const out = extractJson(reply);
+    const raw = visibleReply(reply);
     archLog(`─── RAW REPLY ───\n${reply}`);
     archLog("─── EXTRACTED JSON ───", out);
-    return { out };
+    return { out, raw };
   } catch (e) {
     archLog(`─── ERROR ─── ${(e as Error).message}`);
     return { error: (e as Error).message };
   }
+}
+
+/** What a reply with neither edits nor an ask actually said. A reply that arrived entirely in
+ *  words -- no JSON object anywhere in it -- was the architect talking, and that talk is its
+ *  question; only a reply that tried JSON and missed shape stays "nothing". */
+function wordsOrNothing(r: { out: Record<string, any>; raw: string }): { ask: string } | { why: string } {
+  const ask = String(r.out.ask ?? "").trim();
+  if (ask) return { ask };
+  if (!topLevelObjects(r.raw).length && r.raw.trim()) return { ask: r.raw.trim() };
+  return { why: "the reply was neither edits nor a question" };
 }
 
 function withAsk(out: Record<string, any>): string {
@@ -563,12 +575,13 @@ export class NextChapterSession {
     return { edits: kept, refused };
   }
 
-  private take(r: { out: Record<string, any> } | { error: string }): ScaffoldRound {
+  private take(r: { out: Record<string, any>; raw: string } | { error: string }): ScaffoldRound {
     if ("error" in r) return { kind: "failed", error: r.error };
-    const back = String(r.out.ask ?? "").trim();
-    if (back && !r.out.edits) { this.pendingAsk = back; return { kind: "question", ask: back }; }
-    if (!Array.isArray(r.out.edits))
-      return { kind: "nothing", why: "the reply was neither edits nor a question" };
+    if (!Array.isArray(r.out.edits)) {
+      const said = wordsOrNothing(r);
+      if ("ask" in said) { this.pendingAsk = said.ask; return { kind: "question", ask: said.ask }; }
+      return { kind: "nothing", why: said.why };
+    }
 
     const guarded = this.refuse(r.out.edits);
     const e = applyEdits(this.spec, { edits: guarded.edits });
@@ -675,10 +688,11 @@ export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
   const r = await architectRound(agent, prompt);
   if ("error" in r) return { kind: "failed", error: r.error };
 
-  const back = String(r.out.ask ?? "").trim();
-  if (back && !r.out.edits) return { kind: "question", ask: back };
-  if (!Array.isArray(r.out.edits))
-    return { kind: "failed", error: "the reply contained neither edits nor a question" };
+  const said = wordsOrNothing(r);
+  if (!Array.isArray(r.out.edits)) {
+    if ("ask" in said) return { kind: "question", ask: said.ask };
+    return { kind: "failed", error: said.why };
+  }
 
   const e = applyEdits(spec, r.out);
   return {

@@ -283,6 +283,16 @@ describe("applyEdits", () => {
     assert.deepEqual(r.spec, spec);
   });
 
+  it("reads the JSON-path bracket spellings models drift into, as zero-based indices", () => {
+    const r = quietSync(() => applyEdits(spec, { edits: [
+      { field: "scene[0].place", value: "A stairwell" },
+      { field: "characters[MERRITT].goal", value: "Beat her to the door." },
+    ] }));
+    assert.equal(r.spec.scenes[0].place, "A stairwell");
+    assert.equal(r.spec.characters[1].goal, "Beat her to the door.");
+    assert.deepEqual(r.ignored, []);
+  });
+
   it("adds and removes characters, and refuses the impossible ones", () => {
     const added = edit("add_character", { name: "TOVA", persona: "A cook.", knows: "", skills: [], restrictions: ["hearing"] });
     assert.deepEqual(added.spec.characters.map(c => c.name), ["RIVEN", "MERRITT", "TOVA"]);

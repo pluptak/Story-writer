@@ -147,6 +147,17 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
 }
 
 /** Apply a list of field edits to a spec without mutating the input; report what was applied and what was ignored. */
+
+/** Models drift from the named-field format: `scene[0].place` instead of `scene_1.place`, or
+ *  `characters[VORA].goal` instead of `characters.VORA.goal`. Bring the common shapes home before
+ *  matching — an edit refused over spelling the engine can read is an edit lost. Bracket numbers
+ *  count from zero, as they do in JSON paths, so scene[0] is scene_1. */
+function canonicalField(field: string): string {
+  return field
+    .replace(/\[(\d+)\]/g, (_, n: string) => `_${Number(n) + 1}`)
+    .replace(/\[([^\]\d][^\]]*)\]/g, ".$1");
+}
+
 export function applyEdits(spec: StorySpec, raw: any): {
   spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; problems: string[];
 } {
@@ -187,7 +198,8 @@ export function applyEdits(spec: StorySpec, raw: any): {
   };
 
   for (const e of edits) {
-    const field = String(e?.field ?? "").trim();
+    const raw = String(e?.field ?? "").trim();
+    const field = canonicalField(raw);
     const value = e?.value;
     const scalar = () => String(value ?? "").trim();
 
@@ -423,7 +435,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
-    ignored.push(field ? `unknown field "${field}"` : "an edit with no field");
+    ignored.push(field ? `unknown field "${raw}"` : "an edit with no field");
   }
 
   const { spec: next, problems } = normalizeSpec(draft);

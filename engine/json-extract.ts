@@ -45,13 +45,17 @@ const PROSE_KEYS = ["prose", "question", "situation", "need", "speech", "action"
                     "verdict", "note", "answer", "skills_used", "character"] as const;
 const PROSE_ALT = PROSE_KEYS.join("|");
 
-/** The structured reply in raw model output: the last top-level JSON object, else a labelled-prose fallback, else {}. */
-export function extractJson(raw: string): Record<string, any> {
+/** The reply as the reader should see it: <think> blocks removed. What is left when no JSON did. */
+export function visibleReply(raw: string): string {
   const stripped = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  const afterThink = stripped.includes("</think>")
+  return stripped.includes("</think>")
     ? stripped.slice(stripped.lastIndexOf("</think>") + 8).trim()
     : stripped;
+}
 
+/** The structured reply in raw model output: the last top-level JSON object, else a labelled-prose fallback, else {}. */
+export function extractJson(raw: string): Record<string, any> {
+  const afterThink = visibleReply(raw);
   const found = topLevelObjects(afterThink);
   if (found.length) return found[found.length - 1];
 

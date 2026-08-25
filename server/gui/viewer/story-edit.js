@@ -358,7 +358,7 @@ export function storyEditHtml() {
     <details class="editor-section" data-tid="edit.section"${APP.editSuggestOpen ? " open" : ""}><summary>Ask the architect</summary>
       <div id="edit-suggest-panel" class="${suggestOpen.trim()}">
         <p class="hint" style="margin-bottom:8px">Tell the architect what to change. It will propose edits that you can review and apply.</p>
-        <textarea id="edit-suggest-text" rows="3" placeholder="e.g. Make Aster more reluctant to admit the truth…">${esc(APP.editSuggestText || "")}</textarea>
+        <div class="field"><textarea id="edit-suggest-text" rows="3" placeholder="e.g. Make Aster more reluctant to admit the truth…">${esc(APP.editSuggestText || "")}</textarea></div>
         <div class="btns" style="margin-top:6px">
           <button class="btn" id="edit-suggest-btn"${APP.editSuggestBusy ? " disabled" : ""}>${APP.editSuggestBusy ? "thinking…" : "suggest"}</button>
         </div>
