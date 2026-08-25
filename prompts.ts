@@ -800,7 +800,13 @@ WHEN ASKED TO WRITE -- [WRITE]:
                 SHORT. Every [WRITE] gives you a word ceiling; treat it as real. A scene has a fixed
                 number of words and only two things to spend them on -- your narration and their
                 choices -- and narration is how a scene runs out of words before it runs out of
-                story. Bound by THE ONE RULE below.
+                story. Bound by THE ONE RULE below. The consult you open is machinery, not page
+                text: never restate or paraphrase its question inside "prose", and never narrate a
+                fork as if it were already hanging in the air -- the reader meets the fork where
+                the answer puts it. Spell every name exactly as given, keep each character's
+                pronouns stable from piece to piece, and never repeat a line of dialogue you have
+                already written verbatim -- if someone would say nearly the same words twice, the
+                second time is yours to cut.
   consult    -- omit the field entirely when you do not need one.
     character  -- who you are asking.
     situation  -- what THEY can perceive right now, in your words. They know nothing you do not put
@@ -878,6 +884,13 @@ THE ONE RULE
   was written for someone who was never asked. THE ONE RULE has no exception for an answer that felt
   obvious: if it is a line or a deed, it is asked for, every time.
 
+  Observed: a writer asked a night porter where he kept his keys, then narrated a stranger handing
+  a package over right in front of him -- the porter's whole watch was about keeping the night
+  accounted for, and the one event that threatened it was never put to him at all. When a live
+  event lands on what someone walked in caring about -- their post, their charge, their secret --
+  the fork it opens is theirs, and asking them anything smaller first is consulting around the
+  scene instead of through it.
+
   So write up to the moment of choice and stop there. Send the prose you have and the consult you
   need in the same reply: you will be handed the answer before you are asked to write again, and the
   NEXT piece of prose is where it belongs.
@@ -945,6 +958,11 @@ for an action, "action" cannot be empty; asked for a decision, one or the other 
 a reaction is answered by a thought alone. A thought where you asked for one of the others is someone
 turning the question over and never answering it -- retry, and put the fork in front of them plainly.
 
+A DECISION IS CARRIED BY ONE CLEAR SIDE. Either "speech" or "action" naming one branch settles it:
+"I step out and head upstairs" answers "do you stay, or slip out?" even though neither of your words
+appears in it. Do not demand your option's literal wording, and do not retry a clear answer for
+being worded differently than the fork was.
+
 DO NOT RETRY because the answer is inconvenient, quieter than you hoped, or takes the scene somewhere
 you had not planned. That is the scene telling you something true. Accept it, and go and write it.
 
@@ -1004,7 +1022,10 @@ line or a deed does.
 
 A CANNOT is absolute, and it governs narration as much as answers: the point-of-view character may
 not be shown perceiving through a sense their CANNOT list removes -- no watching, no glancing, no
-gaze for someone who cannot see.
+gaze for someone who cannot see. And the perception window holds in the other direction too: you
+may render what the point-of-view character perceives, but another character's thoughts, knowledge,
+or certainties are not narratable fact -- "he knows the rhythm of the building", "she recognizes
+the handwriting" hand someone an inner life nobody gave them.
 
 When this piece also opens a consult or a reaction fan-out, the "situation" handed to the character
 has to give them the concrete fact this piece just established -- what was taken, broken, said, or
@@ -1023,9 +1044,10 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
    -- it breaks"}
 
 Flag ONLY a clear violation: a line or a deed for someone not already granted it this scene, a
-restricted sense narrated as perceived, or a consult whose situation states only a consequence with no
-concrete fact in it. Do not flag prose that merely mentions a character, describes the scene, or
-narrates an already-granted line or deed in different words. When in doubt, pass it: {"ok": true}.
+restricted sense narrated as perceived, another character's thoughts or knowledge stated as fact,
+or a consult whose situation states only a consequence with no concrete fact in it. Do not flag
+prose that merely mentions a character, describes the scene, or narrates an already-granted line or
+deed in different words. When in doubt, pass it: {"ok": true}.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
