@@ -181,8 +181,8 @@ field: it steers the cast stage's prompt, sharpens the scene stage's, and change
 by field name without it ever reaching the file.
 
 **Oneshot** keeps the original single-round behaviour: one whole-story proposal followed immediately
-by the two automatic passes below, then conversational refinement. Chosen with `--oneshot`, or
-`mode: "oneshot"` on `/scaffold/start`.
+by the two automatic passes below, then conversational refinement. Chosen with `mode: "oneshot"`
+on `/scaffold/start` (the viewer's interview offers the choice).
 
 A proposal that lands (either walk) is not the end of the round. Two automatic passes run before the
 author sees it, as far as each walk needs them: **fill the gaps** (the scene's `roster` and the
@@ -346,23 +346,18 @@ Split the way the scaffold's are:
 The posting and error behaviour follows `interview.js` deliberately, but none of its state is shared:
 the two have similar round shapes and different lifecycle rules.
 
-## Console and HTTP surfaces
+## HTTP surface
 
 ```bash
-npx tsx story-writer.ts --new                      # the staged checklist (the default walk)
-npx tsx story-writer.ts --new --oneshot            # the whole-story proposal
-npx tsx story-writer.ts stories/example --next-chapter
 npx tsx story-writer.ts stories/example --chapter=2
 ```
 
-At the console a staged session prints its checklist after every round; bare enter approves the open
-gate, `accept` writes `story.json`, `?` shows the draft in full, `q` abandons. Once every gate has
-landed, bare enter becomes accept.
-
-The HTTP equivalents are `GET /scaffold`, `POST /scaffold/{start,say,approve,set,accept,abandon}`,
-`GET /next-chapter` and `POST /next-chapter/{start,say,accept,abandon}`, specified in
-[`GUI-SPEC.md`](GUI-SPEC.md). The server reaches the engine through `ServerHost` and never imports
-engine modules directly.
+Both conversations are viewer-only: the new-story interview is driven from the shelf through
+`GET /scaffold`, `POST /scaffold/{start,say,approve,set,accept,abandon}`, and the handoff from
+`#/handoff?dir=` through `GET /next-chapter` and `POST /next-chapter/{start,say,accept,abandon}`,
+specified in [`GUI-SPEC.md`](GUI-SPEC.md). The server reaches the engine through `ServerHost` and
+never imports engine modules directly. The old console walkthrough (`--new`, `--oneshot`,
+`--next-chapter`) was removed; those flags are rejected with a pointer at `--serve`.
 
 ## Remaining work
 

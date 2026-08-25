@@ -228,7 +228,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 - **`/continue`** answers the step-budget prompt (`continue_prompt` SSE frame) with how many more
   steps to allow, `0` to stop there.
 
-## Scaffold (the `--new` story interview)
+## Scaffold (the new-story interview)
 
 ```
 GET  /scaffold

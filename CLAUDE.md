@@ -62,8 +62,10 @@ Change is delivered in **small, independently-pausable blocks**, not whole featu
 npx tsx story-writer.ts stories/doorway --chapter=1
 ```
 
-One run writes **one chapter**. Between chapters, `--next-chapter` opens the architect handoff that
-re-authors the cast for the next one ([Architect.MD](Architect.MD)).
+One run writes **one chapter**. Between chapters, the viewer's handoff panel (started with `--serve`)
+re-authors the cast for the next one ([Architect.MD](Architect.MD)). The new-story interview and the
+handoff are browser-only; passing their old console flags (`--new`, `--oneshot`, `--idea`,
+`--next-chapter`) is rejected with a pointer at `--serve`.
 
 Requires **LM Studio running locally** at `http://localhost:1234/v1` with the story's models loaded.
 
@@ -88,7 +90,10 @@ way.**
 
 | file | what is in it |
 | --- | --- |
-| [story-writer.ts](story-writer.ts) | the composition root: CLI flags, the story picker, the scaffold console UI, `runAndSave`, the `HOST` object handed to `server/server.ts` |
+| [story-writer.ts](story-writer.ts) | the composition root: CLI wiring, the story picker, the console entry points (`--preflight`, `--consult`) |
+| [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `SERVE`/`PORT`/`STORY_DIR`, the `flag()` reader, and the retired-flag rejection |
+| [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, and the chapter snapshot |
+| [host.ts](host.ts) | the `ServerHost` object handed to `server/server.ts`, plus its story.json read/persist helpers and the architect session factories |
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
 | [engine/config-util.ts](engine/config-util.ts) | kv-map config parsing (`num`/`bool`/`enumOf`) and the shared `slugify` |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |

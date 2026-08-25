@@ -26,15 +26,15 @@ run, which is the owner's to make, batched.
   reads `tests/fixtures/doorway/story.json`, ~1,870 estimated tokens. The handoff no longer carries
   it (`buildArchitect(d, false)`), which is where the context pressure actually was; the scaffold
   still does, because a whole-story proposal has no story yet to demonstrate the format with. The
-  staged walk embeds each stage's fields inline instead, so the example matters most to `--oneshot`;
+  staged walk embeds each stage's fields inline instead, so the example matters most to the one-shot
+  walk (`mode: "oneshot"`);
   whether the one-shot path can drop or shrink it is what is left.
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round now refuses with the numbers rather than letting the model return nothing, but a
   long story needs a correspondingly large context window loaded.
 - **Staged-scaffold follow-ups**, held behind live-run evidence like everything else in that
   pipeline: the **verify** pass could flag a cast where nobody has any restrictions (two early live
-  runs produced restriction-less casts; `normalizeSpec` warns but nothing pushes back); the console
-  has no way to ask an empty gate to re-propose itself (edits vocabulary covers it, awkwardly); and
+  runs produced restriction-less casts; `normalizeSpec` warns but nothing pushes back); and
   the story editor has no view of the session's **tension** sentence, which steers the cast and scene
   stages but lives only in the conversation.
 - **Approvable, promotable skill bible.** The in-code `SPECIAL_SKILL_CATALOG` is the seed; the second
@@ -68,21 +68,23 @@ one extra LLM call per multi-character fork if it were ever wanted.
 
 ## The CLI-to-GUI transition
 
-**A direction, not a commitment.** The application supports both the console workflows and the local
-viewer today: `--serve` starts the viewer, `--preflight` is the maintenance and CI check, and `--new`,
-`--next-chapter` and `--consult` remain interactive console workflows.
+**Partly done.** The interactive console workflows are gone: `--new`, `--oneshot`, `--idea` and
+`--next-chapter` are rejected with a pointer at `--serve`, and the new-story interview and the
+handoff live only in the viewer. What remains on the CLI is the primary entrypoint (a story run),
+`--preflight`, `--consult`, and the console picker when no viewer is wanted.
 
-Should that change, the order is:
+Still open, in order:
 
-1. **Complete the viewer** — plans 1-3 above.
-2. **Extract application services.** Move run setup, persistence, and cleanup out of the CLI-specific
-   parts of `story-writer.ts`, keeping the existing `ServerHost` dependency boundary.
-3. **Add a headless bootstrap.** Start the server without a story argument or terminal picker, print
+1. **Extract application services.** Move run setup, persistence, and cleanup out of `story-writer.ts`,
+   keeping the existing `ServerHost` dependency boundary.
+2. **Add a headless bootstrap.** Start the server without a story argument or terminal picker, print
    the local URL, handle graceful shutdown.
-4. **Deprecate console interaction.** Keep `--preflight` and scripted runs; remove console flows only
-   after equivalent browser workflows are verified.
-5. **Harden the boundary.** Test startup without a TTY, cleanup after failures, SSE reconnects, route
+3. **Harden the boundary.** Test startup without a TTY, cleanup after failures, SSE reconnects, route
    preconditions, and shutdown.
+
+Add coverage for `run-and-save.ts` write-failure paths once that module exists — it needs `runChapter`
+injectable or the artifact writer split out of `runAndSave` before the failure branches are reachable
+from a test.
 
 Constraints that hold whether or not that happens: the process supports **one active run** and must
 not imply otherwise; the viewer is localhost-only and unauthenticated, and a wider bind needs
