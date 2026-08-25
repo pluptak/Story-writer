@@ -45,6 +45,21 @@ Rules for new work:
 In the browser console, `[...document.querySelectorAll("[data-tid]")]` lists everything locatable;
 a CSS selector like `[data-tid="live.consult"][data-seq="3"] .attempt[data-n="1"]` pins one element.
 
+**Locator mode** makes this a click instead of a query: press **ctrl/⌘+shift+L** anywhere (or load a
+page with `?locators=1` on its hash — note `syncHash()` drops unknown params on the next navigation,
+so that switch is per-load). While on, hovering outlines the nearest tid-bearing ancestor and badges
+its locator; clicking copies the full string to the clipboard and swallows the click, so pointing at
+a button is never pressing it:
+
+```
+#/read?dir=the-final-meal&id=r7 :: prose.consult[seq=3] > consult.attempt[n=2]
+```
+
+The chain is built from the tid ancestors outward-in, each with its instance key folded in as
+`[key=value]`; with no tid ancestor it falls back to the nearest `#id`. Paste that into a bug report
+verbatim — URL plus component path is the whole address. The console escape hatch needs no mode:
+`APP.locator(document.activeElement)` returns the path for any element.
+
 ## Order matters — read this before clicking anything
 
 `MAX_RUNS` is 3, so writing a run destroys the oldest retained one in that story. Where a check below

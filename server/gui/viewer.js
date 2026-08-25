@@ -5,6 +5,7 @@
 import { APP } from "./viewer/state.js";
 import { render } from "./viewer/pages.js";
 import { boot } from "./viewer/boot.js";
+import { initLocator } from "./viewer/locator.js";
 import "./viewer/nav.js";
 import "./viewer/session.js";
 import "./viewer/interview.js";
@@ -15,4 +16,5 @@ import "./viewer/chrome.js";
 import "./viewer/character-card.js";
 
 APP.render = render;
+initLocator();
 boot();
