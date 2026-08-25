@@ -1,5 +1,6 @@
 import { $, esc, tid } from "./util.js";
-import { APP, open } from "./state.js";
+import { APP } from "./state.js";
+import { noteFocus } from "./nav.js";
 
 /** A compact horizontal consult-timeline strip below the run controls. Each marker shows one consult
  *  block: the character's name, whether it was retried, whether it hit the chapter-wide ceiling.
@@ -24,20 +25,16 @@ export function renderTimeline(blocks) {
 }
 
 /** Wired from the strip's own element, not from `#page`, because it is a sibling of the layout
- *  rather than a child of it. The jump target is looked up inside `#page` for the same reason: a
- *  marker carries the same `data-seq` as the block it points at, and it comes first in the document. */
+ *  rather than a child of it. The jump goes through noteFocus + render: pages.js's settle does the
+ *  scroll-and-open against the fresh DOM, and the URL gains `&block=` so what you jumped to is
+ *  what a pasted link reopens. */
 export function wireTimeline() {
   const el = $("timeline");
   if (!el) return;
   for (const m of el.querySelectorAll(".tl-marker")) {
     m.addEventListener("click", () => {
-      const seq = Number(m.dataset.seq);
-      const target = $("page")?.querySelector(`[data-seq="${seq}"]`);
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-        open.add(seq);
-        APP.render();
-      }
+      noteFocus(Number(m.dataset.seq));
+      APP.render();
     });
   }
 }

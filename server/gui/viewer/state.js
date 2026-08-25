@@ -51,6 +51,11 @@ export const APP = {
                                   // run modal is up until "back to shelf" or "stay here" clears it
   charCard: null,               // a character pill was clicked: {name, dir, can, cannot} -- the
                                  // character card modal is up for them
+  modalWant: "",                // deep link pending: "character-card:<name>" from &modal= -- resolved
+                                 // against rendered chips once one for that name is on screen
+  focusSeq: null,               // deep link / timeline jump target: the seq of the consult block to
+                                 // scroll to and open on live or read (&block=)
+  focusScrolled: false,         // settleFocus scrolls once per focusSeq change, not every frame
   scaffold: { active:false },  // the interview, from /scaffold and its SSE frames
   scaffoldAccepting: false,    // an accept is in flight. The server publishes {active:false} BEFORE
                                 // the run starts, so without this the scaffold page would fall back to

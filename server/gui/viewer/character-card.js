@@ -39,7 +39,7 @@ export function characterCardModalHtml() {
 }
 
 export function wireCharacterCard(root) {
-  const close = () => { APP.charCard = null; APP.render(); };
+  const close = () => { APP.charCard = null; APP.modalWant = ""; APP.render(); };
   wireBackdropClose(root, "charcard-backdrop", close);
   const btn = root.querySelector("#charcard-close");
   if (btn) btn.addEventListener("click", close);
@@ -53,7 +53,32 @@ function openCharCard(el) {
     name: el.dataset.charName, dir: el.dataset.charDir,
     can: split(el.dataset.charCan), cannot: split(el.dataset.charCannot),
   };
+  // Tag the URL so a reload (or a pasted link) reopens the same card; render()'s closing syncHash
+  // writes it. This module must not import nav.js -- nav -> saved-runs -> shelf -> here would close
+  // a cycle -- and it does not need to: pages.js syncs the hash after every render.
+  APP.modalWant = `character-card:${el.dataset.charName}`;
   APP.render();
+}
+
+/** Deep links: `&modal=character-card:<name>` on any route reopens the card for that character once
+ *  a chip naming them is on screen. Called from render() just before the modals paint, so a chip
+ *  found in the previous frame's DOM paints the card in the same pass. An unresolvable want stays
+ *  pending across renders (the chips may still be loading) and simply never fires. */
+export function settleModalWant() {
+  if (!APP.modalWant || APP.charCard) return;
+  const i = APP.modalWant.indexOf(":");
+  const kind = i < 0 ? APP.modalWant : APP.modalWant.slice(0, i);
+  const name = i < 0 ? "" : APP.modalWant.slice(i + 1);
+  if (kind !== "character-card" || !name) { APP.modalWant = ""; return; }
+  const chip = [...document.querySelectorAll(".chip[data-char-name]")]
+    .find(c => c.dataset.charName.toLowerCase() === name.toLowerCase());
+  if (!chip) return;
+  const split = s => (s ? s.split("|").filter(Boolean) : []);
+  APP.charCard = {
+    name: chip.dataset.charName, dir: chip.dataset.charDir,
+    can: split(chip.dataset.charCan), cannot: split(chip.dataset.charCannot),
+  };
+  APP.modalWant = "";
 }
 
 // Capture phase, and it stops there: a shelf card's pill sits inside a card that is itself

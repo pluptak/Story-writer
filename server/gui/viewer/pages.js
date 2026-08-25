@@ -9,12 +9,12 @@ import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
 import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
-import { characterCardModalHtml, wireCharacterCard } from "./character-card.js";
+import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
-import { go, generating } from "./nav.js";
+import { go, generating, syncHash, noteFocus, tagFocus, clearFocus } from "./nav.js";
 import { renderSession } from "./session.js";
 
 function restoreFocus(page, id) {
@@ -231,17 +231,11 @@ function renderLive(page, blocks) {
       <div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>
     </div>
   </section>`;
-  for (const d of page.querySelectorAll("details.consult")) {
-    d.addEventListener("toggle", () => {
-      const s = Number(d.dataset.seq);
-      d.open ? open.add(s) : open.delete(s);
-    });
-  }
+  wireConsultToggles(page);
   wireReader(page);
   setFoldable(blocks.some(b => b.kind === "consult"));
   renderRail(LIVEV, blocks);
 }
-
 function renderRead(page, blocks) {
   const chrome = readChromeHtml();
   if (!blocks.length) {
@@ -260,12 +254,7 @@ function renderRead(page, blocks) {
     return;
   }
   page.innerHTML = chrome + `<div class="prose">` + blocks.map(b => renderBlock(b, false)).join("") + `</div>`;
-  for (const d of page.querySelectorAll("details.consult")) {
-    d.addEventListener("toggle", () => {
-      const s = Number(d.dataset.seq);
-      d.open ? open.add(s) : open.delete(s);
-    });
-  }
+  wireConsultToggles(page);
   wireSavedRuns(page);
   setFoldable(blocks.some(b => b.kind === "consult"));
   renderRail(READV, blocks);
@@ -280,6 +269,32 @@ function wireModal(page) {
 function setFoldable(foldable) {
   $("expand").disabled = !foldable;
   $("expand").title = foldable ? "" : "nothing to expand — no consults in this run";
+}
+
+/** Consult open/close keeps the URL honest: opening one tags it as the &block= target, closing it
+ *  drops the tag. Shared by live and read, which wire the same toggles. */
+function wireConsultToggles(page) {
+  for (const d of page.querySelectorAll("details.consult")) {
+    d.addEventListener("toggle", () => {
+      const s = Number(d.dataset.seq);
+      if (d.open) { open.add(s); tagFocus(s); }
+      else { open.delete(s); if (APP.focusSeq === s) clearFocus(); }
+    });
+  }
+}
+
+/** One-shot scroll to the &block=/timeline target once it exists on screen. Runs after each render;
+ *  fires only until it has scrolled for the current focusSeq, so a mid-run rebuild never yanks the
+ *  page back. */
+function settleFocus(page) {
+  if (APP.focusSeq == null || APP.focusScrolled) return;
+  const t = page.querySelector(`details.consult[data-seq="${APP.focusSeq}"]`)
+         || page.querySelector(`[data-seq="${APP.focusSeq}"]`);
+  if (!t) return;                       // not written yet -- retry on a later frame
+  APP.focusScrolled = true;
+  if (t instanceof HTMLDetailsElement) t.open = true;
+  open.add(APP.focusSeq);
+  t.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 /** Repainted every render(), regardless of view -- the header pill that opens the character card
@@ -304,6 +319,9 @@ export function render() {
   paintSrcbar();
   paintRibbon();
   paintTitle();
+  // A pending &modal= resolves against the PREVIOUS frame's chips -- they are still in the DOM
+  // here, before the page below repaints -- so the card paints in this same pass.
+  settleModalWant();
   paintModals(() => go("shelf"));
   const page = $("page");
   const active = document.activeElement;
@@ -322,4 +340,9 @@ export function render() {
   $("runctrl").hidden = !$("railstats").innerHTML && $("sessionbar").hidden;
   renderTimeline(blocks);
   wireTimeline();
+  // The scroll needs the NEW DOM, so it runs after the page above has been painted. syncHash last:
+  // every state change above (focus tag/clear, modal want) is reflected in the address bar without
+  // each mutator having to remember to call it. replaceState-only, so nothing re-enters go().
+  settleFocus(page);
+  syncHash();
 }

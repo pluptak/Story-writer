@@ -60,6 +60,16 @@ The chain is built from the tid ancestors outward-in, each with its instance key
 verbatim — URL plus component path is the whole address. The console escape hatch needs no mode:
 `APP.locator(document.activeElement)` returns the path for any element.
 
+**Deep links** make parts of that address reloadable, so the pasted URL alone reopens the exact spot:
+
+- `&block=<seq>` on `#/live` or `#/read` scrolls to and opens that consult once its block exists.
+  Clicking a timeline marker writes it; toggling a consult open/close updates or drops it; closing
+  it (or leaving live/read) removes it.
+- `&modal=character-card:<name>` on any route reopens that character's card as soon as a chip naming
+  them is rendered. Opening a card writes it; closing it (×, backdrop, Escape) drops it.
+
+Reload on any such URL: the same spot comes back. That is the check.
+
 ## Order matters — read this before clicking anything
 
 `MAX_RUNS` is 3, so writing a run destroys the oldest retained one in that story. Where a check below

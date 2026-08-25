@@ -16,20 +16,30 @@ export const parseHashParams = () => {
 
 /** The hash a page WANTS, params and all -- not just its path. A story page and a saved run are
  *  each about one particular thing, and a reload that keeps the page but loses which one is a
- *  bookmark that does not work. */
+ *  bookmark that does not work. Sub-page targets ride along: `&block=` names the consult to open
+ *  (live/read), `&modal=` the character card to reopen -- so the URL a bug report pastes IS the
+ *  pinpoint. */
+const joiner = h => h + (h.includes("?") ? "&" : "?");
 const hashFor = () => {
-  if (APP.view === "story" && APP.storyDir) return `#/story?dir=${encodeURIComponent(APP.storyDir)}`;
+  if (APP.view === "story" && APP.storyDir) return withExtras(`#/story?dir=${encodeURIComponent(APP.storyDir)}`);
   if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
   if (APP.view === "scaffold") return "#/scaffold";
   if (APP.view === "edit" && APP.editNew) return "#/edit?new=1";
   if (APP.view === "edit" && APP.editDir) return `#/edit?dir=${encodeURIComponent(APP.editDir)}`;
   if (APP.view === "readstory" && READER.dir) return `#/readstory?dir=${encodeURIComponent(READER.dir)}`;
-  if (APP.view === "read" && READV.dir && READV.id)
-    return `#/read?dir=${encodeURIComponent(READV.dir)}&id=${encodeURIComponent(READV.id)}`;
+  if (APP.view === "read" && READV.dir && READV.id) {
+    let h = `#/read?dir=${encodeURIComponent(READV.dir)}&id=${encodeURIComponent(READV.id)}`;
+    if (APP.focusSeq != null) h += `&block=${APP.focusSeq}`;
+    return withExtras(h);
+  }
   if (APP.view === "compare" && APP.compareDir)
     return `#/compare?dir=${encodeURIComponent(APP.compareDir)}&a=${encodeURIComponent(APP.compareA)}&b=${encodeURIComponent(APP.compareB)}`;
-  return "#/" + APP.view;
+  if ((APP.view === "live" || APP.view === "read") && APP.focusSeq != null)
+    return `#/${APP.view}?block=${APP.focusSeq}`;
+  return withExtras("#/" + APP.view);
 };
+/** modal= applies on any route (the card opens over live, read, shelf and story alike). */
+const withExtras = h => APP.modalWant ? joiner(h) + "modal=" + encodeURIComponent(APP.modalWant) : h;
 // replaceState, never `location.hash =`, so the page's own transitions do not fire a synthetic
 // hashchange for the listener below to chase.
 export const syncHash = () => {
@@ -37,11 +47,27 @@ export const syncHash = () => {
   if (location.hash !== want) history.replaceState(null, "", want);
 };
 
+// ---- sub-page deep links ----------------------------------------------------
+/** Tag the consult the URL should name. `noteFocus` is a jump (timeline marker, deep link): it
+ *  re-arms the one-shot scroll in pages.js's settle. `tagFocus` is a quiet URL sync (the user
+ *  toggled a consult open themselves) -- no rescroll. */
+export const noteFocus = seq => { APP.focusSeq = seq; APP.focusScrolled = false; };
+export const tagFocus = seq => { APP.focusSeq = seq; };
+export const clearFocus = () => {
+  if (APP.focusSeq == null) return;
+  APP.focusSeq = null;
+  APP.focusScrolled = false;
+  syncHash();
+};
+
 /** Go to a page. The shelf is always a legal destination while an engine is attached -- it is the
  *  hub, not somewhere the session parks you -- so the only rewrite left is the one for a viewer
  *  with no engine behind it at all, which has nothing but a saved run to show. */
 export function go(v) {
   if (!APP.live && v !== "read" && v !== "readstory" && v !== "compare") v = "read";
+  // Leaving live/read drops the block anchor -- it names a seq in the scene that page was showing,
+  // and carrying it onto the next one would scroll to whatever happens to reuse the number.
+  if (v !== "live" && v !== "read" && APP.focusSeq != null) { APP.focusSeq = null; APP.focusScrolled = false; }
   // Dirty guard: confirm before leaving the editor with unsaved changes. On cancel, put the URL
   // back: a hashchange (browser back, a bookmark) has already moved location.hash, so without this
   // the address bar would show the page we refused to go to while the editor stays on screen.
