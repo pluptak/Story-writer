@@ -60,6 +60,8 @@ export const APP = {
   scaffoldAccepting: false,    // an accept is in flight. The server publishes {active:false} BEFORE
                                 // the run starts, so without this the scaffold page would fall back to
                                 // the idea modal in the window between the two.
+  folderOpen: false,           // the sidebar's accept opened the folder step locally — the server only
+                                // forces it open through needsFolder
   ideaOpen: false,             // kept for compatibility; the scaffold page now owns the idea step
   ivHidden: false,             // kept for compatibility; the scaffold page is a route, not an overlay
   personasFull: false,

@@ -246,21 +246,22 @@ function roundHtml(s) {
   </section>`;
 }
 
-/** The accept step, when the server has asked for a folder name. Owns acceptance while it is open —
- *  "write story.json →" IS the accept. */
+/** The accept step — opened by the sidebar's accept button, or forced open by a needs_folder answer.
+ *  Owns acceptance while it is open — "write story.json →" IS the accept. */
 function folderHtml(s) {
   return `<section class="card" data-tid="scaffold.folder-card">
     <div class="card-head">
       <div><span class="label">accept</span><h3>Name the story folder</h3></div>
-      <span class="label">needs_folder</span>
+      ${s.needsFolder ? `<span class="label">needs_folder</span>` : ""}
     </div>
     <div class="card-body">
-      <p>${esc(s.needsFolder)}</p>
+      <p>${esc(s.needsFolder || "Name where this story lands — nothing is written until you accept.")}</p>
       <label class="field-label" for="f-folder">story folder</label>
       <input type="text" id="f-folder" value="${esc(draft.folder)}">
       <div class="composer-foot">
         <span class="hint">nothing is written until this answers</span>
         <span class="thinking${s.busy ? " show" : ""}"><i></i>writing &amp; preflighting…</span>
+        ${!s.needsFolder && APP.folderOpen ? `<button class="btn" id="iv-folder-back">&larr; keep editing</button>` : ""}
         <button class="btn primary" id="iv-folder">write story.json →</button>
       </div>
     </div>
@@ -280,7 +281,7 @@ function sidebarHtml(s) {
   stats.push(stat("on disk", s.needsFolder ? "pending accept" : "nothing yet"));
 
   const actions = [];
-  const acceptable = s.haveStory && !s.needsFolder && !s.busy;
+  const acceptable = s.haveStory && !s.needsFolder && !APP.folderOpen && !s.busy;
   if (s.haveStory && !s.needsFolder)
     actions.push(`<button class="btn" id="iv-edit">edit in full →</button>`);
   if (acceptable) {
@@ -318,14 +319,15 @@ function sidebarHtml(s) {
 // ── page assembly ─────────────────────────────────────────────────────────────
 
 function activePageHtml(s) {
+  const folderStep = !!(s.needsFolder || APP.folderOpen);
   const workspace = [];
   if (s.spec) workspace.push(proposalHtml(s));
-  workspace.push(s.needsFolder ? folderHtml(s) : roundHtml(s));
-  const err = APP.scaffoldError && !s.needsFolder ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
+  workspace.push(folderStep ? folderHtml(s) : roundHtml(s));
+  const err = APP.scaffoldError && !folderStep ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
 
   const statusText = s.busy ? "the architect is working…"
     : s.pendingAsk ? "a question pins this gate until you answer it"
-    : s.needsFolder ? "name the folder — nothing is written until you do"
+    : folderStep ? "name the folder — nothing is written until you do"
     : "ready · nothing is on disk until you accept";
   const spacer = (s.mode === "oneshot" ? "one-shot walk" : `gate: ${s.gate || "—"}`)
     + (s.model ? ` · built by ${esc(s.model)}` : "");
@@ -339,7 +341,7 @@ function activePageHtml(s) {
       <p class="lede">${esc(s.idea || "")}</p>
     </div>
     <div class="statusbar">
-      <span class="status-dot${s.busy || s.needsFolder ? " busy" : ""}"></span>
+      <span class="status-dot${s.busy || folderStep ? " busy" : ""}"></span>
       <span>${statusText}</span>
       <span class="spacer">${spacer}</span>
     </div>
@@ -410,6 +412,7 @@ async function startInterview() {
   if (!idea || APP.scaffold.busy) return;
   const mode = draft.mode === "oneshot" ? "oneshot" : "staged";
   APP.scaffoldError = "";
+  APP.folderOpen = false;
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
                    mode, gate: mode === "staged" ? "story" : null };
   APP.render();
@@ -419,7 +422,7 @@ async function startInterview() {
   if (!j || j.active === undefined) { APP.scaffold = { active:false }; APP.render(); }
 }
 
-async function acceptStory() {
+function acceptStory() {
   // Two things make accepting deliberate. UNSENT TEXT: the story is written from the spec, so
   // whatever is still in the box would be silently thrown away. A COMPLAINT: allowed to accept over
   // — they are judgements about the design — but it takes a confirming second click.
@@ -428,17 +431,8 @@ async function acceptStory() {
   if ((unsent || flagged) && !APP.acceptArmed) { APP.acceptArmed = setTimeout(disarmAccept, 5000); APP.render(); return; }
   if (APP.scaffold.busy) return;
   clearTimeout(APP.acceptArmed); APP.acceptArmed = 0;
-  APP.scaffoldAccepting = true; APP.render();
-  const j = await postScaffold("accept", {});
-  if (j && j.ok) {
-    // A clean accept resolves the parked pick and starts the run — follow it to the live screen.
-    draft.idea = draft.say = draft.folder = "";
-    APP.scaffoldAccepting = false;
-    go("live");
-  } else {
-    // needs_folder or a refusal: back to the page, which renders the folder step or the error.
-    APP.scaffoldAccepting = false; APP.render();
-  }
+  // Open the folder step; "write story.json →" owns the actual accept and the run it starts.
+  APP.folderOpen = true; APP.render();
 }
 
 /** Accept into a named folder — the answer to needs_folder. A blank name is not an answer. */
@@ -447,7 +441,7 @@ async function acceptIntoFolder() {
   if (!folder || APP.scaffold.busy) return;
   APP.scaffoldAccepting = true; APP.render();
   const j = await postScaffold("accept", { folder });
-  if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.scaffoldAccepting = false; go("live"); }
+  if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.scaffoldAccepting = false; APP.folderOpen = false; go("live"); }
   else { APP.scaffoldAccepting = false; APP.render(); }
 }
 
@@ -490,11 +484,15 @@ export function wireScaffold(page) {
     if (!APP.abandonArmed) { APP.abandonArmed = setTimeout(disarmAbandon, 4000); APP.render(); return; }
     clearTimeout(APP.abandonArmed); APP.abandonArmed = 0;
     postScaffold("abandon", {}).then(() => {
-      APP.scaffold = { active:false }; APP.scaffoldError = "";
+      APP.scaffold = { active:false }; APP.scaffoldError = ""; APP.folderOpen = false;
       draft.idea = draft.say = draft.folder = "";
       go("shelf");
     });
   });
   on("iv-folder", acceptIntoFolder);
+  on("iv-folder-back", () => {
+    // Only the locally-opened step can be dismissed — a needs_folder demand stays until it is answered.
+    APP.folderOpen = false; APP.render();
+  });
   on("iv-accept", acceptStory);
 }
