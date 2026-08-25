@@ -1,4 +1,4 @@
-import { esc, wireBackdropClose } from "./util.js";
+import { esc, wireBackdropClose, tid } from "./util.js";
 import { APP } from "./state.js";
 
 // ---- the character card -----------------------------------------------------
@@ -15,7 +15,7 @@ export function charChip(c, dir) {
   const bits = [];
   if (can.length) bits.push(`<span class="yes">+${esc(can.join(", "))}</span>`);
   if (cannot.length) bits.push(`<span class="no">no ${esc(cannot.join(", "))}</span>`);
-  return `<span class="chip" role="button" tabindex="0"
+  return `<span${tid("cast.chip")} class="chip" role="button" tabindex="0"
             data-char-name="${esc(c.name)}" data-char-dir="${esc(dir || "")}"
             data-char-can="${esc(can.join("|"))}" data-char-cannot="${esc(cannot.join("|"))}">
     <b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
@@ -24,7 +24,7 @@ export function charChip(c, dir) {
 export function characterCardModalHtml() {
   const c = APP.charCard;
   if (!c) return "";
-  return `<div class="modal-backdrop" id="charcard-backdrop" role="dialog" aria-modal="true"
+  return `<div class="modal-backdrop" id="charcard-backdrop" data-tid="charcard.modal" role="dialog" aria-modal="true"
                aria-label="${esc(c.name)}">
     <section class="picker iv charcard">
       <div class="iv-head"><h2>${esc(c.name)}</h2>

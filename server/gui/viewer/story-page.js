@@ -1,4 +1,4 @@
-import { esc, post, fmtRun, modelOptionsHtml, reasonOr } from "./util.js";
+import { esc, post, fmtRun, modelOptionsHtml, reasonOr, tid } from "./util.js";
 import { APP, READV, runningReason } from "./state.js";
 import { castChips } from "./shelf.js";
 import { loadRun } from "./saved-runs.js";
@@ -27,7 +27,7 @@ function modelSelectHtml(s) {
   const def = s.defaultModel || "";
   const available = def && APP.modelIds.includes(def);
   const chosen = APP.storyModel || (available ? def : "");
-  return `<select id="story-model" class="btn" title="model to play this story with">
+  return `<select id="story-model" ${tid("story.model-select")} class="btn" title="model to play this story with">
     <option value=""${chosen ? "" : " selected"}>story default${def ? " · " + esc(def) : ""}</option>
     ${modelOptionsHtml(APP.modelIds, chosen)}
   </select>`;
@@ -50,12 +50,12 @@ function sceneRowHtml(scene, chapters, canWrite, why, discardable) {
   const tag = written ? `<span class="tag written">written</span>`
             : next ? `<span class="tag next">next</span>` : "";
   const runWhy = runningReason();   // discard is blocked by a run in flight, not by picking-readiness
-  return `<div class="cardwrap"><div class="scenerow">
+  return `<div class="cardwrap"><div class="scenerow" data-tid="story.scene-row" data-chapter="${scene.n}">
     <div class="sc-q">${esc(scene.question || "(no scene question)")}${tag}</div>
     <div class="sc-meta">chapter ${scene.n}${scene.place ? " · " + esc(scene.place) : ""} · ${wordsPovHtml(scene)}</div>
-    <button class="btn${next ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
-    ${written ? `<button class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
-    ${discardable ? `<button class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
+    <button ${tid("story.write-btn")} class="btn${next ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
+    ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
+    ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
     ${open ? `<div class="prose" style="margin-top:12px">${paras(APP.chapter.text)}</div>` : ""}
     ${open && APP.chapterError ? `<div class="said bad">${esc(APP.chapterError)}</div>` : ""}
   </div></div>`;
@@ -69,7 +69,7 @@ function runsListHtml(s) {
   if (!s.runs?.length) return `<p class="hint">no retained runs yet</p>`;
   const btn = r => {
     const current = READV.dir === s.dir && READV.id === r.id;
-    return `<button class="btn runbtn${current ? " current" : ""}" data-run="${esc(r.id)}"
+    return `<button ${tid("story.run-btn")} class="btn runbtn${current ? " current" : ""}" data-run="${esc(r.id)}"
          >${current ? "reading · " : "read · "}${esc(fmtRun(r))}</button>`;
   };
   const groups = new Map();
@@ -95,7 +95,7 @@ function handoffRowHtml(s) {
   const why = runningReason();
   return `<div class="divider"><span>next chapter</span></div>
     <div class="row">
-      <button class="btn" id="story-handoff"${why ? ` disabled title="${esc(why)}"` : ""}
+      <button ${tid("story.handoff-btn")} class="btn" id="story-handoff"${why ? ` disabled title="${esc(why)}"` : ""}
         >${mine ? "continue preparing" : "prepare"} chapter ${n}</button>
       <span class="hint">the architect re-authors the cast from the chapters already written</span>
     </div>`;
@@ -145,11 +145,11 @@ export function storyPageHtml() {
     ${runsListHtml(s)}
 
     <div class="btns" style="margin-top:18px">
-      <button class="btn" id="story-edit">edit story</button>
-      ${(s.chapters?.length) ? `<button class="btn" id="story-read-story">read story</button>` : ""}
-      ${(s.runs?.length >= 2) ? `<button class="btn" id="story-compare">compare runs</button>` : ""}
+      <button ${tid("story.edit-btn")} class="btn" id="story-edit">edit story</button>
+      ${(s.chapters?.length) ? `<button ${tid("story.read-story-btn")} class="btn" id="story-read-story">read story</button>` : ""}
+      ${(s.runs?.length >= 2) ? `<button ${tid("story.compare-btn")} class="btn" id="story-compare">compare runs</button>` : ""}
       <span class="spacer"></span>
-      <button class="btn" id="story-back">back to shelf</button>
+      <button ${tid("story.back-btn")} class="btn" id="story-back">back to shelf</button>
     </div>
   </section>`;
 }

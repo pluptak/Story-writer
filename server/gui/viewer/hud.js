@@ -1,4 +1,4 @@
-import { $, esc, basename } from "./util.js";
+import { $, esc, basename, tid } from "./util.js";
 import { APP, LIVEV, READV, READER, storyName } from "./state.js";
 import { castSheetHtml } from "./cast-sheet.js";
 
@@ -47,7 +47,7 @@ export function paintSrcbar() {
     const last = i === crumbs.length - 1;
     const clickable = !last && (c.view || c.dir);
     const attrs = clickable
-      ? ` class="crumb" role="link" tabindex="0" data-view="${esc(c.view || "story")}" data-dir="${esc(c.dir || "")}"`
+      ? `${tid("chrome.crumb")} class="crumb" role="link" tabindex="0" data-view="${esc(c.view || "story")}" data-dir="${esc(c.dir || "")}"`
       : ` class="crumb${last ? " here" : ""}"`;
     return `<span${attrs}>${esc(c.label)}</span>`;
   }).join(`<span class="crumb-sep">›</span>`);
@@ -116,7 +116,7 @@ export function renderRail(store, blocks) {
   const consults = blocks.filter(b => b.kind === "consult");
   const count = t => store.events.filter(e => e.t === t).length;
   const pct = target ? Math.min(100, Math.round(words / target * 100)) : 0;
-  const stat = (k, v, cls) => `<div class="stat"><span>${k}</span><span class="n ${cls||""}">${v}</span></div>`;
+  const stat = (k, v, cls) => `<div class="stat" data-tid="rail.stat" data-k="${esc(k)}"><span>${k}</span><span class="n ${cls||""}">${v}</span></div>`;
   const flags = count("skill_flag"), retries = count("retry");
   const live = store === LIVEV && APP.live;
   // The starting budget is not in RunMeta; a `budget` event is the only place the number appears,
@@ -125,10 +125,10 @@ export function renderRail(store, blocks) {
   const fmtMs = ms => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
   const fmtTokens = (s, key) => s.tokenCalls === s.calls ? s[key].toLocaleString() : "unavailable";
   const agentStats = store === LIVEV ? Object.values(store.agentStats || {}) : [];
-  const statsPanel = live && agentStats.length ? `<section class="agentstats">
+  const statsPanel = live && agentStats.length ? `<section class="agentstats" data-tid="rail.agentstats">
     <h3>model calls</h3>
     <div class="agentstats-head"><span>agent</span><span>calls</span><span>avg</span><span>tokens</span></div>
-    ${agentStats.map(s => `<div class="agentstat">
+    ${agentStats.map(s => `<div class="agentstat" data-tid="rail.agent-row" data-who="${esc(s.who)}">
       <span class="agentstat-who">${esc(s.who)}</span>
       <span>${s.calls}</span>
       <span>${fmtMs(s.durationMs / s.calls)}</span>
@@ -146,7 +146,7 @@ export function renderRail(store, blocks) {
     ${stat("asked back", count("clarify"))}
     ${stat("retries", retries, retries ? "warn" : "")}
     ${stat("skill flags", flags, flags ? "bad" : "")}
-     ${store === LIVEV && APP.composing ? `<div class="composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
+     ${store === LIVEV && APP.composing ? `<div class="composing" data-tid="rail.composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
         composing… ${APP.composing.secs}s</div>` : ""}
      ${statsPanel}
      ${castSheetHtml()}`;

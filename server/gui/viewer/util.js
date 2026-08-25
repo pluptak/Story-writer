@@ -2,6 +2,11 @@
 export const $ = id => document.getElementById(id);
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+/** The stable-locator attribute, `<area>.<component>` (GUI-CHECKLIST "Locators"). Names the ROLE,
+ *  never the state or position -- instances are told apart by the data-* key they already carry
+ *  (data-seq, data-dir, data-view). Elements with a unique id= don't need one. */
+export const tid = name => ` data-tid="${esc(name)}"`;
 export const basename = p => (p || "").replace(/^.*[\\/]/, "");
 export const fmtRun = r => {
   const when = new Date(r.mtimeMs).toLocaleString(undefined,

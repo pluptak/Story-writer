@@ -1,4 +1,4 @@
-import { esc, post, verdictText, reasonOr } from "./util.js";
+import { esc, post, verdictText, reasonOr, tid } from "./util.js";
 import { APP, open } from "./state.js";
 
 // ---- rendering ----------------------------------------------------------
@@ -11,20 +11,20 @@ function renderConsult(b) {
   const isOpen  = APP.expandAll || open.has(b.seq);
   const q = b.attempts[0]?.question || "";
   const tags = [
-    asked   ? '<span class="tag asked">asked back</span>' : "",
-    retried ? `<span class="tag retry">${b.attempts.length - 1} retry</span>` : "",
-    flagged ? '<span class="tag flag">flagged</span>' : "",
+    asked   ? '<span class="tag asked" data-tid="consult.tag">asked back</span>' : "",
+    retried ? `<span class="tag retry" data-tid="consult.tag">${b.attempts.length - 1} retry</span>` : "",
+    flagged ? '<span class="tag flag" data-tid="consult.flag">flagged</span>' : "",
   ].join("");
 
   const attempts = b.attempts.map((a, i) => {
     const ans = a.answer;
-    return `<div class="attempt">
+    return `<div class="attempt" data-tid="consult.attempt" data-n="${esc(a.n)}">
       <h4>${b.attempts.length > 1 ? `attempt ${esc(a.n)}${a.n > 1 ? " — fresh instance, no memory of the last" : ""}` : "asked"}</h4>
-      <div class="kv dim"><span class="k">situation given</span><span class="v">${esc(a.situation)}</span></div>
-      <div class="kv"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>
-      ${a.qa.map(x => `<div class="qa"><div class="ask">${esc(x.q)}</div><div class="ans">${esc(x.a)}</div></div>`).join("")}
-      ${a.flags.map(f => `<div class="kv dim"><span class="k">note</span><span class="v">${esc(f)}</span></div>`).join("")}
-      ${ans ? `<div class="ansblock">
+      <div class="kv dim" data-tid="consult.situation"><span class="k">situation given</span><span class="v">${esc(a.situation)}</span></div>
+      <div class="kv" data-tid="consult.question"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>
+      ${a.qa.map(x => `<div class="qa" data-tid="consult.qa"><div class="ask">${esc(x.q)}</div><div class="ans">${esc(x.a)}</div></div>`).join("")}
+      ${a.flags.map(f => `<div class="kv dim" data-tid="consult.flag"><span class="k">note</span><span class="v">${esc(f)}</span></div>`).join("")}
+      ${ans ? `<div class="ansblock" data-tid="consult.answer">
           ${ans.speech ? `<div class="speech">“${esc(ans.speech)}”</div>` : ""}
           ${ans.action ? `<div class="action">${esc(ans.action)}</div>` : ""}
           ${ans.thought ? `<div class="thought">${esc(ans.thought)}</div>` : ""}
@@ -32,11 +32,11 @@ function renderConsult(b) {
           <div class="skills">${(ans.skills_used||[]).map(s =>
             (ans.unverified||[]).includes(s) ? `<span class="bad">${esc(s)}✗</span>` : esc(s)).join(" · ") || "no skills listed"}</div>
         </div>` : ""}
-      ${a.judge ? `<div class="verdict ${esc(a.judge.verdict)}">${esc(a.judge.verdict)}${a.judge.note ? " — " + esc(a.judge.note) : ""}</div>` : ""}
+      ${a.judge ? `<div${tid("consult.verdict")} class="verdict ${esc(a.judge.verdict)}">${esc(a.judge.verdict)}${a.judge.note ? " — " + esc(a.judge.note) : ""}</div>` : ""}
     </div>`;
   }).join("");
 
-  return `<details class="consult" data-seq="${esc(b.seq)}"${isOpen ? " open" : ""}>
+  return `<details ${tid("prose.consult")} class="consult" data-seq="${esc(b.seq)}"${isOpen ? " open" : ""}>
     <summary><span class="who">${esc(b.who)}</span><span class="qs">${esc(q)}</span>${tags}</summary>
     <div class="body">${attempts}</div>
   </details>`;
@@ -55,24 +55,24 @@ export const clearReaderDrafts = () => ownDrafts.clear();
 function renderReader(b, interactive) {
   if (b.answer !== null || !interactive) {
     ownDrafts.delete(b.seq);
-    return `<div class="reader answered">
+    return `<div ${tid("prose.reader")} class="reader answered" data-seq="${esc(b.seq)}">
       <div class="rlabel">${b.answer !== null ? "you were asked" : "the writer asked — left unanswered in this run"}</div>
       <div class="rframing">${esc(b.framing)}</div>
       ${b.answer !== null ? `<div class="rchosen">chose: <b>${esc(b.answer)}</b></div>` : ""}
     </div>`;
   }
   const opts = b.options.map((o, i) =>
-    `<button class="btn readerOpt" data-seq="${esc(b.seq)}" data-i="${i}">${esc(o)}</button>`).join("");
+    `<button ${tid("reader.opt")} class="btn readerOpt" data-seq="${esc(b.seq)}" data-i="${i}">${esc(o)}</button>`).join("");
   const err = APP.readerError && APP.readerError.seq === b.seq
     ? `<div class="ctrl-err" style="margin-top:8px">${esc(APP.readerError.text)}</div>` : "";
   // The id matches FIELDS (state.js) so keepFocus carries caret across the re-render each frame causes.
-  return `<div class="reader pending" data-seq="${esc(b.seq)}">
+  return `<div ${tid("prose.reader")} class="reader pending" data-seq="${esc(b.seq)}">
     <div class="rlabel">the writer wants your call</div>
     <div class="rframing">${esc(b.framing)}</div>
     <div class="btns">${opts}</div>
-    <div class="field"><textarea class="readerOwn" id="r-say-${esc(b.seq)}" data-seq="${esc(b.seq)}" rows="2"
+    <div class="field"><textarea ${tid("reader.own-input")} class="readerOwn" id="r-say-${esc(b.seq)}" data-seq="${esc(b.seq)}" rows="2"
               placeholder="or write your own">${esc(ownDrafts.get(b.seq) || "")}</textarea></div>
-    <div class="btns"><button class="btn primary readerSend" data-seq="${esc(b.seq)}">send</button></div>
+    <div class="btns"><button ${tid("reader.send-btn")} class="btn primary readerSend" data-seq="${esc(b.seq)}">send</button></div>
     ${err}
   </div>`;
 }
@@ -111,10 +111,10 @@ function renderReaction(b) {
       ? (promoted ? `<div class="action">acted: ${esc(r.action)}</div>`
                   : `<div class="thought dim">impulse, not taken: ${esc(r.action)}</div>`)
       : "";
-    return `<div class="rxone"><div class="rxwho">${esc(r.name)}</div>
+    return `<div class="rxone" data-tid="reaction.one" data-who="${esc(r.name)}"><div class="rxwho">${esc(r.name)}</div>
       <div class="thought">${esc(r.thought)}</div>${act}</div>`;
   }).join("");
-  return `<div class="reaction" data-seq="${esc(b.seq)}">
+  return `<div ${tid("prose.reaction")} class="reaction" data-seq="${esc(b.seq)}">
     <div class="rxlabel">the others react</div>
     ${b.situation ? `<div class="kv dim"><span class="k">to</span><span class="v">${esc(b.situation)}</span></div>` : ""}
     ${rows}
@@ -124,14 +124,14 @@ function renderReaction(b) {
 /** A block, rendered for whichever page is showing it. `interactive` gates the one thing that
  *  differs: a saved run's reader consult (if any) is a record, not a live question. */
 export function renderBlock(b, interactive) {
-  if (b.kind === "prose") return `<div class="piece${b.salvaged ? " salvaged" : ""}">${
+  if (b.kind === "prose") return `<div${tid("prose.piece")} class="piece${b.salvaged ? " salvaged" : ""}">${
     b.salvaged ? `<div class="salvnote">recovered from a truncated draft</div>` : ""}${paras(b.text)}</div>`;
   if (b.kind === "consult") return renderConsult(b);
   if (b.kind === "reaction") return renderReaction(b);
   if (b.kind === "reader") return renderReader(b, interactive);
-  if (b.kind === "exit") return `<div class="note exit" data-seq="${esc(b.seq)}">${esc(b.character)} left the scene${
+  if (b.kind === "exit") return `<div ${tid("prose.exit")} class="note exit" data-seq="${esc(b.seq)}">${esc(b.character)} left the scene${
     b.pov ? " — the point of view; the chapter ends here" : ""}</div>`;
-  if (b.kind === "note") return `<div class="note">${esc(b.text)}</div>`;
-  if (b.kind === "end") return `<div class="note end">${verdictText(b)} · ${esc(b.words)} words · ${esc(b.steps)} steps</div>`;
+  if (b.kind === "note") return `<div ${tid("prose.note")} class="note">${esc(b.text)}</div>`;
+  if (b.kind === "end") return `<div ${tid("prose.end")} class="note end">${verdictText(b)} · ${esc(b.words)} words · ${esc(b.steps)} steps</div>`;
   return "";
 }

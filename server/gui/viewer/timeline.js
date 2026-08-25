@@ -1,4 +1,4 @@
-import { $, esc } from "./util.js";
+import { $, esc, tid } from "./util.js";
 import { APP, open } from "./state.js";
 
 /** A compact horizontal consult-timeline strip below the run controls. Each marker shows one consult
@@ -19,7 +19,7 @@ export function renderTimeline(blocks) {
     const capped = !!b.capped;
     const cls = "tl-marker" + (retried ? " retried" : "") + (capped ? " capped" : "");
     const title = `${b.who}${retried ? ` · ${b.attempts.length - 1} retr${b.attempts.length > 2 ? "ies" : "y"}` : ""}${capped ? " · capped" : ""}`;
-    return `<button class="${cls}" data-seq="${esc(b.seq)}" title="${esc(title)}">${esc(b.who)}</button>`;
+    return `<button ${tid("timeline.marker")} class="${cls}" data-seq="${esc(b.seq)}" title="${esc(title)}">${esc(b.who)}</button>`;
   }).join("");
 }
 

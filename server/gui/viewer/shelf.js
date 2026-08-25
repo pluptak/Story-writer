@@ -1,4 +1,4 @@
-import { esc } from "./util.js";
+import { esc, tid } from "./util.js";
 import { APP } from "./state.js";
 import { charChip } from "./character-card.js";
 
@@ -16,7 +16,7 @@ export function pickerHtml() {
     // A story that does not load says so here, and cannot be chosen -- the same pre-flight the CLI
     // runs, so the card cannot disagree with what a run would do.
     const dead = !s.ok || !!APP.picked;
-    const card = `<button class="card" data-dir="${esc(s.dir)}"${dead ? " disabled" : ""}>
+    const card = `<button ${tid("shelf.story-card")} class="card" data-dir="${esc(s.dir)}"${dead ? " disabled" : ""}>
       <div class="name">${esc(s.name)}</div>
       ${s.ok ? `<p class="q">${esc(s.scene?.question || "(no scene question)")}</p>
                 <p class="pre"${s.premise ? ` title="${esc(s.premise)}"` : ""}>${esc(s.premise || "")}</p>
@@ -28,7 +28,7 @@ export function pickerHtml() {
     return `<div class="cardwrap">${card}</div>`;
   }).join("");
 
-  const newCard = `<button class="card new top" data-new="1"${APP.picked ? " disabled" : ""}>
+  const newCard = `<button ${tid("shelf.new-story-card")} class="card new top" data-new="1"${APP.picked ? " disabled" : ""}>
     <div class="name">${APP.scaffold.active ? "↩ continue new story…" : "＋ start a new story"}</div>
     <p class="q">${APP.scaffold.active ? `back to "${esc(APP.scaffold.idea || "")}"` : "describe an idea and have one built"}</p>
   </button>`;
@@ -36,7 +36,7 @@ export function pickerHtml() {
     ? `<div class="divider"><span>or pick an existing one</span></div>`
     : `<p class="hint" style="text-align:center;margin:14px 0 0">no stories on the shelf yet — start one above</p>`;
 
-  return `<section class="picker">
+  return `<section class="picker" data-tid="shelf.picker">
     <h2>Choose a story</h2>
     <p class="sub">${APP.picked ? "starting…" : "pick one to see what it's about"}</p>
     ${newCard}

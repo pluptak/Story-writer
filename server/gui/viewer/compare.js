@@ -1,5 +1,5 @@
 import { APP, COMPAREV, COMPARE_AGENTS } from "./state.js";
-import { esc, fmtRun } from "./util.js";
+import { esc, fmtRun, tid } from "./util.js";
 import { parseHashParams, syncHash } from "./nav.js";
 import { build } from "./events.js";
 import { renderBlock } from "./blocks.js";
@@ -40,8 +40,8 @@ function wordDiff(left, right) {
 function diffHtml(left, right) {
   const ops = wordDiff(left, right);
   if (!ops.length) return `<p class="hint">neither run contains accepted prose.</p>`;
-  return `<div class="prose-diff" aria-label="word-level prose diff">${ops.map(([kind, word]) =>
-    kind === "same" ? esc(word) + " " : `<span class="diff-${kind}">${esc(word)}</span> `).join("")}</div>`;
+  return `<section ${tid("compare.diff")} class="prose-diff" aria-label="word-level prose diff">${ops.map(([kind, word]) =>
+    kind === "same" ? esc(word) + " " : `<span class="diff-${kind}">${esc(word)}</span> `).join("")}</section>`;
 }
 
 function optionHtml(runs, selected) {
@@ -102,9 +102,9 @@ export async function loadComparisonRuns() {
 }
 
 function paneHtml(store, title, side) {
-  if (!store.events.length) return `<section class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3><p class="hint">${COMPAREV.loading ? "reading…" : "this run is empty"}</p></section>`;
+  if (!store.events.length) return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3><p class="hint">${COMPAREV.loading ? "reading…" : "this run is empty"}</p></section>`;
   const blocks = build(store);
-  return `<section class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${readChromeHtml(store, true, COMPARE_AGENTS[side], false)}<div class="prose">${blocks.map(b => renderBlock(b, false)).join("")}</div></section>`;
+  return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${readChromeHtml(store, true, COMPARE_AGENTS[side], false)}<div class="prose">${blocks.map(b => renderBlock(b, false)).join("")}</div></section>`;
 }
 
 export function comparisonPageHtml() {
@@ -114,7 +114,7 @@ export function comparisonPageHtml() {
   if (runs.length < 2) return `<section class="picker"><h2>${esc(story.name)}</h2><p class="sub">two retained runs from the same chapter are needed to compare.</p></section>`;
   const [a, b] = selectedRuns();
   const error = APP.compareError || selectionError();
-  return `<section class="picker compare-picker">
+  return `<section ${tid("compare.picker")} class="picker compare-picker">
     <h2>Compare runs</h2>
     <p class="sub">${esc(story.name)} · choose two runs from the same chapter.</p>
     <div class="row"><label for="compare-a">first run</label><select class="btn" id="compare-a">${optionHtml(runs, APP.compareA)}</select></div>

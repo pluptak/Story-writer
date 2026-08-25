@@ -1,4 +1,4 @@
-import { esc, wireBackdropClose, verdictText } from "./util.js";
+import { esc, wireBackdropClose, verdictText, tid } from "./util.js";
 import { APP } from "./state.js";
 
 // ---- the end-of-run modal ----------------------------------------------------
@@ -11,7 +11,7 @@ export function runEndedModalHtml() {
   const e = APP.runEnded;
   if (!e) return "";
   const verdict = verdictText(e);
-  return `<div class="modal-backdrop" id="runended-backdrop" role="dialog" aria-modal="true"
+  return `<div class="modal-backdrop" id="runended-backdrop" data-tid="runended.modal" role="dialog" aria-modal="true"
                aria-label="run ended">
     <section class="picker iv runended">
       <div class="iv-head"><h2>${esc(verdict)}</h2></div>

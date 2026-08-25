@@ -4,7 +4,7 @@
  * debounces validation through /story/check, and saves through /story/save.
  */
 
-import { esc, post } from "./util.js";
+import { esc, post, tid } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 
@@ -120,7 +120,7 @@ function sceneRowsHtml() {
   return s.scenes.map((sc, i) => {
     const n = i + 1;
     const roster = Array.isArray(sc.roster) ? sc.roster.join(", ") : "";
-    return `<div class="editor-scene" data-scene="${n}">
+    return `<div class="editor-scene" data-tid="edit.scene-row" data-scene="${n}">
       <h4>Scene ${n}</h4>
       ${fld(`scene-${n}-place`, "Place", sc.place, "half")}
       ${fld(`scene-${n}-question`, "Question", sc.question, "textarea")}
@@ -144,7 +144,7 @@ function characterCardsHtml() {
   return s.characters.map((c, i) => {
     const skills = Array.isArray(c.skills) ? c.skills.join(", ") : "";
     const restrictions = Array.isArray(c.restrictions) ? c.restrictions.join(", ") : "";
-    return `<div class="editor-char" data-char="${i}">
+    return `<div class="editor-char" data-tid="edit.char-card" data-char="${i}">
       <h4>${esc(c.name)}</h4>
       <div class="editor-row">
         ${fld(`char-${i}-name`, "Name", c.name, "half")}
@@ -172,7 +172,7 @@ function characterCardsHtml() {
 
 function configHtml() {
   const c = APP.editDraft?.config || {};
-  return `<details class="editor-section"><summary>Config</summary>
+  return `<details class="editor-section" data-tid="edit.section"><summary>Config</summary>
     <div class="editor-row">
       ${fld("config-retries", "Retries", c.retries ?? 2, "third")}
       ${fld("config-clarifications", "Clarifications", c.clarifications ?? 2, "third")}
@@ -200,7 +200,7 @@ function modelsHtml() {
   const m = APP.editDraft?.models || {};
   const def = m.default || "";
   const modelOpts = `<datalist id="model-list">${(APP.modelIds || []).map(id => `<option value="${esc(id)}">`).join("")}</datalist>`;
-  return `<details class="editor-section"><summary>Models</summary>
+  return `<details class="editor-section" data-tid="edit.section"><summary>Models</summary>
     <div class="editor-row">
       ${fld("models-default", "Default", def, "model")}
       ${fld("models-writer", "Writer (optional)", m.writer ?? "", "model")}
@@ -331,31 +331,31 @@ export function storyEditHtml() {
     ${errorBannerHtml()}
     ${envWarningsHtml()}
 
-    <details class="editor-section" open><summary>Metadata</summary>
+    <details class="editor-section" data-tid="edit.section" open><summary>Metadata</summary>
       ${fld("edit-title", "Title", s.title)}
       ${fld("edit-premise", "Premise", s.premise, "textarea")}
       ${fld("edit-writerStyle", "Writer style", s.writerStyle, "textarea")}
       ${issuesHtml("title")}${issuesHtml("premise")}${issuesHtml("writerStyle")}
     </details>
 
-    <details class="editor-section" open><summary>Scenes</summary>
+    <details class="editor-section" data-tid="edit.section" open><summary>Scenes</summary>
       ${sceneRowsHtml()}
       ${issuesHtml("scenes")}
     </details>
 
-    <details class="editor-section" open><summary>Characters</summary>
+    <details class="editor-section" data-tid="edit.section" open><summary>Characters</summary>
       ${characterCardsHtml()}
       ${issuesHtml("characters")}
     </details>
 
-    <details class="editor-section"><summary>Story facts</summary>
+    <details class="editor-section" data-tid="edit.section"><summary>Story facts</summary>
       ${fld("edit-facts", "One fact per line", facts, "textarea")}
     </details>
 
     ${configHtml()}
     ${modelsHtml()}
 
-    <details class="editor-section"${APP.editSuggestOpen ? " open" : ""}><summary>Ask the architect</summary>
+    <details class="editor-section" data-tid="edit.section"${APP.editSuggestOpen ? " open" : ""}><summary>Ask the architect</summary>
       <div id="edit-suggest-panel" class="${suggestOpen.trim()}">
         <p class="hint" style="margin-bottom:8px">Tell the architect what to change. It will propose edits that you can review and apply.</p>
         <textarea id="edit-suggest-text" rows="3" placeholder="e.g. Make Aster more reluctant to admit the truth…">${esc(APP.editSuggestText || "")}</textarea>

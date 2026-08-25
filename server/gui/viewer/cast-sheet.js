@@ -1,4 +1,4 @@
-import { esc } from "./util.js";
+import { esc, tid } from "./util.js";
 import { APP, LIVEV } from "./state.js";
 
 // ---- the live character sheet --------------------------------------------
@@ -53,7 +53,7 @@ export function castSheetHtml() {
       `<span class="no" title="cannot ${esc(r)}">no ${esc(r)}</span>`).join(" ");
     const tags = skills || restr ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}</div>` : "";
     const voice = (c.voice || []).map(v => `<p class="cast-voice">“${esc(v)}”</p>`).join("");
-    return `<div class="cast-card">
+    return `<div class="cast-card" data-tid="rail.cast-card" data-name="${esc(c.name)}">
       <div class="cast-name">${esc(c.name)}</div>
       ${field("persona", c.persona)}
       ${field("knows", c.knows)}
@@ -64,5 +64,5 @@ export function castSheetHtml() {
       ${tags}
     </div>`;
   }).join("");
-  return `<section class="cast-sheet"><h3>cast</h3>${cards}</section>`;
+  return `<section class="cast-sheet" data-tid="rail.cast-sheet"><h3>cast</h3>${cards}</section>`;
 }

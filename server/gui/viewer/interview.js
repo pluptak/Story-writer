@@ -1,4 +1,4 @@
-import { esc, reasonOr } from "./util.js";
+import { esc, reasonOr, tid } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 
@@ -31,7 +31,7 @@ const modeChoice = (value, title, blurb) => {
 
 function ideaModalHtml() {
   const err = APP.scaffoldError ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
-  return `<div class="modal-backdrop" id="iv-backdrop" role="dialog" aria-modal="true" aria-label="new story">
+  return `<div class="modal-backdrop" id="iv-backdrop" data-tid="scaffold.idea-modal" role="dialog" aria-modal="true" aria-label="new story">
     <section class="picker iv">
       <h2>Give the architect the rough idea</h2>
       <p class="sub">A situation, not a plot — it will find the pressure in it, and ask if it needs more.</p>
@@ -59,7 +59,7 @@ function castHtml(spec) {
   return `<div class="cast">${spec.characters.map(c => {
     const tag = (t, cls = "") => `<span class="tag${cls}">${t}</span>`;
     const skills = c.skills.map(s => esc(s.text) + (s.meaning ? ` :: ${esc(s.meaning)}` : "")).join(", ");
-    return `<div class="person">
+    return `<div class="person" data-tid="scaffold.person" data-name="${esc(c.name)}">
       <div class="person-top"><span class="person-name">${esc(c.name)}</span></div>
       ${c.persona ? `<p>${esc(c.persona)}</p>` : ""}
       ${c.knows ? tag(`knows: ${esc(c.knows)}`) : ""}
@@ -111,7 +111,7 @@ function gateReached(s, gate) {
 
 function stageSection(name, body, current) {
   if (!body) return "";
-  return `<div class="stage-section${current ? " current" : ""}">
+  return `<div class="stage-section${current ? " current" : ""}" data-tid="scaffold.stage-section" data-stage="${esc(name)}">
     <span class="label">${current ? "current stage · " : ""}${esc(name)}</span>${body}
   </div>`;
 }
@@ -148,7 +148,7 @@ function proposalHtml(s) {
     : GATES;
   const bits = order.map(g => stageSection(g, content[g], g === s.gate)).filter(Boolean);
   for (const p of (s.problems || [])) bits.push(`<div class="prob">⚠ ${esc(p)}</div>`);
-  return `<section class="card">
+  return `<section class="card" data-tid="scaffold.proposal-card">
     <div class="card-head">
       <div><span class="label">${esc(draftLabel(s))}</span><h3>${esc(spec.title || "(untitled)")}</h3></div>
       <span class="label">${s.gate && GATES.indexOf(s.gate) === GATES.length - 1 ? "ready" : "proposal"}</span>
@@ -162,8 +162,8 @@ function proposalHtml(s) {
 function checklistHtml(s) {
   if (!GATES.includes(s.gate)) return "";
   const cur = GATES.indexOf(s.gate);
-  return `<div class="checklist" aria-label="checklist position">${GATES.map((g, i) =>
-    `<span class="gate${i < cur ? " done" : i === cur ? " open" : ""}"><i></i>${g}${i < cur ? " ✓" : ""}</span>`
+  return `<div class="checklist" aria-label="checklist position" data-tid="scaffold.checklist">${GATES.map((g, i) =>
+    `<span${tid("scaffold.gate")} class="gate${i < cur ? " done" : i === cur ? " open" : ""}" data-gate="${g}"><i></i>${g}${i < cur ? " ✓" : ""}</span>`
   ).join("")}</div>`;
 }
 
@@ -234,7 +234,7 @@ function roundHtml(s) {
   const headline = answering ? "Answer the architect" : "Refine or approve";
   const tag = answering ? "question" + (s.gate ? ` · [${s.gate}]` : "")
                         : s.last?.kind === "proposal" ? "proposal" : "round";
-  return `<section class="card">
+  return `<section class="card" data-tid="scaffold.round-card">
     <div class="card-head">
       <div><span class="label">architect</span><h3>${headline}</h3></div>
       <span class="label">${esc(tag)}</span>
@@ -249,7 +249,7 @@ function roundHtml(s) {
 /** The accept step, when the server has asked for a folder name. Owns acceptance while it is open —
  *  "write story.json →" IS the accept. */
 function folderHtml(s) {
-  return `<section class="card">
+  return `<section class="card" data-tid="scaffold.folder-card">
     <div class="card-head">
       <div><span class="label">accept</span><h3>Name the story folder</h3></div>
       <span class="label">needs_folder</span>
@@ -305,8 +305,8 @@ function sidebarHtml(s) {
           <b>scene</b> — scene 1 in full; later ones as sketches.<br><br>
           Refinement stays within the open gate; only <b>approve</b> advances it.</p></div>`;
 
-  return `<aside>
-    <div class="side-card card">
+  return `<aside data-tid="scaffold.sidebar">
+    <div class="side-card card" data-tid="scaffold.state-card">
       <h3>scaffold state</h3>
       ${stats.join("")}
       <div class="side-actions">${actions.join("")}</div>

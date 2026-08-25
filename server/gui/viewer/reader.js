@@ -1,4 +1,4 @@
-import { esc, basename } from "./util.js";
+import { esc, basename, tid } from "./util.js";
 import { APP, READER, storyName } from "./state.js";
 import { go, syncHash } from "./nav.js";
 import { paras } from "./blocks.js";
@@ -128,7 +128,7 @@ function resultsHtml() {
   if (!q) return "";
   const hits = searchMatches(q);
   if (!hits.length) return `<p class="reader-noresult">no matches for "${esc(q)}"</p>`;
-  const items = hits.map(m => `<button class="reader-hit" data-ch="${m.n}">
+  const items = hits.map(m => `<button ${tid("reader.hit")} class="reader-hit" data-ch="${m.n}">
       <span class="hit-ch">ch ${m.n}</span>
       <span class="hit-line">${snippetHtml(m.line, q)}</span>
     </button>`).join("");

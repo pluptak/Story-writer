@@ -24,6 +24,27 @@ npx tsx story-writer.ts --serve
 
 - [ ] Open `http://localhost:8080`.
 
+## Locators — how to name what you are looking at
+
+Every meaningful rendered element carries a stable `data-tid="<area>.<component>"` attribute
+(`shelf.story-card`, `live.prose-card`, `consult.attempt`), so a bug report can say *where* without
+prose. Elements that already have a unique `id=` (editor fields, the handoff's `h-*` buttons) count
+as addressed. Instances are told apart by the data-* key beside the tid: `data-seq`, `data-dir`,
+`data-chapter`, `data-n`, `data-name`, `data-view`.
+
+Rules for new work:
+
+- A component added under [server/gui/](server/gui/) carries a `data-tid`; build it with the `tid()`
+  helper from `util.js`.
+- The tid names the **role**, never state or position (`story.write-btn`, not `story.write-btn-green`
+  or `story.write-btn2`) — a restyle or reorder must never invalidate a locator.
+- The area is the page (`shelf.`, `story.`, `live.`, `read.`, `edit.`, `handoff.`, `scaffold.`,
+  `compare.`), chrome (`chrome.`), or a shared component family (`prose.`, `consult.`, `reader.`,
+  `reaction.`, `timeline.`, `agents.`, `cast.`, `charcard.`, `runended.`).
+
+In the browser console, `[...document.querySelectorAll("[data-tid]")]` lists everything locatable;
+a CSS selector like `[data-tid="live.consult"][data-seq="3"] .attempt[data-n="1"]` pins one element.
+
 ## Order matters — read this before clicking anything
 
 `MAX_RUNS` is 3, so writing a run destroys the oldest retained one in that story. Where a check below

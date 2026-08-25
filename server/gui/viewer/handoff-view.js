@@ -1,4 +1,4 @@
-import { esc, modelOptionsHtml } from "./util.js";
+import { esc, modelOptionsHtml, tid } from "./util.js";
 import { APP, storyName, hdraft, runningReason, handoffForPage } from "./state.js";
 import { wordsPovHtml } from "./story-page.js";
 
@@ -120,7 +120,7 @@ export function handoffPageHtml() {
   const roster = sc?.roster?.length ? " · " + esc(sc.roster.join(", ")) : "";
   if (sc) {
     body.push(`<div class="divider"><span>proposed chapter ${s.chapter}</span></div>`);
-    body.push(`<div class="cardwrap"><div class="scenerow">
+    body.push(`<div ${tid("handoff.proposed-chapter")} class="cardwrap"><div class="scenerow">
       <div class="sc-q">${esc(sc.question || "(no scene question)")}</div>
       <div class="sc-meta">${sc.place ? esc(sc.place) + " · " : ""}${wordsPovHtml(sc)}${roster}</div>
     </div></div>`);
@@ -137,11 +137,12 @@ export function handoffPageHtml() {
     body.push(`<div class="divider"><span>chapters written</span></div>`);
     if (ready) {
       const rows = hc.items.map(it => `
-        <div class="hchap"><span class="n">✓ ch ${it.n}</span>
+        <div ${tid("handoff.chapter-row")} class="hchap" data-n="${it.n}"><span class="n">✓ ch ${it.n}</span>
           <span class="place">${it.place ? esc(it.place) : "—"}</span>
           <span class="w">${it.error ? "unreadable" : it.words + " words"}</span></div>`);
       rows.push(`
-        <div class="hchap prep"><span class="n">· ch ${s.chapter}</span>
+        <div ${tid("handoff.chapter-row")} class="hchap prep" data-n="${s.chapter}">
+          <span class="n">· ch ${s.chapter}</span>
           <span class="place">${sc?.place ? esc(sc.place) + " — " : ""}being prepared</span>
           <span class="w">draft</span></div>`);
       body.push(`<div class="hchapters">${rows.join("")}</div>`);
@@ -169,7 +170,7 @@ export function handoffPageHtml() {
     body.push(`<div class="divider"><span>changes to review</span></div>`);
     if (s.last.applied.length) {
       body.push(`<div class="hchanges">` + s.last.applied.map(a => `
-        <div class="hchange ok"><span class="hmark">✓</span>
+        <div ${tid("handoff.change-row")} class="hchange ok"><span class="hmark">✓</span>
           <div><code class="hfield">${esc(a.field)}</code>
             <div class="hdiff">${esc(changeValue(a.before))} <span class="arrow">→</span> ${esc(changeValue(a.after))}</div>
           </div>
@@ -180,12 +181,12 @@ export function handoffPageHtml() {
     if (s.last.ignored.length) {
       body.push(`<div class="divider"><span>not applied</span></div>`);
       body.push(`<div class="hchanges">` + s.last.ignored.map(x => `
-        <div class="hchange no"><span class="hmark">✗</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
+        <div ${tid("handoff.change-row")} class="hchange no"><span class="hmark">✗</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
     }
     if ((s.last.flags || []).length) {
       body.push(`<div class="divider"><span>continuity flags · advisory</span></div>`);
       body.push(`<div class="hchanges">` + (s.last.flags || []).map(x => `
-        <div class="hchange flag"><span class="hmark">⚑</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
+        <div ${tid("handoff.change-row")} class="hchange flag"><span class="hmark">⚑</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
     }
     if (s.last.note) {
       body.push(`<p class="sub">${esc(s.last.note)}</p>`);
@@ -215,7 +216,7 @@ export function handoffPageHtml() {
   if (s.spec?.characters?.length) {
     body.push(`<div class="hcast">`);
     for (const c of s.spec.characters) {
-      body.push(`<div class="who">
+      body.push(`<div ${tid("handoff.cast-row")} class="who" data-name="${esc(c.name)}">
         <div class="nm">${esc(c.name)}</div>
         ${c.goal ? `<div class="line"><span class="k">goal</span>${esc(c.goal)}</div>` : ""}
         ${c.knows ? `<div class="line"><span class="k">knows</span>${esc(c.knows)}</div>` : ""}

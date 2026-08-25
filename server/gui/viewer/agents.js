@@ -1,4 +1,4 @@
-import { esc } from "./util.js";
+import { esc, tid } from "./util.js";
 import { APP, READV } from "./state.js";
 
 /** Volumes are wildly lopsided -- one real chapter logged 57 writer calls and ~1.07M prompt
@@ -84,7 +84,7 @@ function transcriptHtml(state) {
     <div class="calls">${t.calls.map((c, i) => {
       const n = (Array.isArray(c.prompt) ? c.prompt : []).length;
       const open = state.callOpen === i;
-      return `<button class="btn callbtn${open ? " current" : ""}" data-call="${i}"
+      return `<button ${tid("agents.call-btn")} class="btn callbtn${open ? " current" : ""}" data-call="${i}"
         >#${i + 1} · ${esc(clock(c.ts))} · ${n} msg${n === 1 ? "" : "s"} · ${abbrev(String(c.response ?? "").length)} chars</button>`;
     }).join("")}</div>
     ${state.callOpen >= 0 && t.calls[state.callOpen] ? callBodyHtml(t.calls[state.callOpen]) : ""}`;
@@ -98,14 +98,14 @@ export function agentsPanelHtml(store = READV, state = APP) {
     state.agentsError ? `<div class="said bad">${esc(state.agentsError)}</div>`
     : !state.agents || state.agents.dir !== store.dir || state.agents.id !== store.id ? `<p class="hint">reading…</p>`
     : !state.agents.logs.length ? `<p class="hint">this run logged no model calls</p>`
-    : state.agents.logs.map(l => `<div class="agentrow">
+    : state.agents.logs.map(l => `<div ${tid("agents.row")} class="agentrow" data-file="${esc(l.file)}">
         <div class="ag-name">${esc(l.agent || l.file)}<span class="tag ${esc(l.role)}">${esc(l.role)}</span></div>
         <div class="ag-meta">${l.calls} call${l.calls === 1 ? "" : "s"} · ${abbrev(l.promptChars)} prompt · ${abbrev(l.responseChars)} response · ${esc((l.models || []).join(", "))}</div>
-        <button class="btn agentopen" data-file="${esc(l.file)}"
+        <button ${tid("agents.open-btn")} class="btn agentopen" data-file="${esc(l.file)}"
           >${openFile(state) === l.file ? "reading" : "open"}</button>
       </div>`).join("");
 
-  return `<section class="picker agents">
+  return `<section ${tid("agents.panel")} class="picker agents">
     <h2>Model calls</h2>
     <div class="cards">${body}</div>
     ${transcriptHtml(state)}

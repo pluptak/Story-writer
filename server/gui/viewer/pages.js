@@ -1,4 +1,4 @@
-import { $, esc, basename, wireBackdropClose } from "./util.js";
+import { $, esc, basename, wireBackdropClose, tid } from "./util.js";
 import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
 import { renderBlock, wireReader } from "./blocks.js";
@@ -161,7 +161,7 @@ function liveHeaderHtml() {
   const m = LIVEV.meta;
   if (!m) return "";
   const where = m.chapters > 1 ? `chapter ${m.chapter} of ${m.chapters}` : "chapter";
-  return `<div class="livehead">
+  return `<div class="livehead" data-tid="live.head">
     <p class="eyebrow">${esc(where)} · ${esc(storyName(m.story))}</p>
     <h2>${esc(m.question || "")}</h2>
     <p class="lede">The writer drafts only as far as the next choice that is a character's to make,
@@ -190,7 +190,7 @@ function renderLive(page, blocks) {
     let html;
     if (warming) {
       const name = storyName(APP.picked || LIVEV.meta?.story || "");
-      html = `<div class="empty starting">
+      html = `<div class="empty starting" data-tid="live.empty">
         <h2>Starting${name ? ` <em>${esc(name)}</em>` : ""}…</h2>
         <p class="thinking"><i></i>waiting for the writer — a cold model can take a few seconds</p>
         <p class="hint">use <b>stop</b> in the run controls to cancel, once they appear</p>
@@ -198,10 +198,10 @@ function renderLive(page, blocks) {
     } else {
       const text = APP.live ? "The scene will appear here as soon as the engine starts writing."
                              : "Run the engine with <code>--serve</code> to watch a scene as it is written.";
-      html = `<div class="empty"><h2>Nothing written yet</h2>
+      html = `<div class="empty" data-tid="live.empty"><h2>Nothing written yet</h2>
         <p>${text}</p>
         ${idle ? `<div class="btns" style="justify-content:center">
-          <button class="btn" id="go-shelf">choose a story</button></div>` : ""}
+          <button ${tid("live.go-shelf-btn")} class="btn" id="go-shelf">choose a story</button></div>` : ""}
       </div>`;
     }
     page.innerHTML = html;
@@ -217,7 +217,7 @@ function renderLive(page, blocks) {
   const consults = blocks.filter(b => b.kind === "consult").length;
   const phase = phaseOf(LIVEV);
   const chip = t => `<span class="metachip">${esc(t)}</span>`;
-  page.innerHTML = liveHeaderHtml() + `<section class="prosecard">
+  page.innerHTML = liveHeaderHtml() + `<section ${tid("live.prose-card")} class="prosecard">
     <div class="head">
       <div><span class="label">live prose</span><h3>${esc(PHASE_TITLE[phase] || "The scene so far")}</h3></div>
       <span class="label">step ${steps}</span>
@@ -249,7 +249,7 @@ function renderRead(page, blocks) {
     // leaves a log holding only `scene_start`. Saying "nothing loaded" there blames the wrong thing
     // and reads exactly like a failed fetch, so an empty run says it is empty.
     const empty = READV.events.length > 0;
-    page.innerHTML = chrome + `<div class="empty"><h2>${empty ? "This run is empty" : "Nothing loaded"}</h2>
+    page.innerHTML = chrome + `<div class="empty" data-tid="read.empty"><h2>${empty ? "This run is empty" : "Nothing loaded"}</h2>
       <p>${empty ? `${esc(READV.label || "it")} — the run was stopped before a word of it was written.
              Pick an earlier one, which may have more in it.`
                  : `Open a story on the shelf and "read" a previous run, drop a saved

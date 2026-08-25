@@ -1,4 +1,4 @@
-import { $, fmtRun } from "./util.js";
+import { $, fmtRun, tid } from "./util.js";
 import { APP, READV } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
@@ -33,11 +33,11 @@ export function loadRun(dir, id) { return loadSavedRun(dir, id); }
 // instead, and stays the way in to open a log from disk.
 export function readChromeHtml(store = READV, includeAgents = store === READV, agentState = APP, includeOpen = store === READV) {
   const cast = store.meta ? castChips(store.meta.characters, store.meta.story) : "";
-  return `<section class="picker readchrome">
+  return `<section ${tid("read.chrome")} class="picker readchrome">
     <h2>Cast</h2>
     ${cast ? `<div class="row">${cast}</div>`
            : `<p class="sub">open a story on the shelf, then "read" a previous run — or open one from disk</p>`}
-    ${includeOpen ? `<div class="btns" style="margin-top:14px"><button class="btn" id="open-log">open a saved log</button></div>` : ""}
+    ${includeOpen ? `<div class="btns" style="margin-top:14px"><button ${tid("read.open-log-btn")} class="btn" id="open-log">open a saved log</button></div>` : ""}
   </section>` + (includeAgents ? agentsPanelHtml(store, agentState) : "");
 }
 
