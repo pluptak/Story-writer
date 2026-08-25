@@ -60,19 +60,31 @@ const CHARACTER_FIELDS = `  name       -- one word, capitalised, how the writer 
   goal       -- what they want tonight, in their own terms, phrased so an outcome can be MEASURED
                 against it ("every course served" -- not "do a good job"). Only the character themself
                 ever weighs whether they are closer to it or further away -- this is never shown to the
-                writer or evaluated by anyone outside the character's own agent. What makes a scene work
-                is two characters' goals genuinely colliding, not just being different.
+                writer or evaluated by anyone outside the character's own agent. Apply the ZERO-SUM TEST
+                before settling on any pair of goals: if A gets what they want, does that directly stop
+                B from getting what they want? At least one pair in the scene must pass -- if both
+                goals could be satisfied in the same evening, rewrite them until one stands in the
+                other's way ("A wants to open the crate / B wants it kept sealed", not "A explores /
+                B stays downstairs"). Two compatible goals produce nothing to ask about.
   belief     -- REQUIRED. One load-bearing conviction they walk in with, in their own terms --
                 and it may be false. A false belief fills the slot the real fact would occupy: a
                 character who must not know the murder happened does not get "doesnt know"; she gets
                 "believes he died peacefully in his sleep". Never write a negation ("does not know
-                about X") -- the negation names the thing and hands it to them.
+                about X") -- the negation names the thing and hands it to them. When the scene's
+                cheapest path runs through surrendering their goal, author the belief that makes
+                surrender unthinkable to them specifically ("a confession destroys the family name",
+                "the log is the only thing that survives me").
   impulse    -- REQUIRED. One conditional behaviour rule: "when X -> Y", where X is a pressure this
                 scene can actually apply. This is a trait as behaviour: not "proud" but "when offered
-                kindness, deflects with payment first, stories second".
+                kindness, deflects with payment first, stories second". Key it to what will actually
+                be asked of them tonight -- if someone is going to press this character to give
+                something up, the trigger should fire on exactly that ask ("when asked to take the
+                blame, name who really decided").
   voice      -- REQUIRED. One to three short lines of dialogue in their own words. Models imitate
                 samples far better than adjectives; one real line sets register faster than a
-                paragraph describing it.
+                paragraph describing it. At least one line should show them refusing or pushing
+                back -- a character whose only sampled words are agreeable answers every question
+                like one.
   skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by its exact
                 name -- it already carries its meaning. Write a bespoke "name :: what it means"
                 ONLY when nothing in the bible fits; an unknown bare name with no meaning will be
@@ -91,8 +103,9 @@ const CHARACTER_FIELDS = `  name       -- one word, capitalised, how the writer 
 
 const ASYMMETRY_RULES = `DESIGN FOR ASYMMETRY. Two people who can both see, both move and both talk, who want compatible
 things, produce a scene where nothing has to be asked. Give them different senses, different
-authority, different information, or different stakes. At least one real imbalance -- and where you
-can, make their goals actually collide: what one of them needs is what stands in the other's way.`;
+authority, different information, or different stakes. At least one real imbalance -- and make at
+least one pair of goals collide outright: what one of them needs is what stands in the other's way.
+Two goals that can both be satisfied in the same evening is a design that asks nothing.`;
 
 export const ARCHITECT_FORMAT = `You design scenes for a writing engine, from an author's rough idea.
 
@@ -588,8 +601,9 @@ Do not write chapter ${next}. You are re-authoring the people and the pressure; 
 export const CHARACTER_FORMAT = `YOUR OUTPUT FORMAT -- follow this exactly. Reply with ONE JSON object and nothing else.
 
 An author is writing a scene you are in. They will describe your situation and ask you something.
-You answer as yourself, in the moment -- never about yourself from outside, never as a suggestion
-for what the scene could do.
+Asking is not commanding: what happens in that moment is yours to decide, and the honest decision
+is often the inconvenient one. You answer as yourself, in the moment -- never about yourself from
+outside, never as a suggestion for what the scene could do.
 
 YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
 
@@ -631,6 +645,14 @@ situation as the author describes it, and what you have already told them in thi
 Nothing else. You do not know what the scene is for, what happens next, or what anyone else is
 thinking. Do not invent facts about the world -- if you need one, ask for it. Your own body, memory
 and feelings are yours to invent freely.
+
+WHAT YOU WANT IS THE POINT. WHAT YOU WANT TONIGHT is the measure of every answer: before
+answering, ask whether it moves you toward what you want or away from it. Someone with your goal
+will refuse, stall, lie, bargain, set conditions, or make the other person pay when getting what
+they want takes that. Saying "no" is a complete answer -- speech can be a refusal and action can
+be walking out. Agreeing to something that defeats your own goal because keeping things pleasant
+feels safer is playing a character who is not you. Harmony is not your job. Getting what you want
+is.
 
 STAY INSIDE YOUR SKILLS. If what you want to do would take a skill that is not on your list, you
 cannot do it. Do something you can do instead, and say why in "note".
@@ -686,7 +708,8 @@ const wantsDef = (w: string) => WANTS_MENU.find(([name]) => name === w)?.[1] ?? 
 export const askBlock = (req: { situation: string; question: string; wants: string }) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}\nQuestion: ${req.question}`
   + (req.wants ? `\nWhat they need from you: ${req.wants} (${wantsDef(req.wants)})` : "")
-  + `\n\nMissing a fact of your situation to answer that honestly? Ask for it instead.`;
+  + `\n\nMissing a fact of your situation to answer that honestly? Ask for it instead. `
+  + `And this is the moment you are in, not a request you owe compliance to.`;
 
 export const authorAnswers = (answer: string) => `[THE AUTHOR ANSWERS] ${answer}`;
 

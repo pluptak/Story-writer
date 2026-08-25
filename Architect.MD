@@ -109,6 +109,14 @@ through the skill system, which stays purely about capabilities. The handoff als
 belief as carry-forward state: when the chapters break what someone believed, the architect is asked
 to re-author the belief, not leave the slot empty.
 
+The field docs steer the architect toward friction rather than harmony: `goal` carries the zero-sum
+test (at least one pair of goals must pass — each being the obstacle of the other), `belief` is
+authored to make surrendering the goal unthinkable to that character specifically, `impulse` is
+keyed to the pressure this scene will actually apply, and at least one `voice` sample should show
+the character refusing. These exist because agreeable small-model characters otherwise price
+capitulation at zero; the character-side counterpart is `CHARACTER_FORMAT`'s "WHAT YOU WANT IS THE
+POINT" clause.
+
 Removing the last scene is refused. Two things are refused because they would rewrite history:
 removing a scene that already has accepted prose, since renumbering would make existing
 `chapters/<n>.md` files refer to different scenes; and editing any field of such a scene, since the
