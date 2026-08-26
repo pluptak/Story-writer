@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { loadStory } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
-import { wrapWriter, writerCast, runChapter, writeScene, newCharacterAgent, type RunEvent } from "../engine/scene-loop.ts";
+import { runChapter, writeScene, newCharacterAgent, type RunEvent } from "../engine/scene-loop.ts";
 import { Agent, setFitWarning } from "../engine/agent.ts";
 import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
@@ -13,7 +13,7 @@ import { WARN } from "../engine/warnings.ts";
 import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { quiet, ScriptedAgent, callRoute } from "./helpers.ts";
+import { quiet, callRoute } from "./helpers.ts";
 
 // Consult test helpers for stopRun
 const REQ: ConsultRequest = { character: "TESTER", situation: "s", question: "q", wants: "" };

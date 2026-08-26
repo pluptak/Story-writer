@@ -138,7 +138,7 @@ describe("/story/edit (GET)", () => {
 
   it("returns warnings alongside the story", async () => {
     const h = makeHost({
-      storyForEdit: async (dir: string) => ({
+      storyForEdit: async (_dir: string) => ({
         ok: true as const,
         story: DOORWAY,
         warnings: ["Scene 1 has no question"],

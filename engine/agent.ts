@@ -9,7 +9,6 @@ import { warn } from "./warnings.ts";
 import { slugify } from "./config-util.ts";
 import { complete, completeStream, type Msg, type CompletionUsage } from "./llm-client.ts";
 import type { ThinkLevel } from "./story-schema.ts";
-import type { RunEvent } from "./scene-loop.ts";
 
 const WINDOW = { cap: 24, keepRecent: 14 };
 

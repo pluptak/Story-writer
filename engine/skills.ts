@@ -144,7 +144,7 @@ function parseReach(who: string, reachRaw: string): { list: { key: string; name:
  *  `skills` → the scene's `reach`, with restrictions applied by canon name across all three. */
 function resolveLayers(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw: string): Map<string, Skill> {
   const reach = parseReach(who, reachRaw);
-  const { split, declared, restricted } = parseRestrictions(who, skillsRaw, restrictionsRaw,
+  const { split, restricted } = parseRestrictions(who, skillsRaw, restrictionsRaw,
     new Set(reach.list.map(r => r.key)));
 
   const out = new Map<string, Skill>();

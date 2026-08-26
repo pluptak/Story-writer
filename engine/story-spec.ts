@@ -1,8 +1,6 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
-import { C } from "../ansi.ts";
-import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
-import { StoryJson, RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef, type CharacterDef } from "./story-schema.ts";
+import { RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
 
@@ -47,9 +45,12 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
   const rawScenes: any[] = Array.isArray(o.scenes) ? o.scenes
     : (o.scene && typeof o.scene === "object") ? [o.scene]
     : [];
-  if (!rawScenes.length && o.scenes === undefined && o.scene) rawScenes.push(o.scene);
+  // A `scene` that came back as anything but an object — a bare string of prose is the one models
+  // actually produce — must not be read as one: `readSceneDef` would take the string's `.length` as
+  // the scene's word count and quietly propose a 19-word chapter. Say so and fall through to blank.
+  if (!rawScenes.length && o.scene)
+    problems.push("the scene came back as text rather than an object — using an empty scene");
   if (!rawScenes.length) rawScenes.push({});
-  const s = rawScenes[0] ?? {};
 
   const seen = new Set<string>();
   const characters: StorySpec["characters"] = [];
@@ -542,29 +543,6 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
   files["story.json"] = JSON.stringify(story, null, 2) + "\n";
 
   return files;
-}
-
-/** Never raw JSON — the round asks for a judgement about people, which JSON is the wrong shape for. */
-export function renderSpec(spec: StorySpec, full = false): string {
-  const head = `${C.bold}${spec.title || "(untitled)"}${C.reset}\n`
-    + `${C.dim}${spec.scenes[0].place || "(nowhere stated)"} · ~${spec.scenes[0].length} words`
-    + `${spec.scenes[0].pov ? ` · pov ${spec.scenes[0].pov}` : ""}${C.reset}`
-    + `${spec.scenes.length > 1 ? ` · ${spec.scenes.length} scenes` : ""}\n\n`
-    + `${spec.premise || "(no premise)"}\n\n`
-    + `${C.bold}Question:${C.reset} ${spec.scenes[0].question || "(none)"}\n`;
-  const cast = spec.characters.map(c => {
-    const lines = [`\n${C.cyan}${c.name}${C.reset}`];
-    if (c.skills.length) lines.push(`  ${C.green}can also:${C.reset} ${c.skills.map(s => splitMeaning(s).text).join(", ")}`);
-    if (c.restrictions.length)  lines.push(`  ${C.red}cannot:${C.reset}   ${c.restrictions.join(", ")}`);
-    if (c.knows)         lines.push(`  ${C.dim}knows:${C.reset}    ${c.knows}`);
-    if (c.goal)          lines.push(`  ${C.dim}wants:${C.reset}    ${c.goal}`);
-    if (c.belief)        lines.push(`  ${C.dim}believes:${C.reset} ${c.belief}`);
-    if (c.impulse)       lines.push(`  ${C.dim}impulse:${C.reset}  ${c.impulse}`);
-    lines.push(full ? `\n${c.persona}\n` : `  ${C.dim}${c.persona.replace(/\s+/g, " ").slice(0, 140)}…${C.reset}`);
-    for (const v of full ? c.voice : []) lines.push(`  ${C.dim}says:${C.reset}     "${v}"`);
-    return lines.join("\n");
-  }).join("\n");
-  return head + cast + (spec.writerStyle && full ? `\n\n${C.bold}House style${C.reset}\n${spec.writerStyle}\n` : "");
 }
 
 /** The spec as the GUI expects it: character skills split into their `name :: meaning` parts. */

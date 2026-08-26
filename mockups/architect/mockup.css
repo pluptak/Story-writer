@@ -1,6 +1,6 @@
 /* Shared styles for the architect mockup set.
-   Visual language follows server/gui/viewer.css and the existing
-   architect-mockup.html: tokens, cards, .thinking, .prob, buttons, tabs. */
+   Visual language follows server/gui/viewer.css: tokens, cards, .thinking,
+   .prob, buttons, tabs. */
 
 :root {
   --bg: #eceff4;

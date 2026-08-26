@@ -13,7 +13,7 @@ const clock = ts => {
 
 /** Fetch the loaded run's per-agent transcript summaries. Keyed by dir+id, the same reason
  *  `APP.chapter` carries its own dir: one run's agents must never render under another's.
- *  A response that lands after a newer loadAgents started is dropped -- otherwise run A's late
+ *  A response that lands after a newer call started is dropped -- otherwise run A's late
  *  answer would leave the panel stuck on "reading…" for run B, with nothing to re-fetch it. */
 export async function loadAgentState(dir, id, state = APP) {
   const req = (state._agentsReq = (state._agentsReq || 0) + 1);
@@ -27,8 +27,6 @@ export async function loadAgentState(dir, id, state = APP) {
     state.agents = { dir, id, logs: j.logs || [] };
   } catch { if (req === state._agentsReq) state.agentsError = "the engine did not answer"; }
 }
-
-export function loadAgents(dir, id) { return loadAgentState(dir, id, APP); }
 
 /** One agent's transcript, on demand. Never fetched with the summaries: a writer transcript runs to
  *  a megabyte, and the panel exists to show you which agent is worth opening before you open it.

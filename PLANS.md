@@ -6,7 +6,8 @@ the handoff, [`Writer.MD`](Writer.MD) for the writer and the live screen. When s
 its behaviour moves into one of those and **the entry is deleted rather than annotated**; git history
 is where implementation notes belong.
 
-Nothing below is committed work, and the numbering is an ordering, not a schedule.
+Nothing below is committed work. Within a section the order is a preference, not a schedule. The one
+exception is **Next**, which is the short list of what should be picked up first.
 
 **Verification, once, for all of it:** `npx tsc --noEmit` and `npm test` are the cheap checks. Anything
 touching `server/gui/` also needs the matching section of [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md), since
@@ -15,28 +16,97 @@ run, which is the owner's to make, batched.
 
 ---
 
+## Next
+
+Four items promoted out of the sections below. Each is decidable now, has live-run evidence behind
+it, and is a reason to distrust what the architect currently hands the writer.
+
+### 1. Move the mechanically decidable cast-sheet checks into `normalizeSpec`
+
+Across four live runs of two stories the verify pass returned **no edits every time**, including on
+drafts where checks it already holds should have fired: a cast with no restrictions at all, which
+`normalizeSpec` had already detected and handed to it under `[ALREADY FLAGGED]`, and a `reach` grant
+naming a phone that neither `place` nor `facts` ever established — the I5 bullet, verbatim. Detection
+is not the gap. `problems` are advisory, and asking a model to re-derive a string comparison is the
+wrong instrument for it.
+
+`engine/story-spec.ts`'s `normalizeSpec` already validates `pov` against `characters` and drops a
+`reach` grant naming a non-character, and `problems` already feeds `[ALREADY FLAGGED]`
+(`prompts.ts`, `engine/architect.ts`). The scene's `roster` is passed through with no validation at
+all. Five checks are pure string work and unbuilt:
+
+- a roster name absent from `characters`;
+- `pov` absent from the *roster* (only pov-absent-from-`characters` exists today);
+- reach granted to someone absent from the roster (the same gap);
+- a reach entry whose name collides with a general or bible skill;
+- a name in `knows`/`goal`/`belief` absent from `characters` — a rename or a hallucination, seen live
+  in one of two scaffolds.
+
+**Done when** each appends to `problems` in `normalizeSpec` and its bullet is gone from the verify
+prompt. The genuinely semantic checks stay with the model, which is what I5 already asks for: a fact
+restating a private `knows`, a restriction that cannot bite, I5's does-the-thing-exist.
+
+### 2. Make the no-asymmetry finding gate the cast stage
+
+`normalizeSpec`'s "nobody has any restrictions" check asks only whether *anyone* in the cast has a
+restriction, and it is advisory even when it fires. A live four-hander passed it with one restriction
+on one character while the POV and two others had none; a different run tripped it, was handed the
+finding under `[ALREADY FLAGGED]`, and shipped unchanged (evidence in item 1). What the check wants
+to ask is whether the asymmetry touches the fork the scene turns on — judgement, not a count.
+
+**Done when** a no-asymmetry finding stops the cast stage advancing without an explicit author
+override, and the count-based check is either replaced by the fork-touching question or subordinated
+to it.
+
+### 3. `facts[]` is framed away from the one thing it exists for
+
+The story stage asks for "truths true of the world at large that nobody in particular walks in
+holding", and the fill-gaps pass reinforces that a fact one person holds stays in their `knows`.
+Neither says what actually decides it: the writer is never shown any character's `persona`, `knows`,
+`goal` or `belief` — `writerSystem` tells it so outright — so a fact *everyone in the room* holds is
+exactly what belongs at story level, and the current wording reads as excluding it precisely because
+both characters do hold it. Two live scaffolds in a row came back with `facts` empty, and in both the
+writer then invented the missing world state and got it wrong: in one, which of two patients each
+character was arguing for, and the whole scene ran inverted; in the other, nothing bounded what could
+be true of the room and the writer invented an electrical fire that dissolved the premise's dilemma.
+
+**Done when** the story stage and the fill-gaps pass state the writer's blind spot and make "two or
+more characters both hold it" the test for story level, and verify has a bullet for the omission,
+which it does not have at all today. This is a reframe, not a new field.
+
+### 4. The writer supplies both answers, and that suppresses clarification
+
+Across three runs of one story every consult without exception was an either/or with both branches
+written by the writer ("Do you concede and sign for A, or do you double down?"), and across four runs
+there was exactly one clarification request in 37 consults. The two look causally linked: a situation
+carrying both options and all the context leaves a character nothing to ask for.
+
+**Done when** `normalizeConsult` refuses a question carrying its own answers, the way
+`DEGENERATE_QUESTIONS` already refuses one with no fork in it, and the writer prompt's instruction on
+question shape is reworked to match. Those are two halves of one change.
+
 ## Smaller viewer work
 
-- **Keep current-run rendering scoped to one chapter.** Aggregate story-level totals only when the UI
-  is explicitly showing more than one run.
+- **Keep current-run rendering scoped to one chapter.** No defect has been observed; this is a
+  constraint on whatever aggregate display comes next. Story-level totals are aggregated only when
+  the UI is explicitly showing more than one run, and the grouping section of
+  [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) is what checks it.
 
 ## Architect follow-ups
 
-- **The worked example still costs the scaffold a quarter of its prompt.** `architectExample()`
-  reads `tests/fixtures/doorway/story.json`, ~1,870 estimated tokens. The handoff no longer carries
-  it (`buildArchitect(d, false)`), which is where the context pressure actually was; the scaffold
-  still does, because a whole-story proposal has no story yet to demonstrate the format with. The
-  staged walk embeds each stage's fields inline instead, so the example matters most to the one-shot
-  walk (`mode: "oneshot"`);
-  whether the one-shot path can drop or shrink it is what is left.
+- **The one-shot scaffold still spends a quarter of its prompt on the worked example.**
+  `architectExample()` reads `tests/fixtures/doorway/story.json`, ~1,870 estimated tokens. The handoff
+  no longer carries it (`buildArchitect(d, false)`) and the staged walk embeds each stage's fields
+  inline, so only `mode: "oneshot"` still pays — a whole-story proposal has no story yet to
+  demonstrate the format with. Whether that path can drop or shrink the example is what is left.
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
-  each. The round now refuses with the numbers rather than letting the model return nothing, but a
-  long story needs a correspondingly large context window loaded.
-- **Staged-scaffold follow-ups**, held behind live-run evidence like everything else in that
-  pipeline: the **verify** pass could flag a cast where nobody has any restrictions — that check now
-  has more evidence than it wanted, gathered under *The verify pass has never changed anything*
-  below; and the story editor has no view of the session's **tension** sentence, which steers the
-  cast and scene stages but lives only in the conversation.
+  each. The round refuses with the numbers rather than letting the model return nothing, so a long
+  story fails loudly instead of silently — but nothing shrinks the input. The open decision is which
+  of summarizing prior chapters, windowing them, or requiring a correspondingly large context window
+  is the answer; the first two both risk dropping exactly the continuity the item below is about.
+- **The story editor has no view of the session's tension sentence.** It steers the cast and scene
+  stages but lives only in the conversation, so an author editing the story afterwards cannot see
+  what the cast was built to serve.
 - **A later chapter's writer has no continuity but what the handoff formalized.** Chapter *n*'s writer
   is built from the revised premise, the scene definition, `facts`, the cast summary and the style —
   and nothing else. No previous prose, no ending, no recap, no note of where anyone physically is,
@@ -48,31 +118,18 @@ run, which is the owner's to make, batched.
   add a `standing:` list to the scene definition for positions and held objects, which the handoff
   fills and the story editor shows; and, only if those fall short, a durable per-character `carrying`
   field. The risk in all three is the one the asymmetry exists to prevent — continuity that reaches the
-  writer must not reach a character as something they were never told.
+  writer must not reach a character as something they were never told. That risk is the decision to
+  make before any of the three is built.
 - **Approvable, promotable skill bible.** The in-code `SPECIAL_SKILL_CATALOG` is the seed; the second
   half of the plan is a shared, persistent bible that bespoke per-story `custom` skills can be
   **promoted** into — natural home alongside `defaults.json`, loaded by `loadDefaults` and merged over
   the in-code seed. The architect may **propose** a bible addition; it lands only after the owner
   **approves** it — a real gate distinct from accepting the story. That gate is what turns "prefer an
   existing skill" into a hard constraint; until it exists, custom skills stay allowed.
-- **Reach may eventually want scoped targets.** A reach entry is today one flat
+- **Reach may eventually want scoped targets. Not planned.** A reach entry is today one flat
   `thing :: meaning` string; scoping it (`camera 3 but not camera 7`, `the lobby doors but not the
-  vault`) would mean *character → interface → capability → scope* instead. Not built — the flat form
-  is the deliberate floor, recorded here so it is not mistaken for the ceiling.
-
-- **`facts[]` is framed away from the one thing it exists for.** The story stage asks for "truths
-  true of the world at large that nobody in particular walks in holding", and the fill-gaps pass
-  reinforces that a fact one person holds stays in their `knows`. Neither says what actually decides
-  it: the writer is never shown any character's `persona`, `knows`, `goal` or `belief` —
-  `writerSystem` tells it so outright — so a fact *everyone in the room* holds is exactly what
-  belongs at story level, and the current wording reads as excluding it precisely because both
-  characters do hold it. Two live scaffolds in a row came back with `facts` empty, and in both the
-  writer then invented the missing world state and got it wrong: in one, which of two patients each
-  character was arguing for, and the whole scene ran inverted; in the other, nothing bounded what
-  could be true of the room and the writer invented an electrical fire that dissolved the premise's
-  dilemma. The fix is a reframe, not a new field — state the writer's blind spot, and make "two or
-  more characters both hold it" the test for story level rather than "nobody in particular holds it".
-  A matching verify bullet for the omission does not exist at all.
+  vault`) would mean *character → interface → capability → scope* instead. Recorded so the flat form
+  is read as the deliberate floor it is, and not as the ceiling.
 - **The ZERO-SUM TEST passes goals that have no agency.** As written it asks only whether A getting
   what they want stops B getting what they want. "Convince B to sign" against "get the signature on
   my patient's chart" passes that, but only one of the two can act — every run of that story ended
@@ -91,33 +148,13 @@ run, which is the owner's to make, batched.
   restriction that cannot bite in this scene and no equivalent for a skill. One live scaffold
   produced two bespoke skills, both inert in the argument the scene actually turned out to be, and
   neither drawn from the bible the cast stage says to prefer.
-- **Cast-sheet defects that are mechanically checkable and unchecked.** From two live scaffolds: a
-  `knows` naming a character who is not in the cast — a rename or a hallucination, and a name in
-  `knows`/`goal`/`belief` absent from `characters` is a pure string check; an editorial parenthetical
-  written into a `goal` and rendered verbatim into that character's prompt ("be gone by 5:00 PM (or
-  in this case, end his shift/contractual window immediately)"); and a `goal` in the third person
-  naming the character to itself while the persona is second person, since `CHARACTER_FIELDS` fixes
-  the person for `persona` and for no other field. A fourth needs judgement rather than a check: a
-  cast sheet whose pronouns disagree with the prose the writer then produces from it.
-- **The verify pass has never changed anything.** Across four live runs of two stories it returned no
-  edits every time, including on drafts where checks it already holds should have fired: a cast with
-  no restrictions at all, which `normalizeSpec` had already detected and handed to it under
-  `[ALREADY FLAGGED]`, and a `reach` grant naming a phone that neither `place` nor `facts` ever
-  established — the I5 bullet, verbatim. Detection is not the gap; `problems` are advisory and never
-  block acceptance. Two directions, and they combine. Move the mechanically decidable checks out of
-  the prompt and into `normalizeSpec`, where `problems` already exists and already feeds
-  `[ALREADY FLAGGED]`: a roster name absent from `characters`; `pov` absent from the *roster* (only
-  pov-absent-from-*characters* exists today); reach granted to someone absent from the roster (the
-  same gap); and a reach entry whose name collides with a general or bible skill. Then make at least
-  the no-asymmetry finding gate the cast stage, needing an explicit author override rather than
-  passing silently. The genuinely semantic checks — a fact restating a private `knows`, a restriction
-  that cannot bite, I5's does-the-thing-exist — stay with the model, which is what I5 already asks
-  for.
-- **The no-restrictions check is satisfied by a token.** `normalizeSpec` asks only whether *anyone*
-  in the cast has a restriction. A live four-hander passed it with one restriction on one character
-  while the POV and two others had none. What the check wants to ask is whether the asymmetry touches
-  the fork the scene turns on — the same judgement the verify bullet already tries to make, which is
-  why the two probably ship together.
+- **Cast-sheet defects that need prompt work rather than a string check.** From two live scaffolds: an
+  editorial parenthetical written into a `goal` and rendered verbatim into that character's prompt
+  ("be gone by 5:00 PM (or in this case, end his shift/contractual window immediately)"); and a `goal`
+  in the third person naming the character to itself while the persona is second person, since
+  `CHARACTER_FIELDS` fixes the person for `persona` and for no other field. A third needs judgement
+  rather than a check: a cast sheet whose pronouns disagree with the prose the writer then produces
+  from it. The mechanically checkable defect found alongside these is in **Next**, item 1.
 
 ## Asymmetry follow-ups
 
@@ -176,36 +213,25 @@ one extra LLM call per multi-character fork if it were ever wanted.
   piece carrying both an unmatched quotation and a restricted-sense violation reports only the
   quotation. A drafted piece contradicting an established fact is the same shape of problem and is
   filed above under small-model coherence limits.
-- **The writer supplies both answers, and that suppresses clarification.** Across three runs of one
-  story every consult without exception was an either/or with both branches written by the writer
-  ("Do you concede and sign for A, or do you double down?"), and across four runs there was exactly
-  one clarification request in 37 consults. The two look causally linked: a situation carrying both
-  options and all the context leaves a character nothing to ask for. `DEGENERATE_QUESTIONS` already
-  refuses a question with no fork in it; the mirror case — a question carrying its own answers — has
-  no check. Refusing it in `normalizeConsult` and reworking the writer prompt's instruction on
-  question shape are two halves of one change.
 - **A reaction fan-out does not differentiate.** Given one situation, several characters return the
   same beat: in a live four-hander two of them answered a post-crisis fan-out with near-identical
   shaking hands and a long exhale, and one then repeated his own line almost verbatim in a later
   fan-out. Four of that scene's six fan-outs came after the crisis had resolved, and the scene
-  overran its 900-word target by 43%. Whether the fix belongs in the fan-out's situation text, in a
-  cross-reaction check like the parked fourth judge variant above, or simply in not fanning out once
-  the scene's question is answered, is open.
+  overran its 900-word target by 43%. The fix has three possible owners — the fan-out's situation
+  text, a cross-reaction check like the parked fourth judge variant above, or simply not fanning out
+  once the scene's question is answered. Which one it is has to be decided before anything is built.
 - **The clarifier can answer a different question than the one asked.** The single live clarification
   observed asked whether telemetry was stabilising or the oscillation increasing, and was answered
   with what a different system sounded like. The answer was accepted and folded in. Nothing checks
   that a clarification addresses its question.
-- **The viewer has no automated coverage at all.** `npm test` covers the engine and the route modules;
-  everything under `server/gui/` is verified by reading it and by running
-  [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md). Any change there is only as good as the live check that
-  followed it.
 - **There is no moment at which an owner accepts anything.** Overwrite protection and chapter
   contiguity shipped (Writer.MD, "One run writes one chapter"), but "accepted" still just means "a
   file the run wrote" — if an explicit acceptance step is ever wanted, it starts there.
-- Add coverage for `runAndSave` write-failure paths if that logic is extracted from the composition root.
+- **`run-and-save.ts`'s write-failure paths have no coverage.** The module exists; the branches are
+  not reachable from a test until `runChapter` is injectable or the artifact writer is split out of
+  `runAndSave`.
 - Keep `liveHistory` growth within a run under observation; it is reset between runs but is currently
   not bounded during a very long run.
-- Do not add a bind-address option until the local server has an authentication design.
 
 ## The CLI-to-GUI transition
 
@@ -223,12 +249,9 @@ Still open, in order:
 3. **Harden the boundary.** Test startup without a TTY, cleanup after failures, SSE reconnects, route
    preconditions, and shutdown.
 
-Add coverage for `run-and-save.ts` write-failure paths once that module exists — it needs `runChapter`
-injectable or the artifact writer split out of `runAndSave` before the failure branches are reachable
-from a test.
-
-Constraints that hold whether or not that happens: the process supports **one active run** and must
-not imply otherwise; the viewer is localhost-only and unauthenticated, and a wider bind needs
-authentication before anything else; route modules receive behaviour through `ServerHost` and never
-import `engine/`; operational messages stay in the console and run data stays in the JSONL logs, so
-the GUI never becomes a second source of truth.
+The constraints that hold whether or not that happens are already written down and are not restated
+here: one active run at a time, the localhost-only unauthenticated surface and what widening the bind
+would require, in [`GUI-SPEC.md`](GUI-SPEC.md); route modules receiving behaviour through
+`ServerHost` and never importing `engine/`, in [`CLAUDE.md`](CLAUDE.md). The one that has no home
+elsewhere: operational messages stay in the console and run data stays in the JSONL logs, so the GUI
+never becomes a second source of truth.

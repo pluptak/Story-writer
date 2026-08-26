@@ -6,7 +6,7 @@ import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path"
 import { C } from "../ansi.ts";
 import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
 import { warn as emitWarn } from "./warnings.ts";
-import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef, type ThinkLevel } from "./story-schema.ts";
+import { StoryJson, type SceneDef, type ThinkLevel } from "./story-schema.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 

@@ -3,9 +3,8 @@
 **Status: built.** [`story-page.js`](server/gui/viewer/story-page.js),
 [`blocks.js`](server/gui/viewer/blocks.js), [`events.js`](server/gui/viewer/events.js),
 [`hud.js`](server/gui/viewer/hud.js) and [`timeline.js`](server/gui/viewer/timeline.js) render drafts,
-consults, retries, accepted answers, group reactions and character exits off `/events`, in the layout
-[`writer-mockup.html`](writer-mockup.html) proposed. What is left is listed under
-[Remaining work](#remaining-work).
+consults, retries, accepted answers, group reactions and character exits off `/events`. What is left
+is listed under [Remaining work](#remaining-work).
 
 This document owns the writer's role and the live-run screen. The routes and SSE frames it consumes
 are specified in [`GUI-SPEC.md`](GUI-SPEC.md) — the single source of truth for the wire, and complete
@@ -254,15 +253,14 @@ a character's answer — and it tracks the `reader_ask`/`reader_answer` frames i
 
 The shipped screen: the run controls and the cast in the right-hand rail as cards, an
 eyebrow/headline/lede block at the top, and the prose in a card with a phase-derived title and a chip
-row. Two deliberate departures from `writer-mockup.html`:
+row. Two deliberate decisions behind it:
 
-- **The consult blocks were not simplified to the mockup's.** The shipped rendering carries per-attempt
-  detail the mockup drops — the fresh-instance note, asked-back Q&A, the flags on a forced or re-asked
-  attempt, judge verdicts. The mockup is a picture of one consult going well; losing the rest would
-  make a retry unreadable.
-- **POV is not shown.** The mockup has a `POV RIVEN` chip, but POV is a hint to the writer about whose
-  choice comes first, not something a reader of the run needs. `RunMeta` carries no `pov` and does not
-  need to.
+- **The consult blocks were not simplified.** The shipped rendering carries the full per-attempt
+  detail — the fresh-instance note, asked-back Q&A, the flags on a forced or re-asked attempt, judge
+  verdicts. One consult going well is easy to render compactly; losing the rest would make a retry
+  unreadable, and a retry is the case worth watching.
+- **POV is not shown.** POV is a hint to the writer about whose choice comes first, not something a
+  reader of the run needs. `RunMeta` carries no `pov` and does not need to.
 
 The live rail also accumulates completed model calls by agent: call count, average duration, and
 prompt/completion token totals when the provider reports them. Missing token usage is shown as

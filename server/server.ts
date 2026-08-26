@@ -14,7 +14,7 @@ import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
 import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
-import type { ScaffoldSession, NextChapterSession, ScaffoldRound } from "../engine/architect.ts";
+import type { ScaffoldSession, NextChapterSession } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson } from "../engine/story-schema.ts";

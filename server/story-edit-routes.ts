@@ -5,7 +5,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE, storyWriteBlocked } from "../live.ts";
+import { storyWriteBlocked } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 

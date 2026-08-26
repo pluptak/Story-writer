@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { loadStory, ROOT } from "../engine/story-format.ts";
 import { slugify } from "../engine/config-util.ts";
 import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, type SceneDef } from "../engine/story-spec.ts";
-import { quiet, quietSync, warnings } from "./helpers.ts";
+import { quiet, quietSync } from "./helpers.ts";
 
 // -- STORY SPEC (scaffolding, SPEC-S §3) -----------------------------------
 describe("normalizeSpec", () => {
@@ -28,6 +28,13 @@ describe("normalizeSpec", () => {
     assert.deepEqual(problems, []);
     assert.equal(spec.scenes[0].pov, "RIVEN");
     assert.deepEqual(spec.characters[0].skills, ["lockpicking :: picks locks"]);
+  });
+
+  it("refuses to read a scene that came back as text, rather than taking its length as a word count", () => {
+    const { spec, problems } = normalizeSpec({ ...base, scene: "Behind Kessel's, at 3am." });
+    assert.equal(spec.scenes[0].length, 700);
+    assert.equal(spec.scenes[0].place, "");
+    assert.match(problems.join(" "), /came back as text/);
   });
 
   it("requires a belief, an impulse and voice samples on every character", () => {

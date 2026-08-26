@@ -3,7 +3,7 @@ import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { complete, completeStream, NET, lmUrlsDerivable } from "../engine/llm-client.ts";
-import { RUN, stopRun, armRun } from "../live.ts";
+import { stopRun, armRun } from "../live.ts";
 
 /** Helper to create a ReadableStream from an array of chunks. */
 function chunkedStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {

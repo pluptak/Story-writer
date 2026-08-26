@@ -4,18 +4,16 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm, mkdir, readFile, copyFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
-  type Defaults,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
-import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
-import { quiet, quietSync, warnings } from "./helpers.ts";
+import { quiet } from "./helpers.ts";
 
 // `new URL(...).pathname` is wrong on Windows and this repo's path may contain a space.
 const FIXTURE = fileURLToPath(new URL("./fixtures/badstory", import.meta.url));

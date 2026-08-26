@@ -1,13 +1,12 @@
 /**
- * Architect tests — story scaffolding, chapter handoff, and related HTTP routes.
+ * Architect tests — story scaffolding and the chapter handoff. The routes that drive them are
+ * covered in scaffold-routes.test.ts.
  */
-import { describe, it, afterEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
-import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
   loadStory, type Defaults,
@@ -16,10 +15,6 @@ import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts"
 import { architectNextChapter, architectVerify } from "../prompts.ts";
 import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
-import { LIVE } from "../live.ts";
-import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
-import { HttpError, readJsonBody } from "../server/http-util.ts";
-import type { ServerHost } from "../server/server.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
 
 // -- SCAFFOLD SUPPORT -------------------------------------------------------

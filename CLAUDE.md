@@ -72,7 +72,8 @@ Requires **LM Studio running locally** at `http://localhost:1234/v1` with the st
 ## Architecture
 
 The engine (everything `story-writer.ts` used to hold in one file) lives under [engine/](engine/),
-split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `skills.ts` and
+split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `warnings.ts`,
+`quote-lint.ts`, `skills.ts` and
 `story-schema.ts` have no engine dependencies; `llm-client.ts`, `agent.ts`, `story-format.ts` and
 `story-spec.ts` build on those; `preflight.ts`, `consult.ts`, `architect.ts` and `scene-loop.ts`
 build on those in turn;
@@ -97,6 +98,8 @@ way.**
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
 | [engine/config-util.ts](engine/config-util.ts) | the shared filename `slugify` |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
+| [engine/warnings.ts](engine/warnings.ts) | the engine's warning sink — `WARN.sink` is swapped, never `console` |
+| [engine/quote-lint.ts](engine/quote-lint.ts) | the mechanical half of the narration lint: quoted lines matched against the granted ledger, no model call |
 | [engine/skills.ts](engine/skills.ts) | the general skill catalog, the special-skill bible, restriction and reach resolution (I1–I5), and a story's `skills:`/`restrictions:` overrides |
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |

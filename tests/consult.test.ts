@@ -9,7 +9,7 @@ import {
   reviseConsult, parseLintVerdict, CONSULT_WANTS, type ConsultEvent, type ConsultRequest, type Clarifier,
 } from "../engine/consult.ts";
 import * as P from "../prompts.ts";
-import { wrapCharacter, wrapWriter, writerCast, neglectedCast, runChapter } from "../engine/scene-loop.ts";
+import { neglectedCast } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
 import { ScriptedAgent } from "./helpers.ts";
 
