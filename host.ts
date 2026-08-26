@@ -129,6 +129,9 @@ export const HOST: ServerHost = {
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
       })),
+      // Reach stays per scene and never merges into a character's skills (I4): the GUI labels it
+      // with the scene it comes from so it can never read as intrinsic.
+      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {} })),
     };
   },
   checkStory: (story) => {

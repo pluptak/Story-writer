@@ -12,7 +12,7 @@ export type { SceneDef } from "./story-schema.ts";
 
 /** A loaded character: everything the agents need, with skills already resolved to the final list,
  *  and `limits` carrying what the authored restrictions took away as explicit negative facts —
- *  general AND special skills, so a penalty-removed lockpicking is nameable, not merely absent. */
+ *  general AND special skills, so a removed lockpicking is nameable, not merely absent. */
 export interface CharacterDef {
   name: string;
   model: string;
@@ -113,6 +113,14 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     for (const r of s.roster) {
       if (!characters.some(c => c.name.toLowerCase() === r.trim().toLowerCase()))
         warn(`Scene ${i + 1} roster "${r}" is not one of the characters — ignored`);
+    }
+    // Reach is scene-scoped (I1), so it is only ever checked for well-formedness here; the character
+    // base above resolves with reach empty (I4). A grant to nobody who can receive it is dead weight.
+    for (const [who] of Object.entries(s.reach ?? {})) {
+      const ch = characters.find(c => c.name.toLowerCase() === who.trim().toLowerCase());
+      if (!ch) warn(`Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`);
+      else if (s.roster.length && !s.roster.some(r => r.trim().toLowerCase() === who.toLowerCase()))
+        warn(`Scene ${i + 1} grants reach to "${who}", who is not in its roster — the grant never reaches a run`);
     }
   }
 

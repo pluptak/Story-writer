@@ -55,6 +55,10 @@ run, which is the owner's to make, batched.
   the in-code seed. The architect may **propose** a bible addition; it lands only after the owner
   **approves** it — a real gate distinct from accepting the story. That gate is what turns "prefer an
   existing skill" into a hard constraint; until it exists, custom skills stay allowed.
+- **Reach may eventually want scoped targets.** A reach entry is today one flat
+  `thing :: meaning` string; scoping it (`camera 3 but not camera 7`, `the lobby doors but not the
+  vault`) would mean *character → interface → capability → scope* instead. Not built — the flat form
+  is the deliberate floor, recorded here so it is not mistaken for the ceiling.
 
 ## Asymmetry follow-ups
 

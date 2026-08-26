@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { splitMeaning, resolveSkills, removedCapabilities, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG, type Skill } from "../engine/skills.ts";
+import { splitMeaning, resolveSkills, resolveReach, removedCapabilities, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, type Skill } from "../engine/skills.ts";
 import { quietSync, warnings } from "./helpers.ts";
 
 describe("splitMeaning", () => {
@@ -60,6 +60,22 @@ describe("resolveSkills", () => {
     assert.match(w.join(" "), /both skills and restrictions/);
     assert.ok(resolveSkills("X", "sight :: they can see after all", "sight").some(x => x.name === "sight"));
   });
+
+  it("a restriction naming a declared bespoke skill self-restricts instead of warning unknown", () => {
+    const w = warnings(() => resolveSkills("X", "fire :: a small flame on his fingertip", ""));
+    // no restrictions at all: fire is simply present
+    assert.equal(w.length, 0);
+    assert.ok(quietSync(() => resolveSkills("X", "fire :: a small flame on his fingertip", "fire"))
+      .some(x => x.name === "fire" && x.meaning === "a small flame on his fingertip"));
+    assert.equal(warnings(() => resolveSkills("X", "", "telepathy")).length, 1,
+      "an undeclared bespoke name in restrictions is still flagged as removing nothing");
+  });
+
+  it("does not treat inherited object names as catalog entries", () => {
+    const w = warnings(() => resolveSkills("X", "", "constructor"));
+    assert.equal(w.length, 1);
+    assert.match(w[0], /constructor/);
+  });
 });
 
 // -- SPECIAL-SKILL BIBLE ----------------------------------------------------
@@ -103,138 +119,77 @@ describe("SPECIAL_SKILL_CATALOG", () => {
   });
 });
 
-// -- RESTRICTION CATALOG ----------------------------------------------------
-describe("RESTRICTION_CATALOG", () => {
-  it("is a fixed record of penalty name to disabled-skill-name array", () => {
-    assert.ok("deprived" in RESTRICTION_CATALOG);
-    assert.deepEqual(RESTRICTION_CATALOG.deprived, ["sight", "hearing"]);
-  });
-
-  it("some penalties disable bible skills as well as general ones", () => {
-    assert.ok(RESTRICTION_CATALOG["hands-bound"].includes("lockpicking"));
-    assert.ok(RESTRICTION_CATALOG.bound.includes("climbing"));
-  });
-});
-
-describe("resolveSkills with trait bundles", () => {
+// -- REACH ------------------------------------------------------------------
+describe("reach", () => {
   const names = (s: Skill[]) => s.map(x => x.name);
-  const general = Object.keys(SKILL_CATALOG);
+  const sources = (s: Skill[]) => Object.fromEntries(s.map(x => [x.name, x.source]));
 
-  it("expands a bundle to its constituent skill restrictions", () => {
-    const s = quietSync(() => resolveSkills("X", "", "deprived"));
-    assert.ok(!names(s).includes("sight"), "deprived removes sight");
-    assert.ok(!names(s).includes("hearing"), "deprived removes hearing");
-    assert.equal(s.length, general.length - 2);
+  it("a reach entry joins the resolved list as a third layer, tagged reach", () => {
+    const s = quietSync(() => resolveSkills("AURA", "", "", "cameras :: perceiving through the lobby cameras"));
+    assert.equal(sources(s)["cameras"], "reach");
+    assert.equal(s.find(x => x.name === "cameras")!.meaning, "perceiving through the lobby cameras");
+    assert.equal(sources(s)["movement"], "general", "the grant leaves the intrinsic layers alone");
+    // and with no grant, no reach layer exists
+    assert.ok(!names(resolveSkills("AURA", "", "")).includes("cameras"));
   });
 
-  it("leaves unrelated skills untouched when a bundle removes some", () => {
-    const s = quietSync(() => resolveSkills("X", "", "deprived"));
-    assert.ok(names(s).includes("speech"), "deprived does not remove speech");
-    assert.ok(names(s).includes("movement"), "deprived does not remove movement");
+  it("collapses to the one rule of I3: a reach name an intrinsic skill already uses is dropped, with a warning", () => {
+    const wOwn = warnings(() => resolveSkills("X", "keys :: by feel", "", "keys :: through the key cabinet"));
+    assert.match(wOwn.join(" "), /reach "keys" reuses a skill they already have/);
+    const own = resolveSkills("X", "keys :: by feel", "", "keys :: through the key cabinet");
+    assert.deepEqual(own.filter(x => x.name === "keys"),
+                     [{ name: "keys", meaning: "by feel", source: "custom" }]);
+    const wGen = warnings(() => resolveSkills("X", "", "", "speech :: talking through the intercom"));
+    assert.match(wGen.join(" "), /reuses a skill/);
+    const withGeneralCollision = resolveSkills("X", "", "", "speech :: talking through the intercom");
+    assert.equal(withGeneralCollision.filter(x => x.source === "reach").length, 0,
+      "a reach entry may not reuse a general skill's canon name either");
   });
 
-  it("multiple bundles compose correctly", () => {
-    const s = quietSync(() => resolveSkills("X", "", "deprived | insensate"));
+  it("I2: a restriction removes the reach entry too, and names it under CANNOT", () => {
+    const s = quietSync(() => resolveSkills("AURA", "", "cameras", "cameras :: perceiving through the lobby cameras"));
+    assert.ok(!names(s).includes("cameras"), "the restriction reaches across layers");
+    assert.deepEqual(removedCapabilities("AURA", "", "cameras", "cameras :: perceiving through the lobby cameras"),
+                     ["cameras"]);
+  });
+
+  it("I2 corollary: a restriction never removes by resemblance — the blind AI keeps its camera feed", () => {
+    const s = quietSync(() => resolveSkills("AURA", "", "sight", "cameras :: perceiving through the building's active security cameras"));
+    const cam = s.find(x => x.name === "cameras");
+    assert.ok(cam && cam.source === "reach", `restrictions: sight must not touch reach cameras`);
     assert.ok(!names(s).includes("sight"));
-    assert.ok(!names(s).includes("hearing"));
-    assert.ok(!names(s).includes("touch"));
-    assert.ok(!names(s).includes("taste"));
-    assert.equal(s.length, general.length - 4);
+    // and the restriction is still named under CANNOT for what it DID remove
+    assert.deepEqual(removedCapabilities("AURA", "", "sight", "cameras :: perceiving through the building's active security cameras"),
+                     ["sight"]);
   });
 
-  it("a bundle alongside a single-skill restriction works", () => {
-    const s = quietSync(() => resolveSkills("X", "", "deprived | speech"));
-    assert.ok(!names(s).includes("sight"), "deprived removes sight");
-    assert.ok(!names(s).includes("hearing"), "deprived removes hearing");
-    assert.ok(!names(s).includes("speech"), "explicit speech restriction works");
-    assert.equal(s.length, general.length - 3);
+  it("reach is character-in-scene: two characters granted different interfaces see only their own", () => {
+    const aura = resolveReach("AURA", "", "", "cameras :: perceiving through the lobby cameras");
+    const merritt = resolveReach("MERRITT", "", "", "keys :: locking and unlocking the automatic doors");
+    assert.deepEqual(names(aura), ["cameras"]);
+    assert.deepEqual(names(merritt), ["keys"]);
+    assert.equal(warnings(() => { resolveReach("AURA", "", "", "cameras :: seeing"); resolveReach("MERRITT", "", "", "keys :: doors"); }).length, 0);
   });
 
-  it("warns about an unrecognised entry and shows bundle names in the message", () => {
-    const w = warnings(() => resolveSkills("X", "", "deprived | sights"));
-    assert.equal(w.length, 1, "exactly one warning for the unrecognised entry");
-    assert.match(w[0], /sights/, "the unknown entry name is mentioned");
-    assert.match(w[0], /deprived/, "the known bundle is mentioned in the known list");
-    const s = resolveSkills("X", "", "deprived | sights");
-    assert.ok(!names(s).includes("sight"), "deprived still removes sight");
-    assert.ok(names(s).includes("touch"), "sights (typo) removes nothing");
-  });
-
-  it("existing single-skill restrictions are unaffected by the bundle system", () => {
-    const s1 = resolveSkills("X", "", "sight");
-    const s2 = resolveSkills("X", "", "sight");
-    assert.ok(!names(s1).includes("sight"));
-    assert.equal(s1.length, s2.length);
-  });
-
-  it("a bundle entry is case- and spacing-insensitive like skills", () => {
-    const s = quietSync(() => resolveSkills("X", "", "  Deprived  "));
-    assert.ok(!names(s).includes("sight"));
-    assert.ok(!names(s).includes("hearing"));
-  });
-
-  it("does not treat inherited object names as catalog entries", () => {
-    const w = warnings(() => resolveSkills("X", "", "constructor"));
+  it("a reach entry without a :: meaning warns — reach is always bespoke", () => {
+    const w = warnings(() => resolveReach("AURA", "", "", "cameras"));
     assert.equal(w.length, 1);
-    assert.match(w[0], /constructor/);
-  });
-});
-
-// -- PENALTIES REACHING SPECIAL SKILLS --------------------------------------
-describe("resolveSkills: penalties vs special skills", () => {
-  const names = (s: Skill[]) => s.map(x => x.name);
-
-  it("a penalty disables a bible skill of a different name", () => {
-    const s = quietSync(() => resolveSkills("X", "lockpicking :: picking locks", "hands-bound"));
-    assert.ok(!names(s).includes("lockpicking"), "hands-bound removes lockpicking");
-    assert.ok(!names(s).includes("touch"), "hands-bound also removes touch");
-    assert.ok(names(s).includes("movement"), "and leaves movement alone");
-  });
-
-  it("a penalty expands to every skill it lists, general or bible", () => {
-    const s = quietSync(() => resolveSkills("X", "climbing", "bound"));
-    assert.ok(!names(s).includes("movement"));
-    assert.ok(!names(s).includes("touch"));
-    assert.ok(!names(s).includes("climbing"), "bound reaches the bible skill climbing");
-    assert.ok(names(s).includes("speech"));
-  });
-
-  it("the same-name-authored escape hatch returns the skill, but via-penalty removal does not", () => {
-    const authored = quietSync(() => resolveSkills("X", "sight :: they can see after all", "sight"));
-    assert.ok(names(authored).includes("sight"), "named directly in both — they HAVE it");
-    const penalized = quietSync(() => resolveSkills("X", "sight :: they can see after all", "deprived"));
-    assert.ok(!names(penalized).includes("sight"), "removed through the deprived penalty despite being in skills");
-  });
-
-  it("a restriction naming a declared bespoke skill self-restricts instead of warning unknown", () => {
-    const w = warnings(() => resolveSkills("X", "fire :: a small flame on his fingertip", ""));
-    // no restrictions at all: fire is simply present
-    assert.equal(w.length, 0);
-    assert.ok(quietSync(() => resolveSkills("X", "fire :: a small flame on his fingertip", "fire"))
-      .some(x => x.name === "fire" && x.meaning === "a small flame on his fingertip"));
-    assert.equal(warnings(() => resolveSkills("X", "", "telepathy")).length, 1,
-      "an undeclared bespoke name in restrictions is still flagged as removing nothing");
+    assert.match(w[0], /no ":: meaning"/);
   });
 });
 
 // -- EXPLICIT NEGATIVES -----------------------------------------------------
 describe("removedCapabilities", () => {
-  it("names everything a penalty took, including the special skills absence would hide", () => {
-    assert.deepEqual(quietSync(() => removedCapabilities("X", "", "hands-bound")),
-                     ["touch", "lockpicking", "sleight-of-hand"]);
-  });
-
   it("a single-skill restriction names itself, in the spelling the author wrote", () => {
     assert.deepEqual(removedCapabilities("X", "", "Sight"), ["Sight"]);
   });
 
-  it("a skill named in both lists is one they HAVE, so it is no cannot", () => {
-    assert.deepEqual(removedCapabilities("X", "sight :: they can see after all", "sight"), []);
+  it("names a bible skill a restriction removed, though absence from can would hide it", () => {
+    assert.deepEqual(quietSync(() => removedCapabilities("X", "", "lockpicking")), ["lockpicking"]);
   });
 
-  it("a named penalty overrides the skills list — removal stands even when listed", () => {
-    assert.deepEqual(quietSync(() => removedCapabilities("X", "sight :: they can see after all", "deprived")),
-                     ["sight", "hearing"]);
+  it("a skill named in both lists is one they HAVE, so it is no cannot", () => {
+    assert.deepEqual(removedCapabilities("X", "sight :: they can see after all", "sight"), []);
   });
 
   it("an unknown restriction removes nothing, and says so once", () => {

@@ -21,6 +21,23 @@ The writer is created fresh for each chapter run with its own history, model, th
 temperature (`0.8`). Character agents are created separately for the characters in the selected
 scene.
 
+### What the writer is told about the cast
+
+The cast block every author-side agent shares (writer, judge, narration lint, batch judge, clarifier)
+shows only each character's **delta** from the human baseline: `can:` lists non-general skills and
+omitted entirely when empty, `REACH:` names what the scene grants through where the character is
+standing right now, and `CANNOT:` names authored restrictions. The general skills are not listed —
+since every removal is named as a CANNOT, absence-from-CANNOT already implies presence, so printing
+`can: movement, speech, hearing, touch, taste, smell, recall` was seven things the model already
+assumed, burying the one signal-carrying special skill at the end of the line. The block's header
+states the baseline explicitly, so a short `can:` never reads as a short leash.
+
+The three labels are glossed in the header because they are confusable: `can:` is intrinsic (carried
+between scenes), `REACH:` is situational (granted by this scene only, gone when it ends), `CANNOT:`
+is unavailable whatever its source would have been. A situational capability is never emitted on a
+`can:` line; the character's own menu still lists its generals, because that is where the
+"all of what you can do; nothing else" fence needs them.
+
 ### The judge and the clarifier
 
 Two author-side jobs sit beside the writing itself: **judging** an answer (accept or retry) and

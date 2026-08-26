@@ -36,13 +36,6 @@ export function bibleBlock(bible: Readonly<Record<string, string>>): string {
     + Object.entries(bible).map(([n, m]) => `  ${n} -- ${m}`).join("\n");
 }
 
-/** The restriction catalog: named penalties and everything each disables. */
-export function penaltyBlock(penalties: Readonly<Record<string, readonly string[]>>): string {
-  return `THE RESTRICTION CATALOG -- a restriction may be a single skill name, or a named PENALTY that `
-    + `disables every skill listed after it:\n`
-    + Object.entries(penalties).map(([p, skills]) => `  ${p} -- removes: ${skills.join(", ")}`).join("\n");
-}
-
 // -- ARCHITECT -------------------------------------------------------------
 
 /** The per-character field documentation, shared by the whole-story proposal format and the
@@ -79,12 +72,12 @@ const CHARACTER_FIELDS = `  name       -- one word, capitalised, how the writer 
                 bespoke "name :: meaning" ONLY when nothing fits -- an unknown bare name gets
                 flagged. Do not restate a general skill under a new name. Give someone something
                 the other cannot do.
-  restrictions -- what this character does NOT have: a single skill name, or a named penalty from
-                THE RESTRICTION CATALOG below (which disables every skill it lists). One character
-                who cannot see, speak, or move does more for a scene than any amount of backstory.
-                AT LEAST ONE character must have a restriction unless the idea makes it impossible,
-                and it has to bite in THIS scene -- prefer an information or action asymmetry over
-                one the scene never puts to the test.`;
+  restrictions -- what this character does NOT have: a single skill name (a general skill, a
+                skill-bible skill, or one of their own). One character who cannot see, speak, or
+                move does more for a scene than any amount of backstory. AT LEAST ONE character
+                must have a restriction unless the idea makes it impossible, and it has to bite in
+                THIS scene -- prefer an information or action asymmetry over one the scene never
+                puts to the test.`;
 
 const ASYMMETRY_RULES = `DESIGN FOR ASYMMETRY. Two people who can both see, both move and both talk, who want compatible
 things, produce a scene where nothing has to be asked. Give them different senses, different
@@ -134,13 +127,22 @@ Reply with ONE JSON object and nothing else:
 
 title        -- three words or fewer, concrete.
 premise      -- the situation, the place, the hour, the pressure. Enough that a writer could open
-                on it cold. A few short paragraphs. Say what the scene is NOT about too, if it keeps
-                it honest.
+                 on it cold. A few short paragraphs. Say what the scene is NOT about too, if it keeps
+                 it honest.
 scene.place  -- one line. Where and when.
 scene.question -- the dramatic question the scene has to answer, phrased so it CAN be answered in
-                the length given. Not a theme; a question with an outcome.
+                 the length given. Not a theme; a question with an outcome.
 scene.pov    -- whose perception we are inside. One of the character names.
 scene.length -- words. 600-900 unless the idea demands otherwise.
+scene.roster -- who is actually in the room (the fill pass asks for this if you leave it empty).
+scene.reach  -- OPTIONAL. An interface the WORLD offers one of these characters HERE -- what they can
+                 do through where they are standing, not an ability they carry between scenes
+                 ({"AURA": ["cameras :: perceiving through the building's active security cameras"]}).
+                 It exists only while THIS scene is being written and vanishes at its edge, so never
+                 use it for anything intrinsic. Its meaning describes the ACCESS -- that the thing
+                 exists at all is the place's or the facts' job to establish. Name the INTERFACE,
+                 never the sense it substitutes for: "cameras", never "sight" -- a blind character's
+                 camera feed still works.
 writer_style -- house style: person, tense, what to do with dialogue, what to leave out.
 characters   -- Every character costs consults out of a fixed step budget, so add a third or fourth
                 only when they have their own stake in what happens -- not because a scene feels thin
@@ -163,6 +165,7 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
 
     title · premise · writer_style
     scene.place · scene.question · scene.pov · scene.length · scene.roster
+    scene.reach   (an object: {"NAME": ["thing :: what they can do through it"]} -- see scene.reach above)
     scene_<n>.place · ...      (the same fields on the nth scene; scene_1 and scene are the same one)
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.belief · characters.<NAME>.impulse · characters.<NAME>.voice   (voice: a list)
@@ -198,10 +201,9 @@ export function workedExample(storyMd: string, personaMd: string): string {
 export function architectSystem(
   catalog: Readonly<Record<string, string>>,
   bible: Readonly<Record<string, string>>,
-  penalties: Readonly<Record<string, readonly string[]>>,
   example: string,
 ): string {
-  return `${ARCHITECT_FORMAT}\n\n${catalogBlock(catalog)}\n\n${bibleBlock(bible)}\n\n${penaltyBlock(penalties)}`
+  return `${ARCHITECT_FORMAT}\n\n${catalogBlock(catalog)}\n\n${bibleBlock(bible)}`
     + (example ? `\n\n${example}` : "");
 }
 
@@ -368,12 +370,15 @@ YOUR STAGE: the scene(s), and nothing else --
 
 scene.place    -- one line. Where and when.
 scene.question -- the dramatic question scene 1 has to answer, phrased so it CAN be answered in
-                 the length given. Not a theme; a question with an outcome. Sharpen it against
-                 the finished cast: it should be the exact point where their colliding goals
-                 force someone to choose.
+                  the length given. Not a theme; a question with an outcome. Sharpen it against
+                  the finished cast: it should be the exact point where their colliding goals
+                  force someone to choose.
 scene.pov      -- whose perception we are inside. One of the character names, and one of the
-                 people actually present in the room.
+                  people actually present in the room.
 scene.length   -- words. 600-900 unless the idea demands otherwise.
+scene.reach    -- OPTIONAL; see its full description in your instructions above. An interface the
+                  world offers one character HERE -- situational, never carried between scenes,
+                  named after the interface and not the sense it substitutes for.
 later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"question": "..."}
                  and NOTHING else. Provisional pressure points, so the author can see the arc --
                  not commitments. No place, no pov, no length, no outcomes: whatever the chapters
@@ -481,6 +486,15 @@ ${knownProblems.map(p => `  - ${p}`).join("\n")}
     + `restriction onto whoever the scene's fork actually turns on.
   - ${sceneField}.pov set to someone who is not in ${sceneField}.roster -- the reader `
     + `would be inside the perception of someone not even placed in the room.
+  - reach granted to someone who is not in ${sceneField}.roster -- an interface offered to `
+    + `somebody not in the room reaches no one.
+  - a reach entry named after the SENSE it substitutes for ("sight", "hearing") rather than the `
+    + `INTERFACE it is ("cameras", "the intercom") -- restrictions remove by name, so naming the `
+    + `sense would make a restriction on that sense silently cut the interface too, and a blind or `
+    + `deaf character's equipment still works.
+  - reach naming something neither ${sceneField}.place nor "facts" ever establishes -- reach `
+    + `describes access THROUGH something; that the thing is there has to come from where the scene `
+    + `is or what the world holds. This one is a judgement, and you are the judge.
   - anything else you would flag if an author put this in front of you and asked whether `
     + `it holds together.
 
@@ -527,8 +541,11 @@ these people, you write into their definitions now or it is lost:
   - someone who died, left, or is simply not in the next scene is dropped from that scene's "roster".
     They stay in the cast; the roster is what decides who is in the room;
   - someone who lost a capability -- an arm, their nerve, the lantern -- gains a restriction, and
-    restrictions must be names from the general skill list, the skill bible, that character's own
-    skills, or a restriction-catalog penalty.
+    restrictions must be names from the general skill list, the skill bible, or that character's
+    own skills;
+  - whatever an earlier scene's reach granted -- an interface the world offered someone THERE --
+    is gone now; reach never travels with a person. If where they stand in chapter ${next} still
+    offers it, re-grant it with scene_${next}.reach; if not, grant nothing.
 
 [THE PREMISE]
 ${premise}
@@ -568,8 +585,9 @@ Reply with edits only, and nothing else:
   add_character      (a whole character object: every field REQUIRED -- persona, knows, goal,
                       belief, impulse, voice, skills, restrictions)
   remove_character   (the name)
-  scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
-   add_scene          (a whole scene object: place, question, pov, length, roster)
+   scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
+   scene_<n>.reach     (an object: {"NAME": ["thing :: what they can do through it"]})
+    add_scene          (a whole scene object: place, question, pov, length, roster)
    remove_scene       (the scene number)
    add_fact           (value is the fact text)
    remove_fact        (value is the fact number, 1-indexed)
@@ -650,13 +668,20 @@ export function characterSystem(p: {
   persona: string;
   place: string;
   skills: { name: string; meaning: string }[];
+  reach?: { name: string; meaning: string }[];
   knows: string;
   goal: string;
   belief?: string;
   impulse?: string;
   voice?: string[];
 }): string {
-  const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n");
+  // Reach entries sit inside the same fenced block so the "nothing else" stays one sentence, but
+  // under their own sub-heading naming them as belonging to where the character is NOW — they are
+  // not intrinsic (I1) and vanish when the scene does (I4).
+  const reachLines = (p.reach ?? []).filter(r => r.name)
+    .map(r => `  - ${r.name}${r.meaning ? ` -- ${r.meaning}` : ""}`).join("\n");
+  const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n")
+    + (reachLines ? `\nREACH -- yours only through where you are standing right now; it leaves with this place:\n${reachLines}` : "");
   const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
   const extras = [
     p.place ? `WHERE YOU ARE: ${p.place}` : "",
@@ -974,12 +999,29 @@ line they never gave you.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
-/** What every author-side agent gets to know about the cast: what each can do, and what they cannot. */
-const castBlock = (cast: { name: string; can: string[]; cannot: string[] }[]) =>
-  cast.map(c =>
-    `  ${c.name} -- can: ${c.can.join(", ")}`
-    + (c.cannot.length ? `\n${" ".repeat(4 + c.name.length)}CANNOT: ${c.cannot.join(", ")}` : "")
-  ).join("\n");
+/** What every author-side agent gets to know about the cast: what each can do, what they can reach
+ *  only through where they are standing, and what they cannot. Only the DELTA from the human baseline
+ *  is listed under `can:` — every general skill is assumed present unless a CANNOT names it, so the
+ *  header states the baseline and glosses the three labels explicitly (they are confusable):
+ *  `can:` is intrinsic, beyond the baseline; `REACH:` is situational, granted by this scene only;
+ *  `CANNOT:` is unavailable whatever its source would have been (I2). */
+const castBlock = (cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[]) =>
+  `THE CAST -- every character below has the ordinary human abilities (moving their body, speaking,\n`
+  + `hearing, seeing, touching, tasting, smelling, recalling) unless their CANNOT removes one. Each\n`
+  + `character's line lists ONLY what is beyond that baseline or taken from it -- can: is an ability\n`
+  + `they carry with them; REACH: is available to them ONLY through where they are standing right now;\n`
+  + `CANNOT: is unavailable whatever its source would have been:\n`
+  + cast.map(c => {
+      const head = `  ${c.name}`;
+      const tails = [
+        c.can.length ? `can: ${c.can.join(", ")}` : "",
+        c.reach?.length ? `REACH: ${c.reach.join(", ")}` : "",
+        c.cannot.length ? `CANNOT: ${c.cannot.join(", ")}` : "",
+      ].filter(Boolean);
+      if (!tails.length) return head;
+      const pad = " ".repeat(2 + c.name.length);
+      return `${head} -- ${tails[0]}${tails.slice(1).map(t => `\n${pad}${t}`).join("")}`;
+    }).join("\n");
 
 const factsBlock = (facts: string[]) =>
   facts.length ? `THE FACTS (true of the world; reveal each only to someone who could perceive or already know it):\n`
@@ -987,7 +1029,7 @@ const factsBlock = (facts: string[]) =>
 
 /** The judge: one answer, one verdict. It needs the cast's limits to see an answer that overran them,
  *  and nothing else — the situation and the question arrive in the payload. */
-export function judgeSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
+export function judgeSystem(cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[]): string {
   return `${JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
     + cannotAbsolute("An answer");
 }
@@ -1043,7 +1085,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
 
 /** The narration lint: one drafted piece, one pass/fail. Same cast/CANNOT knowledge the judge has —
  *  the drafted prose, the granted-so-far ledger, and any outgoing consult arrive in the payload. */
-export function narrationLintSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
+export function narrationLintSystem(cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[]): string {
   return `${NARRATION_LINT_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
     + cannotAbsolute("Narration");
 }
@@ -1083,7 +1125,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
 
 /** The batch judge: many volunteered deeds, one call, a promotable flag each. Same cast/CANNOT
  *  knowledge the single judge has; the reactions and deeds arrive in the payload. */
-export function batchJudgeSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
+export function batchJudgeSystem(cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[]): string {
   return `${BATCH_JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
     + cannotAbsolute("A deed", "not promotable");
 }
@@ -1098,7 +1140,7 @@ export function clarifySystem(p: {
   premise: string;
   scene: { place: string; question: string };
   facts: string[];
-  cast: { name: string; can: string[]; cannot: string[] }[];
+  cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[];
 }): string {
   return `${CLARIFY_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\n`
     + (p.scene.place ? `WHERE THIS SCENE IS: ${p.scene.place}\n\n` : "")
@@ -1111,7 +1153,7 @@ export function clarifySystem(p: {
 export function writerSystem(p: {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
-  cast: { name: string; can: string[]; cannot: string[] }[];
+  cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[];
   facts: string[];
   style: string;
 }): string {

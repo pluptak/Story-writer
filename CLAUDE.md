@@ -97,7 +97,7 @@ way.**
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
 | [engine/config-util.ts](engine/config-util.ts) | the shared filename `slugify` |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
-| [engine/skills.ts](engine/skills.ts) | the general skill catalog, the special-skill bible, the restriction→skill penalty map, and a story's `skills:`/`restrictions:` overrides |
+| [engine/skills.ts](engine/skills.ts) | the general skill catalog, the special-skill bible, restriction and reach resolution (I1–I5), and a story's `skills:`/`restrictions:` overrides |
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
@@ -130,9 +130,14 @@ response schema each — the **clarifier** (one per scene) and, at 0.3 with no h
 variants (`newJudge`, `newBatchJudge`, `newNarrationJudge`). Why they are separate agents rather
 than sections of the writer's prompt is in [Writer.MD](Writer.MD).
 
-The one invariant to hold while editing the engine: **`consult()` never touches `agent.history`** —
+Two invariants to hold while editing the engine. **`consult()` never touches `agent.history`** —
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean
-retry.
+retry. And **reach never leaks into a character-level representation (I4)** — a skill is intrinsic,
+a scene's `reach` grant exists only while that scene is being written, and every surface showing a
+character outside a scene (`/cast`, preflight cards, the story editor, the handoff) shows `skills`
+and restrictions only; only per-scene resolution in `engine/scene-loop.ts` ever resolves reach
+(`engine/skills.ts`'s module docstring carries all five invariants). Both are the same kind of rule:
+cheap to state, expensive to rediscover.
 
 **`server/server.ts` and the route modules never import `engine/`.** Everything a route needs arrives
 as a `ServerHost` object built in `story-writer.ts` (`HOST`). Adding a route that needs something new

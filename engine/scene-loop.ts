@@ -12,28 +12,38 @@ import {
   type ConsultEvent, type ConsultRequest, type ConsultReply, type Clarifier,
 } from "./consult.ts";
 import { type Msg } from "./llm-client.ts";
+import { resolveReach, type Skill } from "./skills.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
-/** The system prompt for one character agent: their persona, place, skills, knowledge, goal, belief, impulse and voice. */
-export function wrapCharacter(def: CharacterDef, place: string): string {
+/** The system prompt for one character agent: their persona, place, skills, knowledge, goal, belief, impulse and voice.
+ *  `reach` is this scene's grant and nothing else (I1/I4): it is passed only from per-scene resolution
+ *  and is empty on every character-level view. */
+export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = []): string {
   return P.characterSystem({
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
-    belief: def.belief, impulse: def.impulse, voice: def.voice,
+    belief: def.belief, impulse: def.impulse, voice: def.voice, reach,
   });
 }
 
+/** The reach layer for one character in ONE scene: the scene's grant, minus what restrictions remove
+ *  (I2) and what an intrinsic skill already covers (I3). Never called for a character-level view. */
+export function sceneReach(sd: SceneDef, def: CharacterDef): Skill[] {
+  const skillsRaw = def.skills.map(s => s.meaning ? `${s.name} :: ${s.meaning}` : s.name).join(" | ");
+  return resolveReach(def.name, skillsRaw, def.limits.join(" | "), (sd.reach?.[def.name] ?? []).join(" | "));
+}
+
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
-export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel): Agent {
-  const a = new Agent(def.name, def.model, wrapCharacter(def, place), 0.9);
+export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = []): Agent {
+  const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach), 0.9);
   a.think = think;
   return a;
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; cannot: string[] }[], style: string, facts: string[] = []): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[], style: string, facts: string[] = []): string {
   return P.writerSystem({ premise, scene, cast, facts, style });
 }
 
@@ -44,13 +54,21 @@ export const rosterOf = (characters: CharacterDef[], rostered: string[]): Charac
 // `can`/`cannot` here, not the wire's `skills`/`restrictions`: these two feed the writer prompt,
 // which prints "CANNOT:" and then argues from that word. Renaming them rewords the prompt.
 /** What the writer gets to know about each character: what they can do, and what they absolutely
- *  cannot — the authored negatives, not inferences from absence, so a penalty that removed a special
- *  skill names it under CANNOT exactly as a removed sense is named. */
-export function writerCast(characters: CharacterDef[], rostered: string[]): { name: string; can: string[]; cannot: string[] }[] {
+ *  cannot — the authored negatives, not inferences from absence, so a restriction that removed a
+ *  special skill names it under CANNOT exactly as a removed sense is named. The general skills are
+ *  filtered out of `can`: every character has them unless CANNOT says otherwise, so only the delta
+ *  from the baseline is worth the writer's attention — and the one signal-carrying special skill
+ *  is not buried under six obvious generals. `reach` is the scene's per-character grant (I4: this is
+ *  the only place outside the character agents that ever sees it), rendered as its own line. */
+export function writerCast(characters: CharacterDef[], rostered: string[],
+                           reach: Record<string, Skill[]> = {}): { name: string; can: string[]; reach: string[]; cannot: string[] }[] {
   return rosterOf(characters, rostered)
     .map(c => ({
       name: c.name,
-      can: c.skills.map(s => s.source === "general" || !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
+      can: c.skills
+        .filter(s => s.source !== "general" && s.source !== "reach")
+        .map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
+      reach: (reach[c.name] ?? []).map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
       cannot: c.limits,
     }));
 }
@@ -155,7 +173,7 @@ export async function writeScene(
   const rosterNames = roster.map(c => c.name);
   const active = new Set(rosterNames);          // the cast still in the scene; shrinks as one exits
   const isActive = (name: string) => [...active].some(n => n.toLowerCase() === name.trim().toLowerCase());
-  const cast = writerCast(roster, []);
+  const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c)])));
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
@@ -816,7 +834,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
   const agents = new Map<string, Agent>();
 
   for (const def of rosterOf(sc.characters, sd.roster)) {
-    agents.set(def.name.toLowerCase(), newCharacterAgent(def, sd.place, sc.thinking.character));
+    agents.set(def.name.toLowerCase(), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def)));
   }
 
   LIVE.agents = agents;

@@ -214,8 +214,12 @@ export function handoffPageHtml() {
   // Cast
   body.push(`<div class="divider"><span>cast</span></div>`);
   if (s.spec?.characters?.length) {
+    // Reach is per scene and labelled with the chapter that grants it, so it never reads as
+    // intrinsic to the character.
+    const grants = s.spec.scenes?.[(s.chapter || 1) - 1]?.reach || {};
     body.push(`<div class="hcast">`);
     for (const c of s.spec.characters) {
+      const reach = grants[c.name] || [];
       body.push(`<div ${tid("handoff.cast-row")} class="who" data-name="${esc(c.name)}">
         <div class="nm">${esc(c.name)}</div>
         ${c.goal ? `<div class="line"><span class="k">goal</span>${esc(c.goal)}</div>` : ""}
@@ -223,6 +227,8 @@ export function handoffPageHtml() {
         ${c.belief ? `<div class="line"><span class="k">believes</span>${esc(c.belief)}</div>` : ""}
         ${c.impulse ? `<div class="line"><span class="k">impulse</span>${esc(c.impulse)}</div>` : ""}
         ${(c.voice || []).map(v => `<div class="line"><span class="k">says</span>“${esc(v)}”</div>`).join("")}
+        ${(Array.isArray(reach) ? reach : []).map(r =>
+          `<div class="line"><span class="k reach" title="granted by this scene, not intrinsic">reach · ch ${s.chapter || 1}</span>${esc(r)}</div>`).join("")}
         ${c.restrictions?.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
       </div>`);
     }

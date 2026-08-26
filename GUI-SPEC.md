@@ -207,6 +207,26 @@ its draft as unsaved changes (the reply was computed from the draft it was sent,
 travel with it) and re-validates; nothing reaches disk until a save — the engine never writes from a
 suggestion.
 
+The story editor renders each scene's `reach` — the scene-scoped capability grants
+([Architect.MD](Architect.MD), I1) — as one textarea per scene, one
+`NAME: thing :: meaning` per line. Reach round-trips through `/story/check` and `/story/save`
+inside `StoryJson`'s scenes; it is character-in-place data and never appears on a character card in
+the editor.
+
+## Read-only cast view
+
+```
+GET /cast?dir=...  → { ok:true, characters[], scenes[] }
+                   | { ok:false, error }
+```
+
+Available while a run is in flight (the live rail needs it exactly then). Each character carries
+`name`, `persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `skills` (as `{text, meaning}`),
+and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants as
+`{ n: number, reach: { NAME: ["thing :: what they can do through it"] } }`. **Reach never merges into
+a character's `skills`** ([Architect.MD](Architect.MD) I4): the GUI labels each grant with its scene,
+so it can never read as intrinsic.
+
 ## Run control
 
 All of these require a run already in flight (`running: true`) except `/interactive`, which is a

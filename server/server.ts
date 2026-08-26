@@ -55,14 +55,15 @@ export interface ServerHost {
     ok: false; error: string; raw?: object
   }>;
   /** A story's full authored cast for the live screen's read-only character sheet. Same load and
-   *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted. On a
-   *  story that will not parse, returns `{ ok:false, error }`. */
+   *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted.
+   *  `scenes[].reach` is the per-scene grant, kept OUT of the characters (I4: reach is
+   *  character-in-place, never intrinsic). On a story that will not parse, returns `{ ok:false, error }`. */
   fullCast(dir: string): Promise<{
     ok: true; characters: {
       name: string; persona: string; knows: string; goal: string;
       belief: string; impulse: string; voice: string[];
       skills: { text: string; meaning: string }[]; restrictions: string[];
-    }[];
+    }[]; scenes?: { n: number; reach: Record<string, string[]> }[];
   } | {
     ok: false; error: string;
   }>;

@@ -8,7 +8,7 @@ import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG } from "./skills.ts";
+import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, type StorySpec } from "./story-spec.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
@@ -33,7 +33,7 @@ async function architectExample(): Promise<string> {
  */
 export async function buildArchitect(d: Defaults, withExample = true): Promise<Agent> {
   const system = P.architectSystem(
-    SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG,
+    SKILL_CATALOG, SPECIAL_SKILL_CATALOG,
     withExample ? await architectExample() : "");
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
   a.think = d.thinking.architect;
@@ -564,7 +564,7 @@ export class NextChapterSession {
         return false;
       }
       // The same field shapes applyEdits accepts, read the same way: an unnumbered `scene.x` is scene 1.
-      const m = field.match(/^scene(?:_(\d+))?\.(place|question|pov|length|roster)$/);
+      const m = field.match(/^scene(?:_(\d+))?\.(place|question|pov|length|roster|reach)$/);
       const k = m ? (m[1] ? Number(m[1]) : 1) : 0;
       if (k >= 1 && k <= written) {
         refused.push(`${field} — chapter ${k} is already written`);

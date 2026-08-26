@@ -13,7 +13,7 @@ import {
   loadStory, type Defaults,
 } from "../engine/story-format.ts";
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
-import { architectNextChapter } from "../prompts.ts";
+import { architectNextChapter, architectVerify } from "../prompts.ts";
 import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
 import { LIVE } from "../live.ts";
@@ -479,16 +479,38 @@ describe("architectNextChapter", () => {
   it("gives the edit vocabulary, including both ways to reach the next chapter's scene", () => {
     const p = architectNextChapter("A premise.", spec, chapters);
     for (const field of ["add_character", "remove_character", "add_scene", "remove_scene",
-                         "characters.<NAME>.persona", "scene_<n>.place"])
+                         "characters.<NAME>.persona", "scene_<n>.place", "scene_<n>.reach"])
       assert.ok(p.includes(field), `the handoff must name ${field}`);
     assert.match(p, /scene_3\.place/);       // re-author the scene the story already has
     assert.match(p, /add_scene/);            // or add it when it does not
+  });
+
+  it("says reach never travels: last chapter's grants are gone unless the new place re-offers them", () => {
+    const p = architectNextChapter("A premise.", spec, chapters);
+    assert.match(p, /reach never travels with a person|is gone now; reach never travels/);
+    assert.match(p, /scene_3\.reach/, "the re-grant path is named concretely");
   });
 
   it("counts one written chapter in the singular", () => {
     const p = architectNextChapter("A premise.", spec, [chapters[0]]);
     assert.match(p, /Chapter 1 of this story is written/);
     assert.match(p, /Prepare chapter 2\./);
+  });
+});
+
+describe("architectVerify: reach rules", () => {
+  const specJson = JSON.stringify({
+    title: "Dark", characters: [{ name: "AURA" }],
+    scenes: [{ place: "the lobby", roster: ["AURA"], reach: { AURA: ["cameras :: seeing through the feed"] } }],
+  });
+
+  it("asks whether reach reaches anyone, whether it names an interface or a sense, and what establishes it", () => {
+    const p = architectVerify(specJson, "scene_1");
+    assert.match(p, /reach granted to someone who is not in scene_1\.roster/);
+    assert.match(p, /named after the SENSE it substitutes for/);
+    assert.match(p, /neither scene_1\.place nor "facts" ever establishes/);
+    // I5 stays a judgement call for the model, never a mechanical refusal
+    assert.match(p, /This one is a judgement/);
   });
 });
 

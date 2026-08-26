@@ -74,6 +74,7 @@
   .chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .chip b { font-weight:600; }
   .chip .no { color:var(--bad); }
+  .chip .reach { color:var(--accent); }
   .chip .yes { color:var(--good); }
   .btn { font-family:var(--mono); font-size:var(--fs-11); text-transform:uppercase; letter-spacing:.06em;
          color:var(--muted); background:var(--panel-2); border:1px solid var(--line);
@@ -344,6 +345,7 @@
   .who .line .k { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.08em; text-transform:uppercase;
                   color:var(--faint); margin-right:6px; }
   .who .line .yes { color:var(--good); } .who .line .no { color:var(--bad); }
+  .who .line .k.reach { color:var(--accent); }
   .who .persona { font-size:var(--fs-13); color:var(--muted); margin-top:6px; white-space:pre-wrap; }
   .who .persona.clip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
@@ -560,6 +562,7 @@
   .cast-card .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
   .cast-card .cast-tags .yes { font-family:var(--mono); font-size:var(--fs-10); color:var(--good); }
   .cast-card .cast-tags .no { font-family:var(--mono); font-size:var(--fs-10); color:var(--bad); }
+  .cast-card .cast-tags .reach { font-family:var(--mono); font-size:var(--fs-10); color:var(--accent); }
   .cast-card .cast-voice { font-size:var(--fs-13); color:var(--muted); font-style:italic; margin:3px 0 0; line-height:1.45; }
 
   .compare-panes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
@@ -694,6 +697,7 @@
   .scpage .tag { display:inline-block; margin:7px 5px 0 0; padding:2px 6px; border:1px solid var(--line);
     border-radius:var(--r-pill); color:var(--faint); font-family:var(--mono); font-size:var(--fs-10); }
   .scpage .tag.warn { color:var(--warn); border-color:var(--warn); background:var(--warn-soft); }
+  .scpage .tag.reach { color:var(--accent); border-color:var(--accent); background:transparent; }
 
   /* conversation round */
   .scpage .round-note { margin:14px 0; padding:12px 13px; border-left:2px solid var(--accent);

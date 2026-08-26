@@ -1,7 +1,7 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
 import { C } from "../ansi.ts";
 import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG, RESTRICTION_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
+import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
 import { StoryJson, RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef, type CharacterDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
@@ -68,10 +68,9 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       const r = splitMeaning(l).text;
       const rk = canonSkill(r);
       const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === rk)
-        || Object.keys(RESTRICTION_CATALOG).some(p => canonSkill(p) === rk)
         || bibleMeaningOf(r) !== undefined
         || skills.some(s => canonSkill(splitMeaning(s).text) === rk);
-      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a known skill or penalty, so it would remove nothing`);
+      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a known skill, so it would remove nothing`);
       return ok;
     });
     const voice = asStrings(c?.voice);
@@ -103,12 +102,31 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     const pov = String(s.pov ?? "").trim();
     const povOk = !pov || characters.some(c => c.name.toLowerCase() === pov.toLowerCase());
     if (pov && !povOk) problems.push(`${prefix} pov "${pov}" is not one of the characters — cleared`);
+    const rawReach = (s.reach && typeof s.reach === "object" && !Array.isArray(s.reach))
+      ? Object.fromEntries(Object.entries(s.reach)
+          .map(([k, v]) => [k.trim(), asStrings(v)] as const)
+          .filter(([k]) => k.length > 0))
+      : {};
+    // Reach is never in the bible, so every entry must carry its own ":: meaning"; and a grant to
+    // someone who does not exist would silently reach no one. Both are dropped with a problem.
+    const reach: SceneDef["reach"] = {};
+    for (const [who, entries] of Object.entries(rawReach)) {
+      const ch = characters.find(c => c.name.toLowerCase() === who.toLowerCase());
+      if (!ch) { problems.push(`${prefix} grants reach to "${who}", who is not one of the characters — dropped`); continue; }
+      const ok = entries.filter(e => {
+        if (!splitMeaning(e).meaning.trim())
+          problems.push(`${ch.name}'s reach "${e}" carries no ":: meaning" — dropped`);
+        return Boolean(splitMeaning(e).meaning.trim());
+      });
+      if (ok.length) reach[ch.name] = ok;
+    }
     return {
       place: String(s.place ?? "").trim(),
       question: String(s.question ?? "").trim(),
       pov: povOk ? pov : "",
       length: Number.isFinite(lengthRaw) && lengthRaw >= 1 ? Math.round(lengthRaw) : 700,
       roster: Array.isArray(s.roster) ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [],
+      reach,
       ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
       ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
         ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),
@@ -222,13 +240,20 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
-    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster)$/);
+    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster|reach)$/);
     if (sceneMatch) {
       const idx = sceneMatch[2] ? Number(sceneMatch[2]) - 1 : 0;
       if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
       const sceneField = sceneMatch[3];
       const before = (normalizedDraft().scenes[idx] as any)[sceneField];
       if (sceneField === "roster") draft.scenes[idx].roster = asStrings(value);
+      else if (sceneField === "reach") {
+        draft.scenes[idx].reach = (value && typeof value === "object" && !Array.isArray(value))
+          ? Object.fromEntries(Object.entries(value)
+              .map(([k, v]) => [k.trim(), asStrings(v)] as const)
+              .filter(([k, v]) => k.length > 0 && v.length > 0))
+          : {};
+      }
       else if (sceneField === "length") draft.scenes[idx].length = Number(value);
       else draft.scenes[idx][sceneField] = scalar();
       const key = `scene:${idx}.${sceneField}`;

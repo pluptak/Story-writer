@@ -27,7 +27,7 @@ describe("StoryJson schema", () => {
     assert.equal(r.title, "");
     assert.equal(r.premise, "");
     assert.equal(r.scenes.length, 1);
-    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [] });
+    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [], reach: {} });
     assert.equal(r.config.maxSteps, 24);
     assert.equal(r.config.thinking.writer, "low");
     assert.equal(r.models.default, "qwen3.6-35b-a3b");

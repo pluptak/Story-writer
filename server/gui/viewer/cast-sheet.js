@@ -3,8 +3,9 @@ import { APP, LIVEV } from "./state.js";
 
 // ---- the live character sheet --------------------------------------------
 // A read-only panel in the live rail showing the authored cast the current run is working from --
-// persona, knows, goal, skills and restrictions. It is already-authored data shown to the human;
-// it never travels back to any agent. Fetched from /cast, keyed by story dir.
+// persona, knows, goal, skills, restrictions, and (labelled with its scene) reach. It is
+// already-authored data shown to the human; it never travels back to any agent. Fetched from
+// /cast, keyed by story dir. Reach stays per scene and never merges into a character's skills.
 
 /** Fetch the cast for one story into APP.cast. Guarded by APP.cast.dir + .loading so the render loop
  *  that kicks it (castSheetHtml, called every frame) cannot start a second fetch for the same story. */
@@ -46,12 +47,26 @@ export function castSheetHtml() {
 
   const field = (label, val) => val && val.trim()
     ? `<div class="cast-field"><span>${label}</span><p>${esc(val)}</p></div>` : "";
+  // Reach arrives per scene and stays per scene (I4): each tag names the scene that granted it so
+  // it can never read as an intrinsic skill.
+  const reachByChar = {};
+  for (const sc of (APP.cast.scenes || []))
+    for (const [who, entries] of Object.entries(sc.reach || {}))
+      (reachByChar[who.toLowerCase()] = reachByChar[who.toLowerCase()] || [])
+        .push(...(Array.isArray(entries) ? entries : []).map(e => ({ n: sc.n, e })));
   const cards = roster.map(c => {
     const skills = (c.skills || []).map(s =>
       `<span class="yes" title="${esc(s.meaning || "")}">+${esc(s.text)}</span>`).join(" ");
     const restr = (c.restrictions || []).map(r =>
       `<span class="no" title="cannot ${esc(r)}">no ${esc(r)}</span>`).join(" ");
-    const tags = skills || restr ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}</div>` : "";
+    const reach = (reachByChar[c.name.toLowerCase()] || []).map(({ n, e }) => {
+      const i = e.indexOf("::");
+      const name = (i < 0 ? e : e.slice(0, i)).trim();
+      const meaning = i < 0 ? "" : e.slice(i + 2).trim();
+      return `<span class="reach" title="${esc(`scene ${n} — available only through where they are standing here${meaning ? `: ${meaning}` : ""}`)}">⇢ ${esc(name)} · scene ${n}</span>`;
+    }).join(" ");
+    const tags = skills || restr || reach
+      ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}${skills || restr ? " " : ""}${reach}</div>` : "";
     const voice = (c.voice || []).map(v => `<p class="cast-voice">“${esc(v)}”</p>`).join("");
     return `<div class="cast-card" data-tid="rail.cast-card" data-name="${esc(c.name)}">
       <div class="cast-name">${esc(c.name)}</div>

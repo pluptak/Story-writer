@@ -53,11 +53,11 @@ describe("normalizeSpec", () => {
     assert.match(problems.join(" "), /telepathy/);
   });
 
-  it("keeps a restriction that names a penalty, a bible skill, or the character's own skill", () => {
+  it("keeps a restriction that names a bible skill or the character's own skill", () => {
     const { spec, problems } = normalizeSpec({
       ...base, characters: [{ ...base.characters[0],
-        skills: ["lockpicking :: picks locks"], restrictions: "deprived | bound | lockpicking" }] });
-    assert.deepEqual(spec.characters[0].restrictions, ["deprived", "bound", "lockpicking"]);
+        skills: ["lockpicking :: picks locks"], restrictions: "climbing | lockpicking" }] });
+    assert.deepEqual(spec.characters[0].restrictions, ["climbing", "lockpicking"]);
     assert.equal(problems.filter(p => /restrictions/.test(p)).length, 0);
   });
 
@@ -89,6 +89,39 @@ describe("normalizeSpec", () => {
       ...base, characters: [{ ...base.characters[0], skills: "climbing | keys :: by feel", restrictions: "sight" }] });
     assert.deepEqual(spec.characters[0].skills, ["climbing", "keys :: by feel"]);
     assert.deepEqual(spec.characters[0].restrictions, ["sight"]);
+  });
+
+  it("carries scene reach through, keyed by the character's own spelling of their name", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene,
+        reach: { riven: ["cameras :: perceiving through the security cameras"], GHOST: ["doors :: opening"] } } });
+    assert.deepEqual(spec.scenes[0].reach,
+                     { RIVEN: ["cameras :: perceiving through the security cameras"] });
+    assert.match(problems.join(" "), /GHOST/, "a grant to a non-character is dropped and reported");
+  });
+
+  it("drops a reach entry with no :: meaning — reach is never in the bible", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene,
+        reach: { RIVEN: ["cameras :: seeing through the lobby feed", "doors"] } } });
+    assert.deepEqual(spec.scenes[0].reach,
+                     { RIVEN: ["cameras :: seeing through the lobby feed"] });
+    assert.match(problems.join(" "), /doors/);
+  });
+
+  it("an edit to scene.reach replaces that scene's grants", () => {
+    const withReach = normalizeSpec({
+      ...base, scene: { ...base.scene, reach: { RIVEN: ["cameras :: seeing"] } } }).spec;
+    const r = quietSync(() => applyEdits(withReach, { edits: [
+      { field: "scene.reach", value: { RIVEN: ["doors :: unlocking the service doors"] } }] }));
+    assert.deepEqual(r.spec.scenes[0].reach, { RIVEN: ["doors :: unlocking the service doors"] });
+    assert.equal(r.applied.length, 1);
+    // an empty object clears it entirely
+    const cleared = quietSync(() => applyEdits(r.spec, { edits: [{ field: "scene_1.reach", value: {} }] }));
+    assert.deepEqual(cleared.spec.scenes[0].reach, {});
+    // a malformed value is not a crash
+    const junk = quietSync(() => applyEdits(withReach, { edits: [{ field: "scene.reach", value: "nope" }] }));
+    assert.deepEqual(junk.spec.scenes[0].reach, {});
   });
 
   it("enforces the cast bounds and rejects duplicates", () => {
@@ -187,7 +220,7 @@ describe("applyEdits", () => {
     const added = edit("add_scene", { place: "  yard ", length: 801.4, question: "Follow?" });
     assert.deepEqual(added.applied[0].before, undefined);
     assert.deepEqual(added.applied[0].after, {
-      place: "yard", question: "Follow?", pov: "", length: 801, roster: [],
+      place: "yard", question: "Follow?", pov: "", length: 801, roster: [], reach: {},
     });
     const removed = quietSync(() => applyEdits(added.spec, { edits: [{ field: "remove_scene", value: 2 }] }));
     assert.deepEqual(removed.applied[0].before, added.spec.scenes[1]);
@@ -416,10 +449,10 @@ describe("applyEdits", () => {
 });
 
 describe("sceneDrift", () => {
-  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"] };
+  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
 
   it("returns [] for identical scenes", () => {
-    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"] };
+    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 
@@ -429,7 +462,7 @@ describe("sceneDrift", () => {
   });
 
   it("returns multiple changed fields in stable order", () => {
-    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"] };
+    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"], reach: {} };
     assert.deepEqual(sceneDrift(base, after), ["place", "pov", "length"]);
   });
 
@@ -455,7 +488,7 @@ describe("sceneDrift", () => {
   });
 
   it("ignores whitespace differences in strings", () => {
-    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"] };
+    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 });

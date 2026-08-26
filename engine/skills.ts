@@ -1,3 +1,48 @@
+/**
+ * SKILLS, RESTRICTIONS, AND REACH — how a capability gets onto a character, and how it comes off.
+ *
+ * These are the semantics this module implements. They hold everywhere; the code below is their
+ * implementation, not their definition.
+ *
+ * **I1 — A skill is intrinsic; reach is granted.**
+ * A skill travels with the character between scenes. A reach entry exists only while the scene that
+ * granted it is being written. The default is no reach; a scene must grant it. This is the whole
+ * reason reach is not a skill: put `camera-access` on a character and every later scene has to
+ * explicitly negate it.
+ *
+ * **I2 — A restriction is a source-independent prohibition.**
+ * A restriction names a capability that is unavailable to this character regardless of where that
+ * capability would otherwise have originated — the general catalog, their own `skills`, or the
+ * scene's `reach`. Canonical-name removal is how that is implemented, and it keeps the existing
+ * one-namespace-with-a-sign design intact — but the mechanism is the implementation of the rule,
+ * not the rule. `restrictions: ["cameras"]` does not make `cameras` a fundamental human capability;
+ * it says this character does not have the camera access something else would have granted. A
+ * restriction never removes a capability by resemblance. Corollary — the blind-AI case:
+ * `restrictions: ["sight"]` does NOT remove `reach: ["cameras :: ..."]`, because `cameras` and
+ * `sight` are different capabilities, not two implementations of one. The authoring rule that makes
+ * this hold: name the interface, never the sense it substitutes for.
+ *
+ * **I3 — Intrinsic beats granted on collision.**
+ * A reach entry may not reuse a canon name the general catalog or that character's own skills
+ * already use. On collision the character's meaning stands and the reach entry is dropped with a
+ * warning: reach vanishes at the scene boundary, so letting it win would silently change what a
+ * skill means for one scene and change it back afterwards.
+ *
+ * **I4 — Reach never leaks into a character-level representation.**
+ * Every surface that shows a character outside a scene resolves with reach empty and shows `skills`
+ * and limits only. Only the per-scene resolution in scene-loop.ts ever sees reach. (AURA reaching
+ * the lobby cameras from the basement, forever, is the failure mode this exists to prevent.)
+ *
+ * **I5 — Reach grants access, not existence.**
+ * A reach meaning describes what the character can do THROUGH the thing; that the thing is there is
+ * established by the scene's `place` or the story's `facts[]`. Enforced softly, on purpose: whether
+ * "a modern office building" establishes security cameras is a semantic judgement, not something a
+ * validator should arbitrate, so I5 lives only in the architect's verify pass and warns rather than
+ * blocks. I1–I4 are mechanical and enforced here; I5 is an authoring principle.
+ *
+ * Resolution order: general catalog → the character's own `skills` → the scene's `reach`, with
+ * restrictions applied by canon name across all three.
+ */
 /** SKILL CATALOG — the general skills every character has by default, and a story's overrides. */
 import { warn } from "./warnings.ts";
 
@@ -14,19 +59,6 @@ export const SKILL_CATALOG: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /**
- * The restriction catalog — named penalties and the skills each disables. A restriction entry that
- * names a key here expands to the whole listed set; those skills may be general OR special/bible
- * ones, so a penalty can reach further than the same-named skill ever could. Global, in-code, fixed.
- */
-export const RESTRICTION_CATALOG: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  deprived: Object.freeze(["sight", "hearing"]),
-  anosmic:  Object.freeze(["smell"]),
-  insensate: Object.freeze(["touch", "taste"]),
-  bound:    Object.freeze(["movement", "touch", "climbing"]),
-  "hands-bound": Object.freeze(["touch", "lockpicking", "sleight-of-hand"]),
-});
-
-/**
  * The special-skill bible — genuinely reusable special skills with canonical spellings and meanings,
  * mirroring SKILL_CATALOG. The architect draws from here; a bespoke per-story skill is still
  * first-class: a `skills[]` entry not in this catalog resolves as `custom` and keeps its own
@@ -39,8 +71,8 @@ export const SPECIAL_SKILL_CATALOG: Readonly<Record<string, string>> = Object.fr
 });
 
 /** One skill a character has: `source` tells where it came from — the general list, the special-skill
- *  bible, or a story's own bespoke wording. */
-export interface Skill { name: string; meaning: string; source: "general" | "bible" | "custom"; }
+ *  bible, a story's own bespoke wording, or the scene's `reach`. */
+export interface Skill { name: string; meaning: string; source: "general" | "bible" | "custom" | "reach"; }
 
 // `Lock Picking` and `lockpicking` are one skill; the authored spelling is what the character sees.
 /** A spelling-insensitive key for comparing skill names, so one skill can never be written two ways. */
@@ -52,10 +84,6 @@ const CANON_BIBLE: ReadonlyMap<string, string> =
 /** The bible's canonical meaning for a skill name, whatever spelling it was written in. */
 export const bibleMeaningOf = (name: string): string | undefined => CANON_BIBLE.get(canonSkill(name));
 
-// Penalties likewise: `Hands Bound` finds the `hands-bound` entry.
-const CANON_RESTRICTIONS: ReadonlyMap<string, readonly string[]> =
-  new Map(Object.entries(RESTRICTION_CATALOG).map(([k, v]) => [canonSkill(k), v] as const));
-
 // A story may write `name :: what it means`; the meaning is optional, the name is not.
 /** Split a `name :: what it means` entry; the meaning is optional, the name is not. */
 export function splitMeaning(raw: string): { text: string; meaning: string } {
@@ -65,13 +93,13 @@ export function splitMeaning(raw: string): { text: string; meaning: string } {
 }
 
 /** The restrictions of one character, parsed once for every reader of them: each known capability a
- *  restriction removes is keyed by canon name to its authored spelling, and `viaPenalty` says which
- *  of those went through a named penalty rather than a bare skill name. Unknown entries warn here,
- *  exactly as resolveSkills has always warned, and remove nothing. */
-function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: string) {
+ *  restriction removes is keyed by canon name to its authored spelling. A restriction must name a
+ *  general skill, a bible skill, one of that character's own skills, or — since restrictions negate
+ *  over the whole capability set (I2) — something the scene's `reach` grants. Anything else warns
+ *  here, exactly as resolveSkills has always warned, and removes nothing. */
+function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: string, granted = new Set<string>()) {
   const split = (s: string) => s.split("|").map(x => x.trim()).filter(Boolean);
   const restricted = new Map<string, string>();          // canon -> authored spelling of what removed it
-  const viaPenalty = new Set<string>();                  // canon keys disabled through a named penalty
   const unresolved: string[] = [];
   const declared = new Set(
     split(skillsRaw).map(e => canonSkill(splitMeaning(e).text)).filter(Boolean)); // so a bespoke custom skill can be self-restricted by name
@@ -79,15 +107,8 @@ function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: stri
     const { text } = splitMeaning(entry);
     if (!text) continue;
     const key = canonSkill(text);
-    const penalty = CANON_RESTRICTIONS.get(key);
-    if (penalty) {
-      for (const member of penalty) {
-        const mk = canonSkill(member);
-        restricted.set(mk, member);
-        viaPenalty.add(mk);
-      }
-    } else if (Object.prototype.hasOwnProperty.call(SKILL_CATALOG, key)
-      || bibleMeaningOf(text) !== undefined || declared.has(key)) {
+    if (Object.prototype.hasOwnProperty.call(SKILL_CATALOG, key)
+      || bibleMeaningOf(text) !== undefined || declared.has(key) || granted.has(key)) {
       restricted.set(key, text);
     } else {
       unresolved.push(text);
@@ -95,19 +116,36 @@ function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: stri
   }
 
   if (unresolved.length)
-    warn(`   (character ${who}: restrictions "${unresolved.join('", "')}" — not a known skill or penalty, so there is nothing to remove; known penalties: ${Object.keys(RESTRICTION_CATALOG).join(", ")}; general skills: ${Object.keys(SKILL_CATALOG).join(", ")})`);
+    warn(`   (character ${who}: restrictions "${unresolved.join('", "')}" — not a known skill, so there is nothing to remove; general skills: ${Object.keys(SKILL_CATALOG).join(", ")})`);
 
-  return { split, declared, restricted, viaPenalty };
+  return { split, declared, restricted };
 }
 
-/** A character's final skill list: general skills minus restrictions, plus the story's own skills and
- *  overrides. Restrictions reach special skills too: a RESTRICTION_CATALOG penalty disables every
- *  skill it lists — general or bible — and a bare restriction name self-restricts that skill.
- *
- *  Precedence: a skill named directly in BOTH `skills` and `restrictions` is handed back (they HAVE
- *  it), but a skill disabled *via a catalog penalty* is removed even when `skills` names it. */
-export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string): Skill[] {
-  const { split, declared, restricted, viaPenalty } = parseRestrictions(who, skillsRaw, restrictionsRaw);
+// A scene's reach entries, parsed once per reader: canon key, authored name, and the meaning that
+// says what the character can do THROUGH the thing (I5 leaves whether the thing exists to the scene).
+// Reach entries are always bespoke, so a missing `:: meaning` warns; duplicates collapse.
+function parseReach(who: string, reachRaw: string): { list: { key: string; name: string; meaning: string }[] } {
+  const list: { key: string; name: string; meaning: string }[] = [];
+  const seen = new Set<string>();
+  for (const entry of reachRaw.split("|").map(x => x.trim()).filter(Boolean)) {
+    const { text, meaning } = splitMeaning(entry);
+    if (!text) continue;
+    if (!meaning)
+      warn(`   (character ${who}: reach "${text}" carries no ":: meaning" — nobody can tell what it lets them do through)`);
+    const key = canonSkill(text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    list.push({ key, name: text, meaning });
+  }
+  return { list };
+}
+
+/** The three capability layers resolved against each other: general catalog → the character's own
+ *  `skills` → the scene's `reach`, with restrictions applied by canon name across all three. */
+function resolveLayers(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw: string): Map<string, Skill> {
+  const reach = parseReach(who, reachRaw);
+  const { split, declared, restricted } = parseRestrictions(who, skillsRaw, restrictionsRaw,
+    new Set(reach.list.map(r => r.key)));
 
   const out = new Map<string, Skill>();
   for (const [name, meaning] of Object.entries(SKILL_CATALOG))
@@ -119,12 +157,8 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
     const key = canonSkill(text);
     if (key in SKILL_CATALOG && !restricted.has(key))
       warn(`   (character ${who}: skills "${text}" redeclares a general skill — the story's wording wins)`);
-    if (restricted.has(key) && !viaPenalty.has(key))
+    if (restricted.has(key))
       warn(`   (character ${who}: "${text}" is in both skills and restrictions — added back, so they HAVE it)`);
-    else if (viaPenalty.has(key)) {
-      warn(`   (character ${who}: "${text}" is listed under skills but the "${restricted.get(key)}" penalty removes it)`);
-      continue;
-    }
     const bible = bibleMeaningOf(text) ?? "";
     out.set(key, {
       name: text,
@@ -132,25 +166,58 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
       source: bible ? "bible" : "custom",
     });
   }
-  return [...out.values()];
+
+  for (const r of reach.list) {
+    if (out.has(r.key)) {
+      warn(`   (character ${who}: reach "${r.name}" reuses a skill they already have — their own meaning stands and the reach entry is dropped)`);
+      continue;   // I3: intrinsic beats granted on collision
+    }
+    if (restricted.has(r.key)) continue;   // I2: a restriction reaches across layers by canon name
+    out.set(r.key, { name: r.name, meaning: r.meaning, source: "reach" });
+  }
+  return out;
+}
+
+/** A character's final skill list: general skills minus restrictions, plus the story's own skills and
+ *  overrides. Restrictions reach special skills too — they negate over the whole capability set by
+ *  canon name — and a bare restriction name self-restricts that skill.
+ *
+ *  Precedence: a skill named directly in BOTH `skills` and `restrictions` is handed back (they HAVE
+ *  it). `reachRaw` is the scene's grant for this character; pass nothing for any character-level
+ *  view, so reach never leaks outside the scene that granted it (I4). */
+export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = ""): Skill[] {
+  return [...resolveLayers(who, skillsRaw, restrictionsRaw, reachRaw).values()];
+}
+
+/** Just the reach layer for one character in one scene — what the scene grants them through where
+ *  they are standing, minus what restrictions remove (I2) and what an intrinsic skill already covers
+ *  (I3). This is the only form in which scene-loop.ts ever sees reach (I4). */
+export function resolveReach(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw: string): Skill[] {
+  return [...resolveLayers(who, skillsRaw, restrictionsRaw, reachRaw).values()].filter(s => s.source === "reach");
 }
 
 /**
  * What the authored restrictions took away, as explicit negative facts: the authored spelling of
- * every known capability removed — general AND special/bible. This is the writer-side CANNOT list,
- * because absence-from-`can` hides exactly the special skills a penalty reached: `hands-bound`
- * removing `lockpicking` used to leave it merely unnamed, where a removed sense was always named.
- * The same precedence holds as in resolveSkills: a skill named directly in both lists is one they
- * HAVE and is not a cannot, while a penalty removes even a listed skill.
+ * every known capability removed — general AND special/bible AND reach. This is the writer-side
+ * CANNOT list, because absence-from-`can` hides exactly the special skills a restriction removed.
+ * A skill named directly in both lists is one they HAVE and is not a cannot.
  */
-export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string): string[] {
-  const { declared, restricted, viaPenalty } = parseRestrictions(who, skillsRaw, restrictionsRaw);
+export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = ""): string[] {
+  const reach = parseReach(who, reachRaw);
+  const { split, declared, restricted } = parseRestrictions(who, skillsRaw, restrictionsRaw,
+    new Set(reach.list.map(r => r.key)));
+  const held = new Set<string>();   // canon keys an intrinsic skill already covers (I3 drops those entries)
+  for (const [name] of Object.entries(SKILL_CATALOG)) held.add(canonSkill(name));
+  for (const entry of split(skillsRaw)) {
+    const t = splitMeaning(entry).text;
+    if (t) held.add(canonSkill(t));
+  }
   const out: string[] = [];
   const seen = new Set<string>();
   for (const [key, spelling] of restricted) {
     if (seen.has(key)) continue;
     seen.add(key);
-    if (!viaPenalty.has(key) && declared.has(key)) continue;   // named in both lists — they HAVE it
+    if (declared.has(key)) continue;   // named in both lists — they HAVE it
     out.push(spelling);
   }
   return out;

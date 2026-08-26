@@ -56,9 +56,14 @@ function ideaModalHtml() {
 // ── the proposal panel ────────────────────────────────────────────────────────
 
 function castHtml(spec) {
+  // Reach is scene-scoped, so it is shown per character but labelled with the scene that grants it —
+  // never as an intrinsic skill.
+  const reachOf = name => (spec.scenes?.[0]?.reach || {})[name]
+    || Object.entries(spec.scene?.reach || {}).find(([k]) => k === name)?.[1] || [];
   return `<div class="cast">${spec.characters.map(c => {
     const tag = (t, cls = "") => `<span class="tag${cls}">${t}</span>`;
     const skills = c.skills.map(s => esc(s.text) + (s.meaning ? ` :: ${esc(s.meaning)}` : "")).join(", ");
+    const reach = reachOf(c.name);
     return `<div class="person" data-tid="scaffold.person" data-name="${esc(c.name)}">
       <div class="person-top"><span class="person-name">${esc(c.name)}</span></div>
       ${c.persona ? `<p>${esc(c.persona)}</p>` : ""}
@@ -68,6 +73,8 @@ function castHtml(spec) {
       ${c.impulse ? tag(`impulse: ${esc(c.impulse)}`) : ""}
       ${(c.voice || []).map(v => tag(`voice: “${esc(v)}”`)).join("")}
       ${skills ? tag(`skills: ${skills}`) : ""}
+      ${(Array.isArray(reach) ? reach : []).map(r =>
+        tag(`reach · scene 1: ${esc(r)}`, " reach")).join("")}
       ${c.restrictions.map(r => tag(`restriction: ${esc(r)}`, " warn")).join("")}
       ${c.maxRetries !== undefined ? tag(`retry limit: ${esc(c.maxRetries)}`) : ""}
     </div>`;

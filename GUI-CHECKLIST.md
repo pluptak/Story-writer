@@ -197,6 +197,17 @@ Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and clic
 - [ ] **Dirty guard.** With unsaved changes, click **back to story**. A `confirm()` dialog warns about unsaved changes. Cancel stays on the editor; confirm navigates away.
 - [ ] **Dirty guard — browser close.** With unsaved changes, close the tab. The browser fires `beforeunload` with a confirmation. (Hard to automate; verify once.)
 - [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
+- [ ] **Reach editor.** In a scene's "Reach" textarea, add one line per grant, `NAME: thing :: meaning`
+      (e.g. `AURA: cameras :: perceiving through the lobby cameras`). Save, reopen the editor, confirm
+      the line survived. Delete the line and save — it is gone. A line with no colon is silently
+      dropped from the draft; a name that matches no character warns at load, not here.
+- [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
+      chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
+      still there, labelled by scene everywhere it shows.
+- [ ] **Reach never reads as intrinsic.** Open the live character sheet (§12) for a story whose
+      scenes carry reach: each grant appears as its own accent-coloured tag naming its scene
+      (`⇢ cameras · scene N`), separate from skills (`+…`) and restrictions (`no …`), and never as a
+      `+skill` on the same card.
 - [ ] **Character editor.** Change a character's persona, knows, or goal. Set a belief, an impulse, and one or two voice lines (one per line in the voice box). Add a skill. Verify after save.
 - [ ] **Character card warnings.** Clear a character's belief, impulse, and voice. After ~400ms `/story/check` shows the three "has no …" warnings; refilling them clears them again.
 - [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
@@ -336,6 +347,10 @@ Needs a run, so pair it with section 2. A read-only panel in the live rail.
       restrictions; this panel shows `knows`, `goal`, `belief`, `impulse` and the quoted voice lines
       too — proof it is the `/cast` fetch, not the
       `scene_start` names. (Pick a story whose characters have a non-empty `knows`.)
+- [ ] **Reach shows per scene, labelled.** On a story whose scene carries a `reach` grant, the
+      character it names gets an accent-coloured `⇢ name · scene N` tag with a tooltip explaining it
+      is available only through where they are standing here — visibly distinct from both `+skill`
+      and `no restriction`, never merged into either list.
 - [ ] **Read-only.** No inputs, no buttons, nothing to click — it is for the human reviewing what a
       consult was working from, never an edit surface.
 - [ ] **Live only.** Switch to the read tab: no cast panel there. It belongs to a running scene.

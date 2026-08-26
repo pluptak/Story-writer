@@ -185,6 +185,22 @@ describe("/story/check (POST)", () => {
     assert.equal(r.code, 200);
     assert.equal(r.body.ok, true);
   });
+
+  it("validates and saves a scene carrying reach", async () => {
+    const withReach = {
+      ...structuredClone(DOORWAY),
+      scenes: [{ ...DOORWAY.scenes[0],
+        reach: { ASTER: ["cameras :: perceiving through the lamp room cameras", "doors"] } }],
+    };
+    const check = await callRoute(handleStoryEditRoutes, "/story/check", { story: withReach }, makeHost());
+    assert.equal(check.code, 200);
+    assert.equal(check.body.ok, true);
+
+    const saved = await callRoute(handleStoryEditRoutes, "/story/save",
+      { dir: "doorway", story: withReach }, makeHost());
+    assert.equal(saved.code, 200);
+    assert.equal(saved.body.ok, true);
+  });
 });
 
 // -- SECTION ----

@@ -54,6 +54,23 @@ const voiceFld = (i, voice) => {
     `<textarea id="char-${i}-voice" rows="3">${esc(lines)}</textarea></div>`;
 };
 
+/** Reach, scene-scoped by design (I1): rendered as `NAME: thing :: meaning` per line — the same
+ *  comma-separated-text-field grain as the rest of this form, no nested-map widget. */
+const reachLines = reach => Object.entries(reach || {}).flatMap(([who, entries]) =>
+  (Array.isArray(entries) ? entries : []).map(e => `${who}: ${e}`)).join("\n");
+
+const parseReach = text => {
+  const out = {};
+  for (const line of String(text || "").split("\n").map(s => s.trim()).filter(Boolean)) {
+    const i = line.indexOf(":");
+    if (i < 0) continue;
+    const who = line.slice(0, i).trim(), entry = line.slice(i + 1).trim();
+    if (!who || !entry) continue;
+    (out[who] = out[who] || []).push(entry);
+  }
+  return out;
+};
+
 /** Deep clone an object by serialising it — Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -138,6 +155,8 @@ function sceneRowsHtml() {
         ${fld(`scene-${n}-length`, "Length (words)", sc.length ?? 700, "half")}
       </div>
       ${fld(`scene-${n}-roster`, "Roster (comma-separated)", roster)}
+      ${fld(`scene-${n}-reach`, "Reach — one per line: NAME: thing :: meaning (granted by this scene only)",
+           reachLines(sc.reach), "textarea")}
       <div class="editor-row">
         ${fld(`scene-${n}-writerModel`, "Writer model (optional)", sc.writerModel ?? "", "half")}
         ${thinkSelect(`scene-${n}-writerThink`, "Writer thinking", sc.writerThink ?? "default")}
@@ -418,6 +437,8 @@ function applyField(id, value) {
     const field = sceneMatch[2];
     if (field === "roster") {
       APP.editDraft.scenes[idx].roster = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+    } else if (field === "reach") {
+      APP.editDraft.scenes[idx].reach = parseReach(value);
     } else if (field === "length") {
       APP.editDraft.scenes[idx].length = value === "" ? 700 : Math.max(1, Number(value));
     } else if (field === "writerModel") {
