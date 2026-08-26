@@ -475,8 +475,6 @@ ${knownProblems.map(p => `  - ${p}`).join("\n")}
   return `[VERIFY] Before this is shown to the author, audit your own draft below for `
     + `anything that does not actually hold together:
 
-  - a name in ${sceneField}.roster that is not one of the characters in "characters" -- a `
-    + `typo, or a character you renamed and forgot to update.
   - a fact in "facts" that only restates one character's private "knows" -- it belongs `
     + `there, not at story level.
   - a restriction that cannot actually bite in this scene -- it creates no asymmetry the `
@@ -484,10 +482,6 @@ ${knownProblems.map(p => `  - ${p}`).join("\n")}
   - more than one character, and not one of them has any restrictions -- the cast then has `
     + `no perceptual asymmetry for the consult to bite on. Author at least one load-bearing `
     + `restriction onto whoever the scene's fork actually turns on.
-  - ${sceneField}.pov set to someone who is not in ${sceneField}.roster -- the reader `
-    + `would be inside the perception of someone not even placed in the room.
-  - reach granted to someone who is not in ${sceneField}.roster -- an interface offered to `
-    + `somebody not in the room reaches no one.
   - a reach entry named after the SENSE it substitutes for ("sight", "hearing") rather than the `
     + `INTERFACE it is ("cameras", "the intercom") -- restrictions remove by name, so naming the `
     + `sense would make a restriction on that sense silently cut the interface too, and a blind or `

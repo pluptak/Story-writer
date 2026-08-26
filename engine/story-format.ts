@@ -7,6 +7,7 @@ import { C } from "../ansi.ts";
 import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel } from "./story-schema.ts";
+import { rosterNameNotACharacter, reachNotInRoster } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -112,7 +113,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       warn(`Scene ${i + 1} pov "${s.pov}" is not one of the characters — ignored`);
     for (const r of s.roster) {
       if (!characters.some(c => c.name.toLowerCase() === r.trim().toLowerCase()))
-        warn(`Scene ${i + 1} roster "${r}" is not one of the characters — ignored`);
+        warn(rosterNameNotACharacter(`Scene ${i + 1}`, r) + " — ignored");
     }
     // Reach is scene-scoped (I1), so it is only ever checked for well-formedness here; the character
     // base above resolves with reach empty (I4). A grant to nobody who can receive it is dead weight.
@@ -120,7 +121,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       const ch = characters.find(c => c.name.toLowerCase() === who.trim().toLowerCase());
       if (!ch) warn(`Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`);
       else if (s.roster.length && !s.roster.some(r => r.trim().toLowerCase() === who.toLowerCase()))
-        warn(`Scene ${i + 1} grants reach to "${who}", who is not in its roster — the grant never reaches a run`);
+        warn(reachNotInRoster(`Scene ${i + 1}`, who) + " — the grant never reaches a run");
     }
   }
 

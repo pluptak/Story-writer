@@ -38,6 +38,18 @@ export function characterPsychologyWarnings(
   return out;
 }
 
+/** The cast-sheet problems that are pure string work and therefore belong in code, never in the
+ *  model's verify pass. `story-format.ts` warns the very same things at load time; these two live
+ *  here so the wording has exactly one home, mirroring `characterPsychologyWarnings`. `prefix` is
+ *  "scene" or "scene N" at proposal time and `Scene ${i + 1}` at load time; each caller appends its
+ *  own disposition (the load path drops the offending name, the proposal path only reports). */
+export function rosterNameNotACharacter(prefix: string, name: string): string {
+  return `${prefix} roster "${name}" is not one of the characters`;
+}
+export function reachNotInRoster(prefix: string, who: string): string {
+  return `${prefix} grants reach to "${who}", who is not in its roster`;
+}
+
 /** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing. */
 export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] } {
   const problems: string[] = [];
@@ -103,6 +115,19 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     const pov = String(s.pov ?? "").trim();
     const povOk = !pov || characters.some(c => c.name.toLowerCase() === pov.toLowerCase());
     if (pov && !povOk) problems.push(`${prefix} pov "${pov}" is not one of the characters — cleared`);
+    // Hoist the roster so the checks below (and the return) all read the same array.
+    const roster: string[] = Array.isArray(s.roster)
+      ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [];
+    // A roster name that is not a character is a typo or a renamed character the model forgot to
+    // update; the writer would seat someone who does not exist. String work — flag it, keep it.
+    for (const r of roster) {
+      if (!characters.some(c => c.name.toLowerCase() === r.toLowerCase()))
+        problems.push(rosterNameNotACharacter(prefix, r));
+    }
+    // The pov-vs-characters check above guards a pov naming nobody at all; this guards a pov that
+    // names a real character who is simply not placed in this scene's room (genuinely unbuilt until now).
+    if (pov && povOk && roster.length && !roster.some(r => r.toLowerCase() === pov.toLowerCase()))
+      problems.push(`${prefix} pov "${pov}" is not in the roster — the reader would be inside the perception of someone not placed in the room`);
     const rawReach = (s.reach && typeof s.reach === "object" && !Array.isArray(s.reach))
       ? Object.fromEntries(Object.entries(s.reach)
           .map(([k, v]) => [k.trim(), asStrings(v)] as const)
@@ -114,10 +139,24 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     for (const [who, entries] of Object.entries(rawReach)) {
       const ch = characters.find(c => c.name.toLowerCase() === who.toLowerCase());
       if (!ch) { problems.push(`${prefix} grants reach to "${who}", who is not one of the characters — dropped`); continue; }
+      // The roster is the likelier thing to be wrong; the fill-gaps pass fills it *after* the scene
+      // lands, so dropping an authored grant over a roster typo would be a regression. Report, keep.
+      if (roster.length && !roster.some(r => r.toLowerCase() === who.toLowerCase()))
+        problems.push(reachNotInRoster(prefix, who));
+      const ownSkillKeys = new Set(ch.skills.map(sk => canonSkill(splitMeaning(sk).text)));
       const ok = entries.filter(e => {
-        if (!splitMeaning(e).meaning.trim())
-          problems.push(`${ch.name}'s reach "${e}" carries no ":: meaning" — dropped`);
-        return Boolean(splitMeaning(e).meaning.trim());
+        const { text, meaning } = splitMeaning(e);
+        if (!meaning.trim()) { problems.push(`${ch.name}'s reach "${e}" carries no ":: meaning" — dropped`); return false; }
+        // I3 at proposal time: a reach entry colliding with a general, bible, or the character's own
+        // skill name is naming the sense/capability, not the interface — their own meaning stands and
+        // the reach entry is dropped. Surfaces here, not only mid-run.
+        const key = canonSkill(text);
+        if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === key)
+            || bibleMeaningOf(text) !== undefined || ownSkillKeys.has(key)) {
+          problems.push(`${ch.name}'s reach "${text}" collides with a skill name — name the INTERFACE, not the sense or capability it substitutes for; the entry is dropped`);
+          return false;
+        }
+        return true;
       });
       if (ok.length) reach[ch.name] = ok;
     }
@@ -126,7 +165,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       question: String(s.question ?? "").trim(),
       pov: povOk ? pov : "",
       length: Number.isFinite(lengthRaw) && lengthRaw >= 1 ? Math.round(lengthRaw) : 700,
-      roster: Array.isArray(s.roster) ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [],
+      roster,
       reach,
       ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
       ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
@@ -198,6 +237,10 @@ export function applyEdits(spec: StorySpec, raw: any): {
   // One round may rename a character and then address them by the old name ("rewrite the prose
   // under the old name in the same round") -- later edits follow renames made earlier in the list.
   const renames = new Map<string, string>();
+  // `renames` is keyed lower-case because findChar hops through it; the authored spelling of each
+  // old name is kept beside it so a dangling-reference problem can name the character as the author
+  // wrote them ("MERRITT"), not as the lookup key spells them ("merritt").
+  const renamedFrom = new Map<string, string>();
   const findChar = (name: string) => {
     let key = name.trim().toLowerCase();
     for (let hops = 0; hops <= renames.size; hops++) {
@@ -332,8 +375,8 @@ export function applyEdits(spec: StorySpec, raw: any): {
       if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
 
       // A rename carries the structural references with it: who a roster names, whose perception
-      // a scene sits inside. Prose that speaks of the person under the old name is the architect's
-      // to rewrite, not the engine's.
+      // a scene sits inside. The engine still does not rewrite the prose under the old name — but
+      // it now flags every dangling reference, once, in this round, for the author to fix.
       if (cm[2] === "name") {
         const fresh = scalar();
         if (!fresh) { ignored.push(`${field} — a character cannot be renamed to nothing`); continue; }
@@ -344,6 +387,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
         const old = c.name;
         c.name = fresh;
         renames.set(old.toLowerCase(), fresh.toLowerCase());
+        renamedFrom.set(old.toLowerCase(), old);
         for (const sc of draft.scenes) {
           if (String(sc.pov ?? "").trim().toLowerCase() === old.toLowerCase()) sc.pov = fresh;
           sc.roster = ((sc.roster ?? []) as string[])
@@ -464,6 +508,35 @@ export function applyEdits(spec: StorySpec, raw: any): {
     ignored.push(field ? `unknown field "${raw}"` : "an edit with no field");
   }
 
+  // A renaming round may leave another character's knows/goal/belief still naming the old name —
+  // the exact "renamed and forgot to update" bug this block exists to catch. The architect has no
+  // rename history at proposal time, but applyEdits does, so the dangling-reference scan lives here:
+  // exact old-name match, word-boundary, zero false positives. The engine still does not rewrite the
+  // prose; it only says where the stale name sits. (The hallucinated-name half stays with the
+  // model's "anything else" backstop — see PLANS.md Architect follow-ups.)
+  //
+  // This finding reaches the author and nobody else. runAutoPasses builds [ALREADY FLAGGED] from
+  // `applyEdits(cur, { edits: [] })`, where `renames` is empty by construction, so verify never sees
+  // it and no later round re-derives it. That is inherent: only the round that renamed holds the
+  // history. If the model is ever to fix these, the finding has to be recomputed from the spec.
+  const renameProblems: string[] = [];
+  if (renames.size) {
+    for (const c of draft.characters) {
+      for (const field of ["knows", "goal", "belief"] as const) {
+        const text = String((c as any)[field] ?? "");
+        if (!text) continue;
+        for (const [oldKey, newKey] of renames) {
+          const re = new RegExp(`\\b${oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+          if (re.test(text)) {
+            const renamedTo = draft.characters.find((x: any) => x.name.toLowerCase() === newKey)?.name ?? newKey;
+            const wasCalled = renamedFrom.get(oldKey) ?? oldKey;
+            renameProblems.push(`${c.name}'s ${field} still names "${wasCalled}", who was renamed to "${renamedTo}" — update the reference`);
+          }
+        }
+      }
+    }
+  }
+
   const { spec: next, problems } = normalizeSpec(draft);
   const counts = new Map<string, number>();
   for (const e of work) counts.set(e.key, (counts.get(e.key) ?? 0) + 1);
@@ -472,7 +545,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
     before,
     after: counts.get(key) === 1 && resolve ? (resolve(next) ?? snapshot) : snapshot,
   }));
-  return { spec: next, applied, ignored, problems };
+  return { spec: next, applied, ignored, problems: [...problems, ...renameProblems] };
 }
 
 /** The fields a GUI may set directly; everything else goes through the architect. */

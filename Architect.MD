@@ -242,14 +242,17 @@ on `/scaffold/start` (the viewer's interview offers the choice).
 A proposal that lands (either walk) is not the end of the round. Two automatic passes run before the
 author sees it, as far as each walk needs them: **fill the gaps** (the scene's `roster` and the
 story's `facts` are never part of the whole-story proposal's own format, so a dedicated pass asks for
-them) and **verify** (the architect re-reads its own draft for a roster name that doesn't match the
-cast, a fact that just restates one character's private `knows`, a restriction that never bites, a
-POV outside the roster, and — for reach — grants to someone off the roster, entries named after a
-sense instead of an interface (I2's corollary), and interfaces nothing in `place` or `facts`
-establishes; that last one is a judgement only the verify pass makes, never a loader check). Either
-pass may ask instead of editing — that aborts the sequence and
-surfaces as this round's question exactly like any other ask, with whatever the earlier passes
-already applied kept on the spec.
+them) and **verify** (the architect re-reads its own draft for a fact that just restates one
+character's private `knows`, a restriction that never bites, a cast with no restrictions at all, and
+— for reach — entries named after a sense instead of an interface (I2's corollary), and interfaces
+nothing in `place` or `facts` establishes; that last one is a judgement only the verify pass makes,
+never a loader check). The checks that are pure string work are not in that prompt at all: a roster
+name that doesn't match the cast, a POV outside the roster, a reach grant to someone off the roster,
+and a reach entry colliding with a general, bible or own-skill name are `normalizeSpec` checks, and
+arrive already decided under `[ALREADY FLAGGED]` rather than as something for the model to re-derive.
+Either pass may ask instead of editing — that aborts the sequence and surfaces as this round's
+question exactly like any other ask, with whatever the earlier passes already applied kept on the
+spec.
 
 ### Handoff
 

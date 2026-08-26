@@ -116,6 +116,45 @@ describe("normalizeSpec", () => {
     assert.match(problems.join(" "), /doors/);
   });
 
+  it("flags a roster name that is not one of the characters, and keeps it", () => {
+    const { spec, problems } = normalizeSpec({ ...base, scene: { ...base.scene, roster: ["RIVEN", "GHOST"] } });
+    assert.match(problems.join(" "), /roster "GHOST" is not one of the characters/);
+    assert.deepEqual(spec.scenes[0].roster, ["RIVEN", "GHOST"]);
+  });
+
+  it("flags a pov that is set but absent from a non-empty roster, and passes a pov that is in it", () => {
+    const twoChar = { ...base, characters: [{ ...base.characters[0] }, { ...base.characters[0], name: "MERRITT" }] };
+    const ok = normalizeSpec({ ...twoChar, scene: { ...base.scene, roster: ["RIVEN"], pov: "RIVEN" } });
+    assert.ok(!ok.problems.some(p => /not in the roster/.test(p)));
+    const bad = normalizeSpec({ ...twoChar, scene: { ...base.scene, roster: ["RIVEN"], pov: "MERRITT" } });
+    assert.match(bad.problems.join(" "), /pov "MERRITT" is not in the roster/);
+  });
+
+  it("reports (and keeps) a reach grant to someone absent from the roster", () => {
+    const twoChar = { ...base, characters: [{ ...base.characters[0] }, { ...base.characters[0], name: "MERRITT" }] };
+    const { spec, problems } = normalizeSpec({ ...twoChar, scene: { ...base.scene,
+      roster: ["MERRITT"], reach: { RIVEN: ["cameras :: perceiving through the feed"] } } });
+    assert.deepEqual(spec.scenes[0].reach, { RIVEN: ["cameras :: perceiving through the feed"] });
+    assert.match(problems.join(" "), /grants reach to "RIVEN", who is not in its roster/);
+  });
+
+  it("drops a reach entry colliding with a general, bible, or own skill name", () => {
+    const gen = normalizeSpec({ ...base, scene: { ...base.scene,
+      reach: { RIVEN: ["sight :: perceiving through cameras"] } } });
+    assert.match(gen.problems.join(" "), /collides with a skill name/);
+    assert.deepEqual(gen.spec.scenes[0].reach, {}, "a general-skill-named reach entry is dropped");
+
+    const own = normalizeSpec({ ...base, characters: [{ ...base.characters[0], skills: ["lockpicking :: picks locks"] }],
+      scene: { ...base.scene, reach: { RIVEN: ["lockpicking :: a second way to pick"] } } });
+    assert.match(own.problems.join(" "), /collides with a skill name/);
+    assert.deepEqual(own.spec.scenes[0].reach, {}, "a reach entry reusing the character's own skill is dropped");
+
+    const fine = normalizeSpec({ ...base, scene: { ...base.scene,
+      reach: { RIVEN: ["cameras :: perceiving through the feed"] } } });
+    assert.ok(!fine.problems.some(p => /collides/.test(p)));
+    assert.deepEqual(fine.spec.scenes[0].reach, { RIVEN: ["cameras :: perceiving through the feed"] });
+  });
+
   it("an edit to scene.reach replaces that scene's grants", () => {
     const withReach = normalizeSpec({
       ...base, scene: { ...base.scene, reach: { RIVEN: ["cameras :: seeing"] } } }).spec;
@@ -307,6 +346,33 @@ describe("applyEdits", () => {
                      ["climbing", "keys :: by feel"]);
     assert.deepEqual(edit("characters.RIVEN.restrictions", "hearing | smell").spec.characters[0].restrictions,
                      ["hearing", "smell"]);
+  });
+
+  it("flags a stale old-name reference left in another character's fields after a rename", () => {
+    const s = normalizeSpec({
+      title: "Doorway", premise: "A corridor.",
+      scene: { question: "Q?" },
+      characters: [
+        { name: "RIVEN", persona: "A courier.", knows: "Merritt told me the code.", skills: [], restrictions: [] },
+        { name: "MERRITT", persona: "A porter.", knows: "The lock sticks.", skills: [], restrictions: ["sight"] },
+      ],
+    }).spec;
+    const r = quietSync(() => applyEdits(s, { edits: [{ field: "characters.merritt.name", value: "MARA" }] }));
+    // The authored spelling, not the lower-case lookup key the rename map is built on.
+    assert.match(r.problems.join(" "), /RIVEN's knows still names "MERRITT", who was renamed to "MARA"/);
+  });
+
+  it("does not flag a rename that left no stale references", () => {
+    const s = normalizeSpec({
+      title: "Doorway", premise: "A corridor.",
+      scene: { question: "Q?" },
+      characters: [
+        { name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: [], restrictions: [] },
+        { name: "MERRITT", persona: "A porter.", knows: "The lock sticks.", skills: [], restrictions: ["sight"] },
+      ],
+    }).spec;
+    const r = quietSync(() => applyEdits(s, { edits: [{ field: "characters.merritt.name", value: "MARA" }] }));
+    assert.ok(!r.problems.some(p => /still names/.test(p)));
   });
 
   it("takes voice as a list or a pipe-separated string", () => {

@@ -499,9 +499,10 @@ describe("architectVerify: reach rules", () => {
     scenes: [{ place: "the lobby", roster: ["AURA"], reach: { AURA: ["cameras :: seeing through the feed"] } }],
   });
 
-  it("asks whether reach reaches anyone, whether it names an interface or a sense, and what establishes it", () => {
+  it("asks whether reach names an interface or a sense, and what establishes it", () => {
     const p = architectVerify(specJson, "scene_1");
-    assert.match(p, /reach granted to someone who is not in scene_1\.roster/);
+    // reach-to-non-roster is now a mechanical check in normalizeSpec, not a model prompt bullet
+    assert.ok(!/reach granted to someone who is not in scene_1\.roster/.test(p));
     assert.match(p, /named after the SENSE it substitutes for/);
     assert.match(p, /neither scene_1\.place nor "facts" ever establishes/);
     // I5 stays a judgement call for the model, never a mechanical refusal
@@ -671,7 +672,9 @@ describe("NextChapterSession", () => {
     assert.match(fillGapsPrompt, /scene_2\.roster/);
     assert.doesNotMatch(fillGapsPrompt, /scene_1\.roster/);
     const verifyPrompt = s.architect.history[4].content;
-    assert.match(verifyPrompt, /scene_2\.roster/);
+    // The roster/sense reach checks are mechanical now (in normalizeSpec), so the verify prompt no
+    // longer names scene_2.roster; it still targets the chapter being prepared via the I5 bullet.
+    assert.match(verifyPrompt, /scene_2\.place/);
   });
 
   it("refuses a fill-gaps edit that would rewrite the already-written chapter's scene", async () => {

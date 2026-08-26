@@ -18,47 +18,23 @@ run, which is the owner's to make, batched.
 
 ## Next
 
-Four items promoted out of the sections below. Each is decidable now, has live-run evidence behind
+Three items promoted out of the sections below. Each is decidable now, has live-run evidence behind
 it, and is a reason to distrust what the architect currently hands the writer.
 
-### 1. Move the mechanically decidable cast-sheet checks into `normalizeSpec`
-
-Across four live runs of two stories the verify pass returned **no edits every time**, including on
-drafts where checks it already holds should have fired: a cast with no restrictions at all, which
-`normalizeSpec` had already detected and handed to it under `[ALREADY FLAGGED]`, and a `reach` grant
-naming a phone that neither `place` nor `facts` ever established — the I5 bullet, verbatim. Detection
-is not the gap. `problems` are advisory, and asking a model to re-derive a string comparison is the
-wrong instrument for it.
-
-`engine/story-spec.ts`'s `normalizeSpec` already validates `pov` against `characters` and drops a
-`reach` grant naming a non-character, and `problems` already feeds `[ALREADY FLAGGED]`
-(`prompts.ts`, `engine/architect.ts`). The scene's `roster` is passed through with no validation at
-all. Five checks are pure string work and unbuilt:
-
-- a roster name absent from `characters`;
-- `pov` absent from the *roster* (only pov-absent-from-`characters` exists today);
-- reach granted to someone absent from the roster (the same gap);
-- a reach entry whose name collides with a general or bible skill;
-- a name in `knows`/`goal`/`belief` absent from `characters` — a rename or a hallucination, seen live
-  in one of two scaffolds.
-
-**Done when** each appends to `problems` in `normalizeSpec` and its bullet is gone from the verify
-prompt. The genuinely semantic checks stay with the model, which is what I5 already asks for: a fact
-restating a private `knows`, a restriction that cannot bite, I5's does-the-thing-exist.
-
-### 2. Make the no-asymmetry finding gate the cast stage
+### 1. Make the no-asymmetry finding gate the cast stage
 
 `normalizeSpec`'s "nobody has any restrictions" check asks only whether *anyone* in the cast has a
 restriction, and it is advisory even when it fires. A live four-hander passed it with one restriction
 on one character while the POV and two others had none; a different run tripped it, was handed the
-finding under `[ALREADY FLAGGED]`, and shipped unchanged (evidence in item 1). What the check wants
+finding under `[ALREADY FLAGGED]`, and shipped unchanged (the cast-sheet checks now live in
+`normalizeSpec`, so the same finding would reach it mechanically). What the check wants
 to ask is whether the asymmetry touches the fork the scene turns on — judgement, not a count.
 
 **Done when** a no-asymmetry finding stops the cast stage advancing without an explicit author
 override, and the count-based check is either replaced by the fork-touching question or subordinated
 to it.
 
-### 3. `facts[]` is framed away from the one thing it exists for
+### 2. `facts[]` is framed away from the one thing it exists for
 
 The story stage asks for "truths true of the world at large that nobody in particular walks in
 holding", and the fill-gaps pass reinforces that a fact one person holds stays in their `knows`.
@@ -74,7 +50,7 @@ be true of the room and the writer invented an electrical fire that dissolved th
 more characters both hold it" the test for story level, and verify has a bullet for the omission,
 which it does not have at all today. This is a reframe, not a new field.
 
-### 4. The writer supplies both answers, and that suppresses clarification
+### 3. The writer supplies both answers, and that suppresses clarification
 
 Across three runs of one story every consult without exception was an either/or with both branches
 written by the writer ("Do you concede and sign for A, or do you double down?"), and across four runs
@@ -94,6 +70,18 @@ question shape is reworked to match. Those are two halves of one change.
 
 ## Architect follow-ups
 
+- **A `knows`/`goal`/`belief` name absent from `characters` — the hallucinated half only.** When the
+  cast-sheet checks moved into `normalizeSpec` (Next item 1, shipped), the original fifth check —
+  "a name in `knows`/`goal`/`belief` absent from `characters`" — was split in two. The **rename** half
+  now lives in `applyEdits`: it holds the `renames` map, so it scans every character's `knows`/`goal`/
+  `belief` for the exact old name and flags a stale reference with zero false positives. The
+  **hallucinated-name** half has no such history and was deliberately left with the model's
+  "anything else" backstop, because the obvious mechanical detector does not work: a proper-noun
+  regex (`/\b[A-Z][a-z]+\b/` + stoplist) run against `tests/fixtures/doorway/story.json` returns **5
+  false positives and 0 true** — `There`, `Get`, `Whoever`, `Head`, `Get` — since those fields are
+  multi-sentence prose where sentence-initial capitals dominate. Do not re-propose that regex. The
+  real detector, if wanted, needs rename history at proposal time or a names-known-to-the-draft graph
+  that `normalizeSpec` does not have; until then it stays a model judgement.
 - **The one-shot scaffold still spends a quarter of its prompt on the worked example.**
   `architectExample()` reads `tests/fixtures/doorway/story.json`, ~1,870 estimated tokens. The handoff
   no longer carries it (`buildArchitect(d, false)`) and the staged walk embeds each stage's fields
@@ -154,7 +142,8 @@ question shape is reworked to match. Those are two halves of one change.
   in the third person naming the character to itself while the persona is second person, since
   `CHARACTER_FIELDS` fixes the person for `persona` and for no other field. A third needs judgement
   rather than a check: a cast sheet whose pronouns disagree with the prose the writer then produces
-  from it. The mechanically checkable defect found alongside these is in **Next**, item 1.
+  from it. The mechanically checkable defect found alongside these (roster/pov/reach/skill-name
+  string checks) now lives in `normalizeSpec`, shipped.
 
 ## Asymmetry follow-ups
 

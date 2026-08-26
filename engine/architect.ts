@@ -332,7 +332,7 @@ export class ScaffoldSession {
     return problems.filter(p =>
       !(!castIn && p === "no characters at all")
       && !(!sceneIn && /has no question/.test(p))
-      && !(!sceneIn && /is not one of the characters/.test(p)));
+      && !(!sceneIn && /^scene\b/.test(p)));
   }
 
   private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
