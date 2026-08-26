@@ -39,14 +39,26 @@ which it does not have at all today. This is a reframe, not a new field.
 
 ### 2. The writer supplies both answers, and that suppresses clarification
 
-Across three runs of one story every consult without exception was an either/or with both branches
-written by the writer ("Do you concede and sign for A, or do you double down?"), and across four runs
-there was exactly one clarification request in 37 consults. The two look causally linked: a situation
-carrying both options and all the context leaves a character nothing to ask for.
+A consult that puts a fork to a character usually arrives with both branches already written by the
+writer — "Do you concede and sign for A, or do you double down?", "Do you side with Nkem (wait for
+engineers) or with Hale and Marsh (pull the lever now)?". Across three runs of one story that was
+every consult; a fifth run of a different story put it at seven of the nine fork consults, the other
+two genuinely open ("What do you say to the group about the state of the hardware?"). So it is a
+strong tendency in fork consults, not a universal, and reaction fan-outs are open by their nature and
+do not belong in the count at all. Clarification tracks it: one request in 37 consults across four
+runs, one in 11 in the fifth. A situation carrying both options and all the context leaves a
+character nothing to ask for.
+
+The retry path pushes the same way, which is the part worth fixing first because it is mechanical: a
+question the judge sent back was re-asked with *more* of the answer in it, not less — NKEM's "will
+you list yourself as the primary person who authorized the shutdown?" came back as "…or do you
+attribute it to the collective team?". Whatever the redraft instruction says, it currently reads as
+"make the question easier to answer".
 
 **Done when** `normalizeConsult` refuses a question carrying its own answers, the way
-`DEGENERATE_QUESTIONS` already refuses one with no fork in it, and the writer prompt's instruction on
-question shape is reworked to match. Those are two halves of one change.
+`DEGENERATE_QUESTIONS` already refuses one with no fork in it, the writer prompt's instruction on
+question shape is reworked to match, and the re-ask path is checked to be sure it does not undo both.
+Those are halves of one change.
 
 ## Smaller viewer work
 
@@ -176,8 +188,9 @@ one extra LLM call per multi-character fork if it were ever wanted.
   model-size floor.
 - **The LLM half of the narration lint has still never fired.** The quotation check is mechanical
   now (`engine/quote-lint.ts`), which closes the empty-ledger free pass; deeds, restricted senses and
-  consult-situation quality remain the model's. That half returned `{"ok": true}` on all 45 pieces of
-  four live runs, typically in nine completion tokens behind the `{` prefill, and among them it
+  consult-situation quality remain the model's. That half returned `{"ok": true}` on all 55 pieces of
+  five live runs — nine completion tokens behind the `{` prefill on every one of the ten most recent,
+  across two stories and two models — and among them it
   passed "Marsh watches them from his corner" for a character with `restrictions: ["sight"]` — the
   prompt's own worked example ("no watching, no glancing, no gaze for someone who cannot see"). The
   per-answer judge and the batch judge do fire on that same cast — the judge caught "eyes
@@ -215,7 +228,11 @@ one extra LLM call per multi-character fork if it were ever wanted.
 - **The clarifier can answer a different question than the one asked.** The single live clarification
   observed asked whether telemetry was stabilising or the oscillation increasing, and was answered
   with what a different system sounded like. The answer was accepted and folded in. Nothing checks
-  that a clarification addresses its question.
+  that a clarification addresses its question. One observation against it since: a near-identical
+  question in a later run ("Are the temperature readings currently increasing or stabilizing?") was
+  answered squarely ("the needle is jumping further into the red zone with every pulse of the
+  alarm"). Two data points, same question shape, opposite outcomes — so this is worth watching before
+  it is worth building a check for.
 - **There is no moment at which an owner accepts anything.** Overwrite protection and chapter
   contiguity shipped (Writer.MD, "One run writes one chapter"), but "accepted" still just means "a
   file the run wrote" — if an explicit acceptance step is ever wanted, it starts there.
