@@ -253,6 +253,21 @@ describe("narrationLintRequest", () => {
     assert.match(s, /RIVEN -- did: steps back/);
   });
 
+  it("lists a granted reaction as felt interiority, beside any line they gave", () => {
+    const s = P.narrationLintRequest({ ...base,
+      granted: [{ character: "MERRITT", speech: "Who's there?", action: "", thought: "Cold air. The door is open." }] });
+    assert.match(s, /MERRITT -- said: Who's there\?/);
+    assert.match(s, /-- felt: Cold air\. The door is open\./);
+  });
+
+  it("reactionsAnswered hands the writer exactly the line that was given, and no blanket dialogue ban",
+    () => {
+      const s = P.reactionsAnswered([{ name: "MERRITT", thought: "Cold air.", speech: "Who's there?" }]);
+      assert.match(s, /says: "Who's there\?"/);
+      assert.match(s, /render\s+exactly it and nothing more/);
+      assert.ok(!/No dialogue/.test(s), "the old blanket ban would contradict the line just handed over");
+    });
+
   it("omits the consult section entirely when there is no outgoing consult", () => {
     assert.doesNotMatch(P.narrationLintRequest(base), /CONSULT OPENED/);
   });
@@ -282,6 +297,19 @@ describe("narrationFlagged", () => {
   it("tells the writer to redraft rather than continue", () => {
     assert.match(P.narrationFlagged("why"), /[Rr]edraft/);
     assert.match(P.narrationFlagged("why"), /not written to the page/);
+  });
+});
+
+describe("clarifyRequest", () => {
+  it("carries the asking character's own knows, labelled with their name", () => {
+    const s = P.clarifyRequest("MERRITT", "Is the door locked?", "You sit by the door.",
+                               "", "The lock has been sticking for a month.");
+    assert.match(s, /WHAT MERRITT KNOWS COMING IN\] The lock has been sticking/);
+  });
+
+  it("omits the knows section when the character has none", () => {
+    const s = P.clarifyRequest("RIVEN", "Is the door locked?", "You stand by the door.");
+    assert.doesNotMatch(s, /KNOWS COMING IN/);
   });
 });
 
@@ -318,10 +346,35 @@ describe("the narration lint format", () => {
     assert.match(P.NARRATION_LINT_FORMAT, /consequence/);
   });
 
-  it("passes descriptions when in doubt but flags quotations and deeds, so it does not over-trigger",
+  it("passes descriptions when in doubt but flags quotations, invented deeds and meaningful stillness",
     () => {
       assert.match(P.NARRATION_LINT_FORMAT,
-        /When in doubt, pass it -- the one\s+exception is an unmatched quotation, which is always flagged/);
+        /When in\s+doubt about a description, pass it; when in doubt about an unmatched quotation, an\s+invented deed, or\s+meaningful stillness, flag it/);
+    });
+
+  it("says a matched quotation is the pass case, so a granted line rendered verbatim is not flagged",
+    () => {
+      assert.match(P.NARRATION_LINT_FORMAT,
+        /a MATCHED one is the pass case, verbatim or near-verbatim, and is never flagged for being a\s+quotation/);
+    });
+
+  it("narrows the incidental-continuity exemption to involuntary body continuation", () => {
+    assert.match(P.NARRATION_LINT_FORMAT, /Involuntary continuity/);
+    assert.match(P.NARRATION_LINT_FORMAT, /a breath, a flinch, weight shifting on a crate -- is not a deed/);
+  });
+
+  it("keeps stillness a choice inside the lint, matching THE ONE RULE rather than contradicting it",
+    () => {
+      assert.match(P.NARRATION_LINT_FORMAT,
+        /Staying still, saying nothing, waiting, letting the moment pass are NOT covered by that exemption/);
+      assert.ok(!/reacting within what this\s+piece already established/.test(P.NARRATION_LINT_FORMAT),
+        "the old carve-out licensed exactly what the rule reserves for the character");
+    });
+
+  it("excepts granted interiority from the not-narratable clause, so a rendered reaction is not flagged",
+    () => {
+      assert.match(P.NARRATION_LINT_FORMAT,
+        /The one exception is interiority this\s+scene was actually given: a thought shown under ALREADY GRANTED as "-- felt:"/);
     });
 });
 
@@ -661,6 +714,18 @@ describe("normalizeReactionConsult", () => {
     assert.ok(r.ok);
     assert.equal(r.reqs[0].situation, shared);
     assert.equal(r.reqs[1].situation, heard);
+  });
+
+  it("collapses a duplicated reactor to one consult — first entry wins, with its own situation", () => {
+    const heard = "From the next room, a splintering crash and a rush of cold air under the door.";
+    const r = normalizeReactionConsult({
+      reactors: [{ name: "ELARA", situation: heard }, { name: "elara" }, { name: "ELARA" }],
+      situation: shared, question,
+    });
+    assert.ok(r.ok);
+    assert.equal(r.reqs.length, 1, "one name, one consult — however it was spelled");
+    assert.equal(r.reqs[0].character, "ELARA");
+    assert.equal(r.reqs[0].situation, heard, "the survivor keeps its per-reactor situation");
   });
 
   it("accepts a bare string reactor", () => {

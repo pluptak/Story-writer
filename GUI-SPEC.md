@@ -143,7 +143,7 @@ are struck through.
 ## Story selection
 
 ```
-POST /select   { dir, chapter? }
+POST /select   { dir, chapter?, replace? }
   → 200 { ok:true, dir } | 400 { ok:false, reason }
 ```
 Only meaningful while `picking: true` (i.e. `LIVE.awaitingPick`). There is no queue — one browser
@@ -153,6 +153,12 @@ second click after that returns `400 the session is not waiting on a choice`, no
 `chapter` is which chapter that run writes — one run writes one chapter — and anything that is not a
 positive integer falls back to `1` rather than failing the pick. Out of range for *this* story is not
 caught here: `runChapter` rejects it when the run starts.
+
+`replace: true` authorizes writing over an existing chapter or skipping past an unwritten one —
+the viewer's counterpart of the CLI's `--replace`. The story page confirms both with the user
+before sending it; without it, the run refuses before starting (`chapters/` is the durable record).
+The handoff's start button does not send it, so a collision there surfaces as a refusal, not a
+silent overwrite.
 
 ## Story editor
 
@@ -411,10 +417,14 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"promote"; character; action }             — at most one deed promoted into the writer's draft
   { t:"exit"; character; pov }                   — a character left the cast mid-scene;
                                                    `pov` true means they were POV and the chapter ends
+  { t:"exit_refused"; character }                — an exit named on a reply that wrote nothing;
+                                                   nobody has left and the cast is unchanged
   { t:"retry_capped"; character; count }
-  { t:"done_deferred" }                          — the writer declared the scene done while an
-                                                   accepted answer was still missing from the page;
-                                                   the scene is held open exactly one more turn
+  { t:"done_deferred" }                          — the scene was about to end — `scene_done` declared,
+                                                   or the hard length cap reached without declaring
+                                                   it — while an accepted answer was still missing
+                                                   from the page; the scene is held open exactly one
+                                                   more turn
   { t:"answer_unwritten"; characters[]; stopped } — the scene ended anyway with those answers never
                                                    written in: the consults were accepted, the
                                                    chapter does not carry the choices they made

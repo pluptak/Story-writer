@@ -229,10 +229,33 @@ export function wireStoryPage(page) {
  *  the moment it loads the story. Sent unconditionally (even blank) so a leftover override from a
  *  previous story's run never silently rides along into this one. */
 async function playChosen(dir, model, chapter) {
+  // A deliberate rerun: confirm an overwrite or a skip ahead before asking the server to allow it,
+  // and send `replace` only for the deviation actually confirmed. Sending it on every run would put
+  // the whole durability guard in the browser, where it rests on a story list that can be stale —
+  // the one case that would overwrite a chapter with no dialog shown. The handoff's start button
+  // does not go through here — it sends no replace, and is refused if its prepared chapter somehow
+  // collides with what is on disk.
+  const replace = authorizeChapterRun(chapter);
+  if (replace === null) return;
   if (APP.picked) return;
   const mj = await post("/model", { model }, false);
   if (!mj || mj.ok === false) { APP.storyError = reasonOr(mj, "could not set that model"); APP.render(); return; }
-  await choose({ dir, chapter });
+  await choose({ dir, chapter, replace });
+}
+
+/** The two confirms behind a deliberate rerun: rewriting a written chapter, or skipping past one
+ *  that was never written. `null` means the owner said no; `true` means they confirmed a deviation
+ *  and the server may allow it; `false` means there was nothing to confirm, and the server's own
+ *  guard stays in force — which is what catches a story list this page read before the chapter
+ *  existed. */
+function authorizeChapterRun(n) {
+  const s = (APP.stories || []).find(x => x.dir === APP.storyDir);
+  const written = s?.chapters || [];
+  if (written.includes(n))
+    return confirm(`Rewrite chapter ${n}? The new run replaces the chapter file on disk.`) ? true : null;
+  if (n > 1 && !written.includes(n - 1))
+    return confirm(`Chapter ${n - 1} has never been written. Skip ahead to chapter ${n} anyway?`) ? true : null;
+  return false;
 }
 
 /** Remove an accepted-but-unwritten chapter's scene from story.json. Only offered for the last

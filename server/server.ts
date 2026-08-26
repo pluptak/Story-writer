@@ -166,9 +166,12 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         if (!dir) { json(res, 400, { ok: false, reason: `no such story: ${String(o.dir ?? "")}` }); return; }
         const asked = Number(o.chapter ?? 1);
         const chapter = Number.isInteger(asked) && asked > 0 ? asked : 1;
+        // Explicit authorization to write over an existing chapter or skip past an unwritten one —
+        // the viewer's counterpart of the CLI's --replace. Absent, runOne's durability guard holds.
+        const replace = o.replace === true;
         const r = LIVE.pickResolve; LIVE.pickResolve = null; LIVE.awaitingPick = false;
         json(res, 200, { ok: true, dir });
-        r({ dir, chapter });
+        r({ dir, chapter, replace });
 
       } else if (path === "/models" && req.method === "GET") {
         const ids = await host.loadedModelIds();

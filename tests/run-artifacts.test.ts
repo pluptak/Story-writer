@@ -1,11 +1,12 @@
 /** What a run leaves behind on disk, plus prompt and pacing checks. */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadStory } from "../engine/story-format.ts";
+import { loadStory, writtenChapters } from "../engine/story-format.ts";
+import { chapterStartRefusal } from "../story-writer.ts";
 import { llmFilenameFor, llmLogEntry, writeLlmRecord, Agent } from "../engine/agent.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
@@ -384,5 +385,46 @@ describe("max_prose_words", () => {
     assert.equal(sc.maxProseWords, 140);
     assert.ok(sc.maxProseWords * 3 <= sc.scenes[0].length,
               "a cap that a scene fits into in one or two pieces is not a cap");
+  });
+});
+
+// -- CHAPTER DURABILITY (runOne's guard) ------------------------------------
+describe("chapterStartRefusal", () => {
+  /** A throwaway story directory with `sceneCount` scenes, so a gap is reachable. */
+  async function storyCopy(sceneCount: number): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "durability-"));
+    const raw = JSON.parse(await readFile("tests/fixtures/doorway/story.json", "utf8"));
+    while (raw.scenes.length < sceneCount)
+      raw.scenes.push({ ...raw.scenes[0], question: raw.scenes[0].question + " And then?" });
+    await writeFile(join(dir, "story.json"), JSON.stringify(raw), "utf8");
+    return dir;
+  }
+
+  it("refuses to overwrite an existing chapter", async () => {
+    const dir = await storyCopy(1);
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "already written\n", "utf8");
+      assert.match((await chapterStartRefusal(dir, 1, false))!, /already written.*--replace/s);
+      assert.equal(await chapterStartRefusal(dir, 1, true), null, "the explicit authorization lets it through");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("refuses to skip past an unwritten chapter", async () => {
+    const dir = await storyCopy(2);
+    try {
+      assert.match((await chapterStartRefusal(dir, 2, false))!, /chapter 1 was never written/);
+      assert.equal(await chapterStartRefusal(dir, 2, true), null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("lets an ordinary next-chapter run through", async () => {
+    const dir = await storyCopy(2);
+    try {
+      assert.equal(await chapterStartRefusal(dir, 1, false), null);
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "chapter one\n", "utf8");
+      assert.equal(await chapterStartRefusal(dir, 2, false), null, "contiguous and unwritten is the normal case");
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

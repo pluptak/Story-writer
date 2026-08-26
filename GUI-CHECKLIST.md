@@ -105,6 +105,16 @@ for r in stories/the-final-meal/out/*/; do echo -n "$(basename $r) "; grep -o '"
 On `the-final-meal`, click **write chapter 2** (chapter 2 exists, so this is a rewrite; that is fine,
 the point is which chapter the click selects).
 
+- [ ] **A written chapter asks first.** The click raises a confirm naming chapter 2 as a rewrite.
+      Cancel it: nothing is sent, the shelf stays put. Click again and accept.
+
+  Only a confirmed rewrite sends `replace`, and `chapters/` is the durable record, so the run
+  refuses to start without it. The refusal is what covers a story list this page read before the
+  chapter existed: leave the shelf open, write a chapter from another shell
+  (`npx tsx story-writer.ts stories/<story> --chapter=N`), then start that same chapter from the
+  still-open page. No confirm is offered — the page does not know it exists — and the run must be
+  refused with `chapter N is already written` rather than overwriting it silently.
+
 - [ ] **Check the terminal, not the screen.** The run header must read `chapter 2 of 2`.
 
   If it reads `chapter 1 of 2`, `data-chapter` is not reaching `/select` and every per-chapter action

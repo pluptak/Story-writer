@@ -36,6 +36,11 @@ export interface RunMeta {
   question: string;
 }
 
+export type RunStateFrame =
+  { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean;
+    paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
+    interactive: boolean };
+
 export type LiveFrame =
   | ({ seq: number } & RunEvent)
   | { t: "composing"; who: string; secs: number; chars: number }
@@ -43,9 +48,7 @@ export type LiveFrame =
   | { t: "agent_stats"; who: string; model: string; durationMs: number;
       promptTokens: number | null; completionTokens: number | null }
   | { t: "continue_prompt"; steps: number; budget: number; suggested: number }
-  | { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean;
-      paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
-      interactive: boolean }
+  | RunStateFrame
   | { t: "run_reset" }
   | { t: "run_error"; message: string }
   | { t: "scaffold"; state: unknown }
@@ -94,11 +97,11 @@ export const LIVE = {
   readerArmed: false,
   readerResolve: null as ((answer: string) => void) | null,
   awaitingPick: false,
-  pickResolve: null as ((pick: { dir: string; chapter: number }) => void) | null,
+  pickResolve: null as ((pick: { dir: string; chapter: number; replace?: boolean }) => void) | null,
 };
 
 /** A snapshot of the session's run state, for /run, SSE, and the viewer's header. */
-export function runState(): LiveFrame {
+export function runState(): RunStateFrame {
   return {
     t: "run_state", running: LIVE.running, stopping: RUN.stopped && LIVE.running,
     where: LIVE.where, picking: LIVE.awaitingPick, armed: LIVE.readerArmed,

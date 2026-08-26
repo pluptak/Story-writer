@@ -81,16 +81,9 @@ one extra LLM call per multi-character fork if it were ever wanted.
   everything under `server/gui/` is verified by reading it and by running
   [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md). Any change there is only as good as the live check that
   followed it.
-- **An accepted chapter can be silently overwritten, and chapters can be written out of order.**
-  Running an existing chapter number writes over `chapters/<n>.md` with no warning and no version
-  boundary, so the durable record of a chapter — the thing the whole engine treats as authoritative —
-  is the one artifact with no protection at all. Nothing checks contiguity either: a story can hold
-  chapters 1 and 3, and anything that reads the directory as a sequence will treat 1–3 as complete
-  history, the handoff included. Two separate fixes, and the first is small: refuse to overwrite an
-  existing chapter unless the run is explicitly told to replace it (or move the old one aside the way
-  retained runs already rotate), and refuse to start chapter *n* when *n−1* has never been written.
-  Worth settling what "accepted" means first — today a chapter file is written by the run itself, so
-  there is no moment at which the owner accepted anything.
+- **There is no moment at which an owner accepts anything.** Overwrite protection and chapter
+  contiguity shipped (Writer.MD, "One run writes one chapter"), but "accepted" still just means "a
+  file the run wrote" — if an explicit acceptance step is ever wanted, it starts there.
 - Add coverage for `runAndSave` write-failure paths if that logic is extracted from the composition root.
 - Keep `liveHistory` growth within a run under observation; it is reset between runs but is currently
   not bounded during a very long run.

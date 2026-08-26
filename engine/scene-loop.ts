@@ -78,9 +78,10 @@ export type RunEvent =
   | { t: "model_changed"; model: string }
   | { t: "retry_capped"; character: string; count: number; chapter: number }
   | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
-  | { t: "reaction"; character: string; thought: string; action: string; chapter: number }
+  | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
+  | { t: "exit_refused"; character: string; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
@@ -203,14 +204,23 @@ export async function writeScene(
   // writer's next reply to promote at most one. A one-shot offer: cleared as the next reply is read.
   const pendingReactionActions = new Map<string, string>();
   // Every line/deed the writer has actually been granted this scene, for the narration lint to check
-  // "not yours" against. A reaction's thought never goes in here — interior, never on the page — only
-  // a promoted reaction action does, exactly like the writer's own history only folds a promoted deed.
-  const granted: { character: string; speech: string; action: string }[] = [];
+  // "not yours" against. A reaction's thought goes in here too — as a felt entry: the writer was
+  // handed that interiority to render, and without it the lint flags exactly what it asked for.
+  // Only a promoted reaction action joins later, exactly like the writer's own history only folds a
+  // promoted deed; a reaction's un-promoted action never becomes canon.
+  const granted: { character: string; speech: string; action: string; thought?: string }[] = [];
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
+
+  // A `scene_done` on a page that has nothing on it ends a scene that never happened. The first one
+  // is refused with a message and a flag, so the writer cannot be trapped by its own declaration;
+  // a second is honored — an empty chapter can still not be saved (run-and-save), which is the
+  // backstop if the model keeps insisting. A turn already held open to pay an owed answer is never
+  // held a second time: that one closes whatever it produces.
+  let blankDone = false;
   // Characters whose accepted answer has not had a writing turn since. An accept only puts the answer
   // in the writer's history; the next piece of prose is the only thing that can put it on the page,
   // so the names sit here until one is committed. What the engine can check is that a beat was
@@ -247,9 +257,13 @@ export async function writeScene(
   // narration does not contradict what the character was told.
   const clarify: Clarifier = async (q, r) => {
     const cl = theClarifier();
+    // The asking character's own `knows` travels in the transient payload, never folded into the
+    // clarifier's history: the instructions tell it to reveal only what this character could
+    // perceive or already know, and that boundary is uncheckable without the field itself.
     const extra: Msg[] = [{
       role: "user",
-      content: P.clarifyRequest(r.character, q, r.situation, pieces[pieces.length - 1] ?? ""),
+      content: P.clarifyRequest(r.character, q, r.situation,
+                                pieces[pieces.length - 1] ?? "", defOf(r.character)?.knows ?? ""),
     }];
     let a = "";
     try {
@@ -486,10 +500,9 @@ export async function writeScene(
         console.log(`${C.yellow}(reaction not sent — ${rc.why.split(". ")[0]}.)${C.reset}`);
         writer.hear(P.consultNotSent(rc.why, "the group"));
       } else {
-        asked = true;
         log({ t: "reaction_fanout", reactors: rc.reqs.map(r => r.character),
               situation: rc.reqs[0].situation, chapter });
-        const collected: { name: string; thought: string; action: string; situation: string }[] = [];
+        const collected: { name: string; thought: string; speech: string; action: string; situation: string }[] = [];
         for (const req of rc.reqs) {
           if (RUN.stopped) break;
           const def = defOf(req.character);
@@ -517,13 +530,21 @@ export async function writeScene(
           // Nothing to write: the reaction never happened, so neither did anything it asked for.
           if (!reply.thought && !reply.speech && !reply.action) { dropClarifications(); continue; }
           keepClarifications();
-          // Fold the thought only; a volunteered action stays out of history until it is promoted, so
-          // an un-taken impulse never contradicts the page.
+          // Fold the thought and anything they actually said; a volunteered action stays out of
+          // history until it is promoted, so an un-taken impulse never contradicts the page.
           persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
-          persistent.said(JSON.stringify({ thought: reply.thought }));
+          persistent.said(JSON.stringify({ thought: reply.thought,
+            ...(reply.speech ? { speech: reply.speech } : {}) }));
           lastAsked.set(def.name.toLowerCase(), steps);
-          log({ t: "reaction", character: def.name, thought: reply.thought, action: reply.action, chapter });
-          collected.push({ name: def.name, thought: reply.thought, action: reply.action, situation: req.situation });
+          log({ t: "reaction", character: def.name, thought: reply.thought, speech: reply.speech,
+                action: reply.action, chapter });
+          collected.push({ name: def.name, thought: reply.thought, speech: reply.speech,
+                           action: reply.action, situation: req.situation });
+          // A line the character actually gave is granted — the writer may render exactly it, and
+          // the lint needs it on the ledger to tell that from an invented quotation. The felt entry
+          // rides along for the same reason: the bundle hands the writer the interiority to render.
+          if (reply.speech || reply.thought)
+            granted.push({ character: def.name, speech: reply.speech, action: "", thought: reply.thought });
           if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}reacts:${C.reset} ${reply.thought}`);
         }
 
@@ -546,8 +567,12 @@ export async function writeScene(
 
         const bundle = collected.map(x => ({
           name: x.name, thought: x.thought,
+          ...(x.speech ? { speech: x.speech } : {}),
           ...(pendingReactionActions.has(x.name.toLowerCase()) ? { action: x.action } : {}),
         }));
+        // The beat counts as asked only if somebody actually answered it — a fan-out whose every
+        // reactor was skipped is an empty turn, and the three-strikes counter has to see it.
+        asked = collected.length > 0;
         if (bundle.length) {
           writer.hear(P.reactionsAnswered(bundle));
           owed.push(...bundle.map(b => b.name));
@@ -679,7 +704,18 @@ export async function writeScene(
           keepClarifications();   // before the answer: the writer settled these facts to get it
           writer.hear(P.characterAnswered(def.name, P.answerBody(reply), req.question));
           lastAsked.set(def.name.toLowerCase(), steps);
-          granted.push({ character: def.name, speech: reply.speech, action: reply.action });
+          // An answer joins the lint's ledger as whatever it actually carried. A thought-only answer
+          // — a reaction-shaped ask answered from the inside — lands as a felt entry, the same
+          // authorization a fan-out's bundle gets; without it, the writer rendering that interiority
+          // is flagged for using exactly what it was handed, and the ledger shows a bare name.
+          if (reply.speech || reply.action || reply.thought) {
+            granted.push({
+              character: def.name,
+              speech: reply.speech,
+              action: reply.action,
+              ...(!reply.speech && !reply.action && reply.thought ? { thought: reply.thought } : {}),
+            });
+          }
           owed.push(def.name);
           log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
           if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
@@ -691,7 +727,14 @@ export async function writeScene(
     // A character the writer wrote out of the scene: drop them from the active cast so they are not
     // consulted or missed again. Exiting the point-of-view character ends the chapter — the handoff
     // re-authors the cast from here, reading the exit out of the prose the writer just wrote.
-    if (exiting) {
+    // The exit has to be ON the page to take effect: a reply that wrote nothing cannot remove
+    // anybody, so the declaration is refused and the cast stays intact.
+    if (exiting && !prose) {
+      const name = defOf(exiting)?.name ?? exiting;
+      log({ t: "exit_refused", character: name, chapter });
+      console.log(`${C.yellow}(${name} was declared gone in a reply that wrote nothing — nobody has left.)${C.reset}`);
+      writer.hear(P.exitNotWritten(name));
+    } else if (exiting) {
       const name = defOf(exiting)?.name ?? exiting;
       if (isActive(name)) {
         for (const n of [...active]) if (n.toLowerCase() === name.toLowerCase()) active.delete(n);
@@ -706,16 +749,18 @@ export async function writeScene(
       if (++empties >= 3) { console.log(`${C.red}Writer wrote nothing and asked nobody, three times — stopping.${C.reset}`); break; }
     } else empties = 0;
 
-    // A reply that declares the scene done while its consult is still open closes the door on an
-    // answer still owed to the page. Hold the scene open one more turn so the answer is written in;
-    // whatever that turn produces, the scene closes after it.
-    const deferredNow = sceneDone && owed.length > 0 && !closing;
+    // A reply that ends the scene while its consult is still open closes the door on an answer still
+    // owed to the page — whether it ends by declaring done or by running into the hard length cap
+    // without declaring it. Hold the scene open one more turn so the answer is written in; whatever
+    // that turn produces, the scene closes after it.
+    const deferredNow = (sceneDone || hardCap) && owed.length > 0 && !closing;
     if (deferredNow) {
+      const why = sceneDone ? "done" : "cap";
       sceneDone = false;
       closing = true;
-      writer.hear(P.answerStillOwed);
+      writer.hear(P.answerStillOwed(why));
       log({ t: "done_deferred", chapter });
-      console.log(`${C.yellow}(scene done declared with a consult open — holding the scene open `
+      console.log(`${C.yellow}(scene ending with a consult open — holding the scene open `
         + `to write the answer in)${C.reset}`);
     }
 
@@ -723,6 +768,10 @@ export async function writeScene(
     // not the hard cap either, or the answer would be owed to a page that never comes.
     if (deferredNow) {
       // held open
+    } else if (sceneDone && !prose && pieces.length === 0 && !blankDone && !closing) {
+      blankDone = true;
+      writer.hear(P.blankSceneRefused);
+      console.log(`${C.yellow}(scene done declared with nothing on the page yet — holding it open)${C.reset}`);
     } else if (sceneDone || closing) {
       done = true;
     } else if (hardCap) {

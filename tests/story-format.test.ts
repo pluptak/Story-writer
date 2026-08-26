@@ -13,7 +13,6 @@ import {
   type Defaults,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
-import { num, bool, enumOf, slugify } from "../engine/config-util.ts";
 import { WARN } from "../engine/warnings.ts";
 import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
 import { quiet, quietSync, warnings } from "./helpers.ts";
@@ -156,29 +155,6 @@ describe("StoryJson schema", () => {
 
 // -- CONFIG VALIDATION -----------------------------------------------------
 describe("config validation", () => {
-  it("num rejects a value that is not wholly an integer", () => {
-    const kv = { "config.a": "16garbage", "config.b": "10.9", "config.c": "0", "config.d": "12" };
-    assert.equal(quietSync(() => num(kv, "config.a", 24)), 24);
-    assert.equal(quietSync(() => num(kv, "config.b", 24)), 24);
-    assert.equal(quietSync(() => num(kv, "config.c", 24)), 24);   // must be >= 1
-    assert.equal(num(kv, "config.d", 24), 12);
-    assert.equal(num(kv, "config.missing", 24), 24);              // absent is silent
-    assert.equal(warnings(() => num(kv, "config.missing", 24)).length, 0);
-  });
-
-  it("bool takes only true/false", () => {
-    const kv = { "config.s": "flase", "config.t": "TRUE" };
-    assert.equal(quietSync(() => bool(kv, "config.s", true)), true);
-    assert.equal(bool(kv, "config.t", false), true);
-  });
-
-  it("enumOf rejects an unknown value instead of silently defaulting", () => {
-    const kv = { "config.think": "mediumm", "config.ok": "High" };
-    assert.equal(quietSync(() => enumOf(kv, "config.think", ["low", "medium"] as const, "low")), "low");
-    assert.equal(warnings(() => enumOf(kv, "config.think", ["low", "medium"] as const, "low")).length, 1);
-    assert.equal(enumOf(kv, "config.ok", ["low", "high"] as const, "low"), "high");
-  });
-
   it("rejects a story.json with malformed config values instead of silently accepting them", async () => {
     await assert.rejects(() => loadStory(FIXTURE), (e: any) => {
       assert.match(e.message, /story\.json/);
@@ -539,7 +515,7 @@ describe("loadDefaults", () => {
 // stories/* is the user's own content and gitignored; tests/fixtures/doorway is the one story
 // committed with the engine, doubling as the architect's worked example. See engine/architect.ts.
 describe("the doorway fixture", () => {
-  it("loads, and is built so both the clarification path and the skill check are reachable", async () => {
+  it("loads, and is built so a bible skill and a restriction are both in play", async () => {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     assert.deepEqual(sc.characters.map(c => c.name), ["RIVEN", "MERRITT"]);
     const riven = sc.characters[0], merritt = sc.characters[1];

@@ -208,6 +208,7 @@
   .reaction .rxwho { color:var(--accent); font-weight:600; font-family:var(--mono); font-size:var(--fs-11); letter-spacing:.04em; }
   .reaction .thought { color:var(--faint); font-style:italic; margin-top:3px; }
   .reaction .thought.dim { color:var(--muted); font-style:normal; font-family:var(--mono); font-size:var(--fs-11); opacity:.85; }
+  .reaction .speech { font-family:var(--serif); font-size:var(--fs-15); margin-top:3px; }
   .reaction .action { color:var(--good); margin-top:3px; }
 
   /* min-width:0 lets the aside shrink to its fixed 285px track -- without it an unbreakable

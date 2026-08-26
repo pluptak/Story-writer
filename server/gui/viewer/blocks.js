@@ -101,7 +101,8 @@ async function sendReaderAnswer(seq, answer) {
 }
 
 /** One group reaction: a shared beat several present-but-not-acting characters answered at once.
- *  Each shows its thought; the one deed the writer promoted is marked acted, the rest stay impulses. */
+ *  Each shows its thought and any line they actually gave; the one deed the writer promoted is
+ *  marked acted, the rest stay impulses. */
 function renderReaction(b) {
   const rows = b.reacted.map(r => {
     const promoted = b.promoted && b.promoted.character.toLowerCase() === r.name.toLowerCase();
@@ -109,8 +110,9 @@ function renderReaction(b) {
       ? (promoted ? `<div class="action">acted: ${esc(r.action)}</div>`
                   : `<div class="thought dim">impulse, not taken: ${esc(r.action)}</div>`)
       : "";
+    const said = r.speech ? `<div class="speech">says: ${esc(r.speech)}</div>` : "";
     return `<div class="rxone" data-tid="reaction.one" data-who="${esc(r.name)}"><div class="rxwho">${esc(r.name)}</div>
-      <div class="thought">${esc(r.thought)}</div>${act}</div>`;
+      <div class="thought">${esc(r.thought)}</div>${said}${act}</div>`;
   }).join("");
   return `<div ${tid("prose.reaction")} class="reaction" data-seq="${esc(b.seq)}">
     <div class="rxlabel">the others react</div>

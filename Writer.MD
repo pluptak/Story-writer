@@ -168,19 +168,27 @@ and `lint_failed` the run record says which of the two happened. Treat the lint 
 control that reports its own gaps, not as enforcement of THE ONE RULE — the rule is enforced by the
 consult protocol, which is what decides whether a line exists to be written at all.
 
-The evidence it is shown is everything granted this scene, plus one thing that is about to be: a deed
-the same reply promotes. The promote is processed just after the lint, so a writer that renders a
-volunteered deed and promotes it in one breath would otherwise be flagged for using exactly what it
-was entitled to.
+The evidence it is shown is everything granted this scene — lines, deeds, and the felt reactions
+handed to the writer as interiority to render — plus one thing that is about to be: a deed the same
+reply promotes. The promote is processed just after the lint, so a writer that renders a volunteered
+deed and promotes it in one breath would otherwise be flagged for using exactly what it was entitled
+to; the felt entries exist for the same reason, because a reaction bundle asks the writer to render
+a character's inside, and without them on the ledger the lint would flag exactly what it asked for.
 
 ### An answer is not canon until it is on the page
 
 Accepting an answer only puts it in the writer's history. The chapter is the durable record, and the
 one thing that can put a character's choice into it is a writing turn *after* the answer landed — so
-the loop tracks who is owed one. A reply that declares `scene_done` while an answer is still owed does
-not end the scene: the writer is told the answer is evidence and not yet written, and gets exactly one
-more turn, logged as `done_deferred`. That turn is held open against everything, the hard length cap
-included; whatever comes back, the scene closes after it.
+the loop tracks who is owed one. A reply that would end the scene while an answer is still owed does
+not end it — whether that reply declares `scene_done` or runs into the hard length cap without
+declaring anything: the writer is told the answer is evidence and not yet written, and gets exactly
+one more turn, logged as `done_deferred`. That turn is held open against everything; whatever comes
+back, the scene closes after it.
+
+A `scene_done` on a page with nothing on it is refused once — there is no scene to end — and honored
+if the writer insists again. The backstop for an empty chapter is in saving: a chapter file is
+written only by a finished, un-stopped run that actually wrote prose, and "not saved" says which of
+those three failed.
 
 What the engine can check is that a beat was written, not that the beat honors the answer — proving
 the latter would need a second judge on every piece, and the judgement it makes would be exactly the
@@ -194,14 +202,22 @@ there so a chapter missing a choice it was told about cannot read as a clean fin
 The writer can end a character's presence in the scene with an `exit` field naming them. They are
 dropped from the active cast — not consulted again, and no longer surfaced by the neglect nudge — but
 a world-caused removal (a trapdoor, the floor giving way) is the writer's to narrate, while the
-*choice* that carried them into it still had to be asked for first. Exiting the **point-of-view**
+*choice* that carried them into it still had to be asked for first. An exit only takes effect when
+the reply carried prose: nobody leaves the scene because a prose-less reply declared it — that is
+refused as `exit_refused` and the writer is told so. Exiting the **point-of-view**
 character ends the chapter: the between-chapters architect handoff re-authors the cast from there,
 reading the exit out of the prose it already consumes, so no separate signal reaches it.
 
 One run writes one chapter. A run can finish normally, stop when its step budget is exhausted, pause
 for more budget, wait for reader direction, be stopped by the user, be forced closed for running twice
 past its target length (see "Length is a budget, not a suggestion" above), or end because of a
-model/runtime failure.
+model/runtime failure. Only a run that finished un-stopped and wrote prose saves a chapter file; a
+stopped, unfinished, or empty run leaves `chapters/` untouched.
+
+The chapters already on disk are protected in turn: a run refuses to start over an existing chapter,
+or to skip past one that was never written, unless told otherwise — `--replace` on the CLI, or the
+story page's confirm-then-send from the viewer. One explicit authorization covers both deviations,
+so a deliberate rerun stays one flag away rather than forbidden.
 
 ## The reader seat
 

@@ -104,7 +104,11 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
   }
 
   let chapterPath = "";
-  if (r.done) {
+  // A chapter file is the engine's durable record, so it is written only by a run that finished
+  // un-stopped AND wrote something. `done` with nothing on the page is a declaration the loop may
+  // have honored (a second blank scene_done closes the scene), and a stop landing after the final
+  // reply does not make the run finished — either way there is no chapter to accept.
+  if (r.done && !r.stopped && r.prose.length > 0) {
     const chaptersDir = joinPath(sc.dir, "chapters");
     await mkdir(chaptersDir, { recursive: true });
     chapterPath = joinPath(chaptersDir, `${chapter}.md`);
@@ -120,8 +124,11 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
     } catch (e) {
       console.log(`${C.dim}chapter ${chapter}'s definition was not snapshotted — ${(e as Error).message}${C.reset}`);
     }
-  } else if (!r.stopped) {
-    console.log(`${C.dim}chapter ${chapter} not saved — the run did not finish${C.reset}`);
+  } else {
+    const why = r.stopped ? "the run was stopped"
+      : !r.done ? "the run did not finish"
+      : "the run closed without writing a word";
+    console.log(`${C.dim}chapter ${chapter} not saved — ${why}${C.reset}`);
   }
 
   setWhere(r.stopped ? `stopped ${dir}` : `finished ${dir}`, false);

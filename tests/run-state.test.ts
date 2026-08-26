@@ -696,6 +696,7 @@ describe("an answer still owed the page", () => {
   function consultFetch(opts: {
     writerReplies: Record<string, unknown>[];
     characterReplies: Record<string, unknown>[];
+    lintPayloads?: string[];
   }) {
     let writerCall = 0, characterCall = 0;
     const fetchMock = (async (_url: string, init: any) => {
@@ -703,7 +704,10 @@ describe("an answer still owed the page", () => {
       const sys = String(body.messages?.[0]?.content ?? "");
       const reply = (o: unknown) =>
         new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) return reply({ ok: true });
+      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
+        opts.lintPayloads?.push(String(body.messages?.find((m: any) => m.role === "user")?.content ?? ""));
+        return reply({ ok: true });
+      }
       if (sys.includes("CHECKING ONE ANSWER")) return reply({ verdict: "accept" });
       if (sys.includes("YOUR OUTPUT FORMAT")) return reply(opts.characterReplies[characterCall++]);
       return reply(opts.writerReplies[writerCall++]);
@@ -721,6 +725,8 @@ describe("an answer still owed the page", () => {
   async function runIt(opts: {
     writerReplies: Record<string, unknown>[];
     maxSteps: number;
+    characterReplies?: Record<string, unknown>[];
+    lintPayloads?: string[];
   }) {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
@@ -728,7 +734,8 @@ describe("an answer still owed the page", () => {
       [c.name.toLowerCase(), newCharacterAgent(c, sc.scenes[0].place, "low")] as const));
     const { fetchMock, calls } = consultFetch({
       writerReplies: opts.writerReplies,
-      characterReplies: [{ speech: "No.", action: "stands up off the crate" }],
+      characterReplies: opts.characterReplies ?? [{ speech: "No.", action: "stands up off the crate" }],
+      lintPayloads: opts.lintPayloads,
     });
 
     const origFetch = globalThis.fetch;
@@ -745,7 +752,8 @@ describe("an answer still owed the page", () => {
         opts.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
         sc.dir, e => events.push(e),
       ));
-      return { r, events, calls: calls(), agents };
+      // LIVE.writer is captured before the finally's resetLive() clears it.
+      return { r, events, calls: calls(), agents, sc, writer: LIVE.writer };
     } finally {
       globalThis.fetch = origFetch;
       ENGINE.stream = origStream;
@@ -803,6 +811,170 @@ describe("an answer still owed the page", () => {
     assert.ok(!events.some(e => e.t === "done_deferred"), "done was never declared early");
     assert.ok(!events.some(e => e.t === "answer_unwritten"), "the next beat paid the debt");
   });
+
+  it("refuses an exit carried on a reply that wrote nothing", async () => {
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "", exit: "MERRITT", scene_done: false },
+        { prose: "Merritt is still on the crate.", scene_done: true },
+      ],
+    });
+
+    const refused = events.find(e => e.t === "exit_refused") as any;
+    assert.ok(refused, "the prose-less exit was refused");
+    assert.equal(refused.character, "MERRITT");
+    assert.ok(!events.some(e => e.t === "exit"), "nobody actually left the cast");
+    assert.equal(calls.writerCall, 2, "the writer was sent back to write");
+    assert.equal(r.done, true);
+  });
+
+  it("a POV exit on a prose-less reply does not end the chapter", async () => {
+    const { r, events } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "", exit: "RIVEN", scene_done: false },   // RIVEN is scenes[0].pov in the fixture
+        { prose: "Riven never left the corridor.", scene_done: true },
+      ],
+    });
+
+    assert.ok(events.some(e => e.t === "exit_refused"), "the exit was refused");
+    assert.ok(!events.some(e => e.t === "exit"), "no exit — not even the POV's — took effect");
+    assert.equal(r.done, true, "the chapter closed on the explicit done, not a refused POV exit");
+    assert.equal(r.prose.length, 1);
+  });
+
+  it("refuses a scene_done with nothing written — once", async () => {
+    const { r, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "", scene_done: true },
+        { prose: "", scene_done: true },   // insisted: honored
+      ],
+    });
+
+    assert.equal(calls.writerCall, 2, "the first blank done did not close the scene");
+    assert.deepEqual(r.prose, [], "nothing was ever written");
+    assert.equal(r.done, true, "the second blank done was honored — the save step is the backstop");
+  });
+
+  it("closes a held-open turn that comes back blank, rather than holding it a second time", async () => {
+    // The deferral promises exactly one more turn, whatever it produces. A blank reply on that turn
+    // must not be read as a fresh blank scene_done and re-held.
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "", consult: ASK, scene_done: true },   // asks and declares done in one breath
+        { prose: "", scene_done: true },                 // the held-open turn writes nothing
+      ],
+    });
+
+    assert.ok(events.some(e => e.t === "done_deferred"), "the turn was held open once");
+    assert.equal(calls.writerCall, 2, "and closed after it — not held a second time");
+    assert.equal(r.done, true);
+    const unwritten = events.find(e => e.t === "answer_unwritten") as any;
+    assert.ok(unwritten, "the answer never reached the page, and the record says so");
+    assert.deepEqual(unwritten.characters, ["MERRITT"]);
+  });
+
+  it("holds the scene open past the hard cap when an answer is still owed", async () => {
+    // One beat well past twice the 700-word target arms the hard cap for the NEXT turn; that turn
+    // opens a consult instead of declaring done, and the answer must still get its writing turn.
+    const longBeat = "The lamp buzzed above the service door while the cold worked through every seam. ".repeat(110);
+    const final = `Merritt stands up off the crate. "No," they say.`;
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: longBeat, consult: ASK, scene_done: false },
+        { prose: "", consult: ASK, scene_done: false },   // at length, asks again anyway
+        { prose: final, scene_done: false },
+      ],
+    });
+
+    assert.ok(events.some(e => e.t === "accept"), "the second consult was answered");
+    assert.ok(events.some(e => e.t === "done_deferred"), "the hard-cap close was deferred");
+    assert.equal(calls.writerCall, 3, "the held-open writing turn actually happened");
+    assert.equal(r.prose[r.prose.length - 1], final, "the answer reached the page");
+    assert.ok(!events.some(e => e.t === "answer_unwritten"), "nothing left owed");
+    assert.equal(r.done, true, "and the scene closed after that one extra turn");
+  });
+
+  // -- REACTION FAN-OUTS --------------------------------------------------------
+  const CRASH = {
+    reactors: [{ name: "MERRITT" }],
+    situation: "The service door explodes inward off its hinges, wood and dust across the floor.",
+    question: "What does that land on you as?",
+  };
+
+  it("consults a duplicated reactor exactly once", async () => {
+    const { events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "The crash echoes down the corridor.", consult: { ...CRASH,
+            reactors: [{ name: "MERRITT" }, { name: "merritt" }] }, scene_done: false },
+        { prose: "Merritt's head turns toward the sound.", scene_done: true },
+      ],
+    });
+
+    assert.equal(calls.characterCall, 1, "one name, one isolated consult — however it was spelled");
+    const fanouts = events.filter((e: RunEvent) => e.t === "reaction_fanout") as any[];
+    assert.equal(fanouts.length, 1);
+    assert.deepEqual(fanouts[0].reactors, ["MERRITT"]);
+  });
+
+  it("carries a reactor's speech to the writer's bundle and the ledger", async () => {
+    const { events, writer } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "The crash echoes down the corridor.", consult: CRASH, scene_done: false },
+        { prose: `Merritt's head turns. "Who's there?" they say into the dark.`, scene_done: true },
+      ],
+    });
+
+    const reaction = events.find(e => e.t === "reaction") as any;
+    assert.ok(reaction, "the reaction was collected");
+    assert.equal(reaction.speech, "No.", "what the character actually said is on the record");
+    assert.match((writer?.history ?? []).map(m => String(m.content)).join("\n"), /says: "No\."/,
+      "the writer was handed the exact line to render");
+  });
+
+  it("counts a fan-out whose every reactor was skipped as an empty turn", async () => {
+    const ghost = { prose: "", consult: { ...CRASH, reactors: [{ name: "GHOST" }] }, scene_done: false };
+    const { r, events } = await runIt({
+      maxSteps: 10,
+      writerReplies: [ghost, ghost, ghost],
+    });
+
+    assert.equal(events.filter(e => e.t === "fanout_skip").length, 3, "nobody was reachable");
+    assert.ok(!events.some(e => e.t === "reaction"), "no reaction ever came back");
+    assert.equal(r.done, false, "three empty turns stop the scene instead of pretending it moved");
+    assert.deepEqual(r.prose, []);
+  });
+
+  it("a thought-only answer lands as felt evidence, never as a bare name in the lint's ledger",
+    async () => {
+      // The live-run failure this pins: reaction-shaped single consults answered from the inside
+      // used to push empty granted entries — bare names the lint could not read as authorization.
+      const REACT = { ...ASK, wants: "reaction" };
+      const lintPayloads: string[] = [];
+      const { events } = await runIt({
+        maxSteps: 10,
+        lintPayloads,
+        characterReplies: [{ thought: "The lock has been sticking for a month; who is this?" }],
+        writerReplies: [
+          { prose: "Riven crouches by the door.", consult: REACT, scene_done: false },
+          { prose: "Merritt's head tilts toward the sound.", scene_done: true },
+        ],
+      });
+
+      const accept = events.find(e => e.t === "accept") as any;
+      assert.ok(accept, "the thought-only answer was accepted");
+      const withLedger = lintPayloads.find(p => p.includes("ALREADY GRANTED") && !p.includes("(nobody yet)"));
+      assert.ok(withLedger, "the lint saw a populated ledger");
+      assert.match(withLedger!, /MERRITT -- felt: The lock has been sticking/,
+        "the interiority the writer was handed is on the record as authorization");
+      assert.ok(!/^MERRITT\s*$/m.test(withLedger!), "no bare-name entries");
+    });
 });
 
 // -- A CLARIFICATION ON AN ATTEMPT THAT WAS THROWN AWAY -----------------------

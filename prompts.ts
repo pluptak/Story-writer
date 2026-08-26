@@ -1005,7 +1005,9 @@ not be shown perceiving through a sense their CANNOT list removes -- no watching
 gaze for someone who cannot see. And the perception window holds in the other direction too: you
 may render what the point-of-view character perceives, but another character's thoughts, knowledge,
 or certainties are not narratable fact -- "he knows the rhythm of the building", "she recognizes
-the handwriting" hand someone an inner life nobody gave them.
+the handwriting" hand someone an inner life nobody gave them. The one exception is interiority this
+scene was actually given: a thought shown under ALREADY GRANTED as "-- felt:" was handed to you by
+that character, and rendering what it landed on them as is not invention.
 
 When this piece also opens a consult or a reaction fan-out, the "situation" handed to the character
 has to give them the concrete fact this piece just established -- what was taken, broken, said, or
@@ -1013,8 +1015,8 @@ done, and by whom -- or something they could plausibly perceive or infer that po
 situation that only states the fact's abstract consequence ("you have been robbed") leaves them
 nothing to answer honestly from.
 
-You are shown who has already been granted a line or a deed this scene, the piece of prose just
-drafted, and -- when present -- the consult it opens.
+You are shown who has already been granted a line, a deed, or a felt reaction this scene, the piece
+of prose just drafted, and -- when present -- the consult it opens.
 
 Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
@@ -1024,15 +1026,18 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
    -- it breaks"}
 
 Work in that order. First list every line of dialogue you find in the piece, then match each one
-against ALREADY GRANTED -- a quoted line nobody was granted is a violation however small or natural
-it reads, so an unmatched quotation is always flagged, never passed. Then check deeds: a deed is a
+against ALREADY GRANTED -- an unmatched quotation is always flagged, however small or natural it
+reads; a MATCHED one is the pass case, verbatim or near-verbatim, and is never flagged for being a
+quotation. Then check deeds: a deed is a
 violation only when the prose invents a NEW consequential choice for someone -- an action that
-changes the scene, or a decision at a fork that would have needed a consult. Incidental continuity
-of a character who is simply present -- staying still, shifting weight, reacting within what this
-piece already established -- is not a new deed and is not flagged. Then restricted senses, then the
-consult's situation. Do not flag prose that merely mentions a character, describes the scene, or
-narrates an already-granted line or deed in different words. When in doubt, pass it -- the one
-exception is an unmatched quotation, which is always flagged.
+changes the scene, or a decision at a fork that would have needed a consult. Involuntary continuity
+of a body that is simply present -- a breath, a flinch, weight shifting on a crate -- is not a deed.
+Staying still, saying nothing, waiting, letting the moment pass are NOT covered by that exemption:
+those are choices, and they need an answer behind them like any other. Then restricted senses, then
+the consult's situation. Do not flag prose that merely mentions a character or describes the scene,
+and do not flag an already-granted line, deed, or felt reaction rendered in different words. When in
+doubt about a description, pass it; when in doubt about an unmatched quotation, an invented deed, or
+meaningful stillness, flag it.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
@@ -1046,13 +1051,14 @@ export function narrationLintSystem(cast: { name: string; can: string[]; cannot:
 export const narrationLintRequest = (p: {
   pov: string;
   prose: string;
-  granted: { character: string; speech: string; action: string }[];
+  granted: { character: string; speech: string; action: string; thought?: string }[];
   consult: { character?: string; reactors?: string[]; situation: string; question: string } | null;
 }) =>
   `[POV] ${p.pov}\n\n[PIECE JUST DRAFTED]\n${p.prose}\n\n`
   + `[ALREADY GRANTED THIS SCENE]\n`
   + (p.granted.length
       ? p.granted.map(g => `${g.character}` + (g.speech ? ` -- said: ${g.speech}` : "")
+          + (g.thought ? ` -- felt: ${g.thought}` : "")
           + (g.action ? ` -- did: ${g.action}` : "")).join("\n")
       : "(nobody yet)")
   + (p.consult
@@ -1176,10 +1182,24 @@ export const consultNotSent = (why: string, name: string) =>
 export const consultExited = (name: string) =>
   `[GONE] ${name} has left the scene and cannot be asked anything. Work with who is still here.`;
 
-export const answerStillOwed =
-  `[SCENE NOT DONE] You declared the scene done while a consult was still open, and an answer `
-  + `has arrived since. It is not on the page yet. Write it in -- the answer is evidence, and the `
-  + `scene's last line comes after it. Declare done only when that is down.`;
+export const exitNotWritten = (name: string) =>
+  `[NO EXIT] You named ${name} as leaving the scene, but this reply wrote nothing -- nobody is gone `
+  + `until it is on the page. Write the departure, or carry on with them still here.`;
+
+/** `why` says how the scene was about to end while an answer was owed: declared done, or run to its
+ *  length cap. The instruction is the same; only the framing differs. */
+export const answerStillOwed = (why: "done" | "cap") =>
+  why === "done"
+    ? `[SCENE NOT DONE] You declared the scene done while a consult was still open, and an answer `
+      + `has arrived since. It is not on the page yet. Write it in -- the answer is evidence, and the `
+      + `scene's last line comes after it. Declare done only when that is down.`
+    : `[ANSWER STILL OWED] The scene has reached its length with a consult still open, and an answer `
+      + `has arrived. It is not on the page yet. Write it in -- as briefly as the moment honestly `
+      + `allows. The answer is evidence, and the scene ends once it is down.`;
+
+export const blankSceneRefused =
+  `[NOTHING WRITTEN] You declared the scene done, but not one word of it is on the page yet -- there `
+  + `is no scene here to end. Write the opening beat.`;
 
 export const narrationFlagged = (why: string) =>
   `[NARRATION FLAGGED] ${why}\n\n`
@@ -1190,9 +1210,13 @@ export const characterAsks = (name: string, question: string) =>
   `[${name} ASKS] ${question}`;
 
 /** `recent` is the last piece of prose written. The clarifier remembers what it has answered but not
- *  what the scene narrated, and a fact settled here must not contradict the page. */
-export const clarifyRequest = (name: string, question: string, situation: string, recent = "") =>
+ *  what the scene narrated, and a fact settled here must not contradict the page. `knows` is what
+ *  the asking character walks in holding — the one field that lets "only what they could perceive
+ *  or already know" be checked against something instead of guessed at. */
+export const clarifyRequest = (name: string, question: string, situation: string,
+                               recent = "", knows = "") =>
   `${characterAsks(name, question)}\n\n[THE SITUATION YOU GAVE THEM] ${situation}`
+  + (knows ? `\n\n[WHAT ${name.toUpperCase()} KNOWS COMING IN] ${knows}` : "")
   + (recent ? `\n\n[THE LAST THING YOU WROTE] ${recent}` : "");
 
 export const VERDICT_ONLY =
@@ -1230,12 +1254,16 @@ export const answerBody = (p: { thought: string; speech: string; action: string 
 export const characterAnswered = (name: string, body: string, question = "") =>
   `[${name} ANSWERED]` + (question ? ` (asked: ${question})` : "") + `\n${body}`;
 
-export const reactionsAnswered = (items: { name: string; thought: string; action?: string }[]) => {
-  const lines = items.map(i => `${i.name}: ${i.thought}` + (i.action ? `\n  — could act: ${i.action}` : ""));
+export const reactionsAnswered = (items: { name: string; thought: string; speech?: string; action?: string }[]) => {
+  const lines = items.map(i => `${i.name}: ${i.thought}`
+    + (i.speech ? `\n  — says: "${i.speech}"` : "")
+    + (i.action ? `\n  — could act: ${i.action}` : ""));
   const anyAction = items.some(i => i.action);
   return `[THE OTHERS REACT]\n${lines.join("\n")}\n\n`
     + `Write these as their reactions to what just happened — what it lands on them as, from the `
-    + `inside. No dialogue, and no deeds beyond what is offered here; keep the whole beat brief.`
+    + `inside. Where a reaction carries a line to say, that line is theirs and already given: render `
+    + `exactly it and nothing more, and put words in nobody else's mouth. No deeds beyond what is `
+    + `offered here; keep the whole beat brief.`
     + (anyAction ? `\n\nYou may turn ONE of the "could act" impulses into a real deed: name that `
         + `character in "promote" on your next reply and write the deed. The rest stay unspoken.` : "");
 };

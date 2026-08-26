@@ -14,7 +14,7 @@ import { LIVE, setWhere, sseWrite } from "./live.ts";
 import { startServer } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { LMSTUDIO_URL, NET, lmUrlsDerivable } from "./engine/llm-client.ts";
-import { loadStory, discoverStories, chooseStory, type StoryConfig } from "./engine/story-format.ts";
+import { loadStory, discoverStories, chooseStory, writtenChapters, type StoryConfig } from "./engine/story-format.ts";
 import { runPreflight, contextFit } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import { configureArchitectDebug } from "./engine/architect.ts";
@@ -101,8 +101,24 @@ async function runConsultCli(sc: StoryConfig, who: string) {
   if (reply.forced) console.log(`${C.yellow}(answered without the detail it asked for)${C.reset}`);
 }
 
-/** Load one story, apply the debug flags, and either write its scene or answer one consult. */
-async function runOne(dir: string, chapter = 1) {
+/** The durability guard behind starting a chapter run: why the run may not start, or null when it
+ *  may. `replace` is the one explicit authorization covering both deviations — writing over an
+ *  existing chapter, or skipping past one never written. Exported because its refusals are exactly
+ *  what the CLI prints and the viewer relays, and they are testable without a run behind them. */
+export async function chapterStartRefusal(dir: string, chapter: number, replace: boolean): Promise<string | null> {
+  if (replace) return null;
+  const written = await writtenChapters(dir);
+  if (written.includes(chapter))
+    return `chapter ${chapter} is already written in ${dir}/chapters — pass --replace to write over it`;
+  if (chapter > 1 && !written.includes(chapter - 1))
+    return `chapter ${chapter - 1} was never written — write the chapters in order, or pass --replace to skip ahead`;
+  return null;
+}
+
+/** Load one story, apply the debug flags, and either write its scene or answer one consult.
+ *  `replace` authorizes writing over an existing chapter or skipping ahead past an unwritten one —
+ *  the same explicit authorization the CLI's --replace flag gives. */
+async function runOne(dir: string, chapter = 1, opts: { replace?: boolean } = {}) {
   const sc = await loadStory(dir, LIVE.modelOverride ?? undefined);
   ENGINE.stream = sc.stream; ENGINE.debug = sc.debug;
   NET.timeoutMs = sc.requestTimeout * 1000;
@@ -130,24 +146,32 @@ async function runOne(dir: string, chapter = 1) {
     return;
   }
 
+  // The files under chapters/ are the engine's durable record — the one artifact with no protection
+  // would be the one everything else treats as authoritative.
+  const refusal = await chapterStartRefusal(sc.dir, chapter,
+                                            opts.replace === true || flag("replace") !== undefined);
+  if (refusal) throw new Error(refusal);
+
   return runAndSave(sc, dir, chapter, { serving: SERVE, serve });
 }
 
 let BROWSER_DRIVES = false;
 
-function awaitPick(): Promise<{ dir: string; chapter: number }> {
+type Picked = { dir: string; chapter: number; replace?: boolean };
+
+function awaitPick(): Promise<Picked> {
   LIVE.awaitingPick = true;
   setWhere("choosing a story", false);
   console.log(`\n${C.dim}Waiting for a story to be chosen at ${C.reset}http://localhost:${LIVE.port}/`
     + `${C.dim} — Ctrl-C to quit.${C.reset}`);
-  return new Promise<{ dir: string; chapter: number }>(r => { LIVE.pickResolve = r; }).then(picked => {
+  return new Promise<Picked>(r => { LIVE.pickResolve = r; }).then(picked => {
     setWhere("loading", false);
     return picked;
   });
 }
 
 /** Wait for the next story: the browser when it is driving, the console picker otherwise. */
-async function pickStory(): Promise<{ dir: string; chapter: number }> {
+async function pickStory(): Promise<Picked> {
   if (BROWSER_DRIVES) return awaitPick();
   setWhere("choosing a story", false);
   return { dir: await chooseStory(""), chapter: 1 };
@@ -167,12 +191,12 @@ async function main() {
   const oneShot = !!STORY_DIR || !process.stdin.isTTY || flag("consult") !== undefined;
   BROWSER_DRIVES = SERVE && !oneShot;
 
-  let next: { dir: string; chapter: number } =
+  let next: Picked =
     STORY_DIR ? { dir: STORY_DIR, chapter: 1 }
     : await pickStory();
   for (;;) {
     try {
-      await runOne(next.dir, next.chapter);
+      await runOne(next.dir, next.chapter, { replace: next.replace });
       if (oneShot) return;
     } catch (e) {
       const msg = (e as Error).message;

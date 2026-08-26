@@ -80,6 +80,11 @@ export type ReactionCheck = { ok: true; reqs: ConsultRequest[] } | { ok: false; 
  * reactor resolves to an ordinary `ConsultRequest` — reusing `normalizeConsult`'s gate per reactor,
  * with `wants` pinned to "reaction" — so a reactor with too thin a situation is refused just as a
  * lone consult would be. A per-reactor `situation` overrides the shared one (someone who only heard it).
+ *
+ * A name listed twice is a slip, not a second character — the fan-out asks one shared moment, and
+ * asking it twice would let the second answer see the first — so entries collapse
+ * case-insensitively and the first wins, keeping its own per-reactor situation. Refusing the whole
+ * fan-out over one duplicated name would punish every reactor for it.
  */
 export function normalizeReactionConsult(raw: {
   reactors?: unknown; situation?: unknown; question?: unknown;
@@ -90,9 +95,12 @@ export function normalizeReactionConsult(raw: {
   if (!list.length) return { ok: false, why: P.badReaction.noReactors() };
 
   const reqs: ConsultRequest[] = [];
+  const seen = new Set<string>();
   for (const r of list) {
     const name = String((r as any)?.name ?? (typeof r === "string" ? r : "")).trim();
     if (!name) return { ok: false, why: P.badReaction.namelessReactor() };
+    if (seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
     const situation = String((r as any)?.situation ?? "").trim() || shared;
     const check = normalizeConsult({ character: name, situation, question, wants: "reaction" });
     if (!check.ok) return { ok: false, why: check.why };

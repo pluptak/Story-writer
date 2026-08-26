@@ -44,7 +44,7 @@ export function build(store) {
         break;
       case "reaction": {
         const rb = lastOf(blocks, "reaction");
-        if (rb) rb.reacted.push({ name:e.character, thought:e.thought, action:e.action });
+        if (rb) rb.reacted.push({ name:e.character, thought:e.thought, speech:e.speech, action:e.action });
         break;
       }
       case "promote": {
@@ -53,6 +53,7 @@ export function build(store) {
         break;
       }
       case "exit": blocks.push({ kind:"exit", seq:e.seq, character:e.character, pov:!!e.pov }); break;
+      case "exit_refused": blocks.push({ kind:"note", seq:e.seq, text:`${e.character} was declared gone in a reply that wrote nothing — nobody has left, the cast is unchanged` }); break;
       case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
       case "schema_mismatch": blocks.push({ kind:"note", seq:e.seq,
         text: e.call === "lint" ? `the narration lint came back with no verdict in it — asked again`
@@ -63,7 +64,7 @@ export function build(store) {
       case "fanout_skip": blocks.push({ kind:"note", seq:e.seq, text:`${e.character} was skipped in the group reaction — ${e.why}` }); break;
       case "model_changed": blocks.push({ kind:"note", seq:e.seq, text:`model switched to ${e.model}` }); break;
       case "forced_end": blocks.push({ kind:"note", seq:e.seq, text:`scene forced to a close — ${e.words} words against a ${e.target}-word target` }); break;
-      case "done_deferred": blocks.push({ kind:"note", seq:e.seq, text:`scene declared done with an answer still owed the page — held open one more turn to write it in` }); break;
+      case "done_deferred": blocks.push({ kind:"note", seq:e.seq, text:`the scene was about to end with an answer still owed the page — held open one more turn to write it in` }); break;
       case "answer_unwritten": blocks.push({ kind:"note", seq:e.seq,
         text:`${(e.characters||[]).join(", ")} answered, and the scene ended before that answer reached the page`
              + (e.stopped ? " — the run was stopped" : ""), }); break;
