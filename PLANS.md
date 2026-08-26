@@ -240,6 +240,25 @@ one extra LLM call per multi-character fork if it were ever wanted.
   `runAndSave`.
 - Keep `liveHistory` growth within a run under observation; it is reset between runs but is currently
   not bounded during a very long run.
+- **The writer has one idle-body move per character and reuses it.** A character who is present but
+  not acting gets the same filler every time they appear. Doorway: *"Merritt shifts their weight on
+  the upturned crate"* three times near-verbatim in one chapter, plus two near-misses. The cooling
+  loop, different cast, different story: *"Marsh leans his head back ... squeezes his eyes shut"* /
+  *"closes his eyes"* / *"his eyes squeezed shut"* five times in one chapter. Neither is a rule
+  violation — weight-shifting on a crate is the narration prompt's own example of good involuntary
+  continuity, and a blind man may close his eyes — which is why nothing flags it. It is a vocabulary
+  problem, and it replicates across casts and stories, so it is the writer's and not any one
+  character's. Related to the fan-out differentiation entry above, but distinct: that one is several
+  characters answering alike, this one is a single character rendered alike every time. Worth
+  measuring before it is worth fixing — count repeated body-move phrasings per chapter first.
+- **Run rotation deletes the control condition of any prompt experiment.** `MAX_RUNS = 3` is right
+  for ordinary operation and incompatible with a before/after comparison: a prompt change measured
+  against `the-cooling-loop` lost most of its own baseline mid-experiment, leaving 11 pre-edit
+  answers against 39 post-edit ones and no interpretable result. The engine is not wrong here — the
+  workflow is. Cheapest fix is no code at all: copy the relevant `out/<id>` records into an
+  experiment directory before running the next condition. If that proves too easy to forget, the
+  candidates are an experiment mode that suspends rotation, or a run manifest recording the prompt
+  and engine revisions beside the run so conditions can be told apart after the fact.
 
 ## The CLI-to-GUI transition
 
