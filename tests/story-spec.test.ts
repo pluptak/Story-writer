@@ -625,6 +625,21 @@ describe("slugify", () => {
     assert.ok(slugify("x".repeat(80)).length <= 40);
     assert.ok(!slugify("Ends with punctuation ---").endsWith("-"));
   });
+
+  // The accept step warns that a folder is taken before the click, which means the viewer has to
+  // know what the engine will name the folder. That is a second implementation, so it is pinned
+  // here: if they drift, the warning silently stops matching what accept() actually refuses.
+  it("matches the viewer's copy, which the accept step warns from", async () => {
+    // The specifier goes through a variable on purpose: viewer JS is outside tsconfig's program, so
+    // a literal would be a TS7016 with no declaration file to point at. This keeps it a plain
+    // runtime import, which is all the test needs.
+    const utilPath = "../server/gui/viewer/util.js";
+    const viewerUtil = await import(utilPath) as { slugify: (s: string) => string };
+    const viewerSlugify = viewerUtil.slugify;
+    for (const s of ["The Cooling Loop", "  Bay 4 — Hatches!  ", "../../etc/passwd", "???",
+                     "Ünïcodé Tïtlé", "Ends with punctuation ---", "x".repeat(80), ""])
+      assert.equal(viewerSlugify(s), slugify(s), `viewer and engine disagree on ${JSON.stringify(s)}`);
+  });
 });
 
 describe("renderStory round trip", () => {

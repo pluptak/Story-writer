@@ -8,6 +8,11 @@ export const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
  *  (data-seq, data-dir, data-view). Elements with a unique id= don't need one. */
 export const tid = name => ` data-tid="${esc(name)}"`;
 export const basename = p => (p || "").replace(/^.*[\\/]/, "");
+// Mirrors engine/config-util.ts's slugify, which is what actually names the folder. Kept in step by
+// hand: the two drifting only costs a warning that fails to appear, since accept() still refuses a
+// taken folder server-side — the viewer copy exists to say so *before* the click, not instead of it.
+export const slugify = s => String(s ?? "").toLowerCase().normalize("NFKD")
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
 export const fmtRun = r => {
   const when = new Date(r.mtimeMs).toLocaleString(undefined,
     { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });

@@ -1,6 +1,7 @@
-import { esc, reasonOr, tid } from "./util.js";
+import { $, esc, reasonOr, slugify, tid } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
+import { loadStories } from "./saved-runs.js";
 
 // ---- the scaffold interview --------------------------------------------------
 // One page, three things always visible: the proposed story, the current round, and a state
@@ -264,6 +265,9 @@ function roundHtml(s) {
 /** The accept step — opened by the sidebar's accept button, or forced open by a needs_folder answer.
  *  Owns acceptance while it is open — "write story.json →" IS the accept. */
 function folderHtml(s) {
+  // The folder is the story's identity on disk, and two stories built from one premise land on the
+  // same title and so the same slug. accept() refuses a taken folder, but only after the click —
+  // say it here, while the name is still being typed.
   return `<section class="card" data-tid="scaffold.folder-card">
     <div class="card-head">
       <div><span class="label">accept</span><h3>Name the story folder</h3></div>
@@ -273,14 +277,31 @@ function folderHtml(s) {
       <p>${esc(s.needsFolder || "Name where this story lands — nothing is written until you accept.")}</p>
       <label class="field-label" for="f-folder">story folder</label>
       <input type="text" id="f-folder" value="${esc(draft.folder)}">
+      <div id="iv-folder-note">${folderNoteHtml()}</div>
       <div class="composer-foot">
         <span class="hint">nothing is written until this answers</span>
         <span class="thinking${s.busy ? " show" : ""}"><i></i>writing &amp; preflighting…</span>
         ${!s.needsFolder && APP.folderOpen ? `<button class="btn" id="iv-folder-back">&larr; keep editing</button>` : ""}
-        <button class="btn primary" id="iv-folder">write story.json →</button>
+        <button class="btn primary" id="iv-folder"${folderTaken() ? " disabled" : ""}>write story.json →</button>
       </div>
     </div>
   </section>`;
+}
+
+/** Whether the typed folder would land on a story that already exists. The engine refuses this
+ *  anyway; knowing it here is what lets the step say so before the click rather than after. */
+function folderTaken() {
+  const slug = slugify(draft.folder);
+  return Boolean(slug) && (APP.stories || []).some(x => x.dir === slug);
+}
+
+/** What the name will actually become, or why it cannot be used. */
+function folderNoteHtml() {
+  const slug = slugify(draft.folder);
+  if (!draft.folder.trim()) return "";
+  if (!slug) return `<div class="prob">that gives no usable folder name.</div>`;
+  if (folderTaken()) return `<div class="prob">stories/${esc(slug)} already exists — pick another name.</div>`;
+  return slug !== draft.folder.trim() ? `<div class="hint">this lands in <b>stories/${esc(slug)}</b></div>` : "";
 }
 
 // ── the sidebar ────────────────────────────────────────────────────────────────
@@ -449,8 +470,10 @@ function acceptStory() {
   if ((unsent || flagged) && !APP.acceptArmed) { APP.acceptArmed = setTimeout(disarmAccept, 5000); APP.render(); return; }
   if (APP.scaffold.busy) return;
   clearTimeout(APP.acceptArmed); APP.acceptArmed = 0;
-  // Open the folder step; "write story.json →" owns the actual accept and the run it starts.
+  // Open the folder step; "write story.json →" owns the actual accept and the run it starts. The
+  // shelf's story list is what the taken-folder check reads, and the scaffold page never loads it.
   APP.folderOpen = true; APP.render();
+  loadStories();
 }
 
 /** Accept into a named folder — the answer to needs_folder. A blank name is not an answer. */
@@ -460,7 +483,9 @@ async function acceptIntoFolder() {
   APP.scaffoldAccepting = true; APP.render();
   const j = await postScaffold("accept", { folder });
   if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.scaffoldAccepting = false; APP.folderOpen = false; go("live"); }
-  else { APP.scaffoldAccepting = false; APP.render(); }
+  // A refusal is usually needs_folder, which forces the step open without going through
+  // acceptStory() — so the taken-folder check needs the story list fetched here too.
+  else { APP.scaffoldAccepting = false; APP.render(); loadStories(); }
 }
 
 export function wireScaffold(page) {
@@ -471,7 +496,15 @@ export function wireScaffold(page) {
   // Keep what is being typed across the re-renders SSE frames cause.
   for (const [id, key] of [["f-idea","idea"], ["f-say","say"], ["f-folder","folder"]]) {
     const el = page.querySelector("#" + id);
-    if (el) el.addEventListener("input", () => { draft[key] = el.value; });
+    // A full render on every keystroke would fight the caret, so the folder step updates its own
+    // two dependent nodes in place instead.
+    if (el) el.addEventListener("input", () => {
+      draft[key] = el.value;
+      if (key !== "folder") return;
+      const note = $("iv-folder-note"), write = $("iv-folder");
+      if (note) note.innerHTML = folderNoteHtml();
+      if (write) write.disabled = folderTaken();
+    });
   }
   const model = page.querySelector("#f-model");
   if (model) model.addEventListener("change", () => { draft.model = model.value; });

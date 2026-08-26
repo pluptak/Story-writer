@@ -455,6 +455,12 @@ a *new* story folder — so it can go anywhere in the pass.
 - [ ] **Accept.** The sidebar's **accept & choose folder** opens the folder step in the main column
       (**write story.json →**). On success the run starts and the page follows to the live screen.
       Accepting over unsent text or a `problems` flag takes a confirming second click.
+- [ ] **The folder step says what is taken, before the click.** Type the name of a story that already
+      exists: the step says *stories/&lt;slug&gt; already exists — pick another name* and **write
+      story.json →** goes disabled, updating as you type without the caret jumping. Type a name that
+      slugifies to something different (`Bay 4 — Hatches!`) and it previews *this lands in
+      stories/bay-4-hatches* instead. Two stories built from one premise get the same title and so
+      the same slug, which is how this is hit in practice.
 - [ ] **Abandon** (second click) drops the session and returns to the shelf.
 - [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
       server, not the tab.
