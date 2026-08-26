@@ -186,22 +186,21 @@ one extra LLM call per multi-character fork if it were ever wanted.
   because it stopped short of a literal drop). A fact-ledger check across drafted pieces — one more
   stateless judge call per piece — is the candidate fix for the first; the second may just be a
   model-size floor.
-- **The LLM half of the narration lint has still never fired.** The quotation check is mechanical
-  now (`engine/quote-lint.ts`), which closes the empty-ledger free pass; deeds, restricted senses and
-  consult-situation quality remain the model's. That half returned `{"ok": true}` on all 55 pieces of
+- **The LLM half of the narration lint has still never fired.** Two of its four checks are mechanical
+  now — quotations against the granted ledger (`engine/quote-lint.ts`) and restricted senses against
+  the CANNOT list (`engine/sense-lint.ts`) — leaving deeds and consult-situation quality to the
+  model. That half returned `{"ok": true}` on all 55 pieces of
   five live runs — nine completion tokens behind the `{` prefill on every one of the ten most recent,
   across two stories and two models — and among them it
   passed "Marsh watches them from his corner" for a character with `restrictions: ["sight"]` — the
   prompt's own worked example ("no watching, no glancing, no gaze for someone who cannot see"). The
   per-answer judge and the batch judge do fire on that same cast — the judge caught "eyes
   half-closed" from that character, and the batch judge twice refused to promote his reaction glances
-  to deeds — so a restricted sense is not beyond the model; it is that the lint asks for a four-part
-  sweep in one call and returns an assertion. Restricted senses are the next mechanically tractable
-  piece: a CANNOT list is a closed set of names, and the verbs that violate each sense are
-  enumerable. Worth noting for whoever takes it: the two checks are exclusive in `writeScene`, so a
-  piece carrying both an unmatched quotation and a restricted-sense violation reports only the
-  quotation. A drafted piece contradicting an established fact is the same shape of problem and is
-  filed above under small-model coherence limits.
+  to deeds — so a restricted sense was not beyond the model; it is that the lint asks for a four-part
+  sweep in one call and returns an assertion. Both remaining checks resist the same treatment for the
+  same reason: neither a deed nor a situation has a closed set to match against, which is exactly what
+  made the other two tractable. A drafted piece contradicting an established fact is the same shape of
+  problem and is filed above under small-model coherence limits.
 - **The quote lint attributes a speaker by looking backwards only.** `attribute()` scans the 120
   characters *before* the quote and takes the nearest cast name, so `Riven reaches for the door.
   "No," Merritt says` is reported as `(near RIVEN)`. Post-dialogue attribution — `"..." NAME says` —

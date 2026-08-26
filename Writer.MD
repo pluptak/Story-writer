@@ -166,15 +166,35 @@ answer past that point.
 
 ### The narration lint
 
-Every drafted piece is checked once, before it is committed to the page: did it hand a line, a deed,
-or meaningful stillness to someone not already granted it this scene (THE ONE RULE); did it narrate
-the point-of-view character perceiving through a sense their CANNOT list removes; and, if the same
-reply opens a consult or reaction fan-out, does the `situation` it hands the character name the
-concrete fact just established rather than only its consequence. A flag sends the writer back for one
+Every drafted piece is checked once, before it is committed to the page: did it quote a line nobody
+was granted; did it hand a deed or meaningful stillness to someone not already granted it this scene
+(THE ONE RULE); did it narrate a character perceiving through a sense their CANNOT list removes; and,
+if the same reply opens a consult or reaction fan-out, does the `situation` it hands the character
+name the concrete fact just established rather than only its consequence. A flag sends the writer back for one
 redraft from the same `[WRITE]` instruction — nothing has reached `pieces[]`, the writer's own history,
 or the log yet, so this is a clean redo, not an undo. A retry that is also flagged, or that fails
 outright, is accepted anyway and logged as `narration_flag` — the lint warns; it never blocks the scene
 (`engine/scene-loop.ts`'s `NARRATION_LINT_RETRIES`).
+
+Two of those four are decided in code, and they are the two whose evidence is a closed set.
+Quotations are matched against the granted ledger (`engine/quote-lint.ts`); a restricted sense is
+matched by verb against the character's own CANNOT list (`engine/sense-lint.ts`). Deeds and the
+consult's `situation` stay the model's, because neither has a list to check against.
+
+The three run in a deliberate arrangement. An unmatched quotation **short-circuits**: a fabricated
+line disqualifies a piece by itself, so no model is called and the LLM half is skipped entirely.
+The sense check instead runs **alongside** the LLM half, and the two `why` strings are joined into
+the one `narration_flag`. That asymmetry is about the redraft budget, not about confidence: there is
+only one redraft, so a piece carrying both a lost sense and an invented deed has to report both in
+the same message — reported serially, the redraft is spent on the first finding and the second is
+accepted unfixed. A mechanical hit also survives an LLM outage, since it needed no model to begin
+with.
+
+The sense check is deliberately conservative, because a mechanical flag has no model to soften it.
+It matches only a verb its own subject governs **by name** — "Marsh watches" flags, "she watches"
+is left to the LLM half — and only verbs that cannot be read figuratively, which is why `see` and
+`saw` are absent from its table and `watch`, `glance`, `gaze`, `stare` and `peer` are in it. Missing
+a violation is the cheap failure here; inventing one costs the scene its redraft.
 
 Only an explicit `{"ok":true}` or `{"ok":false,"why":…}` is a verdict. A reply carrying neither — `{}`,
 `{"ok":"maybe"}`, some other shape entirely — is asked once more against `LINT_ONLY`, and if the second

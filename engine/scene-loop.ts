@@ -14,6 +14,7 @@ import {
 import { type Msg } from "./llm-client.ts";
 import { resolveReach, type Skill } from "./skills.ts";
 import { lintQuotations } from "./quote-lint.ts";
+import { lintRestrictedSenses } from "./sense-lint.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 
@@ -428,13 +429,21 @@ export async function writeScene(
 
       let flagged: string | null = null;
       // Mechanical quotation check first: an unmatched quote is a hard flag and needs no model, and
-      // it closes the empty-ledger loophole the LLM used to pass (run 2). Deeds, restricted senses
-      // and consult-situation quality are still left to the LLM lint below.
+      // it closes the empty-ledger loophole the LLM used to pass (run 2). Deeds and the consult's
+      // situation are still left to the LLM lint below.
       const quoteLint = lintQuotations(prose, lintGranted, cast.map(c => c.name));
       if (quoteLint && !quoteLint.ok) {
         flagged = quoteLint.why;
         log({ t: "narration_quote_flag", why: flagged, quote: quoteLint.quote, character: quoteLint.character, chapter });
       } else {
+      // The mechanical restricted-sense check runs ALONGSIDE the LLM lint, not in front of it: there
+      // is one redraft only, so reporting serially would spend it on the first finding and accept the
+      // second unfixed — a piece carrying both a lost sense and an invented deed has to report both
+      // in the one message. The quote check can short-circuit instead because a fabricated line
+      // disqualifies a piece by itself, where a lost sense is one of the things this same LLM sweep
+      // is already asked to catch.
+      const senseLint = lintRestrictedSenses(prose, cast);
+      let lintWhy: string | null = null;
       try {
         const lintJudge = newNarrationJudge();
         const lintExtra: Msg[] = [{ role: "user", content: P.narrationLintRequest({
@@ -443,7 +452,7 @@ export async function writeScene(
           const lintRaw = await lintJudge.generate(`${C.magenta}NARRATION-JUDGE${C.reset}`, lintExtra);
           const verdict = parseLintVerdict(extractJson(lintRaw));
           if (verdict) {
-            if (!verdict.ok) flagged = verdict.why || "narration was flagged";
+            if (!verdict.ok) lintWhy = verdict.why || "narration was flagged";
             break;
           }
           // Asked twice and still no verdict: the piece goes to the page unchecked, exactly as it
@@ -457,6 +466,9 @@ export async function writeScene(
         log({ t: "lint_failed", why: (e as Error).message, chapter });
         console.log(`${C.yellow}(narration lint call failed: ${(e as Error).message} — accepting)${C.reset}`);
       }
+      // A mechanical hit still stands when the LLM half fails or returns no verdict: the sense check
+      // needed no model, so an outage cannot take it down with it.
+      flagged = [senseLint?.why, lintWhy].filter((w): w is string => !!w).join(". ") || null;
       }
 
       if (!flagged) break;
