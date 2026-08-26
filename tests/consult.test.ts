@@ -346,16 +346,16 @@ describe("the narration lint format", () => {
     assert.match(P.NARRATION_LINT_FORMAT, /consequence/);
   });
 
-  it("passes descriptions when in doubt but flags quotations, invented deeds and meaningful stillness",
+  it("passes descriptions when in doubt but flags invented deeds and meaningful stillness, not quotations",
     () => {
       assert.match(P.NARRATION_LINT_FORMAT,
-        /When in\s+doubt about a description, pass it; when in doubt about an unmatched quotation, an\s+invented deed, or\s+meaningful stillness, flag it/);
+        /When in\s+doubt about a description, pass it; when in doubt about an invented deed or\s+meaningful stillness, flag it/);
     });
 
-  it("says a matched quotation is the pass case, so a granted line rendered verbatim is not flagged",
+  it("tells the LLM quotations are checked mechanically, so it must not re-check dialogue",
     () => {
       assert.match(P.NARRATION_LINT_FORMAT,
-        /a MATCHED one is the pass case, verbatim or near-verbatim, and is never flagged for being a\s+quotation/);
+        /Quotations are checked mechanically before you are called, so do NOT re-check\s+dialogue/);
     });
 
   it("narrows the incidental-continuity exemption to involuntary body continuation", () => {

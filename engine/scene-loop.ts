@@ -13,6 +13,7 @@ import {
 } from "./consult.ts";
 import { type Msg } from "./llm-client.ts";
 import { resolveReach, type Skill } from "./skills.ts";
+import { lintQuotations } from "./quote-lint.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 
@@ -92,6 +93,7 @@ export type RunEvent =
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "forced_end"; words: number; target: number; chapter: number }
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
+  | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }
@@ -425,6 +427,14 @@ export async function writeScene(
         : granted;
 
       let flagged: string | null = null;
+      // Mechanical quotation check first: an unmatched quote is a hard flag and needs no model, and
+      // it closes the empty-ledger loophole the LLM used to pass (run 2). Deeds, restricted senses
+      // and consult-situation quality are still left to the LLM lint below.
+      const quoteLint = lintQuotations(prose, lintGranted, cast.map(c => c.name));
+      if (quoteLint && !quoteLint.ok) {
+        flagged = quoteLint.why;
+        log({ t: "narration_quote_flag", why: flagged, quote: quoteLint.quote, character: quoteLint.character, chapter });
+      } else {
       try {
         const lintJudge = newNarrationJudge();
         const lintExtra: Msg[] = [{ role: "user", content: P.narrationLintRequest({
@@ -446,6 +456,7 @@ export async function writeScene(
       } catch (e) {
         log({ t: "lint_failed", why: (e as Error).message, chapter });
         console.log(`${C.yellow}(narration lint call failed: ${(e as Error).message} — accepting)${C.reset}`);
+      }
       }
 
       if (!flagged) break;

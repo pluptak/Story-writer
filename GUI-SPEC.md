@@ -441,7 +441,11 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"lint_failed"; why }                        — the narration lint call itself threw; the piece
                                                    was accepted unchecked
   { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
-                                                   the one redraft happened or it was logged and kept
+                                                    the one redraft happened or it was logged and kept
+  { t:"narration_quote_flag"; why; quote; character }
+                                                  — the mechanical quotation check fired (no model):
+                                                    `quote` is the unmatched line, `character` the nearest
+                                                    name before it or "unknown"; the one redraft follows
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
   { t:"model_changed"; model }

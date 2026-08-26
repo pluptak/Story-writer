@@ -1067,19 +1067,17 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
   {"ok": false, "why": "one line, naming who and which rule -- THE ONE RULE, CANNOT, or the situation
    -- it breaks"}
 
-Work in that order. First list every line of dialogue you find in the piece, then match each one
-against ALREADY GRANTED -- an unmatched quotation is always flagged, however small or natural it
-reads; a MATCHED one is the pass case, verbatim or near-verbatim, and is never flagged for being a
-quotation. Then check deeds: a deed is a
+Work in that order. Quotations are checked mechanically before you are called, so do NOT re-check
+dialogue against ALREADY GRANTED -- every quotation you see has already been matched against a granted
+line or flagged. Check only the rest: a deed is a
 violation only when the prose invents a NEW consequential choice for someone -- an action that
 changes the scene, or a decision at a fork that would have needed a consult. Involuntary continuity
 of a body that is simply present -- a breath, a flinch, weight shifting on a crate -- is not a deed.
 Staying still, saying nothing, waiting, letting the moment pass are NOT covered by that exemption:
 those are choices, and they need an answer behind them like any other. Then restricted senses, then
 the consult's situation. Do not flag prose that merely mentions a character or describes the scene,
-and do not flag an already-granted line, deed, or felt reaction rendered in different words. When in
-doubt about a description, pass it; when in doubt about an unmatched quotation, an invented deed, or
-meaningful stillness, flag it.
+and do not flag an already-granted deed or felt reaction rendered in different words. When in
+doubt about a description, pass it; when in doubt about an invented deed or meaningful stillness, flag it.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
