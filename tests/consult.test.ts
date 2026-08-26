@@ -6,24 +6,19 @@ import assert from "node:assert/strict";
 
 import {
   consult, normalizeConsult, normalizeReactionConsult, canonWants, parseVerdict, parseBatchVerdict, parseClarifyAnswer, missingShape,
-  reviseConsult, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
+  reviseConsult, parseLintVerdict, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
 } from "../engine/consult.ts";
 import * as P from "../prompts.ts";
 import { wrapCharacter, wrapWriter, writerCast, neglectedCast, runChapter } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
 import { ScriptedAgent } from "./helpers.ts";
-import type { Skill } from "../engine/skills.ts";
 
 // -- CONSULT PROTOCOL ------------------------------------------------------
 const REQ: ConsultRequest = { character: "TESTER", situation: "s", question: "q", wants: "" };
-const SKILLS: Skill[] = [
-  { name: "movement", meaning: "", source: "general" },
-  { name: "speech", meaning: "", source: "general" },
-];
 const run = (script: string[], clarifications = 2, clarify = async () => "two paces") => {
   const events: ConsultEvent[] = [];
   const agent = new ScriptedAgent(script);
-  return consult(agent, REQ, SKILLS, { clarifications, clarify, log: e => events.push(e) })
+  return consult(agent, REQ, { clarifications, clarify, log: e => events.push(e) })
     .then(reply => ({ reply, events, agent }));
 };
 
@@ -32,8 +27,6 @@ describe("consult", () => {
     const { reply, agent } = await run([`{"speech":"Early enough.","skills_used":["speech"]}`]);
     assert.equal(agent.calls, 1);
     assert.equal(reply.speech, "Early enough.");
-    assert.deepEqual(reply.skillsUsed, ["speech"]);
-    assert.deepEqual(reply.unverified, []);
     assert.equal(reply.forced, false);
   });
 
@@ -81,28 +74,6 @@ describe("consult", () => {
     assert.deepEqual(events.filter(e => e.t === "prose_reply").length, 1);
   });
 
-  it("re-asks once when a skill is claimed that the character does not have", async () => {
-    const { reply, events, agent } = await run([
-      `{"action":"I pick the lock.","skills_used":["lockpicking"]}`,
-      `{"action":"I knock instead.","skills_used":["movement"]}`,
-    ]);
-    assert.equal(agent.calls, 2);
-    assert.deepEqual(reply.unverified, []);
-    assert.equal(reply.action, "I knock instead.");
-    assert.ok(events.some(e => e.t === "repair"));
-    assert.ok(!events.some(e => e.t === "skill_flag"));
-  });
-
-  it("flags rather than silently accepts when the repair fails too", async () => {
-    const { reply, events } = await run([
-      `{"action":"I pick the lock.","skills_used":["lockpicking"]}`,
-      `{"action":"I pick it anyway.","skills_used":["lockpicking","movement"]}`,
-    ]);
-    assert.deepEqual(reply.unverified, ["lockpicking"]);
-    assert.equal(reply.action, "I pick it anyway.");   // the answer still reaches the author
-    assert.ok(events.some(e => e.t === "skill_flag"));
-  });
-
   it("repairs a reply with no thought, speech or action", async () => {
     const { reply, events } = await run([`{"skills_used":["speech"]}`, `{"speech":"Fine."}`]);
     assert.equal(reply.speech, "Fine.");
@@ -125,16 +96,29 @@ describe("consult", () => {
     assert.equal(agent.history.length, 0);
   });
 
-  it("a fork carries the persona and none of the history", () => {
+  it("a fork carries the persona and the accepted history so far", () => {
     const a = new Agent("RIVEN", "m", "persona", 0.9);
     a.think = "high";
+    a.digest = "earlier, summarized";
     a.hear("something that happened");
     const f = a.fork();
     assert.equal(f.system, a.system);
     assert.equal(f.model, a.model);
     assert.equal(f.think, a.think);
-    assert.equal(f.history.length, 0);
+    assert.equal(f.digest, a.digest);
+    assert.deepEqual(f.history, a.history);
+  });
+
+  // The retry has to be able to diverge without dragging the original with it: what the fork is
+  // asked, and whatever it answers, must never land in the history the accepted answer folds into.
+  it("a fork's history is its own copy", () => {
+    const a = new Agent("RIVEN", "m", "persona", 0.9);
+    a.hear("something that happened");
+    const f = a.fork();
+    f.hear("the re-ask");
+    f.said("the second answer");
     assert.equal(a.history.length, 1);
+    assert.equal(f.history.length, 3);
   });
 });
 
@@ -337,7 +321,7 @@ describe("the narration lint format", () => {
   it("passes descriptions when in doubt but flags quotations and deeds, so it does not over-trigger",
     () => {
       assert.match(P.NARRATION_LINT_FORMAT,
-        /When in doubt about a description, pass it; when in doubt about a quotation or a deed, flag it/);
+        /When in doubt, pass it -- the one\s+exception is an unmatched quotation, which is always flagged/);
     });
 });
 
@@ -407,6 +391,24 @@ describe("parseVerdict", () => {
   });
 });
 
+describe("parseLintVerdict", () => {
+  it("reads an explicit pass and an explicit flag, boolean or string", () => {
+    assert.deepEqual(parseLintVerdict({ ok: true }), { ok: true, why: "" });
+    assert.deepEqual(parseLintVerdict({ ok: "TRUE" }), { ok: true, why: "" });
+    assert.deepEqual(parseLintVerdict({ ok: false, why: "MERRITT was given a line" }),
+      { ok: false, why: "MERRITT was given a line" });
+    assert.deepEqual(parseLintVerdict({ ok: "false" }), { ok: false, why: "" });
+  });
+
+  // The whole point: a check that was never made must not read as a check that passed.
+  it("returns null for a reply that carries no verdict at all", () => {
+    assert.equal(parseLintVerdict({}), null);
+    assert.equal(parseLintVerdict({ ok: "maybe" }), null);
+    assert.equal(parseLintVerdict({ verdict: "accept" }), null);
+    assert.equal(parseLintVerdict({ why: "something felt off" }), null);
+  });
+});
+
 describe("parseBatchVerdict", () => {
   it("keys promotable flags by lowercased name", () => {
     const m = parseBatchVerdict({ verdicts: [
@@ -452,14 +454,15 @@ describe("reviseConsult", () => {
     assert.equal(r.req.question, "Do you turn it, knowing what it wakes?");
   });
 
-  it("takes a whole new consult when the judge writes one", () => {
+  it("takes a whole new situation and question when the judge writes one", () => {
     const r = reviseConsult(prev, {
       situation: "The corridor has gone quiet and the wrench is still in your hand.",
-      question: "Do you call out, or keep working?", wants: "speech",
+      question: "Do you call out, or keep working?", wants: "decision",
     });
     assert.ok(r.ok);
-    assert.equal(r.req.wants, "speech");
     assert.match(r.req.situation, /corridor has gone quiet/);
+    assert.equal(r.req.question, "Do you call out, or keep working?");
+    assert.equal(r.wantsRefused, "", "it kept the shape, so there is no drift to record");
   });
 
   it("refuses a revision the front door would have refused", () => {
@@ -474,9 +477,28 @@ describe("reviseConsult", () => {
     assert.ok(!reviseConsult(prev, { situation: "It is dark." }).ok);
   });
 
-  it("canonicalizes a revised wants, and ignores one it cannot read", () => {
-    assert.equal((reviseConsult(prev, { wants: "what they say" }) as any).req.wants, "speech");
-    assert.equal((reviseConsult(prev, { wants: "???" }) as any).req.wants, "decision", "falls back");
+  // The judge may reframe a fork it asked badly. It may not turn one fork into another: "which way
+  // do you go" and "what do you say about it" are different moments, and a judge that answers an
+  // inconvenient reply by changing the shape has replaced the choice rather than re-put it.
+  it("pins the shape asked for, and records the one the judge wanted", () => {
+    const r = reviseConsult(prev, { question: "Do you turn it, or ease off it now?", wants: "speech" });
+    assert.ok(r.ok);
+    assert.equal(r.req.wants, "decision", "the original shape stands");
+    assert.equal(r.wantsRefused, "speech", "and what the judge asked for is on the record");
+  });
+
+  it("reads a reworded shape as the same shape, not as drift", () => {
+    const r = reviseConsult({ ...prev, wants: "speech" }, { wants: "what they say" });
+    assert.ok(r.ok);
+    assert.equal(r.req.wants, "speech");
+    assert.equal(r.wantsRefused, "", "'what they say' canonicalizes to speech — nothing changed");
+  });
+
+  it("treats an unreadable wants as the judge not naming one", () => {
+    const r = reviseConsult(prev, { wants: "???" });
+    assert.ok(r.ok);
+    assert.equal(r.req.wants, "decision");
+    assert.equal(r.wantsRefused, "");
   });
 });
 
@@ -509,7 +531,7 @@ describe("consult, on the shape it was asked for", () => {
   const ask = (wants: ConsultRequest["wants"], script: string[]) => {
     const events: ConsultEvent[] = [];
     const agent = new ScriptedAgent(script);
-    return consult(agent, { ...REQ, wants }, SKILLS, {
+    return consult(agent, { ...REQ, wants }, {
       clarifications: 2, clarify: async () => "two paces", log: e => events.push(e),
     }).then(reply => ({ reply, events, agent }));
   };

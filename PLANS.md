@@ -37,6 +37,18 @@ run, which is the owner's to make, batched.
   runs produced restriction-less casts; `normalizeSpec` warns but nothing pushes back); and
   the story editor has no view of the session's **tension** sentence, which steers the cast and scene
   stages but lives only in the conversation.
+- **A later chapter's writer has no continuity but what the handoff formalized.** Chapter *n*'s writer
+  is built from the revised premise, the scene definition, `facts`, the cast summary and the style —
+  and nothing else. No previous prose, no ending, no recap, no note of where anyone physically is,
+  what they are holding, or what they promised each other last chapter. Whatever the handoff fails to
+  promote into a formal field is simply gone: the agents carry no memory across chapters by design, so
+  `story.json` is the entire channel, and the handoff is a lossy encoder with no signal when it drops
+  something. Candidates, cheapest first: give the writer the previous chapter's closing paragraphs
+  verbatim as an opening `[PREVIOUSLY]` block (no new model call, bounded by what is already on disk);
+  add a `standing:` list to the scene definition for positions and held objects, which the handoff
+  fills and the story editor shows; and, only if those fall short, a durable per-character `carrying`
+  field. The risk in all three is the one the asymmetry exists to prevent — continuity that reaches the
+  writer must not reach a character as something they were never told.
 - **Approvable, promotable skill bible.** The in-code `SPECIAL_SKILL_CATALOG` is the seed; the second
   half of the plan is a shared, persistent bible that bespoke per-story `custom` skills can be
   **promoted** into — natural home alongside `defaults.json`, loaded by `loadDefaults` and merged over
@@ -69,6 +81,16 @@ one extra LLM call per multi-character fork if it were ever wanted.
   everything under `server/gui/` is verified by reading it and by running
   [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md). Any change there is only as good as the live check that
   followed it.
+- **An accepted chapter can be silently overwritten, and chapters can be written out of order.**
+  Running an existing chapter number writes over `chapters/<n>.md` with no warning and no version
+  boundary, so the durable record of a chapter — the thing the whole engine treats as authoritative —
+  is the one artifact with no protection at all. Nothing checks contiguity either: a story can hold
+  chapters 1 and 3, and anything that reads the directory as a sequence will treat 1–3 as complete
+  history, the handoff included. Two separate fixes, and the first is small: refuse to overwrite an
+  existing chapter unless the run is explicitly told to replace it (or move the old one aside the way
+  retained runs already rotate), and refuse to start chapter *n* when *n−1* has never been written.
+  Worth settling what "accepted" means first — today a chapter file is written by the run itself, so
+  there is no moment at which the owner accepted anything.
 - Add coverage for `runAndSave` write-failure paths if that logic is extracted from the composition root.
 - Keep `liveHistory` growth within a run under observation; it is reset between runs but is currently
   not bounded during a very long run.

@@ -374,19 +374,22 @@ ConsultEvent (engine/consult.ts:80):
                                                    fallback rather than as JSON
   { t:"forced"; character }
   { t:"repair"; character; why }
-  { t:"skill_flag"; character; claimed[]; unknown[] }
-  { t:"answer"; character; thought; speech; action; note; skills_used[]; unverified[] }
+  { t:"answer"; character; thought; speech; action; note }
 
 plus, scene-loop-level (`chapter` is present on every one of them except `model_changed`):
   { t:"scene_start"; story; characters[]; target }
   { t:"draft"; step; prose; words; consulting; salvaged }
   { t:"bad_consult"; character; why }
-  { t:"schema_mismatch"; call:"judge"|"clarify"; character }
+  { t:"schema_mismatch"; call:"judge"|"clarify"|"lint"; character }
   { t:"judge_failed"; character; why }            — the judge call itself threw; the answer was
                                                    accepted with no judgement made, not defaulted-to-accept
   { t:"judge"; character; verdict; note; attempt }
   { t:"accept"; character; attempt; speech; action }
-  { t:"retry"; character; attempt; situation; question }
+  { t:"retry"; character; attempt; situation; question; was; wantsRefused }
+                                                 — `was` is the question this one replaces, and
+                                                   `wantsRefused` the shape the judge asked to change
+                                                   to and did not get; together they are the record of
+                                                   how far a judge moved the fork it re-asked
   { t:"budget"; added; budget }
   { t:"forced_end"; words; target }              — hard length cap hit; the prose was cut off
   { t:"lint_failed"; why }                        — the narration lint call itself threw; the piece
@@ -409,6 +412,12 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"exit"; character; pov }                   — a character left the cast mid-scene;
                                                    `pov` true means they were POV and the chapter ends
   { t:"retry_capped"; character; count }
+  { t:"done_deferred" }                          — the writer declared the scene done while an
+                                                   accepted answer was still missing from the page;
+                                                   the scene is held open exactly one more turn
+  { t:"answer_unwritten"; characters[]; stopped } — the scene ended anyway with those answers never
+                                                   written in: the consults were accepted, the
+                                                   chapter does not carry the choices they made
   { t:"scene_end"; steps; words; done; stopped; retries{character:count} }
 ```
 
@@ -417,8 +426,11 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
 for that vocabulary, so the API and the model prompt can never drift apart).
 
 `schema_mismatch` says an author-side agent replied in a shape that is not the one its call asked for
-— a judge that wrote prose, a clarifier that returned a verdict. The call is made once more before
-falling back to a default, so the event is a warning about model behaviour, not a failed run.
+— a judge that wrote prose, a clarifier that returned a verdict, a narration lint that came back with
+no `ok` in it (`character` is then `(narration)`, the call having no character of its own). The call is
+made once more before falling back to a default, so the event is a warning about model behaviour, not
+a failed run. It is also the only thing separating a piece the lint passed from a piece the lint never
+ruled on: nothing but an explicit `ok` counts as a verdict.
 
 `clarify_failed`, `judge_failed`, `lint_failed`, `batch_judge_failed` and `fanout_skip` are the other
 half of that same signal: the call didn't come back wrong-shaped, it didn't come back at all — LM

@@ -2,7 +2,6 @@
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
 import { type Agent } from "./agent.ts";
-import { canonSkill, type Skill } from "./skills.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
 
@@ -102,20 +101,37 @@ export function normalizeReactionConsult(raw: {
   return { ok: true, reqs };
 }
 
+/** A checked revision, plus the shape the judge asked for and did not get ("" when it kept it). */
+export type Revision =
+  | { ok: true; req: ConsultRequest; wantsRefused: string }
+  | { ok: false; why: string };
+
 /**
  * The judge's `revised` folded over the request it replaces, and checked by exactly the same gate a
  * first consult goes through — a field the judge left out keeps its previous value.
  *
  * A revision used to skip the check entirely, which is how a re-ask of "What do you do?" reached a
  * character that the front door had already refused.
+ *
+ * `wants` is pinned to the original. The judge may reframe a fork it asked badly; it may not turn one
+ * fork into another, and the shape asked for is what makes a fork the fork it is — "which way do you
+ * go" and "what do you say about it" are different moments in the scene. The judge's own instructions
+ * already say as much (a missing fact is fixed in the SITUATION, and an answer is never retried for
+ * being inconvenient), so a changed `wants` is drift to record rather than an instruction to honor.
+ * Nothing here can tell whether a rewritten *question* is still the same fork — that judgement needs
+ * a model, and the model that would make it is the one being checked — so the run record carries what
+ * each retry replaced, and reading it is the check.
  */
-export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>): ConsultCheck {
-  return normalizeConsult({
+export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>): Revision {
+  const asked = canonWants(rev.wants);
+  const checked = normalizeConsult({
     character: prev.character,
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
-    wants: canonWants(rev.wants) ?? prev.wants,
+    wants: prev.wants,
   });
+  if (!checked.ok) return checked;
+  return { ok: true, req: checked.req, wantsRefused: asked && asked !== prev.wants ? asked : "" };
 }
 /**
  * What the asked-for shape requires the reply to actually carry, or null when the reply satisfies it.
@@ -145,6 +161,21 @@ export function parseVerdict(o: Record<string, unknown>): "accept" | "retry" | n
   return v === "retry" ? "retry" : "accept";
 }
 
+/**
+ * The narration lint's verdict, or null when the reply carries none — `{}`, `{"ok":"maybe"}`, an
+ * unrelated shape. Only an explicit pass is a pass: a reply the lint never made cannot clear a piece,
+ * and reading a missing field as `ok` is how a check comes to be performed without ever being made.
+ */
+export function parseLintVerdict(o: Record<string, unknown>): { ok: boolean; why: string } | null {
+  if (!("ok" in o)) return null;
+  if (o.ok === true) return { ok: true, why: "" };
+  if (o.ok === false) return { ok: false, why: String(o.why ?? "").trim() };
+  const v = String(o.ok ?? "").trim().toLowerCase();
+  if (v === "true") return { ok: true, why: "" };
+  if (v === "false") return { ok: false, why: String(o.why ?? "").trim() };
+  return null;
+}
+
 /** The clarifier's answer — "" when it answered with nothing, null when it did not answer at all. */
 export function parseClarifyAnswer(o: Record<string, unknown>): string | null {
   return "answer" in o ? String(o.answer ?? "").trim() : null;
@@ -167,12 +198,10 @@ export function parseBatchVerdict(o: Record<string, unknown>): Map<string, boole
   return out;
 }
 
-/** A character's answer: what they thought/said/did, what they claimed to use, and any clarification trail. */
+/** A character's answer: what they thought/said/did, and any clarification trail. */
 export interface ConsultReply {
   character: string;
   thought: string; speech: string; action: string; note: string;
-  skillsUsed: string[];
-  unverified: string[];                                  // claimed skills this character does not have
   clarifications: { question: string; answer: string }[];
   forced: boolean;                                       // ran out of clarifications and answered anyway
   raw: string;
@@ -186,26 +215,19 @@ export type ConsultEvent =
   | { t: "prose_reply"; character: string }
   | { t: "forced"; character: string }
   | { t: "repair"; character: string; why: string }
-  | { t: "skill_flag"; character: string; claimed: string[]; unknown: string[] }
   | { t: "answer"; character: string; thought: string; speech: string; action: string;
-      note: string; skills_used: string[]; unverified: string[] };
+      note: string };
 
 /** How the caller answers a character's request for a missing fact. `null` means the call to answer
  *  it never came back — unreachable, not "answered with nothing" — and costs no clarification slot. */
 export type Clarifier = (question: string, req: ConsultRequest) => Promise<string | null>;
 
-const asList = (v: unknown): string[] =>
-  Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean)
-  : typeof v === "string" ? v.split(/[,;|]/).map(s => s.trim()).filter(Boolean)
-  : [];
-
 /** Run one consult against a character agent: clarify, repair and answer within the given budget. */
 export async function consult(
-  agent: Agent, req: ConsultRequest, skills: Skill[],
+  agent: Agent, req: ConsultRequest,
   opts: { clarifications: number; clarify: Clarifier; attempt?: number; log?: (e: ConsultEvent) => void },
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
-  const have = new Map(skills.map(s => [canonSkill(s.name), s.name]));
   const extra: Msg[] = [{ role: "user", content: P.askBlock(req) }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
@@ -261,10 +283,10 @@ export async function consult(
       const stalled: ConsultReply = {
         character: req.character, thought: "", speech: "", action: "",
         note: `did not answer; kept asking: ${need}`,
-        skillsUsed: [], unverified: [], clarifications, forced: true, raw,
+        clarifications, forced: true, raw,
       };
       log({ t: "answer", character: req.character, thought: "", speech: "", action: "",
-            note: stalled.note, skills_used: [], unverified: [] });
+            note: stalled.note });
       return stalled;
     }
 
@@ -272,32 +294,23 @@ export async function consult(
     const speech  = String(o.speech ?? "").trim();
     const action  = String(o.action ?? "").trim();
     const note    = String(o.note ?? "").trim();
-    const claimed = asList(o.skills_used);
-    const unknown = claimed.filter(s => !have.has(canonSkill(s)));
     const shortOf = missingShape(req.wants, { speech, action });
     const why = !thought && !speech && !action ? "returned nothing usable"
-              : unknown.length ? `used ${unknown.map(s => `"${s}"`).join(", ")}`
               : shortOf ? `was asked for ${shortOf} and gave none`
               : "";
     if (why && !repaired) {
       repaired = true;
       log({ t: "repair", character: req.character, why });
       extra.push({ role: "assistant", content: raw.trim() },
-                 { role: "user", content: unknown.length
-                   ? P.skillCheck(unknown, [...have.values()])
-                   : shortOf ? P.shapeCheck(shortOf)
-                   : P.EMPTY_REPLY });
+                 { role: "user", content: shortOf ? P.shapeCheck(shortOf) : P.EMPTY_REPLY });
       continue;
     }
 
-    if (unknown.length) log({ t: "skill_flag", character: req.character, claimed, unknown });
-
     const reply: ConsultReply = {
       character: req.character, thought, speech, action, note,
-      skillsUsed: claimed, unverified: unknown, clarifications, forced, raw,
+      clarifications, forced, raw,
     };
-    log({ t: "answer", character: req.character, thought, speech, action, note,
-          skills_used: claimed, unverified: unknown });
+    log({ t: "answer", character: req.character, thought, speech, action, note });
     return reply;
   }
 }

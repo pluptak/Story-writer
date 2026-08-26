@@ -9,7 +9,7 @@ import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-form
 import type { ThinkLevel } from "./story-schema.ts";
 import {
   consult, normalizeConsult, normalizeReactionConsult, parseVerdict, parseBatchVerdict,
-  parseClarifyAnswer, missingShape, reviseConsult,
+  parseClarifyAnswer, parseLintVerdict, missingShape, reviseConsult,
   type ConsultEvent, type ConsultRequest, type ConsultReply, type Clarifier,
 } from "./consult.ts";
 import { type Msg } from "./llm-client.ts";
@@ -49,7 +49,7 @@ export function writerCast(characters: CharacterDef[], rostered: string[]): { na
   return rosterOf(characters, rostered)
     .map(c => ({
       name: c.name,
-      can: c.skills.map(s => s.name),
+      can: c.skills.map(s => s.source === "general" || !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
       cannot: restrictionsOf(c.skills),
     }));
 }
@@ -61,7 +61,7 @@ export type RunEvent =
   | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
-  | { t: "schema_mismatch"; call: "judge" | "clarify"; character: string; chapter: number }
+  | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint"; character: string; chapter: number }
   | { t: "judge_failed"; character: string; why: string; chapter: number }
   | { t: "lint_failed"; why: string; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
@@ -69,7 +69,7 @@ export type RunEvent =
   | { t: "context_risk"; model: string; needs: number; has: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
   | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
-  | { t: "retry"; character: string; attempt: number; situation: string; question: string; chapter: number }
+  | { t: "retry"; character: string; attempt: number; situation: string; question: string; was: string; wantsRefused: string; chapter: number }
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "forced_end"; words: number; target: number; chapter: number }
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
@@ -82,6 +82,7 @@ export type RunEvent =
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "done_deferred"; chapter: number }
+  | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
 
 
@@ -210,6 +211,36 @@ export async function writeScene(
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
+  // Characters whose accepted answer has not had a writing turn since. An accept only puts the answer
+  // in the writer's history; the next piece of prose is the only thing that can put it on the page,
+  // so the names sit here until one is committed. What the engine can check is that a beat was
+  // written after the answer landed, not that the beat honors it — a scene that ends with names still
+  // here ended with a character's choice missing from the chapter, and says so.
+  let owed: string[] = [];
+
+  // A clarification is part of the attempt that asked for it, and survives on the same terms the
+  // answer does. The clarifier folds it in as it goes — a character may ask twice in one attempt, and
+  // the second answer has to know the first — but an attempt whose answer is thrown away is rewound
+  // to here, and the writer is told nothing at all until the answer is the one the scene takes.
+  // Otherwise a rejected branch's invented fact becomes canon for the writer while the fresh instance
+  // that replaced the rejected character has never heard it.
+  let attemptClarifications: { character: string; question: string; answer: string }[] = [];
+  let clarifierMark = 0;
+  const beginAttempt = () => {
+    attemptClarifications = [];
+    clarifierMark = clarifier?.history.length ?? 0;
+  };
+  const keepClarifications = () => {
+    for (const cl of attemptClarifications) {
+      writer.hear(P.characterAsks(cl.character, cl.question));
+      writer.said(JSON.stringify({ answer: cl.answer }));
+    }
+    attemptClarifications = [];
+  };
+  const dropClarifications = () => {
+    clarifier?.rewind(clarifierMark);
+    attemptClarifications = [];
+  };
 
   // How a character's request for a missing fact is answered, shared by single consults and reaction
   // fan-outs. The clarifier remembers so it stays consistent; the writer remembers so its own
@@ -237,8 +268,7 @@ export async function writeScene(
     }
     cl.hear(P.characterAsks(r.character, q));
     cl.said(JSON.stringify({ answer: a }));
-    writer.hear(P.characterAsks(r.character, q));
-    writer.said(JSON.stringify({ answer: a }));
+    attemptClarifications.push({ character: r.character, question: q, answer: a });
     return a;
   };
 
@@ -315,7 +345,6 @@ export async function writeScene(
     let c: Record<string, unknown> | null = null, who = "", exiting = "", promoting = "";
     let fanoutNames: string[] = [], proseWords = 0;
     let stoppedMidLint = false;
-    let answeredContent = false;   // an answer (or reaction bundle) the writer still owes the page
 
     for (let lintAttempt = 0; ; lintAttempt++) {
       d = extractJson(draftRaw, how => {
@@ -353,14 +382,33 @@ export async function writeScene(
         question: String((c as Record<string, unknown>).question ?? "").trim(),
       } : null;
 
+      // A deed this same reply promotes was volunteered last beat and is the writer's to render — the
+      // promote itself is processed a few lines below, once the piece survives the lint. Without it
+      // in evidence the lint flags the writer for using exactly what it was entitled to.
+      const promoteDef = promoting ? defOf(promoting) : undefined;
+      const promoted = promoteDef ? pendingReactionActions.get(promoteDef.name.toLowerCase()) : undefined;
+      const lintGranted = promoted && promoteDef
+        ? [...granted, { character: promoteDef.name, speech: "", action: promoted }]
+        : granted;
+
       let flagged: string | null = null;
       try {
-        const lintRaw = await newNarrationJudge().generate(`${C.magenta}NARRATION-JUDGE${C.reset}`,
-          [{ role: "user", content: P.narrationLintRequest({
-              pov: sd.pov, prose, granted, consult: outgoingConsult }) }]);
-        const lj = extractJson(lintRaw);
-        if (lj.ok === false || String(lj.ok ?? "").toLowerCase() === "false") {
-          flagged = String(lj.why ?? "").trim() || "narration was flagged";
+        const lintJudge = newNarrationJudge();
+        const lintExtra: Msg[] = [{ role: "user", content: P.narrationLintRequest({
+          pov: sd.pov, prose, granted: lintGranted, consult: outgoingConsult }) }];
+        for (let tries = 0; ; tries++) {
+          const lintRaw = await lintJudge.generate(`${C.magenta}NARRATION-JUDGE${C.reset}`, lintExtra);
+          const verdict = parseLintVerdict(extractJson(lintRaw));
+          if (verdict) {
+            if (!verdict.ok) flagged = verdict.why || "narration was flagged";
+            break;
+          }
+          // Asked twice and still no verdict: the piece goes to the page unchecked, exactly as it
+          // would on an outage, and the log says which of the two happened.
+          if (tries) break;
+          log({ t: "schema_mismatch", call: "lint", character: "(narration)", chapter });
+          lintExtra.push({ role: "assistant", content: lintRaw.trim() },
+                         { role: "user", content: P.LINT_ONLY });
         }
       } catch (e) {
         log({ t: "lint_failed", why: (e as Error).message, chapter });
@@ -387,10 +435,23 @@ export async function writeScene(
     if (stoppedMidLint) break;
 
     overran = proseWords > maxProseWords * OVERRUN_SLACK ? proseWords : 0;
-    if (prose) pieces.push(prose);
+    // A beat written after the answers landed is the writing turn they were owed; the consults this
+    // same reply opens are answered further down, and start the count over.
+    if (prose) { pieces.push(prose); owed = []; }
+    // The writer's own turn, as it will read it back next time. It keeps the question and the shape
+    // it asked for, not just who it asked: the answer arrives as bare thought/speech/action, and
+    // "No" or "the left one" means nothing against a draft that no longer says what was asked. One
+    // `consult` key holds all of it — two spreads used to collide, dropping the name whenever a
+    // reply carried both a consult and a fan-out.
+    const askedRecord = c ? {
+      ...(who ? { character: who } : {}),
+      ...(fanoutNames.length ? { reactors: fanoutNames } : {}),
+      ...(String(c.situation ?? "").trim() ? { situation: String(c.situation).trim() } : {}),
+      ...(String(c.question ?? "").trim() ? { question: String(c.question).trim() } : {}),
+      ...(String(c.wants ?? "").trim() ? { wants: String(c.wants).trim() } : {}),
+    } : null;
     writer.said(JSON.stringify({ prose,
-      ...(who ? { consult: { character: who } } : {}),
-      ...(fanoutNames.length ? { consult: { reactors: fanoutNames } } : {}),
+      ...(askedRecord ? { consult: askedRecord } : {}),
       scene_done: sceneDone }));
     log({ t: "draft", step: steps, prose, words: wordCount(), consulting: who, salvaged, chapter });
     if (prose && !ENGINE.serve) console.log(`\n${prose}\n`);
@@ -439,19 +500,23 @@ export async function writeScene(
             continue;   // unknown or gone — skip quietly
           }
           let reply: ConsultReply;
+          beginAttempt();
           try {
-            // A reaction is not retried here; its own skill repair is guard enough for the thought.
+            // A reaction is not retried here; consult()'s empty/shape repair is guard enough for the thought.
             // Drop consult()'s decision-shaped events — a `reaction` event stands in for them.
-            reply = await consult(persistent, req, def.skills, {
+            reply = await consult(persistent, req, {
               clarifications, clarify,
               log: e => { if (e.t !== "consult" && e.t !== "answer") log(e); },
             });
           } catch (e) {
             log({ t: "fanout_skip", character: def.name, why: (e as Error).message, chapter });
             console.log(`${C.red}${def.name}: reaction failed (${(e as Error).message}).${C.reset}`);
+            dropClarifications();
             continue;
           }
-          if (!reply.thought && !reply.speech && !reply.action) continue;  // nothing to write
+          // Nothing to write: the reaction never happened, so neither did anything it asked for.
+          if (!reply.thought && !reply.speech && !reply.action) { dropClarifications(); continue; }
+          keepClarifications();
           // Fold the thought only; a volunteered action stays out of history until it is promoted, so
           // an un-taken impulse never contradicts the page.
           persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
@@ -483,7 +548,10 @@ export async function writeScene(
           name: x.name, thought: x.thought,
           ...(pendingReactionActions.has(x.name.toLowerCase()) ? { action: x.action } : {}),
         }));
-        if (bundle.length) { writer.hear(P.reactionsAnswered(bundle)); answeredContent = true; }
+        if (bundle.length) {
+          writer.hear(P.reactionsAnswered(bundle));
+          owed.push(...bundle.map(b => b.name));
+        }
       }
     } else if (who) {
       const def = defOf(who);
@@ -508,8 +576,9 @@ export async function writeScene(
         for (let attempt = 1; ; attempt++) {
           usedAttempt = attempt;
           const agent = attempt === 1 ? persistent : persistent.fork();
+          beginAttempt();
           try {
-            reply = await consult(agent, req, def.skills, { clarifications, attempt, log, clarify });
+            reply = await consult(agent, req, { clarifications, attempt, log, clarify });
           } catch (e) {
             failed = (e as Error).message;
             break;
@@ -573,10 +642,20 @@ export async function writeScene(
               + `Keeping the answer.)${C.reset}`);
             break;
           }
+          // The attempt is abandoned here, and everything it settled goes with it.
+          dropClarifications();
           retryCounts.set(def.name.toLowerCase(), cumulative + 1);
+          const wasAsked = req.question;
           req = revised.req;
           console.log(`${C.yellow}retry ${attempt}/${retries} — ${def.name}${C.reset}${note ? ` ${C.dim}(${note})${C.reset}` : ""}`);
-          log({ t: "retry", character: def.name, attempt, situation: req.situation, question: req.question, chapter });
+          if (revised.wantsRefused) {
+            console.log(`${C.yellow}(the judge asked to make that a ${revised.wantsRefused} question — `
+              + `kept as ${req.wants})${C.reset}`);
+          }
+          // `was` is the whole drift record: a judge that answers an inconvenient reply by asking a
+          // different question is visible here and nowhere else.
+          log({ t: "retry", character: def.name, attempt, situation: req.situation,
+                question: req.question, was: wasAsked, wantsRefused: revised.wantsRefused, chapter });
         }
 
         if (RUN.stopped) break;
@@ -593,13 +672,15 @@ export async function writeScene(
             : "no reply");
           console.log(`${C.red}${def.name}: ${why}.${C.reset}`);
           writer.hear(P.noAnswer(def.name, why));
+          dropClarifications();
         } else {
           persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
           persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
-          writer.hear(P.characterAnswered(def.name, P.answerBody(reply)));
+          keepClarifications();   // before the answer: the writer settled these facts to get it
+          writer.hear(P.characterAnswered(def.name, P.answerBody(reply), req.question));
           lastAsked.set(def.name.toLowerCase(), steps);
           granted.push({ character: def.name, speech: reply.speech, action: reply.action });
-          answeredContent = true;
+          owed.push(def.name);
           log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
           if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
             + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
@@ -628,7 +709,8 @@ export async function writeScene(
     // A reply that declares the scene done while its consult is still open closes the door on an
     // answer still owed to the page. Hold the scene open one more turn so the answer is written in;
     // whatever that turn produces, the scene closes after it.
-    if (sceneDone && answeredContent && !closing) {
+    const deferredNow = sceneDone && owed.length > 0 && !closing;
+    if (deferredNow) {
       sceneDone = false;
       closing = true;
       writer.hear(P.answerStillOwed);
@@ -637,9 +719,11 @@ export async function writeScene(
         + `to write the answer in)${C.reset}`);
     }
 
-    if (sceneDone) {
-      done = true;
-    } else if (closing) {
+    // The turn that armed `closing` is the one being held open, so nothing closes the scene on it —
+    // not the hard cap either, or the answer would be owed to a page that never comes.
+    if (deferredNow) {
+      // held open
+    } else if (sceneDone || closing) {
       done = true;
     } else if (hardCap) {
       done = true;
@@ -654,6 +738,16 @@ export async function writeScene(
       const a = agents.get(def.name.toLowerCase());
       if (a) await trimHistory(a, summaryModel, thinking.summary);
     }
+  }
+
+  // The scene is over and a beat was never written after these answers landed. The consults show as
+  // accepted, and the chapter does not carry the choices they made — say so plainly rather than let
+  // the run record read as a clean finish.
+  if (owed.length) {
+    const names = [...new Set(owed)];
+    log({ t: "answer_unwritten", characters: names, stopped: RUN.stopped, chapter });
+    console.log(`${C.red}(the scene ended before ${names.join(", ")}'s answer reached the page — `
+      + `accepted, but not in the chapter)${C.reset}`);
   }
 
   log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter, retries: Object.fromEntries(retryCounts) });

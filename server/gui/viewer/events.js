@@ -27,7 +27,6 @@ export function build(store) {
         text:`${e.model} is loaded with ${e.has} tokens of context and a call needed about ${e.needs} — empty completions or truncation may follow` }); break;
       case "forced":    last(cur)?.flags.push("answered without the detail it asked for"); break;
       case "repair":    last(cur)?.flags.push("re-asked: " + e.why); break;
-      case "skill_flag":last(cur)?.flags.push("used what it cannot do: " + (e.unknown||[]).join(", ")); break;
       case "answer":    if (last(cur)) last(cur).answer = e; break;
       case "judge":     if (last(cur)) last(cur).judge = e; break;
       case "retry_capped": if (cur) cur.capped = true; break;
@@ -55,13 +54,19 @@ export function build(store) {
       }
       case "exit": blocks.push({ kind:"exit", seq:e.seq, character:e.character, pov:!!e.pov }); break;
       case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
-      case "schema_mismatch": blocks.push({ kind:"note", seq:e.seq, text:`the ${e.call} call for ${e.character} came back in the wrong shape — asked again` }); break;
+      case "schema_mismatch": blocks.push({ kind:"note", seq:e.seq,
+        text: e.call === "lint" ? `the narration lint came back with no verdict in it — asked again`
+                                : `the ${e.call} call for ${e.character} came back in the wrong shape — asked again`, }); break;
       case "judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the judge call for ${e.character} never came back (${e.why}) — accepted with no judgement made` }); break;
       case "lint_failed": blocks.push({ kind:"note", seq:e.seq, text:`the narration lint call never came back (${e.why}) — this piece was accepted unchecked` }); break;
       case "batch_judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the reaction judge call never came back (${e.why}) — no volunteered deed from this beat was promoted` }); break;
       case "fanout_skip": blocks.push({ kind:"note", seq:e.seq, text:`${e.character} was skipped in the group reaction — ${e.why}` }); break;
       case "model_changed": blocks.push({ kind:"note", seq:e.seq, text:`model switched to ${e.model}` }); break;
       case "forced_end": blocks.push({ kind:"note", seq:e.seq, text:`scene forced to a close — ${e.words} words against a ${e.target}-word target` }); break;
+      case "done_deferred": blocks.push({ kind:"note", seq:e.seq, text:`scene declared done with an answer still owed the page — held open one more turn to write it in` }); break;
+      case "answer_unwritten": blocks.push({ kind:"note", seq:e.seq,
+        text:`${(e.characters||[]).join(", ")} answered, and the scene ended before that answer reached the page`
+             + (e.stopped ? " — the run was stopped" : ""), }); break;
       case "narration_flag": blocks.push({ kind:"note", seq:e.seq,
         text: e.retried ? `narration flagged again after a redraft — ${e.why} — kept anyway`
                         : `narration flagged — ${e.why} — redrafting`, }); break;

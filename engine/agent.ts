@@ -22,10 +22,20 @@ export class Agent {
   hear(c: string) { this.history.push({ role: "user", content: c }); }
   said(c: string) { this.history.push({ role: "assistant", content: c }); }
 
-  // Same persona and model, EMPTY history: a re-asked character never learns it was rejected.
+  // Back to the first `n` messages: how a caller unwinds history it added on speculation, when what
+  // it was speculating on did not happen.
+  rewind(n: number) { if (n < this.history.length) this.history.length = Math.max(0, n); }
+
+  // The state immediately before the attempt being retried: same persona, model and history, on its
+  // own copy. `consult()` never writes to `agent.history` — only an accepted answer is folded in by
+  // the caller — so this history holds every earlier accepted interaction and nothing of the attempt
+  // that was rejected. The fresh instance still never learns it was rejected; it just no longer
+  // forgets the promise it made two consults ago.
   fork(): Agent {
     const a = new Agent(this.name, this.model, this.system, this.temperature);
     a.think = this.think;
+    a.history = this.history.map(m => ({ ...m }));
+    a.digest = this.digest;
     return a;
   }
 

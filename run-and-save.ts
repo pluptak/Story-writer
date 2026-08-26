@@ -134,9 +134,8 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
   const consults = events.filter(e => e.t === "consult").length;
   const retries  = events.filter(e => e.t === "retry").length;
   const needs    = events.filter(e => e.t === "need").length;
-  const flags    = events.filter(e => e.t === "skill_flag").length;
   console.log(`${C.dim}${r.words} words · ${r.steps} steps · ${consults} consult(s) · `
-    + `${needs} clarification(s) · ${retries} retry/retries · ${flags} skill flag(s) · `
+    + `${needs} clarification(s) · ${retries} retry/retries · `
     + `${r.stopped ? "stopped by request" : r.done ? "chapter finished" : "stopped early"}${C.reset}`);
   console.log(`${C.dim}${scenePath}\n${logPath}${chapterPath ? "\n" + chapterPath : ""}${C.reset}`);
 }

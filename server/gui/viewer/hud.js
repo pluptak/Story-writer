@@ -117,7 +117,7 @@ export function renderRail(store, blocks) {
   const count = t => store.events.filter(e => e.t === t).length;
   const pct = target ? Math.min(100, Math.round(words / target * 100)) : 0;
   const stat = (k, v, cls) => `<div class="stat" data-tid="rail.stat" data-k="${esc(k)}"><span>${k}</span><span class="n ${cls||""}">${v}</span></div>`;
-  const flags = count("skill_flag"), retries = count("retry");
+  const retries = count("retry");
   const live = store === LIVEV && APP.live;
   // The starting budget is not in RunMeta; a `budget` event is the only place the number appears,
   // so steps show a denominator only once the budget has actually been extended at least once.
@@ -145,7 +145,6 @@ export function renderRail(store, blocks) {
     ${count("reaction_fanout") ? stat("reactions", count("reaction_fanout")) : ""}
     ${stat("asked back", count("clarify"))}
     ${stat("retries", retries, retries ? "warn" : "")}
-    ${stat("skill flags", flags, flags ? "bad" : "")}
      ${store === LIVEV && APP.composing ? `<div class="composing" data-tid="rail.composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
         composing… ${APP.composing.secs}s</div>` : ""}
      ${statsPanel}

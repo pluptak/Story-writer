@@ -42,7 +42,7 @@ export function topLevelObjects(s: string): Record<string, any>[] {
 }
 
 const PROSE_KEYS = ["prose", "question", "situation", "need", "speech", "action", "thought",
-                    "verdict", "note", "answer", "skills_used", "character"] as const;
+                    "verdict", "note", "answer", "character"] as const;
 const PROSE_ALT = PROSE_KEYS.join("|");
 
 /** The reply as the reader should see it: <think> blocks removed. What is left when no JSON did. */

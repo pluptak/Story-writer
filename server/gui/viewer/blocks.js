@@ -29,8 +29,6 @@ function renderConsult(b) {
           ${ans.action ? `<div class="action">${esc(ans.action)}</div>` : ""}
           ${ans.thought ? `<div class="thought">${esc(ans.thought)}</div>` : ""}
           ${ans.note ? `<div class="thought">note: ${esc(ans.note)}</div>` : ""}
-          <div class="skills">${(ans.skills_used||[]).map(s =>
-            (ans.unverified||[]).includes(s) ? `<span class="bad">${esc(s)}✗</span>` : esc(s)).join(" · ") || "no skills listed"}</div>
         </div>` : ""}
       ${a.judge ? `<div${tid("consult.verdict")} class="verdict ${esc(a.judge.verdict)}">${esc(a.judge.verdict)}${a.judge.note ? " — " + esc(a.judge.note) : ""}</div>` : ""}
     </div>`;

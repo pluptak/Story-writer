@@ -84,7 +84,7 @@ async function runConsultCli(sc: StoryConfig, who: string) {
   const req: ConsultRequest = { character: def.name, situation, question, wants };
 
   console.log(`\n${C.bold}${def.name}${C.reset} ${C.dim}(${def.skills.length} skills, ${def.model})${C.reset}`);
-  const reply = await consult(agent, req, def.skills, {
+  const reply = await consult(agent, req, {
     clarifications: sc.clarifications,
     clarify: async (q) => {
       console.log(`\n${C.yellow}${def.name} asks:${C.reset} ${q}`);
@@ -98,8 +98,6 @@ async function runConsultCli(sc: StoryConfig, who: string) {
   if (reply.speech)  console.log(`${C.cyan}speech: ${C.reset} "${reply.speech}"`);
   if (reply.action)  console.log(`${C.green}action: ${C.reset} ${reply.action}`);
   if (reply.note)    console.log(`${C.dim}note:    ${reply.note}${C.reset}`);
-  console.log(`${C.dim}skills:  ${reply.skillsUsed.join(", ") || "(none listed)"}${C.reset}`);
-  if (reply.unverified.length) console.log(`${C.red}unverified skills: ${reply.unverified.join(", ")}${C.reset}`);
   if (reply.forced) console.log(`${C.yellow}(answered without the detail it asked for)${C.reset}`);
 }
 

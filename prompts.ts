@@ -48,63 +48,49 @@ export function penaltyBlock(penalties: Readonly<Record<string, readonly string[
 /** The per-character field documentation, shared by the whole-story proposal format and the
  *  staged scaffold's cast stage -- one source of truth for what a character is made of. */
 const CHARACTER_FIELDS = `  name       -- one word, capitalised, how the writer will refer to them.
-  persona    -- who they are: history in a line or two, then how they hold themselves. Concrete and
-                particular. Around 100 words. Write it addressed to them ("You have...") or about
-                them, either way, but never as a summary of their arc -- they must be able to act from
-                it, not perform it. PROSE ONLY: do not restate knows, goal, belief, impulse, voice,
-                skills or restrictions inside it. Those are separate fields and the engine renders them
-                itself; a persona that also says "RESTRICTIONS: none" contradicts the skill list the
-                character is actually given.
+  persona    -- who they are: history in a line or two, then how they hold themselves. Around 100
+                words, concrete and particular, addressed to them ("You have...") or about them --
+                never a summary of their arc, and PROSE ONLY: knows, goal, belief, impulse, voice,
+                skills and restrictions are separate fields the engine renders itself.
   knows      -- what they know walking in that the other characters do not. This is where a scene
                 gets its friction.
   goal       -- what they want tonight, in their own terms, phrased so an outcome can be MEASURED
-                against it ("every course served" -- not "do a good job"). Only the character themself
-                ever weighs whether they are closer to it or further away -- this is never shown to the
-                writer or evaluated by anyone outside the character's own agent. Apply the ZERO-SUM TEST
-                before settling on any pair of goals: if A gets what they want, does that directly stop
-                B from getting what they want? At least one pair in the scene must pass -- if both
+                against it ("every course served" -- not "do a good job"). Only the character
+                themself ever weighs whether they are closer to it or further away -- this is never
+                shown to the writer or evaluated by anyone outside the character's own agent. Apply
+                the ZERO-SUM TEST before settling on any pair: if A gets what they want, does that
+                directly stop B from getting what they want? At least one pair must pass -- if both
                 goals could be satisfied in the same evening, rewrite them until one stands in the
-                other's way ("A wants to open the crate / B wants it kept sealed", not "A explores /
-                B stays downstairs"). Two compatible goals produce nothing to ask about.
-  belief     -- REQUIRED. One load-bearing conviction they walk in with, in their own terms --
-                and it may be false. A false belief fills the slot the real fact would occupy: a
-                character who must not know the murder happened does not get "doesnt know"; she gets
-                "believes he died peacefully in his sleep". Never write a negation ("does not know
-                about X") -- the negation names the thing and hands it to them. When the scene's
-                cheapest path runs through surrendering their goal, author the belief that makes
-                surrender unthinkable to them specifically ("a confession destroys the family name",
-                "the log is the only thing that survives me").
-  impulse    -- REQUIRED. One conditional behaviour rule: "when X -> Y", where X is a pressure this
-                scene can actually apply. This is a trait as behaviour: not "proud" but "when offered
-                kindness, deflects with payment first, stories second". Key it to what will actually
-                be asked of them tonight -- if someone is going to press this character to give
-                something up, the trigger should fire on exactly that ask ("when asked to take the
-                blame, name who really decided").
-  voice      -- REQUIRED. One to three short lines of dialogue in their own words. Models imitate
-                samples far better than adjectives; one real line sets register faster than a
-                paragraph describing it. At least one line should show them refusing or pushing
-                back -- a character whose only sampled words are agreeable answers every question
-                like one.
-  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by its exact
-                name -- it already carries its meaning. Write a bespoke "name :: what it means"
-                ONLY when nothing in the bible fits; an unknown bare name with no meaning will be
-                flagged back. Give someone something the other cannot do. Do NOT restate a general
-                skill under a new name: "watching :: seeing the lens turn" is just sight, and adds
-                nothing.
-  restrictions -- what this character does NOT have. A single skill name (general, bible, or one of
-                 this character's own skills), OR a named penalty from THE RESTRICTION CATALOG below,
-                 which disables EVERY skill it lists -- often more than one, and sometimes special
-                 skills too. One character who cannot see, or cannot speak, or cannot move, will do more for a
-                 scene than any amount of backstory. AT LEAST ONE character must have a restriction,
-                 unless the idea makes that genuinely impossible. It earns its place only
-                 if it can actually bite in THIS scene -- prefer one that creates an information or
-                 action asymmetry (she can't see the signal he's watching for; he can't hear the
-                 alarm she can) over one the scene never puts to the test.`;
+                other's way. Two compatible goals produce nothing to ask about; see DESIGN FOR
+                ASYMMETRY below.
+  belief     -- REQUIRED. One load-bearing conviction they walk in with, and it may be false.
+                Never a negation -- "does not know about X" hands them X. A keeper who must not
+                know of the death gets "believes he died peacefully in his sleep". When the
+                scene's cheapest path runs through surrendering their goal, author the belief
+                that makes surrender unthinkable to them specifically.
+  impulse    -- REQUIRED. One conditional rule, "when X -> Y", where X is a pressure THIS scene
+                can actually apply: not "proud" but "when offered kindness, deflects with payment
+                first". Key the trigger to tonight's ask ("when asked to take the blame, names who
+                really decided").
+  voice      -- REQUIRED. One to three lines of dialogue in their own words -- models imitate
+                samples far better than adjectives. At least one line refusing or pushing back;
+                a character whose only sampled words are agreeable answers every question like one.
+  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by exact name;
+                bespoke "name :: meaning" ONLY when nothing fits -- an unknown bare name gets
+                flagged. Do not restate a general skill under a new name. Give someone something
+                the other cannot do.
+  restrictions -- what this character does NOT have: a single skill name, or a named penalty from
+                THE RESTRICTION CATALOG below (which disables every skill it lists). One character
+                who cannot see, speak, or move does more for a scene than any amount of backstory.
+                AT LEAST ONE character must have a restriction unless the idea makes it impossible,
+                and it has to bite in THIS scene -- prefer an information or action asymmetry over
+                one the scene never puts to the test.`;
 
 const ASYMMETRY_RULES = `DESIGN FOR ASYMMETRY. Two people who can both see, both move and both talk, who want compatible
 things, produce a scene where nothing has to be asked. Give them different senses, different
 authority, different information, or different stakes. At least one real imbalance -- and make at
-least one pair of goals collide outright: what one of them needs is what stands in the other's way.
+least one pair of goals collide outright: what one of them needs is what stands in the other's way
+("A wants the crate open / B wants it kept sealed" -- not "A explores / B stays downstairs").
 Two goals that can both be satisfied in the same evening is a design that asks nothing.`;
 
 export const ARCHITECT_FORMAT = `You design scenes for a writing engine, from an author's rough idea.
@@ -609,7 +595,7 @@ YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
 
   {"need": "Can I reach the door handle from where I am?"}
 
-  {"thought": "...", "speech": "...", "action": "...", "skills_used": ["..."], "note": ""}
+  {"thought": "...", "speech": "...", "action": "...", "note": ""}
 
 FIRST DECIDE: ask, or answer?
 
@@ -625,9 +611,9 @@ FIRST DECIDE: ask, or answer?
   as given genuinely leaves you guessing. Asking is not a failure to answer -- it is how you keep the
   answer from being a guess.
 
-  OVERRIDE: if the author tells you plainly that no more detail is coming, or tells you to answer
-  now, that outranks the rule above. Do not ask again. Take the most likely reading of your
-  situation, answer with it, and say which reading you took in "note".
+  OVERRIDE: if the author tells you plainly that no more detail is coming, that outranks
+  everything above -- take the most likely reading of your situation, answer with it, and say
+  which reading you took in "note".
 
   If you already have everything you need, do NOT ask. Answer, with the shape above:
 
@@ -636,7 +622,6 @@ FIRST DECIDE: ask, or answer?
   speech       -- the words you say aloud and nothing else, with no quotation marks around them,
                    or "" if you say nothing.
   action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
-  skills_used  -- every skill from YOUR SKILLS below that this answer uses, named exactly as listed.
   note         -- "" normally. Use it to tell the author something out of character: an assumption
                    you had to make, or something you would need and do not have.
 
@@ -721,11 +706,6 @@ export const ANSWER_NOW =
   `[ANSWER NOW] Do not ask anything else. Give thought, speech and action for what you do with `
   + `what you already know.`;
 
-export const skillCheck = (unknown: string[], have: string[]) =>
-  `[SKILL CHECK] ${unknown.map(s => `"${s}"`).join(", ")} ${unknown.length > 1 ? "are" : "is"} `
-  + `not yours. All you can do is: ${have.join(", ")}. Answer again doing only what you can `
-  + `actually do.`;
-
 export const EMPTY_REPLY =
   `[EMPTY] That reply had no thought, no speech and no action. Answer the question.`;
 
@@ -780,6 +760,17 @@ export const badReaction = {
     `Every entry in "reactors" needs a "name". One of them had none.`,
 };
 
+// -- SHARED DOCTRINE -------------------------------------------------------
+// One source of truth for rules stated to more than one agent, so the wordings cannot drift.
+
+const NAME_THE_FORK = `NAME THE FORK OR NAME THE COST: "Do you hold the door, or let go?", `
+  + `"Do you say the name, knowing what it admits?". "What do you do?" names nothing at stake, `
+  + `so the safest possible answer is always correct -- and the safest answer is the one that `
+  + `stops the scene.`;
+
+const cannotAbsolute = (subject: string, predicate = "unusable") =>
+  `A CANNOT is absolute. ${subject} that reaches through one is ${predicate} however good it reads.`;
+
 // -- WRITER AGENT ----------------------------------------------------------
 
 export const WRITER_FORMAT = `YOU ARE THE AUTHOR. You are writing one scene, a piece at a time.
@@ -804,10 +795,11 @@ WHEN ASKED TO WRITE -- [WRITE]:
                 text: never restate or paraphrase its question inside "prose", and never narrate a
                 fork as if it were already hanging in the air -- the reader meets the fork where
                 the answer puts it. Spell every name exactly as given, keep each character's
-                pronouns stable from piece to piece, never repeat a line of dialogue you have
-                already written verbatim, and do not lean on the same stage-direction phrase twice
-                -- if her keys jingle in one piece, they do not jingle softly in three more; find
-                the next detail or move on.
+                pronouns stable from piece to piece, and never repeat a line of dialogue you have
+                already written verbatim. Vary your phrasing rather than reaching for the identical
+                stage-direction clause as filler -- but a recurring sensory anchor that holds a
+                scene together is not the enemy: a blind porter's keys may jingle across the whole
+                scene. What tires is the same wording reused to fill space, not the motif itself.
   consult    -- omit the field entirely when you do not need one.
     character  -- who you are asking.
     situation  -- what THEY can perceive right now, in your words. They know nothing you do not put
@@ -818,12 +810,8 @@ WHEN ASKED TO WRITE -- [WRITE]:
                   same shared moment: only what was true before ANY of them answered. Never fold one
                   character's answer into another's situation -- the second one asked blind, and an
                   answer leaked into someone else's question decides the fork for them.
-    question   -- what you need to know. NAME THE FORK OR NAME THE COST: "Do you hold the door, or
-                  let go?", "Do you say the name, knowing what it admits?", "Do you give them the
-                  letter, or keep it?", "Do you step forward, or hold your ground?". "What do you
-                  do?" is not a question -- it names nothing at stake, so the safest possible answer
-                  is always correct, and the safest possible answer is the one that stops the scene.
-                  It will be rejected and you will have spent a step on nothing.
+    question   -- what you need to know. ${NAME_THE_FORK} It will be rejected and you will
+                  have spent a step on nothing.
     wants      -- EXACTLY ONE of these four words, and nothing else:
 ${wantsMenuLines}
                   If you never ask for "speech", nobody in your scene will ever speak. "reaction" is
@@ -878,29 +866,20 @@ THE ONE RULE
   through it to the other side is legal by the letters above (a threat leaving is just time passing)
   and it destroys the scene, because by the time anyone is asked there is nothing left to decide.
 
-  Observed: a writer wrote a searcher arriving at a hiding place, testing the door, waiting, and
-  walking away -- all in one piece, asking nobody anything -- and then asked the person hiding what
-  they did next, in a situation that began "it is quiet now, he has passed". They answered that they
-  got comfortable. There had been four choices in that paragraph and it asked for none of them.
-
-  Observed: a writer had one character ask another a question and, in the same piece, wrote the
-  answer as prose instead of stopping to consult -- a small, entirely guessable answer, but a line
-  was written for someone who was never asked. THE ONE RULE has no exception for an answer that felt
-  obvious: if it is a line or a deed, it is asked for, every time.
+  Observed: a writer had a searcher arrive at a hiding place, test the door, wait, and walk away --
+  all in one piece, asking nobody anything -- then asked the person hiding what they did next.
+  There had been four choices in that paragraph and it asked for none of them. THE ONE RULE has no
+  exception for a choice that felt obvious: if it is a line or a deed, it is asked for, every time.
 
   Observed: a writer asked a night porter where he kept his keys, then narrated a stranger handing
-  a package over right in front of him -- the porter's whole watch was about keeping the night
-  accounted for, and the one event that threatened it was never put to him at all. When a live
-  event lands on what someone walked in caring about -- their post, their charge, their secret --
-  the fork it opens is theirs, and asking them anything smaller first is consulting around the
-  scene instead of through it.
+  a package over right in front of him -- the porter's whole watch was keeping the night accounted
+  for, and the one event that threatened it was never put to him at all. When a live event lands on
+  what someone walked in caring about, ask them about THAT first; consulting around the scene
+  instead of through it wastes every step you spent getting there.
 
   So write up to the moment of choice and stop there. Send the prose you have and the consult you
   need in the same reply: you will be handed the answer before you are asked to write again, and the
   NEXT piece of prose is where it belongs.
-
-  Writing someone's choice and then asking about it is the one mistake that wastes an answer. You
-  will be told they did something else, and the page will already say otherwise.
 
 WHEN ASKED FOR DIRECTIONS -- [ASK READER]:
 
@@ -946,10 +925,7 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
     situation -- what THEY can perceive right now, in your words. They know nothing you do not put
                  here. Do not paste back the prose you wrote: that is the page, not their world, and
                  it tells them things they cannot know.
-    question  -- NAME THE FORK OR NAME THE COST: "Do you hold the door, or let go?". "What do you do?"
-                 is not a question -- it names nothing at stake, so the safest possible answer is
-                 always correct, and the safest possible answer is the one that stops the scene. It
-                 will be refused and the retry will have bought nothing.
+    question  -- ${NAME_THE_FORK} It will be refused and the retry will have bought nothing.
     wants     -- EXACTLY ONE of these four words:
 ${wantsMenuLines}
 
@@ -1013,7 +989,7 @@ const factsBlock = (facts: string[]) =>
  *  and nothing else — the situation and the question arrive in the payload. */
 export function judgeSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
   return `${JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
-    + `A CANNOT is absolute. An answer that reaches through one is unusable however good it reads.`;
+    + cannotAbsolute("An answer");
 }
 
 export const NARRATION_LINT_FORMAT = `YOU ARE THE AUTHOR, CHECKING ONE PIECE YOU JUST WROTE.
@@ -1049,10 +1025,14 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
 Work in that order. First list every line of dialogue you find in the piece, then match each one
 against ALREADY GRANTED -- a quoted line nobody was granted is a violation however small or natural
-it reads, so an unmatched quotation is always flagged, never passed. Then check deeds the same way,
-then restricted senses, then the consult's situation. Do not flag prose that merely mentions a
-character, describes the scene, or narrates an already-granted line or deed in different words.
-When in doubt about a description, pass it; when in doubt about a quotation or a deed, flag it.
+it reads, so an unmatched quotation is always flagged, never passed. Then check deeds: a deed is a
+violation only when the prose invents a NEW consequential choice for someone -- an action that
+changes the scene, or a decision at a fork that would have needed a consult. Incidental continuity
+of a character who is simply present -- staying still, shifting weight, reacting within what this
+piece already established -- is not a new deed and is not flagged. Then restricted senses, then the
+consult's situation. Do not flag prose that merely mentions a character, describes the scene, or
+narrates an already-granted line or deed in different words. When in doubt, pass it -- the one
+exception is an unmatched quotation, which is always flagged.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
@@ -1060,7 +1040,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
  *  the drafted prose, the granted-so-far ledger, and any outgoing consult arrive in the payload. */
 export function narrationLintSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
   return `${NARRATION_LINT_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
-    + `A CANNOT is absolute. Narration that reaches through one is unusable however good it reads.`;
+    + cannotAbsolute("Narration");
 }
 
 export const narrationLintRequest = (p: {
@@ -1099,7 +1079,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
  *  knowledge the single judge has; the reactions and deeds arrive in the payload. */
 export function batchJudgeSystem(cast: { name: string; can: string[]; cannot: string[] }[]): string {
   return `${BATCH_JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
-    + `A CANNOT is absolute. A deed that reaches through one is not promotable however good it reads.`;
+    + cannotAbsolute("A deed", "not promotable");
 }
 
 export const batchJudgeRequest = (items: { name: string; situation: string; action: string }[]) =>
@@ -1141,10 +1121,9 @@ export function writerSystem(p: {
   return `${WRITER_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
     + `THE CAST:\n${cast}\n\n`
     + factsBlock(p.facts)
-    + `A CANNOT is absolute, and it governs your narration as much as their answers. Do not write `
-    + `someone perceiving through a sense they do not have — no watching, no glancing, no gaze for `
-    + `someone who cannot see — and do not put them in a situation phrased around one. Render them `
-    + `through what they DO have.\n\n`
+    + `A CANNOT is absolute, and it governs your narration as much as their answers: no watching, `
+    + `no glancing, no gaze for someone who cannot see, and no situation phrased around what a `
+    + `CANNOT removes. Render them through what they DO have.\n\n`
     + `You have not been given their personalities, their histories, or what they want. That is `
     + `deliberate. You find out who they are the same way anyone does: by asking them and watching `
     + `what they do.${style}`;
@@ -1176,12 +1155,9 @@ export const writeInstruction = (p: {
         + `then write the close.`
       : "")
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
-    + `gone unconsulted for a while now — if they are still in the scene, ask them something. If this `
-    + `moment turns on a choice of theirs, ask for it: what they decide, what they say, what they do. `
-    + `If it asks no choice of them and they are simply there while it happens, ask for a "reaction" `
-    + `instead — what it lands on them as. A reaction costs less than a forced decision and keeps a `
-    + `present character from becoming furniture. If the scene's question turns on their choice, they `
-    + `have to be asked for it before the scene can end.` : "");
+    + `gone unconsulted for a while now. If this moment turns on a choice of theirs, ask for it; `
+    + `if they are simply present while it happens, ask for a "reaction" -- what it lands on them `
+    + `as. Either way, hear from them before the scene ends.` : "");
 
 export const askReader = (words: number) =>
   `[ASK READER] ${words} words so far. The reader wants to choose the `
@@ -1223,15 +1199,16 @@ export const VERDICT_ONLY =
   `[WRONG SHAPE] That was not a verdict, and there is no prose to write here. Reply with exactly `
   + `{"verdict":"accept"} or {"verdict":"retry","note":"...","revised":{...}} and nothing else.`;
 
+export const LINT_ONLY =
+  `[WRONG SHAPE] That was not a verdict on the piece. Reply with exactly {"ok":true} or `
+  + `{"ok":false,"why":"..."} and nothing else.`;
+
 export const ANSWER_ONLY =
   `[WRONG SHAPE] That was not an answer. Reply with exactly {"answer":"..."} — the fact they asked `
   + `for, and nothing else.`;
 
-export const answerFlags = (p: { unverified: string[]; forced: boolean }) => [
-  p.unverified.length
-    ? `They used ${p.unverified.map(s => `"${s}"`).join(", ")}, which they cannot do.` : "",
-  p.forced ? `They asked for detail you did not give and answered anyway.` : "",
-].filter(Boolean).join(" ");
+export const answerFlags = (p: { forced: boolean }) =>
+  p.forced ? `They asked for detail you did not give and answered anyway.` : "";
 
 export const judgeRequest = (p: {
   name: string; situation: string; question: string; wants: string;
@@ -1248,8 +1225,10 @@ export const answerBody = (p: { thought: string; speech: string; action: string 
    p.speech  && `speech: ${p.speech}`,
    p.action  && `action: ${p.action}`].filter(Boolean).join("\n");
 
-export const characterAnswered = (name: string, body: string) =>
-  `[${name} ANSWERED]\n${body}`;
+/** The question travels with the answer it produced. A retry may have revised what was finally
+ *  asked, and a bare "No." or "The left one." is unreadable against a draft several turns back. */
+export const characterAnswered = (name: string, body: string, question = "") =>
+  `[${name} ANSWERED]` + (question ? ` (asked: ${question})` : "") + `\n${body}`;
 
 export const reactionsAnswered = (items: { name: string; thought: string; action?: string }[]) => {
   const lines = items.map(i => `${i.name}: ${i.thought}` + (i.action ? `\n  — could act: ${i.action}` : ""));

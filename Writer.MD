@@ -45,7 +45,25 @@ under a chapter mid-write.
 | | history | temperature | why |
 | --- | --- | --- | --- |
 | judge | none — built per call | `0.3` | it is given the situation, the question, the answer and the cast's limits; a verdict needs no memory, and consistency beats invention |
-| clarifier | one per scene | the writer's | what it settles becomes true for the rest of the scene, so it has to remember what it has already said |
+| clarifier | one per scene, rewound with a rejected attempt | the writer's | what it settles becomes true for the rest of the scene, so it has to remember what it has already said |
+
+A judge that retries must re-put the same fork, not a different one. Its `revised` goes through the
+same gate a first consult does, and `wants` is pinned to the original: reframing a fork asked badly is
+its job, while turning "which way do you go" into "what do you say about it" replaces the choice
+instead of re-putting it. A `wants` it asked to change is recorded as `wantsRefused` rather than
+honored. Whether a rewritten *question* is still the same fork is not decidable here — the model that
+could judge it is the one being checked — so each `retry` event carries `was`, the question it
+replaced, and reading that is the check. It matters because the retried character is a fresh instance
+that never learns any of this happened: an inconvenient answer, re-asked as a different question, would
+come back as a clean answer to a moment the scene never reached.
+
+A clarification lives or dies with the answer it was asked for. The clarifier folds one in as it goes,
+because a character may ask twice in one attempt and the second answer has to know the first — but an
+attempt whose answer is rejected is rewound out of the clarifier's history, and the writer is told
+nothing at all until the answer is the one the scene takes. The fact was settled for a character
+instance that no longer exists: the fresh instance asked in its place never heard it, so a writer
+narrating around it would be treating a discarded branch as canon. This is the same rule as *only the
+accepted answer enters history*, applied to the part of an answer that arrives before it.
 
 The clarifier is also given the last piece of prose written, so a fact it decides on the spot cannot
 contradict the page; and it is forbidden from putting words in a character's mouth, because an answer
@@ -69,10 +87,12 @@ The writer must:
 2. Stop before resolving that pressure.
 3. Consult the relevant character agent.
 4. Accept the answer unless it is unusable.
-5. Retry through a clean character-agent fork when necessary, with a re-ask that has itself passed
-   the same check the first consult did.
+5. Retry through a character-agent fork when necessary, with a re-ask that has itself passed
+   the same check the first consult did. The fork carries the scene so far and nothing of the
+   attempt being retried — a re-asked character never learns it was rejected, and never forgets a
+   promise it made two consults ago.
 6. Add only the accepted answer to the writer's history.
-7. Continue the scene from the accepted answer.
+7. Continue the scene from the accepted answer, and write it in before the scene closes.
 
 When several characters face the same fork, each is asked from the same shared moment: a consult's
 `situation` may only contain facts that predate every answer in the beat. One character's answer
@@ -139,6 +159,35 @@ redraft from the same `[WRITE]` instruction — nothing has reached `pieces[]`, 
 or the log yet, so this is a clean redo, not an undo. A retry that is also flagged, or that fails
 outright, is accepted anyway and logged as `narration_flag` — the lint warns; it never blocks the scene
 (`engine/scene-loop.ts`'s `NARRATION_LINT_RETRIES`).
+
+Only an explicit `{"ok":true}` or `{"ok":false,"why":…}` is a verdict. A reply carrying neither — `{}`,
+`{"ok":"maybe"}`, some other shape entirely — is asked once more against `LINT_ONLY`, and if the second
+reply is no better the piece goes to the page with a `schema_mismatch` on the record. That distinction
+is the point: a check nobody made must not read as a check that passed, and between `schema_mismatch`
+and `lint_failed` the run record says which of the two happened. Treat the lint as advisory quality
+control that reports its own gaps, not as enforcement of THE ONE RULE — the rule is enforced by the
+consult protocol, which is what decides whether a line exists to be written at all.
+
+The evidence it is shown is everything granted this scene, plus one thing that is about to be: a deed
+the same reply promotes. The promote is processed just after the lint, so a writer that renders a
+volunteered deed and promotes it in one breath would otherwise be flagged for using exactly what it
+was entitled to.
+
+### An answer is not canon until it is on the page
+
+Accepting an answer only puts it in the writer's history. The chapter is the durable record, and the
+one thing that can put a character's choice into it is a writing turn *after* the answer landed — so
+the loop tracks who is owed one. A reply that declares `scene_done` while an answer is still owed does
+not end the scene: the writer is told the answer is evidence and not yet written, and gets exactly one
+more turn, logged as `done_deferred`. That turn is held open against everything, the hard length cap
+included; whatever comes back, the scene closes after it.
+
+What the engine can check is that a beat was written, not that the beat honors the answer — proving
+the latter would need a second judge on every piece, and the judgement it makes would be exactly the
+one the writer just made. So when a scene does end with an answer never written in — the step budget
+gone, the run stopped, the point-of-view character walked out — the run record says so, as
+`answer_unwritten` naming the characters. The consult shows as accepted because it was; the event is
+there so a chapter missing a choice it was told about cannot read as a clean finish.
 
 ### Writing a character out
 
