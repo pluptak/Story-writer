@@ -1030,7 +1030,7 @@ const factsBlock = (facts: string[]) =>
 /** The judge: one answer, one verdict. It needs the cast's limits to see an answer that overran them,
  *  and nothing else — the situation and the question arrive in the payload. */
 export function judgeSystem(cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[]): string {
-  return `${JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
+  return `${JUDGE_FORMAT}\n\n${castBlock(cast)}\n\n`
     + cannotAbsolute("An answer");
 }
 
@@ -1086,7 +1086,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
 /** The narration lint: one drafted piece, one pass/fail. Same cast/CANNOT knowledge the judge has —
  *  the drafted prose, the granted-so-far ledger, and any outgoing consult arrive in the payload. */
 export function narrationLintSystem(cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[]): string {
-  return `${NARRATION_LINT_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
+  return `${NARRATION_LINT_FORMAT}\n\n${castBlock(cast)}\n\n`
     + cannotAbsolute("Narration");
 }
 
@@ -1126,7 +1126,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
 /** The batch judge: many volunteered deeds, one call, a promotable flag each. Same cast/CANNOT
  *  knowledge the single judge has; the reactions and deeds arrive in the payload. */
 export function batchJudgeSystem(cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[]): string {
-  return `${BATCH_JUDGE_FORMAT}\n\nTHE CAST:\n${castBlock(cast)}\n\n`
+  return `${BATCH_JUDGE_FORMAT}\n\n${castBlock(cast)}\n\n`
     + cannotAbsolute("A deed", "not promotable");
 }
 
@@ -1145,7 +1145,7 @@ export function clarifySystem(p: {
   return `${CLARIFY_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\n`
     + (p.scene.place ? `WHERE THIS SCENE IS: ${p.scene.place}\n\n` : "")
     + factsBlock(p.facts)
-    + `THE CAST:\n${castBlock(p.cast)}\n\n`
+    + `${castBlock(p.cast)}\n\n`
     + `A CANNOT is absolute: never answer someone with something they would have to perceive through `
     + `a sense they do not have.`;
 }
@@ -1167,7 +1167,7 @@ export function writerSystem(p: {
   ].filter(Boolean).join("\n");
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
   return `${WRITER_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
-    + `THE CAST:\n${cast}\n\n`
+    + `${cast}\n\n`
     + factsBlock(p.facts)
     + `A CANNOT is absolute, and it governs your narration as much as their answers: no watching, `
     + `no glancing, no gaze for someone who cannot see, and no situation phrased around what a `
