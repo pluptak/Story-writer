@@ -8,7 +8,7 @@ import { renderSession, disarm, loadModels } from "./session.js";
 import { loadStories, loadRun } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { loadDeepLinkedComparison, loadComparisonRuns } from "./compare.js";
-import { disarmAccept } from "./interview.js";
+import { disarmAccept, disarmApprove } from "./interview.js";
 
 export function loadDeepLinkedRun() {
   const params = parseHashParams();
@@ -141,6 +141,7 @@ export function startSSE() {
       // and the POST response only ever reaches whoever sent it.
       APP.scaffold = f.state || { active:false };
       if (APP.scaffold.active) APP.ideaOpen = false;
+      if (APP.scaffold.last?.kind !== "blocked") disarmApprove();
       if (!APP.scaffold.problems || !APP.scaffold.problems.length) disarmAccept(); else APP.render();
       return;
     }

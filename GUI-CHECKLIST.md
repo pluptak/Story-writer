@@ -404,6 +404,14 @@ a *new* story folder — so it can go anywhere in the pass.
       *cast*, then *settings*, *technical*, and *scene*, ticking each passed gate. House style and run
       settings appear in a highlighted current-stage section at the top of the proposal as their gates
       land; the earlier stages remain below it. The button is gone at the *scene* gate.
+- [ ] **The cast gate can refuse.** Approving *cast* with a cast whose restrictions do not bite on the
+      tension (easiest: refine the cast until nobody has a restriction, then approve) comes back as a
+      judgement card headed **the cast gate**, not a red failure line — it names what would need a
+      restriction and says *approve again to overrule this*. The checklist pointer stays on *cast* and
+      no next stage appears. The approve button becomes **approve anyway →** in the warning colour;
+      clicking it within 8 seconds passes the gate, and waiting longer than that returns it to
+      **approve & continue →**. Refine instead of overruling and the button reverts once the round
+      lands, so an armed override never carries to a later gate.
 - [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
       to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
       Answering re-runs that stage.

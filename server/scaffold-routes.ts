@@ -145,10 +145,13 @@ export async function handleScaffoldRoutes(
   } else if (what === "approve") {
     // Pass the open checklist gate and propose the next stage's content. The engine refuses on a
     // one-shot session and while the gate is empty or a question stands; those come back as rounds.
+    // `override` is the author overruling a gate that came back `blocked` — sent by the viewer's
+    // confirming second click, and the only way past the cast gate's asymmetry judgement.
     const gen = scaffoldGen;
     const session = SCAFFOLD;
     scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold(host);
-    try { const r = await session.approve(stage => { scaffoldStage = stage; publishScaffold(host); });
+    try { const r = await session.approve(stage => { scaffoldStage = stage; publishScaffold(host); },
+                                          Boolean(o.override));
           if (gen === scaffoldGen) scaffoldLast = r; }
     catch (e) { if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message }; }
     finally { scaffoldBusy = false; scaffoldStage = ""; }

@@ -220,6 +220,20 @@ past the last gate ("checklist is complete"). A question pins its gate; answerin
 `[THE AUTHOR ANSWERS]` into history and re-runs that stage's prompt. Three asks within one gate get
 an OVERRIDE line; passing a gate resets the ask budget.
 
+**The cast gate judges what landed.** Every other gate only asks whether its stage produced anything;
+the cast gate additionally asks whether the cast is worth building a story on. Passing it consults a
+**stateless judge** — 0.3, no history, built fresh per verdict, and deliberately *not* the architect,
+which wrote the cast and audits its own work badly. It is given the tension and the cast sheet (names,
+goals, skills, restrictions — no reach, since no scene exists this early) and answers one question:
+does this cast's asymmetry bite on the thing the tension turns on? A `false` verdict comes back as a
+round of its own kind, `blocked`, distinct from `nothing` — the stage *did* land, and the author may
+overrule it with `approve(onStage, true)`, which the viewer sends as a confirming second click. The
+judge **fails open**: an outage or a reply carrying no verdict passes the gate, because every other
+model-in-the-loop check in this engine accepts on failure and an outage must not strand an author
+mid-checklist. `normalizeSpec`'s "nobody has any restrictions" problem is unchanged and still
+advisory — it is the only asymmetry signal on the surfaces that have no gate at all (the story
+editor, one-shot mode, the handoff).
+
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.
 
@@ -347,7 +361,11 @@ Behaviour:
   ("your answer" / "send answer →"), and hides the approve button while it stands.
 - The **approve & continue** button, in the composer, passes the open gate and proposes the next
   stage's content. It is hidden at the last gate and while a question stands. Refinement never advances
-  a gate: only this button does.
+  a gate: only this button does. When the cast gate comes back `blocked`, the verdict renders as a
+  judgement (not a failure) and the same button becomes **approve anyway** for 8 seconds — the first
+  click is what discovered the block, so unlike accept the confirmation is armed by the reply rather
+  than checked before sending. Any later scaffold frame that is not `blocked` disarms it, so an armed
+  override cannot survive to overrule a different gate.
 - A `proposal` or `edits` round updates the proposal card in place; the conversation context is never
   cleared. The first story-stage proposal is visible immediately, before the cast makes the draft
   acceptable. The open gate is the first, highlighted section of the card, with earlier stages kept

@@ -18,23 +18,10 @@ run, which is the owner's to make, batched.
 
 ## Next
 
-Three items promoted out of the sections below. Each is decidable now, has live-run evidence behind
+Two items promoted out of the sections below. Each is decidable now, has live-run evidence behind
 it, and is a reason to distrust what the architect currently hands the writer.
 
-### 1. Make the no-asymmetry finding gate the cast stage
-
-`normalizeSpec`'s "nobody has any restrictions" check asks only whether *anyone* in the cast has a
-restriction, and it is advisory even when it fires. A live four-hander passed it with one restriction
-on one character while the POV and two others had none; a different run tripped it, was handed the
-finding under `[ALREADY FLAGGED]`, and shipped unchanged (the cast-sheet checks now live in
-`normalizeSpec`, so the same finding would reach it mechanically). What the check wants
-to ask is whether the asymmetry touches the fork the scene turns on — judgement, not a count.
-
-**Done when** a no-asymmetry finding stops the cast stage advancing without an explicit author
-override, and the count-based check is either replaced by the fork-touching question or subordinated
-to it.
-
-### 2. `facts[]` is framed away from the one thing it exists for
+### 1. `facts[]` is framed away from the one thing it exists for
 
 The story stage asks for "truths true of the world at large that nobody in particular walks in
 holding", and the fill-gaps pass reinforces that a fact one person holds stays in their `knows`.
@@ -50,7 +37,7 @@ be true of the room and the writer invented an electrical fire that dissolved th
 more characters both hold it" the test for story level, and verify has a bullet for the omission,
 which it does not have at all today. This is a reframe, not a new field.
 
-### 3. The writer supplies both answers, and that suppresses clarification
+### 2. The writer supplies both answers, and that suppresses clarification
 
 Across three runs of one story every consult without exception was an either/or with both branches
 written by the writer ("Do you concede and sign for A, or do you double down?"), and across four runs

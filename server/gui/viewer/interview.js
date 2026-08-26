@@ -188,6 +188,11 @@ function lastHtml(last) {
       return `<div class="said bad">${at}this stage has nothing yet — ${esc(last.why)}</div>`;
     return `<div class="said bad">${at}it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}</div>`;
   }
+  // A blocked gate is not a failure and not an empty round: the stage landed, and a judge says it is
+  // not yet worth advancing past. It is the author's to overrule, so it reads as a judgement.
+  if (last.kind === "blocked")
+    return `<div class="round-note"><span class="label">the cast gate</span><p>${esc(last.why)}</p>`
+      + `<p class="hint">refine the cast, or approve again to overrule this.</p></div>`;
   if (last.kind === "edits") {
     const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
     const ig = last.ignored.map(x => `<div class="said bad">ignored ${esc(x)}</div>`).join("");
@@ -229,9 +234,12 @@ function roundHtml(s) {
     } else {
       const unsent = !!draft.say.trim();
       foot.push(`<button class="btn${unsent ? " primary" : ""}" id="iv-say">send</button>`);
-      // approve passes the open gate; hidden at the last gate and while a question stands.
+      // approve passes the open gate; hidden at the last gate and while a question stands. Once a
+      // gate has come back blocked, the same button overrules it and says so.
       if (s.gate && GATES.indexOf(s.gate) < GATES.length - 1)
-        foot.push(`<button class="btn${unsent ? "" : " primary"}" id="iv-approve">approve &amp; continue →</button>`);
+        foot.push(APP.approveArmed
+          ? `<button class="btn danger" id="iv-approve">approve anyway →</button>`
+          : `<button class="btn${unsent ? "" : " primary"}" id="iv-approve">approve &amp; continue →</button>`);
     }
   } else {
     foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
@@ -403,6 +411,9 @@ async function postScaffold(what, payload) {
 /** Also called from `sse.js`: a `scaffold` SSE frame that arrives with no problems left disarms the
  *  accept-over-a-complaint confirmation the same way clicking through it would. */
 export const disarmAccept  = () => { clearTimeout(APP.acceptArmed);  APP.acceptArmed  = 0; APP.render(); };
+/** Also called from `sse.js`: any scaffold frame whose last round is no longer `blocked` means the
+ *  gate moved on, so an armed override must not survive to overrule some later gate by accident. */
+export const disarmApprove = () => { clearTimeout(APP.approveArmed); APP.approveArmed = 0; };
 const disarmAbandon = () => { clearTimeout(APP.abandonArmed); APP.abandonArmed = 0; APP.render(); };
 
 /** A change, sent. The text stays in the draft until the round actually lands, so a 409 or a dropped
@@ -478,7 +489,15 @@ export function wireScaffold(page) {
   on("iv-approve", async () => {
     // The gate's explicit pass: one click opens the next stage. A double-click must not POST twice.
     if (APP.scaffold.busy) return;
-    await postScaffold("approve", {});
+    // Unlike accept, the first click is what discovers the block — so the override is armed by the
+    // reply, not by a check before sending, and the second click is what carries it.
+    const override = !!APP.approveArmed;
+    disarmApprove();
+    const j = await postScaffold("approve", override ? { override: true } : {});
+    if (!override && j && j.last && j.last.kind === "blocked") {
+      APP.approveArmed = setTimeout(() => { disarmApprove(); APP.render(); }, 8000);
+      APP.render();
+    }
   });
   on("iv-edit", () => {
     // The optional full editor for the same in-memory draft — it syncs back through /scaffold/set.

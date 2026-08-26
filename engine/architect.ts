@@ -11,6 +11,7 @@ import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, type StorySpec } from "./story-spec.ts";
+import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
 import { estimateTokens } from "./llm-client.ts";
 
@@ -40,6 +41,20 @@ export async function buildArchitect(d: Defaults, withExample = true): Promise<A
   return a;
 }
 
+// The three judges in scene-loop.ts run at this temperature for the same reason: a verdict wants to
+// be repeatable, not creative. Kept as its own constant rather than imported, so the architect chain
+// does not take a dependency on the scene loop for one number.
+const JUDGE_TEMPERATURE = 0.3;
+
+/** The cast gate's judge. Stateless and deliberately **not** the architect: the architect wrote the
+ *  cast, and self-audit is exactly what the verify pass does badly. Built fresh per call, so it never
+ *  carries a verdict on an earlier cast into this one. */
+export function newCastAsymmetryJudge(d: Defaults): Agent {
+  const a = new Agent("CAST-JUDGE", d.models.architect, P.CAST_ASYMMETRY_SYSTEM, JUDGE_TEMPERATURE);
+  a.think = d.thinking.architect;
+  return a;
+}
+
 // -- SCAFFOLD SESSION ------------------------------------------------------
 
 /** Which of the two automatic follow-up passes ran, for the CLI/SSE to label. */
@@ -61,6 +76,9 @@ export type ScaffoldRound =
   | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
   | { kind: "question"; ask: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
   | { kind: "nothing"; why: string; stage?: P.ScaffoldStage | "done" }
+  // Distinct from "nothing": the stage's content landed and is refusable-but-overridable, so the
+  // viewer offers a confirming second click. "nothing" means there is nothing yet to advance past.
+  | { kind: "blocked"; why: string; stage: P.ScaffoldStage }
   | { kind: "failed"; error: string };
 
 /** The outcome of trying to write the accepted story to disk. */
@@ -214,9 +232,12 @@ export class ScaffoldSession {
 
   private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene"];
 
+  /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
+   *  without it a test walking the checklist would reach for the network at the cast gate. */
   constructor(public architect: Agent, public defaults: Defaults, public idea: string,
               public storiesDir: string = joinPath(ROOT, "stories"),
-              public mode: "oneshot" | "staged" = "oneshot") {}
+              public mode: "oneshot" | "staged" = "oneshot",
+              public newJudge?: () => Agent) {}
 
   haveStory(): boolean { return this.spec.characters.length > 0; }
 
@@ -379,8 +400,30 @@ export class ScaffoldSession {
     }
   }
 
-  /** Staged mode only: pass the open gate and propose the next stage's content. */
-  async approve(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+  /** The cast gate's question, asked of a fresh judge: does this cast's asymmetry bite on the
+   *  tension the story stage coined? Returns null when it could not be decided — an outage, or a
+   *  reply with no verdict in it. The caller then lets the gate pass: every other model-in-the-loop
+   *  check in this engine accepts on failure, and an outage must not strand an author mid-checklist. */
+  private async castAsymmetryVerdict(): Promise<{ ok: boolean; why: string } | null> {
+    try {
+      const judge = this.newJudge ? this.newJudge() : newCastAsymmetryJudge(this.defaults);
+      const raw = await judge.generate(`${C.magenta}CAST-JUDGE${C.reset}`, [{
+        role: "user", content: P.castAsymmetryRequest(this.tension || this.spec.premise,
+          this.spec.characters.map(c => ({
+            name: c.name, goal: c.goal, skills: c.skills, restrictions: c.restrictions }))),
+      }]);
+      return parseLintVerdict(extractJson(raw));
+    } catch (e) {
+      archLog(`CAST GATE: judge call failed (${(e as Error).message}) — passing`);
+      return null;
+    }
+  }
+
+  /** Staged mode only: pass the open gate and propose the next stage's content.
+   *
+   *  `override` is the author overruling a gate that blocked — the viewer's confirming second click,
+   *  the same shape accept already uses over unsent text or a `problems` flag. */
+  async approve(onStage?: (stage: AutoStage) => void, override = false): Promise<ScaffoldRound> {
     if (this.mode !== "staged")
       return { kind: "failed", error: "this scaffold session is not running the staged checklist" };
     if (!this.stage)
@@ -390,6 +433,18 @@ export class ScaffoldSession {
     const missing = this.gateMissing();
     if (missing)
       return { kind: "nothing", why: `"${this.stage}" has not landed (${missing}) — refine it, answer any outstanding question, and try again`, stage: this.stage };
+    // The cast gate is the one gate that judges what landed rather than whether anything did. It
+    // blocks on a cast whose asymmetry does not bite on the tension, because a cast that all know
+    // and perceive the same things gives the consult nothing to be asymmetric about — and by the
+    // time that shows up in the prose the story has been built on it.
+    if (this.stage === "cast" && !override) {
+      const verdict = await this.castAsymmetryVerdict();
+      if (verdict && !verdict.ok) {
+        const why = verdict.why || "this cast's asymmetry does not bite on the tension";
+        archLog(`CAST GATE: blocked — ${why}`);
+        return { kind: "blocked", why, stage: this.stage };
+      }
+    }
     const next = ScaffoldSession.CHECKLIST[ScaffoldSession.CHECKLIST.indexOf(this.stage) + 1];
     if (!next)
       return { kind: "nothing", why: "the checklist is complete — review the draft and accept", stage: this.stage };

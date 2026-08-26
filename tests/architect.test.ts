@@ -302,9 +302,14 @@ describe("ScaffoldSession, staged", () => {
   };
   const SCENE_STAGE = { scene: STORY.scene, later_scenes: [{ question: "Does the relief boat come?" }] };
 
-  const stage = (script: unknown[]) =>
+  // The cast gate consults a judge, and a fresh one per verdict — so the factory hands back a new
+  // one-reply ScriptedAgent each time rather than one agent that would run out.
+  const judgeSaying = (verdict: unknown) => () => new ScriptedAgent([JSON.stringify(verdict)]);
+  const passingJudge = judgeSaying({ ok: true });
+
+  const stage = (script: unknown[], newJudge: () => ScriptedAgent = passingJudge) =>
     new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
-                        SCAFFOLD_DEFAULTS, "two lighthouse keepers", undefined, "staged");
+                        SCAFFOLD_DEFAULTS, "two lighthouse keepers", undefined, "staged", newJudge);
   const gateOf = (r: { kind: string; stage?: string }) => r.stage;
 
   it("walks the checklist one approved gate at a time, merging as it goes", async () => {
@@ -350,6 +355,83 @@ describe("ScaffoldSession, staged", () => {
     const done = await s.approve();
     assert.equal(done.kind, "nothing");
     assert.match((done as { why: string }).why, /review the draft and accept/);
+  });
+
+  describe("the cast gate", () => {
+    // propose() opens the story gate and the first approve() passes it, landing on cast — so it is
+    // the *next* approve() that the gate judges.
+    const walkToCast = async (judge: () => ScriptedAgent) => {
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE], judge);
+      await s.propose();
+      await s.approve();
+      assert.equal(s.stage, "cast");
+      return s;
+    };
+
+    it("blocks the cast gate when the asymmetry does not bite on the tension", async () => {
+      const s = await walkToCast(judgeSaying({ ok: false, why: "neither keeper is kept from the log" }));
+      const r = await s.approve();
+      assert.equal(r.kind, "blocked");
+      assert.equal(gateOf(r), "cast");
+      assert.match((r as { why: string }).why, /neither keeper is kept from the log/);
+      assert.equal(s.stage, "cast", "a blocked gate does not advance");
+      assert.equal(s.spec.writerStyle, "", "and the next stage was never proposed");
+    });
+
+    it("carries past a blocked gate on an explicit override", async () => {
+      const s = await walkToCast(judgeSaying({ ok: false, why: "nobody is restricted" }));
+      assert.equal((await s.approve()).kind, "blocked");
+      const forced = await s.approve(undefined, true);
+      assert.equal(forced.kind, "proposal");
+      assert.equal(s.stage, "settings", "the override passes the gate it was blocked on");
+      assert.equal(s.spec.writerStyle, SETTINGS_STAGE.writer_style);
+    });
+
+    // Every other model-in-the-loop check in this engine accepts when the call fails; an outage must
+    // not stand between an author and the rest of their checklist.
+    it("fails open when the judge is unreachable or answers with no verdict", async () => {
+      const outage = await walkToCast(() => {
+        const a = new ScriptedAgent([]);                 // throws: ran out of replies
+        return a;
+      });
+      assert.equal((await outage.approve()).kind, "proposal", "an outage passes the gate");
+      assert.equal(outage.stage, "settings");
+
+      const garbage = await walkToCast(() => new ScriptedAgent(["I could not say."]));
+      assert.equal((await garbage.approve()).kind, "proposal", "an unparseable verdict passes too");
+      assert.equal(garbage.stage, "settings");
+    });
+
+    it("judges the cast gate and no other", async () => {
+      let calls = 0;
+      const counting = () => { calls++; return new ScriptedAgent([JSON.stringify({ ok: true })]); };
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "it holds together" }], counting);
+      await s.propose();
+      for (let i = 0; i < 4; i++) await s.approve();     // cast, settings, technical, scene
+      assert.equal(s.stage, "scene", "the whole checklist was walked");
+      assert.equal(calls, 1, "only the cast gate consults the judge");
+    });
+
+    it("asks the judge about the tension and the cast, and never about the architect's own draft", async () => {
+      let seen = "";
+      const spy = () => {
+        const a = new ScriptedAgent([JSON.stringify({ ok: true })]);
+        const orig = a.generate.bind(a);
+        a.generate = async (_label?: unknown, extra?: { role: string; content: string }[]) => {
+          seen = (extra ?? []).map(m => m.content).join("\n");
+          return orig();
+        };
+        return a;
+      };
+      const s = await walkToCast(spy);
+      await s.approve();
+      assert.match(seen, /\[THE TENSION\]/);
+      assert.match(seen, /Aster wants the log kept honest/, "the tension the story stage coined");
+      assert.match(seen, /\[THE CAST\]/);
+      assert.match(seen, /restrictions:/, "the cast arrives as a sheet, not as prose");
+      assert.doesNotMatch(seen, /premise/i, "the judge is not handed the architect's whole draft");
+    });
   });
 
   it("does not report a half-built draft's missing pieces as problems", async () => {

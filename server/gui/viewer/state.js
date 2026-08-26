@@ -67,6 +67,7 @@ export const APP = {
   personasFull: false,
   acceptArmed: 0,               // timer id: accepting over a complaint (or over unsent text) wants a second click
   abandonArmed: 0,              // timer id: so does throwing the whole interview away
+  approveArmed: 0,              // timer id: overruling a gate the cast judge blocked wants one too
   scaffoldError: "",            // the last refusal from /scaffold/*, said out loud in the modal
   handoff: { active:false },   // the between-chapters handoff, from /next-chapter and its SSE frames
   handoffDir: "",              // which story the handoff page is showing

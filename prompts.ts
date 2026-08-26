@@ -502,6 +502,42 @@ Fix what is wrong with edits, in the same format as [CHANGE]. If nothing needs t
 {"edits": [], "note": "", "ask": ""}`;
 }
 
+// -- THE CAST GATE ---------------------------------------------------------
+
+// Deliberately not the architect's own voice: the architect wrote the cast, and a pass that audits
+// its own draft is the failure mode this gate exists to catch (verify returned no edits on four
+// consecutive live runs). This one is stateless and sees the tension and the cast sheet, nothing else.
+export const CAST_ASYMMETRY_SYSTEM = `YOU ARE READING A CAST SHEET FOR ONE THING ONLY.
+
+A story engine writes its scenes by asking each character what they do, one at a time, and never
+letting any of them see another's reasoning. That only produces a story if the characters do not all
+know and perceive the same things. A restriction is what creates the gap: it names something a
+character cannot do or cannot perceive, whatever its source would otherwise have been.
+
+You are given the story's load-bearing tension and the cast built to strain it. Answer one question:
+does this cast's asymmetry bite on that tension -- is there at least one character whose restriction
+changes what they can know or do about the very thing the tension turns on?
+
+A cast where nobody is restricted fails. So does a cast whose restrictions sit only on people the
+tension does not run through, or remove only capabilities the tension never asks anyone to use.
+Judge the tension as written -- do not invent a scene that would make a restriction matter.
+
+Reply with JSON and nothing else:
+
+{"ok": true}
+{"ok": false, "why": "one sentence: who needs a restriction, and what it has to touch"}`;
+
+/** The cast gate's one question. Takes the cast already flattened -- no reach, because reach is
+ *  scene-scoped and no scene exists at this point in the checklist (I1/I4). */
+export const castAsymmetryRequest = (
+  tension: string,
+  cast: { name: string; goal: string; skills: string[]; restrictions: string[] }[],
+) =>
+  `[THE TENSION]\n${tension || "(none was coined)"}\n\n[THE CAST]\n`
+  + cast.map(c => `${c.name}\n  goal: ${c.goal || "(none)"}\n`
+    + `  skills: ${c.skills.length ? c.skills.join(" | ") : "(none beyond the ordinary)"}\n`
+    + `  restrictions: ${c.restrictions.length ? c.restrictions.join(" | ") : "(none)"}`).join("\n\n");
+
 // -- THE HANDOFF -----------------------------------------------------------
 
 /** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one. */
