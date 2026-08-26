@@ -36,8 +36,8 @@ describe("/scaffold routes", () => {
 
   const host = (script: unknown[]): ServerHost => ({
     loadedModelIds: async () => null,
-    specView: (s) => s,
-    newScaffoldSession: async (idea, _model, mode) =>
+    specView: (s: unknown) => s,
+    newScaffoldSession: async (idea: string, _model?: string, mode?: "oneshot" | "staged") =>
       new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
                           DEFAULTS, idea, undefined, mode ?? "staged"),
   }) as unknown as ServerHost;

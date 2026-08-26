@@ -11,15 +11,17 @@ import { callRoute, callGet } from "./helpers.ts";
 const DOORWAY = {
   title: "The Fog Signal",
   premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
-  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700 }],
+  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[] }],
   writerStyle: "Plain sentences.",
-  facts: [],
+  facts: [] as string[],
   characters: [
-    { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", skills: [], restrictions: [] },
-    { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", skills: [], restrictions: ["hearing"] },
+    { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: [] },
+    { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: ["hearing"] },
   ],
-  config: {},
-  models: {},
+  config: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140, stream: true, debug: false,
+            requestTimeout: 120, attempts: 3, maxTokens: 2000,
+            thinking: { writer: "default", character: "default", summary: "default" } } as const,
+  models: { default: "none" },
 };
 
 let suggestCalls = 0;
@@ -75,7 +77,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
     newScaffoldSession: async () => { throw new Error("unused"); },
     newHandoffSession: async () => { throw new Error("unused"); },
     directEdit: () => ({ ok: false, reason: "unused" }),
-    specView: (s) => s,
+    specView: (s: unknown) => s,
     outDir: () => "",
     ...overrides,
   } as unknown as ServerHost;
@@ -114,7 +116,7 @@ describe("/story/edit (GET)", () => {
 
   it("returns warnings alongside the story", async () => {
     const h = makeHost({
-      storyForEdit: async () => ({
+      storyForEdit: async (dir: string) => ({
         ok: true as const,
         story: DOORWAY,
         warnings: ["Scene 1 has no question"],

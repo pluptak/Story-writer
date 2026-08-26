@@ -10,6 +10,7 @@ import type { IncomingMessage } from "node:http";
 import { normalizeSpec } from "../engine/story-spec.ts";
 import { NextChapterSession } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
+import type { Defaults } from "../engine/story-format.ts";
 import { LIVE, resetLive, armRun } from "../live.ts";
 import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
@@ -19,7 +20,7 @@ import type { ServerHost } from "../server/server.ts";
 import { callRoute, callGet, fakeRequest, fakeRawRequest, quiet, ScriptedAgent } from "./helpers.ts";
 
 // Constants needed by tests
-const SCAFFOLD_DEFAULTS = {
+const SCAFFOLD_DEFAULTS: Defaults = {
   models: { default: "none", architect: "none" },
   thinking: { architect: "low" },
   requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: false, debug: false,
@@ -53,9 +54,9 @@ describe("/next-chapter routes", () => {
     newScaffoldSession: async () => { throw new Error("not in this test"); },
     newHandoffSession: async (dir: string) => { opened.push(dir); return open ? open() : session([]); },
     directEdit: () => ({ ok: false, reason: "not in this test" }),
-    specView: (s) => s,
+    specView: (s: unknown) => s,
     outDir: () => "",
-  });
+  }) as unknown as ServerHost;
 
   const session = (script: unknown[]) =>
     new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))), SCAFFOLD_DEFAULTS,
@@ -446,11 +447,11 @@ describe("handleRunControl", () => {
 // -- SECTION ----
 describe("/runs/llm routes", () => {
   const host: ServerHost = {
-    selectableStory: async (d) => d.startsWith("stories/") ? d : null,
-    resolveStoryDir: (d) => "/resolved/" + d,
+    selectableStory: async (d: string) => d.startsWith("stories/") ? d : null,
+    resolveStoryDir: (d: string) => "/resolved/" + d,
     runDirs: async () => ["run-1"],
     runLlmLogs: async () => [{ file: "writer.jsonl", agent: "WRITER", role: "writer", models: ["m1"], calls: 3, promptChars: 100, responseChars: 20 }],
-    readLlmLog: async (_dir, _id, file) => file === "writer.jsonl" ? '{"ts":"t1"}\n{"ts":"t2"}' : null,
+    readLlmLog: async (_dir: string, _id: string, file: string) => file === "writer.jsonl" ? '{"ts":"t1"}\n{"ts":"t2"}' : null,
   } as unknown as ServerHost;
 
   it("is not one of its routes", async () => {

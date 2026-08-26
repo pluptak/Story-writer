@@ -58,7 +58,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
     newScaffoldSession: async () => { throw new Error("unused"); },
     newHandoffSession: async () => { throw new Error("unused"); },
     directEdit: () => ({ ok: false, reason: "unused" }),
-    specView: (s) => s,
+    specView: (s: unknown) => s,
     outDir: () => "",
     ...overrides,
   } as unknown as ServerHost;

@@ -6,14 +6,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadStory } from "../engine/story-format.ts";
-import { num } from "../engine/config-util.ts";
 import { llmFilenameFor, llmLogEntry, writeLlmRecord, Agent } from "../engine/agent.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
 import { wrapCharacter, wrapWriter, writerCast } from "../engine/scene-loop.ts";
-import { quiet, quietSync, warnings } from "./helpers.ts";
+import { quiet, warnings } from "./helpers.ts";
 
 // -- RETAINED RUNS (§F3) ----------------------------------------------------
 describe("runDirs / retainedRuns", () => {
@@ -385,11 +384,5 @@ describe("max_prose_words", () => {
     assert.equal(sc.maxProseWords, 140);
     assert.ok(sc.maxProseWords * 3 <= sc.scenes[0].length,
               "a cap that a scene fits into in one or two pieces is not a cap");
-  });
-
-  it("is read from the story, and holds the same line every other config value does", () => {
-    assert.equal(num({ "config.max_prose_words": "90" }, "config.max_prose_words", 140), 90);
-    assert.equal(warnings(() => num({ "config.max_prose_words": "0" }, "config.max_prose_words", 140)).length, 1);
-    assert.equal(num({ "config.max_prose_words": "lots" }, "config.max_prose_words", 140), 140);
   });
 });

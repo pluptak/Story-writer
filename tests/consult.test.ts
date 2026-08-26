@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 import {
   consult, normalizeConsult, normalizeReactionConsult, canonWants, parseVerdict, parseBatchVerdict, parseClarifyAnswer, missingShape,
-  reviseConsult, parseLintVerdict, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
+  reviseConsult, parseLintVerdict, CONSULT_WANTS, type ConsultEvent, type ConsultRequest, type Clarifier,
 } from "../engine/consult.ts";
 import * as P from "../prompts.ts";
 import { wrapCharacter, wrapWriter, writerCast, neglectedCast, runChapter } from "../engine/scene-loop.ts";
@@ -15,7 +15,7 @@ import { ScriptedAgent } from "./helpers.ts";
 
 // -- CONSULT PROTOCOL ------------------------------------------------------
 const REQ: ConsultRequest = { character: "TESTER", situation: "s", question: "q", wants: "" };
-const run = (script: string[], clarifications = 2, clarify = async () => "two paces") => {
+const run = (script: string[], clarifications = 2, clarify: Clarifier = async () => "two paces") => {
   const events: ConsultEvent[] = [];
   const agent = new ScriptedAgent(script);
   return consult(agent, REQ, { clarifications, clarify, log: e => events.push(e) })
@@ -23,8 +23,8 @@ const run = (script: string[], clarifications = 2, clarify = async () => "two pa
 };
 
 describe("consult", () => {
-  it("answers straight through and reports the skills used", async () => {
-    const { reply, agent } = await run([`{"speech":"Early enough.","skills_used":["speech"]}`]);
+  it("answers directly with speech in one call", async () => {
+    const { reply, agent } = await run([`{"speech":"Early enough."}`]);
     assert.equal(agent.calls, 1);
     assert.equal(reply.speech, "Early enough.");
     assert.equal(reply.forced, false);
@@ -33,7 +33,7 @@ describe("consult", () => {
   it("relays a clarifying question and feeds the answer back", async () => {
     const { reply, events } = await run([
       `{"need":"Can I reach the door handle?"}`,
-      `{"action":"I reach for it.","skills_used":["movement"]}`,
+      `{"action":"I reach for it."}`,
     ]);
     assert.deepEqual(reply.clarifications, [{ question: "Can I reach the door handle?", answer: "two paces" }]);
     assert.deepEqual(events.map(e => e.t), ["consult", "need", "clarify", "answer"]);
@@ -41,7 +41,7 @@ describe("consult", () => {
 
   it("stops asking once the clarification budget is spent and answers anyway", async () => {
     const { reply, events } = await run([
-      `{"need":"one?"}`, `{"need":"two?"}`, `{"action":"I go anyway.","skills_used":["movement"]}`,
+      `{"need":"one?"}`, `{"need":"two?"}`, `{"action":"I go anyway."}`,
     ], 1);
     assert.equal(reply.clarifications.length, 1);      // only the first was answered
     assert.equal(reply.forced, true);
@@ -49,7 +49,7 @@ describe("consult", () => {
   });
 
   it("an unanswerable clarification does not stall the consult", async () => {
-    const { reply } = await run([`{"need":"anything?"}`, `{"action":"I decide.","skills_used":["movement"]}`],
+    const { reply } = await run([`{"need":"anything?"}`, `{"action":"I decide."}`],
                                 2, async () => "");
     assert.equal(reply.clarifications[0].answer, "(no answer)");
     assert.equal(reply.action, "I decide.");
@@ -57,7 +57,7 @@ describe("consult", () => {
 
   it("an unreachable clarifier is told the author is done, not fed a fabricated answer", async () => {
     const { reply, events, agent } = await run([
-      `{"need":"one?"}`, `{"need":"two?"}`, `{"action":"I go anyway.","skills_used":["movement"]}`,
+      `{"need":"one?"}`, `{"need":"two?"}`, `{"action":"I go anyway."}`,
     ], 2, async () => null);
     assert.equal(agent.calls, 3, "no wasted retry of the dead clarifier on the second need");
     assert.equal(reply.clarifications.length, 0, "a failed clarify spends no clarification slot");
@@ -75,7 +75,7 @@ describe("consult", () => {
   });
 
   it("repairs a reply with no thought, speech or action", async () => {
-    const { reply, events } = await run([`{"skills_used":["speech"]}`, `{"speech":"Fine."}`]);
+    const { reply, events } = await run([`{}`, `{"speech":"Fine."}`]);
     assert.equal(reply.speech, "Fine.");
     assert.ok(events.some(e => e.t === "repair" && e.why.includes("nothing usable")));
   });
@@ -91,7 +91,7 @@ describe("consult", () => {
 
   it("never touches the agent's history — the caller owns what becomes memory", async () => {
     const { agent } = await run([
-      `{"need":"where?"}`, `{"action":"I move.","skills_used":["movement"]}`,
+      `{"need":"where?"}`, `{"action":"I move."}`,
     ]);
     assert.equal(agent.history.length, 0);
   });
@@ -539,7 +539,7 @@ describe("consult, on the shape it was asked for", () => {
   it("re-asks a character that thought about it instead of answering", async () => {
     const { reply, events, agent } = await ask("speech", [
       `{"thought":"I weigh it up.","speech":"","action":""}`,
-      `{"thought":"Enough.","speech":"Not tonight.","skills_used":["speech"]}`,
+      `{"thought":"Enough.","speech":"Not tonight."}`,
     ]);
     assert.equal(agent.calls, 2);
     assert.equal(reply.speech, "Not tonight.");
