@@ -4,7 +4,6 @@ import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
 import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
-import { restrictionsOf } from "./skills.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 import {
@@ -44,13 +43,15 @@ export const rosterOf = (characters: CharacterDef[], rostered: string[]): Charac
 
 // `can`/`cannot` here, not the wire's `skills`/`restrictions`: these two feed the writer prompt,
 // which prints "CANNOT:" and then argues from that word. Renaming them rewords the prompt.
-/** What the writer gets to know about each character: what they can do, and what they absolutely cannot. */
+/** What the writer gets to know about each character: what they can do, and what they absolutely
+ *  cannot — the authored negatives, not inferences from absence, so a penalty that removed a special
+ *  skill names it under CANNOT exactly as a removed sense is named. */
 export function writerCast(characters: CharacterDef[], rostered: string[]): { name: string; can: string[]; cannot: string[] }[] {
   return rosterOf(characters, rostered)
     .map(c => ({
       name: c.name,
       can: c.skills.map(s => s.source === "general" || !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
-      cannot: restrictionsOf(c.skills),
+      cannot: c.limits,
     }));
 }
 

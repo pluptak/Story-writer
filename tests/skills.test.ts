@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { splitMeaning, resolveSkills, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG, type Skill } from "../engine/skills.ts";
+import { splitMeaning, resolveSkills, removedCapabilities, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG, type Skill } from "../engine/skills.ts";
 import { quietSync, warnings } from "./helpers.ts";
 
 describe("splitMeaning", () => {
@@ -214,5 +214,32 @@ describe("resolveSkills: penalties vs special skills", () => {
       .some(x => x.name === "fire" && x.meaning === "a small flame on his fingertip"));
     assert.equal(warnings(() => resolveSkills("X", "", "telepathy")).length, 1,
       "an undeclared bespoke name in restrictions is still flagged as removing nothing");
+  });
+});
+
+// -- EXPLICIT NEGATIVES -----------------------------------------------------
+describe("removedCapabilities", () => {
+  it("names everything a penalty took, including the special skills absence would hide", () => {
+    assert.deepEqual(quietSync(() => removedCapabilities("X", "", "hands-bound")),
+                     ["touch", "lockpicking", "sleight-of-hand"]);
+  });
+
+  it("a single-skill restriction names itself, in the spelling the author wrote", () => {
+    assert.deepEqual(removedCapabilities("X", "", "Sight"), ["Sight"]);
+  });
+
+  it("a skill named in both lists is one they HAVE, so it is no cannot", () => {
+    assert.deepEqual(removedCapabilities("X", "sight :: they can see after all", "sight"), []);
+  });
+
+  it("a named penalty overrides the skills list — removal stands even when listed", () => {
+    assert.deepEqual(quietSync(() => removedCapabilities("X", "sight :: they can see after all", "deprived")),
+                     ["sight", "hearing"]);
+  });
+
+  it("an unknown restriction removes nothing, and says so once", () => {
+    const w = warnings(() => removedCapabilities("X", "", "telepathy"));
+    assert.equal(w.length, 1);
+    assert.deepEqual(removedCapabilities("X", "", ""), []);
   });
 });

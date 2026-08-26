@@ -363,6 +363,16 @@ describe("prompt construction", () => {
               "the writer must not be handed the personas");
   });
 
+  it("a removed special skill is named under CANNOT, not merely absent from can", async () => {
+    // The live gap this pins: hands-bound removes lockpicking, and only a sense used to be nameable.
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const bound = { ...sc.characters[0], limits: ["touch", "lockpicking"] };
+    const cast = writerCast([bound], []);
+    assert.deepEqual(cast[0].cannot, ["touch", "lockpicking"]);
+    const p = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle);
+    assert.match(p, /CANNOT: touch, lockpicking/);
+  });
+
   it("the writer is told that stillness is a choice and that pressure may not be resolved first", async () => {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);

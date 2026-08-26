@@ -6,7 +6,6 @@ import { join as joinPath } from "node:path";
 import { C } from "./ansi.ts";
 import { LIVE, resetLive, setWhere, publish } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { restrictionsOf } from "./engine/skills.ts";
 import { runDirs } from "./engine/preflight.ts";
 import { runChapter, type RunEvent } from "./engine/scene-loop.ts";
 import { warn } from "./engine/warnings.ts";
@@ -27,7 +26,7 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
     characters: sc.characters.map(c => ({
       name: c.name,
       skills: c.skills.filter(s => s.source !== "general").map(s => s.name),
-      restrictions: restrictionsOf(c.skills),
+      restrictions: c.limits,
     })),
   };
   resetLive();

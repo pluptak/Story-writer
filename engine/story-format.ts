@@ -4,13 +4,15 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
 import { C } from "../ansi.ts";
-import { resolveSkills, type Skill } from "./skills.ts";
+import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type CharacterDef as SchemaCharacterDef, type ThinkLevel } from "./story-schema.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
-/** A loaded character: everything the agents need, with skills already resolved to the final list. */
+/** A loaded character: everything the agents need, with skills already resolved to the final list,
+ *  and `limits` carrying what the authored restrictions took away as explicit negative facts —
+ *  general AND special skills, so a penalty-removed lockpicking is nameable, not merely absent. */
 export interface CharacterDef {
   name: string;
   model: string;
@@ -21,6 +23,7 @@ export interface CharacterDef {
   impulse: string;
   voice: string[];
   skills: Skill[];
+  limits: string[];
   maxRetries?: number;
 }
 
@@ -83,6 +86,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     if (!name) { warn("a character has no name — skipped"); continue; }
     if (seen.has(name.toLowerCase())) { warn(`Duplicate character "${name}" — skipped`); continue; }
     seen.add(name.toLowerCase());
+    const skillsRaw = c.skills.join(" | "), restrictionsRaw = c.restrictions.join(" | ");
     characters.push({
       name,
       model: c.model || defaultModel,
@@ -92,7 +96,8 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       belief: c.belief,
       impulse: c.impulse,
       voice: c.voice,
-      skills: resolveSkills(name, c.skills.join(" | "), c.restrictions.join(" | ")),
+      skills: resolveSkills(name, skillsRaw, restrictionsRaw),
+      limits: removedCapabilities(name, skillsRaw, restrictionsRaw),
       maxRetries: c.maxRetries,
     });
   }

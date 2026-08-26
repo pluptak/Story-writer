@@ -64,18 +64,11 @@ export function splitMeaning(raw: string): { text: string; meaning: string } {
   return { text: raw.slice(0, i).trim(), meaning: raw.slice(i + 2).trim() };
 }
 
-/** The general skills a resolved character ended up without — the effective restrictions, which is
- *  not always the authored list: a name in both `skills` and `restrictions` is handed back. */
-export const restrictionsOf = (skills: Skill[]): string[] =>
-  Object.keys(SKILL_CATALOG).filter(g => !skills.some(s => canonSkill(s.name) === canonSkill(g)));
-
-/** A character's final skill list: general skills minus restrictions, plus the story's own skills and
- *  overrides. Restrictions reach special skills too: a RESTRICTION_CATALOG penalty disables every
- *  skill it lists — general or bible — and a bare restriction name self-restricts that skill.
- *
- *  Precedence: a skill named directly in BOTH `skills` and `restrictions` is handed back (they HAVE
- *  it), but a skill disabled *via a catalog penalty* is removed even when `skills` names it. */
-export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string): Skill[] {
+/** The restrictions of one character, parsed once for every reader of them: each known capability a
+ *  restriction removes is keyed by canon name to its authored spelling, and `viaPenalty` says which
+ *  of those went through a named penalty rather than a bare skill name. Unknown entries warn here,
+ *  exactly as resolveSkills has always warned, and remove nothing. */
+function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: string) {
   const split = (s: string) => s.split("|").map(x => x.trim()).filter(Boolean);
   const restricted = new Map<string, string>();          // canon -> authored spelling of what removed it
   const viaPenalty = new Set<string>();                  // canon keys disabled through a named penalty
@@ -104,6 +97,18 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
   if (unresolved.length)
     warn(`   (character ${who}: restrictions "${unresolved.join('", "')}" — not a known skill or penalty, so there is nothing to remove; known penalties: ${Object.keys(RESTRICTION_CATALOG).join(", ")}; general skills: ${Object.keys(SKILL_CATALOG).join(", ")})`);
 
+  return { split, declared, restricted, viaPenalty };
+}
+
+/** A character's final skill list: general skills minus restrictions, plus the story's own skills and
+ *  overrides. Restrictions reach special skills too: a RESTRICTION_CATALOG penalty disables every
+ *  skill it lists — general or bible — and a bare restriction name self-restricts that skill.
+ *
+ *  Precedence: a skill named directly in BOTH `skills` and `restrictions` is handed back (they HAVE
+ *  it), but a skill disabled *via a catalog penalty* is removed even when `skills` names it. */
+export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string): Skill[] {
+  const { split, declared, restricted, viaPenalty } = parseRestrictions(who, skillsRaw, restrictionsRaw);
+
   const out = new Map<string, Skill>();
   for (const [name, meaning] of Object.entries(SKILL_CATALOG))
     if (!restricted.has(canonSkill(name))) out.set(canonSkill(name), { name, meaning, source: "general" });
@@ -128,4 +133,25 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
     });
   }
   return [...out.values()];
+}
+
+/**
+ * What the authored restrictions took away, as explicit negative facts: the authored spelling of
+ * every known capability removed — general AND special/bible. This is the writer-side CANNOT list,
+ * because absence-from-`can` hides exactly the special skills a penalty reached: `hands-bound`
+ * removing `lockpicking` used to leave it merely unnamed, where a removed sense was always named.
+ * The same precedence holds as in resolveSkills: a skill named directly in both lists is one they
+ * HAVE and is not a cannot, while a penalty removes even a listed skill.
+ */
+export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string): string[] {
+  const { declared, restricted, viaPenalty } = parseRestrictions(who, skillsRaw, restrictionsRaw);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const [key, spelling] of restricted) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!viaPenalty.has(key) && declared.has(key)) continue;   // named in both lists — they HAVE it
+    out.push(spelling);
+  }
+  return out;
 }

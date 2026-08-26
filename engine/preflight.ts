@@ -1,7 +1,6 @@
 /** PRE-FLIGHT — checking a story loads and its models are available, and the story-card listing. */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { restrictionsOf } from "./skills.ts";
 import { LMSTUDIO_MODELS_URL, LMSTUDIO_REST_MODELS_URL, estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
 import { ENGINE } from "./engine-state.ts";
@@ -156,7 +155,7 @@ export function runPreflight(dir: string): Promise<PreflightResult> {
             name: c.name,
             skills: c.skills.length,
             added: c.skills.filter(s => s.source !== "general").map(s => s.name),
-            restrictions: restrictionsOf(c.skills),
+            restrictions: c.limits,
           })),
           scene: sc.scenes[0],
           scenes: sc.scenes,
