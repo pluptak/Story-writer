@@ -240,8 +240,9 @@ eyebrow/headline/lede block at the top, and the prose in a card with a phase-der
 row. Two deliberate departures from `writer-mockup.html`:
 
 - **The consult blocks were not simplified to the mockup's.** The shipped rendering carries per-attempt
-  detail the mockup drops — the fresh-instance note, asked-back Q&A, skill flags, judge verdicts. The
-  mockup is a picture of one consult going well; losing the rest would make a retry unreadable.
+  detail the mockup drops — the fresh-instance note, asked-back Q&A, the flags on a forced or re-asked
+  attempt, judge verdicts. The mockup is a picture of one consult going well; losing the rest would
+  make a retry unreadable.
 - **POV is not shown.** The mockup has a `POV RIVEN` chip, but POV is a hint to the writer about whose
   choice comes first, not something a reader of the run needs. `RunMeta` carries no `pov` and does not
   need to.

@@ -11,7 +11,7 @@ import { callRoute, callGet } from "./helpers.ts";
 const DOORWAY = {
   title: "The Fog Signal",
   premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
-  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[] }],
+  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]> }],
   writerStyle: "Plain sentences.",
   facts: [] as string[],
   characters: [
@@ -103,6 +103,28 @@ describe("/story/edit (GET)", () => {
       assert.equal(r.code, 409);
       assert.match(r.json().reason, /run is in flight/);
     } finally { LIVE.running = false; resetLive(); }
+  });
+
+  it("refuses while a story is loading, not only while a run is in flight", async () => {
+    // The window between /select and the run actually starting: running is still false here.
+    resetLive(); LIVE.loading = true;
+    try {
+      const edit = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", makeHost());
+      assert.equal(edit.code, 409);
+      assert.match(edit.json().reason, /story is loading/);
+
+      const save = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: DOORWAY }, makeHost());
+      assert.equal(save.code, 409);
+      assert.match(save.body.reason, /story is loading/);
+
+      const discard = await callRoute(handleStoryEditRoutes, "/story/discard", { dir: "doorway", n: 1 }, makeHost());
+      assert.equal(discard.code, 409);
+      assert.match(discard.body.reason, /story is loading/);
+
+      const suggest = await callRoute(handleStoryEditRoutes, "/story/suggest", { spec: DOORWAY, text: "x" }, makeHost());
+      assert.equal(suggest.code, 409);
+      assert.match(suggest.body.reason, /story is loading/);
+    } finally { LIVE.loading = false; resetLive(); }
   });
 
   it("loads a valid story", async () => {

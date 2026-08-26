@@ -25,7 +25,7 @@ export function loadDeepLinkedReader() {
 }
 
 export const sessionFrom = j => ({ running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking,
-  armed: !!j.armed, paused: !!j.paused, pausing: !!j.pausing, model: j.model || null, interactive: j.interactive !== false });
+  loading: !!j.loading, armed: !!j.armed, paused: !!j.paused, pausing: !!j.pausing, model: j.model || null, interactive: j.interactive !== false });
 
 export async function tryHttp() {
   try {

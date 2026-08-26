@@ -10,7 +10,7 @@
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { C } from "./ansi.ts";
-import { LIVE, setWhere, sseWrite } from "./live.ts";
+import { LIVE, setWhere, sseWrite, runState } from "./live.ts";
 import { startServer } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { LMSTUDIO_URL, NET, lmUrlsDerivable } from "./engine/llm-client.ts";
@@ -165,6 +165,10 @@ function awaitPick(): Promise<Picked> {
   console.log(`\n${C.dim}Waiting for a story to be chosen at ${C.reset}http://localhost:${LIVE.port}/`
     + `${C.dim} — Ctrl-C to quit.${C.reset}`);
   return new Promise<Picked>(r => { LIVE.pickResolve = r; }).then(picked => {
+    // From here until the run either starts (resetLive) or fails (main's catch), story.json is
+    // about to be read — every mutating route must stand down, not just while running is true.
+    LIVE.loading = true;
+    sseWrite(runState());
     setWhere("loading", false);
     return picked;
   });
@@ -203,8 +207,15 @@ async function main() {
       sseWrite({ t: "run_error", message: msg });   // a --serve viewer is watching either way
       if (oneShot) throw e;                         // main().catch() says it, with the LM Studio hint
       console.error(`${C.red}${msg}${C.reset}`);
+      LIVE.loading = false;
       setWhere("choosing a story", false);
       LIVE.awaitingPick = false;
+    } finally {
+      // The catch closes the loading window on a run that threw, and resetLive() closes it on one
+      // that started. Neither covers a run that REFUSED before starting — an out-of-range chapter
+      // returns without throwing — and a window left open blocks every story-mutating route for the
+      // rest of the session, so close it on the way out no matter which path got here.
+      LIVE.loading = false;
     }
     next = await pickStory();
   }

@@ -154,8 +154,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         json(res, 200, {
           run: LIVE.meta, awaitingContinue: LIVE.awaitingContinue, events: liveHistory.length,
           running: LIVE.running, stopping: RUN.stopped && LIVE.running, where: LIVE.where,
-          picking: LIVE.awaitingPick, armed: LIVE.readerArmed, paused: LIVE.paused,
-          pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
+          picking: LIVE.awaitingPick, loading: LIVE.loading, armed: LIVE.readerArmed,
+          paused: LIVE.paused, pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
           interactive: LIVE.interactive,
         });
 

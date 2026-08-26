@@ -113,6 +113,113 @@ describe("/next-chapter routes", () => {
     assert.equal(r.code, 404);
     assert.match(r.body.reason, /no such handoff action/);
   });
+
+  // -- ABANDON VERSUS WORK IN FLIGHT -----------------------------------------
+  // An abandon that lands while a handoff round is still awaiting must strip that round of its
+  // right to commit: no resurrected session, no success report, no lock left behind.
+  const yieldMicrotasks = () => new Promise(r => setTimeout(r, 0));
+
+  it("abandon during start means the arriving session is discarded, not resurrected", async () => {
+    let release!: (s: NextChapterSession) => void;
+    const gated = new Promise<NextChapterSession>(r => { release = r; });
+    const h = host(() => gated);
+    try {
+      const startP = callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h);
+      await yieldMicrotasks();
+      await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
+      release(session([]));
+      const started = await startP;
+
+      assert.equal(started.code, 409);
+      assert.match(started.body.reason, /abandoned/);
+      const state = await callRoute(handleNextChapterRoutes, "/next-chapter", {}, h, "GET");
+      assert.equal(state.body.active, false);
+    } finally { LIVE.storyLock = null; }
+  });
+
+  it("abandon during accept neither claims success nor leaves the story locked", async () => {
+    let fireAccept!: (r: unknown) => void;
+    const gated = new Promise(r => { fireAccept = r; });
+    const hanging = {
+      dir: "stories/doorway", chapter: 2, edited: true, pendingAsk: null, problems: [],
+      defaults: SCAFFOLD_DEFAULTS, spec,
+      propose: async () => ({ kind: "edits" }),
+      say: async () => ({ kind: "edits" }),
+      accept: () => gated,
+    } as unknown as NextChapterSession;
+    const h = host(async () => hanging);
+    try {
+      const opened = await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
+      assert.equal(opened.body.active, true);
+      assert.match(String(LIVE.storyLock), /handoff is open/, "an open handoff holds the story");
+
+      const acceptP = callRoute(handleNextChapterRoutes, "/next-chapter/accept", {}, h);
+      await yieldMicrotasks();
+      await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
+      fireAccept({ kind: "written", chapter: 2, dir: "stories/doorway", files: [], warnings: [] });
+      const accepted = await acceptP;
+
+      assert.equal(accepted.code, 409);
+      assert.match(accepted.body.reason, /abandoned while accepting/);
+      assert.equal(LIVE.storyLock, null);
+      const state = await callRoute(handleNextChapterRoutes, "/next-chapter", {}, h, "GET");
+      assert.equal(state.body.active, false);
+    } finally { LIVE.storyLock = null; }
+  });
+
+  it("keeps the story locked through an accept that an abandon overtook", async () => {
+    // The write is what the lock exists for. Abandon may not release it out from under an accept
+    // that is still inside writeFile/preflight/restore, or an editor save lands in that window and
+    // the restore-on-failure erases it. The abandoned accept releases it on its way out instead.
+    let fireAccept!: (r: unknown) => void;
+    const gated = new Promise(r => { fireAccept = r; });
+    const hanging = {
+      dir: "stories/doorway", chapter: 2, edited: true, pendingAsk: null, problems: [],
+      defaults: SCAFFOLD_DEFAULTS, spec,
+      propose: async () => ({ kind: "edits" }),
+      say: async () => ({ kind: "edits" }),
+      accept: () => gated,
+    } as unknown as NextChapterSession;
+    const h = host(async () => hanging);
+    try {
+      await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
+      const acceptP = callRoute(handleNextChapterRoutes, "/next-chapter/accept", {}, h);
+      await yieldMicrotasks();
+      await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
+
+      // Sampled, not asserted, while the write is still gated: asserting here would leave `acceptP`
+      // pending forever on failure and hang the runner instead of reporting it.
+      const lockedMidWrite = LIVE.storyLock;
+      fireAccept({ kind: "written", chapter: 2, dir: "stories/doorway", files: [], warnings: [] });
+      await acceptP;
+
+      assert.ok(lockedMidWrite, "abandon must not unlock a story an accept is still writing");
+      assert.equal(LIVE.storyLock, null, "the abandoned accept releases the lock when its write is done");
+    } finally { LIVE.storyLock = null; }
+  });
+
+  it("an open handoff blocks the story editor's save until it ends", async () => {
+    const h = host(async () => session([{ edits: [{ field: "characters.ASTER.goal", value: "Leave." }] }]));
+    const { handleStoryEditRoutes } = await import("../server/story-edit-routes.ts");
+    const editHost = {
+      selectableStory: h.selectableStory,
+      saveStory: async () => ({ ok: true, warnings: [] }),
+    } as unknown as ServerHost;
+    try {
+      await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
+      assert.ok(LIVE.storyLock);
+
+      const save = await callRoute(handleStoryEditRoutes, "/story/save",
+        { dir: "stories/doorway", story: {} }, editHost);
+      assert.equal(save.code, 409);
+      assert.match(save.body.reason, /handoff is open/);
+
+      await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
+      const after = await callRoute(handleStoryEditRoutes, "/story/save",
+        { dir: "stories/doorway", story: {} }, editHost);
+      assert.equal(after.code, 200, "abandoning the handoff releases the lock");
+    } finally { LIVE.storyLock = null; }
+  });
 });
 
 // -- SECTION ----

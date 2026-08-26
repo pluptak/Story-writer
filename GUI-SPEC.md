@@ -65,11 +65,13 @@ state. See "Replacing the GUI" below.
 ```
 GET /run
   → { run: RunMeta | null, awaitingContinue, events: number, running, stopping, where,
-      picking, armed, paused, pausing, model, interactive }
+      picking, loading, armed, paused, pausing, model, interactive }
 ```
 The snapshot a freshly-loaded page needs before its first SSE frame arrives. `run` is the static
 `RunMeta` set once at scene start (`story`, `characters[]`, `target`, `question`); everything else
-mirrors the live `run_state` SSE frame (below) — polled here once, pushed there after.
+mirrors the live `run_state` SSE frame (below) — polled here once, pushed there after. `loading`
+is the window between a story being chosen (`picking` going false) and its run actually starting:
+every route that writes `story.json` refuses with `409` while it holds.
 
 ```
 GET /stories
@@ -179,20 +181,24 @@ POST /story/suggest { spec, text } → { ok:true, kind:"edits",
 
 `/story/edit` loads the full Zod-parsed `StoryJson` from disk for editing, plus engine-level
 warnings. Returns `{ ok: false, raw }` when the file is on disk but will not parse, so the editor
-can show the error and the raw content. Refuses with `409` while a run is in flight — editing the
-definition a live run is reading would be a race.
+can show the error and the raw content.
+
+Every mutating action here (`edit`, `save`, `discard`, `suggest`) refuses with `409` while
+something else is reading or writing `story.json`: a run in flight, the loading window after a
+pick (`loading: true`), or an open handoff holding the file it will rewrite on accept. The refusal
+reason names which — editing the definition a live run is reading would be a race.
 
 `/story/check` validates a modified draft in memory against the Zod schema and engine-level checks
 (empty premise, no characters, scenes without questions). Never writes.
 
 `/story/save` validates, atomically writes via `.tmp` rename, then re-loads to confirm. Refuses
-with `409` while a run is in flight.
+with `409` under the same story-write lock as `/story/edit`.
 
 `/story/discard` drops the last authored scene from `story.json` — the undo for an
 accepted-but-never-written chapter the handoff added. Refuses any scene but the last, the sole
-scene (`scenes` is `min(1)`), a chapter already written (its prose would be orphaned), and a run in
-flight. Writes through the same atomic path as `/story/save`. The story page offers it only on the
-trailing unwritten scene's row.
+scene (`scenes` is `min(1)`), a chapter already written (its prose would be orphaned), and anything
+holding the story-write lock. Writes through the same atomic path as `/story/save`. The story page
+offers it only on the trailing unwritten scene's row.
 
 `/story/suggest` is a stateless architect call: given the current story spec and the author's
 instruction in `text`, creates a fresh architect agent, sends the change prompt, and returns the
@@ -296,6 +302,13 @@ outcome leaves the interview open for another `/scaffold/say`. Every scaffold ro
 a `{ t: "scaffold", state }` SSE frame (`state` is exactly the `GET /scaffold` body), so this is really
 one more small state machine layered on the same "poll once, then follow SSE" pattern as the run itself.
 
+**Abandon is stronger than any round in flight.** It drops the session immediately and always answers
+`{ ok: true }`; the abandoned round keeps its busy lock until its own work finishes, but finds the
+session gone when it returns — it commits nothing, publishes nothing, and its own caller gets
+`409 the interview was abandoned`. The same holds for an `accept` overtaken by an abandon: the write
+may already have created the story folder (the refusal says so), but the pick stays parked and no run
+starts.
+
 ## The handoff (preparing the next chapter)
 
 ```
@@ -314,11 +327,18 @@ POST /next-chapter/abandon                  → drops the session unconditionall
 
 The handoff re-authors the cast *between* runs and writes `story.json` — it never starts a run and
 never resolves the story pick, so unlike `/scaffold` it does not care whether `picking` is true. It
-does care that `running` is false: every action but `abandon` is `409 a run is in flight`, because the
-run in flight is reading the file the handoff would rewrite. `handoffBusy` is the same
-one-round-at-a-time lock as the scaffold's (`409` for a second `POST` mid-round), and rounds share
-`ScaffoldRound` minus `proposal` — the handoff only ever returns edits, a question, nothing, or a
-failure.
+does care that nothing else holds `story.json`: from opening (`start`) until it ends (accept,
+abandon, or failure) the handoff holds the same story-write lock the editor's routes refuse under,
+and every action but `abandon` is `409` with that lock's reason while a run is in flight or a picked
+story is still loading — the thing in flight is reading the file the handoff would rewrite.
+`handoffBusy` is the same one-round-at-a-time lock as the scaffold's (`409` for a second `POST`
+mid-round), and rounds share `ScaffoldRound` minus `proposal` — the handoff only ever returns edits,
+a question, nothing, or a failure.
+
+Abandon during a round behaves exactly as the scaffold's: the session drops at once and the round,
+on returning, commits and publishes nothing — its caller gets `409 the handoff was abandoned`, and
+an accept overtaken mid-write also warns that `story.json` may have been rewritten while releasing
+the editor's lock either way.
 
 An edits round has four separate result lists: `applied` changes, `ignored` edits that were not
 applied, `flags` advisory continuity observations, and `problems` on the surrounding state. `flags`
@@ -352,7 +372,7 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` ([live.ts:37](live.ts#
 { t:"agent_stats"; who; model; durationMs; promptTokens; completionTokens }
                                           — one completed model call; token fields are null when unavailable
 { t:"continue_prompt"; steps; budget; suggested }  — step budget spent, needs a /continue
-{ t:"run_state"; running; stopping; where; picking; armed; paused; pausing; model; awaitingContinue; interactive }
+{ t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; interactive }
 { t:"run_reset" }                        — a new run is about to start; discard everything and refetch
 { t:"run_error"; message }               — a story failed to load or run; the picker is coming back
 { t:"scaffold"; state }                  — mirrors GET /scaffold

@@ -37,8 +37,8 @@ export interface RunMeta {
 }
 
 export type RunStateFrame =
-  { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; armed: boolean;
-    paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
+  { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; loading: boolean;
+    armed: boolean; paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
     interactive: boolean };
 
 export type LiveFrame =
@@ -77,6 +77,8 @@ export function publish(ev: RunEvent): { seq: number } & RunEvent {
 // -- THE SESSION -----------------------------------------------------------
 export const LIVE = {
   running: false,
+  loading: false,             // a story was picked and is being read; story.json must not change
+  storyLock: null as string | null,   // an open handoff holds the story it will rewrite
   where: "idle",
   meta: null as RunMeta | null,
   port: 8080,                 // the port actually bound, which is what any message should name
@@ -104,11 +106,24 @@ export const LIVE = {
 export function runState(): RunStateFrame {
   return {
     t: "run_state", running: LIVE.running, stopping: RUN.stopped && LIVE.running,
-    where: LIVE.where, picking: LIVE.awaitingPick, armed: LIVE.readerArmed,
+    where: LIVE.where, picking: LIVE.awaitingPick, loading: LIVE.loading,
+    armed: LIVE.readerArmed,
     paused: LIVE.paused, pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
     awaitingContinue: !!LIVE.awaitingContinue,
     interactive: LIVE.interactive,
   };
+}
+
+/** Why story.json must not be mutated right now, or null when it may be. One shared answer for
+ *  every route that would write a story: a run reading it, the window after a pick where the
+ *  chosen story is still being read and its run has not started yet, or an open handoff holding a
+ *  snapshot of the file it will write back on accept. Pass `ownLock` to see past your own lock —
+ *  the handoff's accept must go through even though the handoff holds the story. */
+export function storyWriteBlocked(ownLock: string | null = null): string | null {
+  if (LIVE.running) return "a run is in flight";
+  if (LIVE.loading) return "a story is loading";
+  if (LIVE.storyLock && LIVE.storyLock !== ownLock) return LIVE.storyLock;
+  return null;
 }
 
 /** Update where the session is and broadcast it; `running` says a run is in progress there. */
@@ -121,6 +136,7 @@ export function setWhere(where: string, running = LIVE.running) {
 export function resetLive() {
   liveHistory.length = 0;
   liveSeq = 0;
+  LIVE.loading = false;
   LIVE.awaitingContinue = null; LIVE.continueResolve = null;
   LIVE.readerArmed = false; LIVE.readerResolve = null;
   LIVE.pausing = false; LIVE.paused = false; LIVE.pauseResolve = null;

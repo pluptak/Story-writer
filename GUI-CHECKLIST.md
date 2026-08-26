@@ -204,6 +204,8 @@ Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and clic
 - [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
 - [ ] **Architect suggestion.** Expand "Ask the architect". Type a change request, click **suggest**. The button shows "thinking…" then returns results showing applied fields and any problems, and applied edits land in the form as unsaved changes (Save enabled). *(Requires LM Studio with the architect model loaded.)*
 - [ ] **Run-in-flight guard.** Start a run. While it runs, navigate to the editor. Expect: the editor refuses to load with "cannot edit while a run is in flight". Alternately, open a story, start its run, then in another tab open the editor — verify the 409 response.
+- [ ] **Loading-window guard.** Pick a story and immediately open the editor in another tab, before the scene starts. Expect a "cannot … while a story is loading" 409, and normal behaviour again once the run is on screen.
+- [ ] **Handoff lock.** Open the handoff panel for a story and leave it open. In another tab, try to save from the editor — expect "cannot … while a chapter handoff is open …". Abandon the handoff; the save goes through afterwards.
 - [ ] **Malformed story.** Directly open a story directory that has an unparseable `story.json` (modify one manually to be invalid JSON). The editor loads showing the error and the raw content (or `{ ok: false, error, raw }`).
 - [ ] **No concurrent edit loss.** Open the editor in two tabs. Edit in tab A, save. Tab B still shows stale data. Reload tab B — it gets the saved version.
 

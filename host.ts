@@ -4,7 +4,7 @@
  *  engine/ — routes receive behaviour through this object. */
 import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { LIVE } from "./live.ts";
+import { LIVE, storyWriteBlocked } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { splitMeaning } from "./engine/skills.ts";
 import { NET } from "./engine/llm-client.ts";
@@ -159,8 +159,9 @@ export const HOST: ServerHost = {
     if (!parsed.premise.trim()) return { ok: false, reason: "Premise is empty — there is nothing to write." };
     if (!parsed.characters.length) return { ok: false, reason: "No characters defined — the writer would have nobody to consult." };
 
-    // Guard: run must not be in flight (already checked by route, but double-check)
-    if (LIVE.running) return { ok: false, reason: "a run is in flight", status: 409 };
+    // Guard: nothing else may be reading or writing this story (route already checked; double-check)
+    const blocked = storyWriteBlocked();
+    if (blocked) return { ok: false, reason: blocked, status: 409 };
 
     const w = await persistStoryJson(dir, parsed);
     if (!w.ok) return { ok: false, reason: w.reason };
@@ -172,7 +173,8 @@ export const HOST: ServerHost = {
     return { ok: true, warnings };
   },
   discardScene: async (dir, n) => {
-    if (LIVE.running) return { ok: false, reason: "a run is in flight", status: 409 };
+    const blocked = storyWriteBlocked();
+    if (blocked) return { ok: false, reason: blocked, status: 409 };
     const loaded = await loadStoryJson(dir);
     if (!loaded.ok) return { ok: false, reason: `story.json does not load: ${loaded.error}` };
     const parsed = loaded.story;

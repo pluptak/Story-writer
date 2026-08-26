@@ -21,7 +21,7 @@ export const READER = {                  // the story reader view: accepted pros
 export const APP = {
   view: "live",               // which page is showing: shelf | story | live | read | readstory | compare | handoff | edit | scaffold
   live: false,                 // attached to a running engine, as opposed to a static/file:// load
-  session: { running:false, stopping:false, where:"", picking:false, armed:false,
+  session: { running:false, stopping:false, where:"", picking:false, loading:false, armed:false,
              paused:false, pausing:false, model:null, interactive:true },  // the process, not the story
   composing: null,             // ephemeral: {who, secs, chars} -- live only
   armed: 0,                    // timer id: the stop button is waiting for its confirming second click
@@ -124,10 +124,11 @@ export const APP = {
 /** A story's display name off the shelf list, falling back to its folder name. */
 export const storyName = dir => (APP.stories || []).find(s => s.dir === dir)?.name || basename(dir || "");
 
-/** Why a control that touches story.json or starts a run is disabled while a scene is being
- *  written — the story and handoff pages both explain themselves this way rather than
- *  round-tripping to find out. Empty string when nothing is running. */
-export const runningReason = () => APP.session.running ? "a scene is being written — stop it first" : "";
+/** Why a control that touches story.json or starts a run is disabled while the session is busy —
+ *  the story and handoff pages both explain themselves this way rather than round-tripping to find
+ *  out. Empty string when nothing is in the way (the loading window after a pick counts). */
+export const runningReason = () => APP.session.running ? "a scene is being written — stop it first"
+  : APP.session.loading ? "a story is loading — try again in a moment" : "";
 
 /** The server keeps one handoff session at a time, but the handoff PAGE is about one story
  *  (`handoffDir`, from the URL). A session left open on story A must not render under story B when

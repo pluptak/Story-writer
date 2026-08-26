@@ -1,5 +1,5 @@
 /** The live session state the loop and the server share. */
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { loadStory } from "../engine/story-format.ts";
@@ -10,7 +10,7 @@ import { Agent, setFitWarning } from "../engine/agent.ts";
 import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
-import { LIVE, runState, resetLive, RUN, stopRun, armRun, StoppedError } from "../live.ts";
+import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
 import { quiet, ScriptedAgent, callRoute } from "./helpers.ts";
@@ -69,6 +69,37 @@ describe("LIVE.interactive", () => {
     LIVE.interactive = true;
     resetLive();
     assert.equal(LIVE.interactive, true);
+  });
+});
+
+// -- THE STORY-MUTATION GUARD -----------------------------------------------
+describe("storyWriteBlocked", () => {
+  afterEach(() => resetLive());
+
+  it("runs first, then the loading window, then nothing", () => {
+    assert.equal(storyWriteBlocked(), null);
+    LIVE.loading = true;
+    assert.equal(storyWriteBlocked(), "a story is loading");
+    LIVE.running = true;
+    assert.equal(storyWriteBlocked(), "a run is in flight", "a live run outranks the loading window");
+    LIVE.loading = false;
+    assert.equal(storyWriteBlocked(), "a run is in flight");
+  });
+
+  it("rides runState() as `loading`, so SSE clients see the window too", () => {
+    resetLive();
+    assert.equal(runState().loading, false);
+    LIVE.loading = true;
+    assert.equal(runState().loading, true);
+    assert.equal(runState().picking, false);
+  });
+
+  it("resetLive() clears the loading window with the rest of the run's state", () => {
+    LIVE.running = false;
+    LIVE.loading = true;
+    resetLive();
+    assert.equal(LIVE.loading, false);
+    assert.equal(storyWriteBlocked(), null);
   });
 });
 
