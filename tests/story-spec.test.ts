@@ -9,7 +9,8 @@ import { join } from "node:path";
 
 import { loadStory, ROOT } from "../engine/story-format.ts";
 import { slugify } from "../engine/config-util.ts";
-import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, type SceneDef } from "../engine/story-spec.ts";
+import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, specView, type SceneDef } from "../engine/story-spec.ts";
+import { StoryJson } from "../engine/story-schema.ts";
 import { quiet, quietSync } from "./helpers.ts";
 
 // -- STORY SPEC (scaffolding, SPEC-S §3) -----------------------------------
@@ -518,6 +519,55 @@ describe("applyEdits", () => {
         if (!r.ok) assert.match(r.reason, /100/);
       }
     });
+  });
+});
+
+describe("specView against the story schema", () => {
+  // The new-story editor validates its draft with StoryJson, which is strict. specView carries two
+  // shapes the schema does not accept — `scene` as an alias for scenes[0], and skills split into
+  // {text, meaning} — and the editor's scaffoldStory() is what reconciles them. When it did not drop
+  // `scene`, every check failed with `Unrecognized key: "scene"` and the write button went dead on
+  // the first edit with nothing on screen to say why. This pins the contract that fix relies on.
+  const spec = normalizeSpec({
+    title: "Doorway", premise: "A corridor at 3am.", writer_style: "Plain.",
+    scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700,
+             roster: ["RIVEN"] },
+    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.", goal: "Get in.",
+                   belief: "Doors open.", impulse: "when stopped → talk", voice: ["Let me in."],
+                   skills: ["lockpicking"], restrictions: ["sight"] }],
+  }).spec;
+
+  /** story-edit.js scaffoldStory(), which is the only reconciliation between the two shapes. */
+  const asEditorDraft = () => {
+    const d: any = JSON.parse(JSON.stringify(specView(spec)));
+    delete d.scene;
+    d.characters = d.characters.map((c: any) => ({
+      ...c,
+      skills: (c.skills || []).map((s: any) =>
+        typeof s === "string" ? s : [s.text, s.meaning].filter(Boolean).join(" :: ")),
+    }));
+    return d;
+  };
+
+  it("carries a `scene` alias the schema rejects, so the editor has to drop it", () => {
+    const raw = StoryJson.safeParse(JSON.parse(JSON.stringify(specView(spec))));
+    assert.equal(raw.success, false, "specView is a view, not a story.json");
+    assert.match(raw.error!.issues.map(i => i.message).join(" "), /scene/);
+  });
+
+  it("validates once the editor has reconciled it", () => {
+    const r = StoryJson.safeParse(asEditorDraft());
+    assert.equal(r.success, true,
+                 `the new-story draft must validate as loaded: ${JSON.stringify(r.error?.issues)}`);
+  });
+
+  it("still validates after the edits an author actually makes", () => {
+    const d = asEditorDraft();
+    d.characters[0].restrictions = [];             // the edit from the bug report
+    d.characters[0].skills = [];
+    d.scenes[0].roster = [];
+    assert.equal(StoryJson.safeParse(d).success, true,
+                 "clearing a list field must not invalidate the draft");
   });
 });
 

@@ -76,6 +76,11 @@ function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
 function scaffoldStory(spec) {
   const story = clone(spec);
+  // specView carries `scene` as a convenience alias for scenes[0] — the interview's proposal card
+  // reads it. StoryJson is strict, so leaving it on the draft makes every check fail with
+  // `Unrecognized key: "scene"`, which disables the write button on the first edit. The editor works
+  // from `scenes` throughout, so the alias is dropped here rather than removed from specView.
+  delete story.scene;
   story.characters = (story.characters || []).map(c => ({
     ...c,
     skills: (c.skills || []).map(s => typeof s === "string" ? s : [s.text, s.meaning].filter(Boolean).join(" :: ")),
@@ -123,6 +128,20 @@ function issuesHtml(path) {
   const mine = APP.editIssues.filter(i => i.path === path || i.path.startsWith(path + "."));
   if (!mine.length) return "";
   return mine.map(i => `<div class="prob">${esc(i.message)}</div>`).join("");
+}
+
+/** Issues that no field claims. `issuesHtml` renders an issue beside the field its path names, so a
+ *  whole-story issue (a bad top-level key, say) would otherwise disable the button and explain
+ *  nothing. Anything not rendered inline is rendered here, next to the button it is disabling. */
+function orphanIssuesHtml() {
+  // The roots the form renders a field (and therefore an inline issue) for. Anything else — a
+  // whole-story issue, or a key the form does not show — has no home and lands under the button.
+  const FORM_ROOTS = ["title", "premise", "writerStyle", "scenes", "characters", "config", "models"];
+  const orphans = (APP.editIssues || []).filter(i =>
+    !FORM_ROOTS.includes(String(i.path || "").split(".")[0]));
+  if (!orphans.length) return "";
+  return `<div class="prob mt-xs">${orphans.map(i =>
+    esc(i.path && i.path !== "story" ? `${i.path}: ${i.message}` : i.message)).join("<br>")}</div>`;
 }
 
 function envWarningsHtml() {
@@ -262,7 +281,7 @@ function editToolbarHtml() {
   const action = APP.editNew
     ? `<button class="btn primary" id="edit-scaffold-accept"${(!APP.editIssues.length && !APP.editSaving) ? "" : " disabled"}>confirm and write</button>`
     : `<button class="btn primary" id="edit-save"${canSave ? "" : " disabled"}${saving ? ` title="${saving}"` : ""}>${APP.editSaving ? "saving…" : "save"}</button>`;
-  return `<div class="btns mt-md">
+  return `${orphanIssuesHtml()}<div class="btns mt-md">
     ${action}
     <button class="btn" id="edit-revert"${APP.editDirty ? "" : " disabled"}>revert</button>
     <span class="spacer"></span>

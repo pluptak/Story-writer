@@ -447,7 +447,11 @@ a *new* story folder — so it can go anywhere in the pass.
 - [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no checklist**,
       sidebar walk *one-shot*.
 - [ ] **Edit in full.** The sidebar's **edit in full →** opens the schema editor on the same draft;
-      a change there is reflected on the proposal card when you come **back to interview**.
+      a change there is reflected on the proposal card when you come **back to interview**. Change a
+      field there — clear a character's restrictions, say — and **confirm and write** stays enabled:
+      the draft the editor validates is a story, not a spec view, and the first edit is what triggers
+      the first check. If something ever does invalidate it, the reason renders above the button
+      rather than leaving it dead with nothing said.
 - [ ] **Accept.** The sidebar's **accept & choose folder** opens the folder step in the main column
       (**write story.json →**). On success the run starts and the page follows to the live screen.
       Accepting over unsent text or a `problems` flag takes a confirming second click.
