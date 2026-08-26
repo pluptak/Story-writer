@@ -202,6 +202,22 @@ one extra LLM call per multi-character fork if it were ever wanted.
   piece carrying both an unmatched quotation and a restricted-sense violation reports only the
   quotation. A drafted piece contradicting an established fact is the same shape of problem and is
   filed above under small-model coherence limits.
+- **The quote lint attributes a speaker by looking backwards only.** `attribute()` scans the 120
+  characters *before* the quote and takes the nearest cast name, so `Riven reaches for the door.
+  "No," Merritt says` is reported as `(near RIVEN)`. Post-dialogue attribution — `"..." NAME says` —
+  is the ordinary form in the prose this engine asks for, so the hint is probably wrong more often
+  than right. Nothing about the flag itself depends on it: whether a quotation matched the granted
+  ledger is decided before any name is looked up, and the only live reader of the attribution is the
+  `(near X)` clause in the user-visible `why`. Candidate: check for a trailing attribution first and
+  fall back to the preceding-name guess, with a test for both orders. Worth settling what "nearest"
+  should mean before writing it — a quote between two named characters has two defensible answers.
+- **`narration_quote_flag` reaches no reader.** The event is emitted in `writeScene` and typed in
+  `RunEvent`, but the viewer's event switch handles only `narration_flag`, so its `quote` and
+  `character` fields are dropped on arrival. Nothing is lost to the author today, because
+  `narration_flag` follows immediately carrying the same `why` — which is exactly why this went
+  unnoticed. Either the viewer grows a case for it (a `GUI-CHECKLIST.md` pass, and the grouping
+  question of whether it renders beside or instead of the flag that follows), or the event is
+  deleted and its two fields fold into `narration_flag`. Deciding which is the whole of the work.
 - **A reaction fan-out does not differentiate.** Given one situation, several characters return the
   same beat: in a live four-hander two of them answered a post-crisis fan-out with near-identical
   shaking hands and a long exhale, and one then repeated his own line almost verbatim in a later
