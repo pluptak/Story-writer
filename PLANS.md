@@ -201,15 +201,52 @@ one extra LLM call per multi-character fork if it were ever wanted.
   same reason: neither a deed nor a situation has a closed set to match against, which is exactly what
   made the other two tractable. A drafted piece contradicting an established fact is the same shape of
   problem and is filed above under small-model coherence limits.
+- **The writer appears to treat short technical dialogue as environmental texture.** That is the
+  narrow form of the hypothesis, and it is the one the evidence supports: the writer may generate a
+  line like *"The harmonic is shifting"*, *"Status update? The loop is screaming on my monitor"* or
+  *"Two minutes"* without treating it as an event that required consulting anybody — the same way it
+  generates a hiss or a vibration. Two of the five cases fired against a **completely empty ledger**,
+  in the scene's opening beats before anyone had been consulted about anything, which is the
+  strongest evidence for the texture reading: there was nobody who could have said them. None of
+  these was punctuation around a granted line — the best similarity between any flagged quote and any
+  granted speech, searching forward as well as backward in case the writer wrote a line before asking
+  for it, was 0.28 against the lint's 0.8 threshold.
+
+  **Count defective pieces, not flags.** Seven `narration_quote_flag` events across two cooling-loop
+  chapters are five distinct defective pieces, because a redraft that fabricates again flags a second
+  time. Of the five, three were corrected by the one redraft and two were not: the writer
+  re-fabricated on its only retry, and `retried: true` correlates exactly with reaching the page.
+  Both survivors are in the durable record (`chapters/1.md`, `chapters/2.md`), and chapter 2's is
+  both of that run's flagged quotes merged into one sentence rather than removed.
+
+  Rates, with the caveat that both denominators are small and from one story and one model: five of
+  roughly 35 drafted pieces carried an ungranted quotation (~14%), and **two of the 13 quoted lines
+  in the two accepted chapters were never granted by anybody** (~15%). The second is the number that
+  answers the practical question; "seven lint flags" does not.
+
+  What not to do first: raise `NARRATION_LINT_RETRIES`. The attribution entry below is implicated in
+  both failures, so the order is fix the speaker hint, re-measure, and only then ask whether the
+  budget is short. If it still is, a single retry carrying an explicit prohibition on adding any
+  quotation is the cheaper thing to test, and a second retry granted only when the same mechanical
+  invariant fails twice spends generation on demonstrated repeat offenders rather than on everyone.
 - **The quote lint attributes a speaker by looking backwards only.** `attribute()` scans the 120
   characters *before* the quote and takes the nearest cast name, so `Riven reaches for the door.
   "No," Merritt says` is reported as `(near RIVEN)`. Post-dialogue attribution — `"..." NAME says` —
   is the ordinary form in the prose this engine asks for, so the hint is probably wrong more often
   than right. Nothing about the flag itself depends on it: whether a quotation matched the granted
   ledger is decided before any name is looked up, and the only live reader of the attribution is the
-  `(near X)` clause in the user-visible `why`. Candidate: check for a trailing attribution first and
+  `(near X)` clause in the user-visible `why` — which is also the text the writer is handed for its
+  one redraft. Candidate: check for a trailing attribution first and
   fall back to the preceding-name guess, with a test for both orders. Worth settling what "nearest"
   should mean before writing it — a quote between two named characters has two defensible answers.
+
+  Evidence since, recorded as evidence and not as a conclusion: in both cooling-loop cases where a
+  redraft failed to remove a fabricated quotation, the hint the writer was given was wrong (`near
+  HALE`) or absent (`unknown`), and both surviving lines were in fact Nkem's, written in the ordinary
+  post-quote form `"...," Nkem says` that a backwards scan cannot see. That is consistent with a
+  wrong hint impairing the redraft. It does not establish it: n = 2, one story, one model. It does
+  make this worth fixing before any further quote-lint measurement, so that the next set of retry
+  failures is measured against a hint that is at least trying to be right.
 - **`narration_quote_flag` reaches no reader.** The event is emitted in `writeScene` and typed in
   `RunEvent`, but the viewer's event switch handles only `narration_flag`, so its `quote` and
   `character` fields are dropped on arrival. Nothing is lost to the author today, because
