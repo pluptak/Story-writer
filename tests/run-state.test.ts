@@ -390,10 +390,9 @@ describe("the narration lint", () => {
         { prose: flaggedProse, scene_done: false },
         { prose: cleanProse, scene_done: true },
       ],
-      lintReplies: [
-        { ok: false, why: "MERRITT was given a line — THE ONE RULE — nobody asked them." },
-        { ok: true },
-      ],
+      // An invented line is a quotation against an empty ledger, so the mechanical check catches it
+      // and spends no model call. The one scripted reply is the one the redraft draws.
+      lintReplies: [{ ok: true }],
     });
 
     const origFetch = globalThis.fetch;
@@ -417,13 +416,19 @@ describe("the narration lint", () => {
       const flags = events.filter(e => e.t === "narration_flag") as any[];
       assert.equal(flags.length, 1, "flagged once, then passed clean");
       assert.equal(flags[0].retried, false);
-      assert.match(flags[0].why, /MERRITT/);
+      assert.match(flags[0].why, /unmatched quotation: "No,"/);
+
+      // The two checks are exclusive: a piece carrying an unmatched quotation is flagged mechanically
+      // and never reaches the LLM lint, so the flagged draft costs a writer call and no lint call.
+      const quoteFlags = events.filter(e => e.t === "narration_quote_flag") as any[];
+      assert.equal(quoteFlags.length, 1);
+      assert.equal(quoteFlags[0].quote, "No,");
 
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1, "the flagged draft never got its own draft event");
       assert.equal(drafts[0].prose, cleanProse);
 
-      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 });
+      assert.deepEqual(calls(), { writerCall: 2, lintCall: 1 });
     } finally {
       globalThis.fetch = origFetch;
       ENGINE.stream = origStream;
@@ -444,10 +449,9 @@ describe("the narration lint", () => {
         { prose: firstProse, scene_done: false },
         { prose: redraftProse, scene_done: true },
       ],
-      lintReplies: [
-        { ok: false, why: "MERRITT was given a line nobody asked for." },
-        { ok: false, why: "MERRITT was given a line nobody asked for, again." },
-      ],
+      // The first draft's quotation is caught mechanically; the redraft carries no quotation, so the
+      // LLM lint gets its one turn on it — and flags it too.
+      lintReplies: [{ ok: false, why: "MERRITT was given a line nobody asked for, again." }],
     });
 
     const origFetch = globalThis.fetch;
@@ -471,13 +475,16 @@ describe("the narration lint", () => {
       const flags = events.filter(e => e.t === "narration_flag") as any[];
       assert.equal(flags.length, 2);
       assert.equal(flags[0].retried, false);
+      assert.match(flags[0].why, /unmatched quotation/, "the first flag came from the mechanical check");
       assert.equal(flags[1].retried, true, "the second flag is reported as the spent retry");
+      assert.match(flags[1].why, /again/, "the second came from the LLM lint");
 
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1);
       assert.equal(drafts[0].prose, redraftProse);
 
-      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 }, "one redraft only, however the lint calls it");
+      assert.deepEqual(calls(), { writerCall: 2, lintCall: 1 },
+                       "one redraft only, whichever of the two checks does the flagging");
     } finally {
       globalThis.fetch = origFetch;
       ENGINE.stream = origStream;
