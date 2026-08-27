@@ -26,7 +26,10 @@ Their evidence is four doorway runs of 2026-08-27 — `14-54-12-677Z`, `16-23-17
 `19-33-16-122Z` and `19-47-04-293Z`. The first three ran `google/gemma-4-e4b` throughout; the fourth
 put the writer, judge, narration lint and clarifier on `gemma-4-12b-it-qat-uncensored-heretic` and
 left the characters on `e4b`. **Retained-run rotation has since removed `14-54-12-677Z` from disk**,
-so figures cited from it are not re-derivable; everything attributed to the other three is.
+so figures cited from it are not re-derivable; everything attributed to the other three is. Two
+further `e4b` runs, `21-35-36-919Z` (control) and `22-23-22-884Z` (the first under the shipped
+sense-lint, consult gate and person clause), are item 2's and item 4's evidence; both are preserved
+under `stories/doorway/experiments/` with the runs they are measured against.
 
 That model split is why the order is what it is. Raising the author-side model fixed or nearly fixed
 items 3, 4 and 5 on its own — the fourth run finished in 13 steps with no degenerate questions, no
@@ -49,28 +52,45 @@ be true of the room and the writer invented an electrical fire that dissolved th
 more characters both hold it" the test for story level, and verify has a bullet for the omission,
 which it does not have at all today. This is a reframe, not a new field.
 
-### 2. The writer supplies both answers, and that suppresses clarification
+### 2. The consult gate holds and the writer starves
 
-A consult that puts a fork to a character usually arrives with both branches already written by the
-writer — "Do you concede and sign for A, or do you double down?", "Do you side with Nkem (wait for
-engineers) or with Hale and Marsh (pull the lever now)?". Across three runs of one story that was
-every consult; a fifth run of a different story put it at seven of the nine fork consults, the other
-two genuinely open ("What do you say to the group about the state of the hardware?"). So it is a
-strong tendency in fork consults, not a universal, and reaction fan-outs are open by their nature and
-do not belong in the count at all. Clarification tracks it: one request in 37 consults across four
-runs, one in 11 in the fifth. A situation carrying both options and all the context leaves a
-character nothing to ask for.
+The gate shipped and works: `normalizeConsult` refuses a question carrying both branches of its fork
+(word-bounded "or", the rule the evidence got — 113 of 133 consult questions across the retained
+control runs were pre-written menus), and the refusal flows to the writer, the judge's re-ask and
+the reaction fan-out alike. The first run under it answered the measurement with churn. Eight of the
+scene's 24 steps were spent on refused consults — five carries-answers refusals, three degenerate
+ones, two situation-lint refusals — against three consults sent, none of them good.
 
-The retry path pushes the same way, which is the part worth fixing first because it is mechanical: a
-question the judge sent back was re-asked with *more* of the answer in it, not less — NKEM's "will
-you list yourself as the primary person who authorized the shutdown?" came back as "…or do you
-attribute it to the collective team?". Whatever the redraft instruction says, it currently reads as
-"make the question easier to answer".
+The writer does not learn the shape the gates want; it oscillates between the two refusal classes
+and then launders the "or" into vagueness: "Do you speak, or remain silent?" was refused, and the
+question eventually sent was "What do you choose regarding the lock?" — names a subject, carries no
+options, names no stake, slips past both gates. The scene ended `done: false` at the step cap with
+`answer_unwritten` — an accepted answer that never reached the chapter — and no clarification was
+ever requested, so the suppression this gate was built to relieve was not relieved; it was priced
+in steps.
 
-**Done when** `normalizeConsult` refuses a question carrying its own answers, the way
-`DEGENERATE_QUESTIONS` already refuses one with no fork in it, the writer prompt's instruction on
-question shape is reworked to match, and the re-ask path is checked to be sure it does not undo both.
-Those are halves of one change.
+Candidate passes, cheapest first:
+
+- **`NAME_THE_FORK` needs a worked example of the question that passes both gates** — open, and
+  naming its fork. The surviving example ("Do you say the name, knowing what it admits?") did not
+  transfer: the writer produced "What do you choose regarding the lock?" instead. What transfers in
+  live evidence is the thing the writer already wrote once on its own: "What do you say to the
+  group about the state of the hardware?"
+- **The two refusal whys should name each other.** The degenerate why and the carries-answers why
+  each describe only their own failure, so a writer corrected off one shape walks straight into the
+  other. One sentence in each pointing at the target shape ("open, and naming what hangs on the
+  choice — not a menu, not a shrug") is the whole fix.
+- **The degenerate shape list should know the vagueness dodge.** "What do you choose regarding
+  X?" is "What do you do?" wearing a subject. Adding the choose-regarding form to
+  `DEGENERATE_QUESTIONS` closes the gap the first pass opened — carefully: it must not swallow
+  genuine open questions that name a stake.
+- **Whether a refused consult should cost a step at all.** Eight steps of a 24-step scene is the
+  observed price of teaching a small model a shape it does not have. If the instruction passes fix
+  the churn, this stays unanswered; if they do not, it is the next question.
+
+**Done when** an e4b run sends consults that are both open and forked, refusal churn is a small
+fraction of steps, the scene terminates `done: true`, and clarification is asked for when a
+character lacks a fact.
 
 ### 3. An accepted piece can repeat what is already on the page
 
@@ -102,31 +122,18 @@ Two decisions the plan has to make:
 append, the threshold is chosen with the doorway 386-char case and quote-lint's 0.8 as the two
 reference points, and the event decision is made rather than deferred.
 
-### 4. The writer is told its POV character but never its grammatical person
+### 4. Was the person clause the thing that cleaned the page, or was the run clean anyway?
 
-The doorway scene is `pov: RIVEN`. Its second half drifts into second person, and the referent of
-"you" alternates with whoever was consulted last: "You remain seated on the crate as Riven moves
-away" (Merritt) sits two pieces from "You maintain your pace, letting the corridor shrink behind you"
-(Riven). The mechanism is the writer echoing its own consult situations, which it writes in second
-person — the same dominant-pattern failure already recorded at the top of `prompts/judge.ts`.
+The clause shipped (`prompts/writer.ts`, the POV line): person is the house style's to set, never
+the consult rhythm's. The first `e4b` run under it (`22-23-22-884Z`) had a clean page and clean
+drafts — but so did the control immediately before it (`21-35-36-919Z`, same model, no clause:
+0 `you` across 31 drafts), while the controls before that drifted pervasively (7 and 3 per page in
+`16-23` and `19-33`). One clean run next to one clean control credits nothing; the clause is
+unproven, not disproven.
 
-`writerSystem` names the POV character and calls it "a lens, not a licence"
-(`prompts/writer.ts:148`), but never states grammatical person, so the drift breaks no rule the
-writer was given.
-
-The clause must **defer to `writer_style`**: a house style may legitimately address the reader as
-"you", and forbidding second person outright would override it. What it forbids is person following
-the consult rhythm — person comes from the style, never from who was asked last. Mechanical detection
-of second person when the style is third is a possible later add and explicitly not part of this.
-
-**Evidence since:** drift tracks author-model capability. It was pervasive in run two, down to two
-paragraphs in run three, and **absent** in run four, where every `you` on the page is inside
-dialogue. So the clause is worth writing for `e4b`, which is where it still bites, and the live run
-that tests it has to be an `e4b` run — a twelve-b run would show a clean page whether or not the
-clause did anything.
-
-**Done when** the POV line in `writerSystem` states that person is the style's to set and never the
-consult rhythm's, and an `e4b` live run is made to see whether the drift survives it.
+**Done when** another clause-era `e4b` run is read: if clause-era pages stay clean where the
+control era drifted, the clause takes the credit and this entry is deleted; if a clause-era page
+drifts, the clause failed and the approach (prompt clause vs. mechanical detection) is reopened.
 
 ### 5. A scene has no representation of its own question being answered
 
