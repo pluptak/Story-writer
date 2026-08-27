@@ -9,12 +9,15 @@
 // -- SHARED DOCTRINE -------------------------------------------------------
 // One source of truth for rules stated to more than one agent, so the wordings cannot drift.
 
-export const NAME_THE_FORK = `NAME THE FORK OR NAME THE COST, AND ASK IT OPEN: name what hangs `
-  + `on the character's choice -- "Do you say the name, knowing what it admits?" -- and let THEM `
-  + `name the options. Never both branches ("Do you hold the door, or let go?"): a pre-written `
-  + `menu is answered by picking, there is nothing left for them to ask for, and a question `
-  + `carrying "or" is refused. "What do you do?" still names nothing at stake, so the safest `
-  + `possible answer is always correct -- and the safest answer is the one that stops the scene.`;
+export const NAME_THE_FORK = `NAME THE FORK OR NAME THE COST, AND ASK IT OPEN: one question, `
+  + `open, naming what hangs on the character's choice -- "Do you say the name, knowing what it `
+  + `admits?", "What do you say to the group about the state of the hardware?" -- and let THEM name `
+  + `the options. Refused on sight: any question carrying "or" ("Do you hold the door, or let go?" -- `
+  + `a pre-written menu is answered by picking, and there is nothing left for them to ask for), and `
+  + `any question that shrugs ("What do you do?", "What do you choose regarding X?" -- names nothing `
+  + `that hangs, so the safest possible answer is always correct, and the safest answer is the one `
+  + `that stops the scene). The fork is yours to name; the options are theirs; what hangs on the `
+  + `choice is what makes either worth asking.`;
 
 // -- THE FOUR THINGS A CONSULT CAN ASK FOR ----------------------------------
 // Shared by the writer's WANTS field, by the judge's, and by what the character is told it is
