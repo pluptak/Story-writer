@@ -688,7 +688,9 @@ describe("normalizeConsult", () => {
 
   it("refuses the questions that ask for nothing", () => {
     for (const q of ["What do you do?", "What does Elara do?", "What does Riven do next with the pick?",
-                     "What happens next?", "Your move?"]) {
+                     "What happens next?", "Your move?",
+                     "What do you choose regarding the lock?",
+                     "What do you decide to do with the current snag?"]) {
       const r = normalizeConsult({ ...good, question: q });
       assert.ok(!r.ok, `"${q}" should have been refused`);
       assert.match(r.why, /fork|stake/);

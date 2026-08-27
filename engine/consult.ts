@@ -45,6 +45,12 @@ const DEGENERATE_QUESTIONS = [
   /^what happens?\b/i,
   /^what next\b/i,
   /^(your|their|his|her)\s+(move|turn|call)\b/i,
+  // The vagueness dodge: with the menu refused, the first live run under the gate sent "What do
+  // you choose regarding the lock?" and "What do you decide to do with the current snag?" --
+  // "What do you do?" wearing a subject. A choose/decide question with no cost named is the same
+  // shrug; a rare cost-bearing one ("...knowing he is armed?") is refused once and rewritten,
+  // which is the cheap failure beside the step the dodge was already burning.
+  /^what do you (choose|decide)\b/i,
 ];
 
 /** A question that carries both branches of its fork pre-written — "Do you concede, or do you double
