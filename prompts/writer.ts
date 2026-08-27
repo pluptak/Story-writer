@@ -146,7 +146,10 @@ export function writerSystem(p: {
     p.scene.place ? `Where: ${p.scene.place}` : "",
     p.scene.question ? `The question this scene has to answer: ${p.scene.question}` : "",
     p.scene.pov ? `Point of view: ${p.scene.pov} -- we see the scene from inside their perception. `
-      + `That is a lens, not a licence: their choices and their words still have to be asked for.` : "",
+      + `That is a lens, not a licence: their choices and their words still have to be asked for. `
+      + `Grammatical person is the house style's to set, never the consult rhythm's: the situations `
+      + `you address to characters are written to a "you", and that "you" must not follow them onto `
+      + `the page -- the narration holds whatever person the style sets, from the first word to the last.` : "",
     `Length: about ${p.scene.length} words.`,
   ].filter(Boolean).join("\n");
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
