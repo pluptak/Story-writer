@@ -14,21 +14,33 @@
  *    half. Missing a violation is the cheap failure here; inventing one is not.
  *  - **Literal verbs only.** `see` and `saw` carry most of the language's figurative sight ("see what
  *    he meant", "saw to it") and are left out entirely. What is listed is what the prompt itself
- *    names: watching, glancing, gazing, and their siblings.
+ *    names: watching, glancing, gazing, and their siblings. The `observ*` family joined `sight`
+ *    deliberately — "observing" is as literal as "watching", and a live run sent a blind character
+ *    six situations phrased around sight, one carrying "observing their hands at the lock". Growing
+ *    the family was chosen over accepting that case as a known miss; the table is shared, so the
+ *    prose lint gains it too, where it flags the same violation in the same words.
  *
  * Scope is the five perception senses. `speech` and `movement` are restrictable too but are not here:
  * dialogue is already the quote lint's, and a movement verb list cannot be written without catching
  * every metaphor that walks or steps.
+ *
+ * The situation sibling, `lintRestrictedSituation`, points the same tables at a consult's situation,
+ * where the addressee is known and only their own limits apply. Both rules above flip there: the
+ * anchor is second person (`you`, `your`) rather than the character's name, and the determiner rule
+ * inverts — "under your gaze" is precisely the incriminating form, where in prose `your` before a
+ * verb spelling exculpates. The conservative direction is unchanged: a miss is the cheap failure,
+ * because a refusal costs the writer a step.
  */
 import { canonSkill } from "./skills.ts";
 
-export interface SenseLintHit { ok: false; why: string; character: string; sense: string; verb: string; }
+export interface SenseLintHit { ok: false; why: string; character: string; sense: string; verb: string; match: string; }
 
 /** Verbs that can only be read as perceiving through the sense they are filed under, keyed by the
  *  canonical sense name in SKILL_CATALOG. Nouns that share a spelling with their verb (`eye`,
  *  `glance` as "a glance") are handled by the determiner guard below, not by omission. */
 const SENSE_VERBS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   sight: ["watch", "watches", "watched", "watching",
+          "observe", "observes", "observed", "observing",
           "glance", "glances", "glanced", "glancing",
           "gaze", "gazes", "gazed", "gazing",
           "stare", "stares", "stared", "staring",
@@ -40,6 +52,18 @@ const SENSE_VERBS: Readonly<Record<string, readonly string[]>> = Object.freeze({
           "sniff", "sniffs", "sniffed", "sniffing"],
   taste: ["taste", "tastes", "tasted", "tasting"],
   touch: ["touch", "touches", "touched", "touching"],
+});
+
+/** Sense NOUNS that are perception when they are the addressee's own — the second-person possessive
+ *  is what a situation is written in ("under your gaze"). Deliberately narrow, because "your look"
+ *  is an appearance, "your view" an opinion, "your observation" a remark and "your watch" a
+ *  timepiece; a miss is the cheap failure here too. */
+const SENSE_NOUNS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  sight: ["gaze", "gazes", "glance", "glances", "stare", "stares", "peek", "peeks"],
+  hearing: [],
+  smell: [],
+  taste: [],
+  touch: [],
 });
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -90,6 +114,67 @@ export function lintRestrictedSenses(
           character: member.name,
           sense: limit,
           verb,
+          match: m[0],
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The situation sibling: the same verb table, pointed at a consult's situation before it is sent.
+ * The addressee is known (`character`), so only their own limits are matched and only in the second
+ * person a situation is written in — `you <verb>` within the same reach a name gets in prose, and
+ * `your <sense-noun>` for the possessive forms the prose determiner guard would exculpate. Returns
+ * the first violation, or null.
+ *
+ * Third-person clauses about OTHER characters are deliberately out of scope: a situation may describe
+ * anyone doing anything, and their perceiving is checked in their own consult or on the page, not
+ * here.
+ */
+export function lintRestrictedSituation(
+  situation: string,
+  character: string,
+  cannot: readonly string[],
+): SenseLintHit | null {
+  const s = situation.trim();
+  if (!s || !character.trim()) return null;
+
+  for (const limit of cannot) {
+    const sense = canonSkill(limit);
+
+    const verbs = SENSE_VERBS[sense];
+    if (verbs) {
+      const re = new RegExp(
+        `\\byou\\b[^.!?;:\\n]{0,${SUBJECT_WINDOW}}?\\b(${verbs.join("|")})\\b`,
+        "gi",
+      );
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(s))) {
+        return {
+          ok: false,
+          why: `restricted sense: ${character}'s situation says "${m[0].trim()}" but CANNOT ${limit}`,
+          character,
+          sense: limit,
+          verb: m[1],
+          match: m[0].trim(),
+        };
+      }
+    }
+
+    const nouns = SENSE_NOUNS[sense];
+    if (nouns?.length) {
+      const re = new RegExp(`\\byour\\s+(${nouns.join("|")})\\b`, "gi");
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(s))) {
+        return {
+          ok: false,
+          why: `restricted sense: ${character}'s situation says "${m[0]}" but CANNOT ${limit}`,
+          character,
+          sense: limit,
+          verb: m[1],
+          match: m[0],
         };
       }
     }

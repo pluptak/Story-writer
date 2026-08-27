@@ -553,6 +553,35 @@ describe("reviseConsult", () => {
     assert.equal(r.req.wants, "decision");
     assert.equal(r.wantsRefused, "");
   });
+
+  const blindCast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
+  const merrittPrev: ConsultRequest = {
+    character: "MERRITT", situation: "The ledger lies open on the counter, the pen beside your hand.",
+    question: "Do you sign, or hold the pen where it is?", wants: "decision",
+  };
+
+  it("re-lints the judge's revised situation against the same CANNOT list — the fifth entry path", () => {
+    const r = reviseConsult(merrittPrev, {
+      situation: "You have just watched Riven sign the ledger in your place.",
+      question: "Do you countersign, or leave it as Riven left it?",
+    }, blindCast);
+    assert.ok(!r.ok, "a retry must not deliver as ground truth what the first ask was refused for");
+    assert.match(r.why, /MERRITT/);
+  });
+
+  it("passes a clean revision through with the cast given", () => {
+    const r = reviseConsult(merrittPrev, {
+      situation: "The counter is bare under your hands; the pen has been taken away.",
+      question: "Do you sign, or hold the pen where it is?",
+    }, blindCast);
+    assert.ok(r.ok);
+    assert.match(r.req.situation, /pen has been taken away/);
+  });
+
+  it("re-lints nothing when the judge leaves the situation alone", () => {
+    const r = reviseConsult(merrittPrev, { question: "Do you sign, or push the ledger back?" }, blindCast);
+    assert.ok(r.ok, "the original situation was already sent once — it is not re-judged");
+  });
 });
 
 // -- THE SHAPE THAT WAS ASKED FOR -----------------------------------------
@@ -689,6 +718,39 @@ describe("normalizeConsult", () => {
       assert.ok(r.why.length > 60, "a one-word complaint teaches nothing");
     }
   });
+
+  const sightLeaning = "You are leaning over Riven, observing their hands at the lock. Riven remains perfectly still under your gaze.";
+  const forkQuestion = "Do you reach for the lock, or call out?";
+  const cast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
+
+  it("refuses a situation phrased around a sense its addressee CANNOT", () => {
+    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    assert.ok(!r.ok);
+    assert.match(r.why, /MERRITT/);
+    assert.match(r.why, /sight/);
+    assert.match(r.why, /CANNOT/);
+  });
+
+  it("sends the same situation to a character without that CANNOT", () => {
+    const r = normalizeConsult({ character: "RIVEN", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    assert.ok(r.ok);
+    assert.equal(r.req.situation, sightLeaning);
+  });
+
+  it("matches the addressee case-insensitively against the cast", () => {
+    const r = normalizeConsult({ character: "Merritt", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    assert.ok(!r.ok);
+  });
+
+  it("checks nothing when no cast is given", () => {
+    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" });
+    assert.ok(r.ok, "the old two-argument shape keeps its old behaviour");
+  });
+
+  it("checks nothing for a name the cast does not hold", () => {
+    const r = normalizeConsult({ character: "NOBODY", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    assert.ok(r.ok);
+  });
 });
 
 describe("normalizeReactionConsult", () => {
@@ -749,5 +811,27 @@ describe("normalizeReactionConsult", () => {
   it("holds each reactor to the same situation floor a lone consult faces", () => {
     const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }], situation: "It is loud.", question });
     assert.ok(!r.ok);
+  });
+
+  const sightShared = "The door swings open before you, and you watch Riven hand the satchel over.";
+  const blindCast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
+
+  it("refuses the whole fan-out when the shared situation breaks one reactor's CANNOT", () => {
+    const r = normalizeReactionConsult({
+      reactors: [{ name: "RIVEN" }, { name: "MERRITT" }], situation: sightShared, question,
+    }, blindCast);
+    assert.ok(!r.ok);
+    assert.match(r.why, /MERRITT/, "the refusal names the reactor whose ground truth was corrupt");
+  });
+
+  it("checks a per-reactor override against its owner only", () => {
+    const heard = "From the next room, the door swings and a voice you cannot make out follows.";
+    const r = normalizeReactionConsult({
+      reactors: [{ name: "MERRITT", situation: heard }, { name: "RIVEN" }],
+      situation: sightShared, question,
+    }, blindCast);
+    assert.ok(r.ok, "Merritt's override is clean for Merritt; the shared text only ever reaches Riven");
+    assert.equal(r.reqs[0].situation, heard);
+    assert.equal(r.reqs[1].situation, sightShared);
   });
 });

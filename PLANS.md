@@ -18,8 +18,12 @@ run, which is the owner's to make, batched.
 
 ## Next
 
-Two items promoted out of the sections below. Each is decidable now, has live-run evidence behind
-it, and is a reason to distrust what the architect currently hands the writer.
+Five items promoted out of the sections below, in the order they should be picked up. Each is
+decidable now and has live-run evidence behind it. The first two are reasons to distrust what the
+architect hands the writer; items 3–5 are reasons to distrust what the writer hands everyone else,
+and all three come out of one run — doorway `2026-08-27T14-54-12-677Z`, whose log is the evidence
+cited throughout. They are ordered by what each one corrupts: item 3 corrupts the page, item 4 is
+prompt-only, and item 5 is a policy question whose evidence overlaps item 4's anyway.
 
 ### 1. `facts[]` is framed away from the one thing it exists for
 
@@ -59,6 +63,73 @@ attribute it to the collective team?". Whatever the redraft instruction says, it
 `DEGENERATE_QUESTIONS` already refuses one with no fork in it, the writer prompt's instruction on
 question shape is reworked to match, and the re-ask path is checked to be sure it does not undo both.
 Those are halves of one change.
+
+### 3. An accepted piece can repeat what is already on the page
+
+Draft #2 of the doorway run re-emitted draft #1 **verbatim** — 386 identical characters, the whole
+opening paragraph — and appended one new sentence. Both were accepted and both were appended, so the
+scene opens with the same paragraph twice. Draft #3 then repeated Riven's `"Just delivering
+something…"` line from draft #2. Nothing between an accepted draft and the append to `scene.md`
+compares the new piece against the tail of the page.
+
+The writer restating is model behaviour; the page corruption is not, and this is the cheapest of the
+three to close because it needs no model call.
+
+Two decisions the plan has to make:
+
+- **Leaf home.** A new module in `engine/quote-lint.ts`'s shape — no engine dependencies, one pure
+  function — rather than a branch inside the scene loop.
+- **Threshold and event.** A verbatim prefix is the easy case; near-verbatim needs a similarity
+  measure, and `quote-lint.ts:94` is the precedent in this repo (Dice coefficient ≥ 0.8). If it emits
+  an event at all, it inherits the same fold-or-case question `narration_quote_flag` is still open
+  on — decide it here rather than adding a second event nothing renders.
+
+**Done when** an accepted piece that repeats the page's tail is stripped or refused before the
+append, the threshold is chosen with the doorway 386-char case and quote-lint's 0.8 as the two
+reference points, and the event decision is made rather than deferred.
+
+### 4. The writer is told its POV character but never its grammatical person
+
+The doorway scene is `pov: RIVEN`. Its second half drifts into second person, and the referent of
+"you" alternates with whoever was consulted last: "You remain seated on the crate as Riven moves
+away" (Merritt) sits two pieces from "You maintain your pace, letting the corridor shrink behind you"
+(Riven). The mechanism is the writer echoing its own consult situations, which it writes in second
+person — the same dominant-pattern failure already recorded at the top of `prompts/judge.ts`.
+
+`writerSystem` names the POV character and calls it "a lens, not a licence"
+(`prompts/writer.ts:148`), but never states grammatical person, so the drift breaks no rule the
+writer was given.
+
+The clause must **defer to `writer_style`**: a house style may legitimately address the reader as
+"you", and forbidding second person outright would override it. What it forbids is person following
+the consult rhythm — person comes from the style, never from who was asked last. Mechanical detection
+of second person when the style is third is a possible later add and explicitly not part of this.
+
+**Done when** the POV line in `writerSystem` states that person is the style's to set and never the
+consult rhythm's, and a live run is made to see whether the drift survives it.
+
+### 5. A scene has no representation of its own question being answered
+
+The doorway run ended `done: false`, at 64 steps against a `maxSteps` of 24 (four `budget` grants)
+and 933 words against a 700 target. Its question — "Does Riven get through the door before Merritt
+decides what to do about them?" — was answered at the midpoint: door open, satchel handed over,
+ledger signed. Everything after is epilogue, and in it Riven is consulted four more times about how
+fast to walk away while Merritt is asked five times whether to stand up. Item 4's person drift lives
+**entirely** inside that epilogue, which is why this is ordered last: some of its evidence is not
+independent.
+
+This is a policy question, not a defect with an obvious fix — whether a scene may outrun its own
+question, and what should happen when it does, is a judgement about pacing. It overlaps "A reaction
+fan-out does not differentiate" under Asymmetry follow-ups, whose live evidence is also a
+post-crisis overrun.
+
+The one thing worth pinning before any of that is decided: **the loop has no representation of the
+scene's question having been answered.** `scene_done` is the writer's to declare and it never did;
+budget grants are spent against word count and step count, neither of which knows what the scene was
+for. Whatever the budget policy becomes, that absence is the thing it answers.
+
+**Done when** — deliberately open. Do not start this one until 3 and 4 have shipped and a fresh
+run has been read, since both change what its evidence looks like.
 
 ## Smaller viewer work
 
@@ -143,6 +214,11 @@ Those are halves of one change.
   rather than a check: a cast sheet whose pronouns disagree with the prose the writer then produces
   from it. The mechanically checkable defect found alongside these (roster/pov/reach/skill-name
   string checks) now lives in `normalizeSpec`, shipped.
+- **A structured personality selector.** `CharacterDef.persona` (with belief, impulse and voice)
+  drives per-character phrasing as free text today, and persona is documented as exactly the vehicle
+  for personality. The owner's goal is a dedicated personality editor where the architect picks from
+  a managed list instead of generating persona text on the spot — a bigger, separate feature to
+  design then, not an extension to bolt onto the cast stage now.
 
 ## Asymmetry follow-ups
 
@@ -186,6 +262,10 @@ one extra LLM call per multi-character fork if it were ever wanted.
   because it stopped short of a literal drop). A fact-ledger check across drafted pieces — one more
   stateless judge call per piece — is the candidate fix for the first; the second may just be a
   model-size floor.
+- **Model-specific prompt variants. Parked.** Selecting prompt text by which model is running: no
+  concrete misbehaving model/prompt pair is in hand, so building the selection mechanism now would
+  be speculative infrastructure with nothing to select between. Revisit when a live run names a
+  prompt that needs different wording for a different model.
 - **The LLM half of the narration lint has still never fired.** Two of its four checks are mechanical
   now — quotations against the granted ledger (`engine/quote-lint.ts`) and restricted senses against
   the CANNOT list (`engine/sense-lint.ts`) — leaving deeds and consult-situation quality to the

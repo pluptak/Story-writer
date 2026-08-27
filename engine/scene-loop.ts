@@ -536,7 +536,7 @@ export async function writeScene(
     if (reactors) {
       // -- REACTION FAN-OUT: one shared beat, several present-but-not-acting characters react at once.
       // Each runs an isolated consult (never seeing another's reply); the writer gets them together.
-      const rc = normalizeReactionConsult({ reactors, situation: c!.situation, question: c!.question });
+      const rc = normalizeReactionConsult({ reactors, situation: c!.situation, question: c!.question }, cast);
       if (!rc.ok) {
         log({ t: "bad_consult", character: "(reaction)", why: rc.why, chapter });
         console.log(`${C.yellow}(reaction not sent — ${rc.why.split(". ")[0]}.)${C.reset}`);
@@ -623,7 +623,7 @@ export async function writeScene(
     } else if (who) {
       const def = defOf(who);
       const persistent = agents.get(who.toLowerCase());
-      const check = def ? normalizeConsult({ ...c!, character: def.name }) : null;
+      const check = def ? normalizeConsult({ ...c!, character: def.name }, cast) : null;
       if (!def || !persistent) {
         writer.hear(P.noSuchCharacter(who, [...active]));
       } else if (!isActive(def.name)) {
@@ -700,7 +700,7 @@ export async function writeScene(
           // entirely, which is how a re-ask of "What do you do?" — refused at the front door — reached
           // a character anyway and drew the do-nothing answer the guard exists to prevent.
           const rev = (j.revised && typeof j.revised === "object") ? j.revised as Record<string, unknown> : {};
-          const revised = reviseConsult(req, rev);
+          const revised = reviseConsult(req, rev, cast);
           if (!revised.ok) {
             // Asking again with a question that cannot be sent would spend the attempt on nothing,
             // so the answer already in hand is the one the scene gets.
@@ -741,6 +741,10 @@ export async function writeScene(
           writer.hear(P.noAnswer(def.name, why));
           dropClarifications();
         } else {
+          // The record of what was asked stays un-escalated on purpose: the nudge is transient
+          // pressure to get this one answer, and a scolding written permanently into history
+          // would bend every later reply. consult() threads the attempt into the outgoing
+          // message only.
           persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
           persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
           keepClarifications();   // before the answer: the writer settled these facts to get it

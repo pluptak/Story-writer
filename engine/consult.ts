@@ -4,6 +4,11 @@ import { C } from "../ansi.ts";
 import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
+import { lintRestrictedSituation } from "./sense-lint.ts";
+
+/** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can
+ *  be checked against its addressee. Scene-loop already resolves exactly this for the narration lint. */
+export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[] }>;
 
 /** What the writer sends when it wants a character's take: who, the situation as given to them, the question, and what shape of answer is wanted. */
 export interface ConsultRequest {
@@ -47,10 +52,16 @@ const MIN_SITUATION_WORDS = 5;
 /** The outcome of checking a proposed consult: sendable, or refused with a reason the writer can act on. */
 export type ConsultCheck = { ok: true; req: ConsultRequest } | { ok: false; why: string };
 
-/** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step. */
+/** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step.
+ *
+ *  When the cast is given, the situation is also linted against the addressee's own CANNOT list: the
+ *  situation is the only author-side string that enters a character as ground truth, and one phrased
+ *  around a sense they have lost would be received as fact. This runs here — not in the scene loop —
+ *  so every situation-entry path passes the same door: the writer's first ask, the judge's `revised`
+ *  on a retry (reviseConsult), and each reactor of a fan-out (normalizeReactionConsult). */
 export function normalizeConsult(raw: {
   character: string; situation?: unknown; question?: unknown; wants?: unknown;
-}): ConsultCheck {
+}, cast?: ReadonlyArray<{ name: string; cannot: readonly string[] }>): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
   const question  = String(raw.question ?? "").trim();
@@ -69,6 +80,13 @@ export function normalizeConsult(raw: {
   if (!wants)
     return { ok: false, why: P.badConsult.badWants(CONSULT_WANTS, String(raw.wants ?? "")) };
 
+  const member = cast?.find(c => c.name.trim().toLowerCase() === character.toLowerCase());
+  if (member?.cannot?.length) {
+    const hit = lintRestrictedSituation(situation, character, member.cannot);
+    if (hit)
+      return { ok: false, why: P.badConsult.restrictedSense(character, hit.sense, hit.match) };
+  }
+
   return { ok: true, req: { character, situation, question, wants } };
 }
 
@@ -85,10 +103,15 @@ export type ReactionCheck = { ok: true; reqs: ConsultRequest[] } | { ok: false; 
  * asking it twice would let the second answer see the first — so entries collapse
  * case-insensitively and the first wins, keeping its own per-reactor situation. Refusing the whole
  * fan-out over one duplicated name would punish every reactor for it.
+ *
+ * With the cast given, the gate is strict per reactor: the shared situation is ground truth for
+ * everyone present, so it is checked against EACH reactor's CANNOT list through the per-reactor
+ * `normalizeConsult` call, and a per-reactor override is checked against its owner only. One
+ * restricted reactor phrased around turns the whole fan-out back.
  */
 export function normalizeReactionConsult(raw: {
   reactors?: unknown; situation?: unknown; question?: unknown;
-}): ReactionCheck {
+}, cast?: CannotCast): ReactionCheck {
   const shared = String(raw.situation ?? "").trim();
   const question = String(raw.question ?? "").trim();
   const list = Array.isArray(raw.reactors) ? raw.reactors : [];
@@ -102,7 +125,7 @@ export function normalizeReactionConsult(raw: {
     if (seen.has(name.toLowerCase())) continue;
     seen.add(name.toLowerCase());
     const situation = String((r as any)?.situation ?? "").trim() || shared;
-    const check = normalizeConsult({ character: name, situation, question, wants: "reaction" });
+    const check = normalizeConsult({ character: name, situation, question, wants: "reaction" }, cast);
     if (!check.ok) return { ok: false, why: check.why };
     reqs.push(check.req);
   }
@@ -129,15 +152,20 @@ export type Revision =
  * Nothing here can tell whether a rewritten *question* is still the same fork — that judgement needs
  * a model, and the model that would make it is the one being checked — so the run record carries what
  * each retry replaced, and reading it is the check.
+ *
+ * The cast, when given, travels with it: the judge's `revised.situation` is a situation-entry path
+ * like any other — it reaches a fresh instance that has no way to know better — so it passes the
+ * same CANNOT gate the first ask did.
  */
-export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>): Revision {
+export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>,
+  cast?: CannotCast): Revision {
   const asked = canonWants(rev.wants);
   const checked = normalizeConsult({
     character: prev.character,
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
     wants: prev.wants,
-  });
+  }, cast);
   if (!checked.ok) return checked;
   return { ok: true, req: checked.req, wantsRefused: asked && asked !== prev.wants ? asked : "" };
 }
@@ -236,7 +264,7 @@ export async function consult(
   opts: { clarifications: number; clarify: Clarifier; attempt?: number; log?: (e: ConsultEvent) => void },
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
-  const extra: Msg[] = [{ role: "user", content: P.askBlock(req) }];
+  const extra: Msg[] = [{ role: "user", content: P.askBlock(req, opts.attempt ?? 1) }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
 

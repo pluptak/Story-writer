@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { lintRestrictedSenses } from "../engine/sense-lint.ts";
+import { lintRestrictedSenses, lintRestrictedSituation } from "../engine/sense-lint.ts";
 
 const blind = [{ name: "Marsh", cannot: ["sight"] }];
 
@@ -111,5 +111,86 @@ describe("lintRestrictedSenses", () => {
 
   it("does not match a name inside a longer word", () => {
     assert.equal(lintRestrictedSenses("Marshall watched the hallway.", blind), null);
+  });
+});
+
+describe("lintRestrictedSituation", () => {
+  const merritt = { name: "MERRITT", cannot: ["sight"] };
+
+  // The two verbatim cases from the doorway run (PLANS.md Next item 3's evidence).
+  it("refuses the leaning-over situation from the live run", () => {
+    const hit = lintRestrictedSituation(
+      "You are leaning over Riven, observing their hands at the lock. Riven remains perfectly still under your gaze.",
+      "MERRITT", merritt.cannot);
+    assert.ok(hit);
+    assert.equal(hit.verb, "observing", "the observ* decision: the worst case is caught by the family that was grown for it");
+    assert.equal(hit.sense, "sight");
+    assert.match(hit.why, /MERRITT/);
+    assert.match(hit.why, /CANNOT sight/);
+  });
+
+  it("refuses the just-watched situation from the live run", () => {
+    const hit = lintRestrictedSituation(
+      "You have just watched Riven sign the ledger and slide it back across the counter.",
+      "MERRITT", merritt.cannot);
+    assert.ok(hit);
+    assert.equal(hit.verb, "watched");
+  });
+
+  it("refuses the possessive forms the prose determiner guard would exculpate", () => {
+    const hit = lintRestrictedSituation(
+      "Riven remains perfectly still under your gaze.",
+      "MERRITT", merritt.cannot);
+    assert.ok(hit);
+    assert.equal(hit.verb, "gaze");
+    assert.equal(hit.match, "your gaze");
+  });
+
+  it("covers a second sense through the same tables", () => {
+    const hit = lintRestrictedSituation(
+      "The signal starts again, and you hear it through the wall this time.",
+      "MERRITT", ["hearing"]);
+    assert.ok(hit);
+    assert.equal(hit.verb, "hear");
+  });
+
+  it("lets the addressee act, wait and be described without perceiving", () => {
+    for (const situation of [
+      "You remain seated on the crate as Riven moves away toward the counter.",
+      "You maintain your pace, letting the corridor shrink behind you.",
+      "Your hands find the lock by its cold brass rim.",
+      "You say nothing, and the silence holds for a long moment.",
+    ]) {
+      assert.equal(lintRestrictedSituation(situation, "MERRITT", merritt.cannot), null, `"${situation}" should pass`);
+    }
+  });
+
+  it("does not police other characters' perceiving in someone else's situation", () => {
+    assert.equal(lintRestrictedSituation(
+      "Riven watches you from the doorway, saying nothing.",
+      "MERRITT", merritt.cannot), null);
+  });
+
+  it("does not police a gaze that is not the addressee's", () => {
+    assert.equal(lintRestrictedSituation(
+      "The camera's gaze sweeps the corridor and settles on the far door.",
+      "MERRITT", merritt.cannot), null);
+  });
+
+  it("checks nothing without a cannot list, and nothing for an empty situation", () => {
+    assert.equal(lintRestrictedSituation("You watch the door swing open.", "MERRITT", []), null);
+    assert.equal(lintRestrictedSituation("", "MERRITT", merritt.cannot), null);
+  });
+
+  it("ignores a restriction with no verb table", () => {
+    assert.equal(lintRestrictedSituation(
+      "You watch the door swing open.",
+      "MERRITT", ["cameras"]), null);
+  });
+
+  it("leaves you-see as a known miss — the discourse marker is too common to risk", () => {
+    assert.equal(lintRestrictedSituation(
+      "You see the ledger lying open on the counter.",
+      "MERRITT", merritt.cannot), null);
   });
 });

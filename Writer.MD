@@ -71,7 +71,18 @@ honored. Whether a rewritten *question* is still the same fork is not decidable 
 could judge it is the one being checked — so each `retry` event carries `was`, the question it
 replaced, and reading that is the check. It matters because the retried character is a fresh instance
 that never learns any of this happened: an inconvenient answer, re-asked as a different question, would
-come back as a clean answer to a moment the scene never reached.
+come back as a clean answer to a moment the scene never reached. From the third attempt on, the
+re-ask also carries one firmer line pressing the same answer-or-ask bar; attempts one and two go out
+unmodified, because the consult's own clarification-and-repair ladder already escalates there, and
+pressing a fresh instance on asking before it has asked anything is the one behaviour the format
+exists to protect. That line is transient by design — the character's persistent history records the
+un-escalated ask, since pressure that exists to shake loose one answer would bend every later reply
+if written into memory. The situation itself is checked before a consult ever leaves: the writer's
+first ask, the judge's `revised` on a retry, and a fan-out's shared text against every reactor's own
+CANNOT list all pass the same mechanical check. It is addressee-anchored, which inverts how the same
+spellings read on the page — `you watch` and `your gaze` are the incriminating forms there, where in
+prose `your` before a verb spelling marks a noun. A situation phrased around a sense its addressee
+has lost is refused through the ordinary bad-consult door, the writer told why and nothing sent.
 
 A clarification lives or dies with the answer it was asked for. The clarifier folds one in as it goes,
 because a character may ask twice in one attempt and the second answer has to know the first — but an

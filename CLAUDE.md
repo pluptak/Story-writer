@@ -111,7 +111,7 @@ way.**
 | [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
 | [engine/architect.ts](engine/architect.ts) | building the architect agent, the interactive story-building conversation, and the between-chapters handoff that re-authors the cast |
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
-| [prompts.ts](prompts.ts) | every word said to a model |
+| [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, architect, consult, writer, judge, clarify), which match one engine caller each |
 | [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: static files (from `server/gui/`), SSE, and dispatch to the route modules |
 | [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side |
@@ -155,7 +155,8 @@ they are fields on one exported `LIVE` object. `RUN`/`stopRun`/`armRun`/`Stopped
 LLM log handles) — kept separate from `LIVE` because those are engine-internal, not loop↔server shared
 state.
 
-**Every word said to a model lives in [prompts.ts](prompts.ts), and nothing else does.** The test is
-whether a model ever sees the string; console output, log lines and warnings are not prompts and stay
-in the engine. `prompts.ts` imports **nothing** from `story-writer.ts` — each function takes plain
-strings, numbers and lists, so shapes like a character's capabilities arrive already flattened.
+**Every word said to a model lives in [prompts.ts](prompts.ts) and its [prompts/](prompts/)
+submodules, and nothing else does.** The test is whether a model ever sees the string; console
+output, log lines and warnings are not prompts and stay in the engine. `prompts.ts` and every file
+under `prompts/` import **nothing** from `story-writer.ts` — each function takes plain strings,
+numbers and lists, so shapes like a character's capabilities arrive already flattened.
