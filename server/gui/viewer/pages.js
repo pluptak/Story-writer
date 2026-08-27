@@ -1,7 +1,7 @@
 import { $, esc, basename, wireBackdropClose, tid } from "./util.js";
 import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
-import { renderBlock, wireReader } from "./blocks.js";
+import { renderBlocks, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
 import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
@@ -228,7 +228,7 @@ function renderLive(page, blocks) {
         ${chip(`${consults} consult${consults === 1 ? "" : "s"}`)}
         ${chip(APP.session.interactive ? "interactive" : "hands off")}
       </div>
-      <div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>
+       <div class="prose">` + renderBlocks(blocks, true) + `</div>
     </div>
   </section>`;
   wireConsultToggles(page);
@@ -253,7 +253,7 @@ function renderRead(page, blocks) {
     setFoldable(false);
     return;
   }
-  page.innerHTML = chrome + `<div class="prose">` + blocks.map(b => renderBlock(b, false)).join("") + `</div>`;
+  page.innerHTML = chrome + `<div class="prose">` + renderBlocks(blocks, false) + `</div>`;
   wireConsultToggles(page);
   wireSavedRuns(page);
   setFoldable(blocks.some(b => b.kind === "consult"));

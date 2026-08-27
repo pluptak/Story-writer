@@ -194,10 +194,29 @@
   .verdict { margin-top:9px; font-family:var(--mono); font-size:var(--fs-11); letter-spacing:.05em; }
   .verdict.accept { color:var(--good); } .verdict.retry { color:var(--warn); }
 
-  .note { font-family:var(--mono); font-size:var(--fs-11); color:var(--muted); text-align:center;
-          margin:22px 0; letter-spacing:.03em; }
-  .note.end { color:var(--accent); }
-  .note.exit { color:var(--warn); }
+  /* Engine notes: a left-aligned footnote, not a centered banner — keeps the reader's eye in the
+     serif column instead of bouncing out to parse engine chatter between pieces. Tone colour carries
+     the severity before the text is read. */
+  .note { font-family:var(--mono); font-size:var(--fs-10); color:var(--faint); text-align:left;
+          margin:8px 0 14px; padding-left:11px; border-left:2px solid var(--line);
+          line-height:1.45; letter-spacing:.01em; max-width:62ch; }
+  .note.tone-warn { border-left-color:var(--warn); color:var(--warn); }
+  .note.tone-bad  { border-left-color:var(--bad);  color:var(--bad); }
+  .note.tone-info { border-left-color:var(--accent); color:var(--muted); }
+  .note.end  { color:var(--accent); border-left-color:var(--accent); }
+  .note.exit { color:var(--warn); border-left-color:var(--warn); }
+
+  /* Non-critical notes collapse into a pill row so the prose keeps flowing; the full text is one
+     hover/click away (native title + aria-label). Reuses the .tag/.pill language the rest of the
+     viewer already owns. */
+  .note-pills { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 12px; }
+  .npill { font-family:var(--mono); font-size:var(--fs-10); line-height:1; cursor:help;
+           padding:3px 9px 3px 7px; border-radius:var(--r-pill); border:1px solid var(--line);
+           background:var(--panel-2); color:var(--muted); display:inline-flex; align-items:center; gap:5px; }
+  .npill:hover, .npill:focus-visible { border-color:var(--accent); color:var(--ink); outline:none; }
+  .npill.tone-warn { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 40%, var(--line)); }
+  .npill.tone-bad  { color:var(--bad);  border-color:color-mix(in srgb, var(--bad) 40%, var(--line)); }
+  .npill.tone-info { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 40%, var(--line)); }
 
   /* a group reaction: several present-but-not-acting characters answered one shared beat at once */
   .reaction { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);

@@ -1,6 +1,9 @@
 import { esc, post, verdictText, reasonOr, tid } from "./util.js";
 import { APP, open } from "./state.js";
 
+// The glyph prefixing each non-critical note pill — a quick tone read before the tooltip.
+const NOTE_ICON = { warn:"⚑", bad:"◯", info:"+" };
+
 // ---- rendering ----------------------------------------------------------
 export const paras = t => String(t).split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
 
@@ -131,7 +134,37 @@ export function renderBlock(b, interactive) {
   if (b.kind === "reader") return renderReader(b, interactive);
   if (b.kind === "exit") return `<div ${tid("prose.exit")} class="note exit" data-seq="${esc(b.seq)}">${esc(b.character)} left the scene${
     b.pov ? " — the point of view; the chapter ends here" : ""}</div>`;
-  if (b.kind === "note") return `<div ${tid("prose.note")} class="note">${esc(b.text)}</div>`;
+  if (b.kind === "note") {
+    // Critical notes (an answer never reached the page, a forced close) must stay as visible
+    // text; so does everything when the owner expands all (locator/debug). Otherwise collapse to a
+    // tooltip pill so the serif column keeps flowing.
+    if (b.critical || APP.expandAll)
+      return `<div ${tid("prose.note")} class="note tone-${b.tone}">${esc(b.text)}</div>`;
+    return `<button ${tid("prose.note-pill")} type="button" class="npill tone-${b.tone}"
+              title="${esc(b.text)}" aria-label="${esc(b.text)}">${NOTE_ICON[b.tone] || ""} ${esc(b.label)}</button>`;
+  }
   if (b.kind === "end") return `<div ${tid("prose.end")} class="note end">${verdictText(b)} · ${esc(b.words)} words · ${esc(b.steps)} steps</div>`;
   return "";
+}
+
+/** Render a run's blocks, collapsing runs of non-critical notes into one pill row so the prose
+ *  reads as a continuous column. Critical notes (and the expand-all view) render as their own
+ *  footnotes; everything else becomes hover/click-tooltip pills inside a `.note-pills` flex row.
+ *  Consults, reactions, reader consults and the end marker pass through untouched. */
+export function renderBlocks(blocks, interactive) {
+  const html = [];
+  let run = [];
+  const flush = () => {
+    if (run.length) {
+      html.push(`<div class="note-pills" data-tid="prose.note-pills">${run.map(b => renderBlock(b, interactive)).join("")}</div>`);
+      run = [];
+    }
+  };
+  for (const b of blocks) {
+    if (b.kind === "note" && !b.critical && !APP.expandAll) { run.push(b); continue; }
+    flush();
+    html.push(renderBlock(b, interactive));
+  }
+  flush();
+  return html.join("");
 }

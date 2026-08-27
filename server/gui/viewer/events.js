@@ -1,5 +1,26 @@
 import { APP } from "./state.js";
 
+// The tone/label each engine note renders with. `critical` notes stay as full-text footnotes
+// (something the run record must not let you miss); the rest collapse into hover-tooltip pills
+// so the serif prose keeps flowing (GUI-CHECKLIST §9, the consult/note rhythm).
+const NOTE_META = {
+  prose_reply:        { tone:"info", label:"prose reply",  critical:false },
+  context_risk:       { tone:"warn", label:"context risk", critical:false },
+  budget:             { tone:"info", label:"steps",        critical:false },
+  exit_refused:       { tone:"warn", label:"exit refused", critical:false },
+  bad_consult:        { tone:"bad",  label:"bad consult",  critical:false },
+  schema_mismatch:    { tone:"warn", label:"mis-shaped",   critical:false },
+  judge_failed:       { tone:"bad",  label:"judge failed", critical:false },
+  lint_failed:        { tone:"bad",  label:"lint failed",  critical:false },
+  batch_judge_failed: { tone:"bad",  label:"batch failed", critical:false },
+  fanout_skip:        { tone:"warn", label:"skipped",      critical:false },
+  model_changed:      { tone:"info", label:"model",       critical:false },
+  forced_end:         { tone:"warn", label:"forced end",  critical:true },
+  done_deferred:      { tone:"warn", label:"deferred",    critical:true },
+  answer_unwritten:   { tone:"bad",  label:"unwritten",   critical:true },
+  narration_flag:     { tone:"warn", label:"flagged",     critical:false },
+};
+
 // ---- grouping -----------------------------------------------------------
 export function build(store) {
   const blocks = []; let cur = null;
@@ -19,11 +40,11 @@ export function build(store) {
       case "prose_reply": {
         // A consult's prose reply flags that block; the writer's draft reply (no consult open) is its own note.
         if (cur && cur.who === e.character) last(cur)?.flags.push("answered in labelled prose, not JSON");
-        else blocks.push({ kind:"note", seq:e.seq,
+        else blocks.push({ kind:"note", t:e.t, seq:e.seq,
           text:`${e.character} replied in labelled prose rather than JSON — fields were read from it` });
         break;
       }
-      case "context_risk": blocks.push({ kind:"note", seq:e.seq,
+      case "context_risk": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text:`${e.model} is loaded with ${e.has} tokens of context and a call needed about ${e.needs} — empty completions or truncation may follow` }); break;
       case "forced":    last(cur)?.flags.push("answered without the detail it asked for"); break;
       case "repair":    last(cur)?.flags.push("re-asked: " + e.why); break;
@@ -31,7 +52,7 @@ export function build(store) {
       case "judge":     if (last(cur)) last(cur).judge = e; break;
       case "retry_capped": if (cur) cur.capped = true; break;
       case "accept":    cur = null; break;   // the consult is over; nothing renders from the accept event itself
-      case "budget":    blocks.push({ kind:"note", seq:e.seq, text:`+${e.added} steps (budget now ${e.budget})` }); break;
+      case "budget":    blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`+${e.added} steps (budget now ${e.budget})` }); break;
       case "reader_ask": blocks.push({ kind:"reader", seq:e.seq, framing:e.framing, options:e.options||[], answer:null }); break;
       case "reader_answer": {
         const rb = [...blocks].reverse().find(b => b.kind === "reader" && b.answer === null);
@@ -53,26 +74,31 @@ export function build(store) {
         break;
       }
       case "exit": blocks.push({ kind:"exit", seq:e.seq, character:e.character, pov:!!e.pov }); break;
-      case "exit_refused": blocks.push({ kind:"note", seq:e.seq, text:`${e.character} was declared gone in a reply that wrote nothing — nobody has left, the cast is unchanged` }); break;
-      case "bad_consult": blocks.push({ kind:"note", seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
-      case "schema_mismatch": blocks.push({ kind:"note", seq:e.seq,
+      case "exit_refused": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`${e.character} was declared gone in a reply that wrote nothing — nobody has left, the cast is unchanged` }); break;
+      case "bad_consult": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`consult to ${e.character} not sent — ${e.why}` }); break;
+      case "schema_mismatch": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text: e.call === "lint" ? `the narration lint came back with no verdict in it — asked again`
                                 : `the ${e.call} call for ${e.character} came back in the wrong shape — asked again`, }); break;
-      case "judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the judge call for ${e.character} never came back (${e.why}) — accepted with no judgement made` }); break;
-      case "lint_failed": blocks.push({ kind:"note", seq:e.seq, text:`the narration lint call never came back (${e.why}) — this piece was accepted unchecked` }); break;
-      case "batch_judge_failed": blocks.push({ kind:"note", seq:e.seq, text:`the reaction judge call never came back (${e.why}) — no volunteered deed from this beat was promoted` }); break;
-      case "fanout_skip": blocks.push({ kind:"note", seq:e.seq, text:`${e.character} was skipped in the group reaction — ${e.why}` }); break;
-      case "model_changed": blocks.push({ kind:"note", seq:e.seq, text:`model switched to ${e.model}` }); break;
-      case "forced_end": blocks.push({ kind:"note", seq:e.seq, text:`scene forced to a close — ${e.words} words against a ${e.target}-word target` }); break;
-      case "done_deferred": blocks.push({ kind:"note", seq:e.seq, text:`the scene was about to end with an answer still owed the page — held open one more turn to write it in` }); break;
-      case "answer_unwritten": blocks.push({ kind:"note", seq:e.seq,
+      case "judge_failed": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`the judge call for ${e.character} never came back (${e.why}) — accepted with no judgement made` }); break;
+      case "lint_failed": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`the narration lint call never came back (${e.why}) — this piece was accepted unchecked` }); break;
+      case "batch_judge_failed": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`the reaction judge call never came back (${e.why}) — no volunteered deed from this beat was promoted` }); break;
+      case "fanout_skip": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`${e.character} was skipped in the group reaction — ${e.why}` }); break;
+      case "model_changed": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`model switched to ${e.model}` }); break;
+      case "forced_end": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`scene forced to a close — ${e.words} words against a ${e.target}-word target` }); break;
+      case "done_deferred": blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`the scene was about to end with an answer still owed the page — held open one more turn to write it in` }); break;
+      case "answer_unwritten": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text:`${(e.characters||[]).join(", ")} answered, and the scene ended before that answer reached the page`
              + (e.stopped ? " — the run was stopped" : ""), }); break;
-      case "narration_flag": blocks.push({ kind:"note", seq:e.seq,
+      case "narration_flag": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text: e.retried ? `narration flagged again after a redraft — ${e.why} — kept anyway`
                         : `narration flagged — ${e.why} — redrafting`, }); break;
       case "scene_end": blocks.push({ kind:"end", seq:e.seq, ...e }); break;
     }
+  }
+  for (const b of blocks) {
+    if (b.kind !== "note") continue;
+    const m = NOTE_META[b.t] || { tone:"info", label:"note", critical:false };
+    b.tone = m.tone; b.label = m.label; b.critical = m.critical;
   }
   return blocks;
 }
