@@ -18,9 +18,9 @@ run, which is the owner's to make, batched.
 
 ## Next
 
-Six items promoted out of the sections below, in the order they should be picked up. Each is
+Five items promoted out of the sections below, in the order they should be picked up. Each is
 decidable now and has live-run evidence behind it. The first two are reasons to distrust what the
-architect hands the writer; items 3–6 are reasons to distrust what the writer hands everyone else.
+architect hands the writer; items 3–5 are reasons to distrust what the writer hands everyone else.
 
 Their evidence is four doorway runs of 2026-08-27 — `14-54-12-677Z`, `16-23-17-001Z`,
 `19-33-16-122Z` and `19-47-04-293Z`. The first three ran `google/gemma-4-e4b` throughout; the fourth
@@ -29,10 +29,9 @@ left the characters on `e4b`. **Retained-run rotation has since removed `14-54-1
 so figures cited from it are not re-derivable; everything attributed to the other three is.
 
 That model split is why the order is what it is. Raising the author-side model fixed or nearly fixed
-items 4, 5 and 6 on its own — the fourth run finished in 13 steps with no degenerate questions, no
-person drift and no repetition — while **item 3's defect appeared on the page in both models**, in
-the very run where everything else improved. It is first because it is the one thing capability did
-not buy.
+items 3, 4 and 5 on its own — the fourth run finished in 13 steps with no degenerate questions, no
+person drift and no repetition — while the prose sense-lint's three holes, which led this list until
+they shipped, appeared on the page in both models: the one thing capability did not buy.
 
 ### 1. `facts[]` is framed away from the one thing it exists for
 
@@ -73,57 +72,7 @@ attribute it to the collective team?". Whatever the redraft instruction says, it
 question shape is reworked to match, and the re-ask path is checked to be sure it does not undo both.
 Those are halves of one change.
 
-### 3. The prose sense-lint has three holes, and all three reached the page
-
-`lintRestrictedSituation` shipped and holds: across four runs it has flagged nothing, missed nothing,
-and refused nothing wrongly, with both edge cases now observed live — the figurative "you are waiting
-to **see** if he moves away" correctly passed, and the twelve-b writer's "You **cannot see** them,
-but you can hear their voice clearly" correctly passed. The prose sibling it was built beside is the
-half that is leaking.
-
-Merritt carries `restrictions: ["sight"]`. These five lines reached the final `scene.md` of runs
-three and four; the shipped lint catches exactly one of them:
-
-| line on the page | outcome | why |
-| --- | --- | --- |
-| "Merritt does not **look** up… **his gaze** remains fixed" | missed | `look` absent; `his` exculpates |
-| "**Merritt's gaze** travels down the line of keys" | missed | possessive noun exculpated |
-| "only **holds your gaze**… before **looking** down again" | missed | pronoun subject + possessive + `look` |
-| "wide enough for **Merritt to see** them" | missed | `see` excluded by design |
-| "Merritt **watches** Riven" | caught | name-anchored literal verb |
-
-Three defects, and they are not the same kind of thing:
-
-- **`look` is an omission, not a decision.** The module docstring names "watching, glancing, gazing,
-  and their siblings" and argues explicitly for leaving `see`/`saw` out; `look` is neither listed nor
-  discussed anywhere. "Look up", "look down", "looks at" are as literal as "watches", and this is the
-  same call the `observ*` family already got. It accounts for two of the four misses.
-- **The determiner guard over-exculpates.** It exists for "returned her glance" — a noun that is not
-  an act. But "his gaze **travels down** the line of keys" and "his gaze **remains fixed on**" *are*
-  the act, and the guard blanket-clears every possessive. This is the prose mirror of the inversion
-  already fixed for situations: a possessive sense-noun carrying an action predicate is perception.
-  Whatever shape the fix takes, it must not disturb the situation sibling, where possessive `your` is
-  the incriminating form and the current behaviour is correct.
-- **`see` is a measured trade-off, not a bug.** Both of its sides now have live evidence in the same
-  pair of runs — the figurative use the exclusion exists for, and the literal use it costs. Record
-  that and leave the exclusion alone; reopening it needs a different argument than these runs give.
-
-A fourth case is adjacent and older: "Merritt does not move, but **he** holds your gaze" from run
-two, where the subject is a pronoun. That is out of scope by explicit design and stays out — but it
-is the same page-level violation, so whatever the LLM half is expected to catch should be re-checked
-against it once this ships.
-
-**One caution for whoever measures this.** Run four produced **zero narration flags** while carrying
-"wide enough for Merritt to see them" on the page. A quieter judge is not a cleaner page, and this is
-a live instance of counting the flag instead of the behaviour. Verification here means reading the
-prose for violations, not reading the flag count.
-
-**Done when** the `look` family is in the table or its exclusion is argued in the docstring the way
-`see`'s is, a possessive sense-noun with an action predicate is caught in prose without changing what
-`lintRestrictedSituation` does with `your`, the `see` trade-off is written down as settled, and the
-five lines above are fixtures — the four misses failing before the change and passing after.
-
-### 4. An accepted piece can repeat what is already on the page
+### 3. An accepted piece can repeat what is already on the page
 
 Draft #2 of the doorway run re-emitted draft #1 **verbatim** — 386 identical characters, the whole
 opening paragraph — and appended one new sentence. Both were accepted and both were appended, so the
@@ -153,7 +102,7 @@ Two decisions the plan has to make:
 append, the threshold is chosen with the doorway 386-char case and quote-lint's 0.8 as the two
 reference points, and the event decision is made rather than deferred.
 
-### 5. The writer is told its POV character but never its grammatical person
+### 4. The writer is told its POV character but never its grammatical person
 
 The doorway scene is `pov: RIVEN`. Its second half drifts into second person, and the referent of
 "you" alternates with whoever was consulted last: "You remain seated on the crate as Riven moves
@@ -179,13 +128,13 @@ clause did anything.
 **Done when** the POV line in `writerSystem` states that person is the style's to set and never the
 consult rhythm's, and an `e4b` live run is made to see whether the drift survives it.
 
-### 6. A scene has no representation of its own question being answered
+### 5. A scene has no representation of its own question being answered
 
 The doorway run ended `done: false`, at 64 steps against a `maxSteps` of 24 (four `budget` grants)
 and 933 words against a 700 target. Its question — "Does Riven get through the door before Merritt
 decides what to do about them?" — was answered at the midpoint: door open, satchel handed over,
 ledger signed. Everything after is epilogue, and in it Riven is consulted four more times about how
-fast to walk away while Merritt is asked five times whether to stand up. Item 5's person drift lives
+fast to walk away while Merritt is asked five times whether to stand up. Item 4's person drift lives
 **entirely** inside that epilogue, which is why this is ordered last: some of its evidence is not
 independent.
 
@@ -206,7 +155,7 @@ scene's question having been answered.** `scene_done` is the writer's to declare
 budget grants are spent against word count and step count, neither of which knows what the scene was
 for. Whatever the budget policy becomes, that absence is the thing it answers.
 
-**Done when** — deliberately open. Do not start this one until 4 and 5 have shipped and a fresh
+**Done when** — deliberately open. Do not start this one until 3 and 4 have shipped and a fresh
 `e4b` run has been read, since both change what its evidence looks like and only `e4b` still
 produces the failure.
 
