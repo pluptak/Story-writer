@@ -52,43 +52,27 @@ be true of the room and the writer invented an electrical fire that dissolved th
 more characters both hold it" the test for story level, and verify has a bullet for the omission,
 which it does not have at all today. This is a reframe, not a new field.
 
-### 2. The consult gate holds and the writer starves
+### 2. Did the instruction pass fix the consult-gate churn?
 
-The gate shipped and works: `normalizeConsult` refuses a question carrying both branches of its fork
-(word-bounded "or", the rule the evidence got — 113 of 133 consult questions across the retained
-control runs were pre-written menus), and the refusal flows to the writer, the judge's re-ask and
-the reaction fan-out alike. The first run under it answered the measurement with churn. Eight of the
-scene's 24 steps were spent on refused consults — five carries-answers refusals, three degenerate
-ones, two situation-lint refusals — against three consults sent, none of them good.
+The gate holds: `normalizeConsult` refuses both menu questions (word-bounded "or") and shrug
+questions, and the refusal flows to the writer, the judge's re-ask and the fan-out alike. The first
+run under it (`22-23-22-884Z`) measured the cost of teaching a small model a shape it does not
+have: eight of 24 steps spent on refused consults, three thin questions sent, one of them the
+vagueness dodge — "Do you speak, or remain silent?" refused, "What do you choose regarding the
+lock?" sent — and the scene ending `done: false` at the step cap with `answer_unwritten`.
 
-The writer does not learn the shape the gates want; it oscillates between the two refusal classes
-and then launders the "or" into vagueness: "Do you speak, or remain silent?" was refused, and the
-question eventually sent was "What do you choose regarding the lock?" — names a subject, carries no
-options, names no stake, slips past both gates. The scene ended `done: false` at the step cap with
-`answer_unwritten` — an accepted answer that never reached the chapter — and no clarification was
-ever requested, so the suppression this gate was built to relieve was not relieved; it was priced
-in steps.
+The instruction passes shipped in response: `NAME_THE_FORK` now carries the worked example that
+transferred in live evidence ("What do you say to the group about the state of the hardware?") and
+names both refused shapes; the two refusal whys cross-reference each other's failure so a writer
+corrected off one shape does not walk into the other; and `DEGENERATE_QUESTIONS` knows the dodge —
+"What do you choose regarding X?" is refused beside the menu.
 
-Candidate passes, cheapest first:
+Open, if the next `e4b` run still churns: **whether a refused consult should cost a step at all.**
+Eight steps of a 24-step scene is the observed price of the writer learning by refusal; if the
+instruction pass does not quiet it, the candidates are a cheaper retry shape (the rewrite requested
+inside the same step) or a second refusal spending budget only on demonstrated repeat offenders.
 
-- **`NAME_THE_FORK` needs a worked example of the question that passes both gates** — open, and
-  naming its fork. The surviving example ("Do you say the name, knowing what it admits?") did not
-  transfer: the writer produced "What do you choose regarding the lock?" instead. What transfers in
-  live evidence is the thing the writer already wrote once on its own: "What do you say to the
-  group about the state of the hardware?"
-- **The two refusal whys should name each other.** The degenerate why and the carries-answers why
-  each describe only their own failure, so a writer corrected off one shape walks straight into the
-  other. One sentence in each pointing at the target shape ("open, and naming what hangs on the
-  choice — not a menu, not a shrug") is the whole fix.
-- **The degenerate shape list should know the vagueness dodge.** "What do you choose regarding
-  X?" is "What do you do?" wearing a subject. Adding the choose-regarding form to
-  `DEGENERATE_QUESTIONS` closes the gap the first pass opened — carefully: it must not swallow
-  genuine open questions that name a stake.
-- **Whether a refused consult should cost a step at all.** Eight steps of a 24-step scene is the
-  observed price of teaching a small model a shape it does not have. If the instruction passes fix
-  the churn, this stays unanswered; if they do not, it is the next question.
-
-**Done when** an e4b run sends consults that are both open and forked, refusal churn is a small
+**Done when** an `e4b` run sends consults that are both open and forked, refusal churn is a small
 fraction of steps, the scene terminates `done: true`, and clarification is asked for when a
 character lacks a fact.
 
