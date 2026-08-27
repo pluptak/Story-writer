@@ -47,6 +47,15 @@ const DEGENERATE_QUESTIONS = [
   /^(your|their|his|her)\s+(move|turn|call)\b/i,
 ];
 
+/** A question that carries both branches of its fork pre-written — "Do you concede, or do you double
+ *  down?" — is answered by picking, and picking is all it leaves the character to do: nothing to ask
+ *  for, no third way to reach for. This is the rule the evidence got, not a guess: every retained
+ *  run's writing-log holds 133 consult questions, 113 of them carrying " or ", and reading them,
+ *  every one is a menu. One word-bounded "or" is the whole detector; anything finer ("or" followed
+ *  by a verb, say) misses "or with Hale and Marsh (pull the lever now)". The character names the
+ *  options; the writer names what hangs on the choice. */
+const QUESTION_CARRIES_ANSWERS = /\bor\b/i;
+
 const MIN_SITUATION_WORDS = 5;
 
 /** The outcome of checking a proposed consult: sendable, or refused with a reason the writer can act on. */
@@ -75,6 +84,8 @@ export function normalizeConsult(raw: {
     return { ok: false, why: P.badConsult.noQuestion(character) };
   if (DEGENERATE_QUESTIONS.some(re => re.test(question)))
     return { ok: false, why: P.badConsult.degenerate(question) };
+  if (QUESTION_CARRIES_ANSWERS.test(question))
+    return { ok: false, why: P.badConsult.carriesAnswers(question) };
 
   const wants = canonWants(raw.wants);
   if (!wants)

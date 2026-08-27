@@ -210,7 +210,7 @@ describe("canonWants", () => {
 describe("judgeRequest", () => {
   const p = {
     name: "RIVEN", situation: "You are kneeling by the steel service door.",
-    question: "Do you turn it, or ease off?", wants: "decision", thought: "t", speech: "s", action: "a",
+    question: "Do you turn it now?", wants: "decision", thought: "t", speech: "s", action: "a",
     note: "", flags: "",
   };
 
@@ -496,7 +496,7 @@ describe("parseBatchVerdict", () => {
 describe("reviseConsult", () => {
   const prev: ConsultRequest = {
     character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
-    question: "Do you turn it, or ease off?", wants: "decision",
+    question: "Do you turn it now?", wants: "decision",
   };
 
   it("keeps what the judge left out", () => {
@@ -510,11 +510,11 @@ describe("reviseConsult", () => {
   it("takes a whole new situation and question when the judge writes one", () => {
     const r = reviseConsult(prev, {
       situation: "The corridor has gone quiet and the wrench is still in your hand.",
-      question: "Do you call out, or keep working?", wants: "decision",
+      question: "Do you call out first?", wants: "decision",
     });
     assert.ok(r.ok);
     assert.match(r.req.situation, /corridor has gone quiet/);
-    assert.equal(r.req.question, "Do you call out, or keep working?");
+    assert.equal(r.req.question, "Do you call out first?");
     assert.equal(r.wantsRefused, "", "it kept the shape, so there is no drift to record");
   });
 
@@ -534,7 +534,7 @@ describe("reviseConsult", () => {
   // do you go" and "what do you say about it" are different moments, and a judge that answers an
   // inconvenient reply by changing the shape has replaced the choice rather than re-put it.
   it("pins the shape asked for, and records the one the judge wanted", () => {
-    const r = reviseConsult(prev, { question: "Do you turn it, or ease off it now?", wants: "speech" });
+    const r = reviseConsult(prev, { question: "Do you turn it slowly now?", wants: "speech" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision", "the original shape stands");
     assert.equal(r.wantsRefused, "speech", "and what the judge asked for is on the record");
@@ -557,13 +557,13 @@ describe("reviseConsult", () => {
   const blindCast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
   const merrittPrev: ConsultRequest = {
     character: "MERRITT", situation: "The ledger lies open on the counter, the pen beside your hand.",
-    question: "Do you sign, or hold the pen where it is?", wants: "decision",
+    question: "Do you sign it now?", wants: "decision",
   };
 
   it("re-lints the judge's revised situation against the same CANNOT list — the fifth entry path", () => {
     const r = reviseConsult(merrittPrev, {
       situation: "You have just watched Riven sign the ledger in your place.",
-      question: "Do you countersign, or leave it as Riven left it?",
+      question: "Do you countersign it now?",
     }, blindCast);
     assert.ok(!r.ok, "a retry must not deliver as ground truth what the first ask was refused for");
     assert.match(r.why, /MERRITT/);
@@ -572,14 +572,14 @@ describe("reviseConsult", () => {
   it("passes a clean revision through with the cast given", () => {
     const r = reviseConsult(merrittPrev, {
       situation: "The counter is bare under your hands; the pen has been taken away.",
-      question: "Do you sign, or hold the pen where it is?",
+      question: "Do you sign it now?",
     }, blindCast);
     assert.ok(r.ok);
     assert.match(r.req.situation, /pen has been taken away/);
   });
 
   it("re-lints nothing when the judge leaves the situation alone", () => {
-    const r = reviseConsult(merrittPrev, { question: "Do you sign, or push the ledger back?" }, blindCast);
+    const r = reviseConsult(merrittPrev, { question: "Do you sign the ledger now?" }, blindCast);
     assert.ok(r.ok, "the original situation was already sent once — it is not re-judged");
   });
 });
@@ -660,7 +660,7 @@ describe("parseClarifyAnswer", () => {
 
 describe("normalizeConsult", () => {
   const good = { character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
-                 question: "Do you turn it, or ease off?", wants: "decision" };
+                 question: "Do you turn it now?", wants: "decision" };
 
   it("passes a real consult through, canonicalizing wants", () => {
     const r = normalizeConsult({ ...good, wants: "what they decide" });
@@ -697,12 +697,32 @@ describe("normalizeConsult", () => {
 
   it("keeps the questions that name a fork or a cost", () => {
     for (const q of ["Do you type the abort command?",
-                     "Do you wake him or let him sleep?",
-                     "Do you shift to get more comfortable, or stay perfectly still?",
+                     "Do you wake him, knowing what the noise wakes with it?",
+                     "Do you shift to get more comfortable?",
                      "What do you say when he asks you directly?",
-                     "Do you say the name, knowing what it admits?"]) {
+                     "Do you say the name, knowing what it admits?",
+                     "Do you open the order book?"]) {
       assert.ok(normalizeConsult({ ...good, question: q }).ok, `"${q}" should have been allowed`);
     }
+  });
+
+  it("refuses the question that carries both answers of its fork", () => {
+    // The three live shapes: two doorway runs and the cooling-loop retry that came back with MORE
+    // of the answer in it. A pre-written menu is answered by picking, and picking is all it leaves.
+    for (const q of ["Do you concede and sign for A, or do you double down?",
+                     "Do you side with Nkem (wait for engineers) or with Hale and Marsh (pull the lever now)?",
+                     "Do you list yourself as the primary person who authorized the shutdown, " +
+                     "or do you attribute it to the collective team?"]) {
+      const r = normalizeConsult({ ...good, question: q });
+      assert.ok(!r.ok, `"${q}" should have been refused`);
+      assert.match(r.why, /both branches|open question/);
+    }
+  });
+
+  it("keeps the genuinely open question the live runs produced", () => {
+    const r = normalizeConsult({ ...good,
+      question: "What do you say to the group about the state of the hardware?" });
+    assert.ok(r.ok);
   });
 
   it("refuses a wants it cannot make sense of, and names the four", () => {
@@ -720,7 +740,7 @@ describe("normalizeConsult", () => {
   });
 
   const sightLeaning = "You are leaning over Riven, observing their hands at the lock. Riven remains perfectly still under your gaze.";
-  const forkQuestion = "Do you reach for the lock, or call out?";
+  const forkQuestion = "Do you reach for the lock?";
   const cast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
 
   it("refuses a situation phrased around a sense its addressee CANNOT", () => {
@@ -766,6 +786,15 @@ describe("normalizeReactionConsult", () => {
       assert.equal(req.situation, shared);
       assert.equal(req.wants, "reaction");
     }
+  });
+
+  it("refuses a fan-out whose question carries both answers — the gate is shared", () => {
+    const r = normalizeReactionConsult({
+      reactors: [{ name: "ELARA" }, { name: "MIRA" }], situation: shared,
+      question: "Do you flinch from the crash, or hold still?",
+    });
+    assert.ok(!r.ok);
+    assert.match(r.why, /both branches|open question/);
   });
 
   it("lets a reactor override the situation (someone who only heard it)", () => {

@@ -617,7 +617,7 @@ describe("the judge", () => {
       consult: {
         character: "MERRITT",
         situation: "Riven turns to face them, asking plainly what they mean to do about the door.",
-        question: "Do you open the door, or refuse?",
+        question: "Do you open the door?",
         wants: "decision",
       },
       scene_done: true,
@@ -756,7 +756,7 @@ describe("an answer still owed the page", () => {
   const ASK = {
     character: "MERRITT",
     situation: "Riven has the package under one arm and a hand flat on the service door.",
-    question: "Do you let them through, or do you stand up?",
+    question: "Do you let them through?",
     wants: "decision",
   };
 
@@ -1031,7 +1031,7 @@ describe("a clarification on a rejected attempt", () => {
         consult: {
           character: "MERRITT",
           situation: "Riven has the package under one arm and a hand flat on the service door.",
-          question: "Do you let them through, or do you stand up?",
+          question: "Do you let them through?",
           wants: "decision",
         },
         scene_done: false },
@@ -1046,7 +1046,7 @@ describe("a clarification on a rejected attempt", () => {
     ];
     const clarifierReplies = [{ answer: "Bolted, top and bottom." }, { answer: "Ten feet, behind them." }];
     const judgeReplies = [
-      { verdict: "retry", revised: { question: "Do you stand up, or stay on the crate?" } },
+      { verdict: "retry", revised: { question: "Do you stand up to let them pass?" } },
       { verdict: "accept" },
     ];
 

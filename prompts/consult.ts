@@ -187,8 +187,15 @@ export const badConsult = {
 
   degenerate: (question: string) =>
     `"${question}" names no fork and no stake, so the safest answer is always `
-    + `the right one and the scene stops moving. Ask about the choice actually in front of them: `
-    + `"Do you hold the door, or let go?" — name the options, or name what it costs.`,
+    + `the right one and the scene stops moving. Ask about the choice actually in front of `
+    + `them, and ask it open: "Do you say the name, knowing what it admits?" — name what it `
+    + `costs, and let them name the options.`,
+
+  carriesAnswers: (question: string) =>
+    `"${question}" hands the character both branches of the fork and asks them to pick one. `
+    + `A pre-written menu is answered by picking: nothing is left for them to ask for, and no `
+    + `third way can reach the scene through it. Ask one open question about the fork — name `
+    + `what hangs on their choice, not the options you have already imagined for them.`,
 
   badWants: (allowed: readonly string[], sent: string) =>
     `"wants" must be exactly one of: ${allowed.join(", ")}. `
