@@ -267,9 +267,13 @@ tension  -- ONE sentence naming the load-bearing conflict: who wants what, again
             opposition. This decides who belongs in the cast and sharpens the scene's question,
             so make it a collision between people, not a mood or a theme. The later stages are
             built on exactly these words -- spend care here.
-facts    -- truths true of the world at large that nobody in particular walks in holding.
-            Empty is fine when none clear that bar; a fact only one person knows belongs in
-            their "knows" when their stage comes, not here.
+facts    -- what two or more characters BOTH hold, and the writer must still be told:
+            the writer never sees any character's "persona", "knows", "goal" or "belief",
+            so the ground everyone in the room takes for granted is invisible to it
+            unless it sits here. Shared by two or more is the test for story level; a
+            fact only one person walks in holding belongs in their "knows" when their
+            stage comes, not here. Empty is fine when nothing clears that bar -- but
+            empty while shared ground goes unwritten is how the writer invents the room wrong.
 
 FIRST DECIDE gate: does the idea tell you WHO is in the scene, and WHAT IS AT STAKE between
 them? If either is missing, use "ask" and send nothing else -- you would be inventing the thing
@@ -415,11 +419,12 @@ ${sceneField}.roster -- name every character actually present in this scene. Lea
     + `decided who is in the room -- if everyone in the cast genuinely belongs, say so by `
     + `listing them all rather than leaving it empty.
 
-add_fact -- a fact belongs at the story level only when it is true of the world at large `
-    + `and not owned by one character's private "knows". A fact only one person walks in `
-    + `holding stays in their "knows" -- sending it as add_fact too puts it in two places `
-    + `that can drift apart. Add one add_fact edit per fact that clears that bar. If none `
-    + `do, add none.
+add_fact -- the test for story level is "two or more characters both hold it": the writer `
+    + `is never shown any character's "knows", so ground the whole room takes for granted `
+    + `is invisible to the writer unless "facts" carries it. A fact only one person walks `
+    + `in holding stays in their "knows" -- sending it as add_fact too puts it in two `
+    + `places that can drift apart. Add one add_fact edit per fact that clears the `
+    + `shared-by-two-or-more bar. If none do, add none.
 
 [THE STORY AS IT STANDS]
 ${specJson}
@@ -448,6 +453,9 @@ ${knownProblems.map(p => `  - ${p}`).join("\n")}
 
   - a fact in "facts" that only restates one character's private "knows" -- it belongs `
     + `there, not at story level.
+  - "facts" empty, or missing ground that two or more characters both hold -- the writer `
+    + `is never shown anyone's "knows", so shared ground is invisible to it unless "facts" `
+    + `carries it; left unwritten, the writer invents the world state and gets it wrong.
   - a restriction that cannot actually bite in this scene -- it creates no asymmetry the `
     + `scene puts to use.
   - more than one character, and not one of them has any restrictions -- the cast then has `
