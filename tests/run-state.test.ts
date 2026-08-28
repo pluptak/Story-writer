@@ -1001,6 +1001,26 @@ describe("an answer still owed the page", () => {
       assert.match(heard, /\[NOTHING TO WRITE\] MERRITT/, "the writer was told, not left guessing");
     });
 
+  it("names the repetition when the writer re-sends a question the gate already refused", async () => {
+    // Observed five times running in one scene: the refusal says what is wrong, the writer sends the
+    // identical string back, and each round costs a step. The second one is told it is a repeat.
+    const menu = { ...CRASH, question: "Do you look for the source, or do you stay where you are?" };
+    const { events, writer } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "The crash echoes down the corridor.", consult: menu, scene_done: false },
+        { prose: "Dust drifts in the dark.", consult: menu, scene_done: false },
+        { prose: "Nothing moves.", scene_done: true },
+      ],
+    });
+
+    assert.equal(events.filter(e => e.t === "bad_consult").length, 2, "both were refused");
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.match(heard, /\[CONSULT NOT SENT\]/, "the first refusal is the ordinary one");
+    assert.match(heard, /AND YOU HAVE SENT IT BEFORE/, "the second names the repetition");
+    assert.match(heard, /refused once already/);
+  });
+
   it("counts a fan-out whose every reactor was skipped as an empty turn", async () => {
     const ghost = { prose: "", consult: { ...CRASH, reactors: [{ name: "GHOST" }] }, scene_done: false };
     const { r, events } = await runIt({

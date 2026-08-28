@@ -212,6 +212,17 @@ export const consultNotSent = (why: string, name: string) =>
   `[CONSULT NOT SENT] ${why}\n\n`
   + `${name} was not asked and nobody answered. Nothing about the scene has changed.`;
 
+/** The same refused question, sent again word for word. Observed five times in a row in one scene,
+ *  each costing a step: the ordinary refusal says what is wrong and the writer re-sends the identical
+ *  string anyway, so the repetition itself has to be named. */
+export const consultRepeated = (why: string, name: string, times: number) =>
+  `[CONSULT NOT SENT — AND YOU HAVE SENT IT BEFORE] ${why}\n\n`
+  + `That is the same question word for word, refused ${times - 1 === 1 ? "once already" : `${times - 1} times already`}. `
+  + `Sending it a ${times}${times === 3 ? "rd" : "th"} time will not change the answer: ${name} still `
+  + `has not been asked anything, and each attempt costs the scene a step it does not get back. `
+  + `Either rewrite it into one open question naming what hangs on the choice, or drop it, write the `
+  + `beat, and ask someone else.`;
+
 export const consultExited = (name: string) =>
   `[GONE] ${name} has left the scene and cannot be asked anything. Work with who is still here.`;
 

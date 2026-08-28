@@ -277,6 +277,18 @@ can now only happen through a situation.
 needed the question and stage 3 is dead without spending a branch on it. If they do not, the field is
 carrying less than the apparatus around it costs.
 
+**Two live runs so far, and neither has answered that yet.** 28 consults, 2 retries — and both
+retries were the judge reading `wants` as a ceiling rather than a floor, which is instrument error
+since fixed (`f835fb3`), not a character failing to find its fork. What both runs did produce is a
+question the gate was not built for: **`QUESTION_CARRIES_ANSWERS` now refuses a string nobody reads.**
+Its rationale is that "a pre-written menu is answered by picking, and there is nothing left for them
+to ask for" — true when the character saw the menu, and no longer true of anything the character
+receives. In the second run it fired nine times, five of them on one question re-sent verbatim, and
+those steps bought nothing that could have reached anyone. Either the gate is now policing the
+writer's *thinking* rather than the character's input and should say so in its own words, or it
+should relax for a question that is only ever read by the judge. Decide it before stage 3, since
+stage 3 deletes the field the gate is checking.
+
 **Stage 3 — remove the field entirely.** Not started, and not to be started before a stage-2 run is
 read. The gate would narrow rather than be deleted: the writer's ask goes through an *open* path
 (character, situation, a raised situation floor, the CANNOT check) while the judge's escalation keeps
