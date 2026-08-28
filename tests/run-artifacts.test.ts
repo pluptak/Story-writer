@@ -13,7 +13,68 @@ import { WARN } from "../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
 import { wrapCharacter, wrapWriter, writerCast, sceneReach } from "../engine/scene-loop.ts";
+import { fingerprint, LOADED, writeRunManifest } from "../run-manifest.ts";
 import { quiet, warnings } from "./helpers.ts";
+
+// -- THE RUN MANIFEST -------------------------------------------------------
+// The thing it exists to catch is a process running code the working tree no longer holds, so the
+// test that matters is whether the digest moves when the source under it does.
+describe("run manifest", () => {
+  /** A miniature source tree of the shape `fingerprint` walks. */
+  async function fakeTree(engineBody: string): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), "story-writer-print-"));
+    await mkdir(join(root, "engine"), { recursive: true });
+    await mkdir(join(root, "prompts"), { recursive: true });
+    await writeFile(join(root, "engine", "scene-loop.ts"), engineBody, "utf8");
+    await writeFile(join(root, "prompts", "writer.ts"), "export const X = 1;\n", "utf8");
+    await writeFile(join(root, "prompts.ts"), "export * from './prompts/writer.ts';\n", "utf8");
+    return root;
+  }
+
+  it("changes when a source file's contents change", async () => {
+    const a = await fakeTree("export const N = 1;\n");
+    const b = await fakeTree("export const N = 2;\n");
+    try {
+      assert.notEqual(fingerprint(a), fingerprint(b), "an edited engine must not fingerprint the same");
+      assert.equal(fingerprint(a), fingerprint(a), "and the digest is stable for unchanged source");
+    } finally {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+    }
+  });
+
+  it("changes when a source file is added or removed, not only edited", async () => {
+    const root = await fakeTree("export const N = 1;\n");
+    try {
+      const before = fingerprint(root);
+      await writeFile(join(root, "engine", "extra.ts"), "export const Y = 1;\n", "utf8");
+      assert.notEqual(fingerprint(root), before, "a new module changes what the engine is");
+      await rm(join(root, "engine", "extra.ts"));
+      assert.equal(fingerprint(root), before, "and removing it puts the digest back");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("survives a tree it cannot read at all", () => {
+    // Coarse beats throwing: a fingerprint that fails takes the run with it.
+    assert.match(fingerprint(join(tmpdir(), "story-writer-nonexistent-tree")), /^[0-9a-f]{12}$/);
+  });
+
+  it("writes a manifest naming the engine that is running", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const m = await writeRunManifest(dir, {
+        run: "2026-08-28T00-00-00-000Z", story: "stories/x", chapter: 2,
+        scene: { pov: "ELIAS", target: 700 }, models: { writer: "w", summary: "s" },
+      });
+      const onDisk = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
+      assert.deepEqual(onDisk, m, "what it returned is what it wrote");
+      assert.equal(m.engine, LOADED, "the run is stamped with the loaded engine, not the one on disk");
+      assert.equal(m.engineStale, false, "and this test process is running its own tree");
+      assert.equal(m.chapter, 2);
+      assert.equal(m.scene.pov, "ELIAS");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
 
 // -- RETAINED RUNS (§F3) ----------------------------------------------------
 describe("runDirs / retainedRuns", () => {
