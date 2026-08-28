@@ -313,7 +313,47 @@ describe("clarifyRequest", () => {
   });
 });
 
+describe("what the character is sent", () => {
+  const req = { situation: "The alarm has been going for a minute and nobody has moved.",
+                question: "Do you say the name, knowing what it admits?", wants: "speech" };
+
+  it("gives them the situation and never the question", () => {
+    // Stage 2 of the open-beat experiment: the author still writes the question -- it gates the
+    // consult, anchors the judge and travels with the answer on the record -- and the character
+    // answers the moment instead of the fork the author picked out of it.
+    const sent = P.askBlock(req);
+    assert.match(sent, /The alarm has been going/, "the situation is their whole world");
+    assert.ok(!sent.includes(req.question), "the question they were never shown is not in the ask");
+    assert.ok(!/\bQuestion:/.test(sent), "and no empty label is left behind where it used to be");
+  });
+
+  it("still names the shape the answer has to arrive in", () => {
+    // Kept deliberately: missingShape refuses an answer for lacking a shape, and refusing one the
+    // character was never asked for would be a trap rather than a check.
+    assert.match(P.askBlock(req), /What they need from you: speech/);
+  });
+
+  it("puts the moment to them as theirs to take", () => {
+    assert.match(P.askBlock(req), /nobody is going to hand you a better one/);
+  });
+
+  it("keeps the door to asking for a missing fact open", () => {
+    // With no question, {"need": ...} is the only way a character can repair a thin situation.
+    assert.match(P.askBlock(req), /Ask for it instead/);
+  });
+});
+
 describe("the retry template", () => {
+  it("tells the judge that only the situation reaches them", () => {
+    // Without this the judge sharpens the question on a retry, the character sees an identical ask,
+    // and a fresh instance answers it identically -- a retry spent on nothing.
+    assert.match(P.JUDGE_FORMAT, /ONLY ONE OF THE THREE THEY WILL READ/);
+  });
+
+  it("does not let the judge retry an answer for missing the fork it named", () => {
+    assert.match(P.JUDGE_FORMAT, /they never saw the fork you named/);
+  });
+
   it("names every field a retry has to carry", () => {
     // A field absent from the template is a field the model does not send: `wants` was missing from
     // 17 of 17 logged retries, and `note` came back empty in 13 of them.

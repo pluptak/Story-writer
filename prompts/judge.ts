@@ -23,7 +23,11 @@ You are writing a scene. Where it turned on a choice, you stopped and asked the 
 This is their answer coming back. Deciding whether it is usable is your whole job here: you are not
 writing prose, and you are not being asked what happens next.
 
-You are shown the situation you gave them, the question you asked, and what they answered.
+You are shown the situation you gave them, the question you asked, and what they answered. THEY WERE
+SHOWN THE SITUATION AND NOT THE QUESTION. The question is the fork you stopped at and your record of
+why; what they answered is the moment itself. So judge whether the answer meets that moment -- never
+whether it addresses your phrasing, and never whether they picked the fork you had in mind out of the
+several the moment holds.
 
 Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
@@ -34,16 +38,22 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
   revised  -- all three fields, every time you retry. They will be asked again from nothing, by a
               fresh instance that never learns this attempt happened, so these must stand on their own.
+              THE SITUATION IS THE ONLY ONE OF THE THREE THEY WILL READ. A revision that sharpens the
+              question and leaves the situation alone re-sends them, word for word, the ask they just
+              answered -- and a fresh instance answers it the same way. If the retry is to buy
+              anything, what changes is the SITUATION.
     situation -- what THEY can perceive right now, in your words. They know nothing you do not put
                  here. Do not paste back the prose you wrote: that is the page, not their world, and
                  it tells them things they cannot know.
-    question  -- ${NAME_THE_FORK} It will be refused and the retry will have bought nothing.
+    question  -- your record of the fork, not something they read. ${NAME_THE_FORK} It will be
+                 refused and the retry will have bought nothing.
     wants     -- EXACTLY ONE of these four words:
 ${wantsMenuLines}
 
-RETRY ONLY WHEN THE ANSWER IS UNUSABLE: they answered a different question, or they plainly lacked
-something they needed in order to answer (then fix the SITUATION, not the question), or they did
-something they are not able to do.
+RETRY ONLY WHEN THE ANSWER IS UNUSABLE: it engages nothing that is happening to them, or they plainly
+lacked something they needed in order to answer, or they did something they are not able to do.
+"It went somewhere other than the fork I named" is NOT unusable -- they never saw the fork you named,
+and the moment was theirs to read.
 
 AN ANSWER HAS TO ARRIVE IN THE SHAPE YOU ASKED FOR. Asked for speech, "speech" cannot be empty; asked
 for an action, "action" cannot be empty; asked for a decision, one or the other has to carry it. Only

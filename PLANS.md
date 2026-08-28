@@ -239,6 +239,52 @@ produces the failure.
   a managed list instead of generating persona text on the spot — a bigger, separate feature to
   design then, not an extension to bolt onto the cast stage now.
 
+## The open-beat experiment (branch `pov-thought-withholding`)
+
+Unshipped and unvalidated. It lives here rather than in [Writer.MD](Writer.MD) because none of it has
+earned a surface document yet; the passages it would rewrite are named below so whoever ships it
+knows what to fix.
+
+The question the experiment asks: a character already carries a persona and a goal, and
+`CHARACTER_FORMAT` insists that what it wants is the measure of every answer. Is the consult's
+`question` doing work that the situation and the goal do not already do? The `question` field turns
+out to hold four separable jobs — the writer's receipt that it found a fork before stopping, the only
+channel for stakes the character cannot see, the return shape (`wants`), and the judge's anchor — and
+the objection lands against the second alone. So it is being removed one job at a time.
+
+**Stage 1 — a non-POV thought never reaches the writer. Shipped on the branch (`e4f77ef`).** Its
+behaviour is written up in [Writer.MD](Writer.MD) because it stands on its own and could merge alone.
+
+**Stage 2 — the character stops seeing the question.** The author still writes it: the gate still
+refuses a menu or a shrug, the judge is still shown it, `characterAnswered` still carries it to the
+writer, and the `retry` event still records what it replaced. Only `askBlock` no longer prints it, and
+a line putting the moment to the character as theirs to take stands where it was. `wants` is
+deliberately kept — `missingShape` refuses an answer for lacking a shape, and refusing one the
+character was never asked for would be a trap rather than a check.
+
+Because nothing on the writer's side changes, a stage-2 run is directly comparable to the runs already
+on disk. That is the whole reason it is a separate stage: stage 3 changes the writer too, and its
+result would be uninterpretable without this one first.
+
+Two passages in [Writer.MD](Writer.MD) go stale under stage 2 and must be rewritten if it ships:
+the judge paragraph's *"an inconvenient answer, re-asked as a different question, would come back as a
+clean answer to a moment the scene never reached"* — under stage 2 a re-ask that changes only the
+question re-sends a word-for-word identical ask, so the drift risk moves entirely onto the situation
+— and *"an answer leaked into someone else's question decides the fork for them"*, where the leak
+can now only happen through a situation.
+
+**What decides stage 3.** Retry rate and the judge's `note` text. If retries spike, the character
+needed the question and stage 3 is dead without spending a branch on it. If they do not, the field is
+carrying less than the apparatus around it costs.
+
+**Stage 3 — remove the field entirely.** Not started, and not to be started before a stage-2 run is
+read. The gate would narrow rather than be deleted: the writer's ask goes through an *open* path
+(character, situation, a raised situation floor, the CANNOT check) while the judge's escalation keeps
+today's gate whole, so reverting is re-widening a mode. The risk to hold in view is that an open beat
+fails quietly — competent, unobjectionable, low-consequence answers that break no rule, pass the
+judge, pass the lint, and let the scene politely die. `DEGENERATE_QUESTIONS` exists because that was
+already observed once: the safest answer is the one that stops the scene.
+
 ## Asymmetry follow-ups
 
 Found by asking how the engine handles stories where several characters face interdependent

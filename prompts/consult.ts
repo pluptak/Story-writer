@@ -142,12 +142,23 @@ const REACTION_OUTWARD =
   + `in how you hold yourself; not a deliberate act that redirects the scene. If it barely moves you, `
   + `that is an answer: show it small`;
 
+/** What stands where the question used to. The author still writes a question -- it is the fork it
+ *  stopped at, it gates the consult and it travels with the answer on the record -- but the character
+ *  is not shown it. The wager is that a persona with a goal does not need to be pointed at the fork
+ *  in its own situation, and that being pointed was costing more than it bought: a question names one
+ *  fork out of the several a moment holds, and a character answering the named one is answering the
+ *  author's reading of the scene rather than its own. */
+const THE_MOMENT_IS_YOURS =
+  `This is your moment and nobody is going to hand you a better one. Whatever you want tonight, if `
+  + `it needs something from here, here is where you take it.`;
+
 export const askBlock = (req: { situation: string; question: string; wants: string },
                          attempt = 1, pov = true) =>
-  `[THE AUTHOR ASKS]\nSituation: ${req.situation}\nQuestion: ${req.question}`
+  `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
   + (req.wants ? `\nWhat they need from you: ${req.wants} (${
       req.wants === "reaction" && !pov ? REACTION_OUTWARD : wantsDef(req.wants)})` : "")
-  + `\n\nMissing a fact of your situation to answer that honestly? Ask for it instead. `
+  + `\n\n${THE_MOMENT_IS_YOURS}`
+  + `\n\nMissing a fact of your situation to answer honestly? Ask for it instead. `
   + `And this is the moment you are in, not a request you owe compliance to.`
   + (attempt >= 3 ? RETRY_NUDGE_FIRM : "");
 
