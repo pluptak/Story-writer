@@ -72,8 +72,8 @@ Reload on any such URL: the same spot comes back. That is the check.
 
 ## Order matters — read this before clicking anything
 
-`MAX_RUNS` is 3, so writing a run destroys the oldest retained one in that story. Where a check below
-depends on a *particular* retained run existing, it says so and comes first.
+`MAX_RUNS` is 10, so writing a run eventually destroys the oldest retained one in that story. Where a
+check below depends on a *particular* retained run existing, it says so and comes first.
 
 The `unattributed` case in section 1 went this way on 2026-08-20: the last run predating chapter
 numbers rotated out, and every run written since carries one. That branch of the grouping is

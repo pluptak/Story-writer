@@ -11,7 +11,7 @@ import { runChapter, type RunEvent } from "./engine/scene-loop.ts";
 import { warn } from "./engine/warnings.ts";
 import type { StoryConfig } from "./engine/story-format.ts";
 
-const MAX_RUNS = 3;
+const MAX_RUNS = 10;
 
 export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
                                  opts: { serving: boolean; serve: () => void }) {

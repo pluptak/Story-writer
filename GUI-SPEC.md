@@ -89,7 +89,7 @@ folder name; what to show in its absence is the client's call, and `name` is the
 `scenes[0]`, kept because the shelf and scaffold interview read it; a card from an older server has
 only that one. `chapters` lists the chapter numbers already written to `chapters/<n>.md`, in numeric
 order. One call gets the whole picker: every discovered story, preflighted, with its own retained runs
-embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 3` — [story-writer.ts:309](story-writer.ts#L309)).
+embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 10` — [story-writer.ts:309](story-writer.ts#L309)).
 There is no separate "list runs" route; a run only exists as a story's `runs[]` entry.
 
 ```

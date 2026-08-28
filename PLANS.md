@@ -387,14 +387,24 @@ one extra LLM call per multi-character fork if it were ever wanted.
   character's. Related to the fan-out differentiation entry above, but distinct: that one is several
   characters answering alike, this one is a single character rendered alike every time. Worth
   measuring before it is worth fixing — count repeated body-move phrasings per chapter first.
-- **Run rotation deletes the control condition of any prompt experiment.** `MAX_RUNS = 3` is right
-  for ordinary operation and incompatible with a before/after comparison: a prompt change measured
-  against `the-cooling-loop` lost most of its own baseline mid-experiment, leaving 11 pre-edit
-  answers against 39 post-edit ones and no interpretable result. The engine is not wrong here — the
-  workflow is. Cheapest fix is no code at all: copy the relevant `out/<id>` records into an
-  experiment directory before running the next condition. If that proves too easy to forget, the
-  candidates are an experiment mode that suspends rotation, or a run manifest recording the prompt
-  and engine revisions beside the run so conditions can be told apart after the fact.
+- **A run does not record which engine wrote it.** `MAX_RUNS` was 3, which is right for ordinary
+  operation and incompatible with a before/after comparison: a prompt change measured against
+  `the-cooling-loop` lost most of its own baseline mid-experiment, leaving 11 pre-edit answers
+  against 39 post-edit ones and no interpretable result. It is **10** now, which buys headroom and
+  fixes nothing about the harder half.
+
+  The harder half, from the POV-thought experiment on 2026-08-28: of four runs in one series, three
+  were written by an engine other than the one the tree was sitting on, and nothing in the run record
+  said so. Two came from a long-lived `--serve` process holding modules loaded before the edits —
+  a `git checkout` does not reach a running server — and identifying them meant grepping
+  `out/<id>/llm/*.jsonl` for a prompt string that only one revision contains. Rotation is the lesser
+  problem: a deleted control is at least *visibly* missing, where a mislabelled one reads as a result.
+
+  What would close it is the run manifest: the git revision and a hash of the composed system prompts
+  written beside the run at `scene_start`, so conditions can be told apart without fingerprinting
+  the transcripts. An experiment mode that suspends rotation is the smaller, weaker cousin. Until
+  either exists, the workflow rule is to restart `--serve` after any engine edit and verify the
+  revision from the transcript before trusting a run.
 
 ## The CLI-to-GUI transition
 
