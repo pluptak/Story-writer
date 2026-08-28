@@ -226,14 +226,23 @@ Quotations are matched against the granted ledger (`engine/quote-lint.ts`); a re
 matched by verb against the character's own CANNOT list (`engine/sense-lint.ts`). Deeds and the
 consult's `situation` stay the model's, because neither has a list to check against.
 
-The three run in a deliberate arrangement. An unmatched quotation **short-circuits**: a fabricated
-line disqualifies a piece by itself, so no model is called and the LLM half is skipped entirely.
-The sense check instead runs **alongside** the LLM half, and the two `why` strings are joined into
-the one `narration_flag`. That asymmetry is about the redraft budget, not about confidence: there is
-only one redraft, so a piece carrying both a lost sense and an invented deed has to report both in
-the same message — reported serially, the redraft is spent on the first finding and the second is
-accepted unfixed. A mechanical hit also survives an LLM outage, since it needed no model to begin
-with.
+All three run **alongside** each other, and their `why` strings are joined into the one
+`narration_flag`. That is about the redraft budget: there is only one redraft, so a piece carrying
+both a lost sense and an invented line has to report both in the same message — reported serially,
+the redraft is spent on the first finding and the second is accepted unfixed. A mechanical hit also
+survives an LLM outage, since it needed no model to begin with.
+
+The quotation check used to short-circuit instead, on the grounds that a fabricated line disqualifies
+a piece by itself and no model need be called. That was true of the finding and false of its cost:
+every hit skipped the deed and stillness checks for that piece entirely. It cost most where it could
+least afford to, because the check also over-fires — see below — so a story full of machinery
+switched THE ONE RULE off on the pieces that quoted it.
+
+A quoted span of **one bare word** is read as a machine label, not a line, and is not checked at all:
+a lever thrown to the `'Shutdown'` position, a status reading `"Fatal"`, a switch turned `"off"`. Two
+live runs produced six such flags between them and every one was a label. Missing an invented
+one-word line is the cheap failure beside flagging a real one, which costs the scene its redraft —
+the same trade the sense check makes.
 
 The sense check is deliberately conservative, because a mechanical flag has no model to soften it.
 It matches only a verb its own subject governs **by name** — "Marsh watches" flags, "she watches"

@@ -114,9 +114,18 @@ function attribute(prose: string, index: number, names: readonly string[]): stri
   return bestName;
 }
 
-/** The mechanical quotation check. Returns null when there is nothing to check (no quotes, or every
- *  quote matched a granted line) — the caller then runs the LLM lint for deeds/senses/situation.
- *  Returns a hit the moment one unmatched quote is found: that is a hard flag, no model needed. */
+/** A quoted span of one bare word is a label, not a line: a lever thrown to the 'Shutdown' position,
+ *  a status that reads "Fatal", a switch turned "off". A story set at a dashboard produces a steady
+ *  stream of them, and each cost twice over — flagged as a fabricated line, and (before the callers
+ *  stopped short-circuiting) taking the LLM half of the lint down with it, so THE ONE RULE went
+ *  unchecked on that piece entirely. Two live runs carried six such flags between them, every one a
+ *  machine label. Missing an invented one-word line is the cheap failure beside that, and the same
+ *  trade sense-lint makes: inventing a violation costs the scene its redraft. */
+const isMachineLabel = (text: string) => !/\s/.test(text.trim());
+
+/** The mechanical quotation check. Returns null when there is nothing to check (no quotes, only
+ *  labels, or every quote matched a granted line) — the caller then runs the LLM lint for
+ *  deeds/senses/situation. Returns a hit the moment one unmatched quote is found. */
 export function lintQuotations(
   prose: string,
   granted: ReadonlyArray<GrantedLine>,
@@ -126,6 +135,7 @@ export function lintQuotations(
   const quotes = extractQuotations(prose);
   if (!quotes.length) return null;
   for (const q of quotes) {
+    if (isMachineLabel(q.text)) continue;
     if (!matchQuote(q.text, speeches)) {
       const character = attribute(prose, q.index, names);
       return {

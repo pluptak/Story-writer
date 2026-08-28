@@ -448,20 +448,20 @@ export async function writeScene(
         : granted;
 
       let flagged: string | null = null;
-      // Mechanical quotation check first: an unmatched quote is a hard flag and needs no model, and
-      // it closes the empty-ledger loophole the LLM used to pass (run 2). Deeds and the consult's
-      // situation are still left to the LLM lint below.
+      // Both mechanical checks run ALONGSIDE the LLM lint, never in front of it. There is one redraft
+      // only, so reporting serially spends it on the first finding and accepts the second unfixed —
+      // a piece carrying an invented line AND an invented deed has to report both in one message.
+      // The quotation check used to short-circuit here on the grounds that a fabricated line
+      // disqualifies a piece by itself, and that was true of the finding and false of its cost: every
+      // hit, including every machine-label false positive, silently skipped the deed and stillness
+      // checks for that piece. Two live runs skipped six pieces that way and put three unasked-for
+      // stillnesses on the page. The extra model call is only spent on pieces already in trouble.
       const quoteLint = lintQuotations(prose, lintGranted, cast.map(c => c.name));
       if (quoteLint && !quoteLint.ok) {
-        flagged = quoteLint.why;
-        log({ t: "narration_quote_flag", why: flagged, quote: quoteLint.quote, character: quoteLint.character, chapter });
-      } else {
-      // The mechanical restricted-sense check runs ALONGSIDE the LLM lint, not in front of it: there
-      // is one redraft only, so reporting serially would spend it on the first finding and accept the
-      // second unfixed — a piece carrying both a lost sense and an invented deed has to report both
-      // in the one message. The quote check can short-circuit instead because a fabricated line
-      // disqualifies a piece by itself, where a lost sense is one of the things this same LLM sweep
-      // is already asked to catch.
+        log({ t: "narration_quote_flag", why: quoteLint.why, quote: quoteLint.quote,
+              character: quoteLint.character, chapter });
+      }
+      {
       const senseLint = lintRestrictedSenses(prose, cast);
       let lintWhy: string | null = null;
       try {
@@ -486,9 +486,9 @@ export async function writeScene(
         log({ t: "lint_failed", why: (e as Error).message, chapter });
         console.log(`${C.yellow}(narration lint call failed: ${(e as Error).message} — accepting)${C.reset}`);
       }
-      // A mechanical hit still stands when the LLM half fails or returns no verdict: the sense check
-      // needed no model, so an outage cannot take it down with it.
-      flagged = [senseLint?.why, lintWhy].filter((w): w is string => !!w).join(". ") || null;
+      // A mechanical hit still stands when the LLM half fails or returns no verdict: neither check
+      // needed a model, so an outage cannot take them down with it.
+      flagged = [quoteLint?.why, senseLint?.why, lintWhy].filter((w): w is string => !!w).join(". ") || null;
       }
 
       if (!flagged) break;

@@ -70,8 +70,9 @@ describe("lintQuotations", () => {
   });
 
   it("does not let a substring of an unrelated word fake a match", () => {
-    // "no" must not match inside a granted speech "know" — token-based, not substring.
-    const prose = 'He said "no".';
+    // "no" must not match inside a granted speech "know" — token-based, not substring. The quote is
+    // more than one word because a bare single word is read as a machine label and never checked.
+    const prose = 'He said "no, not tonight".';
     const hit = lintQuotations(prose, granted("I know the rhythm"), ["He"]);
     assert.ok(hit && !hit.ok);
   });
