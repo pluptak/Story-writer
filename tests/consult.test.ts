@@ -539,12 +539,26 @@ describe("reviseConsult", () => {
     question: "Do you turn it now?", wants: "decision",
   };
 
+  /** Every valid revision now has to move the situation, so the shared fixture below supplies one. */
+  const moved = "The wrench has slipped and the cylinder has not turned; footsteps have started up.";
+
   it("keeps what the judge left out", () => {
-    const r = reviseConsult(prev, { question: "Do you turn it, knowing what it wakes?" });
+    const r = reviseConsult(prev, { situation: moved, question: "Do you turn it, knowing what it wakes?" });
     assert.ok(r.ok);
-    assert.equal(r.req.situation, prev.situation, "an omitted field falls back, it does not blank");
-    assert.equal(r.req.wants, "decision");
+    assert.equal(r.req.wants, "decision", "an omitted field falls back, it does not blank");
     assert.equal(r.req.question, "Do you turn it, knowing what it wakes?");
+  });
+
+  it("refuses a revision that re-sends the same situation", () => {
+    // The character is shown the situation and not the question, so sharpening the wording of the
+    // fork sends a fresh instance the identical message the last one answered. Observed twice in the
+    // first live run under the withheld question, once with the question unchanged as well.
+    const sharpened = reviseConsult(prev, { question: "Do you turn it, knowing what it wakes?" });
+    assert.ok(!sharpened.ok, "an omitted situation falls back and is then the same ask");
+    assert.match(sharpened.why, /has to change what they can perceive/);
+
+    const verbatim = reviseConsult(prev, { situation: `  ${prev.situation}  `, question: "Do you turn it?" });
+    assert.ok(!verbatim.ok, "and whitespace is not a change either");
   });
 
   it("takes a whole new situation and question when the judge writes one", () => {
@@ -574,21 +588,21 @@ describe("reviseConsult", () => {
   // do you go" and "what do you say about it" are different moments, and a judge that answers an
   // inconvenient reply by changing the shape has replaced the choice rather than re-put it.
   it("pins the shape asked for, and records the one the judge wanted", () => {
-    const r = reviseConsult(prev, { question: "Do you turn it slowly now?", wants: "speech" });
+    const r = reviseConsult(prev, { situation: moved, question: "Do you turn it slowly now?", wants: "speech" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision", "the original shape stands");
     assert.equal(r.wantsRefused, "speech", "and what the judge asked for is on the record");
   });
 
   it("reads a reworded shape as the same shape, not as drift", () => {
-    const r = reviseConsult({ ...prev, wants: "speech" }, { wants: "what they say" });
+    const r = reviseConsult({ ...prev, wants: "speech" }, { situation: moved, wants: "what they say" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "speech");
     assert.equal(r.wantsRefused, "", "'what they say' canonicalizes to speech — nothing changed");
   });
 
   it("treats an unreadable wants as the judge not naming one", () => {
-    const r = reviseConsult(prev, { wants: "???" });
+    const r = reviseConsult(prev, { situation: moved, wants: "???" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision");
     assert.equal(r.wantsRefused, "");
@@ -618,9 +632,11 @@ describe("reviseConsult", () => {
     assert.match(r.req.situation, /pen has been taken away/);
   });
 
-  it("re-lints nothing when the judge leaves the situation alone", () => {
+  it("refuses to re-ask an unchanged situation even when it is a clean one", () => {
+    // It would pass every gate it passed the first time; that is exactly why it buys nothing.
     const r = reviseConsult(merrittPrev, { question: "Do you sign the ledger now?" }, blindCast);
-    assert.ok(r.ok, "the original situation was already sent once — it is not re-judged");
+    assert.ok(!r.ok);
+    assert.match(r.why, /has to change what they can perceive/);
   });
 });
 

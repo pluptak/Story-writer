@@ -184,6 +184,14 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
     wants: prev.wants,
   }, cast);
   if (!checked.ok) return checked;
+  // The character is shown the situation and not the question, so a revision that sharpens the
+  // wording of the fork and leaves the situation alone re-sends a fresh instance the byte-identical
+  // message the last one just answered. Prompting against it did not hold — the first live run under
+  // the withheld question produced two retries, and both re-asked an unchanged situation, one of them
+  // with an unchanged question as well. Refusing here costs the attempt nothing and keeps the answer
+  // already in hand, which is what the caller does with every other unusable revision.
+  if (checked.req.situation.trim() === prev.situation.trim())
+    return { ok: false, why: P.badConsult.noNewSituation() };
   return { ok: true, req: checked.req, wantsRefused: asked && asked !== prev.wants ? asked : "" };
 }
 /**

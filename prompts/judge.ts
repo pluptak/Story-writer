@@ -62,6 +62,11 @@ else thinks is not yours to write, so their reaction still has to surface as a w
 A thought where you asked for one of the others is someone turning the question over and never
 answering it -- retry, and put the fork in front of them plainly.
 
+WHAT YOU ASKED FOR IS A FLOOR, NOT A CEILING. Asking for speech means "speech" cannot be empty; it
+does not mean the rest must be. Someone who answers you with a line AND what their hands did AND what
+they were thinking has answered you, generously. NEVER retry someone for giving you more than you
+asked for -- that is a person being alive in the scene, and it costs a step and an answer to refuse it.
+
 A DECISION IS CARRIED BY ONE CLEAR SIDE. Either "speech" or "action" naming one branch settles it:
 "I step out and head upstairs" answers "do you stay, or slip out?" even though neither of your words
 appears in it. Do not demand your option's literal wording, and do not retry a clear answer for

@@ -1130,8 +1130,12 @@ describe("a clarification on a rejected attempt", () => {
       { speech: "No.", action: "stands up off the crate" },
     ];
     const clarifierReplies = [{ answer: "Bolted, top and bottom." }, { answer: "Ten feet, behind them." }];
+    // A revision has to move the situation to be sendable at all: the character is shown the
+    // situation and not the question, so a re-ask from the same one is the identical message.
     const judgeReplies = [
-      { verdict: "retry", revised: { question: "Do you stand up to let them pass?" } },
+      { verdict: "retry", revised: {
+          situation: "The door has stopped rattling and someone is breathing on the other side of it.",
+          question: "Do you stand up to let them pass?" } },
       { verdict: "accept" },
     ];
 

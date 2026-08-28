@@ -225,6 +225,12 @@ export const badConsult = {
     + `name what hangs on their choice, not the options you have already imagined for them, and `
     + `do not over-correct into a shrug: "What do you choose regarding X?" is refused too.`,
 
+  noNewSituation: () =>
+    `That revision leaves the situation exactly as it was. The character is not shown your question, `
+    + `so re-asking from the same situation sends a fresh instance the identical message it has `
+    + `already answered — and a fresh instance answers it the same way. A retry that is to buy `
+    + `anything has to change what they can perceive.`,
+
   badWants: (allowed: readonly string[], sent: string) =>
     `"wants" must be exactly one of: ${allowed.join(", ")}. `
     + `You sent ${JSON.stringify(sent)}.`,
