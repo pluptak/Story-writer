@@ -12,7 +12,8 @@ function renderConsult(b) {
   const flagged = b.attempts.some(a => a.flags.length);
   const asked   = b.attempts.some(a => a.qa.length);
   const isOpen  = APP.expandAll || open.has(b.seq);
-  const q = b.attempts[0]?.question || "";
+  // An open beat sends no question, so the situation is the ask and the header shows that.
+  const q = b.attempts[0]?.question || b.attempts[0]?.situation || "";
   const tags = [
     asked   ? '<span class="tag asked" data-tid="consult.tag">asked back</span>' : "",
     retried ? `<span class="tag retry" data-tid="consult.tag">${b.attempts.length - 1} retry</span>` : "",
@@ -24,7 +25,7 @@ function renderConsult(b) {
     return `<div class="attempt" data-tid="consult.attempt" data-n="${esc(a.n)}">
       <h4>${b.attempts.length > 1 ? `attempt ${esc(a.n)}${a.n > 1 ? " — fresh instance, no memory of the last" : ""}` : "asked"}</h4>
       <div class="kv dim" data-tid="consult.situation"><span class="k">situation given</span><span class="v">${esc(a.situation)}</span></div>
-      <div class="kv" data-tid="consult.question"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>
+      ${a.question ? `<div class="kv" data-tid="consult.question"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>` : ""}
       ${a.qa.map(x => `<div class="qa" data-tid="consult.qa"><div class="ask">${esc(x.q)}</div><div class="ans">${esc(x.a)}</div></div>`).join("")}
       ${a.flags.map(f => `<div class="kv dim" data-tid="consult.flag"><span class="k">note</span><span class="v">${esc(f)}</span></div>`).join("")}
       ${ans ? `<div class="ansblock" data-tid="consult.answer">

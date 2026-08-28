@@ -940,7 +940,7 @@ describe("an answer still owed the page", () => {
   // -- REACTION FAN-OUTS --------------------------------------------------------
   const CRASH = {
     reactors: [{ name: "MERRITT" }],
-    situation: "The service door explodes inward off its hinges, wood and dust across the floor.",
+    situation: "The service door explodes inward off its hinges, sending wood and dust across the floor towards you.",
     question: "What does that land on you as?",
   };
 
@@ -1001,15 +1001,15 @@ describe("an answer still owed the page", () => {
       assert.match(heard, /\[NOTHING TO WRITE\] MERRITT/, "the writer was told, not left guessing");
     });
 
-  it("names the repetition when the writer re-sends a question the gate already refused", async () => {
+  it("names the repetition when the writer re-sends an ask the gate already refused", async () => {
     // Observed five times running in one scene: the refusal says what is wrong, the writer sends the
     // identical string back, and each round costs a step. The second one is told it is a repeat.
-    const menu = { ...CRASH, question: "Do you look for the source, or do you stay where you are?" };
+    const thin = { ...CRASH, situation: "Something falls over." };
     const { events, writer } = await runIt({
       maxSteps: 10,
       writerReplies: [
-        { prose: "The crash echoes down the corridor.", consult: menu, scene_done: false },
-        { prose: "Dust drifts in the dark.", consult: menu, scene_done: false },
+        { prose: "The crash echoes down the corridor.", consult: thin, scene_done: false },
+        { prose: "Dust drifts in the dark.", consult: thin, scene_done: false },
         { prose: "Nothing moves.", scene_done: true },
       ],
     });
@@ -1155,7 +1155,7 @@ describe("a clarification on a rejected attempt", () => {
     const judgeReplies = [
       { verdict: "retry", revised: {
           situation: "The door has stopped rattling and someone is breathing on the other side of it.",
-          question: "Do you stand up to let them pass?" } },
+          question: "Do you stand up to let them pass?", wants: "decision" } },
       { verdict: "accept" },
     ];
 
@@ -1229,7 +1229,7 @@ describe("a deed promoted in the same reply that renders it", () => {
       { prose: "Something goes over in the dark by the bins.",
         consult: {
           reactors: [{ name: "MERRITT" }],
-          situation: "A bin goes over somewhere back down the corridor, out of sight.",
+          situation: "A bin goes over somewhere back down the corridor behind you, well out of sight.",
           question: "What does that land on you as?",
         },
         scene_done: false },

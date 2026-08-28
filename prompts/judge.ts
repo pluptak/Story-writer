@@ -23,11 +23,9 @@ You are writing a scene. Where it turned on a choice, you stopped and asked the 
 This is their answer coming back. Deciding whether it is usable is your whole job here: you are not
 writing prose, and you are not being asked what happens next.
 
-You are shown the situation you gave them, the question you asked, and what they answered. THEY WERE
-SHOWN THE SITUATION AND NOT THE QUESTION. The question is the fork you stopped at and your record of
-why; what they answered is the moment itself. So judge whether the answer meets that moment -- never
-whether it addresses your phrasing, and never whether they picked the fork you had in mind out of the
-several the moment holds.
+You are shown the situation you gave them and what they answered. That situation was the whole of
+what they were sent -- no question came with it, because the moment was theirs to read. They may have
+taken a fork you never saw in it. That is the format working, not failing.
 
 Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
@@ -38,10 +36,12 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
   revised  -- all three fields, every time you retry. They will be asked again from nothing, by a
               fresh instance that never learns this attempt happened, so these must stand on their own.
-              THE SITUATION IS THE ONLY ONE OF THE THREE THEY WILL READ. A revision that sharpens the
-              question and leaves the situation alone re-sends them, word for word, the ask they just
-              answered -- and a fresh instance answers it the same way. If the retry is to buy
-              anything, what changes is the SITUATION.
+              THE SITUATION IS THE ONLY ONE OF THE THREE THEY WILL READ. "question" and "wants" are
+              your own record of what you decided the fork was, and a retry is the one place they
+              get written down at all. A revision that sharpens the question and leaves the situation
+              alone re-sends them, word for word, the ask they just answered -- and a fresh instance
+              answers it the same way. It will be refused. If the retry is to buy anything, what
+              changes is the SITUATION.
     situation -- what THEY can perceive right now, in your words. They know nothing you do not put
                  here. Do not paste back the prose you wrote: that is the page, not their world, and
                  it tells them things they cannot know.
@@ -51,21 +51,19 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 ${wantsMenuLines}
 
 RETRY ONLY WHEN THE ANSWER IS UNUSABLE: it engages nothing that is happening to them, or they plainly
-lacked something they needed in order to answer, or they did something they are not able to do.
-"It went somewhere other than the fork I named" is NOT unusable -- they never saw the fork you named,
-and the moment was theirs to read.
+lacked something they needed in order to answer (then fix the SITUATION), or they did something they
+are not able to do. "It is not the fork I had in mind" is NOT unusable. Neither is "it is quieter
+than I wanted". Those are the scene telling you something true.
 
-AN ANSWER HAS TO ARRIVE IN THE SHAPE YOU ASKED FOR. Asked for speech, "speech" cannot be empty; asked
-for an action, "action" cannot be empty; asked for a decision, one or the other has to carry it. Only
-a reaction is answered by a thought alone, and only from the point-of-view character -- what anyone
-else thinks is not yours to write, so their reaction still has to surface as a word or a movement.
-A thought where you asked for one of the others is someone turning the question over and never
-answering it -- retry, and put the fork in front of them plainly.
+AN ANSWER HAS TO REACH THE SCENE. You asked for no particular shape, so any of them will do: a line,
+a deed, or both, at whatever length the moment deserved. What it cannot be is only a thought, from
+anyone but the point-of-view character -- what they think is not yours to write, so a reaction from
+outside the point of view has to surface as a word or a movement or it reaches the page as nothing.
+From the point-of-view character a thought alone is a complete answer.
 
-WHAT YOU ASKED FOR IS A FLOOR, NOT A CEILING. Asking for speech means "speech" cannot be empty; it
-does not mean the rest must be. Someone who answers you with a line AND what their hands did AND what
-they were thinking has answered you, generously. NEVER retry someone for giving you more than you
-asked for -- that is a person being alive in the scene, and it costs a step and an answer to refuse it.
+NEVER retry someone for giving you MORE than you expected. A line AND what their hands did AND what
+was going through their head is a person being alive in the scene, and refusing it costs a step and
+an answer both.
 
 A DECISION IS CARRIED BY ONE CLEAR SIDE. Either "speech" or "action" naming one branch settles it:
 "I step out and head upstairs" answers "do you stay, or slip out?" even though neither of your words
@@ -102,10 +100,18 @@ scene was actually given: a thought shown under ALREADY GRANTED as "-- felt:" wa
 that character, and rendering what it landed on them as is not invention.
 
 When this piece also opens a consult or a reaction fan-out, the "situation" handed to the character
-has to give them the concrete fact this piece just established -- what was taken, broken, said, or
+is the WHOLE of what they are sent -- no question travels with it -- so it carries two burdens.
+
+It has to give them the concrete fact this piece just established -- what was taken, broken, said, or
 done, and by whom -- or something they could plausibly perceive or infer that points at it. A
 situation that only states the fact's abstract consequence ("you have been robbed") leaves them
 nothing to answer honestly from.
+
+And it must not answer itself. A situation that names the choice ("you must decide whether to sign"),
+lays out the options ("you could hold the door or let go"), or tells them which part of the moment
+matters ("the important thing is the timer") has done the character's reading for them, and what
+comes back is the author's own idea wearing their name. Give them the moment; let them find the fork
+in it. Flag this the same way you flag an abstract consequence, naming the phrase that does it.
 
 You are shown who has already been granted a line, a deed, or a felt reaction this scene, the piece
 of prose just drafted, and -- when present -- the consult it opens.
@@ -142,7 +148,7 @@ export const narrationLintRequest = (p: {
   pov: string;
   prose: string;
   granted: { character: string; speech: string; action: string; thought?: string }[];
-  consult: { character?: string; reactors?: string[]; situation: string; question: string } | null;
+  consult: { character?: string; reactors?: string[]; situation: string; question?: string } | null;
 }) =>
   `[POV] ${p.pov}\n\n[PIECE JUST DRAFTED]\n${p.prose}\n\n`
   + `[ALREADY GRANTED THIS SCENE]\n`

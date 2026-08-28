@@ -289,13 +289,32 @@ writer's *thinking* rather than the character's input and should say so in its o
 should relax for a question that is only ever read by the judge. Decide it before stage 3, since
 stage 3 deletes the field the gate is checking.
 
-**Stage 3 — remove the field entirely.** Not started, and not to be started before a stage-2 run is
-read. The gate would narrow rather than be deleted: the writer's ask goes through an *open* path
-(character, situation, a raised situation floor, the CANNOT check) while the judge's escalation keeps
-today's gate whole, so reverting is re-widening a mode. The risk to hold in view is that an open beat
-fails quietly — competent, unobjectionable, low-consequence answers that break no rule, pass the
-judge, pass the lint, and let the scene politely die. `DEGENERATE_QUESTIONS` exists because that was
-already observed once: the safest answer is the one that stops the scene.
+**Stage 3 — the field is gone. Built, unrun.** The writer sends `{character, situation}` and nothing
+else; a fan-out sends one shared situation and a list of names. The gate did not go away, it narrowed:
+`normalizeConsult` takes a mode, and the **open** door (the writer's own ask) checks the addressee,
+the situation against a raised floor of 15 words, and the CANNOT list, while the **directed** door
+keeps `DEGENERATE_QUESTIONS`, `QUESTION_CARRIES_ANSWERS` and `canonWants` whole for the one path that
+still carries a question — the judge escalating a retry. Reverting stage 3 is re-widening a mode.
+
+The question gates were not ported onto the situation, and should not be: a situation has no question
+grammar to match, and `or` over descriptive prose flags "the heat or the noise". What a situation
+must not do — pre-write the options, name the choice, say which part matters — went to the narration
+lint instead, beside the concrete-fact rule it already applies to the same string. It needs reading,
+not matching.
+
+`missingShape` generalized rather than lost its trigger: with no `wants` to name a shape, the POV rule
+is the only floor and it is the same floor — a thought from outside the point of view reaches the
+writer as nothing whatever was asked, so an answer with neither speech nor action is one the scene
+never receives.
+
+**What the first run has to show.** Whether the writer still stops at choices. That was the question's
+fourth job — the receipt proving it found a fork before it stopped — and stage 3 is the stage that
+gives it up, with only THE ONE RULE and the stop-while-the-pressure-is-live rule left holding it. The
+failure will not be loud: it looks like competent, low-consequence answers that break no rule, pass
+the judge, pass the lint, and let the scene politely die. `DEGENERATE_QUESTIONS` exists because that
+was observed once already — the safest answer is the one that stops the scene. Read `bad_consult`
+(thin situations should replace refused questions), whether characters still speak with nothing asking
+them to, and whether the scene's own question gets answered.
 
 ## Asymmetry follow-ups
 

@@ -225,19 +225,16 @@ export async function writeScene(
     return clarifier;
   };
 
-  // Questions the gate has already turned back, by how many times. A refusal says what is wrong and
-  // the writer can still re-send the identical string — five times running, in one observed scene —
-  // so the repetition is named rather than answered with the same words again.
-  const refusedQuestions = new Map<string, number>();
-  const noteRefusal = (question: string): number => {
-    const key = question.trim().toLowerCase();
-    if (!key) return 1;
-    const times = (refusedQuestions.get(key) ?? 0) + 1;
-    refusedQuestions.set(key, times);
-    return times;
-  };
-  const refusalFor = (why: string, name: string, question: string) => {
-    const times = noteRefusal(question);
+  // Asks the gate has already turned back, by how many times. A refusal says what is wrong and the
+  // writer can still re-send the identical thing — five times running, in one observed scene — so the
+  // repetition is named rather than answered with the same words again. Keyed on the SITUATION and
+  // its addressee, because that is the ask now: the question is the writer's own record, absent
+  // altogether from an open beat, and keying on it would quietly never match.
+  const refusedAsks = new Map<string, number>();
+  const refusalFor = (why: string, name: string, situation: string) => {
+    const key = `${name.trim().toLowerCase()}|${situation.trim().toLowerCase()}`;
+    const times = situation.trim() ? (refusedAsks.get(key) ?? 0) + 1 : 1;
+    if (situation.trim()) refusedAsks.set(key, times);
     return times > 1 ? P.consultRepeated(why, name, times) : P.consultNotSent(why, name);
   };
 
@@ -563,7 +560,7 @@ export async function writeScene(
       if (!rc.ok) {
         log({ t: "bad_consult", character: "(reaction)", why: rc.why, chapter });
         console.log(`${C.yellow}(reaction not sent — ${rc.why.split(". ")[0]}.)${C.reset}`);
-        writer.hear(refusalFor(rc.why, "the group", String(c!.question ?? "")));
+        writer.hear(refusalFor(rc.why, "the group", String(c!.situation ?? "")));
       } else {
         log({ t: "reaction_fanout", reactors: rc.reqs.map(r => r.character),
               situation: rc.reqs[0].situation, chapter });
@@ -669,7 +666,7 @@ export async function writeScene(
       } else if (!check!.ok) {
         log({ t: "bad_consult", character: def.name, why: check!.why, chapter });
         console.log(`${C.yellow}(not sent to ${def.name} — ${check!.why.split(". ")[0]}.)${C.reset}`);
-        writer.hear(refusalFor(check!.why, def.name, String(c!.question ?? "")));
+        writer.hear(refusalFor(check!.why, def.name, String(c!.situation ?? "")));
       } else {
         asked = true;
         let req: ConsultRequest = check!.req;

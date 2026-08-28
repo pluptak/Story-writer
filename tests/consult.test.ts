@@ -350,8 +350,9 @@ describe("the retry template", () => {
     assert.match(P.JUDGE_FORMAT, /ONLY ONE OF THE THREE THEY WILL READ/);
   });
 
-  it("does not let the judge retry an answer for missing the fork it named", () => {
-    assert.match(P.JUDGE_FORMAT, /they never saw the fork you named/);
+  it("does not let the judge retry an answer for taking a fork it had not planned", () => {
+    assert.match(P.JUDGE_FORMAT, /is NOT unusable/);
+    assert.match(P.JUDGE_FORMAT, /the moment was theirs to read/);
   });
 
   it("names every field a retry has to carry", () => {
@@ -369,8 +370,9 @@ describe("the retry template", () => {
     assert.match(P.JUDGE_FORMAT, /Do not paste back the prose you wrote/);
   });
 
-  it("tells the judge that only a reaction is answered by a thought", () => {
-    assert.match(P.JUDGE_FORMAT, /Only\s+a reaction is answered by a thought alone/);
+  it("tells the judge a thought alone answers only from inside the point of view", () => {
+    assert.match(P.JUDGE_FORMAT, /a thought alone is a complete answer/);
+    assert.match(P.JUDGE_FORMAT, /has to surface as a word or a movement/);
   });
 });
 
@@ -670,10 +672,15 @@ describe("missingShape", () => {
 
   it("asks no more than the four shapes always did when the point of view is unknown", () => {
     assert.equal(missingShape("reaction", { speech: "", action: "" }), null);
+    assert.equal(missingShape("", { speech: "", action: "" }), null);
   });
 
-  it("asks nothing of a consult that named no shape", () => {
-    assert.equal(missingShape("", { speech: "", action: "" }, false), null);
+  it("holds an open beat to the same floor, since it names no shape of its own", () => {
+    // Stage 3 sends no `wants`, so the POV rule is all that is left -- and it is the same rule: a
+    // thought from outside the point of view reaches the writer as nothing whatever was asked.
+    assert.equal(missingShape("", { speech: "", action: "" }, false), "reaction");
+    assert.equal(missingShape("", { speech: "I stay put.", action: "" }, false), null);
+    assert.equal(missingShape("", { speech: "", action: "goes still" }, false), null);
   });
 });
 
@@ -726,12 +733,14 @@ describe("parseClarifyAnswer", () => {
   });
 });
 
-describe("normalizeConsult", () => {
+describe("normalizeConsult, the judge's directed ask", () => {
+  // The question gates did not go away with stage 3; they narrowed to the one path that still
+  // carries a question, which is the judge escalating an open beat into a named fork.
   const good = { character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
                  question: "Do you turn it now?", wants: "decision" };
 
   it("passes a real consult through, canonicalizing wants", () => {
-    const r = normalizeConsult({ ...good, wants: "what they decide" });
+    const r = normalizeConsult({ ...good, wants: "what they decide" }, undefined, "directed");
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision");
     assert.equal(r.req.question, good.question);
@@ -739,19 +748,19 @@ describe("normalizeConsult", () => {
   });
 
   it("refuses an empty situation", () => {
-    const r = normalizeConsult({ ...good, situation: "" });
+    const r = normalizeConsult({ ...good, situation: "" }, undefined, "directed");
     assert.ok(!r.ok);
     assert.match(r.why, /only world/);
   });
 
   it("refuses a situation too thin to answer from", () => {
-    const r = normalizeConsult({ ...good, situation: "It is dark." });
+    const r = normalizeConsult({ ...good, situation: "It is dark." }, undefined, "directed");
     assert.ok(!r.ok);
     assert.match(r.why, /3 words/);
   });
 
   it("refuses an empty question", () => {
-    assert.ok(!normalizeConsult({ ...good, question: "" }).ok);
+    assert.ok(!normalizeConsult({ ...good, question: "" }, undefined, "directed").ok);
   });
 
   it("refuses the questions that ask for nothing", () => {
@@ -759,7 +768,7 @@ describe("normalizeConsult", () => {
                      "What happens next?", "Your move?",
                      "What do you choose regarding the lock?",
                      "What do you decide to do with the current snag?"]) {
-      const r = normalizeConsult({ ...good, question: q });
+      const r = normalizeConsult({ ...good, question: q }, undefined, "directed");
       assert.ok(!r.ok, `"${q}" should have been refused`);
       assert.match(r.why, /fork|stake/);
     }
@@ -772,7 +781,7 @@ describe("normalizeConsult", () => {
                      "What do you say when he asks you directly?",
                      "Do you say the name, knowing what it admits?",
                      "Do you open the order book?"]) {
-      assert.ok(normalizeConsult({ ...good, question: q }).ok, `"${q}" should have been allowed`);
+      assert.ok(normalizeConsult({ ...good, question: q }, undefined, "directed").ok, `"${q}" should have been allowed`);
     }
   });
 
@@ -783,7 +792,7 @@ describe("normalizeConsult", () => {
                      "Do you side with Nkem (wait for engineers) or with Hale and Marsh (pull the lever now)?",
                      "Do you list yourself as the primary person who authorized the shutdown, " +
                      "or do you attribute it to the collective team?"]) {
-      const r = normalizeConsult({ ...good, question: q });
+      const r = normalizeConsult({ ...good, question: q }, undefined, "directed");
       assert.ok(!r.ok, `"${q}" should have been refused`);
       assert.match(r.why, /both branches|open question/);
     }
@@ -791,19 +800,19 @@ describe("normalizeConsult", () => {
 
   it("keeps the genuinely open question the live runs produced", () => {
     const r = normalizeConsult({ ...good,
-      question: "What do you say to the group about the state of the hardware?" });
+      question: "What do you say to the group about the state of the hardware?" }, undefined, "directed");
     assert.ok(r.ok);
   });
 
   it("refuses a wants it cannot make sense of, and names the four", () => {
-    const r = normalizeConsult({ ...good, wants: "" });
+    const r = normalizeConsult({ ...good, wants: "" }, undefined, "directed");
     assert.ok(!r.ok);
     for (const w of CONSULT_WANTS) assert.match(r.why, new RegExp(w));
   });
 
   it("says what is wrong in terms the writer can act on", () => {
     for (const bad of [{ situation: "" }, { situation: "Dark." }, { question: "What do you do?" }, { wants: "" }]) {
-      const r = normalizeConsult({ ...good, ...bad });
+      const r = normalizeConsult({ ...good, ...bad }, undefined, "directed");
       assert.ok(!r.ok);
       assert.ok(r.why.length > 60, "a one-word complaint teaches nothing");
     }
@@ -814,7 +823,7 @@ describe("normalizeConsult", () => {
   const cast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
 
   it("refuses a situation phrased around a sense its addressee CANNOT", () => {
-    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
     assert.ok(!r.ok);
     assert.match(r.why, /MERRITT/);
     assert.match(r.why, /sight/);
@@ -822,53 +831,52 @@ describe("normalizeConsult", () => {
   });
 
   it("sends the same situation to a character without that CANNOT", () => {
-    const r = normalizeConsult({ character: "RIVEN", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    const r = normalizeConsult({ character: "RIVEN", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
     assert.ok(r.ok);
     assert.equal(r.req.situation, sightLeaning);
   });
 
   it("matches the addressee case-insensitively against the cast", () => {
-    const r = normalizeConsult({ character: "Merritt", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    const r = normalizeConsult({ character: "Merritt", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
     assert.ok(!r.ok);
   });
 
   it("checks nothing when no cast is given", () => {
-    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" });
-    assert.ok(r.ok, "the old two-argument shape keeps its old behaviour");
+    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" }, undefined, "directed");
+    assert.ok(r.ok, "a name the cast does not cover is not checked");
   });
 
   it("checks nothing for a name the cast does not hold", () => {
-    const r = normalizeConsult({ character: "NOBODY", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast);
+    const r = normalizeConsult({ character: "NOBODY", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
     assert.ok(r.ok);
   });
 });
 
 describe("normalizeReactionConsult", () => {
-  const shared = "The service door explodes inward off its hinges, wood and dust across the floor.";
-  const question = "What does that land on you as?";
+  const shared = "The service door explodes inward off its hinges, wood and dust coming across the floor "
+    + "towards where you are standing.";
+  const question = "";
 
-  it("gives every reactor the shared situation, pinned to reaction", () => {
+  it("gives every reactor the shared situation and no question at all", () => {
     const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }, { name: "MIRA" }], situation: shared, question });
     assert.ok(r.ok);
     assert.equal(r.reqs.length, 2);
     assert.deepEqual(r.reqs.map(x => x.character), ["ELARA", "MIRA"]);
     for (const req of r.reqs) {
       assert.equal(req.situation, shared);
-      assert.equal(req.wants, "reaction");
+      assert.equal(req.question, "", "a fan-out is the several-at-once form of the open ask");
+      assert.equal(req.wants, "", "and nothing is pinned to reaction any more");
     }
   });
 
-  it("refuses a fan-out whose question carries both answers — the gate is shared", () => {
-    const r = normalizeReactionConsult({
-      reactors: [{ name: "ELARA" }, { name: "MIRA" }], situation: shared,
-      question: "Do you flinch from the crash, or hold still?",
-    });
+  it("holds each reactor to the open situation floor", () => {
+    const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }], situation: "A crash somewhere." });
     assert.ok(!r.ok);
-    assert.match(r.why, /both branches|open question/);
+    assert.match(r.why, /whole of what you are sending/);
   });
 
   it("lets a reactor override the situation (someone who only heard it)", () => {
-    const heard = "From the next room, a splintering crash and a rush of cold air under the door.";
+    const heard = "From the next room you catch a splintering crash and then a rush of cold air coming in under the door.";
     const r = normalizeReactionConsult({
       reactors: [{ name: "ELARA" }, { name: "MIRA", situation: heard }], situation: shared, question,
     });
@@ -878,7 +886,7 @@ describe("normalizeReactionConsult", () => {
   });
 
   it("collapses a duplicated reactor to one consult — first entry wins, with its own situation", () => {
-    const heard = "From the next room, a splintering crash and a rush of cold air under the door.";
+    const heard = "From the next room you catch a splintering crash and then a rush of cold air coming in under the door.";
     const r = normalizeReactionConsult({
       reactors: [{ name: "ELARA", situation: heard }, { name: "elara" }, { name: "ELARA" }],
       situation: shared, question,
@@ -912,7 +920,7 @@ describe("normalizeReactionConsult", () => {
     assert.ok(!r.ok);
   });
 
-  const sightShared = "The door swings open before you, and you watch Riven hand the satchel over.";
+  const sightShared = "The door swings open in front of you and you watch Riven hand the satchel across to the man waiting there.";
   const blindCast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
 
   it("refuses the whole fan-out when the shared situation breaks one reactor's CANNOT", () => {
@@ -924,7 +932,7 @@ describe("normalizeReactionConsult", () => {
   });
 
   it("checks a per-reactor override against its owner only", () => {
-    const heard = "From the next room, the door swings and a voice you cannot make out follows.";
+    const heard = "From the next room the door swings on its hinges and a voice you cannot make out follows it.";
     const r = normalizeReactionConsult({
       reactors: [{ name: "MERRITT", situation: heard }, { name: "RIVEN" }],
       situation: sightShared, question,

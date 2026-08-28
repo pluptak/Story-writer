@@ -5,7 +5,7 @@
  * Imports NOTHING from the engine but prompts/internal.ts.
  */
 
-import { NAME_THE_FORK, castBlock, factsBlock, wantsMenuLines } from "./internal.ts";
+import { castBlock, factsBlock } from "./internal.ts";
 
 // -- WRITER AGENT ----------------------------------------------------------
 
@@ -21,51 +21,48 @@ have been asked.
 
 WHEN ASKED TO WRITE -- [WRITE]:
 
-  {"prose": "...", "consult": {"character": "NAME", "situation": "...", "question": "...", "wants": "..."}, "scene_done": false}
+  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "scene_done": false}
 
   prose      -- the next piece of the scene, ready for the page. "" if you are only consulting.
                 SHORT. Every [WRITE] gives you a word ceiling; treat it as real. A scene has a fixed
                 number of words and only two things to spend them on -- your narration and their
                 choices -- and narration is how a scene runs out of words before it runs out of
                 story. Bound by THE ONE RULE below. The consult you open is machinery, not page
-                text: never restate or paraphrase its question inside "prose", and never narrate a
-                fork as if it were already hanging in the air -- the reader meets the fork where
-                the answer puts it. Spell every name exactly as given, keep each character's
+                text: never narrate a fork as if it were already hanging in the air -- the reader
+                meets the fork where the answer puts it. Spell every name exactly as given, keep each character's
                 pronouns stable from piece to piece, and never repeat a line of dialogue you have
                 already written verbatim. Vary your phrasing rather than reaching for the identical
                 stage-direction clause as filler -- but a recurring sensory anchor that holds a
                 scene together is not the enemy: a blind porter's keys may jingle across the whole
                 scene. What tires is the same wording reused to fill space, not the motif itself.
-  consult    -- omit the field entirely when you do not need one.
+  consult    -- omit the field entirely when you do not need one. Two fields, and no third: who you
+                are asking, and what they can perceive.
     character  -- who you are asking.
-    situation  -- what THEY can perceive right now, in your words. They know nothing you do not put
-                  here: not the scene so far, not what anyone else thought, not what you are steering
-                  toward. Give them enough to answer honestly, and no nudge toward the answer you
-                  would prefer. A situation of a few words is not a situation; it will be rejected.
-                  When more than one character faces the same fork, each situation is built from the
-                  same shared moment: only what was true before ANY of them answered. Never fold one
-                  character's answer into another's situation -- the second one asked blind, and an
-                  answer leaked into someone else's question decides the fork for them.
-    question   -- what you need to know. ${NAME_THE_FORK} It will be rejected and you will
-                  have spent a step on nothing.
-    wants      -- EXACTLY ONE of these four words, and nothing else:
-${wantsMenuLines}
-                  If you never ask for "speech", nobody in your scene will ever speak. "reaction" is
-                  how someone who is present but not the one acting still gets to be a person rather
-                  than furniture: ask what they notice, what it costs them to hold still, what they
-                  make of it. From the point-of-view character it comes back as interiority and that
-                  is yours to render. From anyone else it comes back as what the room could see of it
-                  -- a word, a movement, how they hold themselves -- because you are not inside their
-                  head and never will be. Ask it either way; just know which one you are getting.
+    situation  -- THE WHOLE OF WHAT YOU ARE SENDING. There is no question behind it; this is the ask.
+                  Put them in the moment as they would meet it: where they are, what has just
+                  happened, what they can perceive of it right now. They know nothing you do not put
+                  here -- not the scene so far, not what anyone else thought, not what you are
+                  steering toward. Then stop. Do not tell them which part of it matters, do not name
+                  the choice you think they face, and do not lay out what they could do about it: the
+                  moment holds several forks and which one they take is theirs to find. A thin
+                  situation will be rejected and you will have spent a step on nothing.
+                  When more than one character faces the same moment, each situation is built from
+                  what was true before ANY of them answered. Never fold one character's answer into
+                  another's situation -- the second one asked blind, and an answer leaked into
+                  someone else's situation decides the moment for them.
+
+                  You do not name what you want back, either. They answer as themselves, at whatever
+                  length the moment deserves: what they say, what they do, or both. If nobody in your
+                  scene ever speaks, that is your situations giving them nothing worth speaking to.
 
     REACTING AS A GROUP -- when something just happened that the rest of the present cast would feel,
     fan a reaction out to several of them at once instead of one at a time. In place of "character",
     give "reactors":
-      "consult": {"reactors": [{"name": "ELARA"}, {"name": "MIRA", "situation": "..."}], "situation": "...", "question": "...", "wants": "reaction"}
+      "consult": {"reactors": [{"name": "ELARA"}, {"name": "MIRA", "situation": "..."}], "situation": "..."}
     Each reactor gets the shared "situation" unless you override it per reactor (MIRA only heard it
     from the next room). They answer only what it lands on them as, and you are handed all their
     reactions together to write as one beat. This is for the ones present but not acting; it costs
-    ONE step however many react, and "wants" here is always "reaction".
+    ONE step however many react.
     Give them the concrete fact, not its consequence: not "you have been robbed" but what was taken,
     by whom if they would know, and how they would notice -- a consequence alone leaves nothing to
     answer honestly from.
@@ -193,10 +190,9 @@ export const writeInstruction = (p: {
         + `then write the close.`
       : "")
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
-    + `gone unconsulted for a while now. If this moment turns on a choice of theirs, ask for it; `
-    + `if they are simply present while it happens, ask for a "reaction" -- what it lands on them `
-    + `as, which from anyone but the point of view comes back as what the room could see of it. `
-    + `Either way, hear from them before the scene ends.` : "");
+    + `gone unconsulted for a while now. Put the moment to them -- whether it turns on a choice of `
+    + `theirs or they are simply standing in it, they get to be a person in this scene rather than `
+    + `furniture. Hear from them before it ends.` : "");
 
 export const askReader = (words: number) =>
   `[ASK READER] ${words} words so far. The reader wants to choose the `

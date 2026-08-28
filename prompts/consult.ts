@@ -208,6 +208,12 @@ export const badConsult = {
     + `long. That is their whole world for this question. Say where they are, what is happening to `
     + `them, and what they can perceive of it.`,
 
+  thinOpenSituation: (character: string, words: number, floor: number) =>
+    `The situation you gave ${character} was ${words} word${words === 1 ? "" : "s"} long, and it is `
+    + `the whole of what you are sending — there is no question behind it to do the pointing. Say `
+    + `where they are, what has just happened to them, and what they can perceive of it, in at least `
+    + `${floor} words. Give them the moment, not a label for it.`,
+
   noQuestion: (character: string) =>
     `You asked ${character} nothing — "question" was empty.`,
 

@@ -464,11 +464,15 @@ describe("prompt construction", () => {
     assert.match(p, /YOU MAY NOT RESOLVE THE PRESSURE BEFORE YOU ASK ABOUT IT/);
   });
 
-  it("the writer is given the closed `wants` vocabulary, not an invitation to phrase one", async () => {
+  it("the writer's consult is two fields, and it is told the situation is the whole ask", async () => {
+    // Stage 3: `question` and `wants` are gone from what the writer sends, so the closed vocabulary
+    // it used to be handed would now be an invitation to fill in a field nothing reads.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
-    for (const w of CONSULT_WANTS) assert.match(p, new RegExp(`\\b${w}\\b`));
-    assert.match(p, /EXACTLY ONE of these four words/);
+    assert.match(p, /"character": "NAME", "situation"/);
+    assert.match(p, /THE WHOLE OF WHAT YOU ARE SENDING/);
+    assert.ok(!/EXACTLY ONE of these four words/.test(p), "no shape menu is offered any more");
+    assert.ok(!/"wants"/.test(p), "and no wants field to fill in");
   });
 });
 

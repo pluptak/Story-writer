@@ -64,8 +64,24 @@ const QUESTION_CARRIES_ANSWERS = /\bor\b/i;
 
 const MIN_SITUATION_WORDS = 5;
 
+// With no question, the situation is the entire ask, and the floor that was enough beside one is not
+// enough alone: a five-word situation the question used to point into now points nowhere.
+const MIN_OPEN_SITUATION_WORDS = 15;
+
 /** The outcome of checking a proposed consult: sendable, or refused with a reason the writer can act on. */
 export type ConsultCheck = { ok: true; req: ConsultRequest } | { ok: false; why: string };
+
+/**
+ * Which door a consult comes through. **open** is the writer's own ask, which carries a situation and
+ * nothing else; **directed** is the judge's escalation, which names a fork in words and is held to
+ * every check a consult was held to before the question was withheld from characters.
+ *
+ * The question gates did not survive the move to the situation and should not be made to: a situation
+ * has no question grammar for `DEGENERATE_QUESTIONS` to match, and `\bor\b` over descriptive prose
+ * flags "the heat or the noise". What a situation must not do — pre-write the options — is a reading
+ * rather than a match, and lives with the narration lint, which already reads the outgoing situation.
+ */
+export type ConsultMode = "open" | "directed";
 
 /** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step.
  *
@@ -76,26 +92,34 @@ export type ConsultCheck = { ok: true; req: ConsultRequest } | { ok: false; why:
  *  on a retry (reviseConsult), and each reactor of a fan-out (normalizeReactionConsult). */
 export function normalizeConsult(raw: {
   character: string; situation?: unknown; question?: unknown; wants?: unknown;
-}, cast?: ReadonlyArray<{ name: string; cannot: readonly string[] }>): ConsultCheck {
+}, cast?: ReadonlyArray<{ name: string; cannot: readonly string[] }>,
+   mode: ConsultMode = "open"): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
   const question  = String(raw.question ?? "").trim();
   const words = situation.split(/\s+/).filter(Boolean).length;
+  const floor = mode === "open" ? MIN_OPEN_SITUATION_WORDS : MIN_SITUATION_WORDS;
 
   if (!situation)
     return { ok: false, why: P.badConsult.emptySituation(character) };
-  if (words < MIN_SITUATION_WORDS)
-    return { ok: false, why: P.badConsult.shortSituation(character, words) };
-  if (!question)
-    return { ok: false, why: P.badConsult.noQuestion(character) };
-  if (DEGENERATE_QUESTIONS.some(re => re.test(question)))
-    return { ok: false, why: P.badConsult.degenerate(question) };
-  if (QUESTION_CARRIES_ANSWERS.test(question))
-    return { ok: false, why: P.badConsult.carriesAnswers(question) };
+  if (words < floor)
+    return { ok: false, why: mode === "open"
+      ? P.badConsult.thinOpenSituation(character, words, floor)
+      : P.badConsult.shortSituation(character, words) };
 
-  const wants = canonWants(raw.wants);
-  if (!wants)
-    return { ok: false, why: P.badConsult.badWants(CONSULT_WANTS, String(raw.wants ?? "")) };
+  let wants: ConsultWants | "" = "";
+  if (mode === "directed") {
+    if (!question)
+      return { ok: false, why: P.badConsult.noQuestion(character) };
+    if (DEGENERATE_QUESTIONS.some(re => re.test(question)))
+      return { ok: false, why: P.badConsult.degenerate(question) };
+    if (QUESTION_CARRIES_ANSWERS.test(question))
+      return { ok: false, why: P.badConsult.carriesAnswers(question) };
+    const asked = canonWants(raw.wants);
+    if (!asked)
+      return { ok: false, why: P.badConsult.badWants(CONSULT_WANTS, String(raw.wants ?? "")) };
+    wants = asked;
+  }
 
   const member = cast?.find(c => c.name.trim().toLowerCase() === character.toLowerCase());
   if (member?.cannot?.length) {
@@ -104,7 +128,7 @@ export function normalizeConsult(raw: {
       return { ok: false, why: P.badConsult.restrictedSense(character, hit.sense, hit.match) };
   }
 
-  return { ok: true, req: { character, situation, question, wants } };
+  return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants } };
 }
 
 /** The outcome of checking a reaction fan-out: one sendable request per reactor, or a single refusal. */
@@ -130,7 +154,6 @@ export function normalizeReactionConsult(raw: {
   reactors?: unknown; situation?: unknown; question?: unknown;
 }, cast?: CannotCast): ReactionCheck {
   const shared = String(raw.situation ?? "").trim();
-  const question = String(raw.question ?? "").trim();
   const list = Array.isArray(raw.reactors) ? raw.reactors : [];
   if (!list.length) return { ok: false, why: P.badReaction.noReactors() };
 
@@ -142,7 +165,10 @@ export function normalizeReactionConsult(raw: {
     if (seen.has(name.toLowerCase())) continue;
     seen.add(name.toLowerCase());
     const situation = String((r as any)?.situation ?? "").trim() || shared;
-    const check = normalizeConsult({ character: name, situation, question, wants: "reaction" }, cast);
+    // A fan-out is the several-at-once form of the writer's own ask, so it comes through the same
+    // open door: one shared situation, no question, and no `wants` pinned to "reaction" — what the
+    // moment lands on them as is what a shared moment asks for without being told to.
+    const check = normalizeConsult({ character: name, situation }, cast, "open");
     if (!check.ok) return { ok: false, why: check.why };
     reqs.push(check.req);
   }
@@ -177,12 +203,18 @@ export type Revision =
 export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>,
   cast?: CannotCast): Revision {
   const asked = canonWants(rev.wants);
+  // An open beat carries no question, so a judge retrying one is escalating: it may name the fork in
+  // words for the first time, and `wants` comes with it. Once a fork is named the old pin holds — the
+  // judge may reframe a question it asked badly, never turn one fork into another. Every revision is
+  // checked as directed whichever it was, so an ask that has been escalated can never decay back into
+  // an open beat by omitting the fields again.
+  const escalating = !prev.question;
   const checked = normalizeConsult({
     character: prev.character,
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
-    wants: prev.wants,
-  }, cast);
+    wants: escalating ? (asked ?? "") : prev.wants,
+  }, cast, "directed");
   if (!checked.ok) return checked;
   // The character is shown the situation and not the question, so a revision that sharpens the
   // wording of the fork and leaves the situation alone re-sends a fresh instance the byte-identical
@@ -192,7 +224,8 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
   // already in hand, which is what the caller does with every other unusable revision.
   if (checked.req.situation.trim() === prev.situation.trim())
     return { ok: false, why: P.badConsult.noNewSituation() };
-  return { ok: true, req: checked.req, wantsRefused: asked && asked !== prev.wants ? asked : "" };
+  return { ok: true, req: checked.req,
+           wantsRefused: !escalating && asked && asked !== prev.wants ? asked : "" };
 }
 /**
  * What the asked-for shape requires the reply to actually carry, or null when the reply satisfies it.
@@ -214,6 +247,11 @@ export function missingShape(
   if (wants === "action" && !r.action) return "action";
   if (wants === "decision" && !r.speech && !r.action) return "decision";
   if (wants === "reaction" && !pov && !r.speech && !r.action) return "reaction";
+  // An open beat names no shape, so the POV rule is the only floor left — and it is the same floor.
+  // Whatever was asked, a thought from outside the point of view reaches the writer as nothing, so an
+  // answer with neither speech nor action is an answer the scene never receives. Reported as
+  // "reaction" because that is the repair the character needs: let it reach the outside.
+  if (!wants && !pov && !r.speech && !r.action) return "reaction";
   return null;
 }
 
