@@ -180,6 +180,13 @@ export async function writeScene(
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+  // A thought reaches the writer only from inside the point of view. The narration lint already holds
+  // that anyone else's inner life is not narratable fact, so a non-POV thought on the writer's desk
+  // only ever authorized it to narrate one anyway. It still goes into the character's own history —
+  // the thought is their memory and continuity depends on it — and they are never told it may be
+  // withheld, because a character writing for an audience is not answering as itself.
+  const isPov = (name: string) => !!sd.pov && sd.pov.trim().toLowerCase() === name.trim().toLowerCase();
+  const writerSees = (name: string, thought: string) => isPov(name) ? thought : "";
   LIVE.writer = writer; LIVE.log = log;
 
   // The author-side helpers each carry their own name, so each gets its own transcript file, stats
@@ -560,7 +567,7 @@ export async function writeScene(
             // A reaction is not retried here; consult()'s empty/shape repair is guard enough for the thought.
             // Drop consult()'s decision-shaped events — a `reaction` event stands in for them.
             reply = await consult(persistent, req, {
-              clarifications, clarify,
+              clarifications, clarify, pov: isPov(def.name),
               log: e => { if (e.t !== "consult" && e.t !== "answer") log(e); },
             });
           } catch (e) {
@@ -578,15 +585,19 @@ export async function writeScene(
           persistent.said(JSON.stringify({ thought: reply.thought,
             ...(reply.speech ? { speech: reply.speech } : {}) }));
           lastAsked.set(def.name.toLowerCase(), steps);
+          // The run record carries the reaction as it was actually given — this is the reader's view
+          // of the run, not the writer's desk, and the withholding below is about the writer only.
           log({ t: "reaction", character: def.name, thought: reply.thought, speech: reply.speech,
                 action: reply.action, chapter });
-          collected.push({ name: def.name, thought: reply.thought, speech: reply.speech,
+          const shownThought = writerSees(def.name, reply.thought);
+          collected.push({ name: def.name, thought: shownThought, speech: reply.speech,
                            action: reply.action, situation: req.situation });
           // A line the character actually gave is granted — the writer may render exactly it, and
           // the lint needs it on the ledger to tell that from an invented quotation. The felt entry
           // rides along for the same reason: the bundle hands the writer the interiority to render.
-          if (reply.speech || reply.thought)
-            granted.push({ character: def.name, speech: reply.speech, action: "", thought: reply.thought });
+          // A withheld thought grants nothing, because the writer was never handed it to render.
+          if (reply.speech || shownThought)
+            granted.push({ character: def.name, speech: reply.speech, action: "", thought: shownThought });
           if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}reacts:${C.reset} ${reply.thought}`);
         }
 
@@ -607,17 +618,27 @@ export async function writeScene(
         for (const x of collected)
           if (x.action && promotable.get(x.name.toLowerCase())) pendingReactionActions.set(x.name.toLowerCase(), x.action);
 
-        const bundle = collected.map(x => ({
-          name: x.name, thought: x.thought,
-          ...(x.speech ? { speech: x.speech } : {}),
-          ...(pendingReactionActions.has(x.name.toLowerCase()) ? { action: x.action } : {}),
-        }));
+        // A reactor whose thought was withheld and who neither spoke nor had a deed promoted has
+        // nothing left that the writer may put on the page, so it is not in the bundle at all — a
+        // bare name there would be an invitation to invent what it was standing next to.
+        const bundle = collected
+          .filter(x => x.thought || x.speech || pendingReactionActions.has(x.name.toLowerCase()))
+          .map(x => ({
+            name: x.name,
+            ...(x.thought ? { thought: x.thought } : {}),
+            ...(x.speech ? { speech: x.speech } : {}),
+            ...(pendingReactionActions.has(x.name.toLowerCase()) ? { action: x.action } : {}),
+          }));
         // The beat counts as asked only if somebody actually answered it — a fan-out whose every
         // reactor was skipped is an empty turn, and the three-strikes counter has to see it.
         asked = collected.length > 0;
         if (bundle.length) {
           writer.hear(P.reactionsAnswered(bundle));
           owed.push(...bundle.map(b => b.name));
+        } else if (collected.length) {
+          // They answered; none of it is the writer's to write. Say so, or the fan-out looks
+          // unanswered and gets asked again.
+          writer.hear(P.reactionsWithheld(collected.map(x => x.name)));
         }
       }
     } else if (who) {
@@ -645,7 +666,8 @@ export async function writeScene(
           const agent = attempt === 1 ? persistent : persistent.fork();
           beginAttempt();
           try {
-            reply = await consult(agent, req, { clarifications, attempt, log, clarify });
+            reply = await consult(agent, req, {
+              clarifications, attempt, log, clarify, pov: isPov(def.name) });
           } catch (e) {
             failed = (e as Error).message;
             break;
@@ -659,7 +681,8 @@ export async function writeScene(
             role: "user",
             content: P.judgeRequest({
               name: def.name, situation: req.situation, question: req.question, wants: req.wants,
-              thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note, flags,
+              thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note,
+              flags, pov: isPov(def.name),
             }),
           }];
           try {
@@ -731,10 +754,14 @@ export async function writeScene(
         // A thought with nothing said and nothing done answers a "reaction" and nothing else. Taken
         // as an accept it is worse than a refusal: it costs the attempts, marks the character as
         // freshly consulted, and hands the writer an answer with nothing in it to write.
-        const shortOf = reply && !stalled ? missingShape(req.wants, reply) : null;
+        // POV decides what a "reaction" has to carry: from anyone else a thought alone reaches the
+        // writer as nothing, which is the same empty answer the other three shapes are refused for.
+        const shortOf = reply && !stalled ? missingShape(req.wants, reply, isPov(def.name)) : null;
         if (failed || !reply || stalled || shortOf) {
           const why = failed
             || (stalled ? reply!.note || "did not answer"
+            : shortOf === "reaction"
+              ? "reacted from behind their eyes, and the scene is not written from theirs"
             : shortOf ? `was asked for ${shortOf} and gave none`
             : "no reply");
           console.log(`${C.red}${def.name}: ${why}.${C.reset}`);
@@ -748,18 +775,21 @@ export async function writeScene(
           persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
           persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
           keepClarifications();   // before the answer: the writer settled these facts to get it
-          writer.hear(P.characterAnswered(def.name, P.answerBody(reply), req.question));
+          const shown = { thought: writerSees(def.name, reply.thought),
+                          speech: reply.speech, action: reply.action };
+          writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question));
           lastAsked.set(def.name.toLowerCase(), steps);
-          // An answer joins the lint's ledger as whatever it actually carried. A thought-only answer
-          // — a reaction-shaped ask answered from the inside — lands as a felt entry, the same
-          // authorization a fan-out's bundle gets; without it, the writer rendering that interiority
-          // is flagged for using exactly what it was handed, and the ledger shows a bare name.
-          if (reply.speech || reply.action || reply.thought) {
+          // An answer joins the lint's ledger as whatever the writer actually got. A thought-only
+          // answer from the POV character — a reaction-shaped ask answered from the inside — lands
+          // as a felt entry, the same authorization a fan-out's bundle gets; without it, the writer
+          // rendering that interiority is flagged for using exactly what it was handed. A withheld
+          // thought grants nothing, because it never reached the desk.
+          if (reply.speech || reply.action || shown.thought) {
             granted.push({
               character: def.name,
               speech: reply.speech,
               action: reply.action,
-              ...(!reply.speech && !reply.action && reply.thought ? { thought: reply.thought } : {}),
+              ...(!reply.speech && !reply.action && shown.thought ? { thought: shown.thought } : {}),
             });
           }
           owed.push(def.name);

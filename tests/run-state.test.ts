@@ -976,6 +976,31 @@ describe("an answer still owed the page", () => {
       "the writer was handed the exact line to render");
   });
 
+  it("says so plainly when every reactor answered from an inside the scene is not written from",
+    async () => {
+      // MERRITT is not the POV, so a thought with nothing said and nothing done leaves the bundle
+      // empty. Silence would read as an unanswered fan-out and get the same beat asked again.
+      // Twice over: the first thought-only reply buys one repair asking them to let it surface, and
+      // this reactor does not take it. What comes back the second time is what the bundle gets.
+      const { events, writer } = await runIt({
+        maxSteps: 10,
+        characterReplies: [
+          { thought: "Wood. That is the service door, not the gate." },
+          { thought: "Wood. That is the service door, not the gate." },
+        ],
+        writerReplies: [
+          { prose: "The crash echoes down the corridor.", consult: CRASH, scene_done: false },
+          { prose: "Dust keeps coming down in the dark.", scene_done: true },
+        ],
+      });
+
+      const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+      assert.ok(events.some(e => e.t === "reaction"), "the reaction was collected for the record");
+      assert.ok(!heard.includes("THE OTHERS REACT"), "no bundle was handed over");
+      assert.ok(!heard.includes("That is the service door"), "and the thought stayed with them");
+      assert.match(heard, /\[NOTHING TO WRITE\] MERRITT/, "the writer was told, not left guessing");
+    });
+
   it("counts a fan-out whose every reactor was skipped as an empty turn", async () => {
     const ghost = { prose: "", consult: { ...CRASH, reactors: [{ name: "GHOST" }] }, scene_done: false };
     const { r, events } = await runIt({
@@ -989,30 +1014,90 @@ describe("an answer still owed the page", () => {
     assert.deepEqual(r.prose, []);
   });
 
-  it("a thought-only answer lands as felt evidence, never as a bare name in the lint's ledger",
+  it("the POV character's thought-only answer lands as felt evidence, never as a bare name",
     async () => {
       // The live-run failure this pins: reaction-shaped single consults answered from the inside
       // used to push empty granted entries — bare names the lint could not read as authorization.
-      const REACT = { ...ASK, wants: "reaction" };
+      // RIVEN is the scene's POV, so what it lands on them as is the writer's to render.
+      const POV_REACT = {
+        character: "RIVEN",
+        situation: "The lock has given way under your hands and the door stands open on the dark.",
+        question: "What does the give of it land on you as, this early?",
+        wants: "reaction",
+      };
       const lintPayloads: string[] = [];
       const { events } = await runIt({
         maxSteps: 10,
         lintPayloads,
-        characterReplies: [{ thought: "The lock has been sticking for a month; who is this?" }],
+        characterReplies: [{ thought: "Too easy. That is the part I do not like." }],
         writerReplies: [
-          { prose: "Riven crouches by the door.", consult: REACT, scene_done: false },
-          { prose: "Merritt's head tilts toward the sound.", scene_done: true },
+          { prose: "Riven crouches by the door.", consult: POV_REACT, scene_done: false },
+          { prose: "The dark past the doorway does not move.", scene_done: true },
         ],
       });
 
-      const accept = events.find(e => e.t === "accept") as any;
-      assert.ok(accept, "the thought-only answer was accepted");
+      assert.ok(events.some(e => e.t === "accept"), "the thought-only answer was accepted");
       const withLedger = lintPayloads.find(p => p.includes("ALREADY GRANTED") && !p.includes("(nobody yet)"));
       assert.ok(withLedger, "the lint saw a populated ledger");
-      assert.match(withLedger!, /MERRITT -- felt: The lock has been sticking/,
+      assert.match(withLedger!, /RIVEN -- felt: Too easy/,
         "the interiority the writer was handed is on the record as authorization");
-      assert.ok(!/^MERRITT\s*$/m.test(withLedger!), "no bare-name entries");
+      assert.ok(!/^RIVEN\s*$/m.test(withLedger!), "no bare-name entries");
     });
+
+  it("gives a non-POV reaction one chance to surface, and takes it when it does", async () => {
+    // The hole this closes: "reaction" glossed as "not a deliberate act, not spoken words" is right
+    // for the POV character and unanswerable for anyone else, so the ask was spent for nothing. Now
+    // a thought-only reply buys a repair, and a reaction that reaches the outside is an answer.
+    const REACT = { ...ASK, wants: "reaction" };
+    const { events, writer, calls } = await runIt({
+      maxSteps: 10,
+      characterReplies: [
+        { thought: "The lock has been sticking for a month; who is this?" },
+        { thought: "Who is this?", action: "goes still on the crate, head turned to the door" },
+      ],
+      writerReplies: [
+        { prose: "Riven crouches by the door.", consult: REACT, scene_done: false },
+        { prose: "On the crate, Merritt goes still.", scene_done: true },
+      ],
+    });
+
+    assert.equal(calls.characterCall, 2, "asked once more rather than discarded");
+    const accept = events.find(e => e.t === "accept") as any;
+    assert.ok(accept, "the surfaced reaction was accepted");
+    assert.match(accept.action, /goes still on the crate/);
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.match(heard, /goes still on the crate/, "the writer got the outward half");
+    assert.ok(!heard.includes("Who is this?"), "and still none of the inward half");
+  });
+
+  it("a non-POV character's thought-only answer never reaches the writer at all", async () => {
+    // MERRITT is not the POV. What the moment lands on them as is theirs; handing it to the writer
+    // would only ever authorize narrating an inner life nobody gave it. With nothing said and
+    // nothing done, the answer arrives as nothing — treated as no answer rather than accepted empty.
+    const REACT = { ...ASK, wants: "reaction" };
+    const lintPayloads: string[] = [];
+    const thoughtOnly = { thought: "The lock has been sticking for a month; who is this?" };
+    const { events, writer, calls } = await runIt({
+      maxSteps: 10,
+      lintPayloads,
+      // Asked once more to let it surface, and it does not — so the answer is the one that stands.
+      characterReplies: [thoughtOnly, thoughtOnly],
+      writerReplies: [
+        { prose: "Riven crouches by the door.", consult: REACT, scene_done: false },
+        { prose: "Merritt's head tilts toward the sound.", scene_done: true },
+      ],
+    });
+
+    assert.equal(calls.characterCall, 2, "the repair asked them to let it reach the outside");
+    assert.ok(!events.some(e => e.t === "accept"), "nothing was accepted");
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.ok(!heard.includes("The lock has been sticking"), "the thought never reached the writer");
+    assert.match(heard, /\[NO ANSWER\] MERRITT/, "the writer was told nobody answered");
+    // The run record still carries it: the withholding is about the writer's desk, not the reader's view.
+    const answered = events.find(e => e.t === "answer") as any;
+    assert.match(answered?.thought ?? "", /sticking for a month/);
+    assert.ok(!lintPayloads.some(p => /MERRITT -- felt:/.test(p)), "and it granted nothing");
+  });
 });
 
 // -- A CLARIFICATION ON AN ATTEMPT THAT WAS THROWN AWAY -----------------------

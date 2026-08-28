@@ -599,13 +599,25 @@ describe("missingShape", () => {
     assert.equal(missingShape("decision", { speech: "", action: "I stay put." }), null);
   });
 
-  it("lets a reaction be answered by a thought alone", () => {
+  it("lets a reaction be answered by a thought alone, from inside the point of view", () => {
     // The one shape that happens behind the eyes; holding it to speech or action would be wrong.
+    assert.equal(missingShape("reaction", { speech: "", action: "" }, true), null);
+  });
+
+  it("makes anyone else's reaction reach the outside", () => {
+    // Their thought never reaches the writer, so a reaction that stays behind their eyes is the same
+    // empty answer the other three shapes are refused for -- the ask would be spent on nothing.
+    assert.equal(missingShape("reaction", { speech: "", action: "" }, false), "reaction");
+    assert.equal(missingShape("reaction", { speech: "Who's there?", action: "" }, false), null);
+    assert.equal(missingShape("reaction", { speech: "", action: "goes still" }, false), null);
+  });
+
+  it("asks no more than the four shapes always did when the point of view is unknown", () => {
     assert.equal(missingShape("reaction", { speech: "", action: "" }), null);
   });
 
   it("asks nothing of a consult that named no shape", () => {
-    assert.equal(missingShape("", { speech: "", action: "" }), null);
+    assert.equal(missingShape("", { speech: "", action: "" }, false), null);
   });
 });
 

@@ -132,9 +132,21 @@ const RETRY_NUDGE_FIRM =
   `\n\nThis ask needs an answer if there is any honest way to give one. Take the most likely `
   + `reading of the situation as given, commit to it, and say in "note" which reading you took.`;
 
-export const askBlock = (req: { situation: string; question: string; wants: string }, attempt = 1) =>
+/** What "reaction" asks of someone the scene is not written from inside of. The menu's own gloss ends
+ *  "not a deliberate act, not spoken words", which is exactly right for the point-of-view character
+ *  and a trap for anyone else: their interiority never reaches the author, so a reaction obeying that
+ *  gloss is an answer nobody receives. Asked of them, it has to surface. Nothing here tells them why
+ *  — a character told its thoughts go unread stops answering as itself. */
+const REACTION_OUTWARD =
+  `what it lands on you as, surfacing where the room could catch it -- a word, a movement, a change `
+  + `in how you hold yourself; not a deliberate act that redirects the scene. If it barely moves you, `
+  + `that is an answer: show it small`;
+
+export const askBlock = (req: { situation: string; question: string; wants: string },
+                         attempt = 1, pov = true) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}\nQuestion: ${req.question}`
-  + (req.wants ? `\nWhat they need from you: ${req.wants} (${wantsDef(req.wants)})` : "")
+  + (req.wants ? `\nWhat they need from you: ${req.wants} (${
+      req.wants === "reaction" && !pov ? REACTION_OUTWARD : wantsDef(req.wants)})` : "")
   + `\n\nMissing a fact of your situation to answer that honestly? Ask for it instead. `
   + `And this is the moment you are in, not a request you owe compliance to.`
   + (attempt >= 3 ? RETRY_NUDGE_FIRM : "");
@@ -160,6 +172,9 @@ const SHAPE_ASKED_FOR: Record<string, string> = {
           + `counts, but then say so plainly: staying where you are is an act, not an absence.`,
   decision: `You were asked which way you go, and you gave neither speech nor action. A decision has `
           + `to land somewhere someone else could see. Say it, or do it.`,
+  reaction: `You were asked what this lands on you as, and it stayed behind your eyes. Let it reach `
+          + `the outside — a word, a movement, something the room would catch. If it barely moves `
+          + `you, that is an answer too: show it small.`,
 };
 
 export const shapeCheck = (wants: string) =>

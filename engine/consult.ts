@@ -192,13 +192,20 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
  * `reaction` is the one shape a thought alone answers — it asks what something lands on them as, and
  * that happens behind the eyes. Every other shape asks for something that reaches the page, and a
  * thought on its own leaves the scene exactly where it was: an answer in form, nothing in substance.
+ *
+ * That exception holds only from inside the point of view. A thought is the writer's to render for
+ * the POV character and nobody else, so a `reaction` answered from behind anyone else's eyes reaches
+ * the writer as nothing — the same empty answer this check exists to refuse. Asked of them, a
+ * reaction has to land where the room could see it. `pov` defaults true so a caller that genuinely
+ * does not know whose scene this is asks for no more than the four shapes always did.
  */
 export function missingShape(
-  wants: ConsultWants | "", r: { speech: string; action: string },
+  wants: ConsultWants | "", r: { speech: string; action: string }, pov = true,
 ): ConsultWants | null {
   if (wants === "speech" && !r.speech) return "speech";
   if (wants === "action" && !r.action) return "action";
   if (wants === "decision" && !r.speech && !r.action) return "decision";
+  if (wants === "reaction" && !pov && !r.speech && !r.action) return "reaction";
   return null;
 }
 
@@ -278,10 +285,12 @@ export type Clarifier = (question: string, req: ConsultRequest) => Promise<strin
 /** Run one consult against a character agent: clarify, repair and answer within the given budget. */
 export async function consult(
   agent: Agent, req: ConsultRequest,
-  opts: { clarifications: number; clarify: Clarifier; attempt?: number; log?: (e: ConsultEvent) => void },
+  opts: { clarifications: number; clarify: Clarifier; attempt?: number; pov?: boolean;
+          log?: (e: ConsultEvent) => void },
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
-  const extra: Msg[] = [{ role: "user", content: P.askBlock(req, opts.attempt ?? 1) }];
+  const pov = opts.pov ?? true;
+  const extra: Msg[] = [{ role: "user", content: P.askBlock(req, opts.attempt ?? 1, pov) }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
 
@@ -347,7 +356,7 @@ export async function consult(
     const speech  = String(o.speech ?? "").trim();
     const action  = String(o.action ?? "").trim();
     const note    = String(o.note ?? "").trim();
-    const shortOf = missingShape(req.wants, { speech, action });
+    const shortOf = missingShape(req.wants, { speech, action }, pov);
     const why = !thought && !speech && !action ? "returned nothing usable"
               : shortOf ? `was asked for ${shortOf} and gave none`
               : "";

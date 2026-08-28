@@ -47,8 +47,10 @@ something they are not able to do.
 
 AN ANSWER HAS TO ARRIVE IN THE SHAPE YOU ASKED FOR. Asked for speech, "speech" cannot be empty; asked
 for an action, "action" cannot be empty; asked for a decision, one or the other has to carry it. Only
-a reaction is answered by a thought alone. A thought where you asked for one of the others is someone
-turning the question over and never answering it -- retry, and put the fork in front of them plainly.
+a reaction is answered by a thought alone, and only from the point-of-view character -- what anyone
+else thinks is not yours to write, so their reaction still has to surface as a word or a movement.
+A thought where you asked for one of the others is someone turning the question over and never
+answering it -- retry, and put the fork in front of them plainly.
 
 A DECISION IS CARRIED BY ONE CLEAR SIDE. Either "speech" or "action" naming one branch settles it:
 "I step out and head upstairs" answers "do you stay, or slip out?" even though neither of your words
@@ -178,10 +180,11 @@ export const answerFlags = (p: { forced: boolean }) =>
 
 export const judgeRequest = (p: {
   name: string; situation: string; question: string; wants: string;
-  thought: string; speech: string; action: string; note: string; flags: string;
+  thought: string; speech: string; action: string; note: string; flags: string; pov?: boolean;
 }) =>
   `[${p.name} ANSWERED]\nThe situation you gave them: ${p.situation}\nYou asked: ${p.question}\n`
   + `What you needed from them: ${p.wants}\n`
+  + (p.pov === false ? `They are not the point of view: what they think is not yours to write.\n` : "")
   + `thought: ${p.thought}\nspeech: ${p.speech}\naction: ${p.action}`
   + (p.note ? `\nnote: ${p.note}` : "")
   + (p.flags ? `\n\n[FLAGGED] ${p.flags}` : "");

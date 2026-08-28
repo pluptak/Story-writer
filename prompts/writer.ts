@@ -53,7 +53,10 @@ ${wantsMenuLines}
                   If you never ask for "speech", nobody in your scene will ever speak. "reaction" is
                   how someone who is present but not the one acting still gets to be a person rather
                   than furniture: ask what they notice, what it costs them to hold still, what they
-                  make of it -- without needing them to speak or move to earn the question.
+                  make of it. From the point-of-view character it comes back as interiority and that
+                  is yours to render. From anyone else it comes back as what the room could see of it
+                  -- a word, a movement, how they hold themselves -- because you are not inside their
+                  head and never will be. Ask it either way; just know which one you are getting.
 
     REACTING AS A GROUP -- when something just happened that the rest of the present cast would feel,
     fan a reaction out to several of them at once instead of one at a time. In place of "character",
@@ -192,7 +195,8 @@ export const writeInstruction = (p: {
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
     + `gone unconsulted for a while now. If this moment turns on a choice of theirs, ask for it; `
     + `if they are simply present while it happens, ask for a "reaction" -- what it lands on them `
-    + `as. Either way, hear from them before the scene ends.` : "");
+    + `as, which from anyone but the point of view comes back as what the room could see of it. `
+    + `Either way, hear from them before the scene ends.` : "");
 
 export const askReader = (words: number) =>
   `[ASK READER] ${words} words so far. The reader wants to choose the `
@@ -258,19 +262,35 @@ export const answerBody = (p: { thought: string; speech: string; action: string 
 export const characterAnswered = (name: string, body: string, question = "") =>
   `[${name} ANSWERED]` + (question ? ` (asked: ${question})` : "") + `\n${body}`;
 
-export const reactionsAnswered = (items: { name: string; thought: string; speech?: string; action?: string }[]) => {
-  const lines = items.map(i => `${i.name}: ${i.thought}`
+/** A reactor arrives without a `thought` when the scene is not written from inside them: what it
+ *  landed on them as is their own, and rendering it would hand the writer an inner life nobody gave
+ *  it. The "from the inside" clause is therefore conditional — offered against a bundle that carries
+ *  no interiority, it would be an instruction to invent some. */
+export const reactionsAnswered = (items: { name: string; thought?: string; speech?: string; action?: string }[]) => {
+  const lines = items.map(i => i.name
+    + (i.thought ? `: ${i.thought}` : "")
     + (i.speech ? `\n  — says: "${i.speech}"` : "")
     + (i.action ? `\n  — could act: ${i.action}` : ""));
+  const anyThought = items.some(i => i.thought);
   const anyAction = items.some(i => i.action);
   return `[THE OTHERS REACT]\n${lines.join("\n")}\n\n`
-    + `Write these as their reactions to what just happened — what it lands on them as, from the `
-    + `inside. Where a reaction carries a line to say, that line is theirs and already given: render `
+    + `Write these as their reactions to what just happened.`
+    + (anyThought ? ` Where one comes with what it landed on them as, that is yours to render from `
+        + `the inside; where it does not, render only what the room could see of them.` : "")
+    + ` Where a reaction carries a line to say, that line is theirs and already given: render `
     + `exactly it and nothing more, and put words in nobody else's mouth. No deeds beyond what is `
     + `offered here; keep the whole beat brief.`
     + (anyAction ? `\n\nYou may turn ONE of the "could act" impulses into a real deed: name that `
         + `character in "promote" on your next reply and write the deed. The rest stay unspoken.` : "");
 };
+
+/** Every reactor answered from the inside only, and the scene is written from nobody's inside but the
+ *  point of view's — so nothing they gave is the writer's to put down. Said out loud, because a
+ *  fan-out that produced silence reads as unanswered and gets asked again. */
+export const reactionsWithheld = (names: string[]) =>
+  `[NOTHING TO WRITE] ${names.join(", ")} took the moment in and gave it nothing outward — no line, `
+  + `no deed. What it landed on them as is theirs, and this scene is not written from inside them. `
+  + `Write on without handing them a reaction, and do not ask this group again for the same beat.`;
 
 export const noAnswer = (name: string, why: string) =>
   `[NO ANSWER] ${name} did not answer (${why}). Write on without settling `

@@ -139,6 +139,36 @@ the eyes. A thought offered against any of the other three is not a quiet answer
 question, and it is treated as one: the character is asked again, and if it comes back the same the
 writer is told nobody answered rather than handed an accepted answer with nothing in it.
 
+### A thought reaches the writer only from inside the point of view
+
+What a moment lands on someone as is theirs. The writer is handed it only when the scene is written
+from inside that person: the point-of-view character's `thought` folds into the writer's history and
+onto the narration lint's ledger as a felt entry, and everyone else's does not. The narration lint
+already holds that another character's inner life is not narratable fact, so a non-POV thought on the
+writer's desk only ever authorized it to narrate one anyway.
+
+The thought still enters the character's **own** history — it is their memory, and continuity depends
+on it — and it is still on the run record, because the reader watching a run is not the writer. A
+character is never told any of this: one writing for an audience is not answering as itself.
+
+That rule decides what `reaction` asks for. From the point-of-view character it is answered by a
+thought alone — the one shape that happens behind the eyes. From anyone else the same answer reaches
+the writer as nothing, so a reaction has to surface: a word, a movement, how they hold themselves.
+Both sides are told the version that applies (`prompts/consult.ts`'s `REACTION_OUTWARD`, and the
+`wants` menu in `WRITER_FORMAT`), because the menu's own gloss — *not a deliberate act, not spoken
+words* — is exactly right for the POV character and unanswerable for everybody else. That mismatch
+was live: two of one run's seventeen consults were `reaction` asks to a non-POV character, both
+answered honestly from the inside, both spent on nothing.
+
+The character is never told any of this. A thought that stays inward buys one repair asking it to
+reach the outside, phrased as craft rather than policy — one told its thoughts go unread stops
+answering as itself. If the second reply is no better it is treated as no answer rather than accepted
+empty, for the same reason a thought offered against a `speech` ask is: accepting it would spend the
+attempts, mark the character freshly consulted, and hand the writer an answer with nothing in it.
+
+A reaction fan-out whose every reactor ends up there hands over no bundle, and the writer is told so
+plainly — silence would read as an unanswered fan-out and get the same beat asked again.
+
 The engine nudges as well as gates: a character gone unconsulted too long is named in the next
 `[WRITE]`, and that nudge explicitly offers `reaction` as the honest ask when the moment turns on no
 choice of theirs at all (`prompts.ts`'s `writeInstruction`) — the situation that otherwise produces a
@@ -154,6 +184,10 @@ consult that resolved first — so the fan-out rides the prose turn that narrate
 costs **one step however many react**. Each reactor is a genuinely isolated consult (`normalizeReactionConsult`
 holds each to the same situation floor a lone consult faces, and no reactor ever sees another's reply,
 so the asymmetry is unbroken), and the writer is handed all of them together to write as one beat.
+
+What reaches that bundle is bounded by the point of view: a non-POV reactor contributes what it said
+and, if promoted, what it did — never what it felt. A reactor left with nothing after that is not in
+the bundle under a bare name, which would be an invitation to invent what it was standing next to.
 
 A reactor may volunteer an **action** alongside its thought. The writer promotes **at most one** of
 those into the scene by naming that character in `promote` on its next reply; the promoted deed is
