@@ -18,9 +18,9 @@ run, which is the owner's to make, batched.
 
 ## Next
 
-Five items promoted out of the sections below, in the order they should be picked up. Each is
-decidable now and has live-run evidence behind it. The first two are reasons to distrust what the
-architect hands the writer; items 3–5 are reasons to distrust what the writer hands everyone else.
+Four items promoted out of the sections below, in the order they should be picked up. Each is
+decidable now and has live-run evidence behind it. The first is a reason to distrust what the
+architect hands the writer; items 2–4 are reasons to distrust what the writer hands everyone else.
 
 Their evidence is four doorway runs of 2026-08-27 — `14-54-12-677Z`, `16-23-17-001Z`,
 `19-33-16-122Z` and `19-47-04-293Z`. The first three ran `google/gemma-4-e4b` throughout; the fourth
@@ -28,31 +28,15 @@ put the writer, judge, narration lint and clarifier on `gemma-4-12b-it-qat-uncen
 left the characters on `e4b`. **Retained-run rotation has since removed `14-54-12-677Z` from disk**,
 so figures cited from it are not re-derivable; everything attributed to the other three is. Two
 further `e4b` runs, `21-35-36-919Z` (control) and `22-23-22-884Z` (the first under the shipped
-sense-lint, consult gate and person clause), are item 2's and item 4's evidence; both are preserved
+sense-lint, consult gate and person clause), are item 1's and item 3's evidence; both are preserved
 under `stories/doorway/experiments/` with the runs they are measured against.
 
 That model split is why the order is what it is. Raising the author-side model fixed or nearly fixed
-items 3, 4 and 5 on its own — the fourth run finished in 13 steps with no degenerate questions, no
+items 2, 3 and 4 on its own — the fourth run finished in 13 steps with no degenerate questions, no
 person drift and no repetition — while the prose sense-lint's three holes, which led this list until
 they shipped, appeared on the page in both models: the one thing capability did not buy.
 
-### 1. `facts[]` is framed away from the one thing it exists for
-
-The story stage asks for "truths true of the world at large that nobody in particular walks in
-holding", and the fill-gaps pass reinforces that a fact one person holds stays in their `knows`.
-Neither says what actually decides it: the writer is never shown any character's `persona`, `knows`,
-`goal` or `belief` — `writerSystem` tells it so outright — so a fact *everyone in the room* holds is
-exactly what belongs at story level, and the current wording reads as excluding it precisely because
-both characters do hold it. Two live scaffolds in a row came back with `facts` empty, and in both the
-writer then invented the missing world state and got it wrong: in one, which of two patients each
-character was arguing for, and the whole scene ran inverted; in the other, nothing bounded what could
-be true of the room and the writer invented an electrical fire that dissolved the premise's dilemma.
-
-**Done when** the story stage and the fill-gaps pass state the writer's blind spot and make "two or
-more characters both hold it" the test for story level, and verify has a bullet for the omission,
-which it does not have at all today. This is a reframe, not a new field.
-
-### 2. Did the instruction pass fix the consult-gate churn?
+### 1. Did the instruction pass fix the consult-gate churn?
 
 The gate holds: `normalizeConsult` refuses both menu questions (word-bounded "or") and shrug
 questions, and the refusal flows to the writer, the judge's re-ask and the fan-out alike. The first
@@ -76,7 +60,7 @@ inside the same step) or a second refusal spending budget only on demonstrated r
 fraction of steps, the scene terminates `done: true`, and clarification is asked for when a
 character lacks a fact.
 
-### 3. An accepted piece can repeat what is already on the page
+### 2. An accepted piece can repeat what is already on the page
 
 Draft #2 of the doorway run re-emitted draft #1 **verbatim** — 386 identical characters, the whole
 opening paragraph — and appended one new sentence. Both were accepted and both were appended, so the
@@ -106,7 +90,7 @@ Two decisions the plan has to make:
 append, the threshold is chosen with the doorway 386-char case and quote-lint's 0.8 as the two
 reference points, and the event decision is made rather than deferred.
 
-### 4. Was the person clause the thing that cleaned the page, or was the run clean anyway?
+### 3. Was the person clause the thing that cleaned the page, or was the run clean anyway?
 
 The clause shipped (`prompts/writer.ts`, the POV line): person is the house style's to set, never
 the consult rhythm's. The first `e4b` run under it (`22-23-22-884Z`) had a clean page and clean
@@ -119,13 +103,19 @@ unproven, not disproven.
 control era drifted, the clause takes the credit and this entry is deleted; if a clause-era page
 drifts, the clause failed and the approach (prompt clause vs. mechanical detection) is reopened.
 
-### 5. A scene has no representation of its own question being answered
+**Evidence since (2026-08-29):** the `alarm-wing` run — heretic author-side, four characters —
+drifted: HALE is `they` for the whole page and becomes `his`/`he` in the closing pieces ("his
+shadow falling over the trolley"). One run, at the architect's maximum cast, so it is evidence of
+stress rather than a verdict — but it is the first clause-era drift on this author model, and the
+duo control on the same model and the same style stayed clean.
+
+### 4. A scene has no representation of its own question being answered
 
 The doorway run ended `done: false`, at 64 steps against a `maxSteps` of 24 (four `budget` grants)
 and 933 words against a 700 target. Its question — "Does Riven get through the door before Merritt
 decides what to do about them?" — was answered at the midpoint: door open, satchel handed over,
 ledger signed. Everything after is epilogue, and in it Riven is consulted four more times about how
-fast to walk away while Merritt is asked five times whether to stand up. Item 4's person drift lives
+fast to walk away while Merritt is asked five times whether to stand up. Item 3's person drift lives
 **entirely** inside that epilogue, which is why this is ordered last: some of its evidence is not
 independent.
 
@@ -135,6 +125,16 @@ runs that never terminated, and a better author model ended scenes on its own. W
 is the absence below — no run of any model gave the loop a way to know its question was answered —
 but there is now no live overrun to fix, and building a budget policy against evidence this stale
 would be building it blind.
+
+**Evidence since (2026-08-29, the event-driven stories):** the gap reproduced under the heretic
+author exactly as this entry predicts. The duo control (`alarm-corridor`, same beat, cast of two)
+terminated clean — `done: true` at 17 steps, +9% over target. The four-hander (`alarm-wing`) did
+not: the fault alarm fired in the scene's opening lines and then stayed a background chime for all
+24 steps; the one line that gave it a consequence (Wren: sixty seconds to a full wing evacuation)
+was a fabricated quotation, the mechanical lint correctly flagged it, and the redraft that removed
+the fabrication removed the escalation with it. The scene ended `done: false` at the cap, 1028 words
+(+47%), WREN's answer unwritten — 22 consults for a question whose own event never got to do its
+work. The loop had no way to know the event was being parked; that absence is this entry.
 
 This is a policy question, not a defect with an obvious fix — whether a scene may outrun its own
 question, and what should happen when it does, is a judgement about pacing. It overlaps "A reaction
@@ -146,7 +146,7 @@ scene's question having been answered.** `scene_done` is the writer's to declare
 budget grants are spent against word count and step count, neither of which knows what the scene was
 for. Whatever the budget policy becomes, that absence is the thing it answers.
 
-**Done when** — deliberately open. Do not start this one until 3 and 4 have shipped and a fresh
+**Done when** — deliberately open. Do not start this one until 2 and 3 have shipped and a fresh
 `e4b` run has been read, since both change what its evidence looks like and only `e4b` still
 produces the failure.
 
@@ -160,7 +160,7 @@ produces the failure.
 ## Architect follow-ups
 
 - **A `knows`/`goal`/`belief` name absent from `characters` — the hallucinated half only.** When the
-  cast-sheet checks moved into `normalizeSpec` (Next item 1, shipped), the original fifth check —
+  cast-sheet checks moved into `normalizeSpec` (the facts[] reframe, shipped), the original fifth check —
   "a name in `knows`/`goal`/`belief` absent from `characters`" — was split in two. The **rename** half
   now lives in `applyEdits`: it holds the `renames` map, so it scans every character's `knows`/`goal`/
   `belief` for the exact old name and flags a stale reference with zero false positives. The
@@ -238,6 +238,16 @@ produces the failure.
   for personality. The owner's goal is a dedicated personality editor where the architect picks from
   a managed list instead of generating persona text on the spot — a bigger, separate feature to
   design then, not an extension to bolt onto the cast stage now.
+- **`sceneDrift` does not compare `reach`.** The snapshot-desync warning that guards the handoff
+  compares place, question, pov, length and roster — but not the field the capability layer added,
+  so a written chapter whose `reach` was hand-edited afterwards re-authors silently and the warning
+  that exists to report exactly that kind of drift never fires. One comparison, once it is decided
+  what a reach drift means for the chapter that already ran under the old grant.
+- **`refuse()` matches the raw field string, but `applyEdits` canonicalizes first.** Bracketed
+  spellings are canonicalized before edits apply, while the already-written guard tests the raw
+  string — so `scene[0].reach` (like the pre-existing `scene[0].place`) can edit a written chapter's
+  definition without tripping it. The fix is to run the guard against the canonical form
+  `applyEdits` will actually write, which for `place` has been wrong since before `reach` existed.
 
 ## The open-beat experiment (branch `pov-thought-withholding`)
 
@@ -314,12 +324,13 @@ stage-3 scene — which is how a run that showed as clean put three unasked-for 
 over the lever"). That is the one check that would catch the writer no longer stopping at choices,
 and it is the one number between stage 3 and a merge decision.
 
-Two passages in [Writer.MD](Writer.MD) go stale if stage 2 or 3 ships, and must be rewritten rather
-than annotated: the judge paragraph's *"an inconvenient answer, re-asked as a different question,
-would come back as a clean answer to a moment the scene never reached"* — a re-ask that changes only
-the question is now refused outright, so the drift risk lives entirely in the situation — and *"an
-answer leaked into someone else's question decides the fork for them"*, where the leak can now only
-happen through a situation.
+Stage 2 shipped at HEAD (`6a9041d`), so the first of these is owed now, on this branch, and must be
+rewritten rather than annotated: the judge paragraph of [Writer.MD](Writer.MD) still says *"an
+inconvenient answer, re-asked as a different question, would come back as a clean answer to a moment
+the scene never reached"* — but a re-ask that changes only the question is refused outright, and the
+judge prompt already says so. The second passage goes stale only if stage 3 ships: *"an answer leaked
+into someone else's question decides the fork for them"*, where the leak can now only happen through
+a situation.
 
 
 ## Asymmetry follow-ups
@@ -406,6 +417,14 @@ one extra LLM call per multi-character fork if it were ever wanted.
   in the two accepted chapters were never granted by anybody** (~15%). The second is the number that
   answers the practical question; "seven lint flags" does not.
 
+  **Evidence since (2026-08-29, the alarm runs):** four quote flags across the two alarm stories,
+  every one a real fabrication and every redraft clean — two near-variants of Oduya's own voice
+  sample ("The paperwork says Monday,"), one invented ledger passage voiced through Oduya reading
+  aloud, and one invented escalation voiced through Wren. The texture reading holds, and the
+  mechanical half now catches the whole class without a machine-label false positive among them.
+  The Wren case cuts the other way too: the redraft that removed the fabrication removed the
+  scene's only escalation with it (see Next item 4).
+
   What not to do first: raise `NARRATION_LINT_RETRIES`. The attribution entry below is implicated in
   both failures, so the order is fix the speaker hint, re-measure, and only then ask whether the
   budget is short. If it still is, a single retry carrying an explicit prohibition on adding any
@@ -429,6 +448,24 @@ one extra LLM call per multi-character fork if it were ever wanted.
   wrong hint impairing the redraft. It does not establish it: n = 2, one story, one model. It does
   make this worth fixing before any further quote-lint measurement, so that the next set of retry
   failures is measured against a hint that is at least trying to be right.
+
+  The four alarm-run flags (2026-08-29) were all attributed `unknown`, and every one was in the
+  post-quote form (`"...," NAME says`) a backwards scan cannot see — including the one the writer's
+  redraft most needed the hint for.
+- **The mechanical quote match is attribution-blind.** `matchQuote` folds every granted speech into
+  one list and asks only "did anyone say this", while the flag's `why` says "no character was
+  granted that line" — implying a per-character check the code does not do. A line granted to one
+  character can be put in another's mouth with no flag; it is the check the retired LLM dialogue
+  pass used to make. Fixing it depends on the attribution entry above: match against the attributed
+  character's grants only once the hint is worth trusting.
+- **The mechanical half and the LLM half disagree on rendered interiority.** `matchQuote` reads only
+  `g.speech`, but the narration lint's own format and `narrationLintRequest` explicitly exempt a
+  granted POV thought rendered in quotation marks — and the loop's two grant paths do not agree with
+  each other either: the fan-out path grants a thought-and-speech reply as both, while the POV path
+  grants only the speech (engine/scene-loop.ts). So the writer can be handed interiority the
+  mechanical half then flags as fabricated, spending the scene's one redraft on a false positive.
+  Grant `felt` into the mechanical ledger — after the two grant paths are made to agree about which
+  replies carry it.
 - **`narration_quote_flag` reaches no reader.** The event is emitted in `writeScene` and typed in
   `RunEvent`, but the viewer's event switch handles only `narration_flag`, so its `quote` and
   `character` fields are dropped on arrival. Nothing is lost to the author today, because
@@ -476,6 +513,14 @@ one extra LLM call per multi-character fork if it were ever wanted.
   `engineStale`, so the shelf and the run list cannot group runs by condition or grey out a run whose
   engine is not the one on disk. That is the display half, and it is worth doing only once more than
   one condition is routinely being compared.
+- **The story.json lock does not cover the span it claims.** The lock runs "from the pick through
+  the handoff" ([live.ts](live.ts)), with three holes. `/select` never consults `storyWriteBlocked`,
+  and the shelf's play button is enabled during a handoff, so a run can start on the very story a
+  handoff holds. `newHandoffSession` checks the lock before a multi-await session build and sets it
+  only after it returns — an editor save in that gap wins. And the handoff's `abandoned()` path
+  clears `LIVE.storyLock` unconditionally, so a stale round landing after the user abandoned and
+  opened a new handoff wipes the newer session's lock. Each hole is a small fix; the second wants
+  the check and the set inside `newHandoffSession` itself.
 
 ## The CLI-to-GUI transition
 
