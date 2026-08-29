@@ -24,6 +24,24 @@ What keeps it accepted is that the port is **bound to `127.0.0.1`**, not to ever
 that lists local directories, reads run logs and starts runs has no business being reachable from the
 LAN. Widening that bind means adding auth first; there is deliberately no CLI flag for it today.
 
+### Headless
+
+`--headless` starts the server without a story argument, a console picker, or a one-shot run: the
+process comes up serving, the browser drives everything from the shelf, and SIGINT/SIGTERM shut it
+down gracefully — a run in flight takes the same path a `/stop` takes (`releaseForStop()`, then
+`stopRun()`) so `run-and-save`'s streams flush before the process exits; a second signal force-exits.
+`startServer` returns a `ServerHandle` (`bound`, `close()`), which is how shutdown ends the SSE
+clients, stops the keep-alive ping and frees the port — after a `close()` a fresh `startServer` may
+bind again. Outside headless the console owns Ctrl-C and no signal handlers are installed. Headless
+also keeps the console echo on (`ENGINE.echoConsole`): the draft prose and the characters' acts and
+replies print as they land, because the console is the monitor the operator has — under plain
+`--serve` the console stays quiet, the viewer being the monitor. `--no-cast-echo` trims just the
+characters' replies (`acts:`/`reacts:`/consult answers) from that echo, in any mode; the prose and
+the JSONL/SSE record are untouched by it.
+
+One rule that has no other home: **operational messages stay in the console and run data stays in
+the JSONL logs — the GUI never becomes a second source of truth.**
+
 Two channels carry everything:
 
 - **JSON request/response** — plain `POST`/`GET`, `Content-Type: application/json`, no framework
@@ -89,7 +107,7 @@ folder name; what to show in its absence is the client's call, and `name` is the
 `scenes[0]`, kept because the shelf and scaffold interview read it; a card from an older server has
 only that one. `chapters` lists the chapter numbers already written to `chapters/<n>.md`, in numeric
 order. One call gets the whole picker: every discovered story, preflighted, with its own retained runs
-embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 10` — [story-writer.ts:309](story-writer.ts#L309)).
+embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 10` — [run-and-save.ts:15](run-and-save.ts#L15)).
 There is no separate "list runs" route; a run only exists as a story's `runs[]` entry.
 
 ```
@@ -150,7 +168,7 @@ POST /select   { dir, chapter?, replace? }
 ```
 Only meaningful while `picking: true` (i.e. `LIVE.awaitingPick`). There is no queue — one browser
 resolves the parked `Promise<{ dir, chapter }>` the CLI's `pickStory()` is blocked on
-([story-writer.ts:267](story-writer.ts#L267)), and `picking` immediately goes false for everyone. A
+([app.ts:129](app.ts#L129)), and `picking` immediately goes false for everyone. A
 second click after that returns `400 the session is not waiting on a choice`, not a second run.
 `chapter` is which chapter that run writes — one run writes one chapter — and anything that is not a
 positive integer falls back to `1` rather than failing the pick. Out of range for *this* story is not

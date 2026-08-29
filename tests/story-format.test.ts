@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
+  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
@@ -544,12 +544,11 @@ describe("story discovery", () => {
     assert.ok(!found.some(d => d.startsWith("tests/")), "the fixtures tree is not a story source");
   });
 
-  it("never offers to build a story when there is no terminal", async () => {
+  it("without a terminal, picks the first discovered story and never offers to build one", async () => {
     const orig = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
     Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
     try {
       const picked = await chooseStory("");
-      assert.notEqual(picked, NEW_STORY);
       assert.equal(picked, (await discoverStories())[0]);
       assert.equal(await chooseStory(probe), probe);
     } finally {

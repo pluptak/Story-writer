@@ -18,6 +18,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
+import { warn } from "./engine/warnings.ts";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -27,7 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // Everything whose content can change what a run does. The viewer's static assets are deliberately
 // out: they render a run, they never write one.
 const SOURCE_DIRS = ["engine", "prompts"];
-const SOURCE_FILES = ["prompts.ts", "live.ts", "run-and-save.ts", "run-manifest.ts", "story-writer.ts"];
+const SOURCE_FILES = ["prompts.ts", "live.ts", "app.ts", "run-and-save.ts", "run-manifest.ts", "story-writer.ts"];
 
 /** A short digest over the engine's source. Both the path and the bytes go in, so a file that is
  *  renamed or deleted changes the digest as surely as an edited one. Unreadable files contribute
@@ -100,6 +101,6 @@ export async function writeRunManifest(outDir: string, m: {
     scene: m.scene, models: m.models,
   };
   await writeFile(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8")
-    .catch(() => {});
+    .catch(e => warn(`   (the run's manifest.json was not written: ${(e as Error).message} — this run has no engine label)`));
   return manifest;
 }

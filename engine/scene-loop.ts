@@ -543,7 +543,7 @@ export async function writeScene(
       ...(askedRecord ? { consult: askedRecord } : {}),
       scene_done: sceneDone }));
     log({ t: "draft", step: steps, prose, words: wordCount(), consulting: who, salvaged, chapter });
-    if (prose && !ENGINE.serve) console.log(`\n${prose}\n`);
+    if (prose && ENGINE.echoConsole) console.log(`\n${prose}\n`);
 
     // -- PROMOTE: the writer turns one deed a reactor volunteered last beat into canon. Done before
     // the consult below, so this beat's own fan-out (if any) can re-arm the offer afterward. The
@@ -557,7 +557,7 @@ export async function writeScene(
         persistent.said(JSON.stringify({ action }));
         granted.push({ character: def.name, speech: "", action });
         log({ t: "promote", character: def.name, action, chapter });
-        if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}acts:${C.reset} ${action}`);
+        if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}acts:${C.reset} ${action}`);
       }
     }
     pendingReactionActions.clear();
@@ -624,7 +624,7 @@ export async function writeScene(
           // A withheld thought grants nothing, because the writer was never handed it to render.
           if (reply.speech || shownThought)
             granted.push({ character: def.name, speech: reply.speech, action: "", thought: shownThought });
-          if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}reacts:${C.reset} ${reply.thought}`);
+          if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}reacts:${C.reset} ${reply.thought}`);
         }
 
         // One batch judge over every volunteered deed decides which are promotable; the rest lapse.
@@ -820,7 +820,7 @@ export async function writeScene(
           }
           owed.push(def.name);
           log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
-          if (!ENGINE.serve) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
+          if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
             + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
         }
       }

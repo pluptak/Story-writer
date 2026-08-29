@@ -6,7 +6,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { C } from "../ansi.ts";
-import { LIVE, stopRun, sseWrite, runState } from "../live.ts";
+import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
@@ -17,13 +17,7 @@ export async function handleRunControl(
   if (path === "/stop" && req.method === "POST") {
     if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }
     const first = stopRun();
-    if (LIVE.awaitingContinue && LIVE.continueResolve) {
-      const r = LIVE.continueResolve; LIVE.continueResolve = null; LIVE.awaitingContinue = null; r(0);
-    }
-    if (LIVE.readerResolve) { const r = LIVE.readerResolve; LIVE.readerResolve = null; r(""); }
-    LIVE.readerArmed = false;
-    if (LIVE.pauseResolve) { const r = LIVE.pauseResolve; LIVE.pauseResolve = null; r(); }
-    LIVE.pausing = false; LIVE.paused = false;
+    releaseForStop();
     if (first) console.log(`\n${C.yellow}Stop requested from the viewer — ending the scene.${C.reset}`);
     sseWrite(runState());
     json(res, 200, { ok: true, already: !first });

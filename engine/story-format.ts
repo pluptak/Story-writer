@@ -3,7 +3,6 @@ import { readFile, readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { C } from "../ansi.ts";
 import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel } from "./story-schema.ts";
@@ -173,8 +172,9 @@ export async function discoverStories(): Promise<string[]> {
   return choices;
 }
 
-export const NEW_STORY = "\0new";
-/** Ask the user to pick a story, or "n" for a new one; without a terminal, picks the first or errors. */
+/** Ask the user to pick a story; without a terminal, picks the first or errors. Stories are
+ *  created in the viewer only — the console has no way to build one since the interview moved
+ *  behind --serve, so an empty shelf is an error rather than an offer. */
 export async function chooseStory(arg: string): Promise<string> {
   if (arg) return arg;
   const choices = await discoverStories();
@@ -182,18 +182,14 @@ export async function chooseStory(arg: string): Promise<string> {
     if (!choices.length) throw new Error("No stories found under stories/.");
     return choices[0];
   }
-  if (!choices.length) {
-    console.log(`\n${C.dim}No stories yet — let's build one.${C.reset}`);
-    return NEW_STORY;
-  }
+  if (!choices.length)
+    throw new Error("No stories found under stories/ — start the viewer with --serve and use the shelf's new-story interview.");
 
   console.log("\nAvailable stories:");
   choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.replace(/^stories\//, "")}`));
-  console.log(`  n. ${C.green}new story…${C.reset} ${C.dim}(describe an idea and have one built)${C.reset}`);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const ans = (await rl.question(`Pick a story [1-${choices.length}] or "n" (default 1): `)).trim();
+  const ans = (await rl.question(`Pick a story [1-${choices.length}] (default 1): `)).trim();
   rl.close();
-  if (/^n/i.test(ans)) return NEW_STORY;
   const idx = parseInt(ans, 10) - 1;
   return choices[Number.isInteger(idx) && idx >= 0 && idx < choices.length ? idx : 0];
 }

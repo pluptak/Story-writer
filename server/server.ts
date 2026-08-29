@@ -110,10 +110,20 @@ async function serveFile(res: ServerResponse, url: URL, contentType: string) {
   }
 }
 
-let serverStarted = false;
-/** Start the viewer's HTTP server once: static GUI files, SSE at /events, and dispatch to the route modules. */
-export function startServer(port: number, host: ServerHost, bindAddr: string = "127.0.0.1") {
-  if (serverStarted) return; serverStarted = true;
+/** A started viewer's HTTP server. `close()` ends every SSE client, stops the keep-alive ping,
+ *  and frees the port — after which a fresh `startServer` may bind again. */
+export interface ServerHandle {
+  /** Resolves with the port actually bound — the requested one, or the ephemeral port when 0 was
+   *  asked for. Never resolves if the bind failed. */
+  bound: Promise<number>;
+  close(): Promise<void>;
+}
+
+let started: { handle: ServerHandle } | null = null;
+/** Start the viewer's HTTP server once: static GUI files, SSE at /events, and dispatch to the route
+ *  modules. Idempotent — every call returns the same handle until it is closed. */
+export function startServer(port: number, host: ServerHost, bindAddr: string = "127.0.0.1"): ServerHandle {
+  if (started) return started.handle;
   LIVE.port = port;
   const viewerPath = new URL("./gui/viewer.html", import.meta.url);
   const viewerCssPath = new URL("./gui/viewer.css", import.meta.url);
@@ -213,12 +223,33 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
     }
   });
 
-  server.on("error", (e: NodeJS.ErrnoException) => {
-    console.error(`\n${C.red}Could not start the viewer on port ${port}: ${e.message}${C.reset}`);
-    console.error(`${C.dim}Another run may already be serving. Try --port=${port + 1}.${C.reset}`);
+  const bound = new Promise<number>((resolve, reject) => {
+    server.listen(port, bindAddr, () => {
+      const a = server.address();
+      const bound = typeof a === "object" && a !== null ? a.port : port;
+      console.log(`\n${C.bold}▶ live viewer: http://localhost:${bound}/${C.reset}\n`);
+      resolve(bound);
+    });
+    server.on("error", (e: NodeJS.ErrnoException) => {
+      console.error(`\n${C.red}Could not start the viewer on port ${port}: ${e.message}${C.reset}`);
+      console.error(`${C.dim}Another run may already be serving. Try --port=${port + 1}.${C.reset}`);
+      // A no-op once the bind has landed (a resolved promise ignores reject); before it, the caller
+      // must not be left waiting on a port that never opened.
+      reject(e);
+    });
   });
-  server.listen(port, bindAddr, () => {
-    console.log(`\n${C.bold}▶ live viewer: http://localhost:${port}/${C.reset}\n`);
-  });
-  setInterval(() => { for (const c of sseClients) { try { c.write(": ping\n\n"); } catch {} } }, 15000);
+  const ping = setInterval(() => { for (const c of sseClients) { try { c.write(": ping\n\n"); } catch {} } }, 15000);
+
+  const handle: ServerHandle = {
+    bound,
+    close: () => new Promise<void>(resolve => {
+      clearInterval(ping);
+      for (const c of sseClients) { try { (c as ServerResponse).end(); } catch { } }
+      sseClients.clear();
+      server.close(() => { started = null; resolve(); });
+      server.closeIdleConnections();
+    }),
+  };
+  started = { handle };
+  return handle;
 }

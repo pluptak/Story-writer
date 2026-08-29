@@ -5,6 +5,9 @@ const CLI = process.argv.slice(2);
 
 export const PREFLIGHT = CLI.includes("--preflight");
 export const SERVE = CLI.includes("--serve");
+/** Headless: serve only, no story argument, no console picker, no one-shot — the browser drives
+ *  everything and SIGINT/SIGTERM shut the process down gracefully. Implies --serve. */
+export const HEADLESS = CLI.includes("--headless");
 export const ARCHITECT_DEBUG = CLI.includes("--architect-debug");
 export const PORT = Number(CLI.find(a => a.startsWith("--port="))?.slice(7)) || 8080;
 export const ARCHITECT_DEBUG_LOG = CLI.find(a => a.startsWith("--architect-debug-log="))

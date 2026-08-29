@@ -323,6 +323,15 @@ describe("handleRunControl", () => {
     });
   });
 
+  describe("/continue", () => {
+    it("refuses when nothing is waiting on a budget decision", async () => {
+      resetLive();
+      const r = await callRoute(handleRunControl, "/continue", { steps: 8 }, host);
+      assert.equal(r.code, 400);
+      assert.equal(r.body.reason, "no run is waiting on a budget decision");
+    });
+  });
+
   describe("/pause", () => {
     it("refuses when no run is in progress", async () => {
       resetLive(); LIVE.running = false;

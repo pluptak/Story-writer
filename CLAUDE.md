@@ -65,7 +65,9 @@ npx tsx story-writer.ts stories/doorway --chapter=1
 One run writes **one chapter**. Between chapters, the viewer's handoff panel (started with `--serve`)
 re-authors the cast for the next one ([Architect.MD](Architect.MD)). The new-story interview and the
 handoff are browser-only; passing their old console flags (`--new`, `--oneshot`, `--idea`,
-`--next-chapter`) is rejected with a pointer at `--serve`.
+`--next-chapter`) is rejected with a pointer at `--serve`. `--headless` starts the server alone — no
+story argument, no console picker, no one-shot — with the browser driving from the shelf and Ctrl-C
+stopping any run in flight gracefully before exit.
 
 Requires **LM Studio running locally** at `http://localhost:1234/v1` with the story's models loaded.
 
@@ -78,10 +80,11 @@ split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `warni
 `story-format.ts` and `story-spec.ts` build on those; `preflight.ts`, `consult.ts`, `architect.ts` and `scene-loop.ts`
 build on those in turn;
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
-the `HOST` object. Separately, `story-writer.ts` → [server/server.ts](server/server.ts) →
+the `HOST` object, and [app.ts](app.ts) (root) is the application layer above both — run setup, the
+story pick, and the pick → run → pick loop. Separately, `app.ts` → [server/server.ts](server/server.ts) →
 {`run-control-routes.ts`, `scaffold-routes.ts`, `next-chapter-routes.ts`, `run-log-routes.ts`, `story-read-routes.ts`, `story-edit-routes.ts`} →
 `http-util.ts` → (nothing), all under
-[server/](server/) — nothing in that chain imports `story-writer.ts` or any `engine/` module at run
+[server/](server/) — nothing in that chain imports `story-writer.ts`, `app.ts` or any `engine/` module at run
 time. `prompts.ts`, `ansi.ts` and `live.ts` stay at the repo root because both chains import them;
 where `live.ts` needs an engine type (`Agent`, `RunEvent`) it reaches into `engine/agent.ts` /
 `engine/scene-loop.ts` with `import type`, which is erased and creates no runtime cycle, while
@@ -91,12 +94,13 @@ way.**
 
 | file | what is in it |
 | --- | --- |
-| [story-writer.ts](story-writer.ts) | the composition root: CLI wiring, the story picker, the console entry points (`--preflight`, `--consult`) |
-| [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `SERVE`/`PORT`/`STORY_DIR`, the `flag()` reader, and the retired-flag rejection |
+| [story-writer.ts](story-writer.ts) | the composition root: import-time engine wiring and the console entry points (`--preflight`, `--consult`) — everything else starts from `app.ts` |
+| [app.ts](app.ts) | the application layer: run setup (`startChapterRun`), the story pick (browser-driven or console), the pick → run → pick loop, and the headless bootstrap (`--headless`) with its graceful-shutdown signal |
+| [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `SERVE`/`HEADLESS`/`PORT`/`STORY_DIR`, the `flag()` reader, and the retired-flag rejection |
 | [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, and the chapter snapshot |
 | [run-manifest.ts](run-manifest.ts) | which engine wrote a run — a source fingerprint taken at import time (so a stale `--serve` process is caught rather than mislabelled), the git revision beside it, and `out/<id>/manifest.json` |
 | [host.ts](host.ts) | the `ServerHost` object handed to `server/server.ts`, plus its story.json read/persist helpers and the architect session factories |
-| [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the per-run LLM log handles, the terminal status line |
+| [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the console echo, the per-run LLM log handles, the terminal status line |
 | [engine/config-util.ts](engine/config-util.ts) | the shared filename `slugify` |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
 | [engine/warnings.ts](engine/warnings.ts) | the engine's warning sink — `WARN.sink` is swapped, never `console` |
@@ -151,7 +155,7 @@ means adding a host method, not an import.
 **`live.ts` exists because the two halves genuinely write the same variables** — `/pause` sets
 `pausing`, the loop reads it at its next boundary; `writeScene()` sets `writer`/`agents` and `/model`
 reaches through them to swap a model mid-run. ESM cannot share a writable `let` across modules, so
-they are fields on one exported `LIVE` object. `RUN`/`stopRun`/`armRun`/`StoppedError` live there too.
+they are fields on one exported `LIVE` object. `RUN`/`stopRun`/`armRun`/`releaseForStop`/`StoppedError` live there too.
 `engine-state.ts` follows the same pattern for the engine's own run knobs (stream/debug/token-cap, the
 LLM log handles) — kept separate from `LIVE` because those are engine-internal, not loop↔server shared
 state.

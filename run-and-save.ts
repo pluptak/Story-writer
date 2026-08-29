@@ -112,7 +112,8 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
   // Rotate: keep only the last MAX_RUNS folders, including the one just written.
   const kept = await runDirs(sc.dir);
   for (const stale of kept.slice(0, Math.max(0, kept.length - MAX_RUNS))) {
-    await rm(joinPath(sc.dir, "out", stale), { recursive: true, force: true }).catch(() => {});
+    await rm(joinPath(sc.dir, "out", stale), { recursive: true, force: true })
+      .catch(e => warn(`   (could not retire the old run ${stale}: ${(e as Error).message} — it will be retried after the next run)`));
   }
 
   let chapterPath = "";

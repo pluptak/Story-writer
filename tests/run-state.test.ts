@@ -884,6 +884,48 @@ describe("an answer still owed the page", () => {
     assert.ok(!events.some(e => e.t === "answer_unwritten"), "the next beat paid the debt");
   });
 
+  it("echoes the accepted answer to the console by default (the suppression test's control)", async () => {
+    const lines: string[] = [];
+    const origLog = console.log;
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    try {
+      await runIt({
+        maxSteps: 10,
+        writerReplies: [
+          { prose: "Riven's palm finds the door.", consult: ASK, scene_done: false },
+          { prose: `Merritt stands. "No."`, scene_done: true },
+        ],
+      });
+    } finally { console.log = origLog; }
+    assert.ok(lines.some(l => l.includes("→")), "the character's answer prints");
+    assert.ok(lines.some(l => l.includes("Riven's palm finds the door")), "so does the prose");
+  });
+
+  it("with echoCast off, the characters' answers leave the console while the prose stays", async () => {
+    const lines: string[] = [];
+    const origLog = console.log;
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    let out: Awaited<ReturnType<typeof runIt>>;
+    try {
+      ENGINE.echoCast = false;
+      out = await runIt({
+        maxSteps: 10,
+        writerReplies: [
+          { prose: "Riven's palm finds the door.", consult: ASK, scene_done: false },
+          { prose: `Merritt stands. "No."`, scene_done: true },
+        ],
+      });
+    } finally {
+      console.log = origLog;
+      ENGINE.echoCast = true;
+    }
+    assert.ok(out.events.some(e => e.t === "accept"), "the consult was still accepted");
+    assert.ok(lines.some(l => l.includes("Riven's palm finds the door")), "the prose echo stays");
+    assert.ok(!lines.some(l => l.includes("→")), "no consult answer line");
+    assert.ok(!lines.some(l => l.includes("acts:")), "no promoted-action line");
+    assert.ok(!lines.some(l => l.includes("reacts:")), "no reaction line");
+  });
+
   it("refuses an exit carried on a reply that wrote nothing", async () => {
     const { r, events, calls } = await runIt({
       maxSteps: 10,

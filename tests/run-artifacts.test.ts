@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadStory } from "../engine/story-format.ts";
-import { chapterStartRefusal } from "../story-writer.ts";
+import { chapterStartRefusal } from "../app.ts";
 import { llmFilenameFor, llmLogEntry, writeLlmRecord, Agent } from "../engine/agent.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";

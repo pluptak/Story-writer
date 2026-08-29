@@ -26,6 +26,19 @@ export function armRun() {
   RUN.abort = new AbortController();
 }
 
+/** Release whatever the loop is currently parked on — a pending /continue decision, an armed reader
+ *  consult, a pause — so a stop never leaves the process hung waiting on an answer nobody will send.
+ *  Shared by the /stop route and the headless shutdown's graceful path. */
+export function releaseForStop() {
+  if (LIVE.awaitingContinue && LIVE.continueResolve) {
+    const r = LIVE.continueResolve; LIVE.continueResolve = null; LIVE.awaitingContinue = null; r(0);
+  }
+  if (LIVE.readerResolve) { const r = LIVE.readerResolve; LIVE.readerResolve = null; r(""); }
+  LIVE.readerArmed = false;
+  if (LIVE.pauseResolve) { const r = LIVE.pauseResolve; LIVE.pauseResolve = null; r(); }
+  LIVE.pausing = false; LIVE.paused = false;
+}
+
 // -- LIVE EVENT BUS --------------------------------------------------------
 export interface RunMeta {
   story: string;
