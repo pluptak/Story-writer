@@ -241,80 +241,86 @@ produces the failure.
 
 ## The open-beat experiment (branch `pov-thought-withholding`)
 
-Unshipped and unvalidated. It lives here rather than in [Writer.MD](Writer.MD) because none of it has
-earned a surface document yet; the passages it would rewrite are named below so whoever ships it
-knows what to fix.
+Built in three stages, run twelve times, unmerged. It lives here rather than in
+[Writer.MD](Writer.MD) because the part still undecided has not earned a surface document; the
+passages it would rewrite are named at the end so whoever ships it knows what to fix.
 
-The question the experiment asks: a character already carries a persona and a goal, and
-`CHARACTER_FORMAT` insists that what it wants is the measure of every answer. Is the consult's
-`question` doing work that the situation and the goal do not already do? The `question` field turns
-out to hold four separable jobs — the writer's receipt that it found a fork before stopping, the only
-channel for stakes the character cannot see, the return shape (`wants`), and the judge's anchor — and
-the objection lands against the second alone. So it is being removed one job at a time.
+**The question it asked.** A character carries a persona and a goal, and `CHARACTER_FORMAT` insists
+that what it wants is the measure of every answer. Is the consult's `question` doing work the
+situation and the goal do not already do? The field turned out to hold four separable jobs — the
+writer's receipt that it found a fork before stopping, the only channel for stakes the character
+cannot see, the return shape (`wants`), and the judge's anchor — and the objection lands against the
+second alone. Hence three stages, one job at a time.
 
-**Stage 1 — a non-POV thought never reaches the writer. Shipped on the branch (`e4f77ef`).** Its
-behaviour is written up in [Writer.MD](Writer.MD) because it stands on its own and could merge alone.
+### What the runs established
 
-**Stage 2 — the character stops seeing the question.** The author still writes it: the gate still
-refuses a menu or a shrug, the judge is still shown it, `characterAnswered` still carries it to the
-writer, and the `retry` event still records what it replaced. Only `askBlock` no longer prints it, and
-a line putting the moment to the character as theirs to take stands where it was. `wants` is
-deliberately kept — `missingShape` refuses an answer for lacking a shape, and refusing one the
-character was never asked for would be a trap rather than a check.
+Not the outcome numbers; see the caveats below. What holds is mechanical, checkable from the
+transcripts, and has a large enough denominator not to need statistics:
 
-Because nothing on the writer's side changes, a stage-2 run is directly comparable to the runs already
-on disk. That is the whole reason it is a separate stage: stage 3 changes the writer too, and its
-result would be uninterpretable without this one first.
+- **A non-POV thought does not reach the writer.** 0 of 4, against 19 of 23 in the pre-stage-1
+  baseline, with a positive control on the same runs (POV thoughts reached it 9/9 and 2/2).
+- **A non-POV reaction surfaces when asked to.** 33 of 33, with **zero** repairs fired — the
+  prospective gloss did the work, so no ask was spent on an unanswerable question.
+- **A character finds the fork unaided.** 54 consults across stages 2 and 3 produced 2 retries, and
+  both were the judge reading `wants` as a ceiling rather than a floor — instrument error, fixed in
+  `f835fb3`. Not one character failed to answer a moment it had not been pointed into. That was the
+  wager and it holds.
+- **The refusal churn was the gate charging for an unread field.** 18 refused consults across three
+  stage-2 runs; 0 across two stage-3 runs.
+- **`wants` was suppressing speech.** 18 speech / 5 action under stage 3, against 4 / 14 under
+  stage 2 — the opposite of the predicted risk that nobody would speak once nothing asked them to.
 
-Two passages in [Writer.MD](Writer.MD) go stale under stage 2 and must be rewritten if it ships:
-the judge paragraph's *"an inconvenient answer, re-asked as a different question, would come back as a
-clean answer to a moment the scene never reached"* — under stage 2 a re-ask that changes only the
-question re-sends a word-for-word identical ask, so the drift risk moves entirely onto the situation
-— and *"an answer leaked into someone else's question decides the fork for them"*, where the leak
-can now only happen through a situation.
+### What the runs did NOT establish, and the caveats that matter
 
-**What decides stage 3.** Retry rate and the judge's `note` text. If retries spike, the character
-needed the question and stage 3 is dead without spending a branch on it. If they do not, the field is
-carrying less than the apparatus around it costs.
+- **Every quote-flag figure in this experiment is contaminated.** Machine labels ('Shutdown',
+  "Fatal", "off") were counted as invented dialogue until the fix in `9fd2410`. No cross-arm
+  comparison on that number means anything, including an "8x fewer invented lines" reading that was
+  drawn and then withdrawn mid-experiment.
+- **Prose quality is unmeasured.** One stage-3 scene was read end to end: coherent, and it answers
+  the scene's question by a better route than the premise anticipated (Elias does not convince Sara;
+  he and Kane overpower her at the lever and she concedes after). That is one scene.
+- **The writer's receipt is unmeasured, and is the live risk.** Stage 3 gives up job 1. Only THE ONE
+  RULE and the stop-while-the-pressure-is-live rule still hold the writer to stopping at choices, and
+  two runs cannot say whether they do. The failure would be quiet: competent, low-consequence answers
+  that break no rule, pass the judge, pass the lint, and let the scene die politely.
+- **How the evidence went wrong is worth as much as the evidence.** Three of the first four runs were
+  written by an engine other than the working tree, because a `git checkout` does not reach a running
+  `--serve` process; rotation at `MAX_RUNS = 3` destroyed an arm mid-series; and single runs were
+  twice read as signal, once producing a correction that was itself based on a mislabelled run.
+  [run-manifest.ts](run-manifest.ts) exists because of this, and every run since identifies itself.
 
-**Two live runs so far, and neither has answered that yet.** 28 consults, 2 retries — and both
-retries were the judge reading `wants` as a ceiling rather than a floor, which is instrument error
-since fixed (`f835fb3`), not a character failing to find its fork. What both runs did produce is a
-question the gate was not built for: **`QUESTION_CARRIES_ANSWERS` now refuses a string nobody reads.**
-Its rationale is that "a pre-written menu is answered by picking, and there is nothing left for them
-to ask for" — true when the character saw the menu, and no longer true of anything the character
-receives. In the second run it fired nine times, five of them on one question re-sent verbatim, and
-those steps bought nothing that could have reached anyone. Either the gate is now policing the
-writer's *thinking* rather than the character's input and should say so in its own words, or it
-should relax for a question that is only ever read by the judge. Decide it before stage 3, since
-stage 3 deletes the field the gate is checking.
+### The conclusion that was not expected
 
-**Stage 3 — the field is gone. Built, unrun.** The writer sends `{character, situation}` and nothing
-else; a fan-out sends one shared situation and a list of names. The gate did not go away, it narrowed:
-`normalizeConsult` takes a mode, and the **open** door (the writer's own ask) checks the addressee,
-the situation against a raised floor of 15 words, and the CANNOT list, while the **directed** door
-keeps `DEGENERATE_QUESTIONS`, `QUESTION_CARRIES_ANSWERS` and `canonWants` whole for the one path that
-still carries a question — the judge escalating a retry. Reverting stage 3 is re-widening a mode.
+**Stage 2 is not a merge target and never was.** It is the configuration where the writer pays to
+compose a question, the gate charges a step to refuse it, and no character ever reads it — pure
+overhead, and its three runs are the longest and most refusal-ridden in the series. It was a
+measurement device for isolating job 2. The two coherent end states are keeping the question and
+showing it, or deleting it.
 
-The question gates were not ported onto the situation, and should not be: a situation has no question
-grammar to match, and `or` over descriptive prose flags "the heat or the noise". What a situation
-must not do — pre-write the options, name the choice, say which part matters — went to the narration
-lint instead, beside the concrete-fact rule it already applies to the same string. It needs reading,
-not matching.
+So the branch holds two shippable things and one instrument:
 
-`missingShape` generalized rather than lost its trigger: with no `wants` to name a shape, the POV rule
-is the only floor and it is the same floor — a thought from outside the point of view reaches the
-writer as nothing whatever was asked, so an answer with neither speech nor action is one the scene
-never receives.
+| | what | state |
+| --- | --- | --- |
+| **Stage 1 + reaction fix** | a thought reaches the writer only from inside the POV; a non-POV reaction has to surface | strong mechanism evidence, no counter-evidence, independent of the rest |
+| **Infrastructure** | the run manifest, retention at 10, the repeat guard, the unchanged-situation retry refusal, the quote-lint fix | every one a defect the experiment surfaced; none depends on it |
+| **Stage 3** | the consult is a character and a situation | coherent end state, one unmeasured risk |
 
-**What the first run has to show.** Whether the writer still stops at choices. That was the question's
-fourth job — the receipt proving it found a fork before it stopped — and stage 3 is the stage that
-gives it up, with only THE ONE RULE and the stop-while-the-pressure-is-live rule left holding it. The
-failure will not be loud: it looks like competent, low-consequence answers that break no rule, pass
-the judge, pass the lint, and let the scene politely die. `DEGENERATE_QUESTIONS` exists because that
-was observed once already — the safest answer is the one that stops the scene. Read `bad_consult`
-(thin situations should replace refused questions), whether characters still speak with nothing asking
-them to, and whether the scene's own question gets answered.
+### Done when
+
+One more stage-3 run, read for `narration_flag` on **invented deeds and stillness**. Until `9fd2410`
+every quotation hit short-circuited that check for its piece, so it has effectively never run on a
+stage-3 scene — which is how a run that showed as clean put three unasked-for stillnesses on the page
+("Jules remains glued to the terminal", "Sara remains anchored to the console", "Kane remains hunched
+over the lever"). That is the one check that would catch the writer no longer stopping at choices,
+and it is the one number between stage 3 and a merge decision.
+
+Two passages in [Writer.MD](Writer.MD) go stale if stage 2 or 3 ships, and must be rewritten rather
+than annotated: the judge paragraph's *"an inconvenient answer, re-asked as a different question,
+would come back as a clean answer to a moment the scene never reached"* — a re-ask that changes only
+the question is now refused outright, so the drift risk lives entirely in the situation — and *"an
+answer leaked into someone else's question decides the fork for them"*, where the leak can now only
+happen through a situation.
+
 
 ## Asymmetry follow-ups
 
