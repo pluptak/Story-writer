@@ -77,3 +77,50 @@ describe("lintQuotations", () => {
     assert.ok(hit && !hit.ok);
   });
 });
+
+describe("world furniture — sourced quotes", () => {
+  it("passes a multi-word sign nobody was granted", () => {
+    const prose = 'The sign read "CLOSED FOR STOCKTAKE." Nobody had told the couriers.';
+    assert.equal(lintQuotations(prose, [], ["Merritt"]), null);
+  });
+
+  it("passes a PA line even though it is framed with a speech verb", () => {
+    // The case the source-frame list exists for: the PA speaks, but a PA is not a character and can
+    // never hold a grant. Exempting on the ABSENCE of a speech verb would have flagged this.
+    const prose = 'Halfway down the wing, the PA said "Evacuate the east wing." Twice.';
+    assert.equal(lintQuotations(prose, [], ["Merritt"]), null);
+  });
+
+  it("passes recorded and displayed sources — a voicemail, a screen", () => {
+    const voicemail = "The answerphone carried a voicemail: \"You have reached Kessel's after hours.\"";
+    const screen = 'The dispatch screen showed "ROUTE 4 DELAYED" in amber.';
+    assert.equal(lintQuotations(voicemail, [], ["Merritt"]), null);
+    assert.equal(lintQuotations(screen, [], ["Merritt"]), null);
+  });
+
+  it("still flags a character's ungranted, speech-framed line", () => {
+    const prose = 'Merritt said "Which key did you say you had?"';
+    const hit = lintQuotations(prose, [], ["Merritt"]);
+    assert.ok(hit && !hit.ok);
+  });
+
+  it("still flags a bare, unattributed line — the house style's dominant form", () => {
+    const prose = '"I never signed anything." She turned away.';
+    const hit = lintQuotations(prose, [], ["Merritt"]);
+    assert.ok(hit && !hit.ok);
+  });
+
+  it("does not exempt on a source word outside the look-back window", () => {
+    // ~160 characters of sourceless text push "sign" outside the 120-character look-back, so the
+    // quote is checked even though a source word sits earlier in the same paragraph.
+    const filler = "and".repeat(40);
+    const prose = `The sign mentioned nothing at all. ${filler} Merritt said "This is not my line to sign."`;
+    const hit = lintQuotations(prose, [], ["Merritt"]);
+    assert.ok(hit && !hit.ok);
+  });
+
+  it("passes a one-word machine label", () => {
+    const prose = "He threw the lever to the 'Shutdown' position and stepped back.";
+    assert.equal(lintQuotations(prose, [], ["Merritt"]), null);
+  });
+});

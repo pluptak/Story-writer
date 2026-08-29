@@ -123,9 +123,33 @@ function attribute(prose: string, index: number, names: readonly string[]): stri
  *  trade sense-lint makes: inventing a violation costs the scene its redraft. */
 const isMachineLabel = (text: string) => !/\s/.test(text.trim());
 
+/** A quote introduced by a named display or broadcast source is world furniture, not a line: the
+ *  sign, the notice, the PA. Nothing a cast member said, so no grant could ever cover it, and
+ *  before this exemption every such quote flagged. The check is a positive exculpating pattern,
+ *  the same shape as sense-lint's DETERMINER and NOUN_TAIL tails and the machine-label rule above:
+ *  an enumerable list grown only on live evidence, with the reason for each addition written down.
+ *  It deliberately does NOT exempt on the absence of a speech verb — unattributed dialogue is the
+ *  house style's dominant form, and exempting that would leave the check running only for the
+ *  tagged minority while "the PA said ..." (a broadcast, not a character) went on flagging. The
+ *  accepted trade: fabricated dialogue framed as display ("the note read 'I never signed anything'")
+ *  escapes the mechanical half. */
+const SOURCE_FRAMES = [
+  "read", "reads", "printed", "stencilled", "handwritten", "taped",
+  "sign", "notice", "placard", "label", "screen", "display",
+  "pa", "tannoy", "loudspeaker", "intercom", "announcement",
+  "recording", "voicemail", "answerphone",
+];
+const SOURCE_FRAME_RE = new RegExp(`\\b(?:${SOURCE_FRAMES.join("|")})\\b`, "i");
+
+/** True when the window just before the quote names a display or broadcast source. The same
+ *  120-character look-back the attribution guess uses: near enough to catch the introducing
+ *  clause, bounded so a source word in an earlier sentence does not launder a later quote. */
+const hasSourceFrame = (prose: string, index: number) =>
+  SOURCE_FRAME_RE.test(prose.slice(Math.max(0, index - 120), index));
+
 /** The mechanical quotation check. Returns null when there is nothing to check (no quotes, only
- *  labels, or every quote matched a granted line) — the caller then runs the LLM lint for
- *  deeds/senses/situation. Returns a hit the moment one unmatched quote is found. */
+ *  labels, only sourced furniture, or every quote matched a granted line) — the caller then runs
+ *  the LLM lint for deeds/senses/situation. Returns a hit the moment one unmatched quote is found. */
 export function lintQuotations(
   prose: string,
   granted: ReadonlyArray<GrantedLine>,
@@ -136,6 +160,7 @@ export function lintQuotations(
   if (!quotes.length) return null;
   for (const q of quotes) {
     if (isMachineLabel(q.text)) continue;
+    if (hasSourceFrame(prose, q.index)) continue;
     if (!matchQuote(q.text, speeches)) {
       const character = attribute(prose, q.index, names);
       return {
