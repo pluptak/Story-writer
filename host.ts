@@ -114,6 +114,12 @@ export const HOST: ServerHost = {
     if (!parsed.characters.length) warnings.push("No characters defined — the writer would have nobody to consult.");
     for (const [i, s] of parsed.scenes.entries()) {
       if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
+      // The same case-insensitive orphan test loadStory applies (wording shared with it): sceneReach
+      // resolves the grant key case-insensitively, so only a key matching NO character is dead.
+      for (const [who] of Object.entries(s.reach ?? {})) {
+        if (!parsed.characters.some(c => c.name.toLowerCase() === who.trim().toLowerCase()))
+          warnings.push(`Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`);
+      }
     }
     warnings.push(...characterCardWarnings(parsed));
     return { ok: true, story: parsed, warnings };

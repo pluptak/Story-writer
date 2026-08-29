@@ -30,10 +30,14 @@ export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] =
 }
 
 /** The reach layer for one character in ONE scene: the scene's grant, minus what restrictions remove
- *  (I2) and what an intrinsic skill already covers (I3). Never called for a character-level view. */
+ *  (I2) and what an intrinsic skill already covers (I3). Never called for a character-level view.
+ *  The grant key matches case-insensitively, as roster and pov do: the author's spelling of a name
+ *  is their own business, and a mis-cased key must warn at load, not silently grant nothing. */
 export function sceneReach(sd: SceneDef, def: CharacterDef): Skill[] {
   const skillsRaw = def.skills.map(s => s.meaning ? `${s.name} :: ${s.meaning}` : s.name).join(" | ");
-  return resolveReach(def.name, skillsRaw, def.limits.join(" | "), (sd.reach?.[def.name] ?? []).join(" | "));
+  const grant = Object.entries(sd.reach ?? {})
+    .find(([who]) => who.trim().toLowerCase() === def.name.toLowerCase())?.[1] ?? [];
+  return resolveReach(def.name, skillsRaw, def.limits.join(" | "), grant.join(" | "));
 }
 
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */

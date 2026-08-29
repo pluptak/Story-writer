@@ -2,10 +2,10 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { loadStory } from "../engine/story-format.ts";
-import { StoryJson } from "../engine/story-schema.ts";
+import { loadStory, type CharacterDef } from "../engine/story-format.ts";
+import { StoryJson, SceneDef } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
-import { runChapter, writeScene, newCharacterAgent, type RunEvent } from "../engine/scene-loop.ts";
+import { runChapter, writeScene, newCharacterAgent, sceneReach, type RunEvent } from "../engine/scene-loop.ts";
 import { Agent, setFitWarning } from "../engine/agent.ts";
 import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
@@ -251,6 +251,36 @@ describe("pause/resume handshake", () => {
     assert.equal(LIVE.pausing, false);
     assert.equal(LIVE.paused, false);
     assert.equal(LIVE.pauseResolve, null);
+  });
+});
+
+// -- SCENE REACH --------------------------------------------------------------
+describe("sceneReach", () => {
+  const reachDef = (limits: string[]): CharacterDef => ({
+    name: "MERRITT", model: "", persona: "", knows: "", goal: "", belief: "", impulse: "",
+    voice: [], skills: [], limits,
+  });
+  const grant = ["cameras :: reading the fire panel's fault codes"];
+
+  it("resolves a grant keyed with the character's exact name", () => {
+    const sd = SceneDef.parse({ reach: { MERRITT: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef([])).map(s => s.name), ["cameras"]);
+  });
+
+  it("resolves a mis-cased grant key — reach behaves like roster and pov", () => {
+    const sd = SceneDef.parse({ reach: { merritt: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef([])).map(s => s.name), ["cameras"]);
+  });
+
+  it("returns no grant when the key matches nobody", () => {
+    const sd = SceneDef.parse({ reach: { NOBODY: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef([])), []);
+  });
+
+  it("keeps a grant beside a restriction naming a different capability (I2)", () => {
+    // sight is not cameras: the blind character's scene-scoped grant survives the restriction.
+    const sd = SceneDef.parse({ reach: { merritt: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef(["sight"])).map(s => s.name), ["cameras"]);
   });
 });
 
