@@ -168,10 +168,14 @@ export function writerSystem(p: {
 
 export const writeInstruction = (p: {
   words: number; target: number; maxProseWords: number; overran: number; neglected: string[]; hardCap: boolean;
+  fired?: string;
 }) =>
   `[WRITE] ${p.words} words so far, aiming at about ${p.target}.`
   + ` At most ${p.maxProseWords} words in this piece.`
   + (p.overran ? ` Your last piece ran to ${p.overran} words — far past that. Keep this one short.` : "")
+  + (p.fired ? ` [WORLD] ${p.fired} That has happened — nobody in this scene chose it and nobody `
+    + `can decline it. Write it as already true, on the page, in this piece, and let it cost them `
+    + `something. Do not have anyone merely notice it.` : "")
   + ` Write up to the next choice and stop while the pressure is still live, then ask for it.`
   + (p.hardCap
       ? ` THIS IS THE LAST PIECE OF THE SCENE. You are far past length and it ends here, in this `

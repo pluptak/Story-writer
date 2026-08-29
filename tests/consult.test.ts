@@ -182,6 +182,15 @@ describe("writeInstruction", () => {
     assert.match(msg, /"scene_done": true/);
     assert.doesNotMatch(msg, /well past length/);
   });
+
+  // SPIKE (world timeline) — delete with the injection path.
+  it("hands a fired world beat over as established fact, and is unchanged without one", () => {
+    const plain = P.writeInstruction({ ...base, words: 50, target: 100 });
+    const msg = P.writeInstruction({ ...base, words: 50, target: 100, fired: "The sounder took over." });
+    assert.match(msg, /\[WORLD] The sounder took over\. That has happened/);
+    assert.match(msg, /nobody can decline it|nobody\s+can decline it/);
+    assert.equal(P.writeInstruction({ ...base, words: 50, target: 100, fired: "" }), plain);
+  });
 });
 
 describe("canonWants", () => {

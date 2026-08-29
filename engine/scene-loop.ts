@@ -157,6 +157,13 @@ const NARRATION_LINT_RETRIES = 1;
 // Judging an answer is classification, not composition: the writer's own 0.8 buys nothing here.
 const JUDGE_TEMPERATURE = 0.3;
 
+// SPIKE — the world timeline, ahead of block 1 (PLANS.md). One beat, injected once at a fixed step,
+// with no schema, no entity and no repair: it measures only whether an injected world event lands.
+// The beat text is a run's own, so it arrives by environment rather than living in the engine, and an
+// unset SPIKE_BEAT leaves every instruction byte-identical to before. Delete this and its call site.
+const SPIKE_BEAT = process.env.SPIKE_BEAT?.trim() ?? "";
+const SPIKE_BEAT_STEP = Number(process.env.SPIKE_BEAT_STEP ?? 8);
+
 /** Cast members who have gone unconsulted for `gap` steps or more, so the writer does not lose someone. */
 export function neglectedCast(cast: string[], lastAsked: Map<string, number>, step: number, gap: number): string[] {
   if (step < gap) return [];
@@ -387,8 +394,10 @@ export async function writeScene(
     const words = wordCount();
     const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
     const hardCap = words >= sd.length * HARD_CAP_MULT;
+    const fired = SPIKE_BEAT && steps === SPIKE_BEAT_STEP ? SPIKE_BEAT : "";
+    if (fired) console.log(`\n${C.cyan}(world beat fired at step ${steps})${C.reset}`);
     writer.hear(P.writeInstruction({
-      words, target: sd.length, maxProseWords, overran, neglected, hardCap,
+      words, target: sd.length, maxProseWords, overran, neglected, hardCap, fired,
     }));
     let draftRaw: string;
     try {
