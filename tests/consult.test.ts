@@ -150,6 +150,23 @@ describe("neglectedCast", () => {
     assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 5, 3), ["MERRITT"]);
     assert.deepEqual(neglectedCast(["RIVEN"], lastAsked, 5, 3), []);
   });
+
+  it("names nobody in a larger cast being attended to in strict rotation", () => {
+    // One consult per step: four present cannot be asked more often than every fourth step, so a
+    // fixed gap of 3 would name somebody here on every step of the scene, forever.
+    const lastAsked = new Map([["riven", 5], ["merritt", 6], ["tibbs", 7], ["wren", 8]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT", "TIBBS", "WREN"], lastAsked, 9, 3), []);
+  });
+
+  it("still names someone in a larger cast who is skipped past a full rotation", () => {
+    const lastAsked = new Map([["riven", 3], ["merritt", 10], ["tibbs", 11], ["wren", 12]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT", "TIBBS", "WREN"], lastAsked, 13, 3), ["RIVEN"]);
+  });
+
+  it("relaxes the threshold again as the cast shrinks", () => {
+    const lastAsked = new Map([["riven", 5], ["merritt", 6], ["tibbs", 7], ["wren", 8]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 9, 3), ["RIVEN", "MERRITT"]);
+  });
 });
 
 describe("writeInstruction", () => {
@@ -181,6 +198,13 @@ describe("writeInstruction", () => {
     assert.match(msg, /LAST PIECE OF THE SCENE/);
     assert.match(msg, /"scene_done": true/);
     assert.doesNotMatch(msg, /well past length/);
+  });
+
+  it("offers the exit as the other reading of a character who has gone quiet", () => {
+    const msg = P.writeInstruction({ ...base, words: 50, target: 100, neglected: ["TIBBS"] });
+    assert.match(msg, /TIBBS has gone unconsulted/);
+    assert.match(msg, /written someone out the door, name them in "exit"/);
+    assert.doesNotMatch(P.writeInstruction({ ...base, words: 50, target: 100 }), /exit/);
   });
 
   // SPIKE (world timeline) — delete with the injection path.

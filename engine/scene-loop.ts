@@ -171,12 +171,18 @@ const SPIKE_BEAT = process.env.SPIKE_BEAT?.trim() ?? "";
 const SPIKE_HOLD = process.env.SPIKE_HOLD?.trim() ?? "";
 const SPIKE_BEAT_AT = Number(process.env.SPIKE_BEAT_AT ?? 0.45);
 
-/** Cast members who have gone unconsulted for `gap` steps or more, so the writer does not lose someone. */
+/** Cast members who have gone unconsulted for long enough that the writer may have lost one.
+ *
+ *  `gap` is a floor, not the threshold. One consult per step means a cast of N cannot beat a gap of
+ *  N-1 even while attending to everyone in turn, so a fixed 3 names somebody on every step of any
+ *  four-hander — a nudge that cannot be satisfied and so never stops. The threshold clears a full
+ *  rotation of whoever is still in the scene. */
 export function neglectedCast(cast: string[], lastAsked: Map<string, number>, step: number, gap: number): string[] {
-  if (step < gap) return [];
+  const threshold = Math.max(gap, cast.length + 1);
+  if (step < threshold) return [];
   return cast.filter(name => {
     const last = lastAsked.get(name.toLowerCase());
-    return last === undefined || step - last >= gap;
+    return last === undefined || step - last >= threshold;
   });
 }
 

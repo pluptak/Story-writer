@@ -200,6 +200,9 @@ export const writeInstruction = (p: {
     + `gone unconsulted for a while now. Put the moment to them -- whether it turns on a choice of `
     + `theirs or they are simply standing in it, they get to be a person in this scene rather than `
     + `furniture. Hear from them before it ends.`
+    + ` Unless they are not here any more -- if you have already written someone out the door, name `
+    + `them in "exit" and be done with them. Until you do they are still in this scene, still owed a `
+    + `moment, and you will be asked about them again.`
     + (p.neglected.length > 1
         ? ` Put the SAME moment to all of them at once, as one "reactors" fan-out -- not a consult `
           + `each. That costs ONE step however many react, where asking them one at a time costs a `
