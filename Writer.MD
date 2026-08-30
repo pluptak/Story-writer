@@ -219,9 +219,9 @@ one more turn, logged as `done_deferred`. That turn is held open against everyth
 back, the scene closes after it.
 
 A `scene_done` that survives that is put to the done judge, which reads the page back against the
-scene's question and refuses one ending per scene if the question is not settled on it — the writer
-is told what the page left open and keeps its remaining turns. The gate and what counts as settled
-are [`Judge.MD`](Judge.MD)'s.
+scene's question and records `done_flagged` when it is not settled there. The writer is not told:
+the ending stands, and the verdict is the run record's, not an instruction. Why it only records is
+[`Judge.MD`](Judge.MD)'s.
 
 A `scene_done` on a page with nothing on it is refused once — there is no scene to end — and honored
 if the writer insists again. The backstop for an empty chapter is in saving: a chapter file is

@@ -549,24 +549,11 @@ describe("doneJudgeRequest", () => {
     assert.match(P.DONE_JUDGE_FORMAT, /"No" is an answer/);
     assert.match(P.DONE_JUDGE_FORMAT, /both sides where they started/);
   });
-});
 
-describe("questionUnanswered", () => {
-  it("gives the writer back its own question and what the page left open", () => {
-    const msg = P.questionUnanswered("does the door open?", "nobody has touched the door");
-    assert.match(msg, /\[NOT DONE]/);
-    assert.match(msg, /The question: does the door open\?/);
-    assert.match(msg, /What the page leaves undecided: nobody has touched the door/);
-  });
-
-  it("omits the undecided line when the judge gave no reason", () => {
-    assert.doesNotMatch(P.questionUnanswered("does the door open?", ""), /leaves undecided/);
-  });
-
-  it("names the standoff as the thing to break, and whose choice breaks it", () => {
-    const msg = P.questionUnanswered("does the door open?", "they are deadlocked");
-    assert.match(msg, /A standoff is not an answer/);
-    assert.match(msg, /not yours to write/);
+  it("says nothing to the writer at all — the verdict is a measurement, not an instruction", () => {
+    // It was one, and the writer could not act on it: a deadlock is broken by somebody choosing
+    // differently, which the writer may not write. Nothing in prompts/ addresses the writer here.
+    assert.equal((P as Record<string, unknown>).questionUnanswered, undefined);
   });
 });
 

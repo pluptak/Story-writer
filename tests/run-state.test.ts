@@ -876,42 +876,38 @@ describe("an answer still owed the page", () => {
     assert.equal(r.done, true, "and the scene closed after that one extra turn");
   });
 
-  it("holds the scene open when the page has not answered the question", async () => {
-    const first = "Riven's palm finds the door and stays there.";
-    const second = "Merritt steps back and lets the door swing wide.";
+  it("records an ending that left the question unanswered, and lets it stand anyway", async () => {
+    // The verdict is a measurement, not a gate. It held the scene open once: told the question was
+    // unanswered, the writer wrote more of the same deadlock and never declared done again, which
+    // cost the scene its ending. A refusal names a lever the writer does not hold.
+    const only = "Riven's palm finds the door and stays there.";
     const { r, events, calls, writer } = await runIt({
       maxSteps: 10,
-      writerReplies: [{ prose: first, scene_done: true }, { prose: second, scene_done: true }],
+      writerReplies: [{ prose: only, scene_done: true }],
       doneReplies: [{ ok: false, why: "neither of them has moved off the door" }],
     });
 
-    const refused = events.find(e => e.t === "done_refused") as any;
-    assert.ok(refused, "the ending was refused");
-    assert.equal(refused.why, "neither of them has moved off the door");
-    assert.equal(calls.writerCall, 2, "the writer got another turn");
-    assert.deepEqual(r.prose, [first, second], "and what it wrote reached the page");
-    assert.ok(writer!.history.some(m => String(m.content).includes("[NOT DONE]")),
-      "the writer was told what the page left open");
+    const flagged = events.find(e => e.t === "done_flagged") as any;
+    assert.ok(flagged, "the run record carries the verdict");
+    assert.equal(flagged.why, "neither of them has moved off the door");
+    assert.equal(calls.writerCall, 1, "the writer was not given another turn");
+    assert.equal(r.done, true, "and the ending stood");
+    assert.ok(!writer!.history.some(m => String(m.content).includes("NOT DONE")),
+      "the writer was never told, because there is nothing it could do about it");
   });
 
-  it("refuses one ending per scene and then stands aside", async () => {
-    // A second refusal would run a scene the writer cannot resolve to the hard cap, which is the
-    // failure this judge exists to end rather than to cause.
-    const { r, events, calls } = await runIt({
+  it("says nothing when the page did answer its question", async () => {
+    const { events, calls } = await runIt({
       maxSteps: 10,
-      writerReplies: [
-        { prose: "Riven's palm finds the door.", scene_done: true },
-        { prose: "Neither of them moves.", scene_done: true },
-      ],
-      doneReplies: [{ ok: false, why: "still a standoff" }],
+      writerReplies: [{ prose: "Merritt steps back and lets the door swing wide.", scene_done: true }],
+      doneReplies: [{ ok: true }],
     });
 
-    assert.equal(events.filter(e => e.t === "done_refused").length, 1, "refused exactly once");
-    assert.equal(calls.doneCall, 1, "and the second ending was not put to the judge at all");
-    assert.equal(r.done, true, "the scene closed on it");
+    assert.equal(calls.doneCall, 1, "the ending was put to the judge");
+    assert.ok(!events.some(e => e.t === "done_flagged"));
   });
 
-  it("lets the ending stand when the judge answers in no shape at all", async () => {
+  it("records nothing when the judge answers in no shape at all", async () => {
     const { r, events, calls } = await runIt({
       maxSteps: 10,
       writerReplies: [{ prose: "Riven's palm finds the door.", scene_done: true }],
@@ -921,8 +917,8 @@ describe("an answer still owed the page", () => {
     assert.equal(calls.doneCall, 2, "asked once more for a verdict");
     assert.ok(events.some(e => e.t === "schema_mismatch" && (e as any).call === "done"),
       "and the record says no verdict was ever given");
-    assert.ok(!events.some(e => e.t === "done_refused"));
-    assert.equal(r.done, true, "a check nobody made does not hold the scene open");
+    assert.ok(!events.some(e => e.t === "done_flagged"), "a check nobody made is not a verdict");
+    assert.equal(r.done, true);
   });
 
   it("says so when the scene ends anyway with the answer never written in", async () => {

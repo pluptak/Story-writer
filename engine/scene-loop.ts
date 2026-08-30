@@ -88,7 +88,7 @@ export type RunEvent =
   | { t: "judge_failed"; character: string; why: string; chapter: number }
   | { t: "lint_failed"; why: string; chapter: number }
   | { t: "done_judge_failed"; why: string; chapter: number }
-  | { t: "done_refused"; why: string; chapter: number }
+  | { t: "done_flagged"; why: string; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
@@ -296,10 +296,6 @@ export async function writeScene(
   // model keeps insisting. A turn already held open to pay an owed answer is never held twice: that
   // one closes whatever it produces.
   let blankDone = false;
-  // The done judge refuses at most one ending per scene. It is a check on the writer's own report,
-  // not a standard the scene has to meet: a second refusal would let a scene the writer cannot
-  // resolve run to the hard cap, which is the failure the judge was added to end, not to cause.
-  let doneRefused = false;
   // Characters whose accepted answer has not had a writing turn since. An accept only puts the answer
   // in the writer's history; only the next piece of prose can put it on the page, so the names sit
   // here until one is committed. What the engine can check is that a beat was written after the
@@ -898,13 +894,21 @@ export async function writeScene(
     }
 
     // The writer is the only witness to whether the scene's question was answered, and a standoff is
-    // the cheapest way out of a hard scene: two live runs closed on one, `done: true`, with the very
-    // thing the scene existed to settle still open on the last line. One call reads the page back
-    // against the question before that declaration is honored. It gates only an ending the writer
-    // chose — never the hard cap, which is budget rather than judgement — and a scene with no
-    // question of its own has nothing here to check.
-    if (!deferredNow && (sceneDone || closing) && !doneRefused && pieces.length && sd.question.trim()) {
-      let refusal = "";
+    // the cheapest way out of a hard scene: live runs close `done: true` with the very thing the
+    // scene existed to settle still open on the last line. One call reads the page back against the
+    // question when the writer declares it over, and records the verdict.
+    //
+    // It records; it does not hold the scene open. It did once, and the refusal was a nudge nobody
+    // could satisfy: told the question was unanswered, the writer wrote four more steps of the same
+    // deadlock and never declared done again, turning a bad ending into no ending at all. A deadlock
+    // is broken by somebody choosing differently, which is not the writer's to write — so a refusal
+    // names a lever the writer does not hold. Re-arm this as a gate when a refusal can arrive with
+    // one.
+    //
+    // Only an ending the writer chose is checked: the hard cap and a spent budget are budget rather
+    // than judgement. A scene with no question of its own has nothing to check against.
+    if (!deferredNow && (sceneDone || closing) && pieces.length && sd.question.trim()) {
+      let unanswered = "";
       try {
         const doneJudge = newDoneJudge();
         const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({
@@ -913,10 +917,10 @@ export async function writeScene(
           const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, extra);
           const verdict = parseLintVerdict(extractJson(raw));
           if (verdict) {
-            if (!verdict.ok) refusal = verdict.why || "the scene's question is not answered";
+            if (!verdict.ok) unanswered = verdict.why || "the scene's question is not answered";
             break;
           }
-          // Asked twice with no verdict: the ending stands, as on an outage. A check nobody made
+          // Asked twice with no verdict: nothing is recorded, as on an outage. A check nobody made
           // must not read as a check that passed, so the log says which of the two happened.
           if (tries) break;
           log({ t: "schema_mismatch", call: "done", character: "(scene)", chapter });
@@ -926,16 +930,12 @@ export async function writeScene(
       } catch (e) {
         if (!(e instanceof StoppedError) && !RUN.stopped) {
           log({ t: "done_judge_failed", why: (e as Error).message, chapter });
-          console.log(`${C.yellow}(scene-done judge failed: ${(e as Error).message} — accepting the ending)${C.reset}`);
+          console.log(`${C.yellow}(scene-done judge failed: ${(e as Error).message})${C.reset}`);
         }
       }
-      if (refusal) {
-        doneRefused = true;
-        sceneDone = false;
-        closing = false;
-        writer.hear(P.questionUnanswered(sd.question, refusal));
-        log({ t: "done_refused", why: refusal, chapter });
-        console.log(`${C.yellow}(scene declared done with its question unanswered — holding it open: ${refusal})${C.reset}`);
+      if (unanswered) {
+        log({ t: "done_flagged", why: unanswered, chapter });
+        console.log(`${C.yellow}(the scene ends without answering its question: ${unanswered})${C.reset}`);
       }
     }
 

@@ -36,7 +36,7 @@ second shape to fall into (`prompts/judge.ts`'s header keeps the record).
 | **JUDGE** | `newJudge` per call (`engine/scene-loop.ts:215`) | writer's | the situation, the question, the answer, the cast's limits | `accept` \| `retry` | `judge_failed` → answer accepted |
 | **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts:229`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → piece goes to the page |
 | **BATCH-JUDGE** | `newBatchJudge` (`engine/scene-loop.ts:222`) | writer's | every volunteered deed in one call | one `promotable` flag each | `batch_judge_failed` → nothing promoted |
-| **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `ok` true/false + why | `done_judge_failed` → the ending stands |
+| **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `ok` true/false + why | `done_judge_failed` → nothing recorded |
 | **CAST-JUDGE** | `newCastAsymmetryJudge` (`engine/architect.ts:52`) | architect's | the tension, the cast sheet | `ok` true/false + why | gate passes |
 
 Every one fails **open** — the same policy as every other model-in-the-loop check in this engine —
@@ -183,7 +183,7 @@ very thing the scene existed to settle still open on the last line — one of th
 like an ending from inside the last piece.
 
 So when the writer declares the scene over, one call reads the page back against the scene's
-question and answers whether it is settled. It is the only judge shown the prose whole — the
+question and records whether it is settled. It is the only judge shown the prose whole — the
 narration lint sees one piece, the per-answer judge sees no prose at all — and the only one shown
 the scene's question, which is otherwise the writer's alone.
 
@@ -194,16 +194,24 @@ weigh nothing else: not whether the writing is good, not whether the ending sati
 the scene could have gone somewhere better. A scene ending badly is the story; a scene ending
 nowhere is the writer escaping.
 
-A refusal clears the declaration, tells the writer what the page left open (`questionUnanswered`),
-and logs `done_refused`. The writer keeps its turn budget and carries on. **It refuses at most one
-ending per scene** — a second refusal would run a scene the writer cannot resolve to the hard cap,
-which is the failure this judge exists to end, not to cause.
+**It records; it does not gate.** A `false` verdict logs `done_flagged` carrying the judge's `why`,
+and the ending stands. The writer is told nothing.
 
-It gates only an ending the writer *chose*. The hard cap and a spent step budget close the scene
-regardless: those are budget, not judgement, and there is nothing for a verdict to add. Nor does it
-run on the turn that arms a `done_deferred` hold — that turn is not ending the scene, it is buying
-one more, and the held-open turn after it is gated like any other ending. A scene whose `question`
-is empty is never gated at all: there is nothing to check the page against.
+That is a demotion, and the reason is worth keeping. It gated once: a refusal cleared the
+declaration and handed the writer back what the page had left open. In the one live run where it
+fired, the writer answered by writing four more steps of the identical deadlock, never declared done
+again, and ran out its step budget — `done: false` with an answer still owed, where the same story
+had closed `done: true` without the gate. The refusal was a nudge nobody could satisfy: a deadlock
+breaks when somebody chooses differently, and that is never the writer's to write, so the message
+named a lever the writer does not hold. Re-arm it as a gate when a refusal can arrive with one — a
+world event that forces the matter is the obvious candidate.
+
+What it is now is the only measurement the engine has of whether a scene answered its question, at
+one call per scene ending. Only an ending the writer *chose* is checked: the hard cap and a spent
+step budget close the scene regardless, and those are budget, not judgement. Nor does it run on the
+turn that arms a `done_deferred` hold — that turn is not ending the scene, it is buying one more,
+and the held-open turn after it is checked like any other ending. A scene whose `question` is empty
+is never checked at all: there is nothing to read the page against.
 
 ## CAST-JUDGE — the cast gate
 
