@@ -1,6 +1,6 @@
 # Judge
 
-**Status: built.** "Judge" names a family of four author-side agents, not one role: each is a
+**Status: built.** "Judge" names a family of five author-side agents, not one role: each is a
 single-purpose model call that guards one door the writer's own judgement cannot be trusted to
 guard alone. This document owns all of them — their shared contract, one section per variant, and
 the failure behaviour each fails with. The writer's side of the consult protocol is in
@@ -8,7 +8,7 @@ the failure behaviour each fails with. The writer's side of the consult protocol
 
 ## The family
 
-All four share one contract, and it is what makes them judges rather than helpers:
+All five share one contract, and it is what makes them judges rather than helpers:
 
 - **Stateless.** No history, ever — each is built fresh per call and given everything it needs in
   the payload. A verdict needs no memory, and consistency beats invention.
@@ -19,9 +19,10 @@ All four share one contract, and it is what makes them judges rather than helper
 - **The shared cast block** (`castBlock`, `prompts/internal.ts`) — each character's delta from the
   human baseline (`can:`, `REACH:`, `CANNOT:`; see [`Writer.MD`](Writer.MD)) — plus a closing
   absolute: *a CANNOT is absolute; anything that reaches through one is unusable however good it
-  reads.* The three scene-loop judges share it. The cast judge does not: no scene exists yet, so
-  there are no per-scene capabilities to show, and it reads the authoring-time cast sheet (goals,
-  skills, restrictions) instead.
+  reads.* Three of the four scene-loop judges share it. The cast judge does not: no scene exists yet,
+  so there are no per-scene capabilities to show, and it reads the authoring-time cast sheet (goals,
+  skills, restrictions) instead. Nor does the done judge, for the opposite reason: it weighs a
+  question against what the page settled, and no CANNOT bears on whether it was settled.
 
 They exist as separate agents because they were once sections of the writer's system prompt,
 answered on the writer's own history. With some twenty messages of `[WRITE]` → `{"prose": …}`
@@ -35,13 +36,14 @@ second shape to fall into (`prompts/judge.ts`'s header keeps the record).
 | **JUDGE** | `newJudge` per call (`engine/scene-loop.ts:215`) | writer's | the situation, the question, the answer, the cast's limits | `accept` \| `retry` | `judge_failed` → answer accepted |
 | **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts:229`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → piece goes to the page |
 | **BATCH-JUDGE** | `newBatchJudge` (`engine/scene-loop.ts:222`) | writer's | every volunteered deed in one call | one `promotable` flag each | `batch_judge_failed` → nothing promoted |
+| **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `ok` true/false + why | `done_judge_failed` → the ending stands |
 | **CAST-JUDGE** | `newCastAsymmetryJudge` (`engine/architect.ts:52`) | architect's | the tension, the cast sheet | `ok` true/false + why | gate passes |
 
 Every one fails **open** — the same policy as every other model-in-the-loop check in this engine —
 but each failure is recorded under its own event, so the run record distinguishes a model getting a
-shape wrong from the connection dropping out from under a chapter mid-write. The judge and the
-narration lint ask a shapeless reply once more against `schema_mismatch` before any default is
-taken; the batch judge and the cast judge do not retry — the batch judge tolerates a malformed
+shape wrong from the connection dropping out from under a chapter mid-write. The judge, the
+narration lint and the done judge ask a shapeless reply once more against `schema_mismatch` before
+any default is taken; the batch judge and the cast judge do not retry — the batch judge tolerates a malformed
 reply per reactor (an omitted reactor is simply not promotable), and the cast judge reads a reply
 with no verdict as no verdict. A reply in the wrong shape is not a judgement and must not read as
 one: only an explicit verdict is a verdict.
@@ -171,6 +173,37 @@ no judge call at all**. `parseBatchVerdict` reads a reactor the judge omitted, o
 reply, as *not promotable*: a deed lapses safely rather than reaching the page unchecked. The
 writer still promotes at most one of those offered (`promote`), and the promote's consequences are
 [`Writer.MD`](Writer.MD)'s to describe; the batch judge only decides which deeds are even offered.
+
+## DONE-JUDGE — the ending gate
+
+`scene_done` is the writer's own report that the scene is finished, and it was the only witness to
+it. A standoff is the cheapest way out of a hard scene: two live runs closed `done: true` with the
+very thing the scene existed to settle still open on the last line — one of them at 14 steps of a
+24-step budget, both sides exactly where they had started. The writer is not lying; a deadlock reads
+like an ending from inside the last piece.
+
+So when the writer declares the scene over, one call reads the page back against the scene's
+question and answers whether it is settled. It is the only judge shown the prose whole — the
+narration lint sees one piece, the per-answer judge sees no prose at all — and the only one shown
+the scene's question, which is otherwise the writer's alone.
+
+**Answered means settled, not resolved.** "No" is an answer: a refusal that holds, a door that stays
+shut, a choice made against the thing. What fails is *undecided* — both sides where they started,
+the pressure still live, the question's fork still pending on the last line. The judge is told to
+weigh nothing else: not whether the writing is good, not whether the ending satisfies, not whether
+the scene could have gone somewhere better. A scene ending badly is the story; a scene ending
+nowhere is the writer escaping.
+
+A refusal clears the declaration, tells the writer what the page left open (`questionUnanswered`),
+and logs `done_refused`. The writer keeps its turn budget and carries on. **It refuses at most one
+ending per scene** — a second refusal would run a scene the writer cannot resolve to the hard cap,
+which is the failure this judge exists to end, not to cause.
+
+It gates only an ending the writer *chose*. The hard cap and a spent step budget close the scene
+regardless: those are budget, not judgement, and there is nothing for a verdict to add. Nor does it
+run on the turn that arms a `done_deferred` hold — that turn is not ending the scene, it is buying
+one more, and the held-open turn after it is gated like any other ending. A scene whose `question`
+is empty is never gated at all: there is nothing to check the page against.
 
 ## CAST-JUDGE — the cast gate
 

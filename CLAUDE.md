@@ -138,9 +138,9 @@ the draft, or anyone else's replies. Every other rule follows from protecting th
 **Agents** are all the same generic `Agent` class (windowed history + rolling `digest`), differing
 only by system prompt, model and temperature: **writer** (0.8) and one **character** (0.9) per entry
 in `story.json`'s `characters[]`, plus author-side helpers that share the writer's voice but hold one
-response schema each — the **clarifier** (one per scene) and, at 0.3 with no history, three judge
-variants (`newJudge`, `newBatchJudge`, `newNarrationJudge`). Each role owns a doc of its own — [Writer.MD](Writer.MD), [Character.MD](Character.MD),
-[Clarifier.MD](Clarifier.MD) and [Judge.MD](Judge.MD), the last one covering all four judge
+response schema each — the **clarifier** (one per scene) and, at 0.3 with no history, four judge
+variants (`newJudge`, `newBatchJudge`, `newNarrationJudge`, `newDoneJudge`). Each role owns a doc of its own — [Writer.MD](Writer.MD), [Character.MD](Character.MD),
+[Clarifier.MD](Clarifier.MD) and [Judge.MD](Judge.MD), the last one covering all five judge
 variants, cast judge included. Why they are separate agents rather than
 sections of the writer's prompt is in [Judge.MD](Judge.MD).
 

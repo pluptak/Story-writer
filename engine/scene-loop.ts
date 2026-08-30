@@ -84,9 +84,11 @@ export type RunEvent =
   | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
-  | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint"; character: string; chapter: number }
+  | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint" | "done"; character: string; chapter: number }
   | { t: "judge_failed"; character: string; why: string; chapter: number }
   | { t: "lint_failed"; why: string; chapter: number }
+  | { t: "done_judge_failed"; why: string; chapter: number }
+  | { t: "done_refused"; why: string; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
@@ -234,6 +236,13 @@ export async function writeScene(
     a.think = writer.think;
     return a;
   };
+  // The only one of the family that reads the page whole, and the only one with no cast block: it
+  // weighs a question against what the prose settled, and no CANNOT bears on whether it was settled.
+  const newDoneJudge = () => {
+    const a = new Agent("DONE-JUDGE", writer.model, P.DONE_JUDGE_FORMAT, JUDGE_TEMPERATURE);
+    a.think = writer.think;
+    return a;
+  };
   // The judge is stateless — it is given everything it needs and gains nothing from remembering an
   // earlier verdict. The clarifier is not: what it settles becomes true for the rest of the scene,
   // so it keeps its own history and is trimmed along with everyone else.
@@ -287,6 +296,10 @@ export async function writeScene(
   // model keeps insisting. A turn already held open to pay an owed answer is never held twice: that
   // one closes whatever it produces.
   let blankDone = false;
+  // The done judge refuses at most one ending per scene. It is a check on the writer's own report,
+  // not a standard the scene has to meet: a second refusal would let a scene the writer cannot
+  // resolve run to the hard cap, which is the failure the judge was added to end, not to cause.
+  let doneRefused = false;
   // Characters whose accepted answer has not had a writing turn since. An accept only puts the answer
   // in the writer's history; only the next piece of prose can put it on the page, so the names sit
   // here until one is committed. What the engine can check is that a beat was written after the
@@ -882,6 +895,48 @@ export async function writeScene(
       log({ t: "done_deferred", chapter });
       console.log(`${C.yellow}(scene ending with a consult open — holding the scene open `
         + `to write the answer in)${C.reset}`);
+    }
+
+    // The writer is the only witness to whether the scene's question was answered, and a standoff is
+    // the cheapest way out of a hard scene: two live runs closed on one, `done: true`, with the very
+    // thing the scene existed to settle still open on the last line. One call reads the page back
+    // against the question before that declaration is honored. It gates only an ending the writer
+    // chose — never the hard cap, which is budget rather than judgement — and a scene with no
+    // question of its own has nothing here to check.
+    if (!deferredNow && (sceneDone || closing) && !doneRefused && pieces.length && sd.question.trim()) {
+      let refusal = "";
+      try {
+        const doneJudge = newDoneJudge();
+        const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({
+          question: sd.question, prose: pieces.join("\n\n") }) }];
+        for (let tries = 0; ; tries++) {
+          const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, extra);
+          const verdict = parseLintVerdict(extractJson(raw));
+          if (verdict) {
+            if (!verdict.ok) refusal = verdict.why || "the scene's question is not answered";
+            break;
+          }
+          // Asked twice with no verdict: the ending stands, as on an outage. A check nobody made
+          // must not read as a check that passed, so the log says which of the two happened.
+          if (tries) break;
+          log({ t: "schema_mismatch", call: "done", character: "(scene)", chapter });
+          extra.push({ role: "assistant", content: raw.trim() },
+                     { role: "user", content: P.DONE_ONLY });
+        }
+      } catch (e) {
+        if (!(e instanceof StoppedError) && !RUN.stopped) {
+          log({ t: "done_judge_failed", why: (e as Error).message, chapter });
+          console.log(`${C.yellow}(scene-done judge failed: ${(e as Error).message} — accepting the ending)${C.reset}`);
+        }
+      }
+      if (refusal) {
+        doneRefused = true;
+        sceneDone = false;
+        closing = false;
+        writer.hear(P.questionUnanswered(sd.question, refusal));
+        log({ t: "done_refused", why: refusal, chapter });
+        console.log(`${C.yellow}(scene declared done with its question unanswered — holding it open: ${refusal})${C.reset}`);
+      }
     }
 
     // The turn that armed `closing` is the one being held open, so nothing closes the scene on it —

@@ -1,6 +1,7 @@
 /**
- * PROMPTS -- the three judge agents: the per-answer judge, the narration lint, and the batch
- * judge over volunteered deeds. Stateless, 0.3, no history; one response schema each.
+ * PROMPTS -- the four scene-loop judge agents: the per-answer judge, the narration lint, the batch
+ * judge over volunteered deeds, and the done judge over the finished page. Stateless, 0.3, no
+ * history; one response schema each.
  *
  * Imports NOTHING from the engine but prompts/internal.ts.
  */
@@ -194,6 +195,33 @@ export const VERDICT_ONLY =
 
 export const LINT_ONLY =
   `[WRONG SHAPE] That was not a verdict on the piece. Reply with exactly {"ok":true} or `
+  + `{"ok":false,"why":"..."} and nothing else.`;
+
+export const DONE_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHETHER THE SCENE IS FINISHED.
+
+The scene was written to answer one question, and you have just declared it done. Read the page back
+and decide one thing: does it answer its question?
+
+Answered means the page has settled the matter, either way. "No" is an answer -- a refusal that
+holds, a door that stays shut, a choice made against the thing. What is not an answer is undecided:
+both sides where they started, the pressure still live, the thing the question turns on still
+pending on the last line. A scene that stops mid-pressure is not finished, it is abandoned, and
+calling it done is the cheapest way out of a hard scene.
+
+Judge nothing else. Not whether the writing is good, not whether the ending satisfies, not whether
+you would have taken it somewhere better. Only whether the question is settled on the page.
+
+Reply with ONE JSON object -- one of these two shapes -- and nothing else:
+
+  {"ok": true}
+  {"ok": false, "why": "what the page leaves undecided, in one sentence"}
+`;
+
+export const doneJudgeRequest = (p: { question: string; prose: string }) =>
+  `[THE QUESTION THIS SCENE HAS TO ANSWER]\n${p.question}\n\n[THE SCENE AS IT STANDS]\n${p.prose}`;
+
+export const DONE_ONLY =
+  `[WRONG SHAPE] That was not a verdict on the scene. Reply with exactly {"ok":true} or `
   + `{"ok":false,"why":"..."} and nothing else.`;
 
 export const answerFlags = (p: { forced: boolean }) =>

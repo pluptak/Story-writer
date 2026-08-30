@@ -241,6 +241,15 @@ export const exitNotWritten = (name: string) =>
   `[NO EXIT] You named ${name} as leaving the scene, but this reply wrote nothing -- nobody is gone `
   + `until it is on the page. Write the departure, or carry on with them still here.`;
 
+export const questionUnanswered = (question: string, why: string) =>
+  `[NOT DONE] You declared the scene finished, and its question is not answered on the page.\n`
+  + `The question: ${question}\n`
+  + (why ? `What the page leaves undecided: ${why}\n` : "")
+  + `\nA standoff is not an answer. If neither of them will give way, then something else has to `
+  + `settle the matter -- and whatever settles it turns on somebody's choice, which is not yours to `
+  + `write. Ask for it. "No" is a perfectly good answer to a scene's question, but it has to be `
+  + `reached on the page, not merely still true when you stopped.`;
+
 /** `why` says how the scene was about to end while an answer was owed: declared done, or run to its
  *  length cap. The instruction is the same; only the framing differs. */
 export const answerStillOwed = (why: "done" | "cap") =>

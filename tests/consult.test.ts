@@ -524,6 +524,50 @@ describe("the author-side agents each hold exactly one schema", () => {
     assert.match(clarify, /a premise/);
     assert.match(clarify, /the lock is old/);
   });
+
+  it("the done judge carries no way to write prose, ask, or promote", () => {
+    assert.ok(!P.DONE_JUDGE_FORMAT.includes(`"prose"`));
+    assert.ok(!P.DONE_JUDGE_FORMAT.includes(`"consult"`));
+    assert.ok(!P.DONE_JUDGE_FORMAT.includes(`"promotable"`));
+  });
+});
+
+describe("doneJudgeRequest", () => {
+  it("shows the question and the page, and nothing else", () => {
+    const msg = P.doneJudgeRequest({ question: "does the door open?", prose: "They stood there." });
+    assert.match(msg, /\[THE QUESTION THIS SCENE HAS TO ANSWER]\ndoes the door open\?/);
+    assert.match(msg, /\[THE SCENE AS IT STANDS]\nThey stood there\./);
+  });
+
+  it("is told to weigh only whether the question is settled, not how well it is written", () => {
+    // The judge shares the writer's model and would otherwise answer as a reader with taste.
+    assert.match(P.DONE_JUDGE_FORMAT, /Judge nothing else/);
+    assert.match(P.DONE_JUDGE_FORMAT, /Not whether the writing is good/);
+  });
+
+  it("counts a refusal that holds as an answer, and a live standoff as none", () => {
+    assert.match(P.DONE_JUDGE_FORMAT, /"No" is an answer/);
+    assert.match(P.DONE_JUDGE_FORMAT, /both sides where they started/);
+  });
+});
+
+describe("questionUnanswered", () => {
+  it("gives the writer back its own question and what the page left open", () => {
+    const msg = P.questionUnanswered("does the door open?", "nobody has touched the door");
+    assert.match(msg, /\[NOT DONE]/);
+    assert.match(msg, /The question: does the door open\?/);
+    assert.match(msg, /What the page leaves undecided: nobody has touched the door/);
+  });
+
+  it("omits the undecided line when the judge gave no reason", () => {
+    assert.doesNotMatch(P.questionUnanswered("does the door open?", ""), /leaves undecided/);
+  });
+
+  it("names the standoff as the thing to break, and whose choice breaks it", () => {
+    const msg = P.questionUnanswered("does the door open?", "they are deadlocked");
+    assert.match(msg, /A standoff is not an answer/);
+    assert.match(msg, /not yours to write/);
+  });
 });
 
 describe("parseVerdict", () => {

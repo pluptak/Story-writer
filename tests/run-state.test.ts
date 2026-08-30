@@ -414,6 +414,8 @@ describe("the narration lint", () => {
         const content = JSON.stringify(opts.lintReplies![lintCall++]);
         return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
       }
+      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED"))
+        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ok: true }) } }] }));
       const content = JSON.stringify(opts.writerReplies[writerCall++]);
       return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
     }) as any;
@@ -673,7 +675,8 @@ describe("the judge", () => {
       const body = JSON.parse(String(init.body));
       const sys = String(body.messages?.[0]?.content ?? "");
       if (sys.includes("CHECKING ONE ANSWER")) throw new Error("simulated judge outage");
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE"))
+      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")
+          || sys.includes("CHECKING WHETHER THE SCENE IS FINISHED"))
         return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ok: true }) } }] }));
       if (sys.includes("YOU ARE THE AUTHOR. You are writing one scene"))
         return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(draft) } }] }));
@@ -781,8 +784,9 @@ describe("an answer still owed the page", () => {
     writerReplies: Record<string, unknown>[];
     characterReplies: Record<string, unknown>[];
     lintPayloads?: string[];
+    doneReplies?: Record<string, unknown>[];
   }) {
-    let writerCall = 0, characterCall = 0;
+    let writerCall = 0, characterCall = 0, doneCall = 0;
     const fetchMock = (async (_url: string, init: any) => {
       const body = JSON.parse(String(init.body));
       const sys = String(body.messages?.[0]?.content ?? "");
@@ -793,10 +797,14 @@ describe("an answer still owed the page", () => {
         return reply({ ok: true });
       }
       if (sys.includes("CHECKING ONE ANSWER")) return reply({ verdict: "accept" });
+      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED")) {
+        const d = opts.doneReplies;
+        return reply(d ? d[Math.min(doneCall++, d.length - 1)] : (doneCall++, { ok: true }));
+      }
       if (sys.includes("YOUR OUTPUT FORMAT")) return reply(opts.characterReplies[characterCall++]);
       return reply(opts.writerReplies[writerCall++]);
     }) as any;
-    return { fetchMock, calls: () => ({ writerCall, characterCall }) };
+    return { fetchMock, calls: () => ({ writerCall, characterCall, doneCall }) };
   }
 
   const ASK = {
@@ -811,6 +819,7 @@ describe("an answer still owed the page", () => {
     maxSteps: number;
     characterReplies?: Record<string, unknown>[];
     lintPayloads?: string[];
+    doneReplies?: Record<string, unknown>[];
   }) {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
@@ -820,6 +829,7 @@ describe("an answer still owed the page", () => {
       writerReplies: opts.writerReplies,
       characterReplies: opts.characterReplies ?? [{ speech: "No.", action: "stands up off the crate" }],
       lintPayloads: opts.lintPayloads,
+      doneReplies: opts.doneReplies,
     });
 
     const origFetch = globalThis.fetch;
@@ -864,6 +874,55 @@ describe("an answer still owed the page", () => {
     assert.deepEqual(r.prose, [first, second], "the answer reached the page");
     assert.ok(!events.some(e => e.t === "answer_unwritten"), "nothing was left owed");
     assert.equal(r.done, true, "and the scene closed after that one extra turn");
+  });
+
+  it("holds the scene open when the page has not answered the question", async () => {
+    const first = "Riven's palm finds the door and stays there.";
+    const second = "Merritt steps back and lets the door swing wide.";
+    const { r, events, calls, writer } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: first, scene_done: true }, { prose: second, scene_done: true }],
+      doneReplies: [{ ok: false, why: "neither of them has moved off the door" }],
+    });
+
+    const refused = events.find(e => e.t === "done_refused") as any;
+    assert.ok(refused, "the ending was refused");
+    assert.equal(refused.why, "neither of them has moved off the door");
+    assert.equal(calls.writerCall, 2, "the writer got another turn");
+    assert.deepEqual(r.prose, [first, second], "and what it wrote reached the page");
+    assert.ok(writer!.history.some(m => String(m.content).includes("[NOT DONE]")),
+      "the writer was told what the page left open");
+  });
+
+  it("refuses one ending per scene and then stands aside", async () => {
+    // A second refusal would run a scene the writer cannot resolve to the hard cap, which is the
+    // failure this judge exists to end rather than to cause.
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "Riven's palm finds the door.", scene_done: true },
+        { prose: "Neither of them moves.", scene_done: true },
+      ],
+      doneReplies: [{ ok: false, why: "still a standoff" }],
+    });
+
+    assert.equal(events.filter(e => e.t === "done_refused").length, 1, "refused exactly once");
+    assert.equal(calls.doneCall, 1, "and the second ending was not put to the judge at all");
+    assert.equal(r.done, true, "the scene closed on it");
+  });
+
+  it("lets the ending stand when the judge answers in no shape at all", async () => {
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: "Riven's palm finds the door.", scene_done: true }],
+      doneReplies: [{ musing: "hard to say" }],
+    });
+
+    assert.equal(calls.doneCall, 2, "asked once more for a verdict");
+    assert.ok(events.some(e => e.t === "schema_mismatch" && (e as any).call === "done"),
+      "and the record says no verdict was ever given");
+    assert.ok(!events.some(e => e.t === "done_refused"));
+    assert.equal(r.done, true, "a check nobody made does not hold the scene open");
   });
 
   it("says so when the scene ends anyway with the answer never written in", async () => {
@@ -1260,6 +1319,7 @@ describe("a clarification on a rejected attempt", () => {
         new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
       if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) return reply({ ok: true });
       if (sys.includes("CHECKING ONE ANSWER")) return reply(judgeReplies[Math.min(judgeCall++, 1)]);
+      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED")) return reply({ ok: true });
       if (sys.includes("ANSWERING ONE QUESTION")) {
         clarifierPrompts.push(msgs);
         return reply(clarifierReplies[Math.min(clarifierCall++, 1)]);
@@ -1340,6 +1400,7 @@ describe("a deed promoted in the same reply that renders it", () => {
         lintRequests.push(msgs.join("\n"));
         return reply({ ok: true });
       }
+      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED")) return reply({ ok: true });
       if (sys.includes("WHICH REACTIONS MAY BECOME DEEDS"))
         return reply({ verdicts: [{ name: "MERRITT", promotable: true }] });
       if (sys.includes("YOUR OUTPUT FORMAT"))
