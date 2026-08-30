@@ -8,9 +8,9 @@ export const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
  *  (data-seq, data-dir, data-view). Elements with a unique id= don't need one. */
 export const tid = name => ` data-tid="${esc(name)}"`;
 export const basename = p => (p || "").replace(/^.*[\\/]/, "");
-// Mirrors engine/config-util.ts's slugify, which is what actually names the folder. Kept in step by
-// hand: the two drifting only costs a warning that fails to appear, since accept() still refuses a
-// taken folder server-side — the viewer copy exists to say so *before* the click, not instead of it.
+// Mirrors engine/config-util.ts's slugify, which actually names the folder. Kept in step by hand:
+// drifting only costs a warning that fails to appear, since accept() still refuses a taken folder
+// server-side -- the viewer copy exists to say so *before* the click, not instead of it.
 export const slugify = s => String(s ?? "").toLowerCase().normalize("NFKD")
   .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
 export const fmtRun = r => {
@@ -41,8 +41,8 @@ export function wireBackdropClose(root, id, onClose) {
 
 const noticeTimers = {};
 /** Set (or clear) the text at a notice slot, `#notice` by default -- auto-clears after 8s so a
- *  refusal doesn't linger once it's stale. `at: false` means nowhere: the caller renders the
- *  refusal itself (inline, keyed to its own state) and does not want it echoed to a DOM slot too. */
+ *  stale refusal doesn't linger. `at: false` means nowhere: the caller renders the refusal itself
+ *  (inline, keyed to its own state) and does not want it echoed to a DOM slot too. */
 export function notify(text, at = "notice") {
   if (at === false) return;
   const el = $(at);
@@ -53,7 +53,7 @@ export function notify(text, at = "notice") {
 }
 
 /** POST, and say why if the engine says no. `at` picks which notice slot reports the refusal, or
- *  `false` to report nowhere (the caller handles it). Returns the parsed body, or null if it never
+ *  `false` for nowhere (the caller handles it). Returns the parsed body, or null if it never
  *  answered. */
 export async function post(path, body, at = "notice") {
   let j = null;

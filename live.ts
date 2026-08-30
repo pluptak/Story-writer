@@ -78,8 +78,8 @@ export function sseWrite(frame: LiveFrame) {
   for (const c of sseClients) { try { c.write(line); } catch { } }
 }
 
-/** History + SSE. The JSONL file is the caller's, so a run logs whether or not anyone is watching. */
-/** Stamp a run event with a sequence number, keep it in history, and stream it to viewers. */
+/** Stamp a run event with a sequence number, keep it in history, and stream it to viewers. The
+ *  JSONL file is the caller's, so a run logs whether or not anyone is watching. */
 export function publish(ev: RunEvent): { seq: number } & RunEvent {
   const stamped = { seq: ++liveSeq, ...ev };
   liveHistory.push(stamped);

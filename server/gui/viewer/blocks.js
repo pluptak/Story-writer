@@ -51,9 +51,9 @@ const ownDrafts = new Map();
 /** Run reset = a new scene with its own seq numbering; stale drafts must never resurface. */
 export const clearReaderDrafts = () => ownDrafts.clear();
 
-/** `interactive` is false for a reader consult read off a saved run -- there is no live loop on the
- *  other end of `/reader-answer` for it to reach, so it renders as a fact about how the run went
- *  rather than as a question with working buttons. */
+/** `interactive` is false for a reader consult read off a saved run -- no live loop sits on the
+ *  other end of `/reader-answer`, so it renders as a fact about how the run went, not a question
+ *  with working buttons. */
 function renderReader(b, interactive) {
   if (b.answer !== null || !interactive) {
     ownDrafts.delete(b.seq);
@@ -136,9 +136,9 @@ export function renderBlock(b, interactive) {
   if (b.kind === "exit") return `<div ${tid("prose.exit")} class="note exit" data-seq="${esc(b.seq)}">${esc(b.character)} left the scene${
     b.pov ? " — the point of view; the chapter ends here" : ""}</div>`;
   if (b.kind === "note") {
-    // Critical notes (an answer never reached the page, a forced close) must stay as visible
-    // text; so does everything when the owner expands all (locator/debug). Otherwise collapse to a
-    // tooltip pill so the serif column keeps flowing.
+    // Critical notes (an answer never reached the page, a forced close) must stay visible text; so
+    // must everything when the owner expands all (locator/debug). Otherwise collapse to a tooltip
+    // pill so the serif column keeps flowing.
     if (b.critical || APP.expandAll)
       return `<div ${tid("prose.note")} class="note tone-${b.tone}">${esc(b.text)}</div>`;
     return `<button ${tid("prose.note-pill")} type="button" class="npill tone-${b.tone}"
@@ -149,9 +149,9 @@ export function renderBlock(b, interactive) {
 }
 
 /** Render a run's blocks, collapsing runs of non-critical notes into one pill row so the prose
- *  reads as a continuous column. Critical notes (and the expand-all view) render as their own
- *  footnotes; everything else becomes hover/click-tooltip pills inside a `.note-pills` flex row.
- *  Consults, reactions, reader consults and the end marker pass through untouched. */
+ *  reads as a continuous column. Critical notes (and expand-all) render as footnotes; the rest
+ *  become hover/click-tooltip pills in a `.note-pills` flex row. Consults, reactions, reader
+ *  consults and the end marker pass through untouched. */
 export function renderBlocks(blocks, interactive) {
   const html = [];
   let run = [];

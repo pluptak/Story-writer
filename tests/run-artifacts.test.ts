@@ -17,8 +17,8 @@ import { fingerprint, LOADED, writeRunManifest } from "../run-manifest.ts";
 import { quiet, warnings } from "./helpers.ts";
 
 // -- THE RUN MANIFEST -------------------------------------------------------
-// The thing it exists to catch is a process running code the working tree no longer holds, so the
-// test that matters is whether the digest moves when the source under it does.
+// Its purpose is catching a process running code the working tree no longer holds, so the test that
+// matters is whether the digest moves when the source under it does.
 describe("run manifest", () => {
   /** A miniature source tree of the shape `fingerprint` walks. */
   async function fakeTree(engineBody: string): Promise<string> {
@@ -275,7 +275,7 @@ describe("runLlmLogs / readLlmLog", () => {
       await mkdir(storyDir, { recursive: true });
       const id = "test-run";
       await addRun(storyDir, id, [{ t: "scene_start" }]);
-      // A populated listing, so the refusal is the allowlist doing its job rather than an empty
+      // A populated listing, so the refusal is the allowlist doing its job, not an empty
       // run refusing everything -- `llm/../writing-log.jsonl` is a real file, and still not served.
       await addLlm(storyDir, id, "agent.jsonl", [{ ts: "t1", role: "character", agent: "A", model: "m", prompt: [], response: "r" }]);
       assert.ok(await readLlmLog(storyDir, id, "agent.jsonl"));
@@ -466,7 +466,7 @@ describe("prompt construction", () => {
 
   it("the writer's consult is two fields, and it is told the situation is the whole ask", async () => {
     // Stage 3: `question` and `wants` are gone from what the writer sends, so the closed vocabulary
-    // it used to be handed would now be an invitation to fill in a field nothing reads.
+    // it once got would now invite filling a field nothing reads.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
     assert.match(p, /"character": "NAME", "situation"/);

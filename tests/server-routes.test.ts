@@ -114,9 +114,9 @@ describe("/next-chapter routes", () => {
     assert.match(r.body.reason, /no such handoff action/);
   });
 
-  // -- ABANDON VERSUS WORK IN FLIGHT -----------------------------------------
-  // An abandon that lands while a handoff round is still awaiting must strip that round of its
-  // right to commit: no resurrected session, no success report, no lock left behind.
+// -- ABANDON VERSUS WORK IN FLIGHT -----------------------------------------
+// An abandon landing while a handoff round is still awaiting must strip that round of its
+// right to commit: no resurrected session, no success report, no lock left behind.
   const yieldMicrotasks = () => new Promise(r => setTimeout(r, 0));
 
   it("abandon during start means the arriving session is discarded, not resurrected", async () => {
@@ -168,9 +168,9 @@ describe("/next-chapter routes", () => {
   });
 
   it("keeps the story locked through an accept that an abandon overtook", async () => {
-    // The write is what the lock exists for. Abandon may not release it out from under an accept
-    // that is still inside writeFile/preflight/restore, or an editor save lands in that window and
-    // the restore-on-failure erases it. The abandoned accept releases it on its way out instead.
+    // The write is what the lock is for. Abandon must not release it under an accept still inside
+    // writeFile/preflight/restore, or an editor save could land in that window and the
+    // restore-on-failure would erase it. The abandoned accept releases the lock on its way out.
     let fireAccept!: (r: unknown) => void;
     const gated = new Promise(r => { fireAccept = r; });
     const hanging = {
@@ -271,7 +271,7 @@ describe("readJsonBody", () => {
   });
 
   it("reassembles a multi-byte UTF-8 char split across Buffer chunks", async () => {
-    // "é" is 0xC3 0xA9; split the body so one byte lands in each chunk, the way a socket can.
+    // "é" is 0xC3 0xA9; split the body so one byte lands in each chunk, as a socket can.
     const bytes = Buffer.from(JSON.stringify({ s: "é" }), "utf8");
     const cut = bytes.indexOf(0xa9);
     const req = Readable.from([bytes.subarray(0, cut), bytes.subarray(cut)]) as unknown as IncomingMessage;

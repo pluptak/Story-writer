@@ -109,7 +109,7 @@ describe("consult", () => {
     assert.deepEqual(f.history, a.history);
   });
 
-  // The retry has to be able to diverge without dragging the original with it: what the fork is
+  // The retry must be able to diverge without dragging the original along: what the fork is
   // asked, and whatever it answers, must never land in the history the accepted answer folds into.
   it("a fork's history is its own copy", () => {
     const a = new Agent("RIVEN", "m", "persona", 0.9);
@@ -190,6 +190,17 @@ describe("writeInstruction", () => {
     assert.match(msg, /\[WORLD] The sounder took over\. That has happened/);
     assert.match(msg, /nobody can decline it|nobody\s+can decline it/);
     assert.equal(P.writeInstruction({ ...base, words: 50, target: 100, fired: "" }), plain);
+  });
+
+  // SPIKE (world timeline) — delete with the injection path.
+  it("holds a withheld event back until it fires, and never sends both at once", () => {
+    const held = P.writeInstruction({ ...base, words: 50, target: 100, hold: "the panel going into alarm" });
+    assert.match(held, /\[HOLD] the panel going into alarm -- that has NOT happened/);
+    assert.doesNotMatch(held, /\[WORLD]/);
+
+    const both = P.writeInstruction({ ...base, words: 50, target: 100, fired: "It fired.", hold: "the panel going into alarm" });
+    assert.match(both, /\[WORLD]/);
+    assert.doesNotMatch(both, /\[HOLD]/);
   });
 });
 
@@ -328,8 +339,8 @@ describe("what the character is sent", () => {
 
   it("gives them the situation and never the question", () => {
     // Stage 2 of the open-beat experiment: the author still writes the question -- it gates the
-    // consult, anchors the judge and travels with the answer on the record -- and the character
-    // answers the moment instead of the fork the author picked out of it.
+    // consult, anchors the judge, travels with the answer on the record -- but the character
+    // answers the moment, not the fork the author picked out of it.
     const sent = P.askBlock(req);
     assert.match(sent, /The alarm has been going/, "the situation is their whole world");
     assert.ok(!sent.includes(req.question), "the question they were never shown is not in the ask");
@@ -338,7 +349,7 @@ describe("what the character is sent", () => {
 
   it("still names the shape the answer has to arrive in", () => {
     // Kept deliberately: missingShape refuses an answer for lacking a shape, and refusing one the
-    // character was never asked for would be a trap rather than a check.
+    // character was never asked for would be a trap, not a check.
     assert.match(P.askBlock(req), /What they need from you: speech/);
   });
 
@@ -350,12 +361,27 @@ describe("what the character is sent", () => {
     // With no question, {"need": ...} is the only way a character can repair a thin situation.
     assert.match(P.askBlock(req), /Ask for it instead/);
   });
+
+  it("folds the situation and the shape, and none of the standing instructions", () => {
+    // The three assertions above cover the LIVE ask, which is unchanged. History keeps only the
+    // record: everything else in askBlock is pressure to answer now, and re-reading it once per
+    // consult for the rest of the scene is the cost the un-escalated fold refuses to pay.
+    const fold = P.foldedAsk(req);
+    assert.match(fold, /The alarm has been going/, "the situation it was asked about survives");
+    assert.match(fold, /What they need from you: speech/, "and the shape that was wanted");
+    assert.ok(!fold.includes(req.question), "still never the question");
+    for (const gone of [/nobody is going to hand you a better one/, /Ask for it instead/,
+                        /not a request you owe compliance to/, /the words they say/]) {
+      assert.ok(!gone.test(fold), `standing instruction left in the fold: ${gone}`);
+    }
+    assert.ok(P.foldedAsk(req).length * 2 < P.askBlock(req).length, "and it is much shorter");
+  });
 });
 
 describe("the retry template", () => {
   it("tells the judge that only the situation reaches them", () => {
-    // Without this the judge sharpens the question on a retry, the character sees an identical ask,
-    // and a fresh instance answers it identically -- a retry spent on nothing.
+    // Without this the judge sharpens the question on retry, the character sees an identical ask,
+    // and a fresh instance answers identically — a retry spent on nothing.
     assert.match(P.JUDGE_FORMAT, /ONLY ONE OF THE THREE THEY WILL READ/);
   });
 
@@ -365,7 +391,7 @@ describe("the retry template", () => {
   });
 
   it("names every field a retry has to carry", () => {
-    // A field absent from the template is a field the model does not send: `wants` was missing from
+    // A field missing from the template is a field the model does not send: `wants` was missing from
     // 17 of 17 logged retries, and `note` came back empty in 13 of them.
     for (const field of ["revised", "situation", "question", "wants", "note"])
       assert.match(P.JUDGE_FORMAT, new RegExp(`"${field}"`));
@@ -447,7 +473,7 @@ describe("the author-side agents each hold exactly one schema", () => {
   });
 
   it("the writer no longer carries the judge's or the clarifier's shape", () => {
-    // The whole point of splitting them out: with both here, the [WRITE] pattern won 7 times in 55.
+    // Why they were split out: with all shapes in one format, the [WRITE] pattern won 7 times in 55.
     assert.ok(!P.WRITER_FORMAT.includes(`"verdict"`));
     assert.ok(!P.WRITER_FORMAT.includes(`"answer"`));
   });
@@ -561,9 +587,9 @@ describe("reviseConsult", () => {
   });
 
   it("refuses a revision that re-sends the same situation", () => {
-    // The character is shown the situation and not the question, so sharpening the wording of the
-    // fork sends a fresh instance the identical message the last one answered. Observed twice in the
-    // first live run under the withheld question, once with the question unchanged as well.
+    // The character is shown the situation, not the question, so sharpening the fork's wording sends
+    // a fresh instance the identical message the last one answered. Seen twice in the first live run
+    // under the withheld question, once with the question unchanged as well.
     const sharpened = reviseConsult(prev, { question: "Do you turn it, knowing what it wakes?" });
     assert.ok(!sharpened.ok, "an omitted situation falls back and is then the same ask");
     assert.match(sharpened.why, /has to change what they can perceive/);
@@ -584,8 +610,8 @@ describe("reviseConsult", () => {
   });
 
   it("refuses a revision the front door would have refused", () => {
-    // The actual regression: "What do you do?" is rejected as a first consult, and used to be sent
-    // anyway as a retry because the revision skipped the check.
+    // The regression: "What do you do?" is rejected as a first consult, but used to be sent anyway
+    // as a retry because the revision skipped the check.
     const r = reviseConsult(prev, { question: "What do you do?" });
     assert.ok(!r.ok);
     assert.match(r.why, /fork|stake/);
@@ -597,7 +623,7 @@ describe("reviseConsult", () => {
 
   // The judge may reframe a fork it asked badly. It may not turn one fork into another: "which way
   // do you go" and "what do you say about it" are different moments, and a judge that answers an
-  // inconvenient reply by changing the shape has replaced the choice rather than re-put it.
+  // inconvenient reply by changing the shape has replaced the choice, not re-put it.
   it("pins the shape asked for, and records the one the judge wanted", () => {
     const r = reviseConsult(prev, { situation: moved, question: "Do you turn it slowly now?", wants: "speech" });
     assert.ok(r.ok);
@@ -672,7 +698,7 @@ describe("missingShape", () => {
   });
 
   it("makes anyone else's reaction reach the outside", () => {
-    // Their thought never reaches the writer, so a reaction that stays behind their eyes is the same
+    // Their thought never reaches the writer, so a reaction kept behind their eyes is the same
     // empty answer the other three shapes are refused for -- the ask would be spent on nothing.
     assert.equal(missingShape("reaction", { speech: "", action: "" }, false), "reaction");
     assert.equal(missingShape("reaction", { speech: "Who's there?", action: "" }, false), null);
@@ -686,7 +712,7 @@ describe("missingShape", () => {
 
   it("holds an open beat to the same floor, since it names no shape of its own", () => {
     // Stage 3 sends no `wants`, so the POV rule is all that is left -- and it is the same rule: a
-    // thought from outside the point of view reaches the writer as nothing whatever was asked.
+    // thought from outside the POV reaches the writer as if nothing at all was asked.
     assert.equal(missingShape("", { speech: "", action: "" }, false), "reaction");
     assert.equal(missingShape("", { speech: "I stay put.", action: "" }, false), null);
     assert.equal(missingShape("", { speech: "", action: "goes still" }, false), null);
@@ -743,8 +769,8 @@ describe("parseClarifyAnswer", () => {
 });
 
 describe("normalizeConsult, the judge's directed ask", () => {
-  // The question gates did not go away with stage 3; they narrowed to the one path that still
-  // carries a question, which is the judge escalating an open beat into a named fork.
+  // Stage 3 did not remove the question gates; it narrowed them to the one path that still carries
+  // a question — the judge escalating an open beat into a named fork.
   const good = { character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
                  question: "Do you turn it now?", wants: "decision" };
 

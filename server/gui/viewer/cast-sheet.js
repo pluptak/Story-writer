@@ -2,13 +2,14 @@ import { esc, tid } from "./util.js";
 import { APP, LIVEV } from "./state.js";
 
 // ---- the live character sheet --------------------------------------------
-// A read-only panel in the live rail showing the authored cast the current run is working from --
-// persona, knows, goal, skills, restrictions, and (labelled with its scene) reach. It is
-// already-authored data shown to the human; it never travels back to any agent. Fetched from
-// /cast, keyed by story dir. Reach stays per scene and never merges into a character's skills.
+// A read-only panel in the live rail showing the authored cast the current run works from --
+// persona, knows, goal, skills, restrictions, and (labelled with its scene) reach. Authored data
+// shown to the human; it never travels back to any agent. Fetched from /cast, keyed by story dir.
+// Reach stays per scene, never merged into a character's skills.
 
-/** Fetch the cast for one story into APP.cast. Guarded by APP.cast.dir + .loading so the render loop
- *  that kicks it (castSheetHtml, called every frame) cannot start a second fetch for the same story. */
+/** Fetch the cast for one story into APP.cast. Guarded by APP.cast.dir + .loading so the render
+ *  loop that kicks it (castSheetHtml, called every frame) cannot start a second fetch for the same
+ *  story. */
 export async function loadCast(dir) {
   APP.cast = { dir, characters: [], loading: true, error: "" };
   let j;
@@ -47,7 +48,7 @@ export function castSheetHtml() {
 
   const field = (label, val) => val && val.trim()
     ? `<div class="cast-field"><span>${label}</span><p>${esc(val)}</p></div>` : "";
-  // Reach arrives per scene and stays per scene (I4): each tag names the scene that granted it so
+  // Reach arrives per scene and stays per scene (I4): each tag names the scene that granted it, so
   // it can never read as an intrinsic skill.
   const reachByChar = {};
   for (const sc of (APP.cast.scenes || []))

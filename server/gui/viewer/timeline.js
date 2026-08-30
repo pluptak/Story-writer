@@ -2,12 +2,12 @@ import { $, esc, tid } from "./util.js";
 import { APP } from "./state.js";
 import { noteFocus } from "./nav.js";
 
-/** A compact horizontal consult-timeline strip below the run controls. Each marker shows one consult
- *  block: the character's name, whether it was retried, whether it hit the chapter-wide ceiling.
- *  Clicking a marker scrolls to and auto-expands that block. Rebuilt on every render() from the
- *  blocks render() already built, so it follows whichever store the current view reads and empties
- *  itself on the views that have none -- the strip lives outside `#page` and would otherwise survive
- *  a view change. */
+/** A compact horizontal consult-timeline strip below the run controls. Each marker shows one
+ *  consult block: the character's name, whether it was retried, whether it hit the chapter-wide
+ *  ceiling. Clicking a marker scrolls to and auto-expands that block. Rebuilt on every render()
+ *  from the blocks render() already built, so it follows whichever store the current view reads
+ *  and empties itself on views with none -- the strip lives outside `#page` and would otherwise
+ *  survive a view change. */
 export function renderTimeline(blocks) {
   const el = $("timeline");
   if (!el) return;
@@ -24,8 +24,8 @@ export function renderTimeline(blocks) {
   }).join("");
 }
 
-/** Wired from the strip's own element, not from `#page`, because it is a sibling of the layout
- *  rather than a child of it. The jump goes through noteFocus + render: pages.js's settle does the
+/** Wired from the strip's own element, not from `#page` -- it is a sibling of the layout, not a
+ *  child of it. The jump goes through noteFocus + render: pages.js's settle does the
  *  scroll-and-open against the fresh DOM, and the URL gains `&block=` so what you jumped to is
  *  what a pasted link reopens. */
 export function wireTimeline() {

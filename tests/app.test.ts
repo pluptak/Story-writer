@@ -90,7 +90,7 @@ describe("startChapterRun's loading-window invariant", () => {
 
 // -- THE REAL SERVER HANDLE ------------------------------------------------
 /** Read an SSE stream until `until` matches the accumulated text, or time out naming what arrived.
- *  Cancels the stream either way — it leaves locked through the reader. */
+ *  Cancels the stream either way — otherwise it stays locked through the reader. */
 async function readSse(res: Response, until: (text: string) => boolean, ms = 3000): Promise<string> {
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
@@ -114,7 +114,7 @@ async function readSse(res: Response, until: (text: string) => boolean, ms = 300
   }
 }
 
-/** Fetch until the server answers — startServer does not expose a listening callback. */
+/** Fetch until the server answers — startServer exposes no listening callback. */
 async function waitUntilListening(port: number, ms = 3000): Promise<Response> {
   const deadline = Date.now() + ms;
   for (;;) {

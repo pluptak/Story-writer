@@ -1,6 +1,6 @@
 /**
  * Sense-lint tests — the mechanical restricted-sense half of the narration lint.
- * Deterministic: no model is involved, which is the whole point — the LLM half passed
+ * Deterministic, no model involved — that is the point: the LLM half passed
  * "Marsh watches them from his corner" for a sight-restricted character on every live run.
  */
 import { describe, it } from "node:test";

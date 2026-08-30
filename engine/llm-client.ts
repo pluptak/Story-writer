@@ -143,9 +143,9 @@ export async function complete(model: string, messages: Msg[], temperature: numb
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal);
     // Read the body as text first: a 200 whose body will not parse (a proxy error page, LM Studio
-    // dying mid-request) is a transient infrastructure failure, so it becomes a retryable LmError
-    // that names the model and carries a snippet -- not an opaque SyntaxError that kills the call
-    // on its first attempt. An empty body lands in the same bucket as an empty completion.
+    // dying mid-request) is transient infrastructure failure, so it becomes a retryable LmError
+    // naming the model with a snippet — not an opaque SyntaxError that kills the call on its first
+    // attempt. An empty body lands in the same bucket as an empty completion.
     const rawBody = await res.text();
     let data: any;
     try { data = JSON.parse(rawBody); }

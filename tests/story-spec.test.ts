@@ -523,9 +523,9 @@ describe("applyEdits", () => {
 });
 
 describe("specView against the story schema", () => {
-  // The new-story editor validates its draft with StoryJson, which is strict. specView carries two
-  // shapes the schema does not accept — `scene` as an alias for scenes[0], and skills split into
-  // {text, meaning} — and the editor's scaffoldStory() is what reconciles them. When it did not drop
+  // The new-story editor validates its draft with the strict StoryJson schema. specView carries two
+  // shapes the schema rejects — `scene` as an alias for scenes[0], and skills split into
+  // {text, meaning} — and the editor's scaffoldStory() reconciles them. When it did not drop
   // `scene`, every check failed with `Unrecognized key: "scene"` and the write button went dead on
   // the first edit with nothing on screen to say why. This pins the contract that fix relies on.
   const spec = normalizeSpec({
@@ -626,13 +626,13 @@ describe("slugify", () => {
     assert.ok(!slugify("Ends with punctuation ---").endsWith("-"));
   });
 
-  // The accept step warns that a folder is taken before the click, which means the viewer has to
-  // know what the engine will name the folder. That is a second implementation, so it is pinned
-  // here: if they drift, the warning silently stops matching what accept() actually refuses.
+  // The accept step warns that a folder is taken before the click, so the viewer must know what the
+  // engine will name the folder. That is a second implementation, pinned here: if they drift, the
+  // warning silently stops matching what accept() actually refuses.
   it("matches the viewer's copy, which the accept step warns from", async () => {
     // The specifier goes through a variable on purpose: viewer JS is outside tsconfig's program, so
-    // a literal would be a TS7016 with no declaration file to point at. This keeps it a plain
-    // runtime import, which is all the test needs.
+    // a literal import would be a TS7016 with no declaration file. This keeps it a plain runtime
+    // import, which is all the test needs.
     const utilPath = "../server/gui/viewer/util.js";
     const viewerUtil = await import(utilPath) as { slugify: (s: string) => string };
     const viewerSlugify = viewerUtil.slugify;
@@ -683,7 +683,7 @@ describe("renderStory round trip", () => {
       assert.equal(elias.belief, "The relief boat is merely late, not lost.");
       assert.equal(elias.impulse, "When the light fails, winds it by hand before saying a word.");
       assert.deepEqual(elias.voice, ["\"She has been late before. She has never been lost.\""]);
-      // The two things that would silently change the SCENE if they were lost:
+      // The two things that would silently change the SCENE if lost:
       assert.ok(elias.skills.some(s => s.name === "writelog" && s.meaning.startsWith("drafting entries")));
       assert.ok(!mara.skills.some(s => s.name === "hearing"), "a restriction must survive as a real absence");
       assert.ok(mara.skills.some(s => s.name === "sight"), "and must not take anything else with it");

@@ -1,6 +1,6 @@
 /**
  * Quote-lint tests — the mechanical quotation half of the narration lint.
- * These are deterministic: no model is involved, so a missed quote can never hide behind an LLM.
+ * Deterministic: no model involved, so a missed quote cannot hide behind an LLM.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -70,8 +70,8 @@ describe("lintQuotations", () => {
   });
 
   it("does not let a substring of an unrelated word fake a match", () => {
-    // "no" must not match inside a granted speech "know" — token-based, not substring. The quote is
-    // more than one word because a bare single word is read as a machine label and never checked.
+    // "no" must not match inside the granted speech "know" — token match, not substring. The quote
+    // is multi-word because a bare single word is read as a machine label and never checked.
     const prose = 'He said "no, not tonight".';
     const hit = lintQuotations(prose, granted("I know the rhythm"), ["He"]);
     assert.ok(hit && !hit.ok);
@@ -112,7 +112,7 @@ describe("world furniture — sourced quotes", () => {
 
   it("does not exempt on a source word outside the look-back window", () => {
     // ~160 characters of sourceless text push "sign" outside the 120-character look-back, so the
-    // quote is checked even though a source word sits earlier in the same paragraph.
+    // quote is checked despite an earlier source word in the same paragraph.
     const filler = "and".repeat(40);
     const prose = `The sign mentioned nothing at all. ${filler} Merritt said "This is not my line to sign."`;
     const hit = lintQuotations(prose, [], ["Merritt"]);

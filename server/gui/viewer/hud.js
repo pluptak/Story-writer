@@ -3,13 +3,13 @@ import { APP, LIVEV, READV, READER, storyName } from "./state.js";
 import { castSheetHtml } from "./cast-sheet.js";
 
 // The two small "paint a fixed chrome region from store state" pieces -- the `#src`/`#dot` source
-// indicator and the `#rail` progress panel -- as opposed to `#page`, which `pages.js` owns.
+// indicator and the `#rail` progress panel. `pages.js` owns `#page`.
 
 const chapterSuffix = m => (m && m.chapters > 1) ? ` · chapter ${m.chapter} of ${m.chapters}` : "";
 
 /** The breadcrumb for the current view: earlier crumbs are clickable ancestors, the last is where
- *  you are. Ancestor links appear only with an engine attached — the shelf and a story page are not
- *  reachable without one (go() would just rewrite them to the read tab). */
+ *  you are. Ancestor links appear only with an engine attached -- the shelf and a story page are
+ *  unreachable without one (go() would rewrite them to the read tab). */
 function crumbsFor() {
   const name = dir => storyName(dir) || basename(dir) || "a story";
   if (!APP.live) {
@@ -85,10 +85,10 @@ function titleContext() {
   }
 }
 
-/** What the run is doing right now, in the mockup's vocabulary. Derived rather than sent: the engine
- *  has no `phase` field (Writer.MD tracks that as a gap). The budget wait is read off the `#prompt`
- *  element's own class because that element IS that state today -- a second copy on APP would be one
- *  more thing to keep in sync, and sse.js clears it from more than one place. */
+/** What the run is doing right now, in the mockup's vocabulary. Derived rather than sent: the
+ *  engine has no `phase` field (Writer.MD tracks that as a gap). The budget wait is read off the
+ *  `#prompt` element's own class because that element IS that state today -- a second copy on APP
+ *  would be one more thing to keep in sync, and sse.js clears it from more than one place. */
 /** The coarse HUD word for whoever is composing. The judges collapse into one word here; the
  *  model-calls panel keeps them apart by their own names. Anything unnamed is a character. */
 const COMPOSING_WORD = {
@@ -120,7 +120,7 @@ export function renderRail(store, blocks) {
   const retries = count("retry");
   const live = store === LIVEV && APP.live;
   // The starting budget is not in RunMeta; a `budget` event is the only place the number appears,
-  // so steps show a denominator only once the budget has actually been extended at least once.
+  // so steps show a denominator only once the budget was extended at least once.
   const budget = store.events.filter(e => e.t === "budget").pop()?.budget;
   const fmtMs = ms => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
   const fmtTokens = (s, key) => s.tokenCalls === s.calls ? s[key].toLocaleString() : "unavailable";

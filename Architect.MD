@@ -232,7 +232,8 @@ judge **fails open**: an outage or a reply carrying no verdict passes the gate, 
 model-in-the-loop check in this engine accepts on failure and an outage must not strand an author
 mid-checklist. `normalizeSpec`'s "nobody has any restrictions" problem is unchanged and still
 advisory — it is the only asymmetry signal on the surfaces that have no gate at all (the story
-editor, one-shot mode, the handoff).
+editor, one-shot mode, the handoff). The judge agent itself — its contract, its verdict shapes, and
+the family it belongs to — is specified in [`Judge.MD`](Judge.MD).
 
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.

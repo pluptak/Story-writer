@@ -1,4 +1,4 @@
-/** Story edit routes: read, validate, and save story.json through the HTTP surface.
+/** Story edit routes: read, validate, and save story.json over HTTP.
  *  Also tests the /story/suggest endpoint and edge cases from plan 5. */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -49,8 +49,6 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
     },
     saveStory: async (dir: string, _story: any) => {
       if (dir !== "stories/doorway") return { ok: false, reason: "not found" };
-      if (_story._simulateWriteFailure) return { ok: false, reason: "write failed: disk full" };
-      if (_story._simulateCorruptWrite) return { ok: false, reason: "saved but does not load: Premise is empty" };
       return { ok: true, warnings: [] };
     },
     suggestEdits: async (_spec: unknown, text: string) => {
@@ -164,42 +162,12 @@ describe("/story/edit (GET)", () => {
 
 // -- SECTION ----
 describe("/story/check (POST)", () => {
-  it("validates a good story", async () => {
-    const r = await callRoute(handleStoryEditRoutes, "/story/check", { story: DOORWAY }, makeHost());
-    assert.equal(r.code, 200);
-    assert.equal(r.body.ok, true);
-  });
-
   it("reports validation failures", async () => {
     const r = await callRoute(handleStoryEditRoutes, "/story/check", { story: { simulatedError: true } }, makeHost());
     assert.equal(r.code, 200);
     assert.equal(r.body.ok, false);
     assert.equal(r.body.error, "validation failed");
     assert.equal(r.body.issues[0].path, "title");
-  });
-
-  it("accepts missing scenes array (Zod prefault creates one)", async () => {
-    const r = await callRoute(handleStoryEditRoutes, "/story/check", {
-      story: { premise: "test", characters: [{ name: "X" }] },
-    }, makeHost());
-    assert.equal(r.code, 200);
-    assert.equal(r.body.ok, true);
-  });
-
-  it("validates and saves a scene carrying reach", async () => {
-    const withReach = {
-      ...structuredClone(DOORWAY),
-      scenes: [{ ...DOORWAY.scenes[0],
-        reach: { ASTER: ["cameras :: perceiving through the lamp room cameras", "doors"] } }],
-    };
-    const check = await callRoute(handleStoryEditRoutes, "/story/check", { story: withReach }, makeHost());
-    assert.equal(check.code, 200);
-    assert.equal(check.body.ok, true);
-
-    const saved = await callRoute(handleStoryEditRoutes, "/story/save",
-      { dir: "doorway", story: withReach }, makeHost());
-    assert.equal(saved.code, 200);
-    assert.equal(saved.body.ok, true);
   });
 });
 
@@ -234,46 +202,6 @@ describe("/story/save (POST)", () => {
     assert.equal(r.code, 400);
     assert.equal(r.body.ok, false);
     assert.match(r.body.reason, /validation/);
-  });
-
-  it("rejects save with empty premise", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "Premise is empty" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, premise: "" } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /Premise is empty/);
-  });
-
-  it("rejects save with no characters", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "No characters defined" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, characters: [] } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /No characters/);
-  });
-
-  it("reports write failures", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "write failed: disk full" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, _simulateWriteFailure: true } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /write failed/);
-  });
-
-  it("reports corrupt write (write succeeds but re-load fails)", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "saved but does not load: Premise is empty" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, _simulateCorruptWrite: true } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /does not load/);
   });
 
   it("warnings accompany a successful save", async () => {

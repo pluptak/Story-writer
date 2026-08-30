@@ -28,9 +28,9 @@ async function architectExample(): Promise<string> {
 
 /**
  * Build the architect agent: its system prompt carries the skill catalog and, when scaffolding, a
- * worked example of the story format. A handoff does not want it — the prompt names every edit field
- * inline and sends the real story every round, so the example is the format said twice, and the one
- * shape it demonstrates is the whole-story reply a handoff must *not* send.
+ * worked example of the story format. A handoff does not want the example — the prompt names every
+ * edit field inline and sends the real story every round, so the example is the format said twice,
+ * and it demonstrates the whole-story reply a handoff must *not* send.
  */
 export async function buildArchitect(d: Defaults, withExample = true): Promise<Agent> {
   const system = P.architectSystem(
@@ -143,13 +143,13 @@ function withAsk(out: Record<string, any>): string {
 
 /**
  * Run the fill-gaps and verify passes after a successful proposal, before a human sees it: neither
- * ARCHITECT_FORMAT nor architectNextChapter's own message ever asks for scene.roster or story-level
+ * ARCHITECT_FORMAT nor architectNextChapter's message ever asks for scene.roster or story-level
  * facts, so nothing gets authored unless these dedicated passes ask for it. A question from either
- * pass aborts the sequence and is surfaced exactly like any other blocking ask; whatever the earlier
- * pass already applied stays on the spec. A failed or empty pass never discards a good proposal — it
- * is recorded as an AutoPass with outcome "failed"/"nothing" instead. `passes` selects which run:
- * the one-shot scaffold and the handoff want both; the staged checklist asks for roster and facts
- * in its own stages, so its scene stage runs the verify pass only.
+ * pass aborts the sequence and surfaces like any other blocking ask; whatever the earlier pass
+ * applied stays on the spec. A failed or empty pass never discards a good proposal — it is recorded
+ * as an AutoPass with outcome "failed"/"nothing" instead. `passes` selects which run: the one-shot
+ * scaffold and the handoff want both; the staged checklist asks for roster and facts in its own
+ * stages, so its scene stage runs the verify pass only.
  */
 async function runAutoPasses(
   architect: Agent, spec: StorySpec, sceneField: string,
@@ -402,8 +402,8 @@ export class ScaffoldSession {
 
   /** The cast gate's question, asked of a fresh judge: does this cast's asymmetry bite on the
    *  tension the story stage coined? Returns null when it could not be decided — an outage, or a
-   *  reply with no verdict in it. The caller then lets the gate pass: every other model-in-the-loop
-   *  check in this engine accepts on failure, and an outage must not strand an author mid-checklist. */
+   *  reply with no verdict. The caller then lets the gate pass: every other model-in-the-loop check
+   *  in this engine accepts on failure, and an outage must not strand an author mid-checklist. */
   private async castAsymmetryVerdict(): Promise<{ ok: boolean; why: string } | null> {
     try {
       const judge = this.newJudge ? this.newJudge() : newCastAsymmetryJudge(this.defaults);
@@ -433,10 +433,10 @@ export class ScaffoldSession {
     const missing = this.gateMissing();
     if (missing)
       return { kind: "nothing", why: `"${this.stage}" has not landed (${missing}) — refine it, answer any outstanding question, and try again`, stage: this.stage };
-    // The cast gate is the one gate that judges what landed rather than whether anything did. It
-    // blocks on a cast whose asymmetry does not bite on the tension, because a cast that all know
-    // and perceive the same things gives the consult nothing to be asymmetric about — and by the
-    // time that shows up in the prose the story has been built on it.
+    // The cast gate is the one gate that judges what landed, not whether anything did. It blocks on
+    // a cast whose asymmetry does not bite on the tension: a cast that all know and perceive the
+    // same things gives the consult nothing to be asymmetric about — and by the time that shows up
+    // in the prose the story has been built on it.
     if (this.stage === "cast" && !override) {
       const verdict = await this.castAsymmetryVerdict();
       if (verdict && !verdict.ok) {

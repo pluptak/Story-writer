@@ -1,6 +1,6 @@
 /**
- * Architect tests — story scaffolding and the chapter handoff. The routes that drive them are
- * covered in scaffold-routes.test.ts.
+ * Architect tests — story scaffolding and the chapter handoff. The routes driving them are covered
+ * in scaffold-routes.test.ts.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -302,7 +302,7 @@ describe("ScaffoldSession, staged", () => {
   };
   const SCENE_STAGE = { scene: STORY.scene, later_scenes: [{ question: "Does the relief boat come?" }] };
 
-  // The cast gate consults a judge, and a fresh one per verdict — so the factory hands back a new
+  // The cast gate consults a judge, a fresh one per verdict — so the factory hands back a new
   // one-reply ScriptedAgent each time rather than one agent that would run out.
   const judgeSaying = (verdict: unknown) => () => new ScriptedAgent([JSON.stringify(verdict)]);
   const passingJudge = judgeSaying({ ok: true });
@@ -358,8 +358,8 @@ describe("ScaffoldSession, staged", () => {
   });
 
   describe("the cast gate", () => {
-    // propose() opens the story gate and the first approve() passes it, landing on cast — so it is
-    // the *next* approve() that the gate judges.
+    // propose() opens the story gate and the first approve() passes it, landing on cast — so the
+    // *next* approve() is the one the gate judges.
     const walkToCast = async (judge: () => ScriptedAgent) => {
       const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE], judge);
       await s.propose();
@@ -754,8 +754,8 @@ describe("NextChapterSession", () => {
     assert.match(fillGapsPrompt, /scene_2\.roster/);
     assert.doesNotMatch(fillGapsPrompt, /scene_1\.roster/);
     const verifyPrompt = s.architect.history[4].content;
-    // The roster/sense reach checks are mechanical now (in normalizeSpec), so the verify prompt no
-    // longer names scene_2.roster; it still targets the chapter being prepared via the I5 bullet.
+    // The verify prompt no longer names scene_2.roster: the roster/sense reach checks are mechanical
+    // now (in normalizeSpec). It still targets the chapter being prepared via the I5 bullet.
     assert.match(verifyPrompt, /scene_2\.place/);
   });
 

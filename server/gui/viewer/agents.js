@@ -2,7 +2,7 @@ import { esc, tid } from "./util.js";
 import { APP, READV } from "./state.js";
 
 /** Volumes are wildly lopsided -- one real chapter logged 57 writer calls and ~1.07M prompt
- *  characters against ~7 calls per character -- so counts are abbreviated rather than shown raw. */
+ *  characters against ~7 calls per character -- so counts are abbreviated, not shown raw. */
 const abbrev = n =>
   n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
 
@@ -12,9 +12,9 @@ const clock = ts => {
 };
 
 /** Fetch the loaded run's per-agent transcript summaries. Keyed by dir+id, the same reason
- *  `APP.chapter` carries its own dir: one run's agents must never render under another's.
- *  A response that lands after a newer call started is dropped -- otherwise run A's late
- *  answer would leave the panel stuck on "reading…" for run B, with nothing to re-fetch it. */
+ *  `APP.chapter` carries its own dir: one run's agents must never render under another's. A
+ *  response landing after a newer call started is dropped -- otherwise run A's late answer would
+ *  leave the panel stuck on "reading…" for run B, with nothing to re-fetch it. */
 export async function loadAgentState(dir, id, state = APP) {
   const req = (state._agentsReq = (state._agentsReq || 0) + 1);
   state.agents = null; state.agentsError = "";
@@ -29,9 +29,9 @@ export async function loadAgentState(dir, id, state = APP) {
 }
 
 /** One agent's transcript, on demand. Never fetched with the summaries: a writer transcript runs to
- *  a megabyte, and the panel exists to show you which agent is worth opening before you open it.
- *  The token makes rapid re-clicks last-write-wins; the agents check stops a slow failure from one
- *  run painting its error under another run's list. */
+ *  a megabyte, and the panel exists to show which agent is worth opening before you open it. The
+ *  token makes rapid re-clicks last-write-wins; the agents check stops a slow failure from one run
+ *  painting its error under another run's list. */
 async function openTranscript(file, state) {
   const a = state.agents;
   if (!a) return;
@@ -66,8 +66,8 @@ function callBodyHtml(c) {
   </div>`;
 }
 
-/** Which transcript is open, or "" -- a transcript left over from another run counts as none, so the
- *  row's label and the body below it cannot disagree about what is being read. */
+/** Which transcript is open, or "" -- a transcript left over from another run counts as none, so
+ *  the row's label and the body below it cannot disagree about what is being read. */
 const openFile = state => {
   const t = state.transcript, a = state.agents;
   return t && a && t.dir === a.dir && t.id === a.id ? t.file : "";
@@ -89,7 +89,7 @@ function transcriptHtml(state) {
 }
 
 /** The read tab's per-agent panel: what each agent cost this run, and a way into its transcript.
- *  Renders nothing at all until a run is loaded, so the empty read tab is unchanged. */
+ *  Renders nothing until a run is loaded, so the empty read tab is unchanged. */
 export function agentsPanelHtml(store = READV, state = APP) {
   if (!store.dir || !store.id) return "";
   const body =

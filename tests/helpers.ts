@@ -1,6 +1,6 @@
 /**
- * Shared test helpers. Not a test file — deliberately not named `*.test.ts`, so the runner does not
- * pick it up and it never needs a line in package.json's `test` script.
+ * Shared test helpers. Not a test file — not named `*.test.ts`, so the runner skips it and it needs
+ * no line in package.json's `test` script.
  */
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -9,8 +9,8 @@ import { Agent } from "../engine/agent.ts";
 import { WARN } from "../engine/warnings.ts";
 
 // -- A MODEL THAT SAYS WHAT YOU TELL IT TO ---------------------------------
-/** Replies straight from a script, so a test never touches a model. Used by the consult tests and
- *  by the architect ones, which drive a session with a scripted architect. */
+/** Replies straight from a script, so tests never touch a model. Used by the consult tests and by
+ *  the architect ones, which drive a session with a scripted architect. */
 export class ScriptedAgent extends Agent {
   calls: number = 0;
   constructor(public script: string[]) { super("TESTER", "none", "system", 0); }
@@ -22,8 +22,8 @@ export class ScriptedAgent extends Agent {
 }
 
 // -- QUIETING WARNINGS -----------------------------------------------------
-// Several loaders warn by design; keep the test output readable. They warn through the engine's
-// sink, so capturing means swapping that — never touching global console.
+// Several loaders warn by design; silence them to keep test output readable. They warn through the
+// engine's sink, so capturing means swapping that — never touching global console.
 export async function quiet<T>(fn: () => Promise<T> | T): Promise<T> {
   const orig = WARN.sink;
   WARN.sink = () => {};
@@ -45,7 +45,7 @@ export function warnings(fn: () => void): string[] {
 }
 
 // -- FAKE HTTP -------------------------------------------------------------
-/** A request carrying `body`. `headers` is only worth setting for the content-type checks. */
+/** A request carrying `body`. Set `headers` only for the content-type checks. */
 export function fakeRequest(body: unknown, method = "POST",
                             headers?: Record<string, string>): IncomingMessage {
   const chunks = body === undefined ? [] : [JSON.stringify(body)];
@@ -81,8 +81,8 @@ export async function callRoute(handler: RouteHandler, path: string, body: unkno
 }
 
 /** Drive one GET route whose parameters live in the query string. Unlike `callRoute` it sets
- *  `req.url` and hands back the raw body and the response headers -- these routes answer with NDJSON
- *  as often as with JSON, so parsing is the caller's choice. */
+ *  `req.url` and returns the raw body and response headers -- these routes answer with NDJSON as
+ *  often as JSON, so parsing is the caller's choice. */
 export async function callGet(handler: RouteHandler, url: string, host: ServerHost) {
   const req = Readable.from([]) as unknown as IncomingMessage;
   (req as { method?: string }).method = "GET";

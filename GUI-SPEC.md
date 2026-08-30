@@ -495,9 +495,13 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"scene_end"; steps; words; done; stopped; retries{character:count} }
 ```
 
-`wants` in `consult` is always one of `speech | action | decision | reaction` — the same four words
-`prompts.ts`'s `CONSULT_WANTS` sends the writer and the character (prompts.ts's single source of truth
-for that vocabulary, so the API and the model prompt can never drift apart).
+`wants` and `question` in `consult` are **`""` on an open beat**, which is every consult the writer
+itself sends. They carry values only after a judge's retry has escalated the ask by naming the fork
+in words. When `wants` is set it is one of `speech | action | decision | reaction` — the same four
+words `prompts.ts`'s `CONSULT_WANTS` sends the judge and the character (prompts.ts's single source of
+truth for that vocabulary, so the API and the model prompt can never drift apart). A client rendering
+a consult has to handle both: `blocks.js` falls back to the situation as the header when there is no
+question.
 
 `schema_mismatch` says an author-side agent replied in a shape that is not the one its call asked for
 — a judge that wrote prose, a clarifier that returned a verdict, a narration lint that came back with

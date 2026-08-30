@@ -183,7 +183,7 @@ describe("per-scene writer overrides", () => {
 // -- PAUSE/RESUME HANDSHAKE (loop↔route promise coordination) ---------------
 describe("pause/resume handshake", () => {
   /** A waiter that is never released would hang the whole suite; fail it instead. Clearing the
-   *  timer matters: an uncleared one keeps the loop alive for its full second after the test. */
+   *  timer matters: an uncleared one keeps the loop alive its full second after the test. */
   function releasedWithin<T>(p: Promise<T>, ifNot: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout>;
     const guard = new Promise<never>((_, reject) => {
@@ -282,6 +282,18 @@ describe("sceneReach", () => {
     const sd = SceneDef.parse({ reach: { merritt: grant } });
     assert.deepEqual(sceneReach(sd, reachDef(["sight"])).map(s => s.name), ["cameras"]);
   });
+
+  it("says nothing about a loaded character's own skills — it is called twice per chapter", async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const sd = SceneDef.parse({ reach: { MERRITT: grant } });
+    const said: string[] = [];
+    const prev = WARN.sink;
+    WARN.sink = (m: string) => { said.push(m); };
+    try {
+      for (const def of sc.characters) sceneReach(sd, def);
+    } finally { WARN.sink = prev; }
+    assert.deepEqual(said, [], "resolved skills are not a story redeclaring anything");
+  });
 });
 
 // -- RETRY CEILING ----------------------------------------------------------
@@ -313,9 +325,9 @@ describe("retry ceiling", () => {
   });
 
   it("retryCounts is scoped to one writeScene call and retries survive a stopped run", async () => {
-    // Stopping the run before calling writeScene means the writer never generates,
-    // so retries never happen. This test validates the plumbing: the parameter
-    // reaches writeScene without error, and no retries are recorded.
+    // Stopping the run before calling writeScene means the writer never generates, so no retries
+    // happen. This checks the plumbing: the parameter reaches writeScene without error, and no
+    // retries are recorded.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
     const log = (e: RunEvent) => events.push(e);
@@ -386,8 +398,8 @@ describe("the narration lint", () => {
   const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
 
   /** Routes a mocked completion by which system prompt asked for it — the writer's own `[WRITE]`
-   *  loop and the lint's stateless check share one fetch mock, so call order alone can't tell them
-   *  apart once a redraft happens. Each branch advances its own counter independently. */
+   *  loop and the lint's stateless check share one fetch mock, so call order alone cannot tell them
+   *  apart once a redraft happens. Each branch advances its own counter. */
   function scriptedFetch(opts: {
     writerReplies: Record<string, unknown>[];
     lintReplies?: Record<string, unknown>[];
@@ -421,7 +433,7 @@ describe("the narration lint", () => {
         { prose: cleanProse, scene_done: true },
       ],
       // An invented line is a quotation against an empty ledger, so the mechanical check catches it.
-      // The LLM half runs beside it rather than behind it, so both drafts draw a reply.
+      // The LLM half runs beside it, not behind it, so both drafts get a reply.
       lintReplies: [{ ok: true }, { ok: true }],
     });
 
@@ -446,9 +458,9 @@ describe("the narration lint", () => {
       const flags = events.filter(e => e.t === "narration_flag") as any[];
       assert.equal(flags.length, 1, "flagged once, then passed clean");
       assert.equal(flags[0].retried, false);
-      // Both mechanical findings arrive in the ONE message the single redraft gets. This fixture is
-      // why it matters: the piece carries an invented line AND shows a character who cannot see
-      // "looking up", and under the old short-circuit the second was never reported at all.
+      // Both mechanical findings arrive in the ONE message the single redraft gets. Why this fixture
+      // matters: the piece carries an invented line AND shows a character who cannot see "looking
+      // up", and under the old short-circuit the second was never reported at all.
       assert.match(flags[0].why, /unmatched quotation: "Not tonight,"/);
       assert.match(flags[0].why, /CANNOT sight/);
 
@@ -483,7 +495,7 @@ describe("the narration lint", () => {
         { prose: redraftProse, scene_done: true },
       ],
       // The first draft's quotation is caught mechanically and the LLM half runs beside it; the
-      // redraft carries no quotation, and the LLM lint flags it anyway.
+      // redraft has no quotation, and the LLM lint flags it anyway.
       lintReplies: [{ ok: true }, { ok: false, why: "MERRITT was given a line nobody asked for, again." }],
     });
 
@@ -607,8 +619,8 @@ describe("the narration lint", () => {
     }
   }
 
-  // A reply that carries no verdict is not a pass. `{}` and `{"ok":"maybe"}` used to clear a piece
-  // silently, which is a check performed without ever being made.
+  // A reply with no verdict is not a pass. `{}` and `{"ok":"maybe"}` used to clear a piece
+  // silently — a check reported without ever being made.
   it("asks again when the lint replies in a shape that carries no verdict", async () => {
     const { r, events, calls, redraft } = await lintRun(
       [{}, { ok: false, why: "MERRITT was given a line." }, { ok: true }]);
@@ -760,11 +772,11 @@ describe("the context-fit warning", () => {
 });
 
 // -- AN ANSWER STILL OWED THE PAGE -------------------------------------------
-// An accept only puts the answer in the writer's history. The one thing that can put it in the
-// chapter is a writing turn after it, and both of these tests are about whether the loop takes one.
+// An accept only puts the answer in the writer's history. Only a writing turn after it can put it
+// in the chapter, and both tests here are about whether the loop takes one.
 describe("an answer still owed the page", () => {
   /** Routes a mocked completion by which system prompt asked for it: the writer's `[WRITE]` loop,
-   *  the stateless lint, the stateless judge, and the consulted character each have their own. */
+   *  the stateless lint, the stateless judge, and the consulted character each get their own. */
   function consultFetch(opts: {
     writerReplies: Record<string, unknown>[];
     characterReplies: Record<string, unknown>[];
@@ -973,8 +985,8 @@ describe("an answer still owed the page", () => {
   });
 
   it("closes a held-open turn that comes back blank, rather than holding it a second time", async () => {
-    // The deferral promises exactly one more turn, whatever it produces. A blank reply on that turn
-    // must not be read as a fresh blank scene_done and re-held.
+    // The deferral promises exactly one more turn, whatever it makes. A blank reply on that turn
+    // must not be read as a fresh blank scene_done and held again.
     const { r, events, calls } = await runIt({
       maxSteps: 10,
       writerReplies: [
@@ -992,7 +1004,7 @@ describe("an answer still owed the page", () => {
   });
 
   it("holds the scene open past the hard cap when an answer is still owed", async () => {
-    // One beat well past twice the 700-word target arms the hard cap for the NEXT turn; that turn
+    // A beat well past twice the 700-word target arms the hard cap for the NEXT turn; that turn
     // opens a consult instead of declaring done, and the answer must still get its writing turn.
     const longBeat = "The lamp buzzed above the service door while the cold worked through every seam. ".repeat(110);
     const final = `Merritt stands up off the crate. "No," they say.`;
@@ -1056,8 +1068,8 @@ describe("an answer still owed the page", () => {
     async () => {
       // MERRITT is not the POV, so a thought with nothing said and nothing done leaves the bundle
       // empty. Silence would read as an unanswered fan-out and get the same beat asked again.
-      // Twice over: the first thought-only reply buys one repair asking them to let it surface, and
-      // this reactor does not take it. What comes back the second time is what the bundle gets.
+      // Asked twice: the first thought-only reply buys one repair asking them to let it surface,
+      // and this reactor does not take it. The second reply is what the bundle gets.
       const { events, writer } = await runIt({
         maxSteps: 10,
         characterReplies: [
@@ -1078,8 +1090,8 @@ describe("an answer still owed the page", () => {
     });
 
   it("names the repetition when the writer re-sends an ask the gate already refused", async () => {
-    // Observed five times running in one scene: the refusal says what is wrong, the writer sends the
-    // identical string back, and each round costs a step. The second one is told it is a repeat.
+    // Seen five times in one scene: the refusal says what is wrong, the writer sends the identical
+    // string back, and each round costs a step. The second one is told it is a repeat.
     const thin = { ...CRASH, situation: "Something falls over." };
     const { events, writer } = await runIt({
       maxSteps: 10,
@@ -1112,9 +1124,9 @@ describe("an answer still owed the page", () => {
 
   it("the POV character's thought-only answer lands as felt evidence, never as a bare name",
     async () => {
-      // The live-run failure this pins: reaction-shaped single consults answered from the inside
-      // used to push empty granted entries — bare names the lint could not read as authorization.
-      // RIVEN is the scene's POV, so what it lands on them as is the writer's to render.
+      // The live failure this pins: reaction-shaped single consults answered from the inside used
+      // to push empty granted entries — bare names the lint could not read as authorization.
+      // RIVEN is the scene's POV, so rendering what it lands on them as is the writer's job.
       const POV_REACT = {
         character: "RIVEN",
         situation: "The lock has given way under your hands and the door stands open on the dark.",
@@ -1141,9 +1153,9 @@ describe("an answer still owed the page", () => {
     });
 
   it("gives a non-POV reaction one chance to surface, and takes it when it does", async () => {
-    // The hole this closes: "reaction" glossed as "not a deliberate act, not spoken words" is right
-    // for the POV character and unanswerable for anyone else, so the ask was spent for nothing. Now
-    // a thought-only reply buys a repair, and a reaction that reaches the outside is an answer.
+    // The hole this closes: "reaction" (not a deliberate act, not spoken words) is right for the
+    // POV character and unanswerable for anyone else, so the ask was spent for nothing. Now a
+    // thought-only reply buys a repair, and a reaction that reaches the outside is an answer.
     const REACT = { ...ASK, wants: "reaction" };
     const { events, writer, calls } = await runIt({
       maxSteps: 10,
@@ -1168,8 +1180,8 @@ describe("an answer still owed the page", () => {
 
   it("a non-POV character's thought-only answer never reaches the writer at all", async () => {
     // MERRITT is not the POV. What the moment lands on them as is theirs; handing it to the writer
-    // would only ever authorize narrating an inner life nobody gave it. With nothing said and
-    // nothing done, the answer arrives as nothing — treated as no answer rather than accepted empty.
+    // would only authorize narrating an inner life nobody gave it. With nothing said and nothing
+    // done, the answer arrives as nothing — no answer, not an accepted empty one.
     const REACT = { ...ASK, wants: "reaction" };
     const lintPayloads: string[] = [];
     const thoughtOnly = { thought: "The lock has been sticking for a month; who is this?" };
@@ -1197,8 +1209,8 @@ describe("an answer still owed the page", () => {
 });
 
 // -- A CLARIFICATION ON AN ATTEMPT THAT WAS THROWN AWAY -----------------------
-// The rule is that only the accepted answer enters history. A clarification is part of an answer:
-// the character asked for a fact and got one, and if that answer is rejected the fact was settled for
+// The rule: only the accepted answer enters history. A clarification is part of an answer — the
+// character asked for a fact and got one — so if that answer is rejected, the fact was settled for
 // an instance that no longer exists. The retry never heard it, so neither may the writer.
 describe("a clarification on a rejected attempt", () => {
   it("reaches neither the writer nor the clarifier, while the accepted attempt's does", async () => {
@@ -1226,7 +1238,7 @@ describe("a clarification on a rejected attempt", () => {
       { speech: "No.", action: "stands up off the crate" },
     ];
     const clarifierReplies = [{ answer: "Bolted, top and bottom." }, { answer: "Ten feet, behind them." }];
-    // A revision has to move the situation to be sendable at all: the character is shown the
+    // A revision must move the situation to be sendable at all: the character is shown the
     // situation and not the question, so a re-ask from the same one is the identical message.
     const judgeReplies = [
       { verdict: "retry", revised: {

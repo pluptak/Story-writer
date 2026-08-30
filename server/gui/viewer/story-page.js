@@ -8,15 +8,15 @@ import { prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paras } from "./blocks.js";
 
 // ---- the story page ----------------------------------------------------------
-// One story, a full page rather than a modal (`#/story?dir=...`, so a reload or a bookmark lands
-// back on it) -- this is where the play confirmation used to live, now with room for what it is
-// scaffolded to grow into: a scene list (below) and, later, a story editor. Reached only by clicking
-// a shelf card; "back to shelf" is the only way out, same as before.
+// One story, a full page rather than a modal (`#/story?dir=...`, so a reload or bookmark lands back
+// on it) -- this grew out of the play confirmation, with room for what it was scaffolded to become:
+// a scene list (below) and a story editor. Reached only by clicking a shelf card; "back to shelf"
+// is the only way out, same as before.
 
 let chapterReq = 0;
 
-/** The story's scenes, numbered -- scene N is chapter N, written or not (`card.chapters` is which
- *  ones exist on disk). `scene` is the legacy singular the shelf still reads. */
+/** The story's scenes, numbered -- scene N is chapter N, written or not (`card.chapters` says which
+ *  exist on disk). `scene` is the legacy singular the shelf still reads. */
 export const scenesOf = card =>
   card.scenes?.length ? card.scenes.map((s, i) => ({ ...s, n: i + 1 }))
   : card.scene ? [{ ...card.scene, n: 1 }] : [];
@@ -63,8 +63,8 @@ function sceneRowHtml(scene, chapters, canWrite, why, discardable) {
 
 /** Runs filed under the chapter they wrote, ascending to match the scene list above, newest first
  *  inside each group. A run retained from before chapter numbers were logged has none and lands in
- *  its own group at the end. One group is not a grouping, so a single-chapter story still renders
- *  the flat list it always did. */
+ *  its own group at the end. One group is no grouping, so a single-chapter story keeps the flat
+ *  list it always had. */
 function runsListHtml(s) {
   if (!s.runs?.length) return `<p class="hint">no retained runs yet</p>`;
   const btn = r => {
@@ -118,7 +118,7 @@ export function storyPageHtml() {
   </section>`;
 
   // The client-side mirror of what /select and /model would refuse anyway (server.ts, run-control-
-  // routes.ts) -- said here so the button explains itself instead of round-tripping to find out.
+  // routes.ts) -- said here so the button explains itself instead of round-tripping.
   const why = runningReason()
             || (!APP.session.picking ? "not ready to start a run right now"
               : APP.picked ? "starting…" : "");
@@ -193,8 +193,8 @@ export function wireStoryPage(page) {
   const handoff = page.querySelector("#story-handoff");
   if (handoff) handoff.addEventListener("click", () => {
     APP.handoffDir = APP.storyDir;
-    // Preselect the story's own model over the architect default -- it's the one already known
-    // to load, whereas the architect default (defaults.json, story-independent) may not be.
+    // Preselect the story's own model over the architect default -- it's the one already known to
+    // load, whereas the architect default (defaults.json, story-independent) may not be.
     const def = (APP.stories || []).find(s => s.dir === APP.storyDir)?.defaultModel || "";
     APP.handoffModel = (def && APP.modelIds.includes(def)) ? def : "";
     go("handoff");
@@ -225,16 +225,16 @@ export function wireStoryPage(page) {
     });
 }
 
-/** Play needs the model set before /select, not after -- a fresh run reads `LIVE.modelOverride`
- *  the moment it loads the story. Sent unconditionally (even blank) so a leftover override from a
+/** Play needs the model set before /select, not after -- a fresh run reads `LIVE.modelOverride` the
+ *  moment it loads the story. Sent unconditionally (even blank) so a leftover override from a
  *  previous story's run never silently rides along into this one. */
 async function playChosen(dir, model, chapter) {
   // A deliberate rerun: confirm an overwrite or a skip ahead before asking the server to allow it,
   // and send `replace` only for the deviation actually confirmed. Sending it on every run would put
-  // the whole durability guard in the browser, where it rests on a story list that can be stale —
-  // the one case that would overwrite a chapter with no dialog shown. The handoff's start button
-  // does not go through here — it sends no replace, and is refused if its prepared chapter somehow
-  // collides with what is on disk.
+  // the whole durability guard in the browser, resting on a story list that can be stale -- the one
+  // case that would overwrite a chapter with no dialog shown. The handoff's start button does not
+  // go through here -- it sends no replace, and is refused if its prepared chapter somehow collides
+  // with what is on disk.
   const replace = authorizeChapterRun(chapter);
   if (replace === null) return;
   if (APP.picked) return;
@@ -243,11 +243,10 @@ async function playChosen(dir, model, chapter) {
   await choose({ dir, chapter, replace });
 }
 
-/** The two confirms behind a deliberate rerun: rewriting a written chapter, or skipping past one
- *  that was never written. `null` means the owner said no; `true` means they confirmed a deviation
- *  and the server may allow it; `false` means there was nothing to confirm, and the server's own
- *  guard stays in force — which is what catches a story list this page read before the chapter
- *  existed. */
+/** The two confirms behind a deliberate rerun: rewriting a written chapter, or skipping past an
+ *  unwritten one. `null` means the owner said no; `true` means they confirmed a deviation and the
+ *  server may allow it; `false` means there was nothing to confirm, and the server's own guard stays
+ *  in force -- which catches a story list this page read before the chapter existed. */
 function authorizeChapterRun(n) {
   const s = (APP.stories || []).find(x => x.dir === APP.storyDir);
   const written = s?.chapters || [];

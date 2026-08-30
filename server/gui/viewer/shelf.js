@@ -4,7 +4,7 @@ import { charChip } from "./character-card.js";
 
 // ---- the shelf ------------------------------------------------------------
 // The hub: reachable any time an engine is attached, including mid-run -- browsing is always
-// allowed, only *starting* a run is refused, and that refusal now lives on the story page, not
+// allowed, only *starting* a run is refused, and that refusal lives on the story page now, not
 // here. A card doesn't play a story, it opens one.
 export const castChips = (list, dir) => (list || []).map(c => charChip(c, dir)).join("");
 
@@ -45,8 +45,8 @@ export function pickerHtml() {
   </section>`;
 }
 
-/** `openStory` is injected (pages.js, which owns navigation) rather than imported here -- shelf.js
- *  sits underneath nav.js in the module graph (nav.js -> saved-runs.js -> here, for castChips), so
+/** `openStory` is injected (pages.js, which owns navigation) rather than imported -- shelf.js sits
+ *  underneath nav.js in the module graph (nav.js -> saved-runs.js -> here, for castChips), so
  *  importing nav.js back from here would close a cycle. */
 export function wirePicker(page, openStory, openNew = null) {
   for (const b of page.querySelectorAll(".card[data-dir]"))
@@ -54,8 +54,8 @@ export function wirePicker(page, openStory, openNew = null) {
       APP.storyDir = b.dataset.dir; APP.storyModel = ""; APP.storyError = ""; APP.runError = ""; openStory();
     } });
   for (const b of page.querySelectorAll(".card[data-new]"))
-    // Opens the scaffold page (`openNew`, injected by the shelf -- importing nav.js here would close
-    // a module cycle). One ScaffoldSession lives on the server (GUI-SPEC §5.1), so a session already
-    // running is continued there rather than started again; the card relabels itself to say so.
+    // Opens the scaffold page (`openNew`, injected -- importing nav.js here would close a module
+    // cycle). One ScaffoldSession lives on the server (GUI-SPEC §5.1), so a session already running
+    // is continued there rather than started again; the card relabels itself to say so.
     b.addEventListener("click", () => { if (openNew) openNew(); });
 }

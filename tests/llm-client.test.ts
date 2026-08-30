@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { complete, completeStream, NET, lmUrlsDerivable } from "../engine/llm-client.ts";
 import { stopRun, armRun } from "../live.ts";
 
-/** Helper to create a ReadableStream from an array of chunks. */
+/** Build a ReadableStream from an array of chunks. */
 function chunkedStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
   let index = 0;
   return new ReadableStream({
@@ -169,8 +169,8 @@ describe("completeStream SSE frame parsing", () => {
   });
 
   it("does not abort a slow but steadily-streaming generation (idle timeout, not total duration)", async () => {
-    // The window is short and each chunk lands well inside it, but the whole stream runs past it:
-    // only an idle deadline that resets per chunk survives this. A total-duration cap aborts mid-stream.
+    // The window is short and each chunk lands inside it, but the whole stream runs past it: only
+    // an idle deadline reset per chunk survives this. A total-duration cap would abort mid-stream.
     const saved = { timeoutMs: NET.timeoutMs, retries: NET.retries, backoffMs: NET.backoffMs };
     NET.timeoutMs = 250; NET.retries = 0; NET.backoffMs = 0;
     armRun();
@@ -228,12 +228,12 @@ describe("completeStream SSE frame parsing", () => {
     globalThis.fetch = async () => new Response(new BreakAfterData(),
       { headers: { "content-type": "text/event-stream" } }) as any;
 
-    // Stop the run BEFORE starting the stream — this ensures RUN.stopped=true
+    // Stop the run before starting the stream, so RUN.stopped=true
     // when the stream error is caught on line 122
     stopRun();
 
-    // Now start a stream that will error — because RUN.stopped is true, the error
-    // must be rethrown (line 122) instead of recovered (line 128)
+    // The stream then errors — RUN.stopped is true, so the error
+    // is rethrown (line 122) instead of recovered (line 128)
     await assert.rejects(
       () => completeStream("test-model", [{ role: "user", content: "test" }], 0.8, () => {}),
       (e: Error) => e instanceof Error);

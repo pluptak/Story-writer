@@ -38,11 +38,11 @@ export function characterPsychologyWarnings(
   return out;
 }
 
-/** The cast-sheet problems that are pure string work and therefore belong in code, never in the
- *  model's verify pass. `story-format.ts` warns the very same things at load time; these two live
- *  here so the wording has exactly one home, mirroring `characterPsychologyWarnings`. `prefix` is
- *  "scene" or "scene N" at proposal time and `Scene ${i + 1}` at load time; each caller appends its
- *  own disposition (the load path drops the offending name, the proposal path only reports). */
+/** The cast-sheet problems that are pure string work and belong in code, never in the model's
+ *  verify pass. `story-format.ts` warns the same things at load time; these live here so the
+ *  wording has one home, mirroring `characterPsychologyWarnings`. `prefix` is "scene" or "scene N"
+ *  at proposal time and `Scene ${i + 1}` at load time; each caller appends its own disposition
+ *  (the load path drops the offending name, the proposal path only reports). */
 export function rosterNameNotACharacter(prefix: string, name: string): string {
   return `${prefix} roster "${name}" is not one of the characters`;
 }
@@ -58,8 +58,8 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     : (o.scene && typeof o.scene === "object") ? [o.scene]
     : [];
   // A `scene` that came back as anything but an object — a bare string of prose is the one models
-  // actually produce — must not be read as one: `readSceneDef` would take the string's `.length` as
-  // the scene's word count and quietly propose a 19-word chapter. Say so and fall through to blank.
+  // actually produce — must not be read as one: `readSceneDef` would take the string's `.length`
+  // as the scene's word count and quietly propose a 19-word chapter. Say so, fall through to blank.
   if (!rawScenes.length && o.scene)
     problems.push("the scene came back as text rather than an object — using an empty scene");
   if (!rawScenes.length) rawScenes.push({});
@@ -509,16 +509,16 @@ export function applyEdits(spec: StorySpec, raw: any): {
   }
 
   // A renaming round may leave another character's knows/goal/belief still naming the old name —
-  // the exact "renamed and forgot to update" bug this block exists to catch. The architect has no
-  // rename history at proposal time, but applyEdits does, so the dangling-reference scan lives here:
-  // exact old-name match, word-boundary, zero false positives. The engine still does not rewrite the
-  // prose; it only says where the stale name sits. (The hallucinated-name half stays with the
+  // the exact "renamed and forgot to update" bug this block catches. The architect has no rename
+  // history at proposal time, but applyEdits does, so the dangling-reference scan lives here:
+  // exact old-name match, word-boundary, zero false positives. The engine still does not rewrite
+  // the prose; it only says where the stale name sits. (The hallucinated-name half stays with the
   // model's "anything else" backstop — see PLANS.md Architect follow-ups.)
   //
-  // This finding reaches the author and nobody else. runAutoPasses builds [ALREADY FLAGGED] from
-  // `applyEdits(cur, { edits: [] })`, where `renames` is empty by construction, so verify never sees
-  // it and no later round re-derives it. That is inherent: only the round that renamed holds the
-  // history. If the model is ever to fix these, the finding has to be recomputed from the spec.
+  // This finding reaches the author and nobody else: runAutoPasses builds [ALREADY FLAGGED] from
+  // `applyEdits(cur, { edits: [] })`, where `renames` is empty by construction, so verify never
+  // sees it and no later round re-derives it. That is inherent — only the renaming round holds the
+  // history. If the model is ever to fix these, the finding must be recomputed from the spec.
   const renameProblems: string[] = [];
   if (renames.size) {
     for (const c of draft.characters) {

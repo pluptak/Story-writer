@@ -28,6 +28,9 @@ afterwards.
 | [GUI-SPEC.md](GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
 | [Writer.MD](Writer.MD) | the writer's role, the reader seat, and the live-run screen |
 | [Architect.MD](Architect.MD) | the architect — both modes, the handoff's behaviour and edit surface, and its two GUI screens |
+| [Character.MD](Character.MD) | the character agent — what it holds and never sees, and the consult from its side |
+| [Clarifier.MD](Clarifier.MD) | the clarifier — the author's mid-scene fact answers, their bounds, and the rewind |
+| [Judge.MD](Judge.MD) | any judge variant — the per-answer gate, the narration lint, the batch judge, the cast judge |
 | [GUI-CHECKLIST.md](GUI-CHECKLIST.md) | you changed anything under `server/gui/` — the manual pass that stands in for the GUI tests this repo does not have |
 | [PLANS.md](PLANS.md) | anything not built yet — every proposal, follow-up and known weak spot |
 | [defaults.md](defaults.md) | what `defaults.json` settles before a story exists |
@@ -136,8 +139,10 @@ the draft, or anyone else's replies. Every other rule follows from protecting th
 only by system prompt, model and temperature: **writer** (0.8) and one **character** (0.9) per entry
 in `story.json`'s `characters[]`, plus author-side helpers that share the writer's voice but hold one
 response schema each — the **clarifier** (one per scene) and, at 0.3 with no history, three judge
-variants (`newJudge`, `newBatchJudge`, `newNarrationJudge`). Why they are separate agents rather
-than sections of the writer's prompt is in [Writer.MD](Writer.MD).
+variants (`newJudge`, `newBatchJudge`, `newNarrationJudge`). Each role owns a doc of its own — [Writer.MD](Writer.MD), [Character.MD](Character.MD),
+[Clarifier.MD](Clarifier.MD) and [Judge.MD](Judge.MD), the last one covering all four judge
+variants, cast judge included. Why they are separate agents rather than
+sections of the writer's prompt is in [Judge.MD](Judge.MD).
 
 Two invariants to hold while editing the engine. **`consult()` never touches `agent.history`** —
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean

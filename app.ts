@@ -133,10 +133,10 @@ async function pickStory(): Promise<Picked> {
 }
 
 /** The response to SIGINT/SIGTERM in headless mode, factored out of appMain so tests can drive it
- *  against fake state. First signal: tell the run loop to stop looping. If a run is in flight, take
- *  the /stop path — release whatever the loop is parked on, abort the model calls — and let the loop
- *  unwind so runAndSave's finally can flush before the caller closes the viewer; otherwise close and
- *  exit at once. A second signal exits immediately: graceful once, forced after that. */
+ *  against fake state. First signal: tell the run loop to stop. With a run in flight, take the /stop
+ *  path — release whatever the loop is parked on, abort the model calls — and let the loop unwind so
+ *  runAndSave's finally can flush before the viewer closes; otherwise close and exit at once. A
+ *  second signal exits immediately: graceful once, forced after that. */
 export function createShutdownSignal(opts: {
   closeServer: () => Promise<void>;
   onShutdown: () => void;

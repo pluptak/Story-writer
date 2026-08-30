@@ -168,14 +168,17 @@ export function writerSystem(p: {
 
 export const writeInstruction = (p: {
   words: number; target: number; maxProseWords: number; overran: number; neglected: string[]; hardCap: boolean;
-  fired?: string;
+  fired?: string; hold?: string;
 }) =>
   `[WRITE] ${p.words} words so far, aiming at about ${p.target}.`
   + ` At most ${p.maxProseWords} words in this piece.`
   + (p.overran ? ` Your last piece ran to ${p.overran} words — far past that. Keep this one short.` : "")
   + (p.fired ? ` [WORLD] ${p.fired} That has happened — nobody in this scene chose it and nobody `
     + `can decline it. Write it as already true, on the page, in this piece, and let it cost them `
-    + `something. Do not have anyone merely notice it.` : "")
+    + `something. Do not have anyone merely notice it.`
+    : p.hold ? ` [HOLD] ${p.hold} -- that has NOT happened. Do not start it, do not have it already `
+      + `underway, and do not build toward it as imminent. It is not yours to set off. Write the `
+      + `scene as it stands; if it happens at all, you will be told that it has.` : "")
   + ` Write up to the next choice and stop while the pressure is still live, then ask for it.`
   + (p.hardCap
       ? ` THIS IS THE LAST PIECE OF THE SCENE. You are far past length and it ends here, in this `
@@ -196,7 +199,12 @@ export const writeInstruction = (p: {
   + (p.neglected.length ? ` ${p.neglected.join(" and ")} ${p.neglected.length > 1 ? "have" : "has"} `
     + `gone unconsulted for a while now. Put the moment to them -- whether it turns on a choice of `
     + `theirs or they are simply standing in it, they get to be a person in this scene rather than `
-    + `furniture. Hear from them before it ends.` : "");
+    + `furniture. Hear from them before it ends.`
+    + (p.neglected.length > 1
+        ? ` Put the SAME moment to all of them at once, as one "reactors" fan-out -- not a consult `
+          + `each. That costs ONE step however many react, where asking them one at a time costs a `
+          + `step apiece and leaves the scene exactly where it was.`
+        : "") : "");
 
 export const askReader = (words: number) =>
   `[ASK READER] ${words} words so far. The reader wants to choose the `

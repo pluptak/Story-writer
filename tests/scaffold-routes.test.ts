@@ -106,7 +106,7 @@ describe("/scaffold routes", () => {
   });
 
   // -- ABANDON VERSUS WORK IN FLIGHT -----------------------------------------
-  // An abandon that lands while an architect round is still awaiting must strip that round of its
+  // An abandon landing while an architect round is still awaiting must strip that round of its
   // right to commit: no resurrected session, no picker resolution, no success report.
   const yieldMicrotasks = () => new Promise(r => setTimeout(r, 0));
 

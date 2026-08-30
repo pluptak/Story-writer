@@ -1,7 +1,7 @@
 /**
- * STORY EDITOR — schema-aware editor for a story's story.json, server-validated.
- * Renders every editable field with appropriate controls, tracks dirty state,
- * debounces validation through /story/check, and saves through /story/save.
+ * STORY EDITOR -- schema-aware editor for a story's story.json, server-validated. Renders every
+ * editable field with suitable controls, tracks dirty state, debounces validation through
+ * /story/check, and saves through /story/save.
  */
 
 import { esc, post, tid } from "./util.js";
@@ -54,7 +54,7 @@ const voiceFld = (i, voice) => {
     `<textarea id="char-${i}-voice" rows="3">${esc(lines)}</textarea></div>`;
 };
 
-/** Reach, scene-scoped by design (I1): rendered as `NAME: thing :: meaning` per line — the same
+/** Reach, scene-scoped by design (I1): rendered as `NAME: thing :: meaning` per line -- the same
  *  comma-separated-text-field grain as the rest of this form, no nested-map widget. */
 const reachLines = reach => Object.entries(reach || {}).flatMap(([who, entries]) =>
   (Array.isArray(entries) ? entries : []).map(e => `${who}: ${e}`)).join("\n");
@@ -71,14 +71,14 @@ const parseReach = text => {
   return out;
 };
 
-/** Deep clone an object by serialising it — Zod-parsed data is plain JSON anyway. */
+/** Deep clone by serialising -- Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
 function scaffoldStory(spec) {
   const story = clone(spec);
-  // specView carries `scene` as a convenience alias for scenes[0] — the interview's proposal card
+  // specView carries `scene` as a convenience alias for scenes[0] -- the interview's proposal card
   // reads it. StoryJson is strict, so leaving it on the draft makes every check fail with
-  // `Unrecognized key: "scene"`, which disables the write button on the first edit. The editor works
+  // `Unrecognized key: "scene"`, disabling the write button on the first edit. The editor works
   // from `scenes` throughout, so the alias is dropped here rather than removed from specView.
   delete story.scene;
   story.characters = (story.characters || []).map(c => ({
@@ -95,9 +95,9 @@ function deepEq(a, b) {
   try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
 }
 
-/** Debounced check against the server. The token makes the newest request win: two checks in
- *  flight can answer out of order, and a stale failure would otherwise disable Save (or a stale
- *  success clear issues a newer check had flagged) until the next keystroke. */
+/** Debounced check against the server. The token makes the newest request win: two checks in flight
+ *  can answer out of order, and a stale failure would otherwise disable Save (or a stale success
+ *  clear issues a newer check had flagged) until the next keystroke. */
 let checkReq = 0;
 function scheduleCheck() {
   if (APP.editCheckTimer) clearTimeout(APP.editCheckTimer);
@@ -132,10 +132,10 @@ function issuesHtml(path) {
 
 /** Issues that no field claims. `issuesHtml` renders an issue beside the field its path names, so a
  *  whole-story issue (a bad top-level key, say) would otherwise disable the button and explain
- *  nothing. Anything not rendered inline is rendered here, next to the button it is disabling. */
+ *  nothing. Anything not rendered inline is rendered here, beside the button it is disabling. */
 function orphanIssuesHtml() {
-  // The roots the form renders a field (and therefore an inline issue) for. Anything else — a
-  // whole-story issue, or a key the form does not show — has no home and lands under the button.
+  // The roots the form renders a field (and therefore an inline issue) for. Anything else -- a
+  // whole-story issue, or a key the form does not show -- has no home and lands under the button.
   const FORM_ROOTS = ["title", "premise", "writerStyle", "scenes", "characters", "config", "models"];
   const orphans = (APP.editIssues || []).filter(i =>
     !FORM_ROOTS.includes(String(i.path || "").split(".")[0]));
@@ -289,9 +289,9 @@ function editToolbarHtml() {
   </div>`;
 }
 
-/** Fetch the story and load it into the editor store. `editLoading` is what keeps this from
- *  running away: wireStoryEditor() starts the load and runs on EVERY render, so without a flag
- *  saying one is already in flight, the render this schedules would start another. */
+/** Fetch the story and load it into the editor store. `editLoading` is what keeps this from running
+ *  away: wireStoryEditor() starts the load and runs on EVERY render, so without a flag saying one is
+ *  already in flight, the render this schedules would start another. */
 export async function loadEditor(dir) {
   APP.editFor = dir;           // claimed up front: renders while the fetch is in flight must not re-trigger
   APP.editError = "";
@@ -315,8 +315,8 @@ export async function loadEditor(dir) {
   }
   APP.editLoading = false;
   if (!j.ok) {
-    // `error` is a story that would not parse; `reason` is the route refusing outright
-    // ("cannot edit while a run is in flight") -- both have to reach the page.
+    // `error` is a story that would not parse; `reason` is the route refusing outright ("cannot
+    // edit while a run is in flight") -- both have to reach the page.
     APP.editError = j.error || j.reason || "could not load story";
     APP.editRaw = j.raw || null;
     APP.render();
@@ -354,8 +354,8 @@ export function storyEditHtml() {
 
   if (!APP.editDraft) {
     // A new-story draft with no scaffold behind it -- a reloaded or bookmarked #/edit?new=1 after
-    // the interview is gone -- will never resolve: there is nothing on the server to load. Say so
-    // and offer a way out, rather than a back-button-less "loading…" that hangs forever.
+    // the interview is gone -- never resolves: there is nothing on the server to load. Say so and
+    // offer a way out, rather than a back-button-less "loading…" that hangs forever.
     if (APP.editNew && !APP.scaffold?.spec) {
       return `<section class="picker story"><h2>New story</h2>
         <p class="hint">This draft is no longer available — start a new one from the shelf.</p>
@@ -425,8 +425,8 @@ function setDirty() {
 }
 
 function applyField(id, value) {
-  // Map element IDs to editDraft paths. "edit-facts" is deliberately absent: it needs line
-  // splitting into an array, handled by its own branch below -- a map entry here would shadow it.
+  // Element IDs to editDraft paths. "edit-facts" is deliberately absent: it needs line splitting
+  // into an array, handled by its own branch below -- a map entry here would shadow it.
   const map = {
     "edit-title": "title",
     "edit-premise": "premise",
@@ -517,7 +517,7 @@ function applyField(id, value) {
 
 export function wireStoryEditor(page) {
   // Back button -- mutates nothing before go(): the dirty guard in nav.js owns the confirm, and
-  // clearing editDirty here (as this used to) silently discarded unsaved changes with one click.
+  // clearing editDirty here (as this used to) silently discarded unsaved changes in one click.
   // A scaffold draft ("edit in full") has no story on disk to go back to -- it returns to the
   // scaffold page, which still holds the in-memory session.
   const back = page.querySelector("#edit-back");
@@ -608,9 +608,9 @@ export function wireStoryEditor(page) {
     const j = await post("/story/suggest", { spec: APP.editDraft, text }, false);
     APP.editSuggestBusy = false;
     APP.editSuggestResult = j || { ok: false, error: "no answer" };
-    // An edits reply carries the architect's edited spec — computed FROM this draft, so adopting
-    // it wholesale keeps any unsaved manual edit that was sent up with it. Without this the form
-    // would show "changes" while Save stayed disabled (nothing actually differed).
+    // An edits reply carries the architect's edited spec -- computed FROM this draft, so adopting
+    // it wholesale keeps any unsaved manual edit sent up with it. Without this the form would show
+    // "changes" while Save stayed disabled (nothing actually differed).
     if (j?.kind === "edits" && j.spec && Array.isArray(j.applied) && j.applied.length) {
       APP.editDraft = clone(j.spec);
       setDirty();
@@ -619,10 +619,10 @@ export function wireStoryEditor(page) {
     APP.render();
   });
 
-  // Start loading if not already loaded for THIS story — never while one is already in flight.
-  // Keyed by editFor, not editStory: a draft left over from another story must trigger a fresh
-  // load here, never render as if it were this story's. No editError clause: a refusal that
-  // belonged to another story must not block this one -- loadEditor clears it.
+  // Start loading if not already loaded for THIS story -- never while one is already in flight.
+  // Keyed by editFor, not editStory: a draft left over from another story must trigger a fresh load
+  // here, never render as if it were this story's. No editError clause: a refusal belonging to
+  // another story must not block this one -- loadEditor clears it.
   if (APP.editNew && APP.scaffold?.spec && APP.editFor !== "__scaffold__") {
     const loaded = scaffoldStory(APP.scaffold.spec);
     APP.editFor = "__scaffold__";

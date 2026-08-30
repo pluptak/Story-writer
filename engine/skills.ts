@@ -1,8 +1,8 @@
 /**
  * SKILLS, RESTRICTIONS, AND REACH — how a capability gets onto a character, and how it comes off.
  *
- * These are the semantics this module implements. They hold everywhere; the code below is their
- * implementation, not their definition.
+ * These are the semantics this module implements. They hold everywhere; the code below implements
+ * them, it does not define them.
  *
  * **I1 — A skill is intrinsic; reach is granted.**
  * A skill travels with the character between scenes. A reach entry exists only while the scene that
@@ -11,31 +11,30 @@
  * explicitly negate it.
  *
  * **I2 — A restriction is a source-independent prohibition.**
- * A restriction names a capability that is unavailable to this character regardless of where that
- * capability would otherwise have originated — the general catalog, their own `skills`, or the
- * scene's `reach`. Canonical-name removal is how that is implemented, and it keeps the existing
- * one-namespace-with-a-sign design intact — but the mechanism is the implementation of the rule,
- * not the rule. `restrictions: ["cameras"]` does not make `cameras` a fundamental human capability;
- * it says this character does not have the camera access something else would have granted. A
- * restriction never removes a capability by resemblance. Corollary — the blind-AI case:
- * `restrictions: ["sight"]` does NOT remove `reach: ["cameras :: ..."]`, because `cameras` and
- * `sight` are different capabilities, not two implementations of one. The authoring rule that makes
- * this hold: name the interface, never the sense it substitutes for.
+ * A restriction names a capability unavailable to this character no matter where it would have come
+ * from — the general catalog, their own `skills`, or the scene's `reach`. Canonical-name removal is
+ * how it is implemented; the mechanism implements the rule, it is not the rule. `restrictions:
+ * ["cameras"]` does not make `cameras` a fundamental human capability; it says this character does
+ * not have the camera access something else would have granted. A restriction never removes a
+ * capability by resemblance. Corollary — the blind-AI case: `restrictions: ["sight"]` does NOT
+ * remove `reach: ["cameras :: ..."]`, because `cameras` and `sight` are different capabilities, not
+ * two implementations of one. The authoring rule that makes this hold: name the interface, never
+ * the sense it substitutes for.
  *
  * **I3 — Intrinsic beats granted on collision.**
  * A reach entry may not reuse a canon name the general catalog or that character's own skills
  * already use. On collision the character's meaning stands and the reach entry is dropped with a
- * warning: reach vanishes at the scene boundary, so letting it win would silently change what a
- * skill means for one scene and change it back afterwards.
+ * warning: reach vanishes at the scene boundary, so letting it win would change what a skill means
+ * for one scene, then change it back.
  *
  * **I4 — Reach never leaks into a character-level representation.**
- * Every surface that shows a character outside a scene resolves with reach empty and shows `skills`
- * and limits only. Only the per-scene resolution in scene-loop.ts ever sees reach. (AURA reaching
- * the lobby cameras from the basement, forever, is the failure mode this exists to prevent.)
+ * Every surface showing a character outside a scene resolves with reach empty and shows `skills`
+ * and limits only. Only per-scene resolution in scene-loop.ts ever sees reach. (AURA reaching the
+ * lobby cameras from the basement, forever, is the failure mode this exists to prevent.)
  *
  * **I5 — Reach grants access, not existence.**
  * A reach meaning describes what the character can do THROUGH the thing; that the thing is there is
- * established by the scene's `place` or the story's `facts[]`. Enforced softly, on purpose: whether
+ * established by the scene's `place` or the story's `facts[]`. Enforced softly on purpose: whether
  * "a modern office building" establishes security cameras is a semantic judgement, not something a
  * validator should arbitrate, so I5 lives only in the architect's verify pass and warns rather than
  * blocks. I1–I4 are mechanical and enforced here; I5 is an authoring principle.
@@ -167,13 +166,24 @@ function resolveLayers(who: string, skillsRaw: string, restrictionsRaw: string, 
     });
   }
 
-  for (const r of reach.list) {
-    if (out.has(r.key)) {
+  for (const s of reachLayer(who, k => out.has(k), restricted, reach.list)) out.set(canonSkill(s.name), s);
+  return out;
+}
+
+// The reach layer, applied against whatever already stands: both entry points share it, so I2 and I3
+// have one implementation rather than one per caller.
+/** The scene's grant, minus what an intrinsic skill already covers (I3) and what a restriction
+ *  removes (I2). `held` answers whether a canon name is already taken by the intrinsic layers. */
+function reachLayer(who: string, held: (key: string) => boolean, restricted: ReadonlyMap<string, string>,
+                    list: { key: string; name: string; meaning: string }[]): Skill[] {
+  const out: Skill[] = [];
+  for (const r of list) {
+    if (held(r.key)) {
       warn(`   (character ${who}: reach "${r.name}" reuses a skill they already have — their own meaning stands and the reach entry is dropped)`);
       continue;   // I3: intrinsic beats granted on collision
     }
     if (restricted.has(r.key)) continue;   // I2: a restriction reaches across layers by canon name
-    out.set(r.key, { name: r.name, meaning: r.meaning, source: "reach" });
+    out.push({ name: r.name, meaning: r.meaning, source: "reach" });
   }
   return out;
 }
@@ -191,9 +201,19 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
 
 /** Just the reach layer for one character in one scene — what the scene grants them through where
  *  they are standing, minus what restrictions remove (I2) and what an intrinsic skill already covers
- *  (I3). This is the only form in which scene-loop.ts ever sees reach (I4). */
-export function resolveReach(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw: string): Skill[] {
-  return [...resolveLayers(who, skillsRaw, restrictionsRaw, reachRaw).values()].filter(s => s.source === "reach");
+ *  (I3). This is the only form in which scene-loop.ts ever sees reach (I4).
+ *
+ *  `skills` is the character's ALREADY-RESOLVED list, because that is what the caller holds by the
+ *  time a scene is being written: general catalog and own skills settled, restrictions subtracted.
+ *  Taking it resolved rather than re-flattening it to `name :: meaning` and running the intrinsic
+ *  layers a second time is what keeps a general the character simply has from reading as a story
+ *  redeclaring one. */
+export function resolveReach(who: string, skills: readonly Skill[], restrictionsRaw: string, reachRaw: string): Skill[] {
+  const reach = parseReach(who, reachRaw);
+  const { restricted } = parseRestrictions(who, skills.map(s => s.name).join(" | "), restrictionsRaw,
+    new Set(reach.list.map(r => r.key)));
+  const held = new Set(skills.map(s => canonSkill(s.name)));
+  return reachLayer(who, k => held.has(k), restricted, reach.list);
 }
 
 /**

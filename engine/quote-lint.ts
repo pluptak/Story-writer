@@ -4,10 +4,10 @@
  * to also check dialogue against the granted ledger, but a model that always returns {"ok": true}
  * let unmatched quotations reach the page — run 2 carried two quoted lines against an empty ledger
  * and passed. Quotation matching is therefore mechanical: extract quoted strings in code and match
- * each against the granted-so-far ledger. An unmatched quotation flags without a model call, empty
- * ledger included, which is exactly the case the LLM used to pass as a "free assertion".
+ * each against the granted-so-far ledger. An unmatched quotation flags with no model call, empty
+ * ledger included — the exact case the LLM used to pass as a "free assertion".
  *
- * This file imports nothing from the engine: it is pure text matching, so it stays a leaf. */
+ * This file imports nothing from the engine: pure text matching, so it stays a leaf. */
 
 // Re-declared locally to keep this file a leaf (it only needs the two fields it reads).
 export interface GrantedLine { character: string; speech: string; }
@@ -115,24 +115,24 @@ function attribute(prose: string, index: number, names: readonly string[]): stri
 }
 
 /** A quoted span of one bare word is a label, not a line: a lever thrown to the 'Shutdown' position,
- *  a status that reads "Fatal", a switch turned "off". A story set at a dashboard produces a steady
+ *  a status that reads "Fatal", a switch turned "off". A dashboard-set story produces a steady
  *  stream of them, and each cost twice over — flagged as a fabricated line, and (before the callers
  *  stopped short-circuiting) taking the LLM half of the lint down with it, so THE ONE RULE went
- *  unchecked on that piece entirely. Two live runs carried six such flags between them, every one a
- *  machine label. Missing an invented one-word line is the cheap failure beside that, and the same
+ *  unchecked on that piece entirely. Two live runs carried six such flags between them, every one
+ *  a machine label. Missing an invented one-word line is the cheap failure beside that — the same
  *  trade sense-lint makes: inventing a violation costs the scene its redraft. */
 const isMachineLabel = (text: string) => !/\s/.test(text.trim());
 
 /** A quote introduced by a named display or broadcast source is world furniture, not a line: the
- *  sign, the notice, the PA. Nothing a cast member said, so no grant could ever cover it, and
- *  before this exemption every such quote flagged. The check is a positive exculpating pattern,
- *  the same shape as sense-lint's DETERMINER and NOUN_TAIL tails and the machine-label rule above:
- *  an enumerable list grown only on live evidence, with the reason for each addition written down.
- *  It deliberately does NOT exempt on the absence of a speech verb — unattributed dialogue is the
- *  house style's dominant form, and exempting that would leave the check running only for the
- *  tagged minority while "the PA said ..." (a broadcast, not a character) went on flagging. The
- *  accepted trade: fabricated dialogue framed as display ("the note read 'I never signed anything'")
- *  escapes the mechanical half. */
+ *  sign, the notice, the PA. Nothing a cast member said, so no grant could cover it, and before
+ *  this exemption every such quote flagged. A positive exculpating pattern, the same shape as
+ *  sense-lint's DETERMINER and NOUN_TAIL tails and the machine-label rule above: an enumerable
+ *  list grown only on live evidence, each addition's reason written down. It deliberately does NOT
+ *  exempt on the absence of a speech verb — unattributed dialogue is the house style's dominant
+ *  form, and exempting that would leave the check running only for the tagged minority while
+ *  "the PA said ..." (a broadcast, not a character) went on flagging. The accepted trade:
+ *  fabricated dialogue framed as display ("the note read 'I never signed anything'") escapes the
+ *  mechanical half. */
 const SOURCE_FRAMES = [
   "read", "reads", "printed", "stencilled", "handwritten", "taped",
   "sign", "notice", "placard", "label", "screen", "display",

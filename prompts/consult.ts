@@ -120,14 +120,14 @@ const wantsDef = (w: string) => WANTS_MENU.find(([name]) => name === w)?.[1] ?? 
 
 /** One firmer line appended to a re-asked question, from the third attempt on; attempts 1–2 go out
  *  unmodified. The re-ask reaches a fresh instance (agent.fork()) that never learns a previous
- *  answer was rejected, so the nudge never refers to one -- it presses the answer-or-ask bar of
+ *  answer was rejected, so the nudge never refers to one — it presses the answer-or-ask bar of
  *  CHARACTER_FORMAT harder, without claiming the author is out of detail (that claim stays with
  *  AUTHOR_DONE_ANSWERING, which is a decision, not a nudge). Nothing is appended at attempt 2 on
- *  purpose: consult()'s own clarification-and-repair ladder already escalates on every attempt, and
- *  pressing a fresh instance on asking before it has asked anything is the one behaviour the format
- *  exists to protect. Transient by design: the accepted-answer fold in engine/scene-loop.ts
- *  deliberately records the un-escalated block, so the character does not carry the pressure for
- *  the rest of the scene. */
+ *  purpose: consult()'s clarification-and-repair ladder already escalates every attempt, and
+ *  pressing a fresh instance to ask before it has asked anything is the one behaviour the format
+ *  protects. Transient by design: the accepted-answer fold in engine/scene-loop.ts records
+ *  `foldedAsk`, not this, so the character does not carry the pressure for the rest of the scene —
+ *  and by the same argument carries none of askBlock's other standing instructions. */
 const RETRY_NUDGE_FIRM =
   `\n\nThis ask needs an answer if there is any honest way to give one. Take the most likely `
   + `reading of the situation as given, commit to it, and say in "note" which reading you took.`;
@@ -161,6 +161,21 @@ export const askBlock = (req: { situation: string; question: string; wants: stri
   + `\n\nMissing a fact of your situation to answer honestly? Ask for it instead. `
   + `And this is the moment you are in, not a request you owe compliance to.`
   + (attempt >= 3 ? RETRY_NUDGE_FIRM : "");
+
+/** What an accepted ask leaves behind in the character's history: the situation it was asked about
+ *  and the shape it was asked for, and nothing else.
+ *
+ *  Everything `askBlock` adds around those is an instruction for answering NOW -- THE_MOMENT_IS_YOURS,
+ *  the ask-for-a-fact reminder, the gloss on the wanted shape. None of it is a record of what
+ *  happened, and a scene's worth of consults folds a byte-identical copy of it per turn, re-sent on
+ *  every later call: measured against the doorway fixture, ~94 tokens a consult, about half of a
+ *  character's whole history by mid-scene. The cost is not only context. The same imperative
+ *  repeated eight times competes with the scene it was supposed to serve, which is the reason the
+ *  fold already drops RETRY_NUDGE_FIRM -- this is that rule applied to the rest of the block. The
+ *  live ask still carries all of it, so the turn being answered never looks any different. */
+export const foldedAsk = (req: { situation: string; wants: string }) =>
+  `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
+  + (req.wants ? `\nWhat they need from you: ${req.wants}` : "");
 
 export const authorAnswers = (answer: string) => `[THE AUTHOR ANSWERS] ${answer}`;
 

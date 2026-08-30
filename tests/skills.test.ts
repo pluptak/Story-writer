@@ -164,17 +164,36 @@ describe("reach", () => {
   });
 
   it("reach is character-in-scene: two characters granted different interfaces see only their own", () => {
-    const aura = resolveReach("AURA", "", "", "cameras :: perceiving through the lobby cameras");
-    const merritt = resolveReach("MERRITT", "", "", "keys :: locking and unlocking the automatic doors");
+    const aura = resolveReach("AURA", [], "", "cameras :: perceiving through the lobby cameras");
+    const merritt = resolveReach("MERRITT", [], "", "keys :: locking and unlocking the automatic doors");
     assert.deepEqual(names(aura), ["cameras"]);
     assert.deepEqual(names(merritt), ["keys"]);
-    assert.equal(warnings(() => { resolveReach("AURA", "", "", "cameras :: seeing"); resolveReach("MERRITT", "", "", "keys :: doors"); }).length, 0);
+    assert.equal(warnings(() => { resolveReach("AURA", [], "", "cameras :: seeing"); resolveReach("MERRITT", [], "", "keys :: doors"); }).length, 0);
   });
 
   it("a reach entry without a :: meaning warns — reach is always bespoke", () => {
-    const w = warnings(() => resolveReach("AURA", "", "", "cameras"));
+    const w = warnings(() => resolveReach("AURA", [], "", "cameras"));
     assert.equal(w.length, 1);
     assert.match(w[0], /no ":: meaning"/);
+  });
+
+  it("takes the resolved skills as they are: a general the character simply has is no redeclaration", () => {
+    // What scene-loop hands it every scene — resolveSkills' own output, generals included. Re-running
+    // the intrinsic layers over that used to warn once per general per character per call.
+    const resolved = quietSync(() => resolveSkills("MERRITT", "keys :: by feel", "sight"));
+    const w = warnings(() => resolveReach("MERRITT", resolved, "sight", "panel :: reading the fault codes"));
+    assert.deepEqual(w, []);
+    assert.deepEqual(names(resolveReach("MERRITT", resolved, "sight", "panel :: reading the fault codes")), ["panel"]);
+  });
+
+  it("still drops a grant colliding with the resolved list, general or own (I3)", () => {
+    const resolved = quietSync(() => resolveSkills("MERRITT", "keys :: by feel", ""));
+    for (const grant of ["speech :: through the intercom", "keys :: through the key cabinet"]) {
+      const w = warnings(() => resolveReach("MERRITT", resolved, "", grant));
+      assert.equal(w.length, 1, grant);
+      assert.match(w[0], /reuses a skill they already have/);
+      assert.deepEqual(quietSync(() => resolveReach("MERRITT", resolved, "", grant)), []);
+    }
   });
 });
 

@@ -19,9 +19,9 @@ import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live
 import { ENGINE, progressDone } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
-/** The system prompt for one character agent: their persona, place, skills, knowledge, goal, belief, impulse and voice.
- *  `reach` is this scene's grant and nothing else (I1/I4): it is passed only from per-scene resolution
- *  and is empty on every character-level view. */
+/** One character agent's system prompt: persona, place, skills, knowledge, goal, belief, impulse, voice.
+ *  `reach` is this scene's grant only (I1/I4): it comes from per-scene resolution and is empty on
+ *  every character-level view. */
 export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = []): string {
   return P.characterSystem({
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
@@ -29,15 +29,14 @@ export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] =
   });
 }
 
-/** The reach layer for one character in ONE scene: the scene's grant, minus what restrictions remove
- *  (I2) and what an intrinsic skill already covers (I3). Never called for a character-level view.
- *  The grant key matches case-insensitively, as roster and pov do: the author's spelling of a name
- *  is their own business, and a mis-cased key must warn at load, not silently grant nothing. */
+/** One character's reach in ONE scene: the scene's grant, minus what restrictions remove (I2) and
+ *  what an intrinsic skill already covers (I3). Never called for a character-level view.
+ *  Grant keys match case-insensitively, like roster and pov: a mis-cased key must warn at load,
+ *  not silently grant nothing. */
 export function sceneReach(sd: SceneDef, def: CharacterDef): Skill[] {
-  const skillsRaw = def.skills.map(s => s.meaning ? `${s.name} :: ${s.meaning}` : s.name).join(" | ");
   const grant = Object.entries(sd.reach ?? {})
     .find(([who]) => who.trim().toLowerCase() === def.name.toLowerCase())?.[1] ?? [];
-  return resolveReach(def.name, skillsRaw, def.limits.join(" | "), grant.join(" | "));
+  return resolveReach(def.name, def.skills, def.limits.join(" | "), grant.join(" | "));
 }
 
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
@@ -58,14 +57,13 @@ export const rosterOf = (characters: CharacterDef[], rostered: string[]): Charac
   characters.filter(def => !rostered.length || rostered.some(r => r.toLowerCase() === def.name.toLowerCase()));
 
 // `can`/`cannot` here, not the wire's `skills`/`restrictions`: these two feed the writer prompt,
-// which prints "CANNOT:" and then argues from that word. Renaming them rewords the prompt.
-/** What the writer gets to know about each character: what they can do, and what they absolutely
- *  cannot — the authored negatives, not inferences from absence, so a restriction that removed a
- *  special skill names it under CANNOT exactly as a removed sense is named. The general skills are
- *  filtered out of `can`: every character has them unless CANNOT says otherwise, so only the delta
- *  from the baseline is worth the writer's attention — and the one signal-carrying special skill
- *  is not buried under six obvious generals. `reach` is the scene's per-character grant (I4: this is
- *  the only place outside the character agents that ever sees it), rendered as its own line. */
+// which prints "CANNOT:" and argues from that word. Renaming them rewords the prompt.
+/** What the writer gets to know about each character: what they can do, and what they cannot —
+ *  the authored negatives, not inferences from absence, so a restriction that removed a special
+ *  skill is named under CANNOT like a removed sense. General skills are filtered out of `can`:
+ *  everyone has them unless CANNOT says otherwise, so only the delta from that baseline is worth
+ *  the writer's attention. `reach` is the scene's per-character grant (I4: the only place outside
+ *  the character agents that ever sees it), shown as its own line. */
 export function writerCast(characters: CharacterDef[], rostered: string[],
                            reach: Record<string, Skill[]> = {}): { name: string; can: string[]; reach: string[]; cannot: string[] }[] {
   return rosterOf(characters, rostered)
@@ -144,25 +142,34 @@ const OVERRUN_SLACK = 1.5;
 
 const NEGLECT_GAP = 3;
 
-// A scene told repeatedly that it is at length and still not ending (PLANS.md: one chapter aimed at
-// 750 words ran to 2,237) needs a floor under the soft nudges. Twice the target is the last piece the
-// writer gets — `hardCap` forces the instruction and the loop closes the scene after it, whatever the
-// reply says.
+// A scene told repeatedly that it is at length and still not ending (PLANS.md: a 750-word chapter
+// ran to 2,237) needs a hard stop under the soft nudges. Twice the target is the last piece the
+// writer gets — `hardCap` forces the instruction and the loop closes the scene after it, whatever
+// the reply says.
 const HARD_CAP_MULT = 2;
 
-// One redraft only — a flagged piece gets a single chance to come back clean, then is accepted
-// regardless. The lint warns; it never blocks the scene, matching the consult-retry fallback elsewhere.
+// One redraft only — a flagged piece gets one chance to come back clean, then is accepted anyway.
+// The lint warns; it never blocks the scene, matching the consult-retry fallback elsewhere.
 const NARRATION_LINT_RETRIES = 1;
 
 // Judging an answer is classification, not composition: the writer's own 0.8 buys nothing here.
 const JUDGE_TEMPERATURE = 0.3;
 
-// SPIKE — the world timeline, ahead of block 1 (PLANS.md). One beat, injected once at a fixed step,
-// with no schema, no entity and no repair: it measures only whether an injected world event lands.
-// The beat text is a run's own, so it arrives by environment rather than living in the engine, and an
-// unset SPIKE_BEAT leaves every instruction byte-identical to before. Delete this and its call site.
+// SPIKE — the world timeline, ahead of block 1 (PLANS.md). One beat, injected once, with no schema,
+// no entity and no repair: it only measures whether an injected world event lands.
+// The beat text belongs to a run, not the engine, so it arrives by environment; an unset SPIKE_BEAT
+// leaves every instruction byte-identical to before. Delete this and its call site.
+//
+// The trigger is a fraction of the word target, not a step number: step counts vary with cast size
+// (17 for a duo, 24-31 for a four-hander), so the same absolute step lands at a different point in
+// each — which is the comparison the duo control exists to make.
+//
+// SPIKE_HOLD names what the writer may not start on its own until then. Without it the writer opens
+// with the event already underway — correct behaviour, since it is steering toward a scene question
+// that names the event, so firing it in line one is obedience, not error.
 const SPIKE_BEAT = process.env.SPIKE_BEAT?.trim() ?? "";
-const SPIKE_BEAT_STEP = Number(process.env.SPIKE_BEAT_STEP ?? 8);
+const SPIKE_HOLD = process.env.SPIKE_HOLD?.trim() ?? "";
+const SPIKE_BEAT_AT = Number(process.env.SPIKE_BEAT_AT ?? 0.45);
 
 /** Cast members who have gone unconsulted for `gap` steps or more, so the writer does not lose someone. */
 export function neglectedCast(cast: string[], lastAsked: Map<string, number>, step: number, gap: number): string[] {
@@ -191,18 +198,17 @@ export async function writeScene(
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
-  // A thought reaches the writer only from inside the point of view. The narration lint already holds
-  // that anyone else's inner life is not narratable fact, so a non-POV thought on the writer's desk
-  // only ever authorized it to narrate one anyway. It still goes into the character's own history —
-  // the thought is their memory and continuity depends on it — and they are never told it may be
+  // A thought reaches the writer only from inside the POV. The narration lint already holds that
+  // nobody else's inner life is narratable fact, so a non-POV thought on the writer's desk would
+  // only authorize narrating one anyway. It still goes into the character's own history — the
+  // thought is their memory and continuity depends on it — and they are never told it may be
   // withheld, because a character writing for an audience is not answering as itself.
   const isPov = (name: string) => !!sd.pov && sd.pov.trim().toLowerCase() === name.trim().toLowerCase();
   const writerSees = (name: string, thought: string) => isPov(name) ? thought : "";
   LIVE.writer = writer; LIVE.log = log;
 
-  // The author-side helpers each carry their own name, so each gets its own transcript file, stats
-  // row and role tag — and all take `writer.model` at call time so a mid-run /model swap still
-  // reaches them.
+  // Each author-side helper has its own name, so it gets its own transcript file, stats row and role
+  // tag — and all take `writer.model` at call time, so a mid-run /model swap still reaches them.
   const newJudge = () => {
     const a = new Agent("JUDGE", writer.model, P.judgeSystem(cast), JUDGE_TEMPERATURE);
     a.think = writer.think;
@@ -222,9 +228,9 @@ export async function writeScene(
     a.think = writer.think;
     return a;
   };
-  // The judge is stateless — it is given everything it needs and never benefits from remembering an
+  // The judge is stateless — it is given everything it needs and gains nothing from remembering an
   // earlier verdict. The clarifier is not: what it settles becomes true for the rest of the scene,
-  // so it keeps its own history and gets trimmed along with everyone else.
+  // so it keeps its own history and is trimmed along with everyone else.
   let clarifier: Agent | null = null;
   const theClarifier = () => {
     if (!clarifier) {
@@ -236,11 +242,11 @@ export async function writeScene(
     return clarifier;
   };
 
-  // Asks the gate has already turned back, by how many times. A refusal says what is wrong and the
-  // writer can still re-send the identical thing — five times running, in one observed scene — so the
-  // repetition is named rather than answered with the same words again. Keyed on the SITUATION and
-  // its addressee, because that is the ask now: the question is the writer's own record, absent
-  // altogether from an open beat, and keying on it would quietly never match.
+  // How many times the gate has already turned an ask back. A refusal says what is wrong, and the
+  // writer can still re-send the identical thing — five times running, in one observed scene — so
+  // the repetition is named rather than answered with the same words again. Keyed on the SITUATION
+  // and its addressee, because that is the ask now: the question is absent altogether from an open
+  // beat, and keying on it would quietly never match.
   const refusedAsks = new Map<string, number>();
   const refusalFor = (why: string, name: string, situation: string) => {
     const key = `${name.trim().toLowerCase()}|${situation.trim().toLowerCase()}`;
@@ -253,40 +259,41 @@ export async function writeScene(
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   const lastAsked = new Map<string, number>();
   const retryCounts = new Map<string, number>();
-  // Promotable deeds offered by the last reaction fan-out (lowercased name → action), waiting for the
+  // Deeds volunteered by the last reaction fan-out (lowercased name → action), waiting for the
   // writer's next reply to promote at most one. A one-shot offer: cleared as the next reply is read.
   const pendingReactionActions = new Map<string, string>();
   // Every line/deed the writer has actually been granted this scene, for the narration lint to check
   // "not yours" against. A reaction's thought goes in here too — as a felt entry: the writer was
   // handed that interiority to render, and without it the lint flags exactly what it asked for.
-  // Only a promoted reaction action joins later, exactly like the writer's own history only folds a
+  // Only a promoted reaction action joins later, like the writer's own history folding only a
   // promoted deed; a reaction's un-promoted action never becomes canon.
   const granted: { character: string; speech: string; action: string; thought?: string }[] = [];
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
+  let beatFired = false; // SPIKE (world timeline): the beat fires once, then the hold lifts.
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
 
-  // A `scene_done` on a page that has nothing on it ends a scene that never happened. The first one
-  // is refused with a message and a flag, so the writer cannot be trapped by its own declaration;
-  // a second is honored — an empty chapter can still not be saved (run-and-save), which is the
-  // backstop if the model keeps insisting. A turn already held open to pay an owed answer is never
-  // held a second time: that one closes whatever it produces.
+  // A `scene_done` on an empty page ends a scene that never happened. The first one is refused with
+  // a message and a flag, so the writer cannot be trapped by its own declaration; a second is
+  // honored — an empty chapter can still not be saved (run-and-save), which is the backstop if the
+  // model keeps insisting. A turn already held open to pay an owed answer is never held twice: that
+  // one closes whatever it produces.
   let blankDone = false;
   // Characters whose accepted answer has not had a writing turn since. An accept only puts the answer
-  // in the writer's history; the next piece of prose is the only thing that can put it on the page,
-  // so the names sit here until one is committed. What the engine can check is that a beat was
-  // written after the answer landed, not that the beat honors it — a scene that ends with names still
-  // here ended with a character's choice missing from the chapter, and says so.
+  // in the writer's history; only the next piece of prose can put it on the page, so the names sit
+  // here until one is committed. What the engine can check is that a beat was written after the
+  // answer landed, not that it honors the answer — a scene that ends with names still here ended
+  // with a character's choice missing from the chapter, and says so.
   let owed: string[] = [];
 
-  // A clarification is part of the attempt that asked for it, and survives on the same terms the
-  // answer does. The clarifier folds it in as it goes — a character may ask twice in one attempt, and
-  // the second answer has to know the first — but an attempt whose answer is thrown away is rewound
-  // to here, and the writer is told nothing at all until the answer is the one the scene takes.
-  // Otherwise a rejected branch's invented fact becomes canon for the writer while the fresh instance
-  // that replaced the rejected character has never heard it.
+  // A clarification is part of the attempt that asked for it and survives on the same terms the
+  // answer does. The clarifier folds it in as it goes — a character may ask twice in one attempt,
+  // and the second answer has to know the first — but an attempt whose answer is thrown away is
+  // rewound to here, and the writer is told nothing at all until the answer is the one the scene
+  // takes. Otherwise a rejected branch's invented fact would become canon for the writer while the
+  // fresh instance that replaced the rejected character has never heard it.
   let attemptClarifications: { character: string; question: string; answer: string }[] = [];
   let clarifierMark = 0;
   const beginAttempt = () => {
@@ -310,7 +317,7 @@ export async function writeScene(
   // narration does not contradict what the character was told.
   const clarify: Clarifier = async (q, r) => {
     const cl = theClarifier();
-    // The asking character's own `knows` travels in the transient payload, never folded into the
+    // The asking character's own `knows` rides in the transient payload, never folded into the
     // clarifier's history: the instructions tell it to reveal only what this character could
     // perceive or already know, and that boundary is uncheckable without the field itself.
     const extra: Msg[] = [{
@@ -394,10 +401,14 @@ export async function writeScene(
     const words = wordCount();
     const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
     const hardCap = words >= sd.length * HARD_CAP_MULT;
-    const fired = SPIKE_BEAT && steps === SPIKE_BEAT_STEP ? SPIKE_BEAT : "";
-    if (fired) console.log(`\n${C.cyan}(world beat fired at step ${steps})${C.reset}`);
+    const fired = SPIKE_BEAT && !beatFired && words >= sd.length * SPIKE_BEAT_AT ? SPIKE_BEAT : "";
+    if (fired) {
+      beatFired = true;
+      console.log(`\n${C.cyan}(world beat fired at step ${steps}, ${words}/${sd.length} words)${C.reset}`);
+    }
     writer.hear(P.writeInstruction({
-      words, target: sd.length, maxProseWords, overran, neglected, hardCap, fired,
+      words, target: sd.length, maxProseWords, overran, neglected, hardCap,
+      fired, hold: beatFired ? "" : SPIKE_HOLD,
     }));
     let draftRaw: string;
     try {
@@ -461,14 +472,13 @@ export async function writeScene(
         : granted;
 
       let flagged: string | null = null;
-      // Both mechanical checks run ALONGSIDE the LLM lint, never in front of it. There is one redraft
-      // only, so reporting serially spends it on the first finding and accepts the second unfixed —
-      // a piece carrying an invented line AND an invented deed has to report both in one message.
-      // The quotation check used to short-circuit here on the grounds that a fabricated line
-      // disqualifies a piece by itself, and that was true of the finding and false of its cost: every
-      // hit, including every machine-label false positive, silently skipped the deed and stillness
-      // checks for that piece. Two live runs skipped six pieces that way and put three unasked-for
-      // stillnesses on the page. The extra model call is only spent on pieces already in trouble.
+      // Both mechanical checks run ALONGSIDE the LLM lint, never before it. There is one redraft
+      // only, so reporting serially spends it on the first finding and leaves the second unfixed —
+      // a piece with an invented line AND an invented deed must get both in one message. The
+      // quotation check used to short-circuit here: every hit, false positives included, silently
+      // skipped the deed and stillness checks. Two live runs skipped six pieces that way and put
+      // three unasked-for stillnesses on the page. The extra model call is only spent on pieces
+      // already in trouble.
       const quoteLint = lintQuotations(prose, lintGranted, cast.map(c => c.name));
       if (quoteLint && !quoteLint.ok) {
         log({ t: "narration_quote_flag", why: quoteLint.why, quote: quoteLint.quote,
@@ -488,8 +498,8 @@ export async function writeScene(
             if (!verdict.ok) lintWhy = verdict.why || "narration was flagged";
             break;
           }
-          // Asked twice and still no verdict: the piece goes to the page unchecked, exactly as it
-          // would on an outage, and the log says which of the two happened.
+          // Asked twice with no verdict: the piece goes to the page unchecked, as on an outage,
+          // and the log says which of the two happened.
           if (tries) break;
           log({ t: "schema_mismatch", call: "lint", character: "(narration)", chapter });
           lintExtra.push({ role: "assistant", content: lintRaw.trim() },
@@ -525,12 +535,12 @@ export async function writeScene(
 
     overran = proseWords > maxProseWords * OVERRUN_SLACK ? proseWords : 0;
     // A beat written after the answers landed is the writing turn they were owed; the consults this
-    // same reply opens are answered further down, and start the count over.
+    // same reply opens are answered further down and start the count over.
     if (prose) { pieces.push(prose); owed = []; }
-    // The writer's own turn, as it will read it back next time. It keeps the question and the shape
-    // it asked for, not just who it asked: the answer arrives as bare thought/speech/action, and
-    // "No" or "the left one" means nothing against a draft that no longer says what was asked. One
-    // `consult` key holds all of it — two spreads used to collide, dropping the name whenever a
+    // The writer's own turn, as it will read it back next time. It keeps what was asked — who, the
+    // situation, question and shape — not just who: the answer arrives as bare thought/speech/action,
+    // and "No" or "the left one" means nothing against a draft that no longer says what was asked.
+    // One `consult` key holds all of it — two spreads used to collide, dropping the name whenever a
     // reply carried both a consult and a fan-out.
     const askedRecord = c ? {
       ...(who ? { character: who } : {}),
@@ -607,7 +617,7 @@ export async function writeScene(
           keepClarifications();
           // Fold the thought and anything they actually said; a volunteered action stays out of
           // history until it is promoted, so an un-taken impulse never contradicts the page.
-          persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
+          persistent.hear(P.foldedAsk(req) + P.clarificationTrail(reply.clarifications));
           persistent.said(JSON.stringify({ thought: reply.thought,
             ...(reply.speech ? { speech: reply.speech } : {}) }));
           lastAsked.set(def.name.toLowerCase(), steps);
@@ -619,9 +629,9 @@ export async function writeScene(
           collected.push({ name: def.name, thought: shownThought, speech: reply.speech,
                            action: reply.action, situation: req.situation });
           // A line the character actually gave is granted — the writer may render exactly it, and
-          // the lint needs it on the ledger to tell that from an invented quotation. The felt entry
-          // rides along for the same reason: the bundle hands the writer the interiority to render.
-          // A withheld thought grants nothing, because the writer was never handed it to render.
+          // the lint needs it on the ledger to tell that from an invented quotation. The felt
+          // entry rides along because the bundle hands the writer the interiority to render.
+          // A withheld thought grants nothing: the writer was never handed it to render.
           if (reply.speech || shownThought)
             granted.push({ character: def.name, speech: reply.speech, action: "", thought: shownThought });
           if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}reacts:${C.reset} ${reply.thought}`);
@@ -644,9 +654,9 @@ export async function writeScene(
         for (const x of collected)
           if (x.action && promotable.get(x.name.toLowerCase())) pendingReactionActions.set(x.name.toLowerCase(), x.action);
 
-        // A reactor whose thought was withheld and who neither spoke nor had a deed promoted has
-        // nothing left that the writer may put on the page, so it is not in the bundle at all — a
-        // bare name there would be an invitation to invent what it was standing next to.
+        // A reactor whose thought was withheld, who said nothing and whose deed was not promoted
+        // has nothing the writer may write, so it is not in the bundle at all — a bare name there
+        // would invite the writer to invent what it was standing next to.
         const bundle = collected
           .filter(x => x.thought || x.speech || pendingReactionActions.has(x.name.toLowerCase()))
           .map(x => ({
@@ -745,9 +755,9 @@ export async function writeScene(
             }
             break;
           }
-          // A revision goes through the same door its first draft did. It used to skip the check
-          // entirely, which is how a re-ask of "What do you do?" — refused at the front door — reached
-          // a character anyway and drew the do-nothing answer the guard exists to prevent.
+          // A revision goes through the same gate as the first ask. It used to skip the check,
+          // which is how a re-ask of "What do you do?" — refused at the front door — reached a
+          // character anyway and drew the do-nothing answer the guard exists to prevent.
           const rev = (j.revised && typeof j.revised === "object") ? j.revised as Record<string, unknown> : {};
           const revised = reviseConsult(req, rev, cast);
           if (!revised.ok) {
@@ -794,22 +804,26 @@ export async function writeScene(
           writer.hear(P.noAnswer(def.name, why));
           dropClarifications();
         } else {
-          // The record of what was asked stays un-escalated on purpose: the nudge is transient
-          // pressure to get this one answer, and a scolding written permanently into history
-          // would bend every later reply. consult() threads the attempt into the outgoing
-          // message only.
-          persistent.hear(P.askBlock(req) + P.clarificationTrail(reply.clarifications));
-          persistent.said(JSON.stringify({ thought: reply.thought, speech: reply.speech, action: reply.action }));
+          // The permanent record of what was asked is the situation and the shape — none of the
+          // standing instructions that went out with it. The nudge is transient pressure for this
+          // one answer; writing it permanently into history would bend every later reply.
+          // The rest of askBlock is the same thing one step quieter (P.foldedAsk), and consult()
+          // threads the attempt into the outgoing message only.
+          persistent.hear(P.foldedAsk(req) + P.clarificationTrail(reply.clarifications));
+          persistent.said(JSON.stringify({
+            thought: reply.thought,
+            ...(reply.speech ? { speech: reply.speech } : {}),
+            ...(reply.action ? { action: reply.action } : {}),
+          }));
           keepClarifications();   // before the answer: the writer settled these facts to get it
           const shown = { thought: writerSees(def.name, reply.thought),
                           speech: reply.speech, action: reply.action };
           writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question));
           lastAsked.set(def.name.toLowerCase(), steps);
           // An answer joins the lint's ledger as whatever the writer actually got. A thought-only
-          // answer from the POV character — a reaction-shaped ask answered from the inside — lands
-          // as a felt entry, the same authorization a fan-out's bundle gets; without it, the writer
-          // rendering that interiority is flagged for using exactly what it was handed. A withheld
-          // thought grants nothing, because it never reached the desk.
+          // answer from the POV character lands as a felt entry, like a fan-out's bundle — without
+          // it, the writer rendering that interiority is flagged for using exactly what it was
+          // handed. A withheld thought grants nothing: it never reached the desk.
           if (reply.speech || reply.action || shown.thought) {
             granted.push({
               character: def.name,
@@ -826,11 +840,10 @@ export async function writeScene(
       }
     }
 
-    // A character the writer wrote out of the scene: drop them from the active cast so they are not
-    // consulted or missed again. Exiting the point-of-view character ends the chapter — the handoff
-    // re-authors the cast from here, reading the exit out of the prose the writer just wrote.
-    // The exit has to be ON the page to take effect: a reply that wrote nothing cannot remove
-    // anybody, so the declaration is refused and the cast stays intact.
+    // A character the writer wrote out: drop them from the active cast so they are not consulted or
+    // missed again. Exiting the POV character ends the chapter — the handoff re-authors the cast
+    // from here, reading the exit out of the prose. The exit must be ON the page to take effect:
+    // a reply that wrote nothing cannot remove anybody, so the declaration is refused.
     if (exiting && !prose) {
       const name = defOf(exiting)?.name ?? exiting;
       log({ t: "exit_refused", character: name, chapter });
@@ -851,10 +864,9 @@ export async function writeScene(
       if (++empties >= 3) { console.log(`${C.red}Writer wrote nothing and asked nobody, three times — stopping.${C.reset}`); break; }
     } else empties = 0;
 
-    // A reply that ends the scene while its consult is still open closes the door on an answer still
-    // owed to the page — whether it ends by declaring done or by running into the hard length cap
-    // without declaring it. Hold the scene open one more turn so the answer is written in; whatever
-    // that turn produces, the scene closes after it.
+    // A reply that ends the scene while its consult is still open would leave an answer unwritten —
+    // whether it declares done or hits the hard cap. Hold the scene open one more turn so the
+    // answer is written in; the scene closes after that turn whatever it produces.
     const deferredNow = (sceneDone || hardCap) && owed.length > 0 && !closing;
     if (deferredNow) {
       const why = sceneDone ? "done" : "cap";
@@ -891,9 +903,9 @@ export async function writeScene(
     }
   }
 
-  // The scene is over and a beat was never written after these answers landed. The consults show as
-  // accepted, and the chapter does not carry the choices they made — say so plainly rather than let
-  // the run record read as a clean finish.
+  // The scene ended with no beat written after these answers landed. The consults show as accepted,
+  // but the chapter does not carry the choices they made — say so plainly rather than let the run
+  // record read as a clean finish.
   if (owed.length) {
     const names = [...new Set(owed)];
     log({ t: "answer_unwritten", characters: names, stopped: RUN.stopped, chapter });

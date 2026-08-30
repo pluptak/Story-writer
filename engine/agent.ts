@@ -21,15 +21,15 @@ export class Agent {
   hear(c: string) { this.history.push({ role: "user", content: c }); }
   said(c: string) { this.history.push({ role: "assistant", content: c }); }
 
-  // Back to the first `n` messages: how a caller unwinds history it added on speculation, when what
-  // it was speculating on did not happen.
+  // Back to the first `n` messages: how a caller unwinds history it added on speculation,
+  // when the thing it speculated on did not happen.
   rewind(n: number) { if (n < this.history.length) this.history.length = Math.max(0, n); }
 
   // The state immediately before the attempt being retried: same persona, model and history, on its
   // own copy. `consult()` never writes to `agent.history` — only an accepted answer is folded in by
-  // the caller — so this history holds every earlier accepted interaction and nothing of the attempt
-  // that was rejected. The fresh instance still never learns it was rejected; it just no longer
-  // forgets the promise it made two consults ago.
+  // the caller — so this history holds every earlier accepted interaction and nothing of the rejected
+  // attempt. The fresh instance still never learns it was rejected; it just no longer forgets the
+  // promise it made two consults ago.
   fork(): Agent {
     const a = new Agent(this.name, this.model, this.system, this.temperature);
     a.think = this.think;
@@ -115,7 +115,7 @@ export function llmFilenameFor(name: string, used: Set<string>): string {
   return f;
 }
 
-/** One JSONL record for an agent/model exchange; author-side names get their own role, everyone else is a character. */
+/** Author-side agent names get their own role in the log; everyone else is a character. */
 const ROLES: Record<string, string> = {
   "WRITER": "writer",
   "JUDGE": "judge",

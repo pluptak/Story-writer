@@ -1,8 +1,8 @@
 import { APP } from "./state.js";
 
 // The tone/label each engine note renders with. `critical` notes stay as full-text footnotes
-// (something the run record must not let you miss); the rest collapse into hover-tooltip pills
-// so the serif prose keeps flowing (GUI-CHECKLIST §9, the consult/note rhythm).
+// (something the run record must not let you miss); the rest collapse into hover-tooltip pills so
+// the serif prose keeps flowing (GUI-CHECKLIST §9, the consult/note rhythm).
 const NOTE_META = {
   prose_reply:        { tone:"info", label:"prose reply",  critical:false },
   context_risk:       { tone:"warn", label:"context risk", critical:false },
@@ -38,7 +38,8 @@ export function build(store) {
       case "clarify":   last(cur)?.qa.push({ q:e.question, a:e.answer }); break;
       case "clarify_failed": last(cur)?.flags.push("asked the author for \"" + e.question + "\" and got nothing back — treated as done answering"); break;
       case "prose_reply": {
-        // A consult's prose reply flags that block; the writer's draft reply (no consult open) is its own note.
+        // A consult's prose reply flags that block; the writer's draft reply (no consult open) is
+        // its own note.
         if (cur && cur.who === e.character) last(cur)?.flags.push("answered in labelled prose, not JSON");
         else blocks.push({ kind:"note", t:e.t, seq:e.seq,
           text:`${e.character} replied in labelled prose rather than JSON — fields were read from it` });
@@ -51,7 +52,7 @@ export function build(store) {
       case "answer":    if (last(cur)) last(cur).answer = e; break;
       case "judge":     if (last(cur)) last(cur).judge = e; break;
       case "retry_capped": if (cur) cur.capped = true; break;
-      case "accept":    cur = null; break;   // the consult is over; nothing renders from the accept event itself
+      case "accept":    cur = null; break;   // the consult is over; nothing renders from the accept event
       case "budget":    blocks.push({ kind:"note", t:e.t, seq:e.seq, text:`+${e.added} steps (budget now ${e.budget})` }); break;
       case "reader_ask": blocks.push({ kind:"reader", seq:e.seq, framing:e.framing, options:e.options||[], answer:null }); break;
       case "reader_answer": {

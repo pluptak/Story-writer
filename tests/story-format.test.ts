@@ -15,7 +15,7 @@ import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
 import { quiet } from "./helpers.ts";
 
-// `new URL(...).pathname` is wrong on Windows and this repo's path may contain a space.
+// `new URL(...).pathname` is wrong on Windows, and this repo's path may contain a space.
 const FIXTURE = fileURLToPath(new URL("./fixtures/badstory", import.meta.url));
 
 // -- STORY SCHEMA (story.json validation) -----------------------------------
@@ -525,9 +525,9 @@ describe("the doorway fixture", () => {
 });
 
 // -- STORY DISCOVERY (scans the real stories/ dir) -------------------------
-// discoverStories/selectableStory scan stories/, which is gitignored and empty on a fresh checkout,
-// so these synthesize a throwaway story there from the committed fixture, exercise the scan, and
-// remove it — self-contained rather than depending on whatever the author has under stories/ locally.
+// discoverStories/selectableStory scan stories/, which is gitignored and empty on a fresh checkout.
+// These tests synthesize a throwaway story there from the committed fixture, exercise the scan, and
+// remove it — self-contained, not dependent on whatever is under stories/ locally.
 describe("story discovery", () => {
   const probe = "stories/__discovery_probe__";
   before(async () => {

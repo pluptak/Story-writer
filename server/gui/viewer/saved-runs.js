@@ -6,9 +6,9 @@ import { castChips } from "./shelf.js";
 import { loadAgentState, agentsPanelHtml, wireAgents } from "./agents.js";
 
 /** Fetch one retained run's log and load it into READV -- shared by a deep-linked reload (sse.js)
- *  and the story page's "read a previous run" rows (story-page.js). Returns false on failure,
- *  null when superseded: a slower earlier fetch must never overwrite a newer click's run
- *  (reader.js's loadReader guards the same hazard by re-checking READER.dir). */
+ *  and the story page's "read a previous run" rows (story-page.js). Returns false on failure, null
+ *  when superseded: a slower earlier fetch must never overwrite a newer click's run (reader.js's
+ *  loadReader guards the same hazard by re-checking READER.dir). */
 export async function loadSavedRun(dir, id, store = READV, repaint = true, agentState = APP) {
   const req = ++store.loadReq;
   try {
@@ -29,8 +29,8 @@ export function loadRun(dir, id) { return loadSavedRun(dir, id); }
 
 // ---- the read tab's chrome --------------------------------------------------
 // Picking which run to read now happens on the story page -- its "previous runs" list -- so this
-// tab no longer needs a second copy of that picker. It shows the cast of whatever is already loaded
-// instead, and stays the way in to open a log from disk.
+// tab no longer needs a second copy of that picker. It shows the cast of whatever is loaded instead,
+// and stays the way in to open a log from disk.
 export function readChromeHtml(store = READV, includeAgents = store === READV, agentState = APP, includeOpen = store === READV) {
   const cast = store.meta ? castChips(store.meta.characters, store.meta.story) : "";
   return `<section ${tid("read.chrome")} class="picker readchrome">
@@ -54,8 +54,8 @@ export async function loadStories() {
   APP.stories = null; APP.render();
   try { APP.stories = (await (await fetch("/stories")).json()).stories || []; }
   catch { APP.stories = []; }
-  // A deep-linked run is loaded before the shelf is (sse.js: the direct-reload path has to land on
-  // the read page first), so its label -- which needs a run's mtime/word-count, only known from the
+  // A deep-linked run loads before the shelf (sse.js: the direct-reload path has to land on the
+  // read page first), so its label -- which needs a run's mtime/word-count, only known from the
   // shelf -- can only be filled in once this arrives.
   if (READV.dir && READV.id && !READV.label) {
     const r = (APP.stories.find(s => s.dir === READV.dir)?.runs || []).find(x => x.id === READV.id);
