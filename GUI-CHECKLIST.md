@@ -12,10 +12,14 @@ that alters what a route serves.
       1,100 tokens each. At 10,000 preparing chapter 3 refuses even now that the worked example is
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
-- [ ] `npm run checkgui` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
-      browser-loaded, not part of the TS build — so a plain syntax error there (an `await` outside
-      `async` broke every screen on 2026-08-21, `6dc7047`) ships silently otherwise: ES module
-      linking fails for the whole viewer and every page renders as the bare shell, nothing in `#page`.
+- [ ] `npm run lint` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
+      browser-loaded, not part of the TS build — so what breaks there ships silently otherwise: a
+      plain syntax error (an `await` outside `async` broke every screen on 2026-08-21, `6dc7047`)
+      fails ES module linking for the whole viewer, and every page renders as the bare shell with
+      nothing in `#page`. ESLint parses all of those modules and resolves names across them, so it
+      also catches what the per-file `node --check` it replaced could not see: a name used but never
+      imported (`loadStories` in `story-page.js` threw a `ReferenceError` on every chapter discard
+      until the first lint run found it), and imports nothing references any more.
 - [ ] Start the app browser-driven — no story argument, or the picker never hands over to the GUI:
 
 ```bash

@@ -127,10 +127,27 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
   throw last;
 }
 
-async function postChat(body: string, signal: AbortSignal) {
-  const res = await fetch(LMSTUDIO_URL, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body, signal,
-  });
+/** The header carrying the engine's own name for the call site behind a request — `writer.draft`,
+ *  `judge.answer`. It rides OUTSIDE the JSON body on purpose: the model never sees it, so it cannot
+ *  affect tokenization or a reply, while anything sitting on the wire (a test's fetch fake, a
+ *  recording proxy, the replay harness) can tell one caller from another without matching on prompt
+ *  text. Prompt text drifts — the writer's system prompt moved by a thousand characters in four days
+ *  of ordinary work — and a matcher keyed on it silently misroutes when it does. */
+export const SITE_HEADER = "X-SW-Site";
+/** The agent that made the call, beside its site. Both are needed to name a call uniquely: two
+ *  characters in one scene share the site `character.consult` and differ only by who is answering,
+ *  and serving one character's reply to the other would be silently wrong. This pair is exactly the
+ *  key the transcripts are written under, so the wire and the log name a call the same way. */
+export const AGENT_HEADER = "X-SW-Agent";
+
+/** Who is calling and from where — the transport sends both as headers, never in the body. */
+export interface CallSite { site: string; agent?: string }
+
+async function postChat(body: string, signal: AbortSignal, call?: CallSite) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (call?.site) headers[SITE_HEADER] = call.site;
+  if (call?.agent) headers[AGENT_HEADER] = call.agent;
+  const res = await fetch(LMSTUDIO_URL, { method: "POST", headers, body, signal });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new LmError(`LM Studio ${res.status}: ${detail.slice(0, 200)}`, res.status, retryableStatus(res.status));
@@ -139,9 +156,10 @@ async function postChat(body: string, signal: AbortSignal) {
 }
 
 /** One non-streaming completion, with retry/backoff; throws StoppedError when the run is stopped. */
-export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low"): Promise<Completion> {
+export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low",
+                               call?: CallSite): Promise<Completion> {
   return withRetry(`${model} completion`, async signal => {
-    const res = await postChat(requestBody(model, messages, temperature, false, think), signal);
+    const res = await postChat(requestBody(model, messages, temperature, false, think), signal, call);
     // Read the body as text first: a 200 whose body will not parse (a proxy error page, LM Studio
     // dying mid-request) is transient infrastructure failure, so it becomes a retryable LmError
     // naming the model with a snippet — not an opaque SyntaxError that kills the call on its first
@@ -168,9 +186,10 @@ export async function complete(model: string, messages: Msg[], temperature: numb
 
 /** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
 export async function completeStream(model: string, messages: Msg[], temperature: number,
-                                     onDelta: (d: string) => void, think: ThinkLevel = "low"): Promise<Completion> {
+                                     onDelta: (d: string) => void, think: ThinkLevel = "low",
+                                     call?: CallSite): Promise<Completion> {
   return withRetry(`${model} stream`, async (signal, heartbeat) => {
-    const res = await postChat(requestBody(model, messages, temperature, true, think), signal);
+    const res = await postChat(requestBody(model, messages, temperature, true, think), signal, call);
     if (!res.body) throw new LmError(`LM Studio returned no stream body`, undefined, true);
     const reader = (res.body as any).getReader();
     const decoder = new TextDecoder();

@@ -342,7 +342,7 @@ export async function consult(
         wants: req.wants, attempt: opts.attempt ?? 1 });
 
   for (;;) {
-    const raw = await agent.generate(`${C.cyan}${agent.name}${C.reset}`, extra);
+    const raw = await agent.generate(`${C.cyan}${agent.name}${C.reset}`, "character.consult", extra);
     const o = extractJson(raw, how => {
       if (how === "prose_fallback")
         log({ t: "prose_reply", character: req.character });

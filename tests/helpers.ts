@@ -2,10 +2,13 @@
  * Shared test helpers. Not a test file — not named `*.test.ts`, so the runner skips it and it needs
  * no line in package.json's `test` script.
  */
+import { readFileSync } from "node:fs";
+import { join as joinPath } from "node:path";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ServerHost } from "../server/server.ts";
 import { Agent } from "../engine/agent.ts";
+import { SITE_HEADER, AGENT_HEADER } from "../engine/llm-client.ts";
 import { WARN } from "../engine/warnings.ts";
 
 // -- A MODEL THAT SAYS WHAT YOU TELL IT TO ---------------------------------
@@ -19,6 +22,137 @@ export class ScriptedAgent extends Agent {
     if (r === undefined) throw new Error(`ScriptedAgent ran out of replies after ${this.calls - 1}`);
     return r;
   }
+}
+
+// -- A FAKE LM STUDIO, ROUTED BY CALL SITE ---------------------------------
+/** One intercepted request, as a route handler sees it. */
+export interface SiteCall {
+  /** This call's index within its OWN site, 0-based — what a per-site reply queue indexes on.
+   *  Adding a call to some other site never shifts it. */
+  n: number;
+  /** Each message's content, in order; `[0]` is the system prompt. */
+  messages: string[];
+  /** The parsed request body, for the rare assertion needing more than the messages. */
+  body: any;
+}
+
+/** What a site replies with: a fixed object, or a function of the call (for queues, captured
+ *  prompts, or a `throw` standing in for an outage). Returning a `Response` passes it through. */
+export type SiteHandler =
+  | Record<string, unknown>
+  | ((call: SiteCall) => Record<string, unknown> | Response);
+
+/** Wrap an object as the completion body LM Studio would have sent. */
+export const siteReply = (o: unknown) =>
+  new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
+
+/**
+ * A `globalThis.fetch` stand-in that routes on the `X-SW-Site` header — the engine's own name for
+ * the call site — instead of matching text out of the system prompt.
+ *
+ * Routing on prompt text is what this replaces, and it failed quietly: the branch that did not match
+ * fell through to whichever route sat last, so a reworded prompt did not error, it fed one agent's
+ * replies to another. Prompts move constantly (the writer's system prompt shifted by ~1,100
+ * characters across four days of ordinary work), so that was a matter of time. A site that no route
+ * covers is an error here, naming the site and everything that IS covered.
+ */
+export function siteFetch(routes: Record<string, SiteHandler>) {
+  const seen: Record<string, SiteCall[]> = {};
+  const fetchMock = (async (_url: string, init: any) => {
+    const body = JSON.parse(String(init.body));
+    const site = new Headers(init.headers).get(SITE_HEADER) ?? "";
+    const messages: string[] = (body.messages ?? []).map((m: any) => String(m.content ?? ""));
+    const call: SiteCall = { n: (seen[site] ??= []).length, messages, body };
+    seen[site].push(call);
+    const handler = routes[site];
+    if (!handler)
+      throw new Error(`siteFetch: nothing routes "${site || "(no site header)"}" — `
+        + `routed sites are ${Object.keys(routes).join(", ") || "(none)"}`);
+    const out = typeof handler === "function" ? handler(call) : handler;
+    return out instanceof Response ? out : siteReply(out);
+  }) as unknown as typeof globalThis.fetch;
+
+  return {
+    fetchMock,
+    /** Every call a site received, in order — its length is the call count. */
+    seen,
+    count: (site: string) => (seen[site] ?? []).length,
+    /** The messages of a site's Nth call, for asserting what a prompt carried. */
+    messagesOf: (site: string, n = 0) => seen[site]?.[n]?.messages ?? [],
+  };
+}
+
+// -- REPLAYING A RECORDED RUN ----------------------------------------------
+/**
+ * A `globalThis.fetch` stand-in that answers from a real recorded run — `tests/fixtures/recorded-run`,
+ * made by `scripts/make-replay-fixture.mjs`. Each `(agent, site)` gets its own queue, served in the
+ * order it was recorded.
+ *
+ * Keyed on the pair, not on order alone: one run's `writer.jsonl` held 23 drafts interleaved with 9
+ * redrafts, so a change that skips a redraft would shift every later reply by one and hand a redraft
+ * to a draft — wrong, and silent. Per-queue, that same change instead exhausts one queue and says
+ * which. Not keyed on the prompt either: prompt text drifts constantly, and every edit would
+ * invalidate the whole recording.
+ *
+ * `extra` supplies sites the recording cannot contain — `summary.digest` is the real case, since
+ * `trimHistory` calls the transport outside any `Agent` and so is never written to a transcript.
+ */
+export function replayFetch(dir: string, extra: Record<string, SiteHandler> = {}) {
+  const queues = new Map<string, string[]>();
+  const text = readFileSync(joinPath(dir, "calls.jsonl"), "utf8");
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    const rec = JSON.parse(line) as { agent: string; site: string; response: string };
+    const key = `${rec.agent}|${rec.site}`;
+    if (!queues.has(key)) queues.set(key, []);
+    queues.get(key)!.push(rec.response);
+  }
+
+  const taken = new Map<string, number>();
+  const fetchMock = (async (_url: string, init: any) => {
+    const h = new Headers(init.headers);
+    const agent = h.get(AGENT_HEADER) ?? "", site = h.get(SITE_HEADER) ?? "";
+    const key = `${agent}|${site}`;
+
+    const handler = extra[site];
+    if (handler && !queues.has(key)) {
+      const body = JSON.parse(String(init.body));
+      const messages: string[] = (body.messages ?? []).map((m: any) => String(m.content ?? ""));
+      const n = taken.get(key) ?? 0;
+      taken.set(key, n + 1);
+      const out = typeof handler === "function" ? handler({ n, messages, body }) : handler;
+      return out instanceof Response ? out : siteReply(out);
+    }
+
+    const q = queues.get(key);
+    if (!q)
+      throw new Error(`replay: the recording has nothing for ${key} — it holds `
+        + `${[...queues.keys()].sort().join(", ")}. The run is making a call the recording never saw.`);
+    const n = taken.get(key) ?? 0;
+    if (n >= q.length)
+      throw new Error(`replay: ${key} is exhausted — the recording has ${q.length} of them, `
+        + `this run asked for ${n + 1}. The engine now makes more calls here than it did.`);
+    taken.set(key, n + 1);
+    // The transcript stores the reply as the model sent it, WITHOUT the `{` that Agent.generate
+    // prepends — so handing it back verbatim reproduces exactly what generate() saw.
+    return new Response(JSON.stringify({ choices: [{ message: { content: q[n] } }] }));
+  }) as unknown as typeof globalThis.fetch;
+
+  return {
+    fetchMock,
+    /** Recorded calls no replayed run asked for, as `agent|site → how many were left`. Empty means
+     *  the run consumed the recording exactly. */
+    unused: () => {
+      const left: Record<string, number> = {};
+      for (const [k, q] of queues) {
+        const n = q.length - (taken.get(k) ?? 0);
+        if (n > 0) left[k] = n;
+      }
+      return left;
+    },
+    used: (key: string) => taken.get(key) ?? 0,
+    total: () => [...queues.values()].reduce((a, q) => a + q.length, 0),
+  };
 }
 
 // -- QUIETING WARNINGS -----------------------------------------------------

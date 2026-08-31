@@ -4,8 +4,8 @@
  * /story/check, and saves through /story/save.
  */
 
-import { esc, post, tid } from "./util.js";
-import { APP, draft } from "./state.js";
+import { esc, post } from "./util.js";
+import { APP } from "./state.js";
 import { go } from "./nav.js";
 
 // Dirty-guard: warn before closing the tab / navigating away

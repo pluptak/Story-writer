@@ -1,7 +1,7 @@
 import { esc, post, fmtRun, modelOptionsHtml, reasonOr, tid } from "./util.js";
 import { APP, READV, runningReason } from "./state.js";
 import { castChips } from "./shelf.js";
-import { loadRun } from "./saved-runs.js";
+import { loadRun, loadStories } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { go } from "./nav.js";
 import { prepareComparison, loadComparisonRuns } from "./compare.js";

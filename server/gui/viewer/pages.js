@@ -14,7 +14,7 @@ import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
-import { go, generating, syncHash, noteFocus, tagFocus, clearFocus } from "./nav.js";
+import { go, generating, syncHash, tagFocus, clearFocus } from "./nav.js";
 import { renderSession } from "./session.js";
 
 function restoreFocus(page, id) {

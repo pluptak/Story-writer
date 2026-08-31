@@ -12,6 +12,11 @@ lives in [stories/](stories/) — the user's own content, gitignored — and the
 about any of it. The one exception is [tests/fixtures/doorway/](tests/fixtures/doorway/), the single
 story committed with the engine: it is the architect's worked example (`architectExample()`) and the
 shared fixture the deterministic tests load, so neither depends on whatever the user keeps locally.
+[tests/fixtures/recorded-run/](tests/fixtures/recorded-run/) sits beside it and is not a second such
+story — it is one captured doorway run (its `story.json`, its `scene.md`, and every model reply,
+prompts stripped) that `tests/replay.test.ts` plays back. Rebuild it with
+`node scripts/make-replay-fixture.mjs <run-dir>` whenever a change legitimately alters which calls the
+engine makes.
 
 This is a **fork** of the "Multimodel AI roleplay" game-master engine. The transport, JSON
 extraction, agent/history windowing, markdown parsing and config-validation policy were carried over
@@ -55,7 +60,7 @@ Change is delivered in **small, independently-pausable blocks**, not whole featu
   coding; report at each block boundary.
 - **Test once per block, not per step.** Do not run the model after every edit.
 - **Live runs are the owner's to run**, batched. Hand off after the cheap static checks
-  (`npx tsc`, `npm test`, `npm run preflight`) with the exact commands.
+  (`npx tsc`, `npm test`, `npm run lint`, `npm run preflight`) with the exact commands.
 - Engine changes and story-authoring changes are separate blocks — the engine must stay
   story-independent.
 
@@ -111,7 +116,7 @@ way.**
 | [engine/sense-lint.ts](engine/sense-lint.ts) | the other mechanical half: a restricted sense narrated anyway, matched by verb against the character's own CANNOT list, no model call |
 | [engine/skills.ts](engine/skills.ts) | the general skill catalog, the special-skill bible, restriction and reach resolution (I1–I5), and a story's `skills:`/`restrictions:` overrides |
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
-| [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming |
+| [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming, and `SITE_HEADER` — the call site's stable name (`writer.draft`), sent as a header so the model never sees it and a fake or a replay can tell callers apart without matching drifting prompt text |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
 | [engine/story-format.ts](engine/story-format.ts) | loading and validating `story.json` (against `story-schema.ts`), building a `StoryConfig`, discovering stories on disk |
 | [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` |

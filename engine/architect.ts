@@ -111,7 +111,7 @@ async function architectRound(agent: Agent, message: string):
   agent.hear(message);
   archLog(`─── PROMPT (${agent.model}) ───\n${message}`);
   try {
-    const reply = await agent.generate(`${C.magenta}ARCHITECT${C.reset}`);
+    const reply = await agent.generate(`${C.magenta}ARCHITECT${C.reset}`, "architect.turn");
     agent.said(reply.trim());
     const out = extractJson(reply);
     const raw = visibleReply(reply);
@@ -407,7 +407,7 @@ export class ScaffoldSession {
   private async castAsymmetryVerdict(): Promise<{ ok: boolean; why: string } | null> {
     try {
       const judge = this.newJudge ? this.newJudge() : newCastAsymmetryJudge(this.defaults);
-      const raw = await judge.generate(`${C.magenta}CAST-JUDGE${C.reset}`, [{
+      const raw = await judge.generate(`${C.magenta}CAST-JUDGE${C.reset}`, "judge.cast", [{
         role: "user", content: P.castAsymmetryRequest(this.tension || this.spec.premise,
           this.spec.characters.map(c => ({
             name: c.name, goal: c.goal, skills: c.skills, restrictions: c.restrictions }))),

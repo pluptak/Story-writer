@@ -418,7 +418,7 @@ describe("ScaffoldSession, staged", () => {
       const spy = () => {
         const a = new ScriptedAgent([JSON.stringify({ ok: true })]);
         const orig = a.generate.bind(a);
-        a.generate = async (_label?: unknown, extra?: { role: string; content: string }[]) => {
+        a.generate = async (_label?: unknown, _site?: unknown, extra?: { role: string; content: string }[]) => {
           seen = (extra ?? []).map(m => m.content).join("\n");
           return orig();
         };

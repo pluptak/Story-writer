@@ -1,4 +1,4 @@
-import { esc, wireBackdropClose, verdictText, tid } from "./util.js";
+import { esc, wireBackdropClose, verdictText } from "./util.js";
 import { APP } from "./state.js";
 
 // ---- the end-of-run modal ----------------------------------------------------

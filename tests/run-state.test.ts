@@ -13,7 +13,7 @@ import { WARN } from "../engine/warnings.ts";
 import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { quiet, callRoute } from "./helpers.ts";
+import { quiet, callRoute, siteFetch } from "./helpers.ts";
 
 // Consult test helpers for stopRun
 const REQ: ConsultRequest = { character: "TESTER", situation: "s", question: "q", wants: "" };
@@ -397,28 +397,27 @@ describe("a scene that never ends", () => {
 describe("the narration lint", () => {
   const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
 
-  /** Routes a mocked completion by which system prompt asked for it — the writer's own `[WRITE]`
-   *  loop and the lint's stateless check share one fetch mock, so call order alone cannot tell them
-   *  apart once a redraft happens. Each branch advances its own counter. */
+  /** Routes a mocked completion by the call site that asked for it. The writer's own `[WRITE]` loop
+   *  and the lint's stateless check share one fetch mock, so call order alone cannot tell them apart
+   *  once a redraft happens — the site header can. `writerReplies` is ONE queue across both writer
+   *  sites: a redraft consumes the reply after the draft it replaces, which is the shape these
+   *  fixtures are written against. */
   function scriptedFetch(opts: {
     writerReplies: Record<string, unknown>[];
     lintReplies?: Record<string, unknown>[];
     lintFails?: boolean;
   }) {
     let writerCall = 0, lintCall = 0;
-    const fetchMock = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const sys = String(body.messages?.[0]?.content ?? "");
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
+    const nextWriter = () => opts.writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": () => {
         if (opts.lintFails) { lintCall++; throw new Error("simulated lint outage"); }
-        const content = JSON.stringify(opts.lintReplies![lintCall++]);
-        return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
-      }
-      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED"))
-        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ok: true }) } }] }));
-      const content = JSON.stringify(opts.writerReplies[writerCall++]);
-      return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
-    }) as any;
+        return opts.lintReplies![lintCall++];
+      },
+      "judge.done": { ok: true },
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
     return { fetchMock, calls: () => ({ writerCall, lintCall }) };
   }
 
@@ -671,19 +670,14 @@ describe("the judge", () => {
       scene_done: true,
     };
 
-    const fetchMock = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const sys = String(body.messages?.[0]?.content ?? "");
-      if (sys.includes("CHECKING ONE ANSWER")) throw new Error("simulated judge outage");
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")
-          || sys.includes("CHECKING WHETHER THE SCENE IS FINISHED"))
-        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ok: true }) } }] }));
-      if (sys.includes("YOU ARE THE AUTHOR. You are writing one scene"))
-        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(draft) } }] }));
+    const { fetchMock } = siteFetch({
+      "judge.answer": () => { throw new Error("simulated judge outage"); },
+      "judge.narration": { ok: true },
+      "judge.done": { ok: true },
+      "writer.draft": draft,
       // MERRITT's own agent, asked for a decision
-      const content = JSON.stringify({ speech: "I open it." });
-      return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
-    }) as any;
+      "character.consult": { speech: "I open it." },
+    });
 
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
@@ -747,9 +741,9 @@ describe("the context-fit warning", () => {
     armRun();
     try {
       const agent = new Agent("TESTER", "tight-model", "sys", 0);
-      await agent.generate("t");
-      await agent.generate("t");
-      await agent.generate("t");
+      await agent.generate("t", "test.probe");
+      await agent.generate("t", "test.probe");
+      await agent.generate("t", "test.probe");
 
       assert.equal(warned.filter(w => w.includes("is loaded with 4096")).length, 1,
         "the same model is warned about exactly once");
@@ -761,7 +755,7 @@ describe("the context-fit warning", () => {
 
       // A different model is not covered by the first one's warning.
       const other = new Agent("OTHER", "roomy-model", "sys", 0);
-      await other.generate("t");
+      await other.generate("t", "test.probe");
       assert.deepEqual(events.map(e => e.t), ["context_risk", "context_risk"]);
     } finally {
       setFitWarning(null);
@@ -787,23 +781,26 @@ describe("an answer still owed the page", () => {
     doneReplies?: Record<string, unknown>[];
   }) {
     let writerCall = 0, characterCall = 0, doneCall = 0;
-    const fetchMock = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const sys = String(body.messages?.[0]?.content ?? "");
-      const reply = (o: unknown) =>
-        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
+    const nextWriter = () => opts.writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": ({ body }) => {
         opts.lintPayloads?.push(String(body.messages?.find((m: any) => m.role === "user")?.content ?? ""));
-        return reply({ ok: true });
-      }
-      if (sys.includes("CHECKING ONE ANSWER")) return reply({ verdict: "accept" });
-      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED")) {
+        return { ok: true };
+      },
+      "judge.answer": { verdict: "accept" },
+      // Promotes nothing, which is what these fixtures got before: under prompt-substring routing
+      // the batch judge matched no branch and fell through to the writer's, so it was handed a prose
+      // draft (and quietly ate a writerReplies entry) until it failed to parse one. Same outcome —
+      // no deeds promoted — now said outright.
+      "judge.batch": { verdicts: [] },
+      "judge.done": () => {
         const d = opts.doneReplies;
-        return reply(d ? d[Math.min(doneCall++, d.length - 1)] : (doneCall++, { ok: true }));
-      }
-      if (sys.includes("YOUR OUTPUT FORMAT")) return reply(opts.characterReplies[characterCall++]);
-      return reply(opts.writerReplies[writerCall++]);
-    }) as any;
+        return d ? d[Math.min(doneCall++, d.length - 1)] : (doneCall++, { ok: true });
+      },
+      "character.consult": () => opts.characterReplies[characterCall++],
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
     return { fetchMock, calls: () => ({ writerCall, characterCall, doneCall }) };
   }
 
@@ -1307,22 +1304,20 @@ describe("a clarification on a rejected attempt", () => {
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
     ENGINE.stream = false;
-    globalThis.fetch = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const msgs = (body.messages ?? []).map((m: any) => String(m.content ?? ""));
-      const sys = msgs[0] ?? "";
-      const reply = (o: unknown) =>
-        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) return reply({ ok: true });
-      if (sys.includes("CHECKING ONE ANSWER")) return reply(judgeReplies[Math.min(judgeCall++, 1)]);
-      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED")) return reply({ ok: true });
-      if (sys.includes("ANSWERING ONE QUESTION")) {
-        clarifierPrompts.push(msgs);
-        return reply(clarifierReplies[Math.min(clarifierCall++, 1)]);
-      }
-      if (sys.includes("YOUR OUTPUT FORMAT")) return reply(characterReplies[characterCall++]);
-      return reply(writerReplies[Math.min(writerCall++, 1)]);
-    }) as any;
+    const nextWriter = () => writerReplies[Math.min(writerCall++, 1)];
+    globalThis.fetch = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.answer": () => judgeReplies[Math.min(judgeCall++, 1)],
+      "judge.done": { ok: true },
+      "clarifier.answer": ({ messages }) => {
+        clarifierPrompts.push(messages);
+        return clarifierReplies[Math.min(clarifierCall++, 1)];
+      },
+      "character.consult": () => characterReplies[characterCall++],
+      "writer.ask": nextWriter,
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    }).fetchMock;
 
     armRun();
     try {
@@ -1386,23 +1381,19 @@ describe("a deed promoted in the same reply that renders it", () => {
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
     ENGINE.stream = false;
-    globalThis.fetch = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const msgs = (body.messages ?? []).map((m: any) => String(m.content ?? ""));
-      const sys = msgs[0] ?? "";
-      const reply = (o: unknown) =>
-        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
-        lintRequests.push(msgs.join("\n"));
-        return reply({ ok: true });
-      }
-      if (sys.includes("CHECKING WHETHER THE SCENE IS FINISHED")) return reply({ ok: true });
-      if (sys.includes("WHICH REACTIONS MAY BECOME DEEDS"))
-        return reply({ verdicts: [{ name: "MERRITT", promotable: true }] });
-      if (sys.includes("YOUR OUTPUT FORMAT"))
-        return reply({ thought: "Someone is out there.", action: deed });
-      return reply(writerReplies[Math.min(writerCall++, 1)]);
-    }) as any;
+    const nextWriter = () => writerReplies[Math.min(writerCall++, 1)];
+    globalThis.fetch = siteFetch({
+      "judge.narration": ({ messages }) => {
+        lintRequests.push(messages.join("\n"));
+        return { ok: true };
+      },
+      "judge.done": { ok: true },
+      "judge.batch": { verdicts: [{ name: "MERRITT", promotable: true }] },
+      "character.consult": { thought: "Someone is out there.", action: deed },
+      "writer.ask": nextWriter,
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    }).fetchMock;
 
     armRun();
     try {

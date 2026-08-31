@@ -1,4 +1,4 @@
-import { esc, tid } from "./util.js";
+import { esc } from "./util.js";
 import { APP, LIVEV } from "./state.js";
 
 // ---- the live character sheet --------------------------------------------

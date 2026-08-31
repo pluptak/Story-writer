@@ -343,7 +343,7 @@ export async function writeScene(
     let a = "";
     try {
       for (let tries = 0; ; tries++) {
-        const raw = await cl.generate(`${C.magenta}CLARIFIER${C.reset}`, extra);
+        const raw = await cl.generate(`${C.magenta}CLARIFIER${C.reset}`, "clarifier.answer", extra);
         const answered = parseClarifyAnswer(extractJson(raw));
         if (answered !== null) { a = answered; break; }
         if (tries) break;
@@ -387,7 +387,7 @@ export async function writeScene(
       writer.hear(P.askReader(wordCount()));
       let askRaw = "";
       try {
-        askRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`);
+        askRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.ask");
       } catch (e) {
         if (e instanceof StoppedError || RUN.stopped) break;
         console.log(`\n${C.red}Reader-consult call failed (${(e as Error).message}) — `
@@ -427,7 +427,7 @@ export async function writeScene(
     }));
     let draftRaw: string;
     try {
-      draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`);
+      draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.draft");
     } catch (e) {
       if (e instanceof StoppedError || RUN.stopped) break;
       console.log(`\n${C.red}Writer call failed (${(e as Error).message}) — stopping with what we have.${C.reset}`);
@@ -507,7 +507,7 @@ export async function writeScene(
         const lintExtra: Msg[] = [{ role: "user", content: P.narrationLintRequest({
           pov: sd.pov, prose, granted: lintGranted, consult: outgoingConsult }) }];
         for (let tries = 0; ; tries++) {
-          const lintRaw = await lintJudge.generate(`${C.magenta}NARRATION-JUDGE${C.reset}`, lintExtra);
+          const lintRaw = await lintJudge.generate(`${C.magenta}NARRATION-JUDGE${C.reset}`, "judge.narration", lintExtra);
           const verdict = parseLintVerdict(extractJson(lintRaw));
           if (verdict) {
             if (!verdict.ok) lintWhy = verdict.why || "narration was flagged";
@@ -538,7 +538,7 @@ export async function writeScene(
 
       writer.hear(P.narrationFlagged(flagged));
       try {
-        draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`);
+        draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft");
       } catch (e) {
         if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
         console.log(`\n${C.red}Writer redraft call failed (${(e as Error).message}) — keeping the flagged piece.${C.reset}`);
@@ -658,7 +658,7 @@ export async function writeScene(
         let promotable = new Map<string, boolean>();
         if (volunteered.length && !RUN.stopped) {
           try {
-            const raw = await newBatchJudge().generate(`${C.magenta}BATCH-JUDGE${C.reset}`,
+            const raw = await newBatchJudge().generate(`${C.magenta}BATCH-JUDGE${C.reset}`, "judge.batch",
               [{ role: "user", content: P.batchJudgeRequest(volunteered) }]);
             promotable = parseBatchVerdict(extractJson(raw));
           } catch (e) {
@@ -738,7 +738,7 @@ export async function writeScene(
           }];
           try {
             for (let tries = 0; ; tries++) {
-              const judgeRaw = await judge.generate(`${C.magenta}JUDGE${C.reset}`, judgeExtra);
+              const judgeRaw = await judge.generate(`${C.magenta}JUDGE${C.reset}`, "judge.answer", judgeExtra);
               j = extractJson(judgeRaw);
               judged = parseVerdict(j);
               if (judged || tries) break;
@@ -914,7 +914,7 @@ export async function writeScene(
         const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({
           question: sd.question, prose: pieces.join("\n\n") }) }];
         for (let tries = 0; ; tries++) {
-          const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, extra);
+          const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, "judge.done", extra);
           const verdict = parseLintVerdict(extractJson(raw));
           if (verdict) {
             if (!verdict.ok) unanswered = verdict.why || "the scene's question is not answered";

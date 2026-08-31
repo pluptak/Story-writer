@@ -2,7 +2,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { complete, completeStream, NET, lmUrlsDerivable } from "../engine/llm-client.ts";
+import { complete, completeStream, NET, lmUrlsDerivable, SITE_HEADER, AGENT_HEADER } from "../engine/llm-client.ts";
 import { stopRun, armRun } from "../live.ts";
 
 /** Build a ReadableStream from an array of chunks. */
@@ -464,5 +464,67 @@ describe("lmUrlsDerivable", () => {
     assert.equal(lmUrlsDerivable("http://localhost:1234/v1"), false);
     assert.equal(lmUrlsDerivable("http://localhost:1234/api/v0/chat"), false);
     assert.equal(lmUrlsDerivable(""), false);
+  });
+});
+
+// -- THE CALL-SITE HEADER ----
+// The site rides as a header, never in the body: the model must not see it, and a fake or a replay
+// must be able to tell callers apart without reading the prompt (which drifts).
+describe("the X-SW-Site header", () => {
+  const origFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = origFetch; armRun(); });
+
+  /** Capture what one completion put on the wire. */
+  async function wireOf(run: () => Promise<unknown>) {
+    let headers = new Headers(), body: any = null;
+    globalThis.fetch = (async (_url: string, init: any) => {
+      headers = new Headers(init.headers);
+      body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }));
+    }) as any;
+    armRun();
+    await run();
+    return { headers, body };
+  }
+
+  it("carries the call site when one is given, and never puts it in the body", async () => {
+    const { headers, body } = await wireOf(() =>
+      complete("m", [{ role: "user", content: "x" }], 0.5, "low", { site: "writer.draft", agent: "WRITER" }));
+    assert.equal(headers.get(SITE_HEADER), "writer.draft");
+    assert.equal(headers.get(AGENT_HEADER), "WRITER", "who called, beside where from");
+    assert.doesNotMatch(JSON.stringify(body), /writer\.draft|WRITER/,
+      "neither may reach the model — not as a message, not as a parameter");
+  });
+
+  it("is absent rather than empty when a caller names no site", async () => {
+    const { headers } = await wireOf(() => complete("m", [{ role: "user", content: "x" }], 0.5));
+    assert.equal(headers.get(SITE_HEADER), null);
+    assert.equal(headers.get(AGENT_HEADER), null);
+  });
+
+  it("distinguishes two characters sharing one site — the pair is the key", async () => {
+    const a = await wireOf(() => complete("m", [{ role: "user", content: "x" }], 0.5, "low",
+                                          { site: "character.consult", agent: "RIVEN" }));
+    const b = await wireOf(() => complete("m", [{ role: "user", content: "x" }], 0.5, "low",
+                                          { site: "character.consult", agent: "MERRITT" }));
+    assert.equal(a.headers.get(SITE_HEADER), b.headers.get(SITE_HEADER), "same call site");
+    assert.notEqual(a.headers.get(AGENT_HEADER), b.headers.get(AGENT_HEADER),
+      "and only the agent tells them apart");
+  });
+
+  it("rides the streaming path too", async () => {
+    let headers = new Headers();
+    globalThis.fetch = (async (_url: string, init: any) => {
+      headers = new Headers(init.headers);
+      return new Response(chunkedStream([
+        new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'),
+        new TextEncoder().encode('data: [DONE]\n\n'),
+      ]), { headers: { "content-type": "text/event-stream" } });
+    }) as any;
+    armRun();
+    await completeStream("m", [{ role: "user", content: "x" }], 0.5, () => {}, "low",
+                         { site: "judge.answer", agent: "JUDGE" });
+    assert.equal(headers.get(SITE_HEADER), "judge.answer");
+    assert.equal(headers.get(AGENT_HEADER), "JUDGE");
   });
 });
