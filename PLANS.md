@@ -132,10 +132,18 @@ scene's question having been answered.** `scene_done` is the writer's to declare
 budget grants are spent against word count and step count, neither of which knows what the scene was
 for. Whatever the budget policy becomes, that absence is the thing it answers.
 
-**The world timeline** below is the candidate answer, and it reaches the same absence from the other
-side: it asks what keeps a scene under pressure toward its question rather than what should happen
-once the question is spent. Neither is decidable without the other, so whichever is picked up first
-settles the representation both need.
+**Half of that absence is now filled, as a measurement.** The done judge
+([`Judge.MD`](Judge.MD)) reads the page back against the scene's question when the writer declares
+it over and logs `done_flagged` when it is not settled there. What it does not do is act: it gated
+once, and the refusal was a nudge nobody could satisfy — told its question was unanswered, the writer
+wrote four more steps of the same deadlock, never declared done again, and ran out its budget,
+turning a bad ending into no ending. A deadlock breaks when a character chooses differently, which
+is never the writer's to write, so the refusal named a lever the writer does not hold. Re-arm it as
+a gate when a refusal can arrive with one.
+
+**The world timeline** below is the candidate for that lever, and it reaches the same absence from
+the other side: it asks what keeps a scene under pressure toward its question rather than what should
+happen once the question is spent. The done judge is the instrument either one is measured with.
 
 **Done when** — deliberately open. Do not start this one until 1 and 2 have shipped and a fresh
 `e4b` run has been read, since both change what its evidence looks like and only `e4b` still
@@ -150,7 +158,25 @@ it: a code defect falls to `npx tsc --noEmit` and `npm test`, a prompt defect ne
 
 ### In code
 
-The first four are one chain, in dependency order — the attribution hint has to be worth trusting
+- **A character is written out of the scene and never declared gone.** Across six `alarm-*` runs the
+  writer emitted `exit` **zero** times, including a run where it narrated Tibbs leaving across seven
+  pieces and thirteen steps — *"Tibbs pushes off the wall and moves toward the exit"* through to
+  *"Tibbs is gone."* — while the loop kept Tibbs in `active`, kept consulting them, and kept naming
+  them in the neglect nudge from a stairwell they had already left. The departure is the problem: it
+  is gradual, so there is never one piece the writer would recognise as *the* exit, and nagging
+  harder about the field fights that. `exit_refused` has also never fired, so nothing in the record
+  distinguishes "declared and refused" from "never declared".
+
+  Partly addressed: the neglect nudge now offers the exit as its second reading (`52c0649`) — "X has
+  gone unconsulted" meant only *you forgot them* when it can equally mean *they left*. **That half is
+  unverified**, because it renders only alongside the nudge and the same commit correctly stops the
+  nudge firing in the four-hander that would have exercised it. Either give it a second carrier or
+  accept it is decoration.
+
+  Why it matters beyond tidiness: a POV exit ends the chapter, so an undeclared one silently costs
+  the loop its ending. One `alarm-wing` run had HALE walk downstairs and the scene ran on to the cap.
+
+The next four are one chain, in dependency order — the attribution hint has to be worth trusting
 before the match can be made to use it.
 
 - **The quote lint attributes a speaker by looking backwards only.** `attribute()` scans the 120
@@ -511,10 +537,11 @@ below: **The world timeline**.
 
 ## The world timeline
 
-**Proposed, nothing built.** The architect authors a timeline of **world events** — a fault alarm
-firing, an incoming call, the thing in the dark reaching the door — and an author-side agent fires
-them into the writer one at a time, revising what remains when a character's choice makes the next
-one impossible. It exists to keep a chapter under pressure toward the question it has to answer
+**Proposed. Nothing shipped, but the mechanism has been spiked and measured** — see *What the spike
+established* below before designing against this. The architect authors a timeline of **world
+events** — a fault alarm firing, an incoming call, the thing in the dark reaching the door — and an
+author-side agent fires them into the writer one at a time, revising what remains when a character's
+choice makes the next one impossible. It exists to keep a chapter under pressure toward the question it has to answer
 **without telling the writer the answer**, which is the fork every previous attempt at story
 direction has been impaled on: a writer given no destination stagnates, and a writer given the
 destination stops protecting who knows what.
@@ -602,45 +629,119 @@ still live and under pressure*, never *are we on the planned path*. The outcome 
 obligation the handoff carries. The timeline is the pressure that makes it likely, not the rail that
 guarantees it.
 
+### What the spike established (2026-08-29 → 09-01, deleted in `1d18577`)
+
+Four env-gated experiments ran on `alarm-corridor` (duo) and `alarm-wing` (four-hander), then were
+removed. The code is recoverable from `ad670c6` and `6704279`; what it bought is below.
+
+**Injection works, and withholding is half of it.** A beat handed to the writer as established fact
+— *this happened, nobody chose it, nobody can decline it, write it as already true* — reaches the
+page every time it fired. But injection alone is nearly redundant: the writer already fires the
+event unprompted in line one, because the scene's `question` names it, so pre-firing is obedience
+rather than error. The `[HOLD]` half — naming what the writer may not start until told — is what
+made the beat an event rather than a setting. **Both halves are load-bearing and neither is
+optional.**
+
+**A memory lands, hides, and changes reasoning without being quoted.** A per-character fact
+implanted at the moment the beat fires — a `knows` entry with a trigger, what they always knew and
+had no reason to think about — surfaced in three of four character-instances as a visible shift in
+their own `thought` field, with the wording never appearing in the prose or in their speech. HALE
+went from *"I need Oduya to help stabilize it through the door"* to *"this isn't about paperwork;
+the panel fault needs immediate attention"*; ODUYA went from *"the ledger must accurately record"*
+to *"my name is tied to the failure"*. It goes in `Agent.system`, not history: history is trimmed
+into a rolling digest and a memory summarized away mid-scene is a bug. `fork()` copies `system`, so
+a retry keeps it without learning it was a retry.
+
+**Why the alarm was inert before memories.** Read from `story.json`, needing no run: the two
+characters the scene's question turns on had nothing in `knows` the event could attach to — HALE
+holds the contract, the cage key and the ferry; ODUYA holds the paperwork, the log and head office.
+Neither held a consequence for ignoring a siren. Worse, both `impulse` fields are authored to
+entrench under pressure (*get more precise about the timetable*; *get slower and more procedural*),
+so an event carrying pressure and no stake **tightens** a deadlock rather than breaking it.
+
+**Both memory misfires were authoring, not plumbing**, and both are constraints on the architect:
+
+- *A memory about liability attaches to whatever the character already fears, not the cost you
+  meant.* ODUYA's named exposure in the log; it was written about the building standing occupied and
+  was read as exposure for granting an exception — so ODUYA got more obstructive, the opposite of the
+  intent. A memory must name its specific cost, not a general liability.
+- *A memory that contradicts its own beat loses to the beat.* HALE's said the cage stays shut while a
+  zone is in fault; the beat said the magnetic lock released and the door stands open. HALE reasoned
+  entirely from the open door and showed no uptake at all — the one instance of four with none. **A
+  beat and its memories are one authoring act and must agree about the world.**
+
+**What the spike could not establish, and no successor should claim without more runs:** anything
+about pacing or termination. Step counts swung 12→24 on the duo and 14→24 on the four-hander with
+the code path *unchanged*. Single-run comparisons do not survive that variance. Four runs were also
+wasted on a placeholder beat (`<same beat>` pasted literally from a command template), which is its
+own lesson about handing over run commands with holes in them.
+
 ### Open decisions
 
-- **Where the timeline lives.** Story-level `timeline[]` whose entries name the chapter they are
-  aimed at, or per-scene `beats[]` on `SceneDef`. Story-level is what makes a stranded beat re-aimable
-  by the handoff and matches what the architect would actually be authoring — a storyline, not one
-  scene's furniture; per-scene is the smaller schema change and matches `SceneDef`'s existing shape.
-- **What it costs per step.** The narration lint is the precedent for one call per piece, but this
-  would be a second. The cheaper shapes are firing only at beat boundaries (after a consult resolves)
-  or every N pieces, at the cost of a slower reaction to a choice that voids a beat.
-- **History or none.** Judge-shaped (fresh per call, `0.3`, reads the ledger) or clarifier-shaped (one
-  per scene, remembers what it settled). What it fires becomes true for the rest of the scene, which
-  argues clarifier; consistency argues judge. Fresh-per-call is the better default *if* the ledger is
-  genuinely the memory — which is what the one-ledger decision above is for.
-- **Who marks a beat landed**, the same call or a separate check. See `alarm-wing`.
-- **A world event that speaks needs a grant.** An incoming call has a voice on it, and
+- **~~Where the timeline lives.~~ Story-level `timeline[]`.** Settled by the memories: an entry is
+  per-(event, character), so it carries a map of memories beside the beat and hold text, which
+  `SceneDef` has no shape for. Story-level is also what lets the handoff re-aim a stranded beat.
+- **~~What it costs per step.~~ Nothing.** Firing, holding and implanting need no model call at all —
+  the spike ran on a fixed fractional trigger with zero inference. Only *repair* needs a model, and
+  repair is rare. This kills the per-step cost concern and means a working timeline ships before any
+  agent exists.
+- **Who decides a beat landed** — still open, and the spike sharpened why. "Landed" meant only *the
+  writer wrote it*; it never meant *it changed a decision*, and those came apart in every run. The
+  `done_flagged` verdict from the done judge ([`Judge.MD`](Judge.MD)) is the closest instrument the
+  engine has, but it reads the scene's question, not the beat.
+- **History or none**, for the repair entity. Unchanged: judge-shaped (fresh, `0.3`) or
+  clarifier-shaped (one per scene, remembers). Now a smaller question, since the entity only handles
+  repair.
+- **A world event that speaks needs a grant.** Unchanged. An incoming call has a voice on it, and
   [`engine/quote-lint.ts`](engine/quote-lint.ts) matches every quoted line against the granted ledger.
-  A fired beat carrying dialogue must reach that ledger or the lint will flag the writer for rendering
-  precisely what it was handed — the same trap the promote path already solves by being processed just
+  A fired beat carrying dialogue must reach that ledger or the lint flags the writer for rendering
+  precisely what it was handed — the trap the promote path already solves by being processed just
   after the lint.
 
 ### Blocks
 
-1. **The ledger and the injection path, no model.** Schema, loading, and a beat rendered into
-   `[WRITE]` as established fact, fired on a fixed step trigger. Measures the only thing worth knowing
-   first — whether an injected event lands at all — against `alarm-wing`, and needs no entity.
-2. **The entity.** Fire/hold per boundary, given the page tail and the ledger.
-3. **Landing and the four repairs.**
-4. **The architect authors the timeline**, and the handoff re-aims stranded beats — which composes
-   with the chapter-summary step in [`PLANS-handoff.md`](PLANS-handoff.md), since a summary is already
-   the "what happened" representation a re-aim would read.
-5. **Docs and viewer.** `Architect.MD` for authoring, `Writer.MD` for what the writer receives,
-   `GUI-SPEC.md` for any new event.
+Ordered so each ships alone and the model-free parts land first.
+
+1. **The ledger.** `timeline[]` in [`engine/story-schema.ts`](engine/story-schema.ts) and its
+   `StoryConfig` loading. One entry is: the chapter it is aimed at, its **held** form (what the writer
+   may not start), its **fired** form (what has happened), a trigger, a per-character `memories` map,
+   and a state — pending / fired / void. Two forms per beat, not one; the spike proved the held form
+   is not decoration. No behaviour, no model.
+2. **Firing, holding and implanting — still no model.** Promote the spike onto the ledger: hold until
+   the trigger, fire once, implant that entry's memories into the present cast, log `world_beat` and
+   `memory_surfaced`. Zero inference. Shippable and already evidenced.
+3. **Landing, and the four repairs.** The entity, and the first model call in this feature. Preempted
+   / contradicted / fired-but-did-not-land / stranded. Try a mechanical signal before an agent — the
+   quotation and sense lints are the precedent for a check that needs no model.
+4. **The architect authors beats and memories together**, under three constraints the spike found:
+   a memory names a specific cost rather than a liability; a memory agrees with its beat about the
+   world; and the scene's `question` names stakes rather than mechanisms, or it hands the writer the
+   timeline through the back door.
+5. **The handoff re-aims stranded beats.** Composes with the chapter-summary step in
+   [`PLANS-handoff.md`](PLANS-handoff.md), since a summary is already the "what happened"
+   representation a re-aim would read.
+6. **Docs and viewer.** `Architect.MD` for authoring, `Writer.MD` for what the writer receives,
+   `Character.MD` for what a memory is and when it arrives, `GUI-SPEC.md` for the new events.
+
+Blocks 1–2 are most of the value. A held-then-fired beat carrying stakes, on a fixed trigger, is
+close to the whole ask; 3–4 exist for when a character's choice breaks the timeline, which is real
+and predicted but has not yet happened in any run.
 
 ### Done when
 
-An `alarm-wing`-shaped run where the event lands: the scene terminates `done: true` near target with
-the alarm having forced a decision about the wing, rather than staying a background chime for the
-whole chapter. The `alarm-corridor` duo control (`done: true` at 17 steps, +9%) must not regress —
-a timeline that helps a four-hander and wrecks a two-hander is a pacing crutch, not a fix.
+**Not a step count.** The variance above makes any single-run pacing comparison meaningless, and the
+old criterion (`alarm-wing` terminates near target, duo control does not regress) was written before
+that was known. What replaces it:
+
+- **The mechanism, per run and cheap to check:** the held form appears in no piece before the
+  trigger; the fired form reaches the page in the piece after it; each named memory is implanted for
+  a present character and its wording appears nowhere in the prose.
+- **The effect, and it needs several runs per condition:** characters who received a memory reason
+  differently after it lands than before — read from their own `thought` fields, not from whether
+  they mention the event. That is the measurement that separates a beat that landed from a beat that
+  mattered, and it is the only one that distinguishes this feature from scenery with a volume knob.
+- **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
+  question rather than at the planned path. Without this the entity is a rail.
 
 ## Polish and cost
 
