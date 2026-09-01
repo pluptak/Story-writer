@@ -11,7 +11,9 @@ import { loadStories } from "./saved-runs.js";
 const IDEA_PLACEHOLDER =
   "e.g. A locksmith is asked to open a door they installed years ago, for someone they don't recognise.";
 
-const GATES = ["story", "cast", "settings", "technical", "scene"];
+// Must match ScaffoldSession.CHECKLIST. The gate the session is on drives the chip strip, the
+// draft label and which section renders as current, so a stage missing here loses all three.
+const GATES = ["story", "cast", "settings", "technical", "scene", "world"];
 
 // ── the idea step (modal) ────────────────────────────────────────────────────
 
@@ -112,6 +114,25 @@ function technicalHtml(spec) {
   return `<div class="technical"><span class="label">run settings</span><div class="facts">${rows}</div></div>`;
 }
 
+/** The world-event ledger, held and fired forms side by side. The memories are shown too: they are
+ *  the author's to judge here, and this is the only screen that sees them before a run hides them
+ *  inside a character. An empty ledger renders nothing -- most stories have one. */
+function timelineHtml(spec) {
+  const beats = spec.timeline || [];
+  if (!beats.length) return "";
+  return beats.map((b, i) => {
+    const mem = Object.entries(b.memories || {});
+    return `<div class="scene" data-tid="scaffold.beat">
+      <p class="scene-meta">world event ${i + 1} · chapter ${esc(b.chapter)} · fires at ${esc(b.at)} of the target</p>
+      <div class="facts">
+        <div class="fact"><strong>held</strong><span>${esc(b.hold)}</span></div>
+        <div class="fact"><strong>fired</strong><span>${esc(b.fired)}</span></div>
+        ${mem.map(([who, m]) => `<div class="fact"><strong>${esc(who)} remembers</strong><span>${esc(m)}</span></div>`).join("")}
+      </div>
+    </div>`;
+  }).join("");
+}
+
 function gateReached(s, gate) {
   if (!s.gate) return true;
   return GATES.indexOf(s.gate) >= GATES.indexOf(gate);
@@ -150,7 +171,12 @@ function proposalHtml(s) {
   if (sketches.length) scene += `<div style="margin-top:14px"><span class="label">later scenes · provisional</span>${
     sketches.map(sc => `<div class="question" style="margin-top:6px">${esc(sc.question)}</div>`).join("")}</div>`;
 
-  const content = { story, cast, settings, technical, scene };
+  // An empty ledger is the commonest correct answer, so the open world gate says so out loud
+  // rather than rendering as a blank section the author cannot tell apart from a stage that failed.
+  const world = !gateReached(s, "world") ? ""
+    : timelineHtml(spec) || (s.gate === "world"
+      ? `<p class="stage-copy">No world events — the pressure in this story runs between the people in it.</p>` : "");
+  const content = { story, cast, settings, technical, scene, world };
   const order = s.gate && GATES.includes(s.gate)
     ? [s.gate, ...GATES.filter(g => g !== s.gate)]
     : GATES;

@@ -18,7 +18,8 @@ It has two modes:
 
 - **Scaffold**: turn a rough idea into a new `story.json` through questions, a proposal, refinements,
   and an explicit accept action. The scaffold itself has two walks: **staged** — the default — runs
-  the idea through a gated checklist (story → cast → settings → technical → scene) where each stage is proposed
+  the idea through a gated checklist (story → cast → settings → technical → scene → world) where each stage is
+  proposed
   only after the author approved the last; **oneshot** proposes the whole story in one round.
 - **Handoff**: run between chapters, read the accepted chapter prose, and re-author the story
   definition for the next chapter.
@@ -201,7 +202,7 @@ about the story that resulted, flags are observations about the prose that alrea
 
 The session runs one of two walks, chosen when it opens.
 
-**Staged (the default) — a gated checklist.** The five gates:
+**Staged (the default) — a gated checklist.** The six gates:
 
 - **story** — title, premise, the load-bearing *tension*, story-level facts.
 - **cast** — full character objects, authored against that tension, as they walk into scene 1.
@@ -211,6 +212,12 @@ The session runs one of two walks, chosen when it opens.
   model ids continue to come from `defaults.json` or the author.
 - **scene** — scene 1 fully (place, question sharpened against the finished cast, pov, length,
   roster); later scenes may be sketched as question-only provisional entries.
+- **world** — the world-event ledger, `timeline[]`. Last because it depends on everything before it:
+  memories are keyed by character, so the cast must exist, and a beat must not be the thing the
+  scene's question already names, so the question must exist. **It may propose nothing, and usually
+  should.** Most stories are pure friction between people; an empty ledger is a complete answer, and
+  the gate is optional the way `technical` is. That makes an empty array *content*: if it read as a
+  missing answer the gate would report "neither world content nor a question" and stall.
 
 `propose()` opens the first gate; `approve()` passes the open gate and proposes the next stage's
 content in one call; refinement (`say`) applies edits within the open gate — back-edits to earlier
@@ -234,6 +241,26 @@ mid-checklist. `normalizeSpec`'s "nobody has any restrictions" problem is unchan
 advisory — it is the only asymmetry signal on the surfaces that have no gate at all (the story
 editor, one-shot mode, the handoff). The judge agent itself — its contract, its verdict shapes, and
 the family it belongs to — is specified in [`Judge.MD`](Judge.MD).
+
+**What the world gate is told about a beat**, in `TIMELINE_FIELDS` — one const shared with the
+whole-story format, so the two modes cannot drift. A world event is the one category nobody in the
+scene decides; if a person could decline it, it is not one. Each beat carries a **held** form (what
+the writer may not start before it fires) and a **fired** form (what has happened) — the held form
+is not decoration, since a writer left to itself invents the event early. The fired form must carry
+no quotation marks: an event with a voice cannot be told apart from an invented line, and
+[`engine/quote-lint.ts`](engine/quote-lint.ts) will flag it as one. At most one beat per chapter
+unless the idea demands two, because beats fire in authored order and two events compete for the
+same page.
+
+**Memories are where a beat gets its teeth**, and the four rules the prompt gives are each a way one
+has already failed in a live run, not a guess: name a *specific* cost rather than a liability
+(exposure attaches itself to whatever the character already fears and changes nothing); agree with
+the event about the world (a memory insisting a door is shut loses to a fired form that opened it);
+open an action rather than closing one (a memory that makes a character's plan pointless leaves them
+nowhere to go and their goal simply wins); and give it to whoever the scene's question turns on. Only
+characters in that chapter's roster — `timelineBeatProblems` warns for anyone else, because the loop
+resolves memory names against the scene roster and a memory for an absent character silently never
+implants. What a memory *is* from the character's side is [`Character.MD`](Character.MD)'s.
 
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.
@@ -292,7 +319,8 @@ Which rounds each mode can produce — the bodies and the state each route publi
 | handoff | `edits` \| `question` \| `nothing` \| `failed` |
 
 A staged scaffold round also carries `stage` — the checklist gate the round belongs to
-(`"story"` | `"cast"` | `"settings"` | `"technical"` | `"scene"`), so callers can label it without
+(`"story"` | `"cast"` | `"settings"` | `"technical"` | `"scene"` | `"world"`), so callers can label it
+without
 tracking state.
 
 The handoff never returns `proposal`. Its first round is already an edit list against the story on
@@ -353,7 +381,8 @@ Behaviour:
 - The idea field is shown only before the first proposal. Beside the model choice, the idea step offers
   **how it proposes** as two radio cards: "stage by stage" (the staged checklist) or "the whole story
   at once" (oneshot).
-- A staged session renders the checklist — story / cast / settings / technical / scene chips with the open gate
+- A staged session renders the checklist — story / cast / settings / technical / scene / world chips with the
+  open gate
   highlighted and passed gates ticked. A one-shot session has no checklist; the status bar and round
   narration carry its state.
 - While `/scaffold/start`, `/scaffold/say` or `/scaffold/approve` is running, the composer is replaced
@@ -373,6 +402,10 @@ Behaviour:
   below it; settings and technical therefore show the house style and run settings beside the controls
   used to refine or approve them rather than burying those values below the cast.
   Provisional later scenes from the scene stage render as questions under "later scenes · provisional".
+  The world stage renders each beat as its held and fired forms with the memories beneath them — the
+  only screen that shows a memory, since a run implants it inside a character and it is never seen
+  again. An empty ledger on the open world gate says so in words rather than rendering a blank
+  section the author cannot tell from a stage that failed.
 - Round labels carry their gate (`[cast] changed: …`) so refinement reads apart from stage proposals.
 - `problems` are shown inside the proposal card; warnings do not prevent further refinement.
 - Accept lives in the sidebar. It opens a folder-name step in the main column when the server returns

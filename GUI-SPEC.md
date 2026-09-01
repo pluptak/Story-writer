@@ -297,10 +297,10 @@ ScaffoldRound =
 POST /scaffold/start    { idea, model?, mode? } → only while picking; opens a session and runs the
                                                   first proposal. `mode` picks the walk:
                                                   "staged" (the default) runs the gated checklist —
-                                                   story → cast → settings → technical → scene, an author approval
-                                                  between stages — and "oneshot" is the whole-story
-                                                  proposal. The state's `gate` names the open stage
-                                                  ("story"…"scene"), null on a one-shot session.
+                                                   story → cast → settings → technical → scene → world,
+                                                  an author approval between stages — and "oneshot" is
+                                                  the whole-story proposal. The state's `gate` names the
+                                                  open stage ("story"…"world"), null on a one-shot session.
 POST /scaffold/say      { text }           → free-text turn; may return edits, a question, or a proposal.
                                              In staged mode it refines within the open gate (back-edits
                                              to earlier stages included) or answers `pendingAsk`.
