@@ -134,7 +134,12 @@ for. Whatever the budget policy becomes, that absence is the thing it answers.
 
 **Half of that absence is now filled, as a measurement.** The done judge
 ([`Judge.MD`](Judge.MD)) reads the page back against the scene's question when the writer declares
-it over and logs `done_flagged` when it is not settled there. What it does not do is act: it gated
+it over and logs `done_flagged` when it is not settled there. **Unmeasured, and now worth watching:
+whether it is too lenient.** It has twice passed an `alarm-corridor` ending that reads as undecided
+— the most recent closes with Hale reaching for the ledger and Oduya shielding it — without
+flagging. Both are defensible as the question answered *no*, which the judge is explicitly told
+counts, but a judge that never flags anything is not an instrument. Nobody has yet read a run where
+it fired. What it does not do is act: it gated
 once, and the refusal was a nudge nobody could satisfy — told its question was unanswered, the writer
 wrote four more steps of the same deadlock, never declared done again, and ran out its budget,
 turning a bad ending into no ending. A deadlock breaks when a character chooses differently, which
@@ -738,10 +743,31 @@ injects — hold until the trigger, fire once, implant the entry's memories into
    writer answered with a consult and no prose — legal, and common — drew the escalated injection,
    *"You were told last turn and the piece did not carry it"*, when there had been no piece. Whatever
    re-injects a beat must key on a check that ran and failed, never on one that has not run yet.
-2. **The architect authors beats and memories together**, under three constraints the spike found:
-   a memory names a specific cost rather than a liability; a memory agrees with its beat about the
-   world; and the scene's `question` names stakes rather than mechanisms, or it hands the writer the
-   timeline through the back door.
+2. **The architect authors beats and memories together**, under four constraints, every one of them
+   from a memory that misfired in a live run rather than from one that worked:
+   - **A memory names a specific cost, not a liability.** Exposure attaches to whatever the
+     character already fears. ODUYA's first memory said a name goes in the log against the failure;
+     ODUYA read that as exposure for *granting an exception* — the existing fear — and got more
+     obstructive, the opposite of the intent. Re-authored to set the two costs against each other
+     (*a missing countersignature is a paragraph on Monday; a name on that list is a meeting*) it
+     landed on the first reply after implant: *"The sounder means the wing must be empty; I need to
+     log every name present now. This changes everything."*
+   - **A memory agrees with its beat about the world.** HALE's first memory said the cage stays shut
+     while a zone is in fault; the beat said the lock released and the door stands open. HALE
+     reasoned entirely from the open door and showed no uptake at all.
+   - **A memory opens an action rather than closing one** — a hypothesis, n=1, and the sharpest thing
+     the corridor run produced. HALE's second memory did not contradict the beat and still did not
+     land: it said the signature was unobtainable until the panel cleared, which makes HALE's whole
+     method (pressure ODUYA) pointless without offering a replacement, and HALE went on treating the
+     alarm as leverage for the schedule. ODUYA's landed and gave them something new to *do*. A memory
+     that says *here is another thing you now own* has somewhere to go; one that says *your plan is
+     futile* leaves the authored `goal` to win. Worth confirming before it becomes doctrine.
+   - **The scene's `question` names stakes, not mechanisms**, or it hands the writer the timeline
+     through the back door.
+
+   This block is now ahead of the repairs on evidence: the mechanism works and the bottleneck is
+   authoring — two of four memory instances across two runs failed, both for authoring reasons —
+   while the breakage the repairs exist for has not occurred in any run yet.
 3. **The handoff re-aims stranded beats.** Composes with the chapter-summary step in
    [`PLANS-handoff.md`](PLANS-handoff.md), since a summary is already the "what happened"
    representation a re-aim would read.
@@ -758,13 +784,18 @@ predicted but has not yet happened in any run.
 old criterion (`alarm-wing` terminates near target, duo control does not regress) was written before
 that was known. What replaces it:
 
-- **The mechanism, per run and cheap to check:** the held form appears in no piece before the
-  trigger; the fired form reaches the page in the piece after it; each named memory is implanted for
-  a present character and its wording appears nowhere in the prose.
+- ~~**The mechanism, per run and cheap to check:**~~ **Met** (`alarm-corridor`, 2026-09-01, one beat
+  authored into `story.json`, no environment variables): steps 1–5 carry no alarm word at all, the
+  beat fires into step 6 and the alarm appears exactly there, both memories implant, and neither
+  memory's wording reaches the prose. The scene closed `done: true` at 14 steps, 737 words (+5%),
+  nothing flagged and no answer owed.
 - **The effect, and it needs several runs per condition:** characters who received a memory reason
   differently after it lands than before — read from their own `thought` fields, not from whether
   they mention the event. That is the measurement that separates a beat that landed from a beat that
   mattered, and it is the only one that distinguishes this feature from scenery with a volume knob.
+  One instance of each so far, in the same run: ODUYA's memory visibly redirected their reasoning
+  for two replies before their authored `impulse` reasserted; HALE's did not land at all. Both
+  readings are in block 2's constraints above.
 - **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
   question rather than at the planned path. Without this the entity is a rail.
 
