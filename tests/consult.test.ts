@@ -273,6 +273,29 @@ describe("judgeRequest", () => {
   });
 });
 
+describe("memorySurfaced", () => {
+  it("renders the memory text and reads as knowledge, not as news", () => {
+    const s = P.memorySurfaced("the lighthouse keeps its beam on a half-minute swing");
+    assert.match(s, /the lighthouse keeps its beam on a half-minute swing/);
+    assert.match(s, /WHAT YOU ALSO KNOW/);
+  });
+
+  it("begins with blank lines so it appends cleanly to an existing system prompt", () => {
+    const s = P.memorySurfaced("anything");
+    assert.match(s, /^\n\n/);
+  });
+});
+
+describe("memoryMarker", () => {
+  it("carries the memory and forbids narrating the act of remembering", () => {
+    const mem = "the lighthouse keeps its beam on a half-minute swing";
+    const s = P.memoryMarker(mem);
+    assert.match(s, /\[YOU REMEMBER\]/);
+    assert.match(s, new RegExp(mem));
+    assert.match(s, /do not narrate remembering it/);
+  });
+});
+
 describe("narrationLintRequest", () => {
   const base = {
     pov: "RIVEN", prose: "Riven crossed the room and reached for the door.",

@@ -17,6 +17,7 @@ import { lintQuotations } from "./quote-lint.ts";
 import { lintRestrictedSenses } from "./sense-lint.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
+import { warn } from "./warnings.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
 /** One character agent's system prompt: persona, place, skills, knowledge, goal, belief, impulse, voice.
@@ -108,6 +109,7 @@ export type RunEvent =
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "exit_refused"; character: string; chapter: number }
+  | { t: "memory_surfaced"; character: string; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
@@ -172,6 +174,24 @@ const JUDGE_TEMPERATURE = 0.3;
 const SPIKE_BEAT = process.env.SPIKE_BEAT?.trim() ?? "";
 const SPIKE_HOLD = process.env.SPIKE_HOLD?.trim() ?? "";
 const SPIKE_BEAT_AT = Number(process.env.SPIKE_BEAT_AT ?? 0.45);
+
+// A memory is a `knows` entry with a trigger: what the character always knew but had no reason to
+// think about until the world event happened. Withheld beforehand for the same reason the writer's
+// `[HOLD]` exists: a character who holds the fact from line one steers the scene toward it. Keyed by
+// lowercased character name, matching how the engine keys its agent map.
+const SPIKE_MEMORY: Record<string, string> = (() => {
+  const raw = process.env.SPIKE_MEMORY?.trim();
+  if (!raw) return {};
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(o)
+      .map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
+      .filter(([, v]) => v));
+  } catch (e) {
+    warn(`   (SPIKE_MEMORY is not valid JSON and was ignored: ${(e as Error).message})`);
+    return {};
+  }
+})();
 
 /** Cast members who have gone unconsulted for long enough that the writer may have lost one.
  *
@@ -420,6 +440,23 @@ export async function writeScene(
     if (fired) {
       beatFired = true;
       console.log(`\n${C.cyan}(world beat fired at step ${steps}, ${words}/${sd.length} words)${C.reset}`);
+
+      // Implant character memories: when the beat fires, named characters get knowledge they always
+      // had but were not thinking about. Memory goes into `system` rather than history because
+      // history is trimmed into a rolling digest and a memory summarized away mid-scene is a bug.
+      // The marker in history is one-time and trimmable; it only marks the moment.
+      for (const def of roster) {
+        const mem = SPIKE_MEMORY[def.name.toLowerCase()];
+        if (mem && isActive(def.name)) {
+          const a = agents.get(def.name.toLowerCase());
+          if (a) {
+            a.system += P.memorySurfaced(mem);
+            a.hear(P.memoryMarker(mem));
+            log({ t: "memory_surfaced", character: def.name, chapter });
+            console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
+          }
+        }
+      }
     }
     writer.hear(P.writeInstruction({
       words, target: sd.length, maxProseWords, overran, neglected, hardCap,
