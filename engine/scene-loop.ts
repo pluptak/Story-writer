@@ -17,7 +17,6 @@ import { lintQuotations } from "./quote-lint.ts";
 import { lintRestrictedSenses } from "./sense-lint.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
-import { warn } from "./warnings.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
 /** One character agent's system prompt: persona, place, skills, knowledge, goal, belief, impulse, voice.
@@ -109,7 +108,6 @@ export type RunEvent =
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "exit_refused"; character: string; chapter: number }
-  | { t: "memory_surfaced"; character: string; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
@@ -158,40 +156,6 @@ const NARRATION_LINT_RETRIES = 1;
 
 // Judging an answer is classification, not composition: the writer's own 0.8 buys nothing here.
 const JUDGE_TEMPERATURE = 0.3;
-
-// SPIKE — the world timeline, ahead of block 1 (PLANS.md). One beat, injected once, with no schema,
-// no entity and no repair: it only measures whether an injected world event lands.
-// The beat text belongs to a run, not the engine, so it arrives by environment; an unset SPIKE_BEAT
-// leaves every instruction byte-identical to before. Delete this and its call site.
-//
-// The trigger is a fraction of the word target, not a step number: step counts vary with cast size
-// (17 for a duo, 24-31 for a four-hander), so the same absolute step lands at a different point in
-// each — which is the comparison the duo control exists to make.
-//
-// SPIKE_HOLD names what the writer may not start on its own until then. Without it the writer opens
-// with the event already underway — correct behaviour, since it is steering toward a scene question
-// that names the event, so firing it in line one is obedience, not error.
-const SPIKE_BEAT = process.env.SPIKE_BEAT?.trim() ?? "";
-const SPIKE_HOLD = process.env.SPIKE_HOLD?.trim() ?? "";
-const SPIKE_BEAT_AT = Number(process.env.SPIKE_BEAT_AT ?? 0.45);
-
-// A memory is a `knows` entry with a trigger: what the character always knew but had no reason to
-// think about until the world event happened. Withheld beforehand for the same reason the writer's
-// `[HOLD]` exists: a character who holds the fact from line one steers the scene toward it. Keyed by
-// lowercased character name, matching how the engine keys its agent map.
-const SPIKE_MEMORY: Record<string, string> = (() => {
-  const raw = process.env.SPIKE_MEMORY?.trim();
-  if (!raw) return {};
-  try {
-    const o = JSON.parse(raw) as Record<string, unknown>;
-    return Object.fromEntries(Object.entries(o)
-      .map(([k, v]) => [k.trim().toLowerCase(), String(v).trim()])
-      .filter(([, v]) => v));
-  } catch (e) {
-    warn(`   (SPIKE_MEMORY is not valid JSON and was ignored: ${(e as Error).message})`);
-    return {};
-  }
-})();
 
 /** Cast members who have gone unconsulted for long enough that the writer may have lost one.
  *
@@ -305,7 +269,6 @@ export async function writeScene(
   const granted: { character: string; speech: string; action: string; thought?: string }[] = [];
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
-  let beatFired = false; // SPIKE (world timeline): the beat fires once, then the hold lifts.
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
@@ -436,31 +399,8 @@ export async function writeScene(
     const words = wordCount();
     const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
     const hardCap = words >= sd.length * HARD_CAP_MULT;
-    const fired = SPIKE_BEAT && !beatFired && words >= sd.length * SPIKE_BEAT_AT ? SPIKE_BEAT : "";
-    if (fired) {
-      beatFired = true;
-      console.log(`\n${C.cyan}(world beat fired at step ${steps}, ${words}/${sd.length} words)${C.reset}`);
-
-      // Implant character memories: when the beat fires, named characters get knowledge they always
-      // had but were not thinking about. Memory goes into `system` rather than history because
-      // history is trimmed into a rolling digest and a memory summarized away mid-scene is a bug.
-      // The marker in history is one-time and trimmable; it only marks the moment.
-      for (const def of roster) {
-        const mem = SPIKE_MEMORY[def.name.toLowerCase()];
-        if (mem && isActive(def.name)) {
-          const a = agents.get(def.name.toLowerCase());
-          if (a) {
-            a.system += P.memorySurfaced(mem);
-            a.hear(P.memoryMarker(mem));
-            log({ t: "memory_surfaced", character: def.name, chapter });
-            console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
-          }
-        }
-      }
-    }
     writer.hear(P.writeInstruction({
       words, target: sd.length, maxProseWords, overran, neglected, hardCap,
-      fired, hold: beatFired ? "" : SPIKE_HOLD,
     }));
     let draftRaw: string;
     try {
