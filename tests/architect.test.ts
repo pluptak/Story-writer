@@ -563,6 +563,24 @@ describe("ScaffoldSession, staged", () => {
         { ASTER: "The signal has a fault condition we have never seen." });
     });
 
+    // The one-shot format proposes a whole story in one reply, so it needs the same beat rules the
+    // staged gate has. They share one const rather than two copies that drift apart.
+    it("the one-shot format offers a timeline and marks it optional", () => {
+      assert.match(P.ARCHITECT_FORMAT, /"timeline": \[\]/);
+      assert.match(P.ARCHITECT_FORMAT, /timeline\s+-- OPTIONAL, and usually empty/);
+    });
+
+    it("both authoring surfaces carry the same beat rules, from one source", () => {
+      const staged = P.architectWorldStage("(so far)");
+      for (const rule of [/IT NAMES A SPECIFIC COST/, /IT AGREES WITH THE EVENT/,
+                          /IT OPENS AN ACTION/, /IT GOES TO WHOEVER MUST MOVE/,
+                          /MOST STORIES DO NOT NEED ONE/, /AT MOST ONE PER CHAPTER/,
+                          /No dialogue and no quotation marks/]) {
+        assert.match(staged, rule, `staged stage is missing ${rule}`);
+        assert.match(P.ARCHITECT_FORMAT, rule, `one-shot format is missing ${rule}`);
+      }
+    });
+
     it("reports the world stage as stage 6 of 6 in the checklist", () => {
       const text = P.architectWorldStage("(so far)");
       assert.match(text, /stage 6 of 6/);

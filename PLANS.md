@@ -808,6 +808,15 @@ No defect and no decision owed: smaller quality work, prompt cost, and coverage.
   no longer carries it (`buildArchitect(d, false)`) and the staged walk embeds each stage's fields
   inline, so only `mode: "oneshot"` still pays — a whole-story proposal has no story yet to
   demonstrate the format with. Whether that path can drop or shrink the example is what is left.
+
+  **And it now carries the world-event rules too.** `TIMELINE_FIELDS` is ~888 estimated tokens and
+  `ARCHITECT_FORMAT` went from ~3,217 to ~4,105 with it — 28% growth on every one-shot prompt, for a
+  field the block itself says is usually `[]`. It is shared with the staged world gate rather than
+  duplicated, so the cost is paid once in source; the question is whether the one-shot path should
+  pay it at runtime. The cheap alternative is a short block there (what a world event is, the field
+  shapes, "usually empty") with the four memory rules left to the staged gate — at the price that a
+  beat authored in one-shot mode is authored without the rules that stop it misfiring. Not decided:
+  nobody has yet read a one-shot proposal that produced a beat.
 - **The story editor has no view of the session's tension sentence.** It steers the cast and scene
   stages but lives only in the conversation, so an author editing the story afterwards cannot see
   what the cast was built to serve.
