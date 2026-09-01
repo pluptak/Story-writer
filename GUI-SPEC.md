@@ -460,12 +460,15 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    was accepted unchecked
   { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
                                                     the one redraft happened or it was logged and kept.
-                                                    `why` may carry two findings joined by ". " — the
-                                                    mechanical sense check and the LLM half run together
-  { t:"narration_quote_flag"; why; quote; character }
-                                                  — the mechanical quotation check fired (no model):
-                                                    `quote` is the unmatched line, `character` the nearest
-                                                    name before it or "unknown"; the one redraft follows
+                                                    `why` may carry three findings joined by ". " —
+                                                    the two mechanical checks (quotations, restricted
+                                                    senses) and the LLM half run together
+  { t:"repeat_strip"; chars; words; whole }      — the piece opened by re-emitting the page's tail
+                                                   (engine/repeat-lint.ts, no model call); the repeated
+                                                   prefix was stripped before the append, so the draft
+                                                   event that follows carries only the new text.
+                                                   `whole` true means the entire piece was already on
+                                                   the page and nothing was written this turn
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
   { t:"model_changed"; model }

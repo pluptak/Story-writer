@@ -232,6 +232,23 @@ one redraft, so a piece carrying two findings has to report both in the same mes
 judge is shown, the verdict shapes it may return, the mechanical halves' conservatism, and why a
 check nobody made must not read as a check that passed are [`Judge.MD`](Judge.MD)'s.
 
+### The repeat guard
+
+After the lint, and just before the append, a piece that **opens by re-emitting the page's tail** is
+stripped back to its genuinely new text (`engine/repeat-lint.ts`, no model call). The recorded
+failure: the doorway run's second draft re-emitted the first — 386 identical characters, the whole
+opening paragraph — and appended one new sentence, and both were accepted, so the scene opened with
+the paragraph twice. The guard matches the piece's leading sentences against the last two pieces
+(verbatim, or near-verbatim at the same Dice ≥ 0.8 bar the quote lint uses) and strips the repeated
+prefix at a sentence boundary, declining entirely rather than cutting mid-sentence. Everything that
+records the piece records the kept text — `pieces[]`, the writer's own history, the `draft` event
+and the incremental `scene.md` — so the writer's next draft reads a page that carries the paragraph
+once. A piece that repeats the page **in full** counts as a turn that wrote nothing. What is out of
+scope: a phrase repeated mid-piece (stripping it would mangle the prose), a callback to anything
+older than the tail (legitimate prose), and an echo under eight words (a tolerated phrasing
+callback). Every strip is logged as `repeat_strip`; the guard only ever removes a prefix it is
+confident about.
+
 ### An answer is not canon until it is on the page
 
 Accepting an answer only puts it in the writer's history. The chapter is the durable record, and the

@@ -21,7 +21,7 @@ run, which is the owner's to make, batched.
 
 ## Next
 
-Three items promoted out of the sections below, in the order they should be picked up. Each is
+Two items promoted out of the sections below, in the order they should be picked up. Each is
 decidable now and has live-run evidence behind it, and each is a reason to distrust what the writer
 hands everyone else.
 
@@ -31,45 +31,15 @@ put the writer, judge, narration lint and clarifier on `gemma-4-12b-it-qat-uncen
 left the characters on `e4b`. **Retained-run rotation has since removed `14-54-12-677Z` from disk**,
 so figures cited from it are not re-derivable; everything attributed to the other three is. Two
 further `e4b` runs, `21-35-36-919Z` (control) and `22-23-22-884Z` (the first under the shipped
-sense-lint, consult gate and person clause), are item 2's evidence; both are preserved
+sense-lint, consult gate and person clause), are item 1's evidence; both are preserved
 under `stories/doorway/experiments/` with the runs they are measured against.
 
 That model split is why the order is what it is. Raising the author-side model fixed or nearly fixed
-all three on its own — the fourth run finished in 13 steps with no degenerate questions, no
+both on its own — the fourth run finished in 13 steps with no degenerate questions, no
 person drift and no repetition — while the prose sense-lint's three holes, which led this list until
 they shipped, appeared on the page in both models: the one thing capability did not buy.
 
-### 1. An accepted piece can repeat what is already on the page
-
-Draft #2 of the doorway run re-emitted draft #1 **verbatim** — 386 identical characters, the whole
-opening paragraph — and appended one new sentence. Both were accepted and both were appended, so the
-scene opens with the same paragraph twice. Draft #3 then repeated Riven's `"Just delivering
-something…"` line from draft #2. Nothing between an accepted draft and the append to `scene.md`
-compares the new piece against the tail of the page.
-
-The writer restating is model behaviour; the page corruption is not, and this is the cheapest of
-these to close because it needs no model call.
-
-**Evidence since:** the class is intermittent rather than model-bound. It appeared in the first two
-runs (386 and 311 characters) and in neither of the last two — including run three, which was the
-same `e4b` model throughout. Run four left one 54-character repeat, a phrase rather than a paragraph.
-So a better author model is not the fix, but the defect is rarer than the first two runs implied, and
-that argues for the cheap guard rather than against it.
-
-Two decisions the plan has to make:
-
-- **Leaf home.** A new module in `engine/quote-lint.ts`'s shape — no engine dependencies, one pure
-  function — rather than a branch inside the scene loop.
-- **Threshold and event.** A verbatim prefix is the easy case; near-verbatim needs a similarity
-  measure, and `quote-lint.ts:94` is the precedent in this repo (Dice coefficient ≥ 0.8). If it emits
-  an event at all, it inherits the same fold-or-case question `narration_quote_flag` is still open
-  on — decide it here rather than adding a second event nothing renders.
-
-**Done when** an accepted piece that repeats the page's tail is stripped or refused before the
-append, the threshold is chosen with the doorway 386-char case and quote-lint's 0.8 as the two
-reference points, and the event decision is made rather than deferred.
-
-### 2. Was the person clause the thing that cleaned the page, or was the run clean anyway?
+### 1. Was the person clause the thing that cleaned the page, or was the run clean anyway?
 
 The clause shipped (`prompts/writer.ts`, the POV line): person is the house style's to set, never
 the consult rhythm's. The first `e4b` run under it (`22-23-22-884Z`) had a clean page and clean
@@ -89,13 +59,13 @@ drifted, a different character each time: run one's HALE is `they` for the whole
 clean both times, so the stress is the cast size, not the model — two runs is still not a verdict,
 but it is no longer one.
 
-### 3. A scene has no representation of its own question being answered
+### 2. A scene has no representation of its own question being answered
 
 The doorway run ended `done: false`, at 64 steps against a `maxSteps` of 24 (four `budget` grants)
 and 933 words against a 700 target. Its question — "Does Riven get through the door before Merritt
 decides what to do about them?" — was answered at the midpoint: door open, satchel handed over,
 ledger signed. Everything after is epilogue, and in it Riven is consulted four more times about how
-fast to walk away while Merritt is asked five times whether to stand up. Item 2's person drift lives
+fast to walk away while Merritt is asked five times whether to stand up. Item 1's person drift lives
 **entirely** inside that epilogue, which is why this is ordered last: some of its evidence is not
 independent.
 
@@ -150,7 +120,7 @@ a gate when a refusal can arrive with one.
 the other side: it asks what keeps a scene under pressure toward its question rather than what should
 happen once the question is spent. The done judge is the instrument either one is measured with.
 
-**Done when** — deliberately open. Do not start this one until 1 and 2 have shipped and a fresh
+**Done when** — deliberately open. Do not start this one until the item above is settled and a fresh
 `e4b` run has been read, since both change what its evidence looks like and only `e4b` still
 produces the failure.
 
@@ -158,8 +128,6 @@ produces the failure.
 
 Something is demonstrably wrong and the fix is known or nearly known. The split is by what verifies
 it: a code defect falls to `npx tsc --noEmit` and `npm test`, a prompt defect needs a live run.
-
-**In Next:** item 1, an accepted piece repeating what is already on the page.
 
 ### In code
 
@@ -222,13 +190,6 @@ before the match can be made to use it.
   mechanical half then flags as fabricated, spending the scene's one redraft on a false positive.
   Grant `felt` into the mechanical ledger — after the two grant paths are made to agree about which
   replies carry it.
-- **`narration_quote_flag` reaches no reader.** The event is emitted in `writeScene` and typed in
-  `RunEvent`, but the viewer's event switch handles only `narration_flag`, so its `quote` and
-  `character` fields are dropped on arrival. Nothing is lost to the author today, because
-  `narration_flag` follows immediately carrying the same `why` — which is exactly why this went
-  unnoticed. Either the viewer grows a case for it (a `GUI-CHECKLIST.md` pass, and the grouping
-  question of whether it renders beside or instead of the flag that follows), or the event is
-  deleted and its two fields fold into `narration_flag`. Deciding which is the whole of the work.
 - **`sceneDrift` does not compare `reach`.** The snapshot-desync warning that guards the handoff
   compares place, question, pov, length and roster — but not the field the capability layer added,
   so a written chapter whose `reach` was hand-edited afterwards re-authors silently and the warning
@@ -284,7 +245,7 @@ Each has live scaffold evidence and a candidate fix; all four need a run to conf
 The next action is reading a run, not writing code. These are the owner's, batched. Each names what
 would settle it, and several gate work in the sections below.
 
-**In Next:** item 2. **The open-beat experiment** below is also here in kind — its whole
+**In Next:** item 1. **The open-beat experiment** below is also here in kind — its whole
 remaining cost is one more stage-3 run.
 
 - **The question gates now guard only the judge's re-ask, and that path is unmeasured.** Since
@@ -350,7 +311,7 @@ remaining cost is one more stage-3 run.
   aloud, and one invented escalation voiced through Wren. The texture reading holds, and the
   mechanical half now catches the whole class without a machine-label false positive among them.
   The Wren case cuts the other way too: the redraft that removed the fabrication removed the
-  scene's only escalation with it (see Next item 3).
+  scene's only escalation with it (see Next item 2).
 
   The rerun reproduced the acceptance shape live in these stories: the redraft itself fabricated
   ("Better move it now,"), the second flag came back `retried: true`, and the piece was accepted
@@ -470,7 +431,7 @@ unshipped, so a revert has to undo those passages too.**
 The engine permits something it should not, or has no representation for something it needs, and the
 fix is not decided. Nothing here should be built before its question is answered.
 
-**In Next:** item 3, a scene having no representation of its own question being answered.
+**In Next:** item 2, a scene having no representation of its own question being answered.
 
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round refuses with the numbers rather than letting the model return nothing, so a long

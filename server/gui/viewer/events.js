@@ -19,6 +19,7 @@ const NOTE_META = {
   done_deferred:      { tone:"warn", label:"deferred",    critical:true },
   answer_unwritten:   { tone:"bad",  label:"unwritten",   critical:true },
   narration_flag:     { tone:"warn", label:"flagged",     critical:false },
+  repeat_strip:       { tone:"warn", label:"repeat",      critical:false },
   world_beat:         { tone:"info", label:"world",       critical:true },
   beat_stranded:      { tone:"warn", label:"unfired",     critical:true },
   memory_surfaced:    { tone:"info", label:"remembers",   critical:false },
@@ -96,6 +97,9 @@ export function build(store) {
       case "narration_flag": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text: e.retried ? `narration flagged again after a redraft — ${e.why} — kept anyway`
                         : `narration flagged — ${e.why} — redrafting`, }); break;
+      case "repeat_strip": blocks.push({ kind:"note", t:e.t, seq:e.seq,
+        text: e.whole ? `the piece was already on the page in full — nothing new was written`
+                      : `the piece opened with ${e.words} words already on the page — stripped before the append` }); break;
       case "world_beat": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text:`the world moves — ${e.beat}` + (e.hold ? ` (it had been held: ${e.hold})` : "") }); break;
       case "memory_surfaced": blocks.push({ kind:"note", t:e.t, seq:e.seq,

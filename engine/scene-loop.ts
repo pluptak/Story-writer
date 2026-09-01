@@ -14,6 +14,7 @@ import {
 import { type Msg } from "./llm-client.ts";
 import { resolveReach, type Skill } from "./skills.ts";
 import { lintQuotations } from "./quote-lint.ts";
+import { stripRepeatedPrefix } from "./repeat-lint.ts";
 import { lintRestrictedSenses } from "./sense-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
@@ -99,7 +100,7 @@ export type RunEvent =
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "forced_end"; words: number; target: number; chapter: number }
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
-  | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
+  | { t: "repeat_strip"; chars: number; words: number; whole: boolean; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }
@@ -145,6 +146,10 @@ async function askMoreSteps(steps: number, budget: number, chapter: number): Pro
 }
 
 const OVERRUN_SLACK = 1.5;
+
+// The tail the repeat guard compares a new piece against: the last two pieces, capped. A callback
+// to an older beat is legitimate prose; re-emitting where the page ends is the defect.
+const REPEAT_TAIL_CHARS = 2000;
 
 const NEGLECT_GAP = 3;
 
@@ -501,11 +506,9 @@ export async function writeScene(
       // skipped the deed and stillness checks. Two live runs skipped six pieces that way and put
       // three unasked-for stillnesses on the page. The extra model call is only spent on pieces
       // already in trouble.
+      // A mechanical finding renders once: the quote lint's `why` joins the others into the one
+      // `narration_flag` below — there is no separate quotation event.
       const quoteLint = lintQuotations(prose, lintGranted, cast.map(c => c.name));
-      if (quoteLint && !quoteLint.ok) {
-        log({ t: "narration_quote_flag", why: quoteLint.why, quote: quoteLint.quote,
-              character: quoteLint.character, chapter });
-      }
       {
       const senseLint = lintRestrictedSenses(prose, cast);
       let lintWhy: string | null = null;
@@ -554,6 +557,26 @@ export async function writeScene(
       steps++;
     }
     if (stoppedMidLint) break;
+
+    // -- REPEAT GUARD: a piece that opens by re-emitting the page's tail is stripped back to its
+    // new text before anything records it — the doorway run appended a verbatim repeat of its
+    // opening paragraph plus one new sentence, so the scene opened with the paragraph twice. It
+    // runs after the lint (a redraft is checked like any other draft) and before the push, the
+    // writer's history and the draft event, so the page and everything the writer reads back carry
+    // the kept text — the paragraph appears once, from the draft that wrote it first. No model
+    // call; repeat-lint declines rather than cutting mid-sentence, so it only ever removes a
+    // prefix it is confident about.
+    if (prose && pieces.length) {
+      const tail = pieces.slice(-2).join("\n\n").slice(-REPEAT_TAIL_CHARS);
+      const strip = stripRepeatedPrefix(prose, tail);
+      if (strip) {
+        prose = strip.kept;
+        proseWords = prose ? prose.split(/\s+/).filter(Boolean).length : 0;
+        log({ t: "repeat_strip", chars: strip.chars, words: strip.words, whole: strip.whole, chapter });
+        console.log(`${C.yellow}(repeat stripped — the piece opened with ${strip.words} words `
+          + `already on the page${strip.whole ? "; nothing new was written" : ""})${C.reset}`);
+      }
+    }
 
     overran = proseWords > maxProseWords * OVERRUN_SLACK ? proseWords : 0;
     // A beat written after the answers landed is the writing turn they were owed; the consults this

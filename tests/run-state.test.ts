@@ -363,8 +363,20 @@ describe("a scene that never ends", () => {
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
     ENGINE.stream = false;   // the non-streaming completion is the simpler shape to script
+    // Distinct beats, cycled: the repeat guard strips a piece that re-emits the page's tail, so a
+    // writer that sends the identical prose every turn never accumulates words and the hard cap
+    // could never fire. Four beats against a two-piece tail window means no piece ever repeats
+    // what the page just ended with.
+    const beats = [
+      "The corridor lights stutter and the cold finds its way through every seam.",
+      "Somewhere below, a door slams and the pipes answer with a knock.",
+      "Hale counts the seconds between the alarm's pulses and does not like the number.",
+      "The ledger under his arm has grown heavy as a paving stone.",
+    ];
+    let beat = 0;
     globalThis.fetch = (async () => new Response(JSON.stringify({
-      choices: [{ message: { content: JSON.stringify({ prose: "word ".repeat(25).trim(), scene_done: false }) } }],
+      choices: [{ message: { content: JSON.stringify({
+        prose: beats[beat++ % beats.length], scene_done: false }) } }],
     }))) as any;
 
     armRun();
@@ -641,10 +653,8 @@ describe("the narration lint", () => {
       assert.match(flags[0].why, /unmatched quotation: "Not tonight,"/);
       assert.match(flags[0].why, /CANNOT sight/);
 
-      const quoteFlags = events.filter(e => e.t === "narration_quote_flag") as any[];
-      assert.equal(quoteFlags.length, 1);
-      assert.equal(quoteFlags[0].quote, "Not tonight,");
-
+      // The quotation finding renders once — through the joined narration_flag why above. There is
+      // no separate quotation event: it reached no reader that the flag did not.
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1, "the flagged draft never got its own draft event");
       assert.equal(drafts[0].prose, cleanProse);
@@ -822,6 +832,106 @@ describe("the narration lint", () => {
     assert.ok(!events.some(e => e.t === "lint_failed"), "and it is not an outage either");
     assert.equal(events.filter(e => e.t === "schema_mismatch").length, 1,
       "one record of the shape problem is what distinguishes it from a clean pass");
+  });
+});
+
+// -- THE REPEAT GUARD ---------------------------------------------------------
+// A piece that opens by re-emitting the page's tail is stripped back to its new text before the
+// append (engine/repeat-lint.ts) — the doorway run appended a verbatim repeat of its opening
+// paragraph and then one new sentence, so the scene opened with the paragraph twice.
+describe("the repeat guard", () => {
+  const P = "The fault alarm kept ringing over the empty wing while the cold worked through every "
+          + "seam. Hale stood with the ledger under his arm and did not move.";
+
+  async function runRepeat(opts: { writerReplies: Record<string, unknown>[] }) {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const events: RunEvent[] = [];
+    let writerCall = 0;
+    const nextWriter = () => opts.writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.done": { ok: true },
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = fetchMock;
+
+    armRun();
+    try {
+      const r = await quiet(() => writeScene(
+        sc.scenes[0], 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, e => events.push(e),
+      ));
+      // LIVE.writer is captured before the finally's resetLive() clears it.
+      return { r, events, writer: LIVE.writer };
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  }
+
+  it("strips a piece that re-emits the tail verbatim and appends only the new sentence", async () => {
+    const { r, events, writer } = await runRepeat({
+      writerReplies: [
+        { prose: P, scene_done: false },
+        { prose: P + " Then the corridor lights died.", scene_done: true },
+      ],
+    });
+
+    assert.deepEqual(r.prose, [P, "Then the corridor lights died."],
+      "the paragraph is on the page once, and the new sentence after it");
+    const strips = events.filter(e => e.t === "repeat_strip") as any[];
+    assert.equal(strips.length, 1);
+    assert.equal(strips[0].whole, false, "the piece had a new sentence, and it survived");
+    assert.ok(strips[0].chars > 0 && strips[0].words > 0);
+    // The writer's own history records what was accepted, not what was attempted — its next draft
+    // reads a page that carries the paragraph once.
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.ok(!heard.includes("did not move. Then the corridor lights died."),
+      "the unstripped repeat never entered the writer's history");
+    assert.match(heard, /"prose":"Then the corridor lights died\."/);
+  });
+
+  it("counts a wholly-repeated piece as a turn that wrote nothing", async () => {
+    const { r, events } = await runRepeat({
+      writerReplies: [
+        { prose: P, scene_done: false },
+        { prose: P, scene_done: false },   // wholly repeated: nothing new
+        { prose: "Then the corridor lights died.", scene_done: true },
+      ],
+    });
+
+    const strips = events.filter(e => e.t === "repeat_strip") as any[];
+    assert.equal(strips.length, 1);
+    assert.equal(strips[0].whole, true, "the entire piece was already on the page");
+    assert.deepEqual(r.prose, [P, "Then the corridor lights died."],
+      "the repeated draft never reached the page");
+    const drafts = events.filter(e => e.t === "draft") as any[];
+    assert.equal(drafts.filter(d => d.prose).length, 2,
+      "two pieces of prose were written, not three");
+    assert.equal(r.done, true);
+  });
+
+  it("leaves an ordinary continuation untouched", async () => {
+    const second = "The corridor lights died all the same, and Hale counted the seconds.";
+    const { r, events } = await runRepeat({
+      writerReplies: [
+        { prose: P, scene_done: false },
+        { prose: second, scene_done: true },
+      ],
+    });
+
+    assert.deepEqual(r.prose, [P, second]);
+    assert.ok(!events.some(e => e.t === "repeat_strip"), "no strip event on a clean continuation");
   });
 });
 
