@@ -315,7 +315,8 @@ describe("ScaffoldSession, staged", () => {
 
   it("walks the checklist one approved gate at a time, merging as it goes", async () => {
     const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
-                     { edits: [], note: "it holds together" }]);
+                     { edits: [], note: "it holds together" }, // verify pass
+                     { timeline: [] }]); // world stage
 
     const first = await s.propose();
     assert.equal(first.kind, "proposal");
@@ -352,6 +353,10 @@ describe("ScaffoldSession, staged", () => {
     const heard = s.architect.history.map(h => h.content).join("\n");
     assert.match(heard, /\[VERIFY\]/);
     assert.doesNotMatch(heard, /\[FILL\]/);
+
+    const world = await s.approve();
+    assert.equal(gateOf(world), "world");
+    assert.deepEqual(s.spec.timeline, []);
 
     const done = await s.approve();
     assert.equal(done.kind, "nothing");
@@ -526,6 +531,71 @@ describe("ScaffoldSession, staged", () => {
     assert.equal(r.kind, "proposal");
     assert.match(s.architect.history.at(-2)!.content, /OVERRIDE: you have asked several times/);
     assert.equal(s.asks, 0);
+  });
+
+  describe("the world stage", () => {
+    const WORLD_WITH_BEAT = {
+      timeline: [{
+        chapter: 1,
+        at: 0.45,
+        hold: "the panel is still dark",
+        fired: "The alarm on the panel flashed red.",
+        memories: { ASTER: "The signal has a fault condition we have never seen." },
+      }],
+    };
+
+    // The one that proves the wiring rather than the wording: a proposed beat has to survive
+    // mergedRaw and normalizeSpec to reach the spec, memories and trigger intact.
+    it("folds a proposed beat onto the spec, with its trigger and memories", async () => {
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "it holds together" }, WORLD_WITH_BEAT]);
+      await s.propose();
+      for (const _ of ["cast", "settings", "technical", "scene"]) await s.approve();
+
+      const world = await s.approve();
+      assert.equal(world.kind, "proposal", "a well-formed beat is content, not nothing");
+      assert.equal(gateOf(world), "world");
+      assert.equal(s.spec.timeline.length, 1);
+      assert.equal(s.spec.timeline[0].fired, "The alarm on the panel flashed red.");
+      assert.equal(s.spec.timeline[0].hold, "the panel is still dark");
+      assert.equal(s.spec.timeline[0].at, 0.45);
+      assert.deepEqual(s.spec.timeline[0].memories,
+        { ASTER: "The signal has a fault condition we have never seen." });
+    });
+
+    it("reports the world stage as stage 6 of 6 in the checklist", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /stage 6 of 6/);
+    });
+
+    it("carries the story-so-far to the world stage", () => {
+      const text = P.architectWorldStage("(the story so far)");
+      assert.match(text, /\(the story so far\)/);
+    });
+
+    it("tells the architect that an empty timeline is a complete and correct answer", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /MOST STORIES DO NOT NEED ONE/);
+      assert.match(text, /"timeline": \[\]/);
+    });
+
+    it("lists all four memory constraints: COST, AGREEMENT, ACTION, AUDIENCE", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /IT NAMES A SPECIFIC COST/);
+      assert.match(text, /IT AGREES WITH THE EVENT/);
+      assert.match(text, /IT OPENS AN ACTION/);
+      assert.match(text, /IT GOES TO WHOEVER MUST MOVE/);
+    });
+
+    it("forbids quoted speech in the fired form", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /No dialogue and no quotation marks/);
+    });
+
+    it("checklistLine() now reports six stages", () => {
+      const storyText = P.architectStoryStage("idea");
+      assert.match(storyText, /stage 1 of 6/);
+    });
   });
 });
 

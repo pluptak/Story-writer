@@ -230,7 +230,7 @@ export class ScaffoldSession {
    *  and sharpens the scene stage's question. */
   tension = "";
 
-  private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene"];
+  private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
 
   /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
    *  without it a test walking the checklist would reach for the network at the cast gate. */
@@ -278,6 +278,7 @@ export class ScaffoldSession {
       case "settings": return insist + P.architectSettingsStage(json);
       case "technical": return insist + P.architectTechnicalStage(json);
       case "scene": return insist + P.architectSceneStage(json);
+      case "world": return insist + P.architectWorldStage(json);
     }
   }
 
@@ -289,6 +290,7 @@ export class ScaffoldSession {
       case "technical": return Boolean(out.config && typeof out.config === "object")
         || Array.isArray(out.characters) || Array.isArray(out.scenes);
       case "scene": return Boolean(out.scene && typeof out.scene === "object");
+      case "world": return Array.isArray(out.timeline); // even an empty array is a valid "no events needed" answer
     }
   }
 
@@ -335,6 +337,8 @@ export class ScaffoldSession {
           if (cur && typeof sc?.writerThink === "string") cur.writerThink = sc.writerThink;
         });
       }
+    } else if (stage === "world") {
+      raw.timeline = Array.isArray(out.timeline) ? out.timeline : [];
     } else {
       const later = (Array.isArray(out.later_scenes) ? out.later_scenes : [])
         .filter((s: unknown): s is Record<string, unknown> => Boolean(s) && typeof s === "object")
@@ -396,6 +400,7 @@ export class ScaffoldSession {
       case "settings": return this.spec.writerStyle.trim() ? null : "no writer style yet";
       case "technical": return null;   // optional stage: config has defaults, so nothing is required
       case "scene": return this.spec.scenes[0]?.question.trim() ? null : "no scene question yet";
+      case "world": return null;       // optional stage: a story with no world events is complete
       default: return null;
     }
   }

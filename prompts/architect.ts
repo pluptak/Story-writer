@@ -215,7 +215,7 @@ export const architectMore = (userText: string, idea: string, insist: boolean) =
 // "tension" is the load-bearing conflict sentence coined at the story stage; it is not a story.json
 // field of its own -- it steers the cast and the scene question, then lives folded into the premise.
 
-export type ScaffoldStage = "story" | "cast" | "settings" | "technical" | "scene";
+export type ScaffoldStage = "story" | "cast" | "settings" | "technical" | "scene" | "world";
 
 /** Prepended to a staged round once one stage has asked MAX_ASKS questions without proposing -- the
  *  staged counterpart of [MORE]'s OVERRIDE line, so a gate cannot stall on questions forever. */
@@ -223,7 +223,7 @@ export const STAGE_INSIST =
   `OVERRIDE: you have asked several times without proposing. Do not ask anything else -- choose the `
   + `most interesting reading of what the author has given you and commit to it now.`;
 
-const STAGE_ORDER: readonly ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene"];
+const STAGE_ORDER: readonly ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
 
 const checklistLine = (stage: ScaffoldStage) => {
   const i = STAGE_ORDER.indexOf(stage);
@@ -375,6 +375,64 @@ later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"que
   complete in one scene.
 
   ${STAGE_RULES}`;
+
+export const architectWorldStage = (specSoFar: string) => `${checklistLine("world")}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+YOUR STAGE: the world events, and nothing else --
+
+{"timeline": [{"chapter": 1, "at": 0.45, "hold": "...", "fired": "...",
+               "memories": {"NAME": "..."}}],
+ "ask": "",
+ "note": ""}
+
+A WORLD EVENT is the one category nobody in the scene decides: a fault alarm going off, a phone
+ringing, the tide turning, a door blowing shut. If a person could decline it, it is not a world
+event and does not belong here.
+
+MOST STORIES DO NOT NEED ONE. A scene whose pressure already runs between the people in it needs no
+help from the weather. Propose "timeline": [] and say why in "note" -- that is a complete and
+correct answer to this stage, and the commonest one. Do not bolt an event onto a story that works.
+
+AT MOST ONE PER CHAPTER unless the idea genuinely demands two. Beats fire in the order you write
+them, one at a time, so two events in one scene compete for the same page.
+
+timeline[].chapter  -- which scene it is aimed at. 1 is the scene you just wrote.
+timeline[].at       -- when it fires, as a fraction of that scene's word target. 0.45 is the middle:
+                       early enough that the scene has to live with it, late enough that these
+                       people have already shown you who they are.
+timeline[].hold     -- what the writer may NOT start before it fires, in a few words: "the panel
+                       going into full alarm". Without this the writer invents the event early, and
+                       it will.
+timeline[].fired    -- what has happened, once it does. One or two sentences, concrete and physical.
+                       No dialogue and no quotation marks: an event with a voice cannot be told apart
+                       from an invented line, and it will be flagged as one.
+timeline[].memories -- OPTIONAL, and where the event gets its teeth. Keyed by character name: a
+                       thing that character has ALWAYS known and had no reason to think about until
+                       now. It stays hidden until the event fires, then it is theirs.
+
+WHAT MAKES A MEMORY WORK -- each of these is a way one has already failed:
+
+  IT NAMES A SPECIFIC COST, not a liability. "This could go badly for you" attaches itself to
+  whatever that character already fears and changes nothing. Name the exact thing that happens to
+  THEM: which page it lands on, who reads it, what it costs them when they do.
+
+  IT AGREES WITH THE EVENT. If the fired form says a lock released, a memory insisting the door
+  stays shut loses: the character reasons from what is in front of them and ignores you.
+
+  IT OPENS AN ACTION, it does not close one. A memory that makes a character's whole plan pointless
+  leaves them nowhere to go, and their goal simply wins instead. Give them something NEW that is
+  now theirs to do or answer for, alongside what they already wanted.
+
+  IT GOES TO WHOEVER MUST MOVE. The people the scene's question turns on are the ones who need a
+  stake in the event; someone who would react well already does not need one. Only characters in
+  that chapter's roster -- a memory for anyone else never reaches them.
+
+The scene's question must NOT name this event. If the question you wrote does, say so in "note".
+
+${STAGE_RULES}`;
 
 export const architectTechnicalStage = (specSoFar: string) => `${checklistLine("technical")}
 
