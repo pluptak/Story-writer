@@ -57,20 +57,54 @@ export function reachNotInRoster(prefix: string, who: string): string {
 /** The timeline-beat problems that are pure string work, shared by the load path (which warns and
  *  keeps the beat) and the proposal path (which reports it), so the wording has one home — the same
  *  rule `rosterNameNotACharacter` follows. A beat aimed past the last scene is not an error: stories
- *  grow chapters, so it is reported, never dropped. */
-export function timelineBeatProblems(prefix: string, beat: TimelineDef, cast: string[], scenes: number): string[] {
+ *  grow chapters, so it is reported, never dropped. Checks memory names against the target scene's
+ *  roster, accounting for the rule that an empty roster means the whole cast is in that scene. */
+export function timelineBeatProblems(prefix: string, beat: TimelineDef, cast: string[],
+                                     scenes: { roster: string[] }[]): string[] {
   const out: string[] = [];
-  if (beat.chapter > scenes)
+  if (beat.chapter > scenes.length)
     out.push(`${prefix} is aimed at chapter ${beat.chapter}, past the story's last scene — it cannot fire`);
   for (const who of Object.keys(beat.memories)) {
-    if (!cast.some(c => c.toLowerCase() === who.trim().toLowerCase()))
+    const inCast = cast.some(c => c.toLowerCase() === who.trim().toLowerCase());
+    if (!inCast) {
       out.push(`${prefix} keys a memory to "${who}", who is not one of the characters — the memory never reaches a run`);
+      continue;
+    }
+    const targetScene = scenes[beat.chapter - 1];
+    if (targetScene && targetScene.roster.length && !targetScene.roster.some(r => r.toLowerCase() === who.trim().toLowerCase()))
+      out.push(`${prefix} keys a memory to "${who}", who is not in chapter ${beat.chapter}'s roster — the memory never implants`);
   }
   for (const [form, text] of [["held", beat.hold], ["fired", beat.fired]] as const) {
     if (/["“”]/.test(text))
       out.push(`${prefix}'s ${form} form carries quoted speech — the quote lint will flag it as invented `
         + `until world events can be granted lines; keep the event wordless for now`);
   }
+  return out;
+}
+
+/** Check that beats in the same chapter fire in ascending trigger order. Beats fire in authored
+ *  order (one at a time), so a beat whose `at` is lower than an earlier beat's in the same chapter
+ *  can never fire at its trigger point — it will fire after the predecessor instead. */
+export function timelineOrderProblems(beats: TimelineDef[]): string[] {
+  const out: string[] = [];
+  const maxAtByChapter = new Map<number, { at: number; index: number }>();
+
+  for (const [i, beat] of beats.entries()) {
+    if (beat.state === "void") continue;
+
+    const chapter = beat.chapter;
+    const existing = maxAtByChapter.get(chapter);
+
+    if (existing && beat.at < existing.at) {
+      out.push(
+        `timeline beat ${i + 1} triggers at ${beat.at} of the way in, before beat ${existing.index + 1} at ${existing.at} `
+        + `which is authored ahead of it — beats fire in authored order, so it will fire immediately after that one instead of at its own point`
+      );
+    } else if (!existing || beat.at > existing.at) {
+      maxAtByChapter.set(chapter, { at: beat.at, index: i });
+    }
+  }
+
   return out;
 }
 
@@ -210,9 +244,10 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       continue;
     }
     problems.push(...timelineBeatProblems(`timeline beat ${i + 1}`, beat.data,
-      characters.map(c => c.name), scenes.length));
+      characters.map(c => c.name), scenes));
     timeline.push(beat.data);
   }
+  problems.push(...timelineOrderProblems(timeline));
 
   const config = RunConfig.parse(o.config ?? {});
 

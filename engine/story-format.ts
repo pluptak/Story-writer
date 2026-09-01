@@ -6,7 +6,7 @@ import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path"
 import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
-import { rosterNameNotACharacter, reachNotInRoster, timelineBeatProblems } from "./story-spec.ts";
+import { rosterNameNotACharacter, reachNotInRoster, timelineBeatProblems, timelineOrderProblems } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -133,9 +133,11 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
   // disposition lives entirely in the warning wording (shared with the proposal path).
   for (const [i, beat] of parsed.timeline.entries()) {
     for (const p of timelineBeatProblems(`timeline beat ${i + 1}`, beat,
-      characters.map(c => c.name), parsed.scenes.length))
+      characters.map(c => c.name), parsed.scenes))
       warn(p);
   }
+  for (const p of timelineOrderProblems(parsed.timeline))
+    warn(p);
 
   return {
     dir: base,

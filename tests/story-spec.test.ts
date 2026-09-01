@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { loadStory, ROOT } from "../engine/story-format.ts";
 import { slugify } from "../engine/config-util.ts";
-import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, timelineDrift, specView, type SceneDef } from "../engine/story-spec.ts";
+import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, timelineDrift, specView, timelineBeatProblems, timelineOrderProblems, type SceneDef } from "../engine/story-spec.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { quiet, quietSync } from "./helpers.ts";
 
@@ -697,6 +697,159 @@ describe("timeline", () => {
     const r = StoryJson.safeParse(d);
     assert.equal(r.success, true, `the editor draft must validate: ${JSON.stringify(r.error?.issues)}`);
     assert.equal(r.success && r.data.timeline.length, 1);
+  });
+
+  it("reports a memory keyed to a character absent from that chapter's roster", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base,
+      scenes: [
+        { place: "scene 1", question: "q1", roster: ["HALE"] },
+        { place: "scene 2", question: "q2", roster: ["ODUYA"] },
+      ],
+      timeline: [{ chapter: 1, hold: "hold", fired: "fired", memories: { ODUYA: "fact" } }],
+    });
+    assert.equal(spec.timeline.length, 1, "the beat is kept");
+    const joined = problems.join(" ");
+    assert.match(joined, /ODUYA/);
+    assert.match(joined, /chapter 1/);
+    assert.match(joined, /roster/);
+  });
+
+  it("does not report a memory keyed to a character when the target scene's roster is empty (whole cast)", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base,
+      scenes: [
+        { place: "scene 1", question: "q1", roster: [] },  // empty roster = whole cast
+      ],
+      timeline: [{ chapter: 1, hold: "hold", fired: "fired", memories: { ODUYA: "fact" } }],
+    });
+    assert.equal(spec.timeline.length, 1);
+    const joined = problems.join(" ");
+    assert.ok(!joined.includes("roster"), "no roster complaint when roster is empty");
+  });
+
+  it("reports both messages only if the character is not in the cast at all", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base,
+      scenes: [{ place: "scene 1", question: "q1", roster: ["HALE"] }],
+      timeline: [{ chapter: 1, hold: "hold", fired: "fired", memories: { UNKNOWN: "fact" } }],
+    });
+    assert.equal(spec.timeline.length, 1);
+    const joined = problems.join(" ");
+    assert.match(joined, /not one of the characters/);
+    assert.ok(!joined.includes("chapter 1's roster"), "no roster message for a character not in the cast");
+  });
+
+  it("survives an order check even with beats in different chapters", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base,
+      scenes: [{ place: "s1", question: "q1" }, { place: "s2", question: "q2" }],
+      timeline: [
+        { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {} },
+        { chapter: 2, hold: "h", fired: "f", at: 0.3, memories: {} },
+      ],
+    });
+    const joined = problems.join(" ");
+    assert.ok(!joined.includes("order"), "beats in different chapters are not out of order");
+  });
+});
+
+describe("timelineBeatProblems", () => {
+  const beat = (over: Partial<{ chapter: number; hold: string; fired: string; at: number;
+                                memories: Record<string, string>; state: "pending" | "fired" | "void" }> = {}) => ({
+    chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds",
+    at: 0.45, memories: {}, state: "pending" as const, ...over,
+  });
+  const cast = ["HALE", "ODUYA", "WREN"];
+  const scenes = (...rosters: string[][]) => rosters.map(roster => ({ roster }));
+
+  it("passes a plain beat aimed at a scene that exists", () => {
+    assert.deepEqual(timelineBeatProblems("beat 1", beat(), cast, scenes([])), []);
+  });
+
+  it("reports a beat aimed past the last scene", () => {
+    assert.match(timelineBeatProblems("beat 1", beat({ chapter: 3 }), cast, scenes([], []))[0],
+      /aimed at chapter 3, past the story's last scene/);
+  });
+
+  // The one check with no test until it silently broke: a curly-quoted beat passed validation for a
+  // while because the character class had been normalized to three ASCII quotes.
+  for (const [label, text] of [
+    ["straight quotes", `The tannoy says "clear the wing" twice.`],
+    ["curly quotes", `The tannoy says “clear the wing” twice.`],
+  ] as const) {
+    it(`flags a fired form carrying ${label}`, () => {
+      assert.match(timelineBeatProblems("beat 1", beat({ fired: text }), cast, scenes([])).join(" "),
+        /fired form carries quoted speech/);
+    });
+    it(`flags a held form carrying ${label}`, () => {
+      assert.match(timelineBeatProblems("beat 1", beat({ hold: text }), cast, scenes([])).join(" "),
+        /held form carries quoted speech/);
+    });
+  }
+
+  it("reports a memory keyed to a name that is in no chapter at all, and only that", () => {
+    const out = timelineBeatProblems("beat 1", beat({ memories: { GHOST: "x" } }), cast, scenes(["HALE"]));
+    assert.equal(out.length, 1, "one message, not both");
+    assert.match(out[0], /"GHOST", who is not one of the characters/);
+  });
+
+  it("reports a memory keyed to a character absent from that chapter's roster", () => {
+    const out = timelineBeatProblems("beat 1", beat({ chapter: 2, memories: { WREN: "x" } }),
+      cast, scenes(["HALE", "WREN"], ["HALE", "ODUYA"]));
+    assert.equal(out.length, 1);
+    assert.match(out[0], /"WREN", who is not in chapter 2's roster/);
+  });
+
+  it("says nothing when the target scene's roster is empty — that means the whole cast is in it", () => {
+    assert.deepEqual(timelineBeatProblems("beat 1", beat({ memories: { WREN: "x" } }), cast, scenes([])), []);
+  });
+});
+
+describe("timelineOrderProblems", () => {
+  it("reports nothing when beats descend across a chapter boundary — each chapter queues alone", () => {
+    const beats = [
+      { chapter: 1, hold: "h", fired: "f", at: 0.8, memories: {}, state: "pending" as const },
+      { chapter: 2, hold: "h", fired: "f", at: 0.2, memories: {}, state: "pending" as const },
+    ];
+    assert.deepEqual(timelineOrderProblems(beats), []);
+  });
+
+  it("reports a descending pair within one chapter", () => {
+    const beats = [
+      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, state: "pending" as const },
+    ];
+    const problems = timelineOrderProblems(beats);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /beat 2.*0\.3.*beat 1.*0\.6/);
+  });
+
+  it("reports nothing for ascending beats in the same chapter", () => {
+    const beats = [
+      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, state: "pending" as const },
+    ];
+    const problems = timelineOrderProblems(beats);
+    assert.deepEqual(problems, []);
+  });
+
+  it("ignores void beats", () => {
+    const beats = [
+      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, state: "void" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, state: "pending" as const },
+    ];
+    const problems = timelineOrderProblems(beats);
+    assert.deepEqual(problems, [], "void beats are not checked for ordering");
+  });
+
+  it("reports nothing for equal at values in the same chapter", () => {
+    const beats = [
+      { chapter: 1, hold: "h", fired: "f", at: 0.5, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.5, memories: {}, state: "pending" as const },
+    ];
+    const problems = timelineOrderProblems(beats);
+    assert.deepEqual(problems, []);
   });
 });
 

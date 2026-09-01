@@ -9,7 +9,7 @@ import { ENGINE } from "./engine/engine-state.ts";
 import { splitMeaning } from "./engine/skills.ts";
 import { NET } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
-import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, type StorySpec } from "./engine/story-spec.ts";
+import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
@@ -123,7 +123,8 @@ export const HOST: ServerHost = {
     }
     for (const [i, beat] of parsed.timeline.entries())
       warnings.push(...timelineBeatProblems(`timeline beat ${i + 1}`, beat,
-        parsed.characters.map(c => c.name), parsed.scenes.length));
+        parsed.characters.map(c => c.name), parsed.scenes));
+    warnings.push(...timelineOrderProblems(parsed.timeline));
     warnings.push(...characterCardWarnings(parsed));
     return { ok: true, story: parsed, warnings };
   },
