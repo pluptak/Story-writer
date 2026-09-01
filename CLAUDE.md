@@ -109,7 +109,7 @@ way.**
 | [run-manifest.ts](run-manifest.ts) | which engine wrote a run — a source fingerprint taken at import time (so a stale `--serve` process is caught rather than mislabelled), the git revision beside it, and `out/<id>/manifest.json` |
 | [host.ts](host.ts) | the `ServerHost` object handed to `server/server.ts`, plus its story.json read/persist helpers and the architect session factories |
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the console echo, the per-run LLM log handles, the terminal status line |
-| [engine/config-util.ts](engine/config-util.ts) | the shared filename `slugify` |
+| [engine/config-util.ts](engine/config-util.ts) | the shared filename `slugify`, and the character-name matching (`nameKey`/`sameName`) every case-insensitive identity comparison goes through |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
 | [engine/warnings.ts](engine/warnings.ts) | the engine's warning sink — `WARN.sink` is swapped, never `console` |
 | [engine/quote-lint.ts](engine/quote-lint.ts) | the mechanical half of the narration lint: quoted lines matched against the granted ledger, no model call |
@@ -122,6 +122,9 @@ way.**
 | [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` |
 | [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
 | [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
+| [engine/judge-gate.ts](engine/judge-gate.ts) | the per-answer gate's attempt cycle — consult, judge, retry on a fresh fork, ceiling — extracted from the scene loop |
+| [engine/fanout.ts](engine/fanout.ts) | the reaction fan-out — one shared beat, isolated per-reactor consults, the writer's bundle, and the batch judge's promotable flags |
+| [engine/narration-lint.ts](engine/narration-lint.ts) | the three checks on a drafted piece run alongside each other — quotation, restricted sense, and the narration judge's read |
 | [engine/architect.ts](engine/architect.ts) | building the architect agent, the interactive story-building conversation, and the between-chapters handoff that re-authors the cast |
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
 | [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, architect, consult, writer, judge, clarify), which match one engine caller each |
@@ -134,7 +137,7 @@ way.**
 | [server/story-edit-routes.ts](server/story-edit-routes.ts) | `/story/edit` (GET), `/story/check`, `/story/save`, `/story/discard`, `/story/suggest` (POST) — the `story.json` form editor; load, validate, save, discard the last unwritten scene, and a stateless architect suggestion call. Refuses with `409` while something holds `story.json`: a run, the post-pick loading window, or an open handoff |
 | [server/http-util.ts](server/http-util.ts) | the `json()` response helper, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
 | [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel) |
-| [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus and the stop signal |
+| [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus, the stop signal, and the loop's human-interaction port (`SceneIo`/`LIVE_IO`: step budget, pause, reader seat) |
 | [ansi.ts](ansi.ts) | terminal colours |
 
 **The asymmetry is the product.** The writer never sees a persona; a character never sees the premise,

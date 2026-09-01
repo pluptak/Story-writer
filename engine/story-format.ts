@@ -4,6 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
 import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
+import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel } from "./story-schema.ts";
 import { rosterNameNotACharacter, reachNotInRoster } from "./story-spec.ts";
@@ -84,8 +85,8 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
   for (const c of parsed.characters) {
     const name = c.name.trim();
     if (!name) { warn("a character has no name — skipped"); continue; }
-    if (seen.has(name.toLowerCase())) { warn(`Duplicate character "${name}" — skipped`); continue; }
-    seen.add(name.toLowerCase());
+    if (seen.has(nameKey(name))) { warn(`Duplicate character "${name}" — skipped`); continue; }
+    seen.add(nameKey(name));
     const skillsRaw = c.skills.join(" | "), restrictionsRaw = c.restrictions.join(" | ");
     characters.push({
       name,
@@ -108,18 +109,18 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
   for (const [i, s] of parsed.scenes.entries()) {
     if (!s.question)
       warn(`Scene ${i + 1} has no "question" — the writer has no dramatic question to close, so it decides alone when the scene is done`);
-    if (s.pov && !characters.some(c => c.name.toLowerCase() === s.pov.trim().toLowerCase()))
+    if (s.pov && !characters.some(c => sameName(c.name, s.pov)))
       warn(`Scene ${i + 1} pov "${s.pov}" is not one of the characters — ignored`);
     for (const r of s.roster) {
-      if (!characters.some(c => c.name.toLowerCase() === r.trim().toLowerCase()))
+      if (!characters.some(c => sameName(c.name, r)))
         warn(rosterNameNotACharacter(`Scene ${i + 1}`, r) + " — ignored");
     }
     // Reach is scene-scoped (I1), so it is only ever checked for well-formedness here; the character
     // base above resolves with reach empty (I4). A grant to nobody who can receive it is dead weight.
     for (const [who] of Object.entries(s.reach ?? {})) {
-      const ch = characters.find(c => c.name.toLowerCase() === who.trim().toLowerCase());
+      const ch = characters.find(c => sameName(c.name, who));
       if (!ch) warn(`Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`);
-      else if (s.roster.length && !s.roster.some(r => r.trim().toLowerCase() === who.toLowerCase()))
+      else if (s.roster.length && !s.roster.some(r => sameName(r, who)))
         warn(reachNotInRoster(`Scene ${i + 1}`, who) + " — the grant never reaches a run");
     }
   }
