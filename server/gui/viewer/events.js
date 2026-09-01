@@ -20,6 +20,7 @@ const NOTE_META = {
   answer_unwritten:   { tone:"bad",  label:"unwritten",   critical:true },
   narration_flag:     { tone:"warn", label:"flagged",     critical:false },
   world_beat:         { tone:"info", label:"world",       critical:true },
+  beat_stranded:      { tone:"warn", label:"unfired",     critical:true },
   memory_surfaced:    { tone:"info", label:"remembers",   critical:false },
 };
 
@@ -99,6 +100,8 @@ export function build(store) {
         text:`the world moves — ${e.beat}` + (e.hold ? ` (it had been held: ${e.hold})` : "") }); break;
       case "memory_surfaced": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text:`${e.character} remembers something they always knew, now that it bears on the moment` }); break;
+      case "beat_stranded": blocks.push({ kind:"note", t:e.t, seq:e.seq,
+        text:`the scene ended without this world event ever firing — ${e.beat} (it was set for ${e.at} of the target)` }); break;
       case "scene_end": blocks.push({ kind:"end", seq:e.seq, ...e }); break;
     }
   }

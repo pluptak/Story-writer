@@ -474,6 +474,28 @@ describe("the world timeline in the loop", () => {
     }
   });
 
+  it("records a beat whose trigger the scene never reached, and says nothing about other chapters", async () => {
+    // The scene closes at 3 words against a 40-word target, so a beat set at 0.9 never fires. Only
+    // a firing leaves a mark otherwise, so silence would read exactly like a beat that had landed.
+    const { events } = await runWith(
+      [{ ...beatAt(0.9), fired: "the roof gives way" },
+       { chapter: 2, hold: "h2", fired: "a beat for the next chapter", at: 0, memories: {}, state: "pending" as const },
+       { chapter: 1, hold: "h3", fired: "a beat nobody wants", at: 0.9, memories: {}, state: "void" as const }],
+      [{ prose: "a quiet piece", scene_done: true }]);
+
+    const stranded = events.filter(e => e.t === "beat_stranded") as any[];
+    assert.equal(stranded.length, 1, "this chapter's unfired beat only — not chapter 2's, not a void one");
+    assert.equal(stranded[0].beat, "the roof gives way");
+    assert.equal(stranded[0].at, 0.9);
+    assert.ok(!events.some(e => e.t === "world_beat"), "and nothing fired");
+  });
+
+  it("records nothing stranded when the beat fired", async () => {
+    const { events } = await runWith([beatAt(0)], [{ prose: "a quiet piece", scene_done: true }]);
+    assert.ok(events.some(e => e.t === "world_beat"));
+    assert.ok(!events.some(e => e.t === "beat_stranded"));
+  });
+
   it("does nothing at all — no hold, no events — for beats aimed at another chapter", async () => {
     const sc = await sc0();
     const sd = { ...sc.scenes[0], length: 40, roster: [] };

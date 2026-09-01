@@ -110,6 +110,7 @@ export type RunEvent =
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "exit_refused"; character: string; chapter: number }
   | { t: "world_beat"; beat: string; hold: string; step: number; chapter: number }
+  | { t: "beat_stranded"; beat: string; at: number; chapter: number }
   | { t: "memory_surfaced"; character: string; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
@@ -979,6 +980,15 @@ export async function writeScene(
     console.log(`${C.red}(the scene ended before ${names.join(", ")}'s answer reached the page — `
       + `accepted, but not in the chapter)${C.reset}`);
   }
+
+  // A beat aimed at this chapter that never fired: the scene ended before its trigger, or ended
+  // early. Nothing else in the record says so — `world_beat` marks a firing and silence marks
+  // everything else — and the handoff has no other way to know there is something left to re-aim.
+  for (const b of timeline)
+    if (b.chapter === chapter && b.state !== "void" && !beatFired.has(b)) {
+      log({ t: "beat_stranded", beat: b.fired, at: b.at, chapter });
+      console.log(`${C.yellow}(the scene ended without the world event ever firing: ${b.fired})${C.reset}`);
+    }
 
   log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter, retries: Object.fromEntries(retryCounts) });
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
