@@ -11,9 +11,17 @@ import type { ScaffoldSession, ScaffoldRound, ScaffoldAccept } from "../engine/a
 
 let SCAFFOLD: ScaffoldSession | null = null;
 let scaffoldBusy = false;                  // one architect at a time
+// Bumped by abandon. Every async action captures the counter when it starts and re-checks it after
+// each await; a stale value means the session was abandoned out from under this request, so
+// nothing it brought back may be committed or published.
+let scaffoldGen = 0;
 let scaffoldLast: ScaffoldRound | null = null;
 let scaffoldFolderAsk = "";                // why accept() would not derive a folder name
 let scaffoldStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is running, if any
+
+const ABANDONED = "the interview was abandoned";
+const ABANDONED_WHILE_ACCEPTING =
+  "the interview was abandoned while accepting — the story folder may exist on disk";
 
 function scaffoldState(host: ServerHost) {
   if (!SCAFFOLD) return { active: false };
@@ -62,13 +70,18 @@ export async function handleScaffoldRoutes(
     json(res, 404, { ok: false, reason: `no such scaffold action: ${what}` });
 
   } else if (what === "abandon") {
-    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = ""; scaffoldBusy = false;
+    // The session dies here, but `scaffoldBusy` is left alone: if a round is in flight it must
+    // keep the lock until its own finally clears it, so a second start cannot overlap it. The
+    // round itself finds a stale `scaffoldGen` on return and drops everything it produced.
+    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = "";
+    scaffoldGen++;
     publishScaffold(host);
     json(res, 200, { ok: true });
 
   } else if (scaffoldBusy) { json(res, 409, { ok: false, reason: "a round is already in flight" });
 
   } else if (what === "start") {
+    const gen = scaffoldGen;
     if (!LIVE.awaitingPick) { json(res, 400, { ok: false, reason: "the session is not waiting for a story" }); return true; }
     const idea = String(o.idea ?? "").trim();
     if (!idea) { json(res, 400, { ok: false, reason: "nothing to work with" }); return true; }
@@ -82,10 +95,15 @@ export async function handleScaffoldRoutes(
     scaffoldBusy = true; scaffoldLast = null; scaffoldFolderAsk = "";
     try {
       const mode = o.mode === "oneshot" ? "oneshot" : "staged";
-      SCAFFOLD = await host.newScaffoldSession(idea, model, mode);
+      const session = await host.newScaffoldSession(idea, model, mode);
+      // Abandoned while the session was being built: it must not resurrect itself.
+      if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
+      SCAFFOLD = session;
       setWhere("building a new story", false);
       publishScaffold(host);
-      scaffoldLast = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(host); });
+      const last = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(host); });
+      if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
+      scaffoldLast = last;
     } catch (e) {
       scaffoldLast = { kind: "failed", error: (e as Error).message };
     } finally { scaffoldBusy = false; scaffoldStage = ""; }
@@ -113,33 +131,53 @@ export async function handleScaffoldRoutes(
   } else if (what === "say") {
     const text = String(o.text ?? "").trim();
     if (!text) { json(res, 400, { ok: false, reason: "say something" }); return true; }
+    const gen = scaffoldGen;
+    const session = SCAFFOLD;
     scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold(host);
-    try { scaffoldLast = await SCAFFOLD.say(text, stage => { scaffoldStage = stage; publishScaffold(host); }); }
-    catch (e) { scaffoldLast = { kind: "failed", error: (e as Error).message }; }
+    try { const r = await session.say(text, stage => { scaffoldStage = stage; publishScaffold(host); });
+          if (gen === scaffoldGen) scaffoldLast = r; }
+    catch (e) { if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message }; }
     finally { scaffoldBusy = false; scaffoldStage = ""; }
+    if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 
   } else if (what === "approve") {
     // Pass the open checklist gate and propose the next stage's content. The engine refuses on a
     // one-shot session and while the gate is empty or a question stands; those come back as rounds.
+    // `override` is the author overruling a gate that came back `blocked` — sent by the viewer's
+    // confirming second click, and the only way past the cast gate's asymmetry judgement.
+    const gen = scaffoldGen;
+    const session = SCAFFOLD;
     scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold(host);
-    try { scaffoldLast = await SCAFFOLD.approve(stage => { scaffoldStage = stage; publishScaffold(host); }); }
-    catch (e) { scaffoldLast = { kind: "failed", error: (e as Error).message }; }
+    try { const r = await session.approve(stage => { scaffoldStage = stage; publishScaffold(host); },
+                                          Boolean(o.override));
+          if (gen === scaffoldGen) scaffoldLast = r; }
+    catch (e) { if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message }; }
     finally { scaffoldBusy = false; scaffoldStage = ""; }
+    if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 
   } else if (what === "accept") {
     if (!LIVE.awaitingPick || !LIVE.pickResolve) { json(res, 400, { ok: false, reason: "the session is not waiting for a story" }); return true; }
+    const gen = scaffoldGen;
+    const session = SCAFFOLD;
     scaffoldBusy = true; publishScaffold(host);
     let r: ScaffoldAccept;
-    try { r = await SCAFFOLD.accept(String(o.folder ?? "").trim()); }
+    try { r = await session.accept(String(o.folder ?? "").trim()); }
     catch (e) {
       scaffoldBusy = false; publishScaffold(host);
       json(res, 500, { ok: false, reason: (e as Error).message }); return true;
     }
     scaffoldBusy = false;
+    if (gen !== scaffoldGen) {
+      // Abandoned while the write was in flight. The story folder may exist on disk either way,
+      // but nothing is resolved and no run starts.
+      publishScaffold(host);
+      json(res, 409, { ok: false, reason: ABANDONED_WHILE_ACCEPTING });
+      return true;
+    }
     if (r.kind !== "written") {
       scaffoldFolderAsk = r.kind === "needs_folder" ? r.reason : "";
       publishScaffold(host);

@@ -2,17 +2,17 @@ import { APP } from "./state.js";
 
 // ---- locator mode ----------------------------------------------------------
 // The "point at it" affordance for GUI bug reports (GUI-CHECKLIST "Locators"). Toggled with
-// ctrl/⌘+shift+L, or by opening any page with ?locators=1 on its hash. While on: hovering outlines
-// the nearest data-tid-bearing ancestor and badges its locator; clicking copies the full locator --
+// ctrl/⌘+shift+L, or by opening any page with ?locators=1. While on: hovering outlines the nearest
+// data-tid-bearing ancestor and badges its locator; clicking copies the full locator --
 // `#/route?params :: area.component[key=value] > ...` -- to the clipboard and swallows the click,
 // so pointing at a button is never pressing it.
 
 let on = false;
 let outlined = null;   // the element currently carrying .tid-outline
 
-/** The canonical locator for an element: the chain of data-tid values from the outermost tid-bearing
- *  ancestor down to the element itself, each with its instance key (the first other data-* attribute)
- *  folded in as `[key=value]`. With no tid anywhere, falls back to the nearest id, then the tag. */
+/** The canonical locator for an element: the chain of data-tid values from the outermost
+ *  tid-bearing ancestor down to the element itself, each with its instance key (the first other
+ *  data-* attribute) folded in as `[key=value]`. With no tid anywhere: nearest id, then the tag. */
 export function locatorFor(el) {
   if (!el || !(el instanceof Element)) return "";
   const parts = [];
@@ -98,8 +98,8 @@ async function swallowClick(e) {
   flash(ok ? `copied — ${text}` : "copy failed — the locator is in the console: APP.locator(el)");
 }
 
-/** Click feedback in place of the hover badge, which has usually been torn down by the repaint a
- *  navigation would have caused. Auto-clears. */
+/** Click feedback in place of the hover badge, which the repaint behind a navigation has usually
+ *  torn down by then. Auto-clears. */
 function flash(text) {
   const b = badge();
   b.textContent = text;

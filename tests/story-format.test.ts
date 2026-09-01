@@ -4,20 +4,18 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, writeFile, rm, mkdir, readFile, copyFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, NEW_STORY, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
-  type Defaults,
+  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
-import { normalizeSpec, applyEdits, directEdit, renderStory } from "../engine/story-spec.ts";
-import { quiet, quietSync, warnings } from "./helpers.ts";
+import { quiet } from "./helpers.ts";
 
-// `new URL(...).pathname` is wrong on Windows and this repo's path may contain a space.
+// `new URL(...).pathname` is wrong on Windows, and this repo's path may contain a space.
 const FIXTURE = fileURLToPath(new URL("./fixtures/badstory", import.meta.url));
 
 // -- STORY SCHEMA (story.json validation) -----------------------------------
@@ -27,7 +25,7 @@ describe("StoryJson schema", () => {
     assert.equal(r.title, "");
     assert.equal(r.premise, "");
     assert.equal(r.scenes.length, 1);
-    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [] });
+    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [], reach: {} });
     assert.equal(r.config.maxSteps, 24);
     assert.equal(r.config.thinking.writer, "low");
     assert.equal(r.models.default, "qwen3.6-35b-a3b");
@@ -527,9 +525,9 @@ describe("the doorway fixture", () => {
 });
 
 // -- STORY DISCOVERY (scans the real stories/ dir) -------------------------
-// discoverStories/selectableStory scan stories/, which is gitignored and empty on a fresh checkout,
-// so these synthesize a throwaway story there from the committed fixture, exercise the scan, and
-// remove it — self-contained rather than depending on whatever the author has under stories/ locally.
+// discoverStories/selectableStory scan stories/, which is gitignored and empty on a fresh checkout.
+// These tests synthesize a throwaway story there from the committed fixture, exercise the scan, and
+// remove it — self-contained, not dependent on whatever is under stories/ locally.
 describe("story discovery", () => {
   const probe = "stories/__discovery_probe__";
   before(async () => {
@@ -546,12 +544,11 @@ describe("story discovery", () => {
     assert.ok(!found.some(d => d.startsWith("tests/")), "the fixtures tree is not a story source");
   });
 
-  it("never offers to build a story when there is no terminal", async () => {
+  it("without a terminal, picks the first discovered story and never offers to build one", async () => {
     const orig = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
     Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
     try {
       const picked = await chooseStory("");
-      assert.notEqual(picked, NEW_STORY);
       assert.equal(picked, (await discoverStories())[0]);
       assert.equal(await chooseStory(probe), probe);
     } finally {

@@ -9,9 +9,10 @@ import { ENGINE } from "./engine/engine-state.ts";
 import { runDirs } from "./engine/preflight.ts";
 import { runChapter, type RunEvent } from "./engine/scene-loop.ts";
 import { warn } from "./engine/warnings.ts";
+import { writeRunManifest } from "./run-manifest.ts";
 import type { StoryConfig } from "./engine/story-format.ts";
 
-const MAX_RUNS = 3;
+const MAX_RUNS = 10;
 
 export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
                                  opts: { serving: boolean; serve: () => void }) {
@@ -41,6 +42,18 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
   ENGINE.llmFilenames = new Set();
   ENGINE.llmDead = new Set();
   ENGINE.fitWarned = new Set();
+  // Written before the first model call, so a run that dies mid-scene is still labelled.
+  const manifest = await writeRunManifest(ENGINE.outDir, {
+    run: runId, story: dir, chapter,
+    scene: { pov: targetScene.pov, target: targetScene.length },
+    models: { writer: targetScene.writerModel ?? sc.models.writer, summary: sc.models.summary },
+  });
+  if (manifest.engineStale) {
+    console.log(`${C.yellow}This process loaded the engine before the working tree last changed, so `
+      + `this run is NOT written by ${manifest.git?.revision ?? "the current revision"} — restart it `
+      + `before drawing any conclusion from what comes out.${C.reset}`);
+  }
+
   const scenePath = joinPath(ENGINE.outDir, "scene.md");
   const logPath = joinPath(ENGINE.outDir, "writing-log.jsonl");
   const logStream = createWriteStream(logPath, { flags: "w" });
@@ -99,7 +112,8 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
   // Rotate: keep only the last MAX_RUNS folders, including the one just written.
   const kept = await runDirs(sc.dir);
   for (const stale of kept.slice(0, Math.max(0, kept.length - MAX_RUNS))) {
-    await rm(joinPath(sc.dir, "out", stale), { recursive: true, force: true }).catch(() => {});
+    await rm(joinPath(sc.dir, "out", stale), { recursive: true, force: true })
+      .catch(e => warn(`   (could not retire the old run ${stale}: ${(e as Error).message} — it will be retried after the next run)`));
   }
 
   let chapterPath = "";

@@ -4,6 +4,12 @@ import { C } from "../ansi.ts";
 import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
+import { lintRestrictedSituation } from "./sense-lint.ts";
+import { nameKey, sameName } from "./config-util.ts";
+
+/** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can
+ *  be checked against its addressee. Scene-loop resolves the same thing for the narration lint. */
+export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[] }>;
 
 /** What the writer sends when it wants a character's take: who, the situation as given to them, the question, and what shape of answer is wanted. */
 export interface ConsultRequest {
@@ -40,36 +46,89 @@ const DEGENERATE_QUESTIONS = [
   /^what happens?\b/i,
   /^what next\b/i,
   /^(your|their|his|her)\s+(move|turn|call)\b/i,
+  // The vagueness dodge: with menus refused, the first live run under the gate sent "What do
+  // you choose regarding the lock?" — "What do you do?" wearing a subject. A choose/decide
+  // question with no cost named is the same shrug; a rare cost-bearing one ("...knowing he is
+  // armed?") is refused once and rewritten, a cheap failure beside the step the dodge was
+  // already burning.
+  /^what do you (choose|decide)\b/i,
 ];
 
+/** A question that carries both branches of its fork pre-written — "Do you concede, or do you double
+ *  down?" — is answered by picking, and picking is all it leaves the character to do. The rule the
+ *  evidence got, not a guess: the retained runs' writing logs hold 133 consult questions, 113 with
+ *  " or ", and every one is a menu. One word-bounded "or" is the whole detector; anything finer
+ *  ("or" followed by a verb, say) misses "or with Hale and Marsh (pull the lever now)". The
+ *  character names the options; the writer names what hangs on the choice. */
+const QUESTION_CARRIES_ANSWERS = /\bor\b/i;
+
 const MIN_SITUATION_WORDS = 5;
+
+// With no question, the situation is the entire ask, and the floor that was enough beside one is
+// not enough alone: a five-word situation the question used to point into now points nowhere.
+const MIN_OPEN_SITUATION_WORDS = 15;
 
 /** The outcome of checking a proposed consult: sendable, or refused with a reason the writer can act on. */
 export type ConsultCheck = { ok: true; req: ConsultRequest } | { ok: false; why: string };
 
-/** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step. */
+/**
+ * Which door a consult comes through. **open** is the writer's own ask — a situation and nothing
+ * else; **directed** is the judge's escalation, which names a fork in words and must pass every
+ * check a consult was held to before questions were withheld from characters.
+ *
+ * The question gates do not apply to a situation: a situation has no question grammar for
+ * `DEGENERATE_QUESTIONS` to match, and `\bor\b` over descriptive prose flags "the heat or the
+ * noise". What a situation must not do — pre-write the options — is a reading rather than a match,
+ * and lives with the narration lint, which already reads the outgoing situation.
+ */
+export type ConsultMode = "open" | "directed";
+
+/** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step.
+ *
+ *  With the cast given, the situation is also linted against the addressee's own CANNOT list: the
+ *  situation is the only author-side string that enters a character as ground truth, and one phrased
+ *  around a sense they have lost would be received as fact. This runs here, not in the scene loop,
+ *  so every situation-entry path passes the same door: the writer's first ask, the judge's `revised`
+ *  on a retry (reviseConsult), and each reactor of a fan-out (normalizeReactionConsult). */
 export function normalizeConsult(raw: {
   character: string; situation?: unknown; question?: unknown; wants?: unknown;
-}): ConsultCheck {
+}, cast?: ReadonlyArray<{ name: string; cannot: readonly string[] }>,
+   mode: ConsultMode = "open"): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
   const question  = String(raw.question ?? "").trim();
   const words = situation.split(/\s+/).filter(Boolean).length;
+  const floor = mode === "open" ? MIN_OPEN_SITUATION_WORDS : MIN_SITUATION_WORDS;
 
   if (!situation)
     return { ok: false, why: P.badConsult.emptySituation(character) };
-  if (words < MIN_SITUATION_WORDS)
-    return { ok: false, why: P.badConsult.shortSituation(character, words) };
-  if (!question)
-    return { ok: false, why: P.badConsult.noQuestion(character) };
-  if (DEGENERATE_QUESTIONS.some(re => re.test(question)))
-    return { ok: false, why: P.badConsult.degenerate(question) };
+  if (words < floor)
+    return { ok: false, why: mode === "open"
+      ? P.badConsult.thinOpenSituation(character, words, floor)
+      : P.badConsult.shortSituation(character, words) };
 
-  const wants = canonWants(raw.wants);
-  if (!wants)
-    return { ok: false, why: P.badConsult.badWants(CONSULT_WANTS, String(raw.wants ?? "")) };
+  let wants: ConsultWants | "" = "";
+  if (mode === "directed") {
+    if (!question)
+      return { ok: false, why: P.badConsult.noQuestion(character) };
+    if (DEGENERATE_QUESTIONS.some(re => re.test(question)))
+      return { ok: false, why: P.badConsult.degenerate(question) };
+    if (QUESTION_CARRIES_ANSWERS.test(question))
+      return { ok: false, why: P.badConsult.carriesAnswers(question) };
+    const asked = canonWants(raw.wants);
+    if (!asked)
+      return { ok: false, why: P.badConsult.badWants(CONSULT_WANTS, String(raw.wants ?? "")) };
+    wants = asked;
+  }
 
-  return { ok: true, req: { character, situation, question, wants } };
+  const member = cast?.find(c => sameName(c.name, character));
+  if (member?.cannot?.length) {
+    const hit = lintRestrictedSituation(situation, character, member.cannot);
+    if (hit)
+      return { ok: false, why: P.badConsult.restrictedSense(character, hit.sense, hit.match) };
+  }
+
+  return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants } };
 }
 
 /** The outcome of checking a reaction fan-out: one sendable request per reactor, or a single refusal. */
@@ -77,20 +136,23 @@ export type ReactionCheck = { ok: true; reqs: ConsultRequest[] } | { ok: false; 
 
 /**
  * Validate a reaction fan-out: a shared situation/question asked of several reactors at once. Each
- * reactor resolves to an ordinary `ConsultRequest` — reusing `normalizeConsult`'s gate per reactor,
- * with `wants` pinned to "reaction" — so a reactor with too thin a situation is refused just as a
- * lone consult would be. A per-reactor `situation` overrides the shared one (someone who only heard it).
+ * reactor resolves to an ordinary `ConsultRequest` through `normalizeConsult`'s gate, so a reactor
+ * with too thin a situation is refused just as a lone consult would be. A per-reactor `situation`
+ * overrides the shared one (someone who only heard it).
  *
  * A name listed twice is a slip, not a second character — the fan-out asks one shared moment, and
- * asking it twice would let the second answer see the first — so entries collapse
+ * asking it twice would let the second answer see the first — so duplicates collapse
  * case-insensitively and the first wins, keeping its own per-reactor situation. Refusing the whole
  * fan-out over one duplicated name would punish every reactor for it.
+ *
+ * With the cast given, the gate is strict per reactor: the shared situation is ground truth for
+ * everyone present, so it is checked against EACH reactor's CANNOT list, and a per-reactor
+ * override is checked against its owner only. One restricted reactor turns the whole fan-out back.
  */
 export function normalizeReactionConsult(raw: {
   reactors?: unknown; situation?: unknown; question?: unknown;
-}): ReactionCheck {
+}, cast?: CannotCast): ReactionCheck {
   const shared = String(raw.situation ?? "").trim();
-  const question = String(raw.question ?? "").trim();
   const list = Array.isArray(raw.reactors) ? raw.reactors : [];
   if (!list.length) return { ok: false, why: P.badReaction.noReactors() };
 
@@ -99,10 +161,13 @@ export function normalizeReactionConsult(raw: {
   for (const r of list) {
     const name = String((r as any)?.name ?? (typeof r === "string" ? r : "")).trim();
     if (!name) return { ok: false, why: P.badReaction.namelessReactor() };
-    if (seen.has(name.toLowerCase())) continue;
-    seen.add(name.toLowerCase());
+    if (seen.has(nameKey(name))) continue;
+    seen.add(nameKey(name));
     const situation = String((r as any)?.situation ?? "").trim() || shared;
-    const check = normalizeConsult({ character: name, situation, question, wants: "reaction" });
+    // A fan-out is the several-at-once form of the writer's own ask, so it comes through the same
+    // open door: one shared situation, no question, and no `wants` — what the moment lands on them
+    // as is what a shared moment asks for without being told to.
+    const check = normalizeConsult({ character: name, situation }, cast, "open");
     if (!check.ok) return { ok: false, why: check.why };
     reqs.push(check.req);
   }
@@ -121,39 +186,71 @@ export type Revision =
  * A revision used to skip the check entirely, which is how a re-ask of "What do you do?" reached a
  * character that the front door had already refused.
  *
- * `wants` is pinned to the original. The judge may reframe a fork it asked badly; it may not turn one
- * fork into another, and the shape asked for is what makes a fork the fork it is — "which way do you
- * go" and "what do you say about it" are different moments in the scene. The judge's own instructions
- * already say as much (a missing fact is fixed in the SITUATION, and an answer is never retried for
- * being inconvenient), so a changed `wants` is drift to record rather than an instruction to honor.
- * Nothing here can tell whether a rewritten *question* is still the same fork — that judgement needs
- * a model, and the model that would make it is the one being checked — so the run record carries what
- * each retry replaced, and reading it is the check.
+ * `wants` is pinned to the original — the judge may reframe a fork it asked badly, not turn one
+ * fork into another: "which way do you go" and "what do you say about it" are different moments.
+ * (The one exception is escalating an open beat, below.) The judge's own instructions already say
+ * as much — a missing fact is fixed in the SITUATION, and an answer is never retried for being
+ * inconvenient — so a changed `wants` is drift to record, not an instruction to honor. Nothing
+ * here can tell whether a rewritten *question* is still the same fork; that judgement needs a
+ * model, and the model that would make it is the one being checked. So the run record carries
+ * what each retry replaced, and reading it is the check.
+ *
+ * The cast, when given, travels with it: the judge's `revised.situation` is a situation-entry path
+ * like any other — it reaches a fresh instance that has no way to know better — so it passes the
+ * same CANNOT gate the first ask did.
  */
-export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>): Revision {
+export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>,
+  cast?: CannotCast): Revision {
   const asked = canonWants(rev.wants);
+  // An open beat carries no question, so a judge retrying one is escalating: it may name the fork
+  // in words for the first time, and `wants` comes with it. Once a fork is named the old pin holds
+  // — the judge may reframe a question it asked badly, never turn one fork into another. Every
+  // revision is checked as directed whichever it was, so an ask that has been escalated can never
+  // decay back into an open beat by omitting the fields again.
+  const escalating = !prev.question;
   const checked = normalizeConsult({
     character: prev.character,
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
-    wants: prev.wants,
-  });
+    wants: escalating ? (asked ?? "") : prev.wants,
+  }, cast, "directed");
   if (!checked.ok) return checked;
-  return { ok: true, req: checked.req, wantsRefused: asked && asked !== prev.wants ? asked : "" };
+  // The character is shown the situation and not the question, so a revision that sharpens the
+  // wording of the fork and leaves the situation alone re-sends a fresh instance the byte-identical
+  // message the last one just answered. Prompting against it did not hold — the first live run
+  // under the withheld question produced two retries, both re-asking an unchanged situation, one
+  // with an unchanged question as well. Refusing here costs the attempt nothing and keeps the
+  // answer already in hand, which is what the caller does with every other unusable revision.
+  if (checked.req.situation.trim() === prev.situation.trim())
+    return { ok: false, why: P.badConsult.noNewSituation() };
+  return { ok: true, req: checked.req,
+           wantsRefused: !escalating && asked && asked !== prev.wants ? asked : "" };
 }
 /**
- * What the asked-for shape requires the reply to actually carry, or null when the reply satisfies it.
+ * What the asked-for shape must actually be in the reply, or null when the reply satisfies it.
  *
- * `reaction` is the one shape a thought alone answers — it asks what something lands on them as, and
- * that happens behind the eyes. Every other shape asks for something that reaches the page, and a
- * thought on its own leaves the scene exactly where it was: an answer in form, nothing in substance.
+ * `reaction` is the one shape a thought alone answers — it asks what something lands on them as,
+ * and that happens behind the eyes. Every other shape asks for something that reaches the page; a
+ * thought alone leaves the scene where it was: an answer in form, nothing in substance.
+ *
+ * That exception holds only from inside the POV. A thought is the writer's to render for the POV
+ * character and nobody else, so a `reaction` answered from anyone else's head reaches the writer
+ * as nothing — the same empty answer this check refuses. Asked of anyone else, a reaction has to
+ * land where the room could see it. `pov` defaults true, so a caller that does not know whose
+ * scene this is asks for no more than the four shapes always did.
  */
 export function missingShape(
-  wants: ConsultWants | "", r: { speech: string; action: string },
+  wants: ConsultWants | "", r: { speech: string; action: string }, pov = true,
 ): ConsultWants | null {
   if (wants === "speech" && !r.speech) return "speech";
   if (wants === "action" && !r.action) return "action";
   if (wants === "decision" && !r.speech && !r.action) return "decision";
+  if (wants === "reaction" && !pov && !r.speech && !r.action) return "reaction";
+  // An open beat names no shape, so the POV rule is the only floor left — and it is the same floor:
+  // whatever was asked, a thought from outside the POV reaches the writer as nothing, so an answer
+  // with neither speech nor action is an answer the scene never receives. Reported as "reaction"
+  // because that is the repair the character needs: let it reach the outside.
+  if (!wants && !pov && !r.speech && !r.action) return "reaction";
   return null;
 }
 
@@ -171,8 +268,8 @@ export function parseVerdict(o: Record<string, unknown>): "accept" | "retry" | n
 
 /**
  * The narration lint's verdict, or null when the reply carries none — `{}`, `{"ok":"maybe"}`, an
- * unrelated shape. Only an explicit pass is a pass: a reply the lint never made cannot clear a piece,
- * and reading a missing field as `ok` is how a check comes to be performed without ever being made.
+ * unrelated shape. Only an explicit pass is a pass: reading a missing field as `ok` is how a check
+ * comes to be performed without ever being made.
  */
 export function parseLintVerdict(o: Record<string, unknown>): { ok: boolean; why: string } | null {
   if (!("ok" in o)) return null;
@@ -191,14 +288,14 @@ export function parseClarifyAnswer(o: Record<string, unknown>): string | null {
 
 /**
  * The batch judge's per-reactor verdicts, keyed by lowercased name → promotable. A reactor the judge
- * omits, or a malformed reply, yields no entry — the caller reads a missing entry as "not promotable",
- * so a volunteered deed lapses safely rather than reaching the page unchecked.
+ * omits, or a malformed reply, yields no entry — the caller reads a missing entry as "not
+ * promotable", so a volunteered deed lapses safely rather than reaching the page unchecked.
  */
 export function parseBatchVerdict(o: Record<string, unknown>): Map<string, boolean> {
   const out = new Map<string, boolean>();
   const arr = Array.isArray(o.verdicts) ? o.verdicts : [];
   for (const v of arr) {
-    const name = String((v as any)?.name ?? "").trim().toLowerCase();
+    const name = nameKey(String((v as any)?.name ?? ""));
     if (!name) continue;
     const p = (v as any)?.promotable;
     out.set(name, p === true || String(p).trim().toLowerCase() === "true");
@@ -233,10 +330,12 @@ export type Clarifier = (question: string, req: ConsultRequest) => Promise<strin
 /** Run one consult against a character agent: clarify, repair and answer within the given budget. */
 export async function consult(
   agent: Agent, req: ConsultRequest,
-  opts: { clarifications: number; clarify: Clarifier; attempt?: number; log?: (e: ConsultEvent) => void },
+  opts: { clarifications: number; clarify: Clarifier; attempt?: number; pov?: boolean;
+          log?: (e: ConsultEvent) => void },
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
-  const extra: Msg[] = [{ role: "user", content: P.askBlock(req) }];
+  const pov = opts.pov ?? true;
+  const extra: Msg[] = [{ role: "user", content: P.askBlock(req, opts.attempt ?? 1, pov) }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
 
@@ -244,7 +343,7 @@ export async function consult(
         wants: req.wants, attempt: opts.attempt ?? 1 });
 
   for (;;) {
-    const raw = await agent.generate(`${C.cyan}${agent.name}${C.reset}`, extra);
+    const raw = await agent.generate(`${C.cyan}${agent.name}${C.reset}`, "character.consult", extra);
     const o = extractJson(raw, how => {
       if (how === "prose_fallback")
         log({ t: "prose_reply", character: req.character });
@@ -253,9 +352,9 @@ export async function consult(
 
     // -- the character wants a fact it was not given
     if (need) {
-      // `!forced` gates this branch too: a clarifier that came back null has already moved the
-      // consult onto the forced/repaired ladder, and must not be tried again for the same character
-      // just because the budget was never spent — an unreachable clarifier stays unreachable.
+    // `!forced` gates this branch too: a clarifier that came back null has already moved the
+    // consult onto the forced/repaired ladder, and is not tried again for the same character just
+    // because budget remains — an unreachable clarifier stays unreachable.
       if (!forced && clarifications.length < opts.clarifications) {
         log({ t: "need", character: req.character, question: need });
         const answer = await opts.clarify(need, req);
@@ -302,7 +401,7 @@ export async function consult(
     const speech  = String(o.speech ?? "").trim();
     const action  = String(o.action ?? "").trim();
     const note    = String(o.note ?? "").trim();
-    const shortOf = missingShape(req.wants, { speech, action });
+    const shortOf = missingShape(req.wants, { speech, action }, pov);
     const why = !thought && !speech && !action ? "returned nothing usable"
               : shortOf ? `was asked for ${shortOf} and gave none`
               : "";

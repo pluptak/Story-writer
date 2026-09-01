@@ -40,6 +40,8 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
             restrictions: ["hearing"],
           },
         ],
+        // Reach arrives per scene and never merged into a character's skills (I4).
+        scenes: [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] } }],
       };
     },
     // Unused by these routes
@@ -97,6 +99,16 @@ describe("/cast (GET)", () => {
     const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
     assert.equal(r.json().characters[0].skills[0].text, "lockpicking");
     assert.equal(typeof r.json().characters[0].skills[0].meaning, "string");
+  });
+
+  it("presents reach per scene, never as a character skill", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.ok(!("scenes" in r.json().characters[0]));
+    for (const ch of r.json().characters)
+      assert.ok(!ch.skills.some((s: { text: string }) => s.text.includes("cameras")),
+        `${ch.name} must not carry reach on their skills`);
+    assert.deepEqual(r.json().scenes,
+                     [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] } }]);
   });
 
   it("reports a story that will not load", async () => {

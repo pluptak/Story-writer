@@ -32,9 +32,9 @@ and stage decision to stderr. `--architect-debug-log=<path>` enables the same di
 appends them to the named file; it does not need `--architect-debug` alongside it. These logs contain
 the author's complete scaffold or handoff conversation and should be treated as story content.
 
-## Skills and restrictions
+## Skills, restrictions, and reach
 
-The architect's system prompt carries three in-code catalogs from `engine/skills.ts`:
+The architect's system prompt carries two in-code catalogs from `engine/skills.ts`:
 
 - **`SKILL_CATALOG`** — the eight general skills every character has unless a restriction removes them.
 - **`SPECIAL_SKILL_CATALOG`** — the skill bible: special skills with canonical spellings and meanings
@@ -42,15 +42,58 @@ The architect's system prompt carries three in-code catalogs from `engine/skills
   matches; an entry not in the bible stays **custom** and keeps its authored `name :: meaning`.
   Bespoke per-story skills are first-class — but one that is neither a bible skill nor carries a
   `:: meaning` is reported back to the author as a non-fatal problem rather than silently kept.
-- **`RESTRICTION_CATALOG`** — named penalties and the set of skills each disables (`deprived`,
-  `anosmic`, `insensate`, `bound`, `hands-bound`). A penalty may reach **special** skills, so it can
-  remove far more than the same-named skill could.
 
-Precedence in `resolveSkills`: a skill named directly in both `skills` and `restrictions` is handed
-back (the character HAS it); a skill disabled *via* a catalog penalty is removed even if `skills`
-names it. Normalization accepts restriction names from the general list, the penalty list, the bible,
-or the character's own declared skills — anything else is dropped with a problem line. Promotion of
-bespoke skills into a shared, approvable bible is planned work ([`PLANS.md`](PLANS.md)).
+Restrictions are a plain list of names — a general skill, a bible skill, or one of that character's
+own skills. A restriction is a **source-independent prohibition**: it names a capability unavailable
+to this character whatever its origin would have been (the general catalog, their own `skills`, or
+the scene's `reach`), matched by canonical name. It never removes by resemblance. Precedence in
+`resolveSkills`: a skill named directly in both `skills` and `restrictions` is handed back (the
+character HAS it). Normalization accepts restriction names from those sources plus what the scene's
+reach grants — anything else is dropped with a problem line.
+
+### The invariants
+
+These are settled semantics; `engine/skills.ts`'s module docstring carries them too.
+
+**I1 — A skill is intrinsic; reach is granted.** A skill travels with the character between scenes.
+A **reach** entry exists only while the scene that granted it is being written; the default is no
+reach. Reach exists for character-in-place abilities — "check the camera feed" is a property of what
+the world offers AURA in the lobby, not of AURA — which is why it lives on the scene, not on the
+character: put it on the character and every later scene has to explicitly negate it.
+
+```json
+"reach": { "AURA": ["cameras :: perceiving through the building's active security cameras",
+                    "doors :: locking and unlocking the automatic doors"] }
+```
+
+**I2 — A restriction negates over the whole capability set**, including reach, by canon name — but
+never by resemblance. Corollary, the blind-AI case: `restrictions: ["sight"]` does not remove
+`reach: ["cameras :: …"]`; they are different capabilities. The authoring rule that makes this hold:
+**name the interface, never the sense it substitutes for.**
+
+**I3 — Intrinsic beats granted on collision.** A reach entry may not reuse a canon name the general
+catalog or that character's own skills already use; on collision the character's meaning stands and
+the reach entry is dropped with a warning.
+
+**I4 — Reach never leaks into a character-level representation.** Every surface showing a character
+outside a scene — `/cast`, preflight cards, the story editor, the handoff — shows `skills` and
+restrictions only. Only per-scene resolution (`sceneReach` in `engine/scene-loop.ts`) ever sees it.
+
+**I5 — Reach grants access, not existence.** Its meaning describes what the character can do *through*
+the thing; that the thing is there comes from the scene's `place` or story-level `facts`. Enforced
+softly on purpose: I5 has no loader or schema check and lives only in the verify pass, where a model
+can weigh it, warning rather than blocking. Whether "a modern office building" establishes security
+cameras is not a validator's call.
+
+Resolution order: general catalog → the character's own `skills` → the scene's `reach`, with
+restrictions applied across all three.
+
+Authoring rules the engine enforces mechanically (normalizeSpec): every reach entry must carry its
+own `:: meaning` — reach is never in the bible — and a grant keyed to a non-character is dropped with
+a problem. The loader additionally warns when a scene grants reach to someone not in its roster,
+since the grant would never reach a run.
+
+Promotion of bespoke skills into a shared, approvable bible is planned work ([`PLANS.md`](PLANS.md)).
 
 ## Operating principle
 
@@ -68,6 +111,9 @@ The handoff turns consequences in accepted prose into durable story state:
   who died can leave the roster while remaining in `characters[]` for historical context or later use.
 - New dramatic pressure becomes a new or revised scene definition.
 - World truths nobody in particular owns become story-level `facts`.
+- **Reach is re-authored per chapter.** Whatever an earlier scene granted is gone — reach never
+  travels with a person (I1). If where a character stands in the next chapter still offers an
+  interface, it is re-granted on the new scene with `scene_<n>.reach`; if not, nothing is granted.
 
 The architect must not invent an unsupported consequence. If the chapters do not establish whether a
 character changed, it should ask rather than put an unverified fact into the story.
@@ -94,7 +140,8 @@ inside a scene run.
 The architect can edit the fields supported by `engine/story-spec.ts`:
 
 - story metadata: `title`, `premise`, and `writerStyle`
-- scenes: `scene_<n>.place`, `question`, `pov`, `length`, and `roster`
+- scenes: `scene_<n>.place`, `question`, `pov`, `length`, `roster`, and `reach`
+  (an object: `{"NAME": ["thing :: what they can do through it"]}`)
 - scene structure: `add_scene` and `remove_scene`
 - characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`, and `restrictions`
 - cast membership: `add_character` and `remove_character`
@@ -173,6 +220,21 @@ past the last gate ("checklist is complete"). A question pins its gate; answerin
 `[THE AUTHOR ANSWERS]` into history and re-runs that stage's prompt. Three asks within one gate get
 an OVERRIDE line; passing a gate resets the ask budget.
 
+**The cast gate judges what landed.** Every other gate only asks whether its stage produced anything;
+the cast gate additionally asks whether the cast is worth building a story on. Passing it consults a
+**stateless judge** — 0.3, no history, built fresh per verdict, and deliberately *not* the architect,
+which wrote the cast and audits its own work badly. It is given the tension and the cast sheet (names,
+goals, skills, restrictions — no reach, since no scene exists this early) and answers one question:
+does this cast's asymmetry bite on the thing the tension turns on? A `false` verdict comes back as a
+round of its own kind, `blocked`, distinct from `nothing` — the stage *did* land, and the author may
+overrule it with `approve(onStage, true)`, which the viewer sends as a confirming second click. The
+judge **fails open**: an outage or a reply carrying no verdict passes the gate, because every other
+model-in-the-loop check in this engine accepts on failure and an outage must not strand an author
+mid-checklist. `normalizeSpec`'s "nobody has any restrictions" problem is unchanged and still
+advisory — it is the only asymmetry signal on the surfaces that have no gate at all (the story
+editor, one-shot mode, the handoff). The judge agent itself — its contract, its verdict shapes, and
+the family it belongs to — is specified in [`Judge.MD`](Judge.MD).
+
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.
 
@@ -195,11 +257,17 @@ on `/scaffold/start` (the viewer's interview offers the choice).
 A proposal that lands (either walk) is not the end of the round. Two automatic passes run before the
 author sees it, as far as each walk needs them: **fill the gaps** (the scene's `roster` and the
 story's `facts` are never part of the whole-story proposal's own format, so a dedicated pass asks for
-them) and **verify** (the architect re-reads its own draft for a roster name that doesn't match the
-cast, a fact that just restates one character's private `knows`, a restriction that never bites, a
-POV outside the roster). Either pass may ask instead of editing — that aborts the sequence and
-surfaces as this round's question exactly like any other ask, with whatever the earlier passes
-already applied kept on the spec.
+them) and **verify** (the architect re-reads its own draft for a fact that just restates one
+character's private `knows`, a restriction that never bites, a cast with no restrictions at all, and
+— for reach — entries named after a sense instead of an interface (I2's corollary), and interfaces
+nothing in `place` or `facts` establishes; that last one is a judgement only the verify pass makes,
+never a loader check). The checks that are pure string work are not in that prompt at all: a roster
+name that doesn't match the cast, a POV outside the roster, a reach grant to someone off the roster,
+and a reach entry colliding with a general, bible or own-skill name are `normalizeSpec` checks, and
+arrive already decided under `[ALREADY FLAGGED]` rather than as something for the model to re-derive.
+Either pass may ask instead of editing — that aborts the sequence and surfaces as this round's
+question exactly like any other ask, with whatever the earlier passes already applied kept on the
+spec.
 
 ### Handoff
 
@@ -294,7 +362,11 @@ Behaviour:
   ("your answer" / "send answer →"), and hides the approve button while it stands.
 - The **approve & continue** button, in the composer, passes the open gate and proposes the next
   stage's content. It is hidden at the last gate and while a question stands. Refinement never advances
-  a gate: only this button does.
+  a gate: only this button does. When the cast gate comes back `blocked`, the verdict renders as a
+  judgement (not a failure) and the same button becomes **approve anyway** for 8 seconds — the first
+  click is what discovered the block, so unlike accept the confirmation is armed by the reply rather
+  than checked before sending. Any later scaffold frame that is not `blocked` disarms it, so an armed
+  override cannot survive to overrule a different gate.
 - A `proposal` or `edits` round updates the proposal card in place; the conversation context is never
   cleared. The first story-stage proposal is visible immediately, before the cast makes the draft
   acceptable. The open gate is the first, highlighted section of the card, with earlier stages kept

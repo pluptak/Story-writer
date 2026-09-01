@@ -5,11 +5,18 @@
  */
 import { type WriteStream } from "node:fs";
 
-/** Mutable run knobs shared across the engine: stream/debug/serve flags, token cap, and the run's LLM log handles. */
+/** Mutable run knobs shared across the engine: stream/debug/serve/echo flags, token cap, and the run's LLM log handles. */
 export const ENGINE = {
   stream: true,
   debug: false,
   serve: false,
+  /** What the scene loop echoes to the console: the draft prose and the characters' acts and
+   *  replies. `serve` only means the HTTP surface is up — a headless process serves AND echoes,
+   *  because its console is the monitor there is; plain --serve goes quiet because the viewer is. */
+  echoConsole: true,
+  /** The characters' own replies on top of that: `acts:`, `reacts:` and consult answers. Off with
+   *  --no-cast-echo; the prose echo and the JSONL/SSE record are untouched by it. */
+  echoCast: true,
   maxTokens: 2000,
   outDir: "",
   llmStreams: new Map<string, WriteStream>(),   // agent name -> this run's open stream

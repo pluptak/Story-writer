@@ -7,13 +7,18 @@ export type ThinkLevel = (typeof THINK_LEVELS)[number];
 
 const thinkLevel = z.enum(THINK_LEVELS);
 
-/** One scene's definition: where it is, the question it answers, whose perception, length, roster, and optional per-scene overrides. */
+/** One scene's definition: where it is, the question it answers, whose perception, length, roster,
+ *  what each character can reach only here, and optional per-scene overrides. */
 export const SceneDef = z.strictObject({
   place: z.string().default(""),
   question: z.string().default(""),
   pov: z.string().default(""),
   length: z.number().min(1).default(700),
   roster: z.array(z.string()).default([]),
+  /** Per-character reach (I1): an interface the world offers this character HERE —
+   *  `{"AURA": ["cameras :: perceiving through the lobby cameras"]}`. Exists only while this scene
+   *  is being written; never carried between scenes, never merged into a character's skills. */
+  reach: z.record(z.string(), z.array(z.string())).default({}),
   /** Writer-only overrides for this one scene; unset falls back to `models.writer` / `thinking.writer`. */
   writerModel: z.string().optional(),
   writerThink: thinkLevel.optional(),

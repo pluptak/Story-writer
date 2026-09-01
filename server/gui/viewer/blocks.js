@@ -1,6 +1,9 @@
 import { esc, post, verdictText, reasonOr, tid } from "./util.js";
 import { APP, open } from "./state.js";
 
+// The glyph prefixing each non-critical note pill — a quick tone read before the tooltip.
+const NOTE_ICON = { warn:"⚑", bad:"◯", info:"+" };
+
 // ---- rendering ----------------------------------------------------------
 export const paras = t => String(t).split(/\n{2,}/).map(p => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
 
@@ -9,7 +12,8 @@ function renderConsult(b) {
   const flagged = b.attempts.some(a => a.flags.length);
   const asked   = b.attempts.some(a => a.qa.length);
   const isOpen  = APP.expandAll || open.has(b.seq);
-  const q = b.attempts[0]?.question || "";
+  // An open beat sends no question, so the situation is the ask and the header shows that.
+  const q = b.attempts[0]?.question || b.attempts[0]?.situation || "";
   const tags = [
     asked   ? '<span class="tag asked" data-tid="consult.tag">asked back</span>' : "",
     retried ? `<span class="tag retry" data-tid="consult.tag">${b.attempts.length - 1} retry</span>` : "",
@@ -21,7 +25,7 @@ function renderConsult(b) {
     return `<div class="attempt" data-tid="consult.attempt" data-n="${esc(a.n)}">
       <h4>${b.attempts.length > 1 ? `attempt ${esc(a.n)}${a.n > 1 ? " — fresh instance, no memory of the last" : ""}` : "asked"}</h4>
       <div class="kv dim" data-tid="consult.situation"><span class="k">situation given</span><span class="v">${esc(a.situation)}</span></div>
-      <div class="kv" data-tid="consult.question"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>
+      ${a.question ? `<div class="kv" data-tid="consult.question"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>` : ""}
       ${a.qa.map(x => `<div class="qa" data-tid="consult.qa"><div class="ask">${esc(x.q)}</div><div class="ans">${esc(x.a)}</div></div>`).join("")}
       ${a.flags.map(f => `<div class="kv dim" data-tid="consult.flag"><span class="k">note</span><span class="v">${esc(f)}</span></div>`).join("")}
       ${ans ? `<div class="ansblock" data-tid="consult.answer">
@@ -47,9 +51,9 @@ const ownDrafts = new Map();
 /** Run reset = a new scene with its own seq numbering; stale drafts must never resurface. */
 export const clearReaderDrafts = () => ownDrafts.clear();
 
-/** `interactive` is false for a reader consult read off a saved run -- there is no live loop on the
- *  other end of `/reader-answer` for it to reach, so it renders as a fact about how the run went
- *  rather than as a question with working buttons. */
+/** `interactive` is false for a reader consult read off a saved run -- no live loop sits on the
+ *  other end of `/reader-answer`, so it renders as a fact about how the run went, not a question
+ *  with working buttons. */
 function renderReader(b, interactive) {
   if (b.answer !== null || !interactive) {
     ownDrafts.delete(b.seq);
@@ -131,7 +135,37 @@ export function renderBlock(b, interactive) {
   if (b.kind === "reader") return renderReader(b, interactive);
   if (b.kind === "exit") return `<div ${tid("prose.exit")} class="note exit" data-seq="${esc(b.seq)}">${esc(b.character)} left the scene${
     b.pov ? " — the point of view; the chapter ends here" : ""}</div>`;
-  if (b.kind === "note") return `<div ${tid("prose.note")} class="note">${esc(b.text)}</div>`;
+  if (b.kind === "note") {
+    // Critical notes (an answer never reached the page, a forced close) must stay visible text; so
+    // must everything when the owner expands all (locator/debug). Otherwise collapse to a tooltip
+    // pill so the serif column keeps flowing.
+    if (b.critical || APP.expandAll)
+      return `<div ${tid("prose.note")} class="note tone-${b.tone}">${esc(b.text)}</div>`;
+    return `<button ${tid("prose.note-pill")} type="button" class="npill tone-${b.tone}"
+              title="${esc(b.text)}" aria-label="${esc(b.text)}">${NOTE_ICON[b.tone] || ""} ${esc(b.label)}</button>`;
+  }
   if (b.kind === "end") return `<div ${tid("prose.end")} class="note end">${verdictText(b)} · ${esc(b.words)} words · ${esc(b.steps)} steps</div>`;
   return "";
+}
+
+/** Render a run's blocks, collapsing runs of non-critical notes into one pill row so the prose
+ *  reads as a continuous column. Critical notes (and expand-all) render as footnotes; the rest
+ *  become hover/click-tooltip pills in a `.note-pills` flex row. Consults, reactions, reader
+ *  consults and the end marker pass through untouched. */
+export function renderBlocks(blocks, interactive) {
+  const html = [];
+  let run = [];
+  const flush = () => {
+    if (run.length) {
+      html.push(`<div class="note-pills" data-tid="prose.note-pills">${run.map(b => renderBlock(b, interactive)).join("")}</div>`);
+      run = [];
+    }
+  };
+  for (const b of blocks) {
+    if (b.kind === "note" && !b.critical && !APP.expandAll) { run.push(b); continue; }
+    flush();
+    html.push(renderBlock(b, interactive));
+  }
+  flush();
+  return html.join("");
 }

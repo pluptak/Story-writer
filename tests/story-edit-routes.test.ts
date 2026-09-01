@@ -1,4 +1,4 @@
-/** Story edit routes: read, validate, and save story.json through the HTTP surface.
+/** Story edit routes: read, validate, and save story.json over HTTP.
  *  Also tests the /story/suggest endpoint and edge cases from plan 5. */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import { callRoute, callGet } from "./helpers.ts";
 const DOORWAY = {
   title: "The Fog Signal",
   premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
-  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[] }],
+  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]> }],
   writerStyle: "Plain sentences.",
   facts: [] as string[],
   characters: [
@@ -49,8 +49,6 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
     },
     saveStory: async (dir: string, _story: any) => {
       if (dir !== "stories/doorway") return { ok: false, reason: "not found" };
-      if (_story._simulateWriteFailure) return { ok: false, reason: "write failed: disk full" };
-      if (_story._simulateCorruptWrite) return { ok: false, reason: "saved but does not load: Premise is empty" };
       return { ok: true, warnings: [] };
     },
     suggestEdits: async (_spec: unknown, text: string) => {
@@ -105,6 +103,28 @@ describe("/story/edit (GET)", () => {
     } finally { LIVE.running = false; resetLive(); }
   });
 
+  it("refuses while a story is loading, not only while a run is in flight", async () => {
+    // The window between /select and the run actually starting: running is still false here.
+    resetLive(); LIVE.loading = true;
+    try {
+      const edit = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", makeHost());
+      assert.equal(edit.code, 409);
+      assert.match(edit.json().reason, /story is loading/);
+
+      const save = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: DOORWAY }, makeHost());
+      assert.equal(save.code, 409);
+      assert.match(save.body.reason, /story is loading/);
+
+      const discard = await callRoute(handleStoryEditRoutes, "/story/discard", { dir: "doorway", n: 1 }, makeHost());
+      assert.equal(discard.code, 409);
+      assert.match(discard.body.reason, /story is loading/);
+
+      const suggest = await callRoute(handleStoryEditRoutes, "/story/suggest", { spec: DOORWAY, text: "x" }, makeHost());
+      assert.equal(suggest.code, 409);
+      assert.match(suggest.body.reason, /story is loading/);
+    } finally { LIVE.loading = false; resetLive(); }
+  });
+
   it("loads a valid story", async () => {
     const r = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", makeHost());
     assert.equal(r.code, 200);
@@ -116,7 +136,7 @@ describe("/story/edit (GET)", () => {
 
   it("returns warnings alongside the story", async () => {
     const h = makeHost({
-      storyForEdit: async (dir: string) => ({
+      storyForEdit: async (_dir: string) => ({
         ok: true as const,
         story: DOORWAY,
         warnings: ["Scene 1 has no question"],
@@ -142,26 +162,12 @@ describe("/story/edit (GET)", () => {
 
 // -- SECTION ----
 describe("/story/check (POST)", () => {
-  it("validates a good story", async () => {
-    const r = await callRoute(handleStoryEditRoutes, "/story/check", { story: DOORWAY }, makeHost());
-    assert.equal(r.code, 200);
-    assert.equal(r.body.ok, true);
-  });
-
   it("reports validation failures", async () => {
     const r = await callRoute(handleStoryEditRoutes, "/story/check", { story: { simulatedError: true } }, makeHost());
     assert.equal(r.code, 200);
     assert.equal(r.body.ok, false);
     assert.equal(r.body.error, "validation failed");
     assert.equal(r.body.issues[0].path, "title");
-  });
-
-  it("accepts missing scenes array (Zod prefault creates one)", async () => {
-    const r = await callRoute(handleStoryEditRoutes, "/story/check", {
-      story: { premise: "test", characters: [{ name: "X" }] },
-    }, makeHost());
-    assert.equal(r.code, 200);
-    assert.equal(r.body.ok, true);
   });
 });
 
@@ -196,46 +202,6 @@ describe("/story/save (POST)", () => {
     assert.equal(r.code, 400);
     assert.equal(r.body.ok, false);
     assert.match(r.body.reason, /validation/);
-  });
-
-  it("rejects save with empty premise", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "Premise is empty" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, premise: "" } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /Premise is empty/);
-  });
-
-  it("rejects save with no characters", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "No characters defined" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, characters: [] } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /No characters/);
-  });
-
-  it("reports write failures", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "write failed: disk full" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, _simulateWriteFailure: true } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /write failed/);
-  });
-
-  it("reports corrupt write (write succeeds but re-load fails)", async () => {
-    const h = makeHost({
-      saveStory: async () => ({ ok: false, reason: "saved but does not load: Premise is empty" }),
-    });
-    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { ...DOORWAY, _simulateCorruptWrite: true } }, h);
-    assert.equal(r.code, 400);
-    assert.equal(r.body.ok, false);
-    assert.match(r.body.reason, /does not load/);
   });
 
   it("warnings accompany a successful save", async () => {

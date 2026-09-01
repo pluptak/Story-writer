@@ -21,9 +21,9 @@ async function fetchChapters(dir, numbers) {
   return results;
 }
 
-/** `READER.dir` is checked again after every await: one chapter per request means a slow story is a
- *  wide window, and a second story opened inside it must not have the first one's prose land under
- *  its title. The later call has already overwritten `READER.dir`, so the earlier one bows out. */
+/** `READER.dir` is re-checked after every await: one chapter per request means a slow story is a
+ *  wide window, and a second story opened inside it must not get the first one's prose under its
+ *  title. The later call has already overwritten READER.dir, so the earlier one bows out. */
 export async function loadReader(dir) {
   READER.loading = true; READER.error = ""; READER.dir = dir; READER.chapters = []; READER.query = "";
   syncHash();   // go() ran before READER.dir was set, so the hash has no ?dir= on it yet
@@ -90,8 +90,8 @@ export function readerPageHtml() {
 }
 
 // ---- search over the loaded prose ----------------------------------------
-// Runs entirely over READER.chapters, already in memory -- so a keystroke never fetches, and
-// switching stories (which resets chapters and query in loadReader) cannot show stale hits.
+// Runs entirely over READER.chapters, already in memory -- a keystroke never fetches, and switching
+// stories (which resets chapters and query in loadReader) cannot show stale hits.
 
 /** One entry per line of prose that contains the query, in chapter then document order. */
 function searchMatches(query) {
@@ -163,8 +163,8 @@ export function wireReaderPage(page) {
     results.innerHTML = resultsHtml();
     wireHits();
   });
-  // Escape empties the box; Enter jumps to the first hit -- both let a search finish without the
-  // mouse, the same keyboard flow the hit buttons already give once you tab to them.
+  // Escape empties the box; Enter jumps to the first hit -- both finish a search without the mouse,
+  // the same keyboard flow the hit buttons give once you tab to them.
   if (q && results) q.addEventListener("keydown", e => {
     if (e.key === "Escape" && q.value) {
       q.value = ""; READER.query = ""; results.innerHTML = ""; e.stopPropagation();

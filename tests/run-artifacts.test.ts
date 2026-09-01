@@ -5,15 +5,76 @@ import { mkdtemp, writeFile, rm, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadStory, writtenChapters } from "../engine/story-format.ts";
-import { chapterStartRefusal } from "../story-writer.ts";
+import { loadStory } from "../engine/story-format.ts";
+import { chapterStartRefusal } from "../app.ts";
 import { llmFilenameFor, llmLogEntry, writeLlmRecord, Agent } from "../engine/agent.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
-import { wrapCharacter, wrapWriter, writerCast } from "../engine/scene-loop.ts";
+import { wrapCharacter, wrapWriter, writerCast, sceneReach } from "../engine/scene-loop.ts";
+import { fingerprint, LOADED, writeRunManifest } from "../run-manifest.ts";
 import { quiet, warnings } from "./helpers.ts";
+
+// -- THE RUN MANIFEST -------------------------------------------------------
+// Its purpose is catching a process running code the working tree no longer holds, so the test that
+// matters is whether the digest moves when the source under it does.
+describe("run manifest", () => {
+  /** A miniature source tree of the shape `fingerprint` walks. */
+  async function fakeTree(engineBody: string): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), "story-writer-print-"));
+    await mkdir(join(root, "engine"), { recursive: true });
+    await mkdir(join(root, "prompts"), { recursive: true });
+    await writeFile(join(root, "engine", "scene-loop.ts"), engineBody, "utf8");
+    await writeFile(join(root, "prompts", "writer.ts"), "export const X = 1;\n", "utf8");
+    await writeFile(join(root, "prompts.ts"), "export * from './prompts/writer.ts';\n", "utf8");
+    return root;
+  }
+
+  it("changes when a source file's contents change", async () => {
+    const a = await fakeTree("export const N = 1;\n");
+    const b = await fakeTree("export const N = 2;\n");
+    try {
+      assert.notEqual(fingerprint(a), fingerprint(b), "an edited engine must not fingerprint the same");
+      assert.equal(fingerprint(a), fingerprint(a), "and the digest is stable for unchanged source");
+    } finally {
+      await rm(a, { recursive: true, force: true });
+      await rm(b, { recursive: true, force: true });
+    }
+  });
+
+  it("changes when a source file is added or removed, not only edited", async () => {
+    const root = await fakeTree("export const N = 1;\n");
+    try {
+      const before = fingerprint(root);
+      await writeFile(join(root, "engine", "extra.ts"), "export const Y = 1;\n", "utf8");
+      assert.notEqual(fingerprint(root), before, "a new module changes what the engine is");
+      await rm(join(root, "engine", "extra.ts"));
+      assert.equal(fingerprint(root), before, "and removing it puts the digest back");
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("survives a tree it cannot read at all", () => {
+    // Coarse beats throwing: a fingerprint that fails takes the run with it.
+    assert.match(fingerprint(join(tmpdir(), "story-writer-nonexistent-tree")), /^[0-9a-f]{12}$/);
+  });
+
+  it("writes a manifest naming the engine that is running", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const m = await writeRunManifest(dir, {
+        run: "2026-08-28T00-00-00-000Z", story: "stories/x", chapter: 2,
+        scene: { pov: "ELIAS", target: 700 }, models: { writer: "w", summary: "s" },
+      });
+      const onDisk = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
+      assert.deepEqual(onDisk, m, "what it returned is what it wrote");
+      assert.equal(m.engine, LOADED, "the run is stamped with the loaded engine, not the one on disk");
+      assert.equal(m.engineStale, false, "and this test process is running its own tree");
+      assert.equal(m.chapter, 2);
+      assert.equal(m.scene.pov, "ELIAS");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
 
 // -- RETAINED RUNS (§F3) ----------------------------------------------------
 describe("runDirs / retainedRuns", () => {
@@ -214,7 +275,7 @@ describe("runLlmLogs / readLlmLog", () => {
       await mkdir(storyDir, { recursive: true });
       const id = "test-run";
       await addRun(storyDir, id, [{ t: "scene_start" }]);
-      // A populated listing, so the refusal is the allowlist doing its job rather than an empty
+      // A populated listing, so the refusal is the allowlist doing its job, not an empty
       // run refusing everything -- `llm/../writing-log.jsonl` is a real file, and still not served.
       await addLlm(storyDir, id, "agent.jsonl", [{ ts: "t1", role: "character", agent: "A", model: "m", prompt: [], response: "r" }]);
       assert.ok(await readLlmLog(storyDir, id, "agent.jsonl"));
@@ -364,13 +425,36 @@ describe("prompt construction", () => {
   });
 
   it("a removed special skill is named under CANNOT, not merely absent from can", async () => {
-    // The live gap this pins: hands-bound removes lockpicking, and only a sense used to be nameable.
+    // The live gap this pins: a removed lockpicking would be invisible if only absence-from-can spoke.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const bound = { ...sc.characters[0], limits: ["touch", "lockpicking"] };
     const cast = writerCast([bound], []);
     assert.deepEqual(cast[0].cannot, ["touch", "lockpicking"]);
     const p = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle);
     assert.match(p, /CANNOT: touch, lockpicking/);
+  });
+
+  it("the cast block shows the delta from the general baseline, not the seven obvious generals", async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const withGeneral = { ...sc.characters[0], skills: [
+      { name: "speech", meaning: "saying things aloud", source: "general" as const },
+      { name: "keys", meaning: "carrying and using every key on Kessel's ring", source: "custom" as const },
+    ] };
+    const cast = writerCast([withGeneral], []);
+    assert.deepEqual(cast[0].can, ["keys -- carrying and using every key on Kessel's ring"],
+      "a general skill never reaches a can line");
+    const p = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle);
+    assert.match(p, /RIVEN[\s\S]{0,200}can: keys/);
+    assert.ok(!/can:[^\n]*\bspeech\b/.test(p), "a general skill must not appear on any can line");
+  });
+
+  it("the cast block states the baseline, so a short can list does not read as a short leash", async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const bare = { ...sc.characters[0], skills: [] };
+    const p = wrapWriter(sc.premise, sc.scenes[0], writerCast([bare], []), sc.writerStyle);
+    assert.match(p, /ordinary human abilities/);
+    assert.ok(!/RIVEN -- can:/.test(p), "a character with nothing beyond the baseline has no can line");
+    assert.ok(/RIVEN$|RIVEN -- CANNOT/m.test(p));
   });
 
   it("the writer is told that stillness is a choice and that pressure may not be resolved first", async () => {
@@ -380,11 +464,85 @@ describe("prompt construction", () => {
     assert.match(p, /YOU MAY NOT RESOLVE THE PRESSURE BEFORE YOU ASK ABOUT IT/);
   });
 
-  it("the writer is given the closed `wants` vocabulary, not an invitation to phrase one", async () => {
+  it("the writer's consult is two fields, and it is told the situation is the whole ask", async () => {
+    // Stage 3: `question` and `wants` are gone from what the writer sends, so the closed vocabulary
+    // it once got would now invite filling a field nothing reads.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle);
-    for (const w of CONSULT_WANTS) assert.match(p, new RegExp(`\\b${w}\\b`));
-    assert.match(p, /EXACTLY ONE of these four words/);
+    assert.match(p, /"character": "NAME", "situation"/);
+    assert.match(p, /THE WHOLE OF WHAT YOU ARE SENDING/);
+    assert.ok(!/EXACTLY ONE of these four words/.test(p), "no shape menu is offered any more");
+    assert.ok(!/"wants"/.test(p), "and no wants field to fill in");
+  });
+});
+
+// -- REACH BOUNDARIES (I1–I4) ------------------------------------------------
+describe("reach boundaries", () => {
+  const AURA: import("../engine/story-format.ts").CharacterDef = {
+    name: "AURA", model: "", persona: "The building's AI.", knows: "", goal: "", belief: "",
+    impulse: "", voice: [],
+    skills: [{ name: "speech", meaning: "saying things aloud over the intercom", source: "general" }],
+    limits: [],
+  };
+  const CAMERAS = [{ name: "cameras", meaning: "perceiving through the lobby cameras", source: "reach" as const }];
+  // As authored on the scene: raw "name :: meaning" strings.
+  const GRANTED = { AURA: ["cameras :: perceiving through the lobby cameras"] };
+  const sceneOf = (reach: Record<string, string[]>) =>
+    ({ place: "the lobby", question: "Does AURA let them in?", pov: "AURA", length: 700, roster: ["AURA"], reach }) as never;
+
+  it("I4 — reach disappears at the scene boundary, from both the menu and the cast block", async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    // Scene A grants camera reach; scene B grants nothing.
+    const inLobby = wrapCharacter(AURA, "the lobby", sceneReach(sceneOf(GRANTED), AURA));
+    const elsewhere = wrapCharacter(AURA, "the basement");
+    assert.match(inLobby, /REACH -- yours only through where you are standing right now/);
+    assert.match(inLobby, /cameras -- perceiving through the lobby cameras/);
+    assert.ok(!elsewhere.includes("cameras"), "the grant must not survive into a later scene's agent");
+
+    const granted = wrapWriter(sc.premise, sc.scenes[0], writerCast([AURA], [], { AURA: CAMERAS }), "");
+    const after = wrapWriter(sc.premise, sc.scenes[0], writerCast([AURA], []), "");
+    assert.match(granted, /REACH: cameras/);
+    assert.ok(!after.includes("cameras"), "and must not survive into the next scene's cast block");
+  });
+
+  it("I4 — loadStory never carries a reach entry on a character, however much the scenes grant", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "reach-"));
+    try {
+      const raw = JSON.parse(await readFile("tests/fixtures/doorway/story.json", "utf8"));
+      raw.scenes = [{
+        place: "the lobby", question: "Does AURA let them in?", pov: "RIVEN", length: 700,
+        roster: [raw.characters[0].name],
+        reach: { [raw.characters[0].name]: ["cameras :: perceiving through the lobby cameras"] },
+      }];
+      await writeFile(join(dir, "story.json"), JSON.stringify(raw), "utf8");
+      const sc = await quiet(() => loadStory(dir));
+      for (const c of sc.characters)
+        assert.ok(c.skills.every(s => s.source !== "reach"),
+          `${c.name} is a character-level view; reach must never merge into their skills`);
+      assert.ok(sc.scenes[0].reach && Object.keys(sc.scenes[0].reach).length > 0,
+        "the grant itself survives on the scene where it belongs");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("a situational capability is never emitted on a can: line — `can: cameras` is unreachable output", () => {
+    const cast = writerCast([{ ...AURA, skills: [...AURA.skills, ...CAMERAS] } as never, ], [], {});
+    assert.ok(!cast[0].can.some(c => c.startsWith("cameras")),
+      "even a hand-assembled reach-tagged skill cannot ride onto can:");
+  });
+
+  it("loadStory warns when reach names nobody who could receive it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "reach-"));
+    try {
+      const raw = JSON.parse(await readFile("tests/fixtures/doorway/story.json", "utf8"));
+      raw.scenes = [{ place: "the lobby", question: "Q?", pov: "", length: 700,
+        roster: [raw.characters[0].name], reach: { NOBODY: ["cameras :: seeing everywhere"] } }];
+      await writeFile(join(dir, "story.json"), JSON.stringify(raw), "utf8");
+      const got: string[] = [];
+      const origSink = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { got.push(a.map(String).join(" ")); };
+      try { await loadStory(dir); } finally { WARN.sink = origSink; }
+      assert.ok(got.some(x => /grants reach to "NOBODY"/.test(x)));
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
 

@@ -3,18 +3,17 @@
  * their characters make. A character answers from its own persona and only what the writer told it;
  * a rejected answer is re-asked of a FRESH instance that never learns it was rejected.
  *
- * The composition root: CLI wiring, the story picker, and the console entry points. The run itself
- * lives in run-and-save.ts; the ServerHost the viewer talks to lives in host.ts.
+ * The composition root: import-time engine wiring, the console entry points (--preflight and
+ * --consult), and the handoff of the run loop to app.ts. The run itself lives in run-and-save.ts;
+ * the ServerHost the viewer talks to lives in host.ts.
  */
 
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { C } from "./ansi.ts";
-import { LIVE, setWhere, sseWrite } from "./live.ts";
-import { startServer } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { LMSTUDIO_URL, NET, lmUrlsDerivable } from "./engine/llm-client.ts";
-import { loadStory, discoverStories, chooseStory, writtenChapters, type StoryConfig } from "./engine/story-format.ts";
+import { LMSTUDIO_URL, lmUrlsDerivable } from "./engine/llm-client.ts";
+import { discoverStories, type StoryConfig } from "./engine/story-format.ts";
 import { runPreflight, contextFit } from "./engine/preflight.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import { configureArchitectDebug } from "./engine/architect.ts";
@@ -22,9 +21,8 @@ import { newCharacterAgent } from "./engine/scene-loop.ts";
 import { setFitWarning } from "./engine/agent.ts";
 import { setDebugWrite } from "./engine/json-extract.ts";
 import { warn } from "./engine/warnings.ts";
-import { runAndSave } from "./run-and-save.ts";
-import { HOST } from "./host.ts";
-import { PREFLIGHT, SERVE, PORT, ARCHITECT_DEBUG, ARCHITECT_DEBUG_LOG, STORY_DIR, flag, retiredFlagUsed } from "./cli-flags.ts";
+import { appMain } from "./app.ts";
+import { PREFLIGHT, SERVE, HEADLESS, PORT, ARCHITECT_DEBUG, ARCHITECT_DEBUG_LOG, STORY_DIR, flag, retiredFlagUsed, parseError } from "./cli-flags.ts";
 
 // json-extract stays engine-free; its debug lines follow ENGINE.debug from here, at call time.
 setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
@@ -38,7 +36,11 @@ if (!lmUrlsDerivable(LMSTUDIO_URL))
     + `/api/v0/models endpoints derived from it will hit the wrong route, and model checks `
     + `will report "unreachable" no matter what is loaded`);
 
-ENGINE.serve = SERVE;
+ENGINE.serve = SERVE || HEADLESS;
+// Plain --serve goes quiet (the viewer is the monitor); headless serves AND echoes (its console is).
+ENGINE.echoConsole = !SERVE || HEADLESS;
+// --no-cast-echo trims just the characters' acts/reactions/answers from that echo; prose stays.
+ENGINE.echoCast = flag("no-cast-echo") === undefined;
 configureArchitectDebug(ARCHITECT_DEBUG || !!ARCHITECT_DEBUG_LOG, ARCHITECT_DEBUG_LOG);
 
 async function runPreflightCli() {
@@ -101,85 +103,14 @@ async function runConsultCli(sc: StoryConfig, who: string) {
   if (reply.forced) console.log(`${C.yellow}(answered without the detail it asked for)${C.reset}`);
 }
 
-/** The durability guard behind starting a chapter run: why the run may not start, or null when it
- *  may. `replace` is the one explicit authorization covering both deviations — writing over an
- *  existing chapter, or skipping past one never written. Exported because its refusals are exactly
- *  what the CLI prints and the viewer relays, and they are testable without a run behind them. */
-export async function chapterStartRefusal(dir: string, chapter: number, replace: boolean): Promise<string | null> {
-  if (replace) return null;
-  const written = await writtenChapters(dir);
-  if (written.includes(chapter))
-    return `chapter ${chapter} is already written in ${dir}/chapters — pass --replace to write over it`;
-  if (chapter > 1 && !written.includes(chapter - 1))
-    return `chapter ${chapter - 1} was never written — write the chapters in order, or pass --replace to skip ahead`;
-  return null;
-}
-
-/** Load one story, apply the debug flags, and either write its scene or answer one consult.
- *  `replace` authorizes writing over an existing chapter or skipping ahead past an unwritten one —
- *  the same explicit authorization the CLI's --replace flag gives. */
-async function runOne(dir: string, chapter = 1, opts: { replace?: boolean } = {}) {
-  const sc = await loadStory(dir, LIVE.modelOverride ?? undefined);
-  ENGINE.stream = sc.stream; ENGINE.debug = sc.debug;
-  NET.timeoutMs = sc.requestTimeout * 1000;
-  NET.retries = sc.attempts - 1;
-  ENGINE.maxTokens = sc.maxTokens;
-
-  const stepsFlag = flag("steps");
-  if (stepsFlag) {
-    const n = Number(stepsFlag);
-    if (Number.isInteger(n) && n > 0) sc.maxSteps = n;
-    else warn(`   (--steps=${stepsFlag} is not a whole number — using ${sc.maxSteps})`);
-  }
-
-  const who = flag("consult");
-  if (who !== undefined) {
-    if (!who) throw new Error(`--consult needs a character name, e.g. --consult=${sc.characters[0].name}`);
-    return runConsultCli(sc, who);
-  }
-
-  const chapterFlag = flag("chapter");
-  if (chapterFlag) chapter = Number(chapterFlag);
-  if (!Number.isInteger(chapter) || chapter < 1 || chapter > sc.scenes.length) {
-    console.error(`${C.red}chapter must be a whole number in 1..${sc.scenes.length}, not ${chapterFlag ?? chapter}${C.reset}`);
+async function main() {
+  // A flag the CLI does not define. Refusing beats the old silence: a mistyped --serv started no
+  // viewer and said nothing about why.
+  if (parseError) {
+    console.error(parseError);
     process.exitCode = 1;
     return;
   }
-
-  // The files under chapters/ are the engine's durable record — the one artifact with no protection
-  // would be the one everything else treats as authoritative.
-  const refusal = await chapterStartRefusal(sc.dir, chapter,
-                                            opts.replace === true || flag("replace") !== undefined);
-  if (refusal) throw new Error(refusal);
-
-  return runAndSave(sc, dir, chapter, { serving: SERVE, serve });
-}
-
-let BROWSER_DRIVES = false;
-
-type Picked = { dir: string; chapter: number; replace?: boolean };
-
-function awaitPick(): Promise<Picked> {
-  LIVE.awaitingPick = true;
-  setWhere("choosing a story", false);
-  console.log(`\n${C.dim}Waiting for a story to be chosen at ${C.reset}http://localhost:${LIVE.port}/`
-    + `${C.dim} — Ctrl-C to quit.${C.reset}`);
-  return new Promise<Picked>(r => { LIVE.pickResolve = r; }).then(picked => {
-    setWhere("loading", false);
-    return picked;
-  });
-}
-
-/** Wait for the next story: the browser when it is driving, the console picker otherwise. */
-async function pickStory(): Promise<Picked> {
-  if (BROWSER_DRIVES) return awaitPick();
-  setWhere("choosing a story", false);
-  return { dir: await chooseStory(""), chapter: 1 };
-}
-
-const serve = () => startServer(PORT, HOST);
-
-async function main() {
   const retired = retiredFlagUsed();
   if (retired) {
     console.error(`${retired} was removed — start the viewer with --serve and use the browser flow `
@@ -187,27 +118,18 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  if (SERVE) serve();            // before the picker, so the viewer is up while you are still choosing
-  const oneShot = !!STORY_DIR || !process.stdin.isTTY || flag("consult") !== undefined;
-  BROWSER_DRIVES = SERVE && !oneShot;
-
-  let next: Picked =
-    STORY_DIR ? { dir: STORY_DIR, chapter: 1 }
-    : await pickStory();
-  for (;;) {
-    try {
-      await runOne(next.dir, next.chapter, { replace: next.replace });
-      if (oneShot) return;
-    } catch (e) {
-      const msg = (e as Error).message;
-      sseWrite({ t: "run_error", message: msg });   // a --serve viewer is watching either way
-      if (oneShot) throw e;                         // main().catch() says it, with the LM Studio hint
-      console.error(`${C.red}${msg}${C.reset}`);
-      setWhere("choosing a story", false);
-      LIVE.awaitingPick = false;
-    }
-    next = await pickStory();
-  }
+  await appMain({
+    serve: SERVE || HEADLESS,
+    headless: HEADLESS,
+    port: PORT,
+    oneShot: !!STORY_DIR || !process.stdin.isTTY || flag("consult") !== undefined,
+    storyDir: STORY_DIR,
+    steps: flag("steps"),
+    chapter: flag("chapter"),
+    consult: flag("consult"),
+    replace: flag("replace"),
+    consultCli: runConsultCli,
+  });
 }
 
 const IS_MAIN = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

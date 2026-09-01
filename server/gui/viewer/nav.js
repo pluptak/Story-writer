@@ -61,20 +61,20 @@ export const clearFocus = () => {
 };
 
 /** Go to a page. The shelf is always a legal destination while an engine is attached -- it is the
- *  hub, not somewhere the session parks you -- so the only rewrite left is the one for a viewer
- *  with no engine behind it at all, which has nothing but a saved run to show. */
+ *  hub, not a parking spot -- so the only rewrite left is for a viewer with no engine behind it at
+ *  all, which has nothing but a saved run to show. */
 export function go(v) {
   if (!APP.live && v !== "read" && v !== "readstory" && v !== "compare") v = "read";
   // Leaving live/read drops the block anchor -- it names a seq in the scene that page was showing,
-  // and carrying it onto the next one would scroll to whatever happens to reuse the number.
+  // and carrying it over would scroll to whatever happens to reuse the number.
   if (v !== "live" && v !== "read" && APP.focusSeq != null) { APP.focusSeq = null; APP.focusScrolled = false; }
   // Dirty guard: confirm before leaving the editor with unsaved changes. On cancel, put the URL
   // back: a hashchange (browser back, a bookmark) has already moved location.hash, so without this
-  // the address bar would show the page we refused to go to while the editor stays on screen.
+  // the address bar shows the page we refused while the editor stays on screen.
   if (v !== "edit" && APP.editDirty && !confirm("Discard unsaved changes?")) { syncHash(); return; }
   // Actually leaving the editor clears its state -- "discard" has to mean discard. Without this
   // the guard re-prompts on every later navigation, beforeunload keeps warning on tab close, and
-  // the surviving draft can be saved into whichever story is opened next.
+  // the surviving draft can be saved into whichever story opens next.
   if (APP.view === "edit" && v !== "edit") {
     if (APP.editCheckTimer) clearTimeout(APP.editCheckTimer);
     APP.editDir = ""; APP.editNew = false; APP.editFor = ""; APP.editStory = null; APP.editDraft = null;

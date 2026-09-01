@@ -1,0 +1,27 @@
+{
+  "run": "2026-08-31T22-06-47-039Z",
+  "story": "stories/doorway",
+  "chapter": 1,
+  "engine": "cb13bb7c2494",
+  "git": {
+    "revision": "a46184c",
+    "branch": "pov-thought-withholding",
+    "dirty": true
+  },
+  "models": {
+    "writer": "google/gemma-4-e4b",
+    "summary": "google/gemma-4-e4b"
+  },
+  "effectiveSteps": 32,
+  "budgetGrants": [
+    {
+      "added": 8,
+      "budget": 32
+    }
+  ],
+  "outcome": {
+    "steps": 32,
+    "words": 777,
+    "done": true
+  }
+}

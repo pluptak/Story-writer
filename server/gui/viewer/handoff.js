@@ -27,7 +27,7 @@ async function postHandoff(what, payload) {
  *  fetch each. They never change within a handoff session -- accepting rewrites story.json, not the
  *  prose already on disk -- so this runs once per (dir, prepared-chapter) and caches the result.
  *  Chapter numbers come from the story card, filtered to those below the one being prepared, so a
- *  gap in the written chapters does not turn into a 404. */
+ *  gap in the written chapters doesn't turn into a 404. */
 async function loadHandoffChapters(dir, chapter, spec) {
   APP.handoffChapters = { dir, chapter, loading: true, items: [] };
   APP.render();
@@ -67,13 +67,13 @@ async function startHandoff() {
   APP.handoff = { active:true, busy:true, dir: APP.handoffDir, chapter:0, problems:[] };
   APP.render();
   const j = await postHandoff("start", { dir: APP.handoffDir, model: APP.handoffModel });
-  // A refusal leaves an optimistic "busy" that nothing will ever clear -- fall back to the start
+  // A refusal leaves an optimistic "busy" nothing will ever clear -- fall back to the start
   // screen, with the refusal already in handoffError, or the page hangs until a reload.
   if (!j || j.active === undefined) { APP.handoff = { active:false }; APP.render(); }
 }
 
-/** The text stays in the draft until the round actually lands, so a 409 or a dropped connection
- *  does not silently lose what you wrote. */
+/** The text stays in the draft until the round actually lands, so a 409 or dropped connection
+ *  doesn't silently lose what you wrote. */
 async function sendHSay() {
   const text = hdraft.say.trim();
   if (!text || APP.handoff.busy) return;
@@ -100,7 +100,7 @@ async function abandonHandoff() {
 }
 
 /** There is no route that re-runs the opening round, so retrying is a fresh session on the same
- *  story. Nothing is lost: a failed first round changed nothing to keep. */
+ *  story. Nothing is lost -- a failed first round changed nothing to keep. */
 async function retryHandoff() {
   await postHandoff("abandon", {});
   APP.handoff = { active:false }; APP.handoffError = "";
@@ -108,7 +108,7 @@ async function retryHandoff() {
 }
 
 /** Starting the prepared chapter is `/select`, which only answers while the session is parked at
- *  the picker. On success `choose` navigates to the run; a refusal has to be said here, since the
+ *  the picker. On success `choose` navigates to the run; a refusal must be said here, since the
  *  handoff page does not show `storyError`. */
 async function writePrepared() {
   const done = APP.handoffDone;
@@ -120,9 +120,9 @@ async function writePrepared() {
 }
 
 export function wireHandoff(page) {
-  // The word counts for the "chapters written" list load lazily, once the round has a spec and so a
-  // chapter number to prepare. wireHandoff re-runs on every render; the dir+chapter key stops that
-  // from restarting the fetch, and loadHandoffChapters sets the key before its first await.
+  // The word counts for the "chapters written" list load lazily, once the round has a spec and so
+  // a chapter number to prepare. wireHandoff re-runs on every render; the dir+chapter key stops
+  // that restarting the fetch, and loadHandoffChapters sets the key before its first await.
   const s = handoffForPage();
   if (s.active && s.spec && s.chapter > 1 &&
       (APP.handoffChapters?.dir !== APP.handoffDir || APP.handoffChapters?.chapter !== s.chapter)) {
@@ -147,8 +147,8 @@ export function wireHandoff(page) {
   on("h-write", writePrepared);
 
   // Accepting rewrites the story.json a working story is already running on. The engine puts the
-  // old file back if the result does not load, but a result that DOES load is not undoable, so it
-  // takes the same confirming second click the interview's accept does.
+  // old file back if the result does not load, but a result that DOES load is not undoable -- hence
+  // the same confirming second click the interview's accept takes.
   on("h-accept", () => armTwice("hAcceptArmed", 5000, acceptHandoff));
   on("h-abandon", () => armTwice("hAbandonArmed", 4000, abandonHandoff));
 }

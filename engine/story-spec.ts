@@ -1,8 +1,6 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
-import { C } from "../ansi.ts";
-import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG, RESTRICTION_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
-import { StoryJson, RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef, type CharacterDef } from "./story-schema.ts";
+import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
+import { RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
 
@@ -40,6 +38,18 @@ export function characterPsychologyWarnings(
   return out;
 }
 
+/** The cast-sheet problems that are pure string work and belong in code, never in the model's
+ *  verify pass. `story-format.ts` warns the same things at load time; these live here so the
+ *  wording has one home, mirroring `characterPsychologyWarnings`. `prefix` is "scene" or "scene N"
+ *  at proposal time and `Scene ${i + 1}` at load time; each caller appends its own disposition
+ *  (the load path drops the offending name, the proposal path only reports). */
+export function rosterNameNotACharacter(prefix: string, name: string): string {
+  return `${prefix} roster "${name}" is not one of the characters`;
+}
+export function reachNotInRoster(prefix: string, who: string): string {
+  return `${prefix} grants reach to "${who}", who is not in its roster`;
+}
+
 /** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing. */
 export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] } {
   const problems: string[] = [];
@@ -47,9 +57,12 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
   const rawScenes: any[] = Array.isArray(o.scenes) ? o.scenes
     : (o.scene && typeof o.scene === "object") ? [o.scene]
     : [];
-  if (!rawScenes.length && o.scenes === undefined && o.scene) rawScenes.push(o.scene);
+  // A `scene` that came back as anything but an object — a bare string of prose is the one models
+  // actually produce — must not be read as one: `readSceneDef` would take the string's `.length`
+  // as the scene's word count and quietly propose a 19-word chapter. Say so, fall through to blank.
+  if (!rawScenes.length && o.scene)
+    problems.push("the scene came back as text rather than an object — using an empty scene");
   if (!rawScenes.length) rawScenes.push({});
-  const s = rawScenes[0] ?? {};
 
   const seen = new Set<string>();
   const characters: StorySpec["characters"] = [];
@@ -68,10 +81,9 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
       const r = splitMeaning(l).text;
       const rk = canonSkill(r);
       const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === rk)
-        || Object.keys(RESTRICTION_CATALOG).some(p => canonSkill(p) === rk)
         || bibleMeaningOf(r) !== undefined
         || skills.some(s => canonSkill(splitMeaning(s).text) === rk);
-      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a known skill or penalty, so it would remove nothing`);
+      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a known skill, so it would remove nothing`);
       return ok;
     });
     const voice = asStrings(c?.voice);
@@ -103,12 +115,58 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     const pov = String(s.pov ?? "").trim();
     const povOk = !pov || characters.some(c => c.name.toLowerCase() === pov.toLowerCase());
     if (pov && !povOk) problems.push(`${prefix} pov "${pov}" is not one of the characters — cleared`);
+    // Hoist the roster so the checks below (and the return) all read the same array.
+    const roster: string[] = Array.isArray(s.roster)
+      ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [];
+    // A roster name that is not a character is a typo or a renamed character the model forgot to
+    // update; the writer would seat someone who does not exist. String work — flag it, keep it.
+    for (const r of roster) {
+      if (!characters.some(c => c.name.toLowerCase() === r.toLowerCase()))
+        problems.push(rosterNameNotACharacter(prefix, r));
+    }
+    // The pov-vs-characters check above guards a pov naming nobody at all; this guards a pov that
+    // names a real character who is simply not placed in this scene's room (genuinely unbuilt until now).
+    if (pov && povOk && roster.length && !roster.some(r => r.toLowerCase() === pov.toLowerCase()))
+      problems.push(`${prefix} pov "${pov}" is not in the roster — the reader would be inside the perception of someone not placed in the room`);
+    const rawReach = (s.reach && typeof s.reach === "object" && !Array.isArray(s.reach))
+      ? Object.fromEntries(Object.entries(s.reach)
+          .map(([k, v]) => [k.trim(), asStrings(v)] as const)
+          .filter(([k]) => k.length > 0))
+      : {};
+    // Reach is never in the bible, so every entry must carry its own ":: meaning"; and a grant to
+    // someone who does not exist would silently reach no one. Both are dropped with a problem.
+    const reach: SceneDef["reach"] = {};
+    for (const [who, entries] of Object.entries(rawReach)) {
+      const ch = characters.find(c => c.name.toLowerCase() === who.toLowerCase());
+      if (!ch) { problems.push(`${prefix} grants reach to "${who}", who is not one of the characters — dropped`); continue; }
+      // The roster is the likelier thing to be wrong; the fill-gaps pass fills it *after* the scene
+      // lands, so dropping an authored grant over a roster typo would be a regression. Report, keep.
+      if (roster.length && !roster.some(r => r.toLowerCase() === who.toLowerCase()))
+        problems.push(reachNotInRoster(prefix, who));
+      const ownSkillKeys = new Set(ch.skills.map(sk => canonSkill(splitMeaning(sk).text)));
+      const ok = entries.filter(e => {
+        const { text, meaning } = splitMeaning(e);
+        if (!meaning.trim()) { problems.push(`${ch.name}'s reach "${e}" carries no ":: meaning" — dropped`); return false; }
+        // I3 at proposal time: a reach entry colliding with a general, bible, or the character's own
+        // skill name is naming the sense/capability, not the interface — their own meaning stands and
+        // the reach entry is dropped. Surfaces here, not only mid-run.
+        const key = canonSkill(text);
+        if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === key)
+            || bibleMeaningOf(text) !== undefined || ownSkillKeys.has(key)) {
+          problems.push(`${ch.name}'s reach "${text}" collides with a skill name — name the INTERFACE, not the sense or capability it substitutes for; the entry is dropped`);
+          return false;
+        }
+        return true;
+      });
+      if (ok.length) reach[ch.name] = ok;
+    }
     return {
       place: String(s.place ?? "").trim(),
       question: String(s.question ?? "").trim(),
       pov: povOk ? pov : "",
       length: Number.isFinite(lengthRaw) && lengthRaw >= 1 ? Math.round(lengthRaw) : 700,
-      roster: Array.isArray(s.roster) ? s.roster.map((r: unknown) => String(r).trim()).filter(Boolean) : [],
+      roster,
+      reach,
       ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
       ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
         ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),
@@ -179,6 +237,10 @@ export function applyEdits(spec: StorySpec, raw: any): {
   // One round may rename a character and then address them by the old name ("rewrite the prose
   // under the old name in the same round") -- later edits follow renames made earlier in the list.
   const renames = new Map<string, string>();
+  // `renames` is keyed lower-case because findChar hops through it; the authored spelling of each
+  // old name is kept beside it so a dangling-reference problem can name the character as the author
+  // wrote them ("MERRITT"), not as the lookup key spells them ("merritt").
+  const renamedFrom = new Map<string, string>();
   const findChar = (name: string) => {
     let key = name.trim().toLowerCase();
     for (let hops = 0; hops <= renames.size; hops++) {
@@ -222,13 +284,20 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
-    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster)$/);
+    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster|reach)$/);
     if (sceneMatch) {
       const idx = sceneMatch[2] ? Number(sceneMatch[2]) - 1 : 0;
       if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
       const sceneField = sceneMatch[3];
       const before = (normalizedDraft().scenes[idx] as any)[sceneField];
       if (sceneField === "roster") draft.scenes[idx].roster = asStrings(value);
+      else if (sceneField === "reach") {
+        draft.scenes[idx].reach = (value && typeof value === "object" && !Array.isArray(value))
+          ? Object.fromEntries(Object.entries(value)
+              .map(([k, v]) => [k.trim(), asStrings(v)] as const)
+              .filter(([k, v]) => k.length > 0 && v.length > 0))
+          : {};
+      }
       else if (sceneField === "length") draft.scenes[idx].length = Number(value);
       else draft.scenes[idx][sceneField] = scalar();
       const key = `scene:${idx}.${sceneField}`;
@@ -306,8 +375,8 @@ export function applyEdits(spec: StorySpec, raw: any): {
       if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
 
       // A rename carries the structural references with it: who a roster names, whose perception
-      // a scene sits inside. Prose that speaks of the person under the old name is the architect's
-      // to rewrite, not the engine's.
+      // a scene sits inside. The engine still does not rewrite the prose under the old name — but
+      // it now flags every dangling reference, once, in this round, for the author to fix.
       if (cm[2] === "name") {
         const fresh = scalar();
         if (!fresh) { ignored.push(`${field} — a character cannot be renamed to nothing`); continue; }
@@ -318,6 +387,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
         const old = c.name;
         c.name = fresh;
         renames.set(old.toLowerCase(), fresh.toLowerCase());
+        renamedFrom.set(old.toLowerCase(), old);
         for (const sc of draft.scenes) {
           if (String(sc.pov ?? "").trim().toLowerCase() === old.toLowerCase()) sc.pov = fresh;
           sc.roster = ((sc.roster ?? []) as string[])
@@ -438,6 +508,35 @@ export function applyEdits(spec: StorySpec, raw: any): {
     ignored.push(field ? `unknown field "${raw}"` : "an edit with no field");
   }
 
+  // A renaming round may leave another character's knows/goal/belief still naming the old name —
+  // the exact "renamed and forgot to update" bug this block catches. The architect has no rename
+  // history at proposal time, but applyEdits does, so the dangling-reference scan lives here:
+  // exact old-name match, word-boundary, zero false positives. The engine still does not rewrite
+  // the prose; it only says where the stale name sits. (The hallucinated-name half stays with the
+  // model's "anything else" backstop — see PLANS.md Architect follow-ups.)
+  //
+  // This finding reaches the author and nobody else: runAutoPasses builds [ALREADY FLAGGED] from
+  // `applyEdits(cur, { edits: [] })`, where `renames` is empty by construction, so verify never
+  // sees it and no later round re-derives it. That is inherent — only the renaming round holds the
+  // history. If the model is ever to fix these, the finding must be recomputed from the spec.
+  const renameProblems: string[] = [];
+  if (renames.size) {
+    for (const c of draft.characters) {
+      for (const field of ["knows", "goal", "belief"] as const) {
+        const text = String((c as any)[field] ?? "");
+        if (!text) continue;
+        for (const [oldKey, newKey] of renames) {
+          const re = new RegExp(`\\b${oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+          if (re.test(text)) {
+            const renamedTo = draft.characters.find((x: any) => x.name.toLowerCase() === newKey)?.name ?? newKey;
+            const wasCalled = renamedFrom.get(oldKey) ?? oldKey;
+            renameProblems.push(`${c.name}'s ${field} still names "${wasCalled}", who was renamed to "${renamedTo}" — update the reference`);
+          }
+        }
+      }
+    }
+  }
+
   const { spec: next, problems } = normalizeSpec(draft);
   const counts = new Map<string, number>();
   for (const e of work) counts.set(e.key, (counts.get(e.key) ?? 0) + 1);
@@ -446,7 +545,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
     before,
     after: counts.get(key) === 1 && resolve ? (resolve(next) ?? snapshot) : snapshot,
   }));
-  return { spec: next, applied, ignored, problems };
+  return { spec: next, applied, ignored, problems: [...problems, ...renameProblems] };
 }
 
 /** The fields a GUI may set directly; everything else goes through the architect. */
@@ -517,29 +616,6 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
   files["story.json"] = JSON.stringify(story, null, 2) + "\n";
 
   return files;
-}
-
-/** Never raw JSON — the round asks for a judgement about people, which JSON is the wrong shape for. */
-export function renderSpec(spec: StorySpec, full = false): string {
-  const head = `${C.bold}${spec.title || "(untitled)"}${C.reset}\n`
-    + `${C.dim}${spec.scenes[0].place || "(nowhere stated)"} · ~${spec.scenes[0].length} words`
-    + `${spec.scenes[0].pov ? ` · pov ${spec.scenes[0].pov}` : ""}${C.reset}`
-    + `${spec.scenes.length > 1 ? ` · ${spec.scenes.length} scenes` : ""}\n\n`
-    + `${spec.premise || "(no premise)"}\n\n`
-    + `${C.bold}Question:${C.reset} ${spec.scenes[0].question || "(none)"}\n`;
-  const cast = spec.characters.map(c => {
-    const lines = [`\n${C.cyan}${c.name}${C.reset}`];
-    if (c.skills.length) lines.push(`  ${C.green}can also:${C.reset} ${c.skills.map(s => splitMeaning(s).text).join(", ")}`);
-    if (c.restrictions.length)  lines.push(`  ${C.red}cannot:${C.reset}   ${c.restrictions.join(", ")}`);
-    if (c.knows)         lines.push(`  ${C.dim}knows:${C.reset}    ${c.knows}`);
-    if (c.goal)          lines.push(`  ${C.dim}wants:${C.reset}    ${c.goal}`);
-    if (c.belief)        lines.push(`  ${C.dim}believes:${C.reset} ${c.belief}`);
-    if (c.impulse)       lines.push(`  ${C.dim}impulse:${C.reset}  ${c.impulse}`);
-    lines.push(full ? `\n${c.persona}\n` : `  ${C.dim}${c.persona.replace(/\s+/g, " ").slice(0, 140)}…${C.reset}`);
-    for (const v of full ? c.voice : []) lines.push(`  ${C.dim}says:${C.reset}     "${v}"`);
-    return lines.join("\n");
-  }).join("\n");
-  return head + cast + (spec.writerStyle && full ? `\n\n${C.bold}House style${C.reset}\n${spec.writerStyle}\n` : "");
 }
 
 /** The spec as the GUI expects it: character skills split into their `name :: meaning` parts. */

@@ -9,7 +9,7 @@ import {
   reviseConsult, parseLintVerdict, CONSULT_WANTS, type ConsultEvent, type ConsultRequest, type Clarifier,
 } from "../engine/consult.ts";
 import * as P from "../prompts.ts";
-import { wrapCharacter, wrapWriter, writerCast, neglectedCast, runChapter } from "../engine/scene-loop.ts";
+import { neglectedCast } from "../engine/scene-loop.ts";
 import { Agent } from "../engine/agent.ts";
 import { ScriptedAgent } from "./helpers.ts";
 
@@ -109,7 +109,7 @@ describe("consult", () => {
     assert.deepEqual(f.history, a.history);
   });
 
-  // The retry has to be able to diverge without dragging the original with it: what the fork is
+  // The retry must be able to diverge without dragging the original along: what the fork is
   // asked, and whatever it answers, must never land in the history the accepted answer folds into.
   it("a fork's history is its own copy", () => {
     const a = new Agent("RIVEN", "m", "persona", 0.9);
@@ -150,6 +150,23 @@ describe("neglectedCast", () => {
     assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 5, 3), ["MERRITT"]);
     assert.deepEqual(neglectedCast(["RIVEN"], lastAsked, 5, 3), []);
   });
+
+  it("names nobody in a larger cast being attended to in strict rotation", () => {
+    // One consult per step: four present cannot be asked more often than every fourth step, so a
+    // fixed gap of 3 would name somebody here on every step of the scene, forever.
+    const lastAsked = new Map([["riven", 5], ["merritt", 6], ["tibbs", 7], ["wren", 8]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT", "TIBBS", "WREN"], lastAsked, 9, 3), []);
+  });
+
+  it("still names someone in a larger cast who is skipped past a full rotation", () => {
+    const lastAsked = new Map([["riven", 3], ["merritt", 10], ["tibbs", 11], ["wren", 12]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT", "TIBBS", "WREN"], lastAsked, 13, 3), ["RIVEN"]);
+  });
+
+  it("relaxes the threshold again as the cast shrinks", () => {
+    const lastAsked = new Map([["riven", 5], ["merritt", 6], ["tibbs", 7], ["wren", 8]]);
+    assert.deepEqual(neglectedCast(["RIVEN", "MERRITT"], lastAsked, 9, 3), ["RIVEN", "MERRITT"]);
+  });
 });
 
 describe("writeInstruction", () => {
@@ -182,6 +199,33 @@ describe("writeInstruction", () => {
     assert.match(msg, /"scene_done": true/);
     assert.doesNotMatch(msg, /well past length/);
   });
+
+  it("offers the exit as the other reading of a character who has gone quiet", () => {
+    const msg = P.writeInstruction({ ...base, words: 50, target: 100, neglected: ["TIBBS"] });
+    assert.match(msg, /TIBBS has gone unconsulted/);
+    assert.match(msg, /written someone out the door, name them in "exit"/);
+    assert.doesNotMatch(P.writeInstruction({ ...base, words: 50, target: 100 }), /exit/);
+  });
+
+  // SPIKE (world timeline) — delete with the injection path.
+  it("hands a fired world beat over as established fact, and is unchanged without one", () => {
+    const plain = P.writeInstruction({ ...base, words: 50, target: 100 });
+    const msg = P.writeInstruction({ ...base, words: 50, target: 100, fired: "The sounder took over." });
+    assert.match(msg, /\[WORLD] The sounder took over\. That has happened/);
+    assert.match(msg, /nobody can decline it|nobody\s+can decline it/);
+    assert.equal(P.writeInstruction({ ...base, words: 50, target: 100, fired: "" }), plain);
+  });
+
+  // SPIKE (world timeline) — delete with the injection path.
+  it("holds a withheld event back until it fires, and never sends both at once", () => {
+    const held = P.writeInstruction({ ...base, words: 50, target: 100, hold: "the panel going into alarm" });
+    assert.match(held, /\[HOLD] the panel going into alarm -- that has NOT happened/);
+    assert.doesNotMatch(held, /\[WORLD]/);
+
+    const both = P.writeInstruction({ ...base, words: 50, target: 100, fired: "It fired.", hold: "the panel going into alarm" });
+    assert.match(both, /\[WORLD]/);
+    assert.doesNotMatch(both, /\[HOLD]/);
+  });
 });
 
 describe("canonWants", () => {
@@ -210,7 +254,7 @@ describe("canonWants", () => {
 describe("judgeRequest", () => {
   const p = {
     name: "RIVEN", situation: "You are kneeling by the steel service door.",
-    question: "Do you turn it, or ease off?", wants: "decision", thought: "t", speech: "s", action: "a",
+    question: "Do you turn it now?", wants: "decision", thought: "t", speech: "s", action: "a",
     note: "", flags: "",
   };
 
@@ -313,9 +357,65 @@ describe("clarifyRequest", () => {
   });
 });
 
+describe("what the character is sent", () => {
+  const req = { situation: "The alarm has been going for a minute and nobody has moved.",
+                question: "Do you say the name, knowing what it admits?", wants: "speech" };
+
+  it("gives them the situation and never the question", () => {
+    // Stage 2 of the open-beat experiment: the author still writes the question -- it gates the
+    // consult, anchors the judge, travels with the answer on the record -- but the character
+    // answers the moment, not the fork the author picked out of it.
+    const sent = P.askBlock(req);
+    assert.match(sent, /The alarm has been going/, "the situation is their whole world");
+    assert.ok(!sent.includes(req.question), "the question they were never shown is not in the ask");
+    assert.ok(!/\bQuestion:/.test(sent), "and no empty label is left behind where it used to be");
+  });
+
+  it("still names the shape the answer has to arrive in", () => {
+    // Kept deliberately: missingShape refuses an answer for lacking a shape, and refusing one the
+    // character was never asked for would be a trap, not a check.
+    assert.match(P.askBlock(req), /What they need from you: speech/);
+  });
+
+  it("puts the moment to them as theirs to take", () => {
+    assert.match(P.askBlock(req), /nobody is going to hand you a better one/);
+  });
+
+  it("keeps the door to asking for a missing fact open", () => {
+    // With no question, {"need": ...} is the only way a character can repair a thin situation.
+    assert.match(P.askBlock(req), /Ask for it instead/);
+  });
+
+  it("folds the situation and the shape, and none of the standing instructions", () => {
+    // The three assertions above cover the LIVE ask, which is unchanged. History keeps only the
+    // record: everything else in askBlock is pressure to answer now, and re-reading it once per
+    // consult for the rest of the scene is the cost the un-escalated fold refuses to pay.
+    const fold = P.foldedAsk(req);
+    assert.match(fold, /The alarm has been going/, "the situation it was asked about survives");
+    assert.match(fold, /What they need from you: speech/, "and the shape that was wanted");
+    assert.ok(!fold.includes(req.question), "still never the question");
+    for (const gone of [/nobody is going to hand you a better one/, /Ask for it instead/,
+                        /not a request you owe compliance to/, /the words they say/]) {
+      assert.ok(!gone.test(fold), `standing instruction left in the fold: ${gone}`);
+    }
+    assert.ok(P.foldedAsk(req).length * 2 < P.askBlock(req).length, "and it is much shorter");
+  });
+});
+
 describe("the retry template", () => {
+  it("tells the judge that only the situation reaches them", () => {
+    // Without this the judge sharpens the question on retry, the character sees an identical ask,
+    // and a fresh instance answers identically — a retry spent on nothing.
+    assert.match(P.JUDGE_FORMAT, /ONLY ONE OF THE THREE THEY WILL READ/);
+  });
+
+  it("does not let the judge retry an answer for taking a fork it had not planned", () => {
+    assert.match(P.JUDGE_FORMAT, /is NOT unusable/);
+    assert.match(P.JUDGE_FORMAT, /the moment was theirs to read/);
+  });
+
   it("names every field a retry has to carry", () => {
-    // A field absent from the template is a field the model does not send: `wants` was missing from
+    // A field missing from the template is a field the model does not send: `wants` was missing from
     // 17 of 17 logged retries, and `note` came back empty in 13 of them.
     for (const field of ["revised", "situation", "question", "wants", "note"])
       assert.match(P.JUDGE_FORMAT, new RegExp(`"${field}"`));
@@ -329,8 +429,9 @@ describe("the retry template", () => {
     assert.match(P.JUDGE_FORMAT, /Do not paste back the prose you wrote/);
   });
 
-  it("tells the judge that only a reaction is answered by a thought", () => {
-    assert.match(P.JUDGE_FORMAT, /Only\s+a reaction is answered by a thought alone/);
+  it("tells the judge a thought alone answers only from inside the point of view", () => {
+    assert.match(P.JUDGE_FORMAT, /a thought alone is a complete answer/);
+    assert.match(P.JUDGE_FORMAT, /has to surface as a word or a movement/);
   });
 });
 
@@ -346,16 +447,16 @@ describe("the narration lint format", () => {
     assert.match(P.NARRATION_LINT_FORMAT, /consequence/);
   });
 
-  it("passes descriptions when in doubt but flags quotations, invented deeds and meaningful stillness",
+  it("passes descriptions when in doubt but flags invented deeds and meaningful stillness, not quotations",
     () => {
       assert.match(P.NARRATION_LINT_FORMAT,
-        /When in\s+doubt about a description, pass it; when in doubt about an unmatched quotation, an\s+invented deed, or\s+meaningful stillness, flag it/);
+        /When in\s+doubt about a description, pass it; when in doubt about an invented deed or\s+meaningful stillness, flag it/);
     });
 
-  it("says a matched quotation is the pass case, so a granted line rendered verbatim is not flagged",
+  it("tells the LLM quotations are checked mechanically, so it must not re-check dialogue",
     () => {
       assert.match(P.NARRATION_LINT_FORMAT,
-        /a MATCHED one is the pass case, verbatim or near-verbatim, and is never flagged for being a\s+quotation/);
+        /Quotations are checked mechanically before you are called, so do NOT re-check\s+dialogue/);
     });
 
   it("narrows the incidental-continuity exemption to involuntary body continuation", () => {
@@ -396,7 +497,7 @@ describe("the author-side agents each hold exactly one schema", () => {
   });
 
   it("the writer no longer carries the judge's or the clarifier's shape", () => {
-    // The whole point of splitting them out: with both here, the [WRITE] pattern won 7 times in 55.
+    // Why they were split out: with all shapes in one format, the [WRITE] pattern won 7 times in 55.
     assert.ok(!P.WRITER_FORMAT.includes(`"verdict"`));
     assert.ok(!P.WRITER_FORMAT.includes(`"answer"`));
   });
@@ -422,6 +523,37 @@ describe("the author-side agents each hold exactly one schema", () => {
   it("the clarifier holds the premise and the facts, so what it settles cannot contradict them", () => {
     assert.match(clarify, /a premise/);
     assert.match(clarify, /the lock is old/);
+  });
+
+  it("the done judge carries no way to write prose, ask, or promote", () => {
+    assert.ok(!P.DONE_JUDGE_FORMAT.includes(`"prose"`));
+    assert.ok(!P.DONE_JUDGE_FORMAT.includes(`"consult"`));
+    assert.ok(!P.DONE_JUDGE_FORMAT.includes(`"promotable"`));
+  });
+});
+
+describe("doneJudgeRequest", () => {
+  it("shows the question and the page, and nothing else", () => {
+    const msg = P.doneJudgeRequest({ question: "does the door open?", prose: "They stood there." });
+    assert.match(msg, /\[THE QUESTION THIS SCENE HAS TO ANSWER]\ndoes the door open\?/);
+    assert.match(msg, /\[THE SCENE AS IT STANDS]\nThey stood there\./);
+  });
+
+  it("is told to weigh only whether the question is settled, not how well it is written", () => {
+    // The judge shares the writer's model and would otherwise answer as a reader with taste.
+    assert.match(P.DONE_JUDGE_FORMAT, /Judge nothing else/);
+    assert.match(P.DONE_JUDGE_FORMAT, /Not whether the writing is good/);
+  });
+
+  it("counts a refusal that holds as an answer, and a live standoff as none", () => {
+    assert.match(P.DONE_JUDGE_FORMAT, /"No" is an answer/);
+    assert.match(P.DONE_JUDGE_FORMAT, /both sides where they started/);
+  });
+
+  it("says nothing to the writer at all — the verdict is a measurement, not an instruction", () => {
+    // It was one, and the writer could not act on it: a deadlock is broken by somebody choosing
+    // differently, which the writer may not write. Nothing in prompts/ addresses the writer here.
+    assert.equal((P as Record<string, unknown>).questionUnanswered, undefined);
   });
 });
 
@@ -496,31 +628,45 @@ describe("parseBatchVerdict", () => {
 describe("reviseConsult", () => {
   const prev: ConsultRequest = {
     character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
-    question: "Do you turn it, or ease off?", wants: "decision",
+    question: "Do you turn it now?", wants: "decision",
   };
 
+  /** Every valid revision now has to move the situation, so the shared fixture below supplies one. */
+  const moved = "The wrench has slipped and the cylinder has not turned; footsteps have started up.";
+
   it("keeps what the judge left out", () => {
-    const r = reviseConsult(prev, { question: "Do you turn it, knowing what it wakes?" });
+    const r = reviseConsult(prev, { situation: moved, question: "Do you turn it, knowing what it wakes?" });
     assert.ok(r.ok);
-    assert.equal(r.req.situation, prev.situation, "an omitted field falls back, it does not blank");
-    assert.equal(r.req.wants, "decision");
+    assert.equal(r.req.wants, "decision", "an omitted field falls back, it does not blank");
     assert.equal(r.req.question, "Do you turn it, knowing what it wakes?");
+  });
+
+  it("refuses a revision that re-sends the same situation", () => {
+    // The character is shown the situation, not the question, so sharpening the fork's wording sends
+    // a fresh instance the identical message the last one answered. Seen twice in the first live run
+    // under the withheld question, once with the question unchanged as well.
+    const sharpened = reviseConsult(prev, { question: "Do you turn it, knowing what it wakes?" });
+    assert.ok(!sharpened.ok, "an omitted situation falls back and is then the same ask");
+    assert.match(sharpened.why, /has to change what they can perceive/);
+
+    const verbatim = reviseConsult(prev, { situation: `  ${prev.situation}  `, question: "Do you turn it?" });
+    assert.ok(!verbatim.ok, "and whitespace is not a change either");
   });
 
   it("takes a whole new situation and question when the judge writes one", () => {
     const r = reviseConsult(prev, {
       situation: "The corridor has gone quiet and the wrench is still in your hand.",
-      question: "Do you call out, or keep working?", wants: "decision",
+      question: "Do you call out first?", wants: "decision",
     });
     assert.ok(r.ok);
     assert.match(r.req.situation, /corridor has gone quiet/);
-    assert.equal(r.req.question, "Do you call out, or keep working?");
+    assert.equal(r.req.question, "Do you call out first?");
     assert.equal(r.wantsRefused, "", "it kept the shape, so there is no drift to record");
   });
 
   it("refuses a revision the front door would have refused", () => {
-    // The actual regression: "What do you do?" is rejected as a first consult, and used to be sent
-    // anyway as a retry because the revision skipped the check.
+    // The regression: "What do you do?" is rejected as a first consult, but used to be sent anyway
+    // as a retry because the revision skipped the check.
     const r = reviseConsult(prev, { question: "What do you do?" });
     assert.ok(!r.ok);
     assert.match(r.why, /fork|stake/);
@@ -532,26 +678,57 @@ describe("reviseConsult", () => {
 
   // The judge may reframe a fork it asked badly. It may not turn one fork into another: "which way
   // do you go" and "what do you say about it" are different moments, and a judge that answers an
-  // inconvenient reply by changing the shape has replaced the choice rather than re-put it.
+  // inconvenient reply by changing the shape has replaced the choice, not re-put it.
   it("pins the shape asked for, and records the one the judge wanted", () => {
-    const r = reviseConsult(prev, { question: "Do you turn it, or ease off it now?", wants: "speech" });
+    const r = reviseConsult(prev, { situation: moved, question: "Do you turn it slowly now?", wants: "speech" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision", "the original shape stands");
     assert.equal(r.wantsRefused, "speech", "and what the judge asked for is on the record");
   });
 
   it("reads a reworded shape as the same shape, not as drift", () => {
-    const r = reviseConsult({ ...prev, wants: "speech" }, { wants: "what they say" });
+    const r = reviseConsult({ ...prev, wants: "speech" }, { situation: moved, wants: "what they say" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "speech");
     assert.equal(r.wantsRefused, "", "'what they say' canonicalizes to speech — nothing changed");
   });
 
   it("treats an unreadable wants as the judge not naming one", () => {
-    const r = reviseConsult(prev, { wants: "???" });
+    const r = reviseConsult(prev, { situation: moved, wants: "???" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision");
     assert.equal(r.wantsRefused, "");
+  });
+
+  const blindCast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
+  const merrittPrev: ConsultRequest = {
+    character: "MERRITT", situation: "The ledger lies open on the counter, the pen beside your hand.",
+    question: "Do you sign it now?", wants: "decision",
+  };
+
+  it("re-lints the judge's revised situation against the same CANNOT list — the fifth entry path", () => {
+    const r = reviseConsult(merrittPrev, {
+      situation: "You have just watched Riven sign the ledger in your place.",
+      question: "Do you countersign it now?",
+    }, blindCast);
+    assert.ok(!r.ok, "a retry must not deliver as ground truth what the first ask was refused for");
+    assert.match(r.why, /MERRITT/);
+  });
+
+  it("passes a clean revision through with the cast given", () => {
+    const r = reviseConsult(merrittPrev, {
+      situation: "The counter is bare under your hands; the pen has been taken away.",
+      question: "Do you sign it now?",
+    }, blindCast);
+    assert.ok(r.ok);
+    assert.match(r.req.situation, /pen has been taken away/);
+  });
+
+  it("refuses to re-ask an unchanged situation even when it is a clean one", () => {
+    // It would pass every gate it passed the first time; that is exactly why it buys nothing.
+    const r = reviseConsult(merrittPrev, { question: "Do you sign the ledger now?" }, blindCast);
+    assert.ok(!r.ok);
+    assert.match(r.why, /has to change what they can perceive/);
   });
 });
 
@@ -570,13 +747,30 @@ describe("missingShape", () => {
     assert.equal(missingShape("decision", { speech: "", action: "I stay put." }), null);
   });
 
-  it("lets a reaction be answered by a thought alone", () => {
+  it("lets a reaction be answered by a thought alone, from inside the point of view", () => {
     // The one shape that happens behind the eyes; holding it to speech or action would be wrong.
-    assert.equal(missingShape("reaction", { speech: "", action: "" }), null);
+    assert.equal(missingShape("reaction", { speech: "", action: "" }, true), null);
   });
 
-  it("asks nothing of a consult that named no shape", () => {
+  it("makes anyone else's reaction reach the outside", () => {
+    // Their thought never reaches the writer, so a reaction kept behind their eyes is the same
+    // empty answer the other three shapes are refused for -- the ask would be spent on nothing.
+    assert.equal(missingShape("reaction", { speech: "", action: "" }, false), "reaction");
+    assert.equal(missingShape("reaction", { speech: "Who's there?", action: "" }, false), null);
+    assert.equal(missingShape("reaction", { speech: "", action: "goes still" }, false), null);
+  });
+
+  it("asks no more than the four shapes always did when the point of view is unknown", () => {
+    assert.equal(missingShape("reaction", { speech: "", action: "" }), null);
     assert.equal(missingShape("", { speech: "", action: "" }), null);
+  });
+
+  it("holds an open beat to the same floor, since it names no shape of its own", () => {
+    // Stage 3 sends no `wants`, so the POV rule is all that is left -- and it is the same rule: a
+    // thought from outside the POV reaches the writer as if nothing at all was asked.
+    assert.equal(missingShape("", { speech: "", action: "" }, false), "reaction");
+    assert.equal(missingShape("", { speech: "I stay put.", action: "" }, false), null);
+    assert.equal(missingShape("", { speech: "", action: "goes still" }, false), null);
   });
 });
 
@@ -629,12 +823,14 @@ describe("parseClarifyAnswer", () => {
   });
 });
 
-describe("normalizeConsult", () => {
+describe("normalizeConsult, the judge's directed ask", () => {
+  // Stage 3 did not remove the question gates; it narrowed them to the one path that still carries
+  // a question — the judge escalating an open beat into a named fork.
   const good = { character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
-                 question: "Do you turn it, or ease off?", wants: "decision" };
+                 question: "Do you turn it now?", wants: "decision" };
 
   it("passes a real consult through, canonicalizing wants", () => {
-    const r = normalizeConsult({ ...good, wants: "what they decide" });
+    const r = normalizeConsult({ ...good, wants: "what they decide" }, undefined, "directed");
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision");
     assert.equal(r.req.question, good.question);
@@ -642,25 +838,27 @@ describe("normalizeConsult", () => {
   });
 
   it("refuses an empty situation", () => {
-    const r = normalizeConsult({ ...good, situation: "" });
+    const r = normalizeConsult({ ...good, situation: "" }, undefined, "directed");
     assert.ok(!r.ok);
     assert.match(r.why, /only world/);
   });
 
   it("refuses a situation too thin to answer from", () => {
-    const r = normalizeConsult({ ...good, situation: "It is dark." });
+    const r = normalizeConsult({ ...good, situation: "It is dark." }, undefined, "directed");
     assert.ok(!r.ok);
     assert.match(r.why, /3 words/);
   });
 
   it("refuses an empty question", () => {
-    assert.ok(!normalizeConsult({ ...good, question: "" }).ok);
+    assert.ok(!normalizeConsult({ ...good, question: "" }, undefined, "directed").ok);
   });
 
   it("refuses the questions that ask for nothing", () => {
     for (const q of ["What do you do?", "What does Elara do?", "What does Riven do next with the pick?",
-                     "What happens next?", "Your move?"]) {
-      const r = normalizeConsult({ ...good, question: q });
+                     "What happens next?", "Your move?",
+                     "What do you choose regarding the lock?",
+                     "What do you decide to do with the current snag?"]) {
+      const r = normalizeConsult({ ...good, question: q }, undefined, "directed");
       assert.ok(!r.ok, `"${q}" should have been refused`);
       assert.match(r.why, /fork|stake/);
     }
@@ -668,46 +866,107 @@ describe("normalizeConsult", () => {
 
   it("keeps the questions that name a fork or a cost", () => {
     for (const q of ["Do you type the abort command?",
-                     "Do you wake him or let him sleep?",
-                     "Do you shift to get more comfortable, or stay perfectly still?",
+                     "Do you wake him, knowing what the noise wakes with it?",
+                     "Do you shift to get more comfortable?",
                      "What do you say when he asks you directly?",
-                     "Do you say the name, knowing what it admits?"]) {
-      assert.ok(normalizeConsult({ ...good, question: q }).ok, `"${q}" should have been allowed`);
+                     "Do you say the name, knowing what it admits?",
+                     "Do you open the order book?"]) {
+      assert.ok(normalizeConsult({ ...good, question: q }, undefined, "directed").ok, `"${q}" should have been allowed`);
     }
   });
 
+  it("refuses the question that carries both answers of its fork", () => {
+    // The three live shapes: two doorway runs and the cooling-loop retry that came back with MORE
+    // of the answer in it. A pre-written menu is answered by picking, and picking is all it leaves.
+    for (const q of ["Do you concede and sign for A, or do you double down?",
+                     "Do you side with Nkem (wait for engineers) or with Hale and Marsh (pull the lever now)?",
+                     "Do you list yourself as the primary person who authorized the shutdown, " +
+                     "or do you attribute it to the collective team?"]) {
+      const r = normalizeConsult({ ...good, question: q }, undefined, "directed");
+      assert.ok(!r.ok, `"${q}" should have been refused`);
+      assert.match(r.why, /both branches|open question/);
+    }
+  });
+
+  it("keeps the genuinely open question the live runs produced", () => {
+    const r = normalizeConsult({ ...good,
+      question: "What do you say to the group about the state of the hardware?" }, undefined, "directed");
+    assert.ok(r.ok);
+  });
+
   it("refuses a wants it cannot make sense of, and names the four", () => {
-    const r = normalizeConsult({ ...good, wants: "" });
+    const r = normalizeConsult({ ...good, wants: "" }, undefined, "directed");
     assert.ok(!r.ok);
     for (const w of CONSULT_WANTS) assert.match(r.why, new RegExp(w));
   });
 
   it("says what is wrong in terms the writer can act on", () => {
     for (const bad of [{ situation: "" }, { situation: "Dark." }, { question: "What do you do?" }, { wants: "" }]) {
-      const r = normalizeConsult({ ...good, ...bad });
+      const r = normalizeConsult({ ...good, ...bad }, undefined, "directed");
       assert.ok(!r.ok);
       assert.ok(r.why.length > 60, "a one-word complaint teaches nothing");
     }
   });
+
+  const sightLeaning = "You are leaning over Riven, observing their hands at the lock. Riven remains perfectly still under your gaze.";
+  const forkQuestion = "Do you reach for the lock?";
+  const cast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
+
+  it("refuses a situation phrased around a sense its addressee CANNOT", () => {
+    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
+    assert.ok(!r.ok);
+    assert.match(r.why, /MERRITT/);
+    assert.match(r.why, /sight/);
+    assert.match(r.why, /CANNOT/);
+  });
+
+  it("sends the same situation to a character without that CANNOT", () => {
+    const r = normalizeConsult({ character: "RIVEN", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
+    assert.ok(r.ok);
+    assert.equal(r.req.situation, sightLeaning);
+  });
+
+  it("matches the addressee case-insensitively against the cast", () => {
+    const r = normalizeConsult({ character: "Merritt", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
+    assert.ok(!r.ok);
+  });
+
+  it("checks nothing when no cast is given", () => {
+    const r = normalizeConsult({ character: "MERRITT", situation: sightLeaning, question: forkQuestion, wants: "decision" }, undefined, "directed");
+    assert.ok(r.ok, "a name the cast does not cover is not checked");
+  });
+
+  it("checks nothing for a name the cast does not hold", () => {
+    const r = normalizeConsult({ character: "NOBODY", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
+    assert.ok(r.ok);
+  });
 });
 
 describe("normalizeReactionConsult", () => {
-  const shared = "The service door explodes inward off its hinges, wood and dust across the floor.";
-  const question = "What does that land on you as?";
+  const shared = "The service door explodes inward off its hinges, wood and dust coming across the floor "
+    + "towards where you are standing.";
+  const question = "";
 
-  it("gives every reactor the shared situation, pinned to reaction", () => {
+  it("gives every reactor the shared situation and no question at all", () => {
     const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }, { name: "MIRA" }], situation: shared, question });
     assert.ok(r.ok);
     assert.equal(r.reqs.length, 2);
     assert.deepEqual(r.reqs.map(x => x.character), ["ELARA", "MIRA"]);
     for (const req of r.reqs) {
       assert.equal(req.situation, shared);
-      assert.equal(req.wants, "reaction");
+      assert.equal(req.question, "", "a fan-out is the several-at-once form of the open ask");
+      assert.equal(req.wants, "", "and nothing is pinned to reaction any more");
     }
   });
 
+  it("holds each reactor to the open situation floor", () => {
+    const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }], situation: "A crash somewhere." });
+    assert.ok(!r.ok);
+    assert.match(r.why, /whole of what you are sending/);
+  });
+
   it("lets a reactor override the situation (someone who only heard it)", () => {
-    const heard = "From the next room, a splintering crash and a rush of cold air under the door.";
+    const heard = "From the next room you catch a splintering crash and then a rush of cold air coming in under the door.";
     const r = normalizeReactionConsult({
       reactors: [{ name: "ELARA" }, { name: "MIRA", situation: heard }], situation: shared, question,
     });
@@ -717,7 +976,7 @@ describe("normalizeReactionConsult", () => {
   });
 
   it("collapses a duplicated reactor to one consult — first entry wins, with its own situation", () => {
-    const heard = "From the next room, a splintering crash and a rush of cold air under the door.";
+    const heard = "From the next room you catch a splintering crash and then a rush of cold air coming in under the door.";
     const r = normalizeReactionConsult({
       reactors: [{ name: "ELARA", situation: heard }, { name: "elara" }, { name: "ELARA" }],
       situation: shared, question,
@@ -749,5 +1008,27 @@ describe("normalizeReactionConsult", () => {
   it("holds each reactor to the same situation floor a lone consult faces", () => {
     const r = normalizeReactionConsult({ reactors: [{ name: "ELARA" }], situation: "It is loud.", question });
     assert.ok(!r.ok);
+  });
+
+  const sightShared = "The door swings open in front of you and you watch Riven hand the satchel across to the man waiting there.";
+  const blindCast = [{ name: "MERRITT", cannot: ["sight"] }, { name: "RIVEN", cannot: [] }];
+
+  it("refuses the whole fan-out when the shared situation breaks one reactor's CANNOT", () => {
+    const r = normalizeReactionConsult({
+      reactors: [{ name: "RIVEN" }, { name: "MERRITT" }], situation: sightShared, question,
+    }, blindCast);
+    assert.ok(!r.ok);
+    assert.match(r.why, /MERRITT/, "the refusal names the reactor whose ground truth was corrupt");
+  });
+
+  it("checks a per-reactor override against its owner only", () => {
+    const heard = "From the next room the door swings on its hinges and a voice you cannot make out follows it.";
+    const r = normalizeReactionConsult({
+      reactors: [{ name: "MERRITT", situation: heard }, { name: "RIVEN" }],
+      situation: sightShared, question,
+    }, blindCast);
+    assert.ok(r.ok, "Merritt's override is clean for Merritt; the shared text only ever reaches Riven");
+    assert.equal(r.reqs[0].situation, heard);
+    assert.equal(r.reqs[1].situation, sightShared);
   });
 });

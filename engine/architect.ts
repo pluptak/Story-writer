@@ -8,9 +8,10 @@ import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG } from "./skills.ts";
+import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, type StorySpec } from "./story-spec.ts";
+import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
 import { estimateTokens } from "./llm-client.ts";
 
@@ -27,15 +28,29 @@ async function architectExample(): Promise<string> {
 
 /**
  * Build the architect agent: its system prompt carries the skill catalog and, when scaffolding, a
- * worked example of the story format. A handoff does not want it — the prompt names every edit field
- * inline and sends the real story every round, so the example is the format said twice, and the one
- * shape it demonstrates is the whole-story reply a handoff must *not* send.
+ * worked example of the story format. A handoff does not want the example — the prompt names every
+ * edit field inline and sends the real story every round, so the example is the format said twice,
+ * and it demonstrates the whole-story reply a handoff must *not* send.
  */
 export async function buildArchitect(d: Defaults, withExample = true): Promise<Agent> {
   const system = P.architectSystem(
-    SKILL_CATALOG, SPECIAL_SKILL_CATALOG, RESTRICTION_CATALOG,
+    SKILL_CATALOG, SPECIAL_SKILL_CATALOG,
     withExample ? await architectExample() : "");
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
+  a.think = d.thinking.architect;
+  return a;
+}
+
+// The three judges in scene-loop.ts run at this temperature for the same reason: a verdict wants to
+// be repeatable, not creative. Kept as its own constant rather than imported, so the architect chain
+// does not take a dependency on the scene loop for one number.
+const JUDGE_TEMPERATURE = 0.3;
+
+/** The cast gate's judge. Stateless and deliberately **not** the architect: the architect wrote the
+ *  cast, and self-audit is exactly what the verify pass does badly. Built fresh per call, so it never
+ *  carries a verdict on an earlier cast into this one. */
+export function newCastAsymmetryJudge(d: Defaults): Agent {
+  const a = new Agent("CAST-JUDGE", d.models.architect, P.CAST_ASYMMETRY_SYSTEM, JUDGE_TEMPERATURE);
   a.think = d.thinking.architect;
   return a;
 }
@@ -61,6 +76,9 @@ export type ScaffoldRound =
   | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
   | { kind: "question"; ask: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
   | { kind: "nothing"; why: string; stage?: P.ScaffoldStage | "done" }
+  // Distinct from "nothing": the stage's content landed and is refusable-but-overridable, so the
+  // viewer offers a confirming second click. "nothing" means there is nothing yet to advance past.
+  | { kind: "blocked"; why: string; stage: P.ScaffoldStage }
   | { kind: "failed"; error: string };
 
 /** The outcome of trying to write the accepted story to disk. */
@@ -93,7 +111,7 @@ async function architectRound(agent: Agent, message: string):
   agent.hear(message);
   archLog(`─── PROMPT (${agent.model}) ───\n${message}`);
   try {
-    const reply = await agent.generate(`${C.magenta}ARCHITECT${C.reset}`);
+    const reply = await agent.generate(`${C.magenta}ARCHITECT${C.reset}`, "architect.turn");
     agent.said(reply.trim());
     const out = extractJson(reply);
     const raw = visibleReply(reply);
@@ -125,13 +143,13 @@ function withAsk(out: Record<string, any>): string {
 
 /**
  * Run the fill-gaps and verify passes after a successful proposal, before a human sees it: neither
- * ARCHITECT_FORMAT nor architectNextChapter's own message ever asks for scene.roster or story-level
+ * ARCHITECT_FORMAT nor architectNextChapter's message ever asks for scene.roster or story-level
  * facts, so nothing gets authored unless these dedicated passes ask for it. A question from either
- * pass aborts the sequence and is surfaced exactly like any other blocking ask; whatever the earlier
- * pass already applied stays on the spec. A failed or empty pass never discards a good proposal — it
- * is recorded as an AutoPass with outcome "failed"/"nothing" instead. `passes` selects which run:
- * the one-shot scaffold and the handoff want both; the staged checklist asks for roster and facts
- * in its own stages, so its scene stage runs the verify pass only.
+ * pass aborts the sequence and surfaces like any other blocking ask; whatever the earlier pass
+ * applied stays on the spec. A failed or empty pass never discards a good proposal — it is recorded
+ * as an AutoPass with outcome "failed"/"nothing" instead. `passes` selects which run: the one-shot
+ * scaffold and the handoff want both; the staged checklist asks for roster and facts in its own
+ * stages, so its scene stage runs the verify pass only.
  */
 async function runAutoPasses(
   architect: Agent, spec: StorySpec, sceneField: string,
@@ -214,9 +232,12 @@ export class ScaffoldSession {
 
   private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene"];
 
+  /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
+   *  without it a test walking the checklist would reach for the network at the cast gate. */
   constructor(public architect: Agent, public defaults: Defaults, public idea: string,
               public storiesDir: string = joinPath(ROOT, "stories"),
-              public mode: "oneshot" | "staged" = "oneshot") {}
+              public mode: "oneshot" | "staged" = "oneshot",
+              public newJudge?: () => Agent) {}
 
   haveStory(): boolean { return this.spec.characters.length > 0; }
 
@@ -332,7 +353,7 @@ export class ScaffoldSession {
     return problems.filter(p =>
       !(!castIn && p === "no characters at all")
       && !(!sceneIn && /has no question/.test(p))
-      && !(!sceneIn && /is not one of the characters/.test(p)));
+      && !(!sceneIn && /^scene\b/.test(p)));
   }
 
   private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
@@ -379,8 +400,30 @@ export class ScaffoldSession {
     }
   }
 
-  /** Staged mode only: pass the open gate and propose the next stage's content. */
-  async approve(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+  /** The cast gate's question, asked of a fresh judge: does this cast's asymmetry bite on the
+   *  tension the story stage coined? Returns null when it could not be decided — an outage, or a
+   *  reply with no verdict. The caller then lets the gate pass: every other model-in-the-loop check
+   *  in this engine accepts on failure, and an outage must not strand an author mid-checklist. */
+  private async castAsymmetryVerdict(): Promise<{ ok: boolean; why: string } | null> {
+    try {
+      const judge = this.newJudge ? this.newJudge() : newCastAsymmetryJudge(this.defaults);
+      const raw = await judge.generate(`${C.magenta}CAST-JUDGE${C.reset}`, "judge.cast", [{
+        role: "user", content: P.castAsymmetryRequest(this.tension || this.spec.premise,
+          this.spec.characters.map(c => ({
+            name: c.name, goal: c.goal, skills: c.skills, restrictions: c.restrictions }))),
+      }]);
+      return parseLintVerdict(extractJson(raw));
+    } catch (e) {
+      archLog(`CAST GATE: judge call failed (${(e as Error).message}) — passing`);
+      return null;
+    }
+  }
+
+  /** Staged mode only: pass the open gate and propose the next stage's content.
+   *
+   *  `override` is the author overruling a gate that blocked — the viewer's confirming second click,
+   *  the same shape accept already uses over unsent text or a `problems` flag. */
+  async approve(onStage?: (stage: AutoStage) => void, override = false): Promise<ScaffoldRound> {
     if (this.mode !== "staged")
       return { kind: "failed", error: "this scaffold session is not running the staged checklist" };
     if (!this.stage)
@@ -390,6 +433,18 @@ export class ScaffoldSession {
     const missing = this.gateMissing();
     if (missing)
       return { kind: "nothing", why: `"${this.stage}" has not landed (${missing}) — refine it, answer any outstanding question, and try again`, stage: this.stage };
+    // The cast gate is the one gate that judges what landed, not whether anything did. It blocks on
+    // a cast whose asymmetry does not bite on the tension: a cast that all know and perceive the
+    // same things gives the consult nothing to be asymmetric about — and by the time that shows up
+    // in the prose the story has been built on it.
+    if (this.stage === "cast" && !override) {
+      const verdict = await this.castAsymmetryVerdict();
+      if (verdict && !verdict.ok) {
+        const why = verdict.why || "this cast's asymmetry does not bite on the tension";
+        archLog(`CAST GATE: blocked — ${why}`);
+        return { kind: "blocked", why, stage: this.stage };
+      }
+    }
     const next = ScaffoldSession.CHECKLIST[ScaffoldSession.CHECKLIST.indexOf(this.stage) + 1];
     if (!next)
       return { kind: "nothing", why: "the checklist is complete — review the draft and accept", stage: this.stage };
@@ -564,7 +619,7 @@ export class NextChapterSession {
         return false;
       }
       // The same field shapes applyEdits accepts, read the same way: an unnumbered `scene.x` is scene 1.
-      const m = field.match(/^scene(?:_(\d+))?\.(place|question|pov|length|roster)$/);
+      const m = field.match(/^scene(?:_(\d+))?\.(place|question|pov|length|roster|reach)$/);
       const k = m ? (m[1] ? Number(m[1]) : 1) : 0;
       if (k >= 1 && k <= written) {
         refused.push(`${field} — chapter ${k} is already written`);

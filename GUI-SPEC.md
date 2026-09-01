@@ -24,6 +24,24 @@ What keeps it accepted is that the port is **bound to `127.0.0.1`**, not to ever
 that lists local directories, reads run logs and starts runs has no business being reachable from the
 LAN. Widening that bind means adding auth first; there is deliberately no CLI flag for it today.
 
+### Headless
+
+`--headless` starts the server without a story argument, a console picker, or a one-shot run: the
+process comes up serving, the browser drives everything from the shelf, and SIGINT/SIGTERM shut it
+down gracefully — a run in flight takes the same path a `/stop` takes (`releaseForStop()`, then
+`stopRun()`) so `run-and-save`'s streams flush before the process exits; a second signal force-exits.
+`startServer` returns a `ServerHandle` (`bound`, `close()`), which is how shutdown ends the SSE
+clients, stops the keep-alive ping and frees the port — after a `close()` a fresh `startServer` may
+bind again. Outside headless the console owns Ctrl-C and no signal handlers are installed. Headless
+also keeps the console echo on (`ENGINE.echoConsole`): the draft prose and the characters' acts and
+replies print as they land, because the console is the monitor the operator has — under plain
+`--serve` the console stays quiet, the viewer being the monitor. `--no-cast-echo` trims just the
+characters' replies (`acts:`/`reacts:`/consult answers) from that echo, in any mode; the prose and
+the JSONL/SSE record are untouched by it.
+
+One rule that has no other home: **operational messages stay in the console and run data stays in
+the JSONL logs — the GUI never becomes a second source of truth.**
+
 Two channels carry everything:
 
 - **JSON request/response** — plain `POST`/`GET`, `Content-Type: application/json`, no framework
@@ -65,11 +83,13 @@ state. See "Replacing the GUI" below.
 ```
 GET /run
   → { run: RunMeta | null, awaitingContinue, events: number, running, stopping, where,
-      picking, armed, paused, pausing, model, interactive }
+      picking, loading, armed, paused, pausing, model, interactive }
 ```
 The snapshot a freshly-loaded page needs before its first SSE frame arrives. `run` is the static
 `RunMeta` set once at scene start (`story`, `characters[]`, `target`, `question`); everything else
-mirrors the live `run_state` SSE frame (below) — polled here once, pushed there after.
+mirrors the live `run_state` SSE frame (below) — polled here once, pushed there after. `loading`
+is the window between a story being chosen (`picking` going false) and its run actually starting:
+every route that writes `story.json` refuses with `409` while it holds.
 
 ```
 GET /stories
@@ -87,7 +107,7 @@ folder name; what to show in its absence is the client's call, and `name` is the
 `scenes[0]`, kept because the shelf and scaffold interview read it; a card from an older server has
 only that one. `chapters` lists the chapter numbers already written to `chapters/<n>.md`, in numeric
 order. One call gets the whole picker: every discovered story, preflighted, with its own retained runs
-embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 3` — [story-writer.ts:309](story-writer.ts#L309)).
+embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 10` — [run-and-save.ts:15](run-and-save.ts#L15)).
 There is no separate "list runs" route; a run only exists as a story's `runs[]` entry.
 
 ```
@@ -148,7 +168,7 @@ POST /select   { dir, chapter?, replace? }
 ```
 Only meaningful while `picking: true` (i.e. `LIVE.awaitingPick`). There is no queue — one browser
 resolves the parked `Promise<{ dir, chapter }>` the CLI's `pickStory()` is blocked on
-([story-writer.ts:267](story-writer.ts#L267)), and `picking` immediately goes false for everyone. A
+([app.ts:129](app.ts#L129)), and `picking` immediately goes false for everyone. A
 second click after that returns `400 the session is not waiting on a choice`, not a second run.
 `chapter` is which chapter that run writes — one run writes one chapter — and anything that is not a
 positive integer falls back to `1` rather than failing the pick. Out of range for *this* story is not
@@ -179,20 +199,24 @@ POST /story/suggest { spec, text } → { ok:true, kind:"edits",
 
 `/story/edit` loads the full Zod-parsed `StoryJson` from disk for editing, plus engine-level
 warnings. Returns `{ ok: false, raw }` when the file is on disk but will not parse, so the editor
-can show the error and the raw content. Refuses with `409` while a run is in flight — editing the
-definition a live run is reading would be a race.
+can show the error and the raw content.
+
+Every mutating action here (`edit`, `save`, `discard`, `suggest`) refuses with `409` while
+something else is reading or writing `story.json`: a run in flight, the loading window after a
+pick (`loading: true`), or an open handoff holding the file it will rewrite on accept. The refusal
+reason names which — editing the definition a live run is reading would be a race.
 
 `/story/check` validates a modified draft in memory against the Zod schema and engine-level checks
 (empty premise, no characters, scenes without questions). Never writes.
 
 `/story/save` validates, atomically writes via `.tmp` rename, then re-loads to confirm. Refuses
-with `409` while a run is in flight.
+with `409` under the same story-write lock as `/story/edit`.
 
 `/story/discard` drops the last authored scene from `story.json` — the undo for an
 accepted-but-never-written chapter the handoff added. Refuses any scene but the last, the sole
-scene (`scenes` is `min(1)`), a chapter already written (its prose would be orphaned), and a run in
-flight. Writes through the same atomic path as `/story/save`. The story page offers it only on the
-trailing unwritten scene's row.
+scene (`scenes` is `min(1)`), a chapter already written (its prose would be orphaned), and anything
+holding the story-write lock. Writes through the same atomic path as `/story/save`. The story page
+offers it only on the trailing unwritten scene's row.
 
 `/story/suggest` is a stateless architect call: given the current story spec and the author's
 instruction in `text`, creates a fresh architect agent, sends the change prompt, and returns the
@@ -200,6 +224,26 @@ proposed edits together with the edited `spec`. On an `edits` reply the editor a
 its draft as unsaved changes (the reply was computed from the draft it was sent, so manual edits
 travel with it) and re-validates; nothing reaches disk until a save — the engine never writes from a
 suggestion.
+
+The story editor renders each scene's `reach` — the scene-scoped capability grants
+([Architect.MD](Architect.MD), I1) — as one textarea per scene, one
+`NAME: thing :: meaning` per line. Reach round-trips through `/story/check` and `/story/save`
+inside `StoryJson`'s scenes; it is character-in-place data and never appears on a character card in
+the editor.
+
+## Read-only cast view
+
+```
+GET /cast?dir=...  → { ok:true, characters[], scenes[] }
+                   | { ok:false, error }
+```
+
+Available while a run is in flight (the live rail needs it exactly then). Each character carries
+`name`, `persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `skills` (as `{text, meaning}`),
+and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants as
+`{ n: number, reach: { NAME: ["thing :: what they can do through it"] } }`. **Reach never merges into
+a character's `skills`** ([Architect.MD](Architect.MD) I4): the GUI labels each grant with its scene,
+so it can never read as intrinsic.
 
 ## Run control
 
@@ -296,6 +340,13 @@ outcome leaves the interview open for another `/scaffold/say`. Every scaffold ro
 a `{ t: "scaffold", state }` SSE frame (`state` is exactly the `GET /scaffold` body), so this is really
 one more small state machine layered on the same "poll once, then follow SSE" pattern as the run itself.
 
+**Abandon is stronger than any round in flight.** It drops the session immediately and always answers
+`{ ok: true }`; the abandoned round keeps its busy lock until its own work finishes, but finds the
+session gone when it returns — it commits nothing, publishes nothing, and its own caller gets
+`409 the interview was abandoned`. The same holds for an `accept` overtaken by an abandon: the write
+may already have created the story folder (the refusal says so), but the pick stays parked and no run
+starts.
+
 ## The handoff (preparing the next chapter)
 
 ```
@@ -314,11 +365,18 @@ POST /next-chapter/abandon                  → drops the session unconditionall
 
 The handoff re-authors the cast *between* runs and writes `story.json` — it never starts a run and
 never resolves the story pick, so unlike `/scaffold` it does not care whether `picking` is true. It
-does care that `running` is false: every action but `abandon` is `409 a run is in flight`, because the
-run in flight is reading the file the handoff would rewrite. `handoffBusy` is the same
-one-round-at-a-time lock as the scaffold's (`409` for a second `POST` mid-round), and rounds share
-`ScaffoldRound` minus `proposal` — the handoff only ever returns edits, a question, nothing, or a
-failure.
+does care that nothing else holds `story.json`: from opening (`start`) until it ends (accept,
+abandon, or failure) the handoff holds the same story-write lock the editor's routes refuse under,
+and every action but `abandon` is `409` with that lock's reason while a run is in flight or a picked
+story is still loading — the thing in flight is reading the file the handoff would rewrite.
+`handoffBusy` is the same one-round-at-a-time lock as the scaffold's (`409` for a second `POST`
+mid-round), and rounds share `ScaffoldRound` minus `proposal` — the handoff only ever returns edits,
+a question, nothing, or a failure.
+
+Abandon during a round behaves exactly as the scaffold's: the session drops at once and the round,
+on returning, commits and publishes nothing — its caller gets `409 the handoff was abandoned`, and
+an accept overtaken mid-write also warns that `story.json` may have been rewritten while releasing
+the editor's lock either way.
 
 An edits round has four separate result lists: `applied` changes, `ignored` edits that were not
 applied, `flags` advisory continuity observations, and `problems` on the surrounding state. `flags`
@@ -352,7 +410,7 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` ([live.ts:37](live.ts#
 { t:"agent_stats"; who; model; durationMs; promptTokens; completionTokens }
                                           — one completed model call; token fields are null when unavailable
 { t:"continue_prompt"; steps; budget; suggested }  — step budget spent, needs a /continue
-{ t:"run_state"; running; stopping; where; picking; armed; paused; pausing; model; awaitingContinue; interactive }
+{ t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; interactive }
 { t:"run_reset" }                        — a new run is about to start; discard everything and refetch
 { t:"run_error"; message }               — a story failed to load or run; the picker is coming back
 { t:"scaffold"; state }                  — mirrors GET /scaffold
@@ -401,7 +459,13 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"lint_failed"; why }                        — the narration lint call itself threw; the piece
                                                    was accepted unchecked
   { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
-                                                   the one redraft happened or it was logged and kept
+                                                    the one redraft happened or it was logged and kept.
+                                                    `why` may carry two findings joined by ". " — the
+                                                    mechanical sense check and the LLM half run together
+  { t:"narration_quote_flag"; why; quote; character }
+                                                  — the mechanical quotation check fired (no model):
+                                                    `quote` is the unmatched line, `character` the nearest
+                                                    name before it or "unknown"; the one redraft follows
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
   { t:"model_changed"; model }
@@ -431,9 +495,13 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"scene_end"; steps; words; done; stopped; retries{character:count} }
 ```
 
-`wants` in `consult` is always one of `speech | action | decision | reaction` — the same four words
-`prompts.ts`'s `CONSULT_WANTS` sends the writer and the character (prompts.ts's single source of truth
-for that vocabulary, so the API and the model prompt can never drift apart).
+`wants` and `question` in `consult` are **`""` on an open beat**, which is every consult the writer
+itself sends. They carry values only after a judge's retry has escalated the ask by naming the fork
+in words. When `wants` is set it is one of `speech | action | decision | reaction` — the same four
+words `prompts.ts`'s `CONSULT_WANTS` sends the judge and the character (prompts.ts's single source of
+truth for that vocabulary, so the API and the model prompt can never drift apart). A client rendering
+a consult has to handle both: `blocks.js` falls back to the situation as the header when there is no
+question.
 
 `schema_mismatch` says an author-side agent replied in a shape that is not the one its call asked for
 — a judge that wrote prose, a clarifier that returned a verdict, a narration lint that came back with

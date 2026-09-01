@@ -6,18 +6,21 @@ import { APP } from "./state.js";
 // names. It currently shows only what the pill itself already knew (can/cannot); reading the
 // character's own markdown file is engine work for a later block.
 
-/** A clickable pill for one character, used by the header, the shelf cards and the story page. It
- *  is a `<span role="button">`, not a `<button>`, because the shelf's cast row sits inside a card
- *  that is itself a `<button>` -- nesting real buttons breaks the outer one. */
+/** A clickable pill for one character, used by the header, the shelf cards and the story page. A
+ *  `<span role="button">`, not a `<button>`, because the shelf's cast row sits inside a card that
+ *  is itself a `<button>` -- nesting real buttons breaks the outer one. */
 export function charChip(c, dir) {
   const can = c.skills || [];
   const cannot = c.restrictions || [];
+  const reach = c.reach || [];
   const bits = [];
   if (can.length) bits.push(`<span class="yes">+${esc(can.join(", "))}</span>`);
   if (cannot.length) bits.push(`<span class="no">no ${esc(cannot.join(", "))}</span>`);
+  if (reach.length) bits.push(`<span class="reach">⇢${esc(reach.join(", "))}</span>`);
   return `<span${tid("cast.chip")} class="chip" role="button" tabindex="0"
             data-char-name="${esc(c.name)}" data-char-dir="${esc(dir || "")}"
-            data-char-can="${esc(can.join("|"))}" data-char-cannot="${esc(cannot.join("|"))}">
+            data-char-can="${esc(can.join("|"))}" data-char-cannot="${esc(cannot.join("|"))}"
+            data-char-reach="${esc(reach.join("|"))}">
     <b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
 }
 
@@ -29,8 +32,9 @@ export function characterCardModalHtml() {
     <section class="picker iv charcard">
       <div class="iv-head"><h2>${esc(c.name)}</h2>
         <button class="btn" id="charcard-close" title="close" aria-label="close">×</button></div>
-      ${(c.can.length || c.cannot.length) ? `<div class="row">
+      ${(c.can.length || c.cannot.length || c.reach.length) ? `<div class="row">
         ${c.can.length ? `<span class="yes">can also ${esc(c.can.join(", "))}</span>` : ""}
+        ${c.reach.length ? `<span class="reach" title="granted by the scene they are standing in, not intrinsic">reach ${esc(c.reach.join(", "))}</span>` : ""}
         ${c.cannot.length ? `<span class="no">cannot ${esc(c.cannot.join(", "))}</span>` : ""}</div>` : ""}
       <p class="charmd-placeholder">the character sheet itself isn't wired up yet — this modal only
         shows what its pill already knew.</p>
@@ -52,10 +56,11 @@ function openCharCard(el) {
   APP.charCard = {
     name: el.dataset.charName, dir: el.dataset.charDir,
     can: split(el.dataset.charCan), cannot: split(el.dataset.charCannot),
+    reach: split(el.dataset.charReach),
   };
-  // Tag the URL so a reload (or a pasted link) reopens the same card; render()'s closing syncHash
+  // Tag the URL so a reload (or pasted link) reopens the same card; render()'s closing syncHash
   // writes it. This module must not import nav.js -- nav -> saved-runs -> shelf -> here would close
-  // a cycle -- and it does not need to: pages.js syncs the hash after every render.
+  // a cycle -- and need not: pages.js syncs the hash after every render.
   APP.modalWant = `character-card:${el.dataset.charName}`;
   APP.render();
 }
@@ -77,13 +82,14 @@ export function settleModalWant() {
   APP.charCard = {
     name: chip.dataset.charName, dir: chip.dataset.charDir,
     can: split(chip.dataset.charCan), cannot: split(chip.dataset.charCannot),
+    reach: split(chip.dataset.charReach),
   };
   APP.modalWant = "";
 }
 
 // Capture phase, and it stops there: a shelf card's pill sits inside a card that is itself
-// clickable (open the story), so the pill has to keep that click from ever reaching it rather than
-// merely outrunning it.
+// clickable (open the story), so the pill must keep that click from ever reaching it, not merely
+// outrun it.
 document.addEventListener("click", e => {
   const chip = e.target.closest("[data-char-name]");
   if (!chip) return;
@@ -98,5 +104,5 @@ document.addEventListener("keydown", e => {
   }
   // Escape is NOT handled here: chrome.js owns it centrally and closes the topmost of ALL modal
   // backdrops (interview, character card, run-ended). A second handler here would close the char
-  // card and then let chrome.js close whatever sat beneath it on the very same keypress.
+  // card, then let chrome.js close whatever sat beneath it on the same keypress.
 });

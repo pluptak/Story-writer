@@ -4,7 +4,7 @@ import { wordsPovHtml } from "./story-page.js";
 
 // The architect default (defaults.json's models.architect) is repo-wide, not per-story, so it can
 // name a model this story never asked for and that may not even be loaded -- the dropdown lets a
-// round be started with a model actually known to work instead.
+// round start with a model actually known to work instead.
 function handoffModelSelectHtml() {
   return `<select id="h-model" class="btn" title="model to prepare this chapter with">
     <option value=""${APP.handoffModel ? "" : " selected"}>architect default${APP.modelDefault ? " · " + esc(APP.modelDefault) : ""}</option>
@@ -39,11 +39,11 @@ export function handoffPageHtml() {
   }
 
   // The active session, but only when it belongs to the story this page shows -- the server holds
-  // one handoff at a time, and it may be open on a different story than the URL names.
+  // one handoff at a time, possibly open on a different story than the URL names.
   const s = handoffForPage();
 
   // Screen 2: nothing open. The accept case gets here first -- the server pushes {active:false}
-  // before it answers the POST -- and must not be offered a start button it would race.
+  // before answering the POST -- and must not be offered a start button it would race.
   if (!s.active && APP.handoffAccepting) {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
@@ -52,7 +52,7 @@ export function handoffPageHtml() {
   }
   if (!s.active) {
     // Every handoff action but abandon is 409 while a run is in flight -- the run is reading the
-    // file the handoff would rewrite. Said here rather than round-tripping to find out.
+    // file the handoff would rewrite. Said here rather than round-tripping.
     const busy = runningReason();
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
@@ -70,8 +70,8 @@ export function handoffPageHtml() {
   // Screen 3: active handoff (`s` is set above, guarded to this page's story)
 
   // The optimistic state `startHandoff` sets has no spec -- every real frame carries one. Until the
-  // first round lands there is no chapter number to name and nothing proposed to draw, and that wait
-  // is the longest in the flow: the architect is reading every chapter written so far.
+  // first round lands there is no chapter number to name and nothing proposed to draw, and that
+  // wait is the longest in the flow: the architect reads every chapter written so far.
   if (!s.spec) {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
@@ -83,11 +83,11 @@ export function handoffPageHtml() {
     </section>`;
   }
 
-  // A round that failed before anything was proposed leaves nothing to review, and the panels that
-  // would normally fill the page ("the architect has not added it yet") describe the untouched story
-  // rather than what just happened. The failure is the state. There is no propose route to call
-  // twice, so "try again" reopens the session -- while `say` stays available, and is the lighter
-  // request of the two: it does not resend the chapters.
+  // A round that failed before anything was proposed leaves nothing to review, and the normal
+  // panels ("the architect has not added it yet") describe the untouched story rather than what
+  // just happened. The failure is the state. No propose route exists to call twice, so "try again"
+  // reopens the session -- while `say` stays available, and is the lighter request: it does not
+  // resend the chapters.
   if (s.last?.kind === "failed" && !s.edited) {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
@@ -129,8 +129,8 @@ export function handoffPageHtml() {
     body.push(`<p class="hint">the architect has not added it yet</p>`);
   }
 
-  // Chapters already written, beside the one being prepared -- one /chapter fetch each for the word
-  // count (handoff.js/loadHandoffChapters), so it arrives shortly after the round does.
+  // Chapters already written, beside the one being prepared -- one /chapter fetch each for the
+  // word count (handoff.js loadHandoffChapters), so it arrives shortly after the round does.
   if (s.chapter > 1) {
     const hc = APP.handoffChapters;
     const ready = hc && hc.dir === APP.handoffDir && hc.chapter === s.chapter && !hc.loading;
@@ -214,8 +214,12 @@ export function handoffPageHtml() {
   // Cast
   body.push(`<div class="divider"><span>cast</span></div>`);
   if (s.spec?.characters?.length) {
+    // Reach is per scene and labelled with the chapter that grants it, so it never reads as
+    // intrinsic to the character.
+    const grants = s.spec.scenes?.[(s.chapter || 1) - 1]?.reach || {};
     body.push(`<div class="hcast">`);
     for (const c of s.spec.characters) {
+      const reach = grants[c.name] || [];
       body.push(`<div ${tid("handoff.cast-row")} class="who" data-name="${esc(c.name)}">
         <div class="nm">${esc(c.name)}</div>
         ${c.goal ? `<div class="line"><span class="k">goal</span>${esc(c.goal)}</div>` : ""}
@@ -223,6 +227,8 @@ export function handoffPageHtml() {
         ${c.belief ? `<div class="line"><span class="k">believes</span>${esc(c.belief)}</div>` : ""}
         ${c.impulse ? `<div class="line"><span class="k">impulse</span>${esc(c.impulse)}</div>` : ""}
         ${(c.voice || []).map(v => `<div class="line"><span class="k">says</span>“${esc(v)}”</div>`).join("")}
+        ${(Array.isArray(reach) ? reach : []).map(r =>
+          `<div class="line"><span class="k reach" title="granted by this scene, not intrinsic">reach · ch ${s.chapter || 1}</span>${esc(r)}</div>`).join("")}
         ${c.restrictions?.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
       </div>`);
     }
@@ -230,7 +236,7 @@ export function handoffPageHtml() {
   }
 
   // The ask-for-change box and its buttons stick to the bottom of the window while the proposal
-  // and cast scroll above -- the input stays put while the artifact being reviewed moves.
+  // and cast scroll above -- the input stays put while the artifact under review moves.
   body.push(`<div class="hbar">`);
   body.push(`<div class="field"><label for="h-say">ask for a change</label>
     <textarea id="h-say" ${s.busy ? "disabled" : ""} placeholder="e.g. Ivo should not know about the log yet.">${esc(hdraft.say)}</textarea></div>`);

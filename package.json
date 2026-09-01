@@ -5,13 +5,16 @@
   "type": "module",
   "license": "ISC",
   "scripts": {
-    "test": "npx tsx --test tests/story-format.test.ts tests/skills.test.ts tests/json-extract.test.ts tests/consult.test.ts tests/story-spec.test.ts tests/architect.test.ts tests/llm-client.test.ts tests/server-routes.test.ts tests/scaffold-routes.test.ts tests/story-edit-routes.test.ts tests/story-read-routes.test.ts tests/run-state.test.ts tests/run-artifacts.test.ts tests/preflight.test.ts",
+    "test": "npx tsx --test tests/story-format.test.ts tests/skills.test.ts tests/json-extract.test.ts tests/consult.test.ts tests/story-spec.test.ts tests/architect.test.ts tests/llm-client.test.ts tests/server-routes.test.ts tests/scaffold-routes.test.ts tests/story-edit-routes.test.ts tests/story-read-routes.test.ts tests/run-state.test.ts tests/run-artifacts.test.ts tests/preflight.test.ts tests/quote-lint.test.ts tests/sense-lint.test.ts tests/app.test.ts tests/replay.test.ts",
     "preflight": "npx tsx story-writer.ts --preflight",
     "typecheck": "npx tsc",
-    "checkgui": "node scripts/check-gui-syntax.mjs"
+    "lint": "eslint ."
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^26.1.2",
+    "eslint": "^9.39.5",
+    "globals": "^17.11.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {

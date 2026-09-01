@@ -9,9 +9,53 @@ import { warn } from "./warnings.ts";
 import { slugify } from "./config-util.ts";
 import { complete, completeStream, type Msg, type CompletionUsage } from "./llm-client.ts";
 import type { ThinkLevel } from "./story-schema.ts";
-import type { RunEvent } from "./scene-loop.ts";
 
 const WINDOW = { cap: 24, keepRecent: 14 };
+
+// -- OBSERVABILITY SINK -----------------------------------------------------
+/** What one generate() call reports beyond its returned text: the composing paint while a stream
+ *  runs, the idle that ends it, and the exchange record (the per-agent transcript plus the viewer
+ *  stats frame). Quarantined behind this interface so the Agent class stays conversation +
+ *  generation — the sink is swapped (the same pattern as setFitWarning), never specialized. */
+export interface AgentObs {
+  /** A streaming reply is composing: `chars` so far, `secs` since the call started. */
+  composing(who: string, label: string, secs: number, chars: number): void;
+  /** The stream is done: clear the progress line and tell viewers the agent is idle. */
+  composed(): void;
+  /** One finished exchange: write its transcript record and push its stats frame. */
+  recorded(call: AgentCall): void;
+}
+
+export interface AgentCall {
+  agent: { name: string; model: string };
+  ts: string;
+  prompt: Msg[];
+  response: string;
+  durationMs: number;
+  usage: CompletionUsage | null;
+  meta: ReplyMeta;
+  site: string;
+}
+
+const defaultObs: AgentObs = {
+  composing(who, label, secs, chars) {
+    progress(`${label} ${C.dim}composing… ${String(secs).padStart(2)}s · ${chars} chars${C.reset}`);
+    sseWrite({ t: "composing", who, secs, chars });
+  },
+  composed() {
+    progressDone();
+    sseWrite({ t: "idle" });
+  },
+  recorded(call) {
+    writeLlmRecord(call.agent, call.ts, call.prompt, call.response, call.durationMs,
+                   call.usage, call.meta, call.site);
+    emitStats(call.agent.name, call.agent.model, call.durationMs, call.usage);
+  },
+};
+
+let obs: AgentObs = defaultObs;
+/** The composition root's hook: replace how generate() reports (null restores the default). */
+export function setAgentObs(o: AgentObs | null) { obs = o ?? defaultObs; }
 
 export class Agent {
   history: Msg[] = [];
@@ -22,15 +66,15 @@ export class Agent {
   hear(c: string) { this.history.push({ role: "user", content: c }); }
   said(c: string) { this.history.push({ role: "assistant", content: c }); }
 
-  // Back to the first `n` messages: how a caller unwinds history it added on speculation, when what
-  // it was speculating on did not happen.
+  // Back to the first `n` messages: how a caller unwinds history it added on speculation,
+  // when the thing it speculated on did not happen.
   rewind(n: number) { if (n < this.history.length) this.history.length = Math.max(0, n); }
 
   // The state immediately before the attempt being retried: same persona, model and history, on its
   // own copy. `consult()` never writes to `agent.history` — only an accepted answer is folded in by
-  // the caller — so this history holds every earlier accepted interaction and nothing of the attempt
-  // that was rejected. The fresh instance still never learns it was rejected; it just no longer
-  // forgets the promise it made two consults ago.
+  // the caller — so this history holds every earlier accepted interaction and nothing of the rejected
+  // attempt. The fresh instance still never learns it was rejected; it just no longer forgets the
+  // promise it made two consults ago.
   fork(): Agent {
     const a = new Agent(this.name, this.model, this.system, this.temperature);
     a.think = this.think;
@@ -58,40 +102,40 @@ export class Agent {
     LIVE.log?.({ t: "context_risk", model: this.model, needs: fit.needs, has: fit.has });
   }
 
-  async generate(label: string, extra: Msg[] = []): Promise<string> {
+  /** `site` is the engine's stable name for THIS call site — `writer.draft`, `judge.answer` — in the
+   *  GUI's `<area>.<component>` shape. It never reaches the model (llm-client sends it as a header)
+   *  and it never varies with the prompt, so a recorded run can be replayed by matching call sites
+   *  rather than prompt text. It is required because a call that does not name itself is invisible
+   *  to that matching, and the one place that would notice is a replay months later. `label` stays
+   *  what the console prints, which is coloured and, for a character, their own name. */
+  async generate(label: string, site: string, extra: Msg[] = []): Promise<string> {
     const msgs = this.buildMessages(extra);
     const ts = new Date().toISOString();
     const prepend = "{";
     const started = Date.now();
     await this.warnIfContextTight(msgs);
+    let text: string;
+    let usage: CompletionUsage | null, reasoning: string | null, finishReason: string | null,
+        reasoningOnly: boolean, brokenOff: boolean;
     if (!ENGINE.stream) {
-      const { text: raw, usage, reasoning, finishReason, reasoningOnly, brokenOff } =
-        await complete(this.model, msgs, this.temperature, this.think);
-      const durationMs = Date.now() - started;
-      writeLlmRecord(this, ts, msgs, raw, durationMs, usage,
-                     { reasoning, finishReason, reasoningOnly, brokenOff });
-      emitStats(this.name, this.model, durationMs, usage);
-      return prepend + raw;
+      ({ text, usage, reasoning, finishReason, reasoningOnly, brokenOff } =
+        await complete(this.model, msgs, this.temperature, this.think, { site, agent: this.name }));
+    } else {
+      let chars = 0, lastPaint = 0;
+      const secs = () => Math.round((Date.now() - started) / 1000);
+      obs.composing(this.name, label, secs(), chars);
+      ({ text, usage, reasoning, finishReason, reasoningOnly, brokenOff } =
+        await completeStream(this.model, msgs, this.temperature, d => {
+          chars += d.length;
+          if (Date.now() - lastPaint > 250) { lastPaint = Date.now(); obs.composing(this.name, label, secs(), chars); }
+        }, this.think, { site, agent: this.name }));
+      obs.composed();
     }
-    let chars = 0, lastPaint = 0;
-    const paint = () => {
-      const secs = Math.round((Date.now() - started) / 1000);
-      progress(`${label} ${C.dim}composing… ${String(secs).padStart(2)}s · ${chars} chars${C.reset}`);
-      sseWrite({ t: "composing", who: this.name, secs, chars });
-    };
-    paint();
-    const { text: rest, usage, reasoning, finishReason, reasoningOnly, brokenOff } =
-      await completeStream(this.model, msgs, this.temperature, d => {
-        chars += d.length;
-        if (Date.now() - lastPaint > 250) { lastPaint = Date.now(); paint(); }
-      }, this.think);
     const durationMs = Date.now() - started;
-    progressDone();
-    sseWrite({ t: "idle" });
-    writeLlmRecord(this, ts, msgs, rest, durationMs, usage,
-                   { reasoning, finishReason, reasoningOnly, brokenOff });
-    emitStats(this.name, this.model, durationMs, usage);
-    return prepend + rest;
+    obs.recorded({ agent: { name: this.name, model: this.model }, ts, prompt: msgs, response: text,
+                   durationMs, usage,
+                   meta: { reasoning, finishReason, reasoningOnly, brokenOff }, site });
+    return prepend + text;
   }
 }
 
@@ -116,7 +160,7 @@ export function llmFilenameFor(name: string, used: Set<string>): string {
   return f;
 }
 
-/** One JSONL record for an agent/model exchange; author-side names get their own role, everyone else is a character. */
+/** Author-side agent names get their own role in the log; everyone else is a character. */
 const ROLES: Record<string, string> = {
   "WRITER": "writer",
   "JUDGE": "judge",
@@ -129,9 +173,13 @@ const ROLES: Record<string, string> = {
  *  `finish_reason` is always present (null when the server did not say); `reasoning` appears only when the
  *  chain-of-thought arrived as a separate field, `reasoningOnly: true` only when the whole reply did. */
 export function llmLogEntry(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string,
-                            durationMs: number, usage: CompletionUsage | null, meta: ReplyMeta = {}) {
+                            durationMs: number, usage: CompletionUsage | null, meta: ReplyMeta = {},
+                            site?: string) {
   return {
     ts, role: ROLES[agent.name] ?? "character", agent: agent.name, model: agent.model,
+    // Omitted rather than null when absent, so records written before call sites were named stay
+    // byte-identical and a reader can tell "not recorded" from "recorded as nothing".
+    ...(site ? { site } : {}),
     prompt, response, durationMs, usage,
     finish_reason: meta.finishReason ?? null,
     ...(meta.reasoning ? { reasoning: meta.reasoning } : {}),
@@ -161,8 +209,9 @@ export interface ReplyMeta {
 
 /** Push a record for one agent/model exchange to its transcript stream. A stream that fails warns
  *  once and is abandoned for the rest of the run — the run itself must never crash on logging. */
-export function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response: string,
-                               durationMs: number, usage: CompletionUsage | null, meta: ReplyMeta = {}) {
+export function writeLlmRecord(agent: { name: string; model: string }, ts: string, prompt: Msg[], response: string,
+                               durationMs: number, usage: CompletionUsage | null, meta: ReplyMeta = {},
+                               site?: string) {
   if (!ENGINE.outDir || agent.name === "ARCHITECT" || ENGINE.llmDead.has(agent.name)) return;
   try {
     let stream = ENGINE.llmStreams.get(agent.name);
@@ -172,7 +221,7 @@ export function writeLlmRecord(agent: Agent, ts: string, prompt: Msg[], response
       stream.on("error", e => killLlmLog(agent.name, e));   // async write failure must never crash the run
       ENGINE.llmStreams.set(agent.name, stream);
     }
-    stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response, durationMs, usage, meta)) + "\n");
+    stream.write(JSON.stringify(llmLogEntry(agent, ts, prompt, response, durationMs, usage, meta, site)) + "\n");
   } catch (e) {
     killLlmLog(agent.name, e as Error);
   }
@@ -194,10 +243,13 @@ export async function trimHistory(agent: Agent, summarizerModel: string, summari
   const recent = agent.history.slice(overflowCount);
   const text = overflow.map(m => `${m.role === "assistant" ? agent.name : "input"}: ${m.content}`).join("\n");
   try {
+    // Named like the rest even though nothing logs it: this call goes through `complete` directly
+    // rather than an Agent, so it lands in no transcript — the header is the only thing that makes
+    // a history fold visible to a fake or a replay on the wire.
     agent.digest = (await complete(summarizerModel, [
       { role: "system", content: P.SUMMARIZER_SYSTEM },
       { role: "user", content: P.summarizePrompt(agent.name, agent.digest, text) },
-    ], 0.3, summarizerThink)).text;
+    ], 0.3, summarizerThink, { site: "summary.digest", agent: agent.name })).text;
     agent.history = recent;
   } catch (e) {
     warn(`   (digest skipped for ${agent.name}: ${(e as Error).message})`);

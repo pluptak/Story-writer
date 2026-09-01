@@ -34,7 +34,8 @@ export async function handleStoryReadRoutes(
     if (!r.ok) {
       json(res, 200, { ok: false, error: r.error });
     } else {
-      json(res, 200, { ok: true, characters: r.characters });
+      // Reach rides separately from the characters (I4), already labelled per scene by the host.
+      json(res, 200, { ok: true, characters: r.characters, scenes: r.scenes ?? [] });
     }
     return true;
   }

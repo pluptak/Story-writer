@@ -12,8 +12,8 @@ $("expand").onclick = () => {
   if (!APP.expandAll) open.clear();
   APP.render();
 };
-// The theme button names what a click DOES and reflects the mode it would leave -- so it doubles as
-// a read-out of the current theme, which "theme" alone never was.
+// The theme button names what a click DOES and reflects the mode it would leave -- so it doubles
+// as a read-out of the current theme, which "theme" alone never was.
 function paintTheme() {
   const cur = document.documentElement.getAttribute("data-theme");
   const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -36,8 +36,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (!document.documentElement.getAttribute("data-theme")) paintTheme();
 });
 // Opening or dropping a saved log lands on the read page, which is read-only -- so it is allowed
-// even mid-run, the same as clicking the read tab. The live scene keeps streaming into LIVEV and is
-// one click on the run tab away.
+// even mid-run, like clicking the read tab. The live scene keeps streaming into LIVEV and is one
+// click on the run tab away.
 const openLog = f =>
   f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; READV.dir = ""; READV.id = ""; ingest(t, READV); go("read"); });
 $("file").onchange = e => {

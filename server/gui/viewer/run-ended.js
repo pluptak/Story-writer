@@ -1,12 +1,11 @@
-import { esc, wireBackdropClose, verdictText, tid } from "./util.js";
+import { esc, wireBackdropClose, verdictText } from "./util.js";
 import { APP } from "./state.js";
 
 // ---- the end-of-run modal ----------------------------------------------------
 // The engine parks back in awaitPick() the instant a run ends (story-writer.ts's for(;;) loop),
-// one tick after the run_state frame that says running:false. Without this, that next pick window
-// was the only visible sign a scene had finished, and it silently swapped the shelf in under
-// whatever was on screen -- sse.js no longer follows it there; this says so instead and leaves the
-// choice to the reader.
+// one tick after the run_state frame saying running:false. Without this, the next pick window was
+// the only visible sign a scene had finished, silently swapping the shelf in under whatever was on
+// screen -- sse.js no longer follows it there; this says so and leaves the choice to the reader.
 export function runEndedModalHtml() {
   const e = APP.runEnded;
   if (!e) return "";
@@ -24,9 +23,9 @@ export function runEndedModalHtml() {
   </div>`;
 }
 
-/** `goShelf` is injected (pages.js, which owns navigation and repaints this on every render via its
- *  own `paintModals`) rather than imported here, keeping this module ignorant of how "go to the
- *  shelf" is done. */
+/** `goShelf` is injected (pages.js, which owns navigation and repaints this every render via its
+ *  own `paintModals`) rather than imported, keeping this module ignorant of how "go to the shelf"
+ *  is done. */
 export function wireRunEndedModal(root, goShelf) {
   const stay = () => { APP.runEnded = null; APP.render(); };
   wireBackdropClose(root, "runended-backdrop", stay);
