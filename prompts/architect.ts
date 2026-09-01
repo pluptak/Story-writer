@@ -103,6 +103,12 @@ premise      -- the situation, the place, the hour, the pressure. Enough that a 
 scene.place  -- one line. Where and when.
 scene.question -- the dramatic question the scene has to answer, phrased so it CAN be answered in
                  the length given. Not a theme; a question with an outcome.
+                 NAME THE STAKES, NOT THE MECHANISM. Ask what it costs these people and who gives
+                 way -- never what the world is about to do. A question that names an event the
+                 scene has not reached yet ("does the alarm empty the wing before...") tells the
+                 writer that event is coming, and it will open the scene with it already underway,
+                 correctly: it is steering at the question it was given. "Does the crate go in the
+                 cage tonight, and who signs for it?" costs nothing and gives nothing away.
 scene.pov    -- whose perception we are inside. One of the character names.
 scene.length -- words. 600-900 unless the idea demands otherwise.
 scene.roster -- who is actually in the room (the fill pass asks for this if you leave it empty).
@@ -348,6 +354,12 @@ scene.question -- the dramatic question scene 1 has to answer, phrased so it CAN
                   the length given. Not a theme; a question with an outcome. Sharpen it against
                   the finished cast: it should be the exact point where their colliding goals
                   force someone to choose.
+                  NAME THE STAKES, NOT THE MECHANISM. Ask what it costs these people and who
+                  gives way -- never what the world is about to do. A question naming an event
+                  the scene has not reached yet ("does the alarm empty the wing before...") tells
+                  the writer that event is coming, and it will open the scene with it already
+                  underway, correctly: it is steering at the question it was given. "Does the
+                  crate go in the cage tonight, and who signs for it?" gives nothing away.
 scene.pov      -- whose perception we are inside. One of the character names, and one of the
                   people actually present in the room.
 scene.length   -- words. 600-900 unless the idea demands otherwise.

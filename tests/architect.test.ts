@@ -13,6 +13,7 @@ import {
 } from "../engine/story-format.ts";
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
 import { architectNextChapter, architectVerify } from "../prompts.ts";
+import * as P from "../prompts.ts";
 import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
@@ -923,4 +924,21 @@ describe("suggestEdits", () => {
       assert.match((r as { error: string }).error, /neither edits nor a question/);
     } finally { Agent.prototype.generate = orig; }
   });
+});
+
+// -- WHAT THE ARCHITECT IS TOLD ABOUT THE SCENE QUESTION --------------------
+// The question reaches the writer's system prompt verbatim, so a question naming a world event
+// hands the writer the timeline through the back door — it opens the scene with the event already
+// underway, which is obedience rather than error. Both authoring surfaces have to say so.
+describe("the scene question names stakes, not mechanisms", () => {
+  for (const [surface, text] of [
+    ["the one-shot format", P.ARCHITECT_FORMAT],
+    ["the staged scene stage", P.architectSceneStage("(the story so far)")],
+  ] as const) {
+    it(`${surface} forbids a question that names an event the scene has not reached`, () => {
+      assert.match(text, /NAME THE STAKES, NOT THE MECHANISM/);
+      assert.match(text, /never what the world is about to do/);
+      assert.match(text, /already\s+underway/);
+    });
+  }
 });
