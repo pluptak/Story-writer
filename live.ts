@@ -1,8 +1,11 @@
 /**
  * LIVE — the state one session shares between the scene loop and the HTTP server, plus the event bus
- * that fans a run out to attached viewers.
+ * that fans a run out to attached viewers, and the run's human-interaction port.
  */
 
+import { createInterface } from "node:readline/promises";
+import { C } from "./ansi.ts";
+import { progressDone } from "./engine/engine-state.ts";
 import type { Agent } from "./engine/agent.ts";
 import type { RunEvent } from "./engine/scene-loop.ts";
 
@@ -157,3 +160,68 @@ export function resetLive() {
   armRun();
   sseWrite({ t: "run_reset" });
 }
+
+// -- THE LOOP'S HUMAN-INTERACTION PORT -------------------------------------
+/** How a running scene talks to the operator: the step budget, the pause handshake, and the
+ *  reader's consult seat. `LIVE_IO` is the real implementation, wired to this session's LIVE
+ *  state and SSE bus; a run that brings its own port (SceneRun's `io`) is driven without either. */
+export interface SceneIo {
+  /** The step budget is spent: ask how many more steps to take. 0 ends the scene. */
+  moreSteps(steps: number, budget: number, chapter: number): Promise<number>;
+  /** Park the scene while a pause is pending, until a resume arrives. True when it parked —
+   *  the caller continues to the top of its loop, where the stop check lives. */
+  pauseGate(): Promise<boolean>;
+  /** Take a reader consult, when one is armed, interactive is on, and someone is watching.
+   *  True when taken — the caller runs the writer's ask itself, then awaits `readerAnswer`. */
+  readerTake(): boolean;
+  /** Wait for the reader's answer to the consult just asked ("" when released without one). */
+  readerAnswer(): Promise<string>;
+}
+
+export const LIVE_IO: SceneIo = {
+  async moreSteps(steps, budget, chapter) {
+    if (RUN.stopped) return 0;
+    if (!LIVE.interactive) {
+      console.log(`\n${C.yellow}Step budget (${budget}) spent on chapter ${chapter} and the scene is not finished. `
+        + `Stopping — interactive is off.${C.reset}`);
+      return 0;
+    }
+    if (sseClients.size) {
+      LIVE.awaitingContinue = { steps, budget };
+      progressDone();
+      console.log(`\n${C.yellow}Budget spent on chapter ${chapter} — waiting on the viewer.${C.reset}`);
+      sseWrite({ t: "continue_prompt", steps, budget, suggested: 8 });
+      return new Promise<number>(resolve => { LIVE.continueResolve = resolve; });
+    }
+    if (!process.stdin.isTTY) {
+      console.log(`\n${C.yellow}Step budget (${budget}) spent on chapter ${chapter} and the scene is not finished. `
+        + `Stopping — nobody to ask.${C.reset}`);
+      return 0;
+    }
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const ans = (await rl.question(`\n${C.yellow}${steps} steps used on chapter ${chapter} and the scene is not done. `
+      + `How many more? [8, 0 to stop]: ${C.reset}`)).trim();
+    rl.close();
+    const n = ans === "" ? 8 : Number(ans);
+    return Number.isInteger(n) && n > 0 ? n : 0;
+  },
+
+  async pauseGate() {
+    if (!LIVE.pausing) return false;
+    LIVE.paused = true;
+    sseWrite(runState());
+    await new Promise<void>(res => { LIVE.pauseResolve = res; });
+    return true;
+  },
+
+  readerTake() {
+    if (!(LIVE.readerArmed && LIVE.interactive && sseClients.size)) return false;
+    LIVE.readerArmed = false;
+    sseWrite(runState());
+    return true;
+  },
+
+  readerAnswer() {
+    return new Promise<string>(resolve => { LIVE.readerResolve = resolve; });
+  },
+};

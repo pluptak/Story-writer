@@ -8,6 +8,9 @@ import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ServerHost } from "../server/server.ts";
 import { Agent } from "../engine/agent.ts";
+import type { SceneRun } from "../engine/scene-loop.ts";
+import type { StoryConfig } from "../engine/story-format.ts";
+import type { SceneDef } from "../engine/story-schema.ts";
 import { SITE_HEADER, AGENT_HEADER } from "../engine/llm-client.ts";
 import { WARN } from "../engine/warnings.ts";
 
@@ -228,4 +231,28 @@ export async function callGet(handler: RouteHandler, url: string, host: ServerHo
   } as unknown as ServerResponse;
   const handled = await handler(req, res, url.split("?")[0], host);
   return { handled, code, headers, text: sent, json: () => JSON.parse(sent) };
+}
+
+// -- A SCENE RUN FOR TESTS --------------------------------------------------
+/** A `SceneRun` for a fixture story, with the fields most call sites share already filled in.
+ *  Overrides win wholesale: pass `{ scene: sd, agents, log, maxSteps: 30 }` and the rest is the
+ *  story's own config. */
+export function sceneRun(sc: StoryConfig, over: Partial<SceneRun> & { scene: SceneDef }): SceneRun {
+  return {
+    chapter: 1,
+    characters: sc.characters,
+    agents: new Map(),
+    premise: sc.premise,
+    writerStyle: sc.writerStyle,
+    writerModel: sc.models.writer,
+    summaryModel: sc.models.summary,
+    thinking: { writer: "low", summary: sc.thinking.summary },
+    maxSteps: 10,
+    maxProseWords: sc.maxProseWords,
+    retries: sc.retries,
+    clarifications: sc.clarifications,
+    dir: sc.dir,
+    log: () => {},
+    ...over,
+  };
 }

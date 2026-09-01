@@ -13,7 +13,7 @@ import { WARN } from "../engine/warnings.ts";
 import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { quiet, callRoute, siteFetch } from "./helpers.ts";
+import { quiet, callRoute, siteFetch, sceneRun } from "./helpers.ts";
 
 // Consult test helpers for stopRun
 const REQ: ConsultRequest = { character: "TESTER", situation: "s", question: "q", wants: "" };
@@ -141,13 +141,7 @@ describe("per-scene writer overrides", () => {
     armRun();
     stopRun();
     try {
-      await writeScene(
-        sd, 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, "story-model", sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        1, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, () => {},
-      );
+      await writeScene(sceneRun(sc, { scene: sd, writerModel: "story-model", maxSteps: 1 }));
 
       assert.equal(LIVE.writer?.model, "scene-model");
       assert.equal(LIVE.writer?.think, "high");
@@ -163,13 +157,10 @@ describe("per-scene writer overrides", () => {
     armRun();
     stopRun();
     try {
-      await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, "story-model", sc.models.summary,
-        { writer: "medium", summary: sc.thinking.summary },
-        1, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, () => {},
-      );
+      await writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], writerModel: "story-model", maxSteps: 1,
+        thinking: { writer: "medium", summary: sc.thinking.summary },
+      }));
 
       assert.equal(LIVE.writer?.model, "story-model");
       assert.equal(LIVE.writer?.think, "medium");
@@ -335,13 +326,9 @@ describe("retry ceiling", () => {
     armRun();
     stopRun();
     try {
-      await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        1, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log, 5,   // maxCharacterRetries = 5
-      );
+      await writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], maxSteps: 1, log, maxCharacterRetries: 5,
+      }));
       const se = events.find(e => e.t === "scene_end") as any;
       assert.ok(se, "scene_end was logged");
       assert.deepEqual(se.retries, {}, "no retries happened because the run was stopped");
@@ -381,13 +368,7 @@ describe("a scene that never ends", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sd, 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        30, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sd, maxSteps: 30, log }));
 
       assert.equal(r.done, true, "the scene closes even though the writer never sent scene_done: true");
       assert.ok(r.words >= 80, "closed at or past twice the 40-word target");
@@ -447,13 +428,15 @@ describe("the world timeline in the loop", () => {
     ]);
     armRun();
     try {
-      const r = await writeScene(
-        sd, 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log, undefined, [], timeline,
-      );
+      const r = await writeScene({
+        scene: sd, chapter: 1, characters: sc.characters, agents: agents,
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log, timeline,
+      });
 
       assert.equal(r.done, true);
 
@@ -524,13 +507,15 @@ describe("the world timeline in the loop", () => {
     globalThis.fetch = scriptedFetch([{ prose: "a quiet piece", scene_done: true }]);
     armRun();
     try {
-      await writeScene(
-        sd, 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log, undefined, [], timeline,
-      );
+      await writeScene({
+        scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log, timeline,
+      });
       assert.ok(!events.some(e => e.t === "world_beat" || e.t === "memory_surfaced"));
       const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"));
       assert.ok(instructions.every(i => !i.content.includes("[HOLD]") && !i.content.includes("[WORLD]")));
@@ -561,13 +546,15 @@ describe("the world timeline in the loop", () => {
     globalThis.fetch = scriptedFetch(replies);
     armRun();
     try {
-      const r = await writeScene(
-        sd, 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log, undefined, [], timeline,
-      );
+      const r = await writeScene({
+        scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log, timeline,
+      });
       const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"))
         .map(m => m.content as string);
       return { r, events, instructions };
@@ -633,13 +620,7 @@ describe("the narration lint", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log }));
 
       assert.equal(r.done, true);
       assert.deepEqual(r.prose, [cleanProse], "the redraft is what's on the page, not the flagged draft");
@@ -693,13 +674,7 @@ describe("the narration lint", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log }));
 
       assert.equal(r.done, true, "a scene that keeps failing the lint still finishes, never blocked");
       assert.deepEqual(r.prose, [redraftProse], "the still-flagged redraft is accepted, not discarded");
@@ -746,13 +721,7 @@ describe("the narration lint", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log }));
 
       assert.equal(r.done, true);
       assert.deepEqual(r.prose, [prose], "the writer's only draft is accepted as-is");
@@ -790,13 +759,7 @@ describe("the narration lint", () => {
     globalThis.fetch = fetchMock;
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log: e => events.push(e) }));
       return { r, events, calls: calls(), prose, redraft };
     } finally {
       globalThis.fetch = origFetch;
@@ -862,13 +825,15 @@ describe("the repeat guard", () => {
 
     armRun();
     try {
-      const r = await quiet(() => writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      ));
+      const r = await quiet(() => writeScene({
+        scene: sc.scenes[0], chapter: 1, characters: sc.characters, agents: new Map(),
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log: (e: RunEvent) => events.push(e),
+      }));
       // LIVE.writer is captured before the finally's resetLive() clears it.
       return { r, events, writer: LIVE.writer };
     } finally {
@@ -974,13 +939,7 @@ describe("the judge", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], agents, log }));
 
       assert.equal(r.done, true);
 
@@ -1122,13 +1081,9 @@ describe("an answer still owed the page", () => {
 
     armRun();
     try {
-      const r = await quiet(() => writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        opts.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      ));
+      const r = await quiet(() => writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], agents, maxSteps: opts.maxSteps, log: e => events.push(e),
+      })));
       // LIVE.writer is captured before the finally's resetLive() clears it.
       return { r, events, calls: calls(), agents, sc, writer: LIVE.writer };
     } finally {
@@ -1607,13 +1562,9 @@ describe("a clarification on a rejected attempt", () => {
 
     armRun();
     try {
-      await quiet(() => writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      ));
+      await quiet(() => writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], agents, log: e => events.push(e),
+      })));
 
       assert.equal(clarifierCall, 2, "both attempts asked the author for a fact");
       assert.ok(events.some(e => e.t === "retry"), "the first answer was rejected");
@@ -1683,13 +1634,9 @@ describe("a deed promoted in the same reply that renders it", () => {
 
     armRun();
     try {
-      await quiet(() => writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      ));
+      await quiet(() => writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], agents, log: e => events.push(e),
+      })));
 
       const promoted = events.find(e => e.t === "promote") as any;
       assert.ok(promoted, "the deed was promoted");

@@ -5,6 +5,7 @@ import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
 import { lintRestrictedSituation } from "./sense-lint.ts";
+import { nameKey, sameName } from "./config-util.ts";
 
 /** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can
  *  be checked against its addressee. Scene-loop resolves the same thing for the narration lint. */
@@ -120,7 +121,7 @@ export function normalizeConsult(raw: {
     wants = asked;
   }
 
-  const member = cast?.find(c => c.name.trim().toLowerCase() === character.toLowerCase());
+  const member = cast?.find(c => sameName(c.name, character));
   if (member?.cannot?.length) {
     const hit = lintRestrictedSituation(situation, character, member.cannot);
     if (hit)
@@ -160,8 +161,8 @@ export function normalizeReactionConsult(raw: {
   for (const r of list) {
     const name = String((r as any)?.name ?? (typeof r === "string" ? r : "")).trim();
     if (!name) return { ok: false, why: P.badReaction.namelessReactor() };
-    if (seen.has(name.toLowerCase())) continue;
-    seen.add(name.toLowerCase());
+    if (seen.has(nameKey(name))) continue;
+    seen.add(nameKey(name));
     const situation = String((r as any)?.situation ?? "").trim() || shared;
     // A fan-out is the several-at-once form of the writer's own ask, so it comes through the same
     // open door: one shared situation, no question, and no `wants` — what the moment lands on them
@@ -294,7 +295,7 @@ export function parseBatchVerdict(o: Record<string, unknown>): Map<string, boole
   const out = new Map<string, boolean>();
   const arr = Array.isArray(o.verdicts) ? o.verdicts : [];
   for (const v of arr) {
-    const name = String((v as any)?.name ?? "").trim().toLowerCase();
+    const name = nameKey(String((v as any)?.name ?? ""));
     if (!name) continue;
     const p = (v as any)?.promotable;
     out.set(name, p === true || String(p).trim().toLowerCase() === "true");
