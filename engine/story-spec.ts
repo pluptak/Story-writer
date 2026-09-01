@@ -515,6 +515,53 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
+    // -- THE WORLD-EVENT LEDGER ---------------------------------------------
+    // `beat_<n>` rather than `timeline.<n>`: the two other indexed collections an edit can address
+    // spell themselves `scene_<n>` and `fact_<n>`, and a third spelling for the same idea is a third
+    // thing to remember. `chapter` is editable like any other field — re-aiming a stranded beat at
+    // the next chapter is the handoff's whole job with this, and nothing about an already-written
+    // chapter depends on where a beat that never fired was pointing.
+    const beatMatch = field.match(/^beat_(\d+)\.(chapter|at|hold|fired|state|memories)$/);
+    if (beatMatch) {
+      const idx = Number(beatMatch[1]) - 1;
+      if (idx < 0 || idx >= draft.timeline.length) {
+        ignored.push(`${field} — beat ${beatMatch[1]} does not exist`); continue;
+      }
+      const beatField = beatMatch[2];
+      const before = (normalizedDraft().timeline[idx] as any)?.[beatField];
+      if (beatField === "chapter" || beatField === "at") draft.timeline[idx][beatField] = Number(value);
+      else if (beatField === "memories") {
+        draft.timeline[idx].memories = (value && typeof value === "object" && !Array.isArray(value))
+          ? Object.fromEntries(Object.entries(value)
+              .map(([k, v]) => [k.trim(), String(v).trim()] as const)
+              .filter(([k, v]) => k.length > 0 && v.length > 0))
+          : {};
+      }
+      else draft.timeline[idx][beatField] = scalar();
+      scalarResolver(`beat:${idx}.${beatField}`, next => (next.timeline[idx] as any)?.[beatField], before, field);
+      continue;
+    }
+    if (field === "add_beat") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        ignored.push("add_beat — the value must be a beat object"); continue;
+      }
+      draft.timeline.push(value);
+      const beatNumber = draft.timeline.length;
+      add({ field: `added beat ${beatNumber}`, before: undefined, after: undefined,
+            key: `added-beat:${beatNumber}`, snapshot: normalizedDraft().timeline[beatNumber - 1] });
+      continue;
+    }
+    if (field === "remove_beat") {
+      const n = Number(typeof value === "object" ? NaN : value);
+      if (!Number.isInteger(n) || n < 1 || n > draft.timeline.length) {
+        ignored.push(`remove_beat ${scalar() || "(nothing)"} — there is no beat ${scalar() || "(nothing)"}`); continue;
+      }
+      const before = normalizedDraft().timeline[n - 1];
+      draft.timeline.splice(n - 1, 1);
+      add({ field: `removed beat ${n}`, before, after: undefined, key: `removed-beat:${n}`, snapshot: undefined });
+      continue;
+    }
+
     // -- TECHNICAL EDITS ----------------------------------------------------
     // The "technical" checklist stage authors these; they must also be editable by an in-gate
     // [CHANGE] so a refinement round can tweak what the stage proposed. Option (a): models.* is

@@ -853,6 +853,75 @@ describe("timelineOrderProblems", () => {
   });
 });
 
+describe("editing the world-event ledger", () => {
+  const beat = (over: Record<string, unknown> = {}) => ({
+    chapter: 1, hold: "the panel going into alarm", fired: "The alarm takes over the wing.",
+    at: 0.45, memories: { RIVEN: "the cage logs who was inside" }, state: "pending" as const, ...over,
+  });
+  const withLedger = (...beats: Record<string, unknown>[]) => normalizeSpec({
+    title: "Doorway", premise: "A corridor at 3am.",
+    scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700 },
+    scenes: [{ place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700 },
+             { place: "The yard", question: "Does she leave?", pov: "RIVEN", length: 700 }],
+    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: [], restrictions: [] }],
+    timeline: beats,
+  }).spec;
+  const edit = (spec: any, field: string, value: any) =>
+    quietSync(() => applyEdits(spec, { edits: [{ field, value }] }));
+
+  // Re-aiming a stranded beat at the next chapter is what this surface exists for.
+  it("re-aims a beat at another chapter", () => {
+    const r = edit(withLedger(beat()), "beat_1.chapter", 2);
+    assert.equal(r.spec.timeline[0].chapter, 2);
+    assert.equal(r.applied[0].before, 1);
+    assert.equal(r.applied[0].after, 2);
+    assert.deepEqual(r.ignored, []);
+  });
+
+  it("voids a beat without removing it, so the ledger still records it was authored", () => {
+    const r = edit(withLedger(beat()), "beat_1.state", "void");
+    assert.equal(r.spec.timeline[0].state, "void");
+    assert.equal(r.spec.timeline.length, 1);
+  });
+
+  it("edits the trigger and both forms", () => {
+    let s: any = withLedger(beat());
+    for (const [f, v] of [["beat_1.at", 0.8], ["beat_1.hold", "nothing yet"], ["beat_1.fired", "It happened."]] as const)
+      s = edit(s, f, v).spec;
+    assert.equal(s.timeline[0].at, 0.8);
+    assert.equal(s.timeline[0].hold, "nothing yet");
+    assert.equal(s.timeline[0].fired, "It happened.");
+  });
+
+  it("replaces the memory map wholesale, dropping blank names and blank memories", () => {
+    const r = edit(withLedger(beat()), "beat_1.memories",
+      { RIVEN: "a new one", "  ": "no name", MERRITT: "   " });
+    assert.deepEqual(r.spec.timeline[0].memories, { RIVEN: "a new one" });
+  });
+
+  it("adds and removes a beat", () => {
+    const added = edit(withLedger(beat()), "add_beat", beat({ chapter: 2, fired: "A second event." }));
+    assert.equal(added.spec.timeline.length, 2);
+    assert.match(added.applied[0].field, /added beat 2/);
+
+    const removed = edit(added.spec, "remove_beat", 1);
+    assert.equal(removed.spec.timeline.length, 1);
+    assert.equal(removed.spec.timeline[0].fired, "A second event.");
+  });
+
+  it("ignores an edit to a beat that is not there, and says which", () => {
+    for (const [field, value, why] of [
+      ["beat_3.chapter", 2, /beat 3 does not exist/],
+      ["remove_beat", 9, /there is no beat 9/],
+      ["add_beat", "not an object", /the value must be a beat object/],
+    ] as const) {
+      const r = edit(withLedger(beat()), field, value);
+      assert.match(r.ignored.join(" "), why);
+      assert.equal(r.spec.timeline.length, 1, "and nothing changed");
+    }
+  });
+});
+
 describe("timelineDrift", () => {
   const beat = {
     chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds",
