@@ -104,4 +104,71 @@ describe("/scaffold routes", () => {
     assert.match(blocked.body.last.why, /has not landed/);
     assert.equal(blocked.body.gate, "cast");
   });
+
+  // -- ABANDON VERSUS WORK IN FLIGHT -----------------------------------------
+  // An abandon landing while an architect round is still awaiting must strip that round of its
+  // right to commit: no resurrected session, no picker resolution, no success report.
+  const yieldMicrotasks = () => new Promise(r => setTimeout(r, 0));
+
+  it("abandon during start means the arriving session is discarded, not resurrected", async () => {
+    LIVE.awaitingPick = true;
+    let release!: (s: ScaffoldSession) => void;
+    const gated = new Promise<ScaffoldSession>(r => { release = r; });
+    const h = { ...host([]), newScaffoldSession: () => gated } as unknown as ServerHost;
+
+    const startP = post("/scaffold/start", { idea: "two lighthouse keepers" }, h);
+    await yieldMicrotasks();                       // let start reach its await
+    await post("/scaffold/abandon", {}, h);        // the user walks away mid-build
+    release(new ScaffoldSession(new ScriptedAgent([]), DEFAULTS, "two lighthouse keepers"));
+    const started = await startP;
+
+    assert.equal(started.code, 409);
+    assert.match(started.body.reason, /abandoned/);
+    const state = await callRoute(handleScaffoldRoutes, "/scaffold", {}, h, "GET");
+    assert.equal(state.body.active, false, "the late session must not reopen the interview");
+    const approve = await post("/scaffold/approve", {}, h);
+    assert.equal(approve.body.reason, "no interview is open");
+  });
+
+  it("abandon during accept neither resolves the pick nor reports success", async () => {
+    LIVE.awaitingPick = true;
+    let picked: unknown = undefined;
+    LIVE.pickResolve = (p: unknown) => { picked = p; };
+    try {
+      // Open a session whose accept hangs until the test releases it.
+      let fireAccept!: (r: unknown) => void;
+      const gated = new Promise(r => { fireAccept = r; });
+      const session = {
+        idea: "two lighthouse keepers", mode: "staged", stage: "", tension: "",
+        pendingAsk: null, problems: [], edited: [],
+        defaults: { models: { architect: "none" } },
+        // scaffoldState reads these fields directly, exactly as it does on a real early-session
+        spec: { title: "", premise: "", characters: [], writerStyle: "", facts: [], scenes: [] },
+        haveStory: () => true,
+        propose: async () => ({ kind: "edits", applied: [], ignored: [], flags: [], note: "" }),
+        say: async () => ({ kind: "edits", applied: [], ignored: [], flags: [], note: "" }),
+        approve: async () => ({ kind: "edits", applied: [], ignored: [], flags: [], note: "" }),
+        accept: () => gated,
+        setSpec: () => ({}),
+      } as unknown as ScaffoldSession;
+      const h = { ...host([]),
+        newScaffoldSession: async () => session } as unknown as ServerHost;
+      await post("/scaffold/start", { idea: "two lighthouse keepers" }, h);
+
+      const acceptP = post("/scaffold/accept", { folder: "the-fog-signal" }, h);
+      await yieldMicrotasks();
+      await post("/scaffold/abandon", {}, h);
+      fireAccept({ kind: "written", dir: "stories/the-fog-signal", files: [], warnings: [] });
+      const accepted = await acceptP;
+
+      assert.equal(accepted.code, 409);
+      assert.match(accepted.body.reason, /abandoned while accepting/);
+      assert.equal(picked, undefined, "the parked pick must stay parked");
+      assert.equal(LIVE.awaitingPick, true, "and still armed");
+      const state = await callRoute(handleScaffoldRoutes, "/scaffold", {}, h, "GET");
+      assert.equal(state.body.active, false);
+    } finally {
+      LIVE.pickResolve = null; LIVE.awaitingPick = false;
+    }
+  });
 });

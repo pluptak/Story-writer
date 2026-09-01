@@ -8,7 +8,7 @@ import { renderSession, disarm, loadModels } from "./session.js";
 import { loadStories, loadRun } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { loadDeepLinkedComparison, loadComparisonRuns } from "./compare.js";
-import { disarmAccept } from "./interview.js";
+import { disarmAccept, disarmApprove } from "./interview.js";
 
 export function loadDeepLinkedRun() {
   const params = parseHashParams();
@@ -25,7 +25,7 @@ export function loadDeepLinkedReader() {
 }
 
 export const sessionFrom = j => ({ running: !!j.running, stopping: !!j.stopping, where: j.where || "", picking: !!j.picking,
-  armed: !!j.armed, paused: !!j.paused, pausing: !!j.pausing, model: j.model || null, interactive: j.interactive !== false });
+  loading: !!j.loading, armed: !!j.armed, paused: !!j.paused, pausing: !!j.pausing, model: j.model || null, interactive: j.interactive !== false });
 
 export async function tryHttp() {
   try {
@@ -36,8 +36,8 @@ export async function tryHttp() {
     APP.live = true;
     loadModels();
     if (j.awaitingContinue) showPrompt(j.awaitingContinue);
-    // An interview may already be open — a reload in the middle of one must land back in it.
-    // Independent endpoints, fetched concurrently; either may fail without affecting the other.
+    // An interview may already be open -- a reload mid-interview must land back in it. Independent
+    // endpoints, fetched concurrently; either may fail without affecting the other.
     const [scaf, hand] = await Promise.allSettled([
       fetch("/scaffold").then(r => r.json()),
       fetch("/next-chapter").then(r => r.json()),
@@ -46,15 +46,14 @@ export async function tryHttp() {
     if (hand.status === "fulfilled") APP.handoff = hand.value;
     if (APP.handoff.active) APP.handoffDir = APP.handoff.dir;
     // Respect an explicit hash (a reload, a bookmark, a deep link) -- the shelf is a real
-    // destination now, not just a place the session parks you, so there is no case left where it
-    // has to be rewritten. With nothing asked for, land on the scene if one is running, the hub
-    // otherwise.
+    // destination now, not just a place the session parks you, so nothing has to be rewritten.
+    // With nothing asked for, land on the scene if one is running, the hub otherwise.
     const wanted = parseHash();
     APP.view = wanted || (APP.session.running ? "live" : "shelf");
     if (APP.view === "story") APP.storyDir = parseHashParams().get("dir") || "";
     // The URL wins for the handoff page: a reload/bookmark of #/handoff?dir=X is asking for X, even
-    // if the server still holds a session left open on a different story (handoffForPage then draws
-    // the start screen for X rather than the other story's proposal).
+    // if the server still holds a session open on a different story (handoffForPage then draws the
+    // start screen for X rather than the other story's proposal).
     if (APP.view === "handoff") APP.handoffDir = parseHashParams().get("dir") || APP.handoff.dir || "";
   if (APP.view === "edit") {
     const params = parseHashParams();
@@ -104,32 +103,32 @@ export function startSSE() {
     if (f.t === "run_state") {
       const wasPicking = APP.session.picking, wasRunning = APP.session.running;
       APP.session = sessionFrom(f);
-      // The budget question can be answered somewhere else — the console, a second tab, or a stop
-      // that clears it. Every frame carries whether it is still outstanding, so a prompt nobody is
+      // The budget question can be answered elsewhere -- the console, a second tab, or a stop that
+      // clears it. Every frame carries whether it is still outstanding, so a prompt nobody is
       // waiting on comes down instead of sitting there with buttons that only 400.
       if (!f.awaitingContinue) $("prompt").classList.remove("on");
       if (!APP.session.running) { disarm(); APP.awaitingReader = false; }
-      // Edges only -- a page you navigated to on purpose must not get yanked out from under you
-      // by a frame that arrives several times a run for reasons that have nothing to do with it --
-      // run_state always re-renders, not only on an edge, so the same frame must not repeat a side
-      // effect that only makes sense the first time each condition becomes true.
+      // Edges only -- a page you navigated to on purpose must not get yanked out from under you by
+      // a frame that arrives several times a run for unrelated reasons. run_state always re-renders,
+      // so the same frame must not repeat a side effect that only makes sense the first time each
+      // condition becomes true.
       if (!wasPicking && APP.session.picking) {
-        // A new pick window opened -- the previous one, if any, is done with. Reset without
-        // navigating: the engine parks in awaitPick() the instant a run ends, one tick after
-        // running goes false below, and following it to the shelf would yank a just-finished scene
-        // off the screen before its own "run ended" edge (below) ever gets to say so.
+        // A new pick window opened -- the previous one, if any, is done. Reset without navigating:
+        // the engine parks in awaitPick() the instant a run ends, one tick after running goes false
+        // below, and following it to the shelf would yank a just-finished scene off screen before
+        // its own "run ended" edge (below) can say so.
         APP.picked = ""; APP.storyModel = ""; APP.storyError = "";
       }
       let moved = false;
       if (!wasRunning && APP.session.running) {
         // A run starting is not the user navigating. Following it to the live page is right from
         // the shelf or a finished scene, but from the editor it fires the dirty-guard confirm with
-        // no action of yours behind it -- there, stay put and let the tab dot say a run is on.
+        // nothing of yours behind it -- there, stay put and let the tab dot say a run is on.
         if (APP.view !== "edit") { go("live"); moved = true; }
       }
       else if (wasRunning && !APP.session.running && APP.view === "live") {
         // The run just ended while it was on screen -- offer the choice explicitly instead of
-        // silently deleting the "run controls vanish" behaviour that used to be the only sign.
+        // silently dropping the "run controls vanish" behaviour that used to be the only sign.
         const end = LIVEV.events.findLast(e => e.t === "scene_end");
         if (end) APP.runEnded = { done: end.done, stopped: end.stopped, words: end.words, steps: end.steps };
       }
@@ -137,10 +136,11 @@ export function startSSE() {
       return;
     }
     if (f.t === "scaffold") {
-      // A round is a minute of model call; a reload or a second tab has to be able to catch up,
-      // and the POST response only ever reaches whoever sent it.
+      // A round is a minute of model call; a reload or a second tab has to catch up, and the POST
+      // response only ever reaches whoever sent it.
       APP.scaffold = f.state || { active:false };
       if (APP.scaffold.active) APP.ideaOpen = false;
+      if (APP.scaffold.last?.kind !== "blocked") disarmApprove();
       if (!APP.scaffold.problems || !APP.scaffold.problems.length) disarmAccept(); else APP.render();
       return;
     }
@@ -156,22 +156,22 @@ export function startSSE() {
       // Same reason as the scaffold frame above: a round is a minute of model call, and the POST
       // response only ever reaches whoever sent it.
       APP.handoff = f.state || { active:false };
-      // Don't let a frame retarget the handoff page: which story it shows is pinned by the URL, and
-      // the server may be driving a session for a different story. Seed handoffDir only for other
-      // views, and only when nothing has pinned it yet. handoffForPage() keeps a mismatched session
-      // from rendering here regardless.
+      // Don't let a frame retarget the handoff page: the URL pins which story it shows, and the
+      // server may be driving a session for a different story. Seed handoffDir only for other
+      // views, and only when nothing has pinned it yet. handoffForPage() keeps a mismatched
+      // session from rendering here regardless.
       if (APP.handoff.active && APP.view !== "handoff") APP.handoffDir = APP.handoffDir || APP.handoff.dir;
       APP.render();
       return;
     }
     if (f.t === "run_reset") {
       // A new story in the same session. Replay only helps clients that connect after it; one
-      // already attached has to be told, or the next scene renders glued onto the last one.
+      // already attached must be told, or the next scene renders glued onto the last one.
       LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.agentStats = {}; APP.composing = null;
       APP.awaitingReader = false; APP.runEnded = null; APP.runError = "";
       clearReaderDrafts();
       fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (APP.view === "live") APP.render(); } }).catch(() => {});
-      // Same rule as the run-start edge below: never yank you out of the editor -- least of all
+      // Same rule as the run-start edge above: never yank you out of the editor -- least of all
       // through its dirty-guard confirm, which would pop with no navigation of yours behind it.
       if (APP.view !== "edit") go("live");
       return;
@@ -184,16 +184,16 @@ export function startSSE() {
     if (f.t === "reader_answer") APP.awaitingReader = false;
     // Re-render whole, debounced: a scene is a few dozen events, and rebuilding is far cheaper
     // than keeping incremental DOM state correct across retries and late-arriving verdicts. Only
-    // when the run page is actually showing -- otherwise the events just accumulate in LIVEV and
-    // render in full the next time it is.
+    // when the run page is actually showing -- otherwise events just accumulate in LIVEV and render
+    // in full the next time it is.
     if (!pending) pending = setTimeout(() => {
       pending = null;
       if (APP.view !== "live") return;
       const nearBottom = window.scrollY + innerHeight > document.body.scrollHeight - 220;
       APP.render();
       if (nearBottom) window.scrollTo(0, document.body.scrollHeight);
-      // The run is now blocked on you. Reading further up the scene is the normal thing to be
-      // doing when it arrives, and a question nobody scrolls to is a run that looks hung.
+      // The run is now blocked on you. Reading further up the scene is the normal thing to be doing
+      // when it arrives, and a question nobody scrolls to is a run that looks hung.
       if (APP.wantReaderView) {
         APP.wantReaderView = false;
         const q = document.querySelector(".reader.pending");
@@ -201,8 +201,8 @@ export function startSSE() {
       }
     });
   };
-  // `open` fires on the first connect AND on every auto-reconnect, so it is what puts the dot back
-  // to "live" after an onerror -- without it the srcbar stays "reconnecting…" for the rest of the
+  // `open` fires on the first connect AND on every auto-reconnect, so it puts the dot back to
+  // "live" after an onerror -- without it the srcbar stays "reconnecting…" for the rest of the
   // session even though events have resumed.
   es.onopen = () => setSrc(LIVEV, "live", true);
   es.onerror = () => setSrc(LIVEV, "live (reconnecting…)", false);
@@ -213,8 +213,8 @@ function showPrompt(p) {
   $("promptText").textContent = `${p.steps} steps used and the scene is not finished.`;
   $("promptN").value = p.suggested || 8;
   $("prompt").classList.add("on");
-  // The decision is one keypress now that Enter submits -- put the cursor in the field, text
-  // selected, so typing a different number or hitting Enter needs no reach for the mouse.
+  // The decision is one keypress now that Enter submits -- cursor in the field, text selected, so
+  // changing the number or hitting Enter needs no reach for the mouse.
   const n = $("promptN"); n.focus(); n.select();
 }
 const answerPrompt = async n => {
@@ -223,6 +223,5 @@ const answerPrompt = async n => {
 };
 $("promptGo").onclick = () => answerPrompt(Math.max(0, parseInt($("promptN").value, 10) || 0));
 $("promptStop").onclick = () => answerPrompt(0);
-// Enter in the step field is the same as clicking "give steps" -- typing a number and reaching for
-// the mouse is the slow path for what is a one-key decision.
+// Enter in the step field is the same as clicking "give steps" -- a one-key decision needs no mouse.
 $("promptN").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("promptGo").click(); } });

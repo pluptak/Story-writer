@@ -1,19 +1,19 @@
 /** The live session state the loop and the server share. */
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { loadStory } from "../engine/story-format.ts";
-import { StoryJson } from "../engine/story-schema.ts";
+import { loadStory, type CharacterDef } from "../engine/story-format.ts";
+import { StoryJson, SceneDef } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
-import { wrapWriter, writerCast, runChapter, writeScene, newCharacterAgent, type RunEvent } from "../engine/scene-loop.ts";
+import { runChapter, writeScene, newCharacterAgent, sceneReach, type RunEvent } from "../engine/scene-loop.ts";
 import { Agent, setFitWarning } from "../engine/agent.ts";
 import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
-import { LIVE, runState, resetLive, RUN, stopRun, armRun, StoppedError } from "../live.ts";
+import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { quiet, ScriptedAgent, callRoute } from "./helpers.ts";
+import { quiet, callRoute, siteFetch, sceneRun } from "./helpers.ts";
 
 // Consult test helpers for stopRun
 const REQ: ConsultRequest = { character: "TESTER", situation: "s", question: "q", wants: "" };
@@ -72,6 +72,37 @@ describe("LIVE.interactive", () => {
   });
 });
 
+// -- THE STORY-MUTATION GUARD -----------------------------------------------
+describe("storyWriteBlocked", () => {
+  afterEach(() => resetLive());
+
+  it("runs first, then the loading window, then nothing", () => {
+    assert.equal(storyWriteBlocked(), null);
+    LIVE.loading = true;
+    assert.equal(storyWriteBlocked(), "a story is loading");
+    LIVE.running = true;
+    assert.equal(storyWriteBlocked(), "a run is in flight", "a live run outranks the loading window");
+    LIVE.loading = false;
+    assert.equal(storyWriteBlocked(), "a run is in flight");
+  });
+
+  it("rides runState() as `loading`, so SSE clients see the window too", () => {
+    resetLive();
+    assert.equal(runState().loading, false);
+    LIVE.loading = true;
+    assert.equal(runState().loading, true);
+    assert.equal(runState().picking, false);
+  });
+
+  it("resetLive() clears the loading window with the rest of the run's state", () => {
+    LIVE.running = false;
+    LIVE.loading = true;
+    resetLive();
+    assert.equal(LIVE.loading, false);
+    assert.equal(storyWriteBlocked(), null);
+  });
+});
+
 // -- CHAPTER VALIDATION ----
 describe("runChapter validation", () => {
   it("rejects a chapter number below 1, naming the valid range", async () => {
@@ -110,13 +141,7 @@ describe("per-scene writer overrides", () => {
     armRun();
     stopRun();
     try {
-      await writeScene(
-        sd, 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, "story-model", sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        1, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, () => {},
-      );
+      await writeScene(sceneRun(sc, { scene: sd, writerModel: "story-model", maxSteps: 1 }));
 
       assert.equal(LIVE.writer?.model, "scene-model");
       assert.equal(LIVE.writer?.think, "high");
@@ -132,13 +157,10 @@ describe("per-scene writer overrides", () => {
     armRun();
     stopRun();
     try {
-      await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, "story-model", sc.models.summary,
-        { writer: "medium", summary: sc.thinking.summary },
-        1, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, () => {},
-      );
+      await writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], writerModel: "story-model", maxSteps: 1,
+        thinking: { writer: "medium", summary: sc.thinking.summary },
+      }));
 
       assert.equal(LIVE.writer?.model, "story-model");
       assert.equal(LIVE.writer?.think, "medium");
@@ -152,7 +174,7 @@ describe("per-scene writer overrides", () => {
 // -- PAUSE/RESUME HANDSHAKE (loop↔route promise coordination) ---------------
 describe("pause/resume handshake", () => {
   /** A waiter that is never released would hang the whole suite; fail it instead. Clearing the
-   *  timer matters: an uncleared one keeps the loop alive for its full second after the test. */
+   *  timer matters: an uncleared one keeps the loop alive its full second after the test. */
   function releasedWithin<T>(p: Promise<T>, ifNot: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout>;
     const guard = new Promise<never>((_, reject) => {
@@ -223,6 +245,48 @@ describe("pause/resume handshake", () => {
   });
 });
 
+// -- SCENE REACH --------------------------------------------------------------
+describe("sceneReach", () => {
+  const reachDef = (limits: string[]): CharacterDef => ({
+    name: "MERRITT", model: "", persona: "", knows: "", goal: "", belief: "", impulse: "",
+    voice: [], skills: [], limits,
+  });
+  const grant = ["cameras :: reading the fire panel's fault codes"];
+
+  it("resolves a grant keyed with the character's exact name", () => {
+    const sd = SceneDef.parse({ reach: { MERRITT: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef([])).map(s => s.name), ["cameras"]);
+  });
+
+  it("resolves a mis-cased grant key — reach behaves like roster and pov", () => {
+    const sd = SceneDef.parse({ reach: { merritt: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef([])).map(s => s.name), ["cameras"]);
+  });
+
+  it("returns no grant when the key matches nobody", () => {
+    const sd = SceneDef.parse({ reach: { NOBODY: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef([])), []);
+  });
+
+  it("keeps a grant beside a restriction naming a different capability (I2)", () => {
+    // sight is not cameras: the blind character's scene-scoped grant survives the restriction.
+    const sd = SceneDef.parse({ reach: { merritt: grant } });
+    assert.deepEqual(sceneReach(sd, reachDef(["sight"])).map(s => s.name), ["cameras"]);
+  });
+
+  it("says nothing about a loaded character's own skills — it is called twice per chapter", async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const sd = SceneDef.parse({ reach: { MERRITT: grant } });
+    const said: string[] = [];
+    const prev = WARN.sink;
+    WARN.sink = (m: string) => { said.push(m); };
+    try {
+      for (const def of sc.characters) sceneReach(sd, def);
+    } finally { WARN.sink = prev; }
+    assert.deepEqual(said, [], "resolved skills are not a story redeclaring anything");
+  });
+});
+
 // -- RETRY CEILING ----------------------------------------------------------
 describe("retry ceiling", () => {
   it("parses maxCharacterRetries from story.json and passes through to writeScene", async () => {
@@ -252,9 +316,9 @@ describe("retry ceiling", () => {
   });
 
   it("retryCounts is scoped to one writeScene call and retries survive a stopped run", async () => {
-    // Stopping the run before calling writeScene means the writer never generates,
-    // so retries never happen. This test validates the plumbing: the parameter
-    // reaches writeScene without error, and no retries are recorded.
+    // Stopping the run before calling writeScene means the writer never generates, so no retries
+    // happen. This checks the plumbing: the parameter reaches writeScene without error, and no
+    // retries are recorded.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
     const log = (e: RunEvent) => events.push(e);
@@ -262,13 +326,9 @@ describe("retry ceiling", () => {
     armRun();
     stopRun();
     try {
-      await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        1, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log, 5,   // maxCharacterRetries = 5
-      );
+      await writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], maxSteps: 1, log, maxCharacterRetries: 5,
+      }));
       const se = events.find(e => e.t === "scene_end") as any;
       assert.ok(se, "scene_end was logged");
       assert.deepEqual(se.retries, {}, "no retries happened because the run was stopped");
@@ -296,13 +356,7 @@ describe("a scene that never ends", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sd, 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        30, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sd, maxSteps: 30, log }));
 
       assert.equal(r.done, true, "the scene closes even though the writer never sent scene_done: true");
       assert.ok(r.words >= 80, "closed at or past twice the 40-word target");
@@ -324,26 +378,27 @@ describe("a scene that never ends", () => {
 describe("the narration lint", () => {
   const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
 
-  /** Routes a mocked completion by which system prompt asked for it — the writer's own `[WRITE]`
-   *  loop and the lint's stateless check share one fetch mock, so call order alone can't tell them
-   *  apart once a redraft happens. Each branch advances its own counter independently. */
+  /** Routes a mocked completion by the call site that asked for it. The writer's own `[WRITE]` loop
+   *  and the lint's stateless check share one fetch mock, so call order alone cannot tell them apart
+   *  once a redraft happens — the site header can. `writerReplies` is ONE queue across both writer
+   *  sites: a redraft consumes the reply after the draft it replaces, which is the shape these
+   *  fixtures are written against. */
   function scriptedFetch(opts: {
     writerReplies: Record<string, unknown>[];
     lintReplies?: Record<string, unknown>[];
     lintFails?: boolean;
   }) {
     let writerCall = 0, lintCall = 0;
-    const fetchMock = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const sys = String(body.messages?.[0]?.content ?? "");
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
+    const nextWriter = () => opts.writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": () => {
         if (opts.lintFails) { lintCall++; throw new Error("simulated lint outage"); }
-        const content = JSON.stringify(opts.lintReplies![lintCall++]);
-        return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
-      }
-      const content = JSON.stringify(opts.writerReplies[writerCall++]);
-      return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
-    }) as any;
+        return opts.lintReplies![lintCall++];
+      },
+      "judge.done": { ok: true },
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
     return { fetchMock, calls: () => ({ writerCall, lintCall }) };
   }
 
@@ -352,17 +407,16 @@ describe("the narration lint", () => {
     const events: RunEvent[] = [];
     const log = (e: RunEvent) => events.push(e);
 
-    const flaggedProse = `Riven reaches for the door. "No," Merritt says, without looking up.`;
+    const flaggedProse = `Riven reaches for the door. "Not tonight," Merritt says, without looking up.`;
     const cleanProse = `Riven reaches for the door and waits, listening for Merritt's crate to creak.`;
     const { fetchMock, calls } = scriptedFetch({
       writerReplies: [
         { prose: flaggedProse, scene_done: false },
         { prose: cleanProse, scene_done: true },
       ],
-      lintReplies: [
-        { ok: false, why: "MERRITT was given a line — THE ONE RULE — nobody asked them." },
-        { ok: true },
-      ],
+      // An invented line is a quotation against an empty ledger, so the mechanical check catches it.
+      // The LLM half runs beside it, not behind it, so both drafts get a reply.
+      lintReplies: [{ ok: true }, { ok: true }],
     });
 
     const origFetch = globalThis.fetch;
@@ -372,13 +426,7 @@ describe("the narration lint", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log }));
 
       assert.equal(r.done, true);
       assert.deepEqual(r.prose, [cleanProse], "the redraft is what's on the page, not the flagged draft");
@@ -386,13 +434,22 @@ describe("the narration lint", () => {
       const flags = events.filter(e => e.t === "narration_flag") as any[];
       assert.equal(flags.length, 1, "flagged once, then passed clean");
       assert.equal(flags[0].retried, false);
-      assert.match(flags[0].why, /MERRITT/);
+      // Both mechanical findings arrive in the ONE message the single redraft gets. Why this fixture
+      // matters: the piece carries an invented line AND shows a character who cannot see "looking
+      // up", and under the old short-circuit the second was never reported at all.
+      assert.match(flags[0].why, /unmatched quotation: "Not tonight,"/);
+      assert.match(flags[0].why, /CANNOT sight/);
+
+      const quoteFlags = events.filter(e => e.t === "narration_quote_flag") as any[];
+      assert.equal(quoteFlags.length, 1);
+      assert.equal(quoteFlags[0].quote, "Not tonight,");
 
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1, "the flagged draft never got its own draft event");
       assert.equal(drafts[0].prose, cleanProse);
 
-      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 });
+      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 },
+        "the LLM half now runs beside the quotation check, not behind it");
     } finally {
       globalThis.fetch = origFetch;
       ENGINE.stream = origStream;
@@ -406,17 +463,16 @@ describe("the narration lint", () => {
     const events: RunEvent[] = [];
     const log = (e: RunEvent) => events.push(e);
 
-    const firstProse = `Riven reaches for the door. "No," Merritt says, without looking up.`;
+    const firstProse = `Riven reaches for the door. "Not tonight," Merritt says, without looking up.`;
     const redraftProse = `Riven reaches for the door. Merritt already knows, and says so.`;
     const { fetchMock, calls } = scriptedFetch({
       writerReplies: [
         { prose: firstProse, scene_done: false },
         { prose: redraftProse, scene_done: true },
       ],
-      lintReplies: [
-        { ok: false, why: "MERRITT was given a line nobody asked for." },
-        { ok: false, why: "MERRITT was given a line nobody asked for, again." },
-      ],
+      // The first draft's quotation is caught mechanically and the LLM half runs beside it; the
+      // redraft has no quotation, and the LLM lint flags it anyway.
+      lintReplies: [{ ok: true }, { ok: false, why: "MERRITT was given a line nobody asked for, again." }],
     });
 
     const origFetch = globalThis.fetch;
@@ -426,13 +482,7 @@ describe("the narration lint", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log }));
 
       assert.equal(r.done, true, "a scene that keeps failing the lint still finishes, never blocked");
       assert.deepEqual(r.prose, [redraftProse], "the still-flagged redraft is accepted, not discarded");
@@ -440,13 +490,17 @@ describe("the narration lint", () => {
       const flags = events.filter(e => e.t === "narration_flag") as any[];
       assert.equal(flags.length, 2);
       assert.equal(flags[0].retried, false);
+      assert.match(flags[0].why, /unmatched quotation/, "the first flag came from the mechanical check");
       assert.equal(flags[1].retried, true, "the second flag is reported as the spent retry");
+      assert.match(flags[1].why, /again/, "the second came from the LLM lint");
 
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1);
       assert.equal(drafts[0].prose, redraftProse);
 
-      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 }, "one redraft only, however the lint calls it");
+      assert.deepEqual(calls(), { writerCall: 2, lintCall: 2 },
+                       "one redraft only, whichever of the two checks does the flagging — and the LLM "
+                       + "half is asked on both pieces, since it no longer sits behind the quotation check");
     } finally {
       globalThis.fetch = origFetch;
       ENGINE.stream = origStream;
@@ -475,13 +529,7 @@ describe("the narration lint", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log }));
 
       assert.equal(r.done, true);
       assert.deepEqual(r.prose, [prose], "the writer's only draft is accepted as-is");
@@ -519,13 +567,7 @@ describe("the narration lint", () => {
     globalThis.fetch = fetchMock;
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, new Map(),
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log: e => events.push(e) }));
       return { r, events, calls: calls(), prose, redraft };
     } finally {
       globalThis.fetch = origFetch;
@@ -535,8 +577,8 @@ describe("the narration lint", () => {
     }
   }
 
-  // A reply that carries no verdict is not a pass. `{}` and `{"ok":"maybe"}` used to clear a piece
-  // silently, which is a check performed without ever being made.
+  // A reply with no verdict is not a pass. `{}` and `{"ok":"maybe"}` used to clear a piece
+  // silently — a check reported without ever being made.
   it("asks again when the lint replies in a shape that carries no verdict", async () => {
     const { r, events, calls, redraft } = await lintRun(
       [{}, { ok: false, why: "MERRITT was given a line." }, { ok: true }]);
@@ -579,24 +621,20 @@ describe("the judge", () => {
       consult: {
         character: "MERRITT",
         situation: "Riven turns to face them, asking plainly what they mean to do about the door.",
-        question: "Do you open the door, or refuse?",
+        question: "Do you open the door?",
         wants: "decision",
       },
       scene_done: true,
     };
 
-    const fetchMock = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const sys = String(body.messages?.[0]?.content ?? "");
-      if (sys.includes("CHECKING ONE ANSWER")) throw new Error("simulated judge outage");
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE"))
-        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ok: true }) } }] }));
-      if (sys.includes("YOU ARE THE AUTHOR. You are writing one scene"))
-        return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(draft) } }] }));
+    const { fetchMock } = siteFetch({
+      "judge.answer": () => { throw new Error("simulated judge outage"); },
+      "judge.narration": { ok: true },
+      "judge.done": { ok: true },
+      "writer.draft": draft,
       // MERRITT's own agent, asked for a decision
-      const content = JSON.stringify({ speech: "I open it." });
-      return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
-    }) as any;
+      "character.consult": { speech: "I open it." },
+    });
 
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
@@ -607,13 +645,7 @@ describe("the judge", () => {
 
     armRun();
     try {
-      const r = await writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, log,
-      );
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], agents, log }));
 
       assert.equal(r.done, true);
 
@@ -660,9 +692,9 @@ describe("the context-fit warning", () => {
     armRun();
     try {
       const agent = new Agent("TESTER", "tight-model", "sys", 0);
-      await agent.generate("t");
-      await agent.generate("t");
-      await agent.generate("t");
+      await agent.generate("t", "test.probe");
+      await agent.generate("t", "test.probe");
+      await agent.generate("t", "test.probe");
 
       assert.equal(warned.filter(w => w.includes("is loaded with 4096")).length, 1,
         "the same model is warned about exactly once");
@@ -674,7 +706,7 @@ describe("the context-fit warning", () => {
 
       // A different model is not covered by the first one's warning.
       const other = new Agent("OTHER", "roomy-model", "sys", 0);
-      await other.generate("t");
+      await other.generate("t", "test.probe");
       assert.deepEqual(events.map(e => e.t), ["context_risk", "context_risk"]);
     } finally {
       setFitWarning(null);
@@ -688,37 +720,45 @@ describe("the context-fit warning", () => {
 });
 
 // -- AN ANSWER STILL OWED THE PAGE -------------------------------------------
-// An accept only puts the answer in the writer's history. The one thing that can put it in the
-// chapter is a writing turn after it, and both of these tests are about whether the loop takes one.
+// An accept only puts the answer in the writer's history. Only a writing turn after it can put it
+// in the chapter, and both tests here are about whether the loop takes one.
 describe("an answer still owed the page", () => {
   /** Routes a mocked completion by which system prompt asked for it: the writer's `[WRITE]` loop,
-   *  the stateless lint, the stateless judge, and the consulted character each have their own. */
+   *  the stateless lint, the stateless judge, and the consulted character each get their own. */
   function consultFetch(opts: {
     writerReplies: Record<string, unknown>[];
     characterReplies: Record<string, unknown>[];
     lintPayloads?: string[];
+    doneReplies?: Record<string, unknown>[];
   }) {
-    let writerCall = 0, characterCall = 0;
-    const fetchMock = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const sys = String(body.messages?.[0]?.content ?? "");
-      const reply = (o: unknown) =>
-        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
+    let writerCall = 0, characterCall = 0, doneCall = 0;
+    const nextWriter = () => opts.writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": ({ body }) => {
         opts.lintPayloads?.push(String(body.messages?.find((m: any) => m.role === "user")?.content ?? ""));
-        return reply({ ok: true });
-      }
-      if (sys.includes("CHECKING ONE ANSWER")) return reply({ verdict: "accept" });
-      if (sys.includes("YOUR OUTPUT FORMAT")) return reply(opts.characterReplies[characterCall++]);
-      return reply(opts.writerReplies[writerCall++]);
-    }) as any;
-    return { fetchMock, calls: () => ({ writerCall, characterCall }) };
+        return { ok: true };
+      },
+      "judge.answer": { verdict: "accept" },
+      // Promotes nothing, which is what these fixtures got before: under prompt-substring routing
+      // the batch judge matched no branch and fell through to the writer's, so it was handed a prose
+      // draft (and quietly ate a writerReplies entry) until it failed to parse one. Same outcome —
+      // no deeds promoted — now said outright.
+      "judge.batch": { verdicts: [] },
+      "judge.done": () => {
+        const d = opts.doneReplies;
+        return d ? d[Math.min(doneCall++, d.length - 1)] : (doneCall++, { ok: true });
+      },
+      "character.consult": () => opts.characterReplies[characterCall++],
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
+    return { fetchMock, calls: () => ({ writerCall, characterCall, doneCall }) };
   }
 
   const ASK = {
     character: "MERRITT",
     situation: "Riven has the package under one arm and a hand flat on the service door.",
-    question: "Do you let them through, or do you stand up?",
+    question: "Do you let them through?",
     wants: "decision",
   };
 
@@ -727,6 +767,7 @@ describe("an answer still owed the page", () => {
     maxSteps: number;
     characterReplies?: Record<string, unknown>[];
     lintPayloads?: string[];
+    doneReplies?: Record<string, unknown>[];
   }) {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
@@ -736,6 +777,7 @@ describe("an answer still owed the page", () => {
       writerReplies: opts.writerReplies,
       characterReplies: opts.characterReplies ?? [{ speech: "No.", action: "stands up off the crate" }],
       lintPayloads: opts.lintPayloads,
+      doneReplies: opts.doneReplies,
     });
 
     const origFetch = globalThis.fetch;
@@ -745,13 +787,9 @@ describe("an answer still owed the page", () => {
 
     armRun();
     try {
-      const r = await quiet(() => writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        opts.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      ));
+      const r = await quiet(() => writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], agents, maxSteps: opts.maxSteps, log: e => events.push(e),
+      })));
       // LIVE.writer is captured before the finally's resetLive() clears it.
       return { r, events, calls: calls(), agents, sc, writer: LIVE.writer };
     } finally {
@@ -782,6 +820,51 @@ describe("an answer still owed the page", () => {
     assert.equal(r.done, true, "and the scene closed after that one extra turn");
   });
 
+  it("records an ending that left the question unanswered, and lets it stand anyway", async () => {
+    // The verdict is a measurement, not a gate. It held the scene open once: told the question was
+    // unanswered, the writer wrote more of the same deadlock and never declared done again, which
+    // cost the scene its ending. A refusal names a lever the writer does not hold.
+    const only = "Riven's palm finds the door and stays there.";
+    const { r, events, calls, writer } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: only, scene_done: true }],
+      doneReplies: [{ ok: false, why: "neither of them has moved off the door" }],
+    });
+
+    const flagged = events.find(e => e.t === "done_flagged") as any;
+    assert.ok(flagged, "the run record carries the verdict");
+    assert.equal(flagged.why, "neither of them has moved off the door");
+    assert.equal(calls.writerCall, 1, "the writer was not given another turn");
+    assert.equal(r.done, true, "and the ending stood");
+    assert.ok(!writer!.history.some(m => String(m.content).includes("NOT DONE")),
+      "the writer was never told, because there is nothing it could do about it");
+  });
+
+  it("says nothing when the page did answer its question", async () => {
+    const { events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: "Merritt steps back and lets the door swing wide.", scene_done: true }],
+      doneReplies: [{ ok: true }],
+    });
+
+    assert.equal(calls.doneCall, 1, "the ending was put to the judge");
+    assert.ok(!events.some(e => e.t === "done_flagged"));
+  });
+
+  it("records nothing when the judge answers in no shape at all", async () => {
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: "Riven's palm finds the door.", scene_done: true }],
+      doneReplies: [{ musing: "hard to say" }],
+    });
+
+    assert.equal(calls.doneCall, 2, "asked once more for a verdict");
+    assert.ok(events.some(e => e.t === "schema_mismatch" && (e as any).call === "done"),
+      "and the record says no verdict was ever given");
+    assert.ok(!events.some(e => e.t === "done_flagged"), "a check nobody made is not a verdict");
+    assert.equal(r.done, true);
+  });
+
   it("says so when the scene ends anyway with the answer never written in", async () => {
     // One step of budget and interactive off: the held-open turn is asked for and cannot be taken.
     const { r, events, calls } = await runIt({
@@ -810,6 +893,48 @@ describe("an answer still owed the page", () => {
     assert.ok(events.some(e => e.t === "accept"));
     assert.ok(!events.some(e => e.t === "done_deferred"), "done was never declared early");
     assert.ok(!events.some(e => e.t === "answer_unwritten"), "the next beat paid the debt");
+  });
+
+  it("echoes the accepted answer to the console by default (the suppression test's control)", async () => {
+    const lines: string[] = [];
+    const origLog = console.log;
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    try {
+      await runIt({
+        maxSteps: 10,
+        writerReplies: [
+          { prose: "Riven's palm finds the door.", consult: ASK, scene_done: false },
+          { prose: `Merritt stands. "No."`, scene_done: true },
+        ],
+      });
+    } finally { console.log = origLog; }
+    assert.ok(lines.some(l => l.includes("→")), "the character's answer prints");
+    assert.ok(lines.some(l => l.includes("Riven's palm finds the door")), "so does the prose");
+  });
+
+  it("with echoCast off, the characters' answers leave the console while the prose stays", async () => {
+    const lines: string[] = [];
+    const origLog = console.log;
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    let out: Awaited<ReturnType<typeof runIt>>;
+    try {
+      ENGINE.echoCast = false;
+      out = await runIt({
+        maxSteps: 10,
+        writerReplies: [
+          { prose: "Riven's palm finds the door.", consult: ASK, scene_done: false },
+          { prose: `Merritt stands. "No."`, scene_done: true },
+        ],
+      });
+    } finally {
+      console.log = origLog;
+      ENGINE.echoCast = true;
+    }
+    assert.ok(out.events.some(e => e.t === "accept"), "the consult was still accepted");
+    assert.ok(lines.some(l => l.includes("Riven's palm finds the door")), "the prose echo stays");
+    assert.ok(!lines.some(l => l.includes("→")), "no consult answer line");
+    assert.ok(!lines.some(l => l.includes("acts:")), "no promoted-action line");
+    assert.ok(!lines.some(l => l.includes("reacts:")), "no reaction line");
   });
 
   it("refuses an exit carried on a reply that wrote nothing", async () => {
@@ -859,8 +984,8 @@ describe("an answer still owed the page", () => {
   });
 
   it("closes a held-open turn that comes back blank, rather than holding it a second time", async () => {
-    // The deferral promises exactly one more turn, whatever it produces. A blank reply on that turn
-    // must not be read as a fresh blank scene_done and re-held.
+    // The deferral promises exactly one more turn, whatever it makes. A blank reply on that turn
+    // must not be read as a fresh blank scene_done and held again.
     const { r, events, calls } = await runIt({
       maxSteps: 10,
       writerReplies: [
@@ -878,7 +1003,7 @@ describe("an answer still owed the page", () => {
   });
 
   it("holds the scene open past the hard cap when an answer is still owed", async () => {
-    // One beat well past twice the 700-word target arms the hard cap for the NEXT turn; that turn
+    // A beat well past twice the 700-word target arms the hard cap for the NEXT turn; that turn
     // opens a consult instead of declaring done, and the answer must still get its writing turn.
     const longBeat = "The lamp buzzed above the service door while the cold worked through every seam. ".repeat(110);
     const final = `Merritt stands up off the crate. "No," they say.`;
@@ -902,7 +1027,7 @@ describe("an answer still owed the page", () => {
   // -- REACTION FAN-OUTS --------------------------------------------------------
   const CRASH = {
     reactors: [{ name: "MERRITT" }],
-    situation: "The service door explodes inward off its hinges, wood and dust across the floor.",
+    situation: "The service door explodes inward off its hinges, sending wood and dust across the floor towards you.",
     question: "What does that land on you as?",
   };
 
@@ -938,6 +1063,51 @@ describe("an answer still owed the page", () => {
       "the writer was handed the exact line to render");
   });
 
+  it("says so plainly when every reactor answered from an inside the scene is not written from",
+    async () => {
+      // MERRITT is not the POV, so a thought with nothing said and nothing done leaves the bundle
+      // empty. Silence would read as an unanswered fan-out and get the same beat asked again.
+      // Asked twice: the first thought-only reply buys one repair asking them to let it surface,
+      // and this reactor does not take it. The second reply is what the bundle gets.
+      const { events, writer } = await runIt({
+        maxSteps: 10,
+        characterReplies: [
+          { thought: "Wood. That is the service door, not the gate." },
+          { thought: "Wood. That is the service door, not the gate." },
+        ],
+        writerReplies: [
+          { prose: "The crash echoes down the corridor.", consult: CRASH, scene_done: false },
+          { prose: "Dust keeps coming down in the dark.", scene_done: true },
+        ],
+      });
+
+      const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+      assert.ok(events.some(e => e.t === "reaction"), "the reaction was collected for the record");
+      assert.ok(!heard.includes("THE OTHERS REACT"), "no bundle was handed over");
+      assert.ok(!heard.includes("That is the service door"), "and the thought stayed with them");
+      assert.match(heard, /\[NOTHING TO WRITE\] MERRITT/, "the writer was told, not left guessing");
+    });
+
+  it("names the repetition when the writer re-sends an ask the gate already refused", async () => {
+    // Seen five times in one scene: the refusal says what is wrong, the writer sends the identical
+    // string back, and each round costs a step. The second one is told it is a repeat.
+    const thin = { ...CRASH, situation: "Something falls over." };
+    const { events, writer } = await runIt({
+      maxSteps: 10,
+      writerReplies: [
+        { prose: "The crash echoes down the corridor.", consult: thin, scene_done: false },
+        { prose: "Dust drifts in the dark.", consult: thin, scene_done: false },
+        { prose: "Nothing moves.", scene_done: true },
+      ],
+    });
+
+    assert.equal(events.filter(e => e.t === "bad_consult").length, 2, "both were refused");
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.match(heard, /\[CONSULT NOT SENT\]/, "the first refusal is the ordinary one");
+    assert.match(heard, /AND YOU HAVE SENT IT BEFORE/, "the second names the repetition");
+    assert.match(heard, /refused once already/);
+  });
+
   it("counts a fan-out whose every reactor was skipped as an empty turn", async () => {
     const ghost = { prose: "", consult: { ...CRASH, reactors: [{ name: "GHOST" }] }, scene_done: false };
     const { r, events } = await runIt({
@@ -951,35 +1121,95 @@ describe("an answer still owed the page", () => {
     assert.deepEqual(r.prose, []);
   });
 
-  it("a thought-only answer lands as felt evidence, never as a bare name in the lint's ledger",
+  it("the POV character's thought-only answer lands as felt evidence, never as a bare name",
     async () => {
-      // The live-run failure this pins: reaction-shaped single consults answered from the inside
-      // used to push empty granted entries — bare names the lint could not read as authorization.
-      const REACT = { ...ASK, wants: "reaction" };
+      // The live failure this pins: reaction-shaped single consults answered from the inside used
+      // to push empty granted entries — bare names the lint could not read as authorization.
+      // RIVEN is the scene's POV, so rendering what it lands on them as is the writer's job.
+      const POV_REACT = {
+        character: "RIVEN",
+        situation: "The lock has given way under your hands and the door stands open on the dark.",
+        question: "What does the give of it land on you as, this early?",
+        wants: "reaction",
+      };
       const lintPayloads: string[] = [];
       const { events } = await runIt({
         maxSteps: 10,
         lintPayloads,
-        characterReplies: [{ thought: "The lock has been sticking for a month; who is this?" }],
+        characterReplies: [{ thought: "Too easy. That is the part I do not like." }],
         writerReplies: [
-          { prose: "Riven crouches by the door.", consult: REACT, scene_done: false },
-          { prose: "Merritt's head tilts toward the sound.", scene_done: true },
+          { prose: "Riven crouches by the door.", consult: POV_REACT, scene_done: false },
+          { prose: "The dark past the doorway does not move.", scene_done: true },
         ],
       });
 
-      const accept = events.find(e => e.t === "accept") as any;
-      assert.ok(accept, "the thought-only answer was accepted");
+      assert.ok(events.some(e => e.t === "accept"), "the thought-only answer was accepted");
       const withLedger = lintPayloads.find(p => p.includes("ALREADY GRANTED") && !p.includes("(nobody yet)"));
       assert.ok(withLedger, "the lint saw a populated ledger");
-      assert.match(withLedger!, /MERRITT -- felt: The lock has been sticking/,
+      assert.match(withLedger!, /RIVEN -- felt: Too easy/,
         "the interiority the writer was handed is on the record as authorization");
-      assert.ok(!/^MERRITT\s*$/m.test(withLedger!), "no bare-name entries");
+      assert.ok(!/^RIVEN\s*$/m.test(withLedger!), "no bare-name entries");
     });
+
+  it("gives a non-POV reaction one chance to surface, and takes it when it does", async () => {
+    // The hole this closes: "reaction" (not a deliberate act, not spoken words) is right for the
+    // POV character and unanswerable for anyone else, so the ask was spent for nothing. Now a
+    // thought-only reply buys a repair, and a reaction that reaches the outside is an answer.
+    const REACT = { ...ASK, wants: "reaction" };
+    const { events, writer, calls } = await runIt({
+      maxSteps: 10,
+      characterReplies: [
+        { thought: "The lock has been sticking for a month; who is this?" },
+        { thought: "Who is this?", action: "goes still on the crate, head turned to the door" },
+      ],
+      writerReplies: [
+        { prose: "Riven crouches by the door.", consult: REACT, scene_done: false },
+        { prose: "On the crate, Merritt goes still.", scene_done: true },
+      ],
+    });
+
+    assert.equal(calls.characterCall, 2, "asked once more rather than discarded");
+    const accept = events.find(e => e.t === "accept") as any;
+    assert.ok(accept, "the surfaced reaction was accepted");
+    assert.match(accept.action, /goes still on the crate/);
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.match(heard, /goes still on the crate/, "the writer got the outward half");
+    assert.ok(!heard.includes("Who is this?"), "and still none of the inward half");
+  });
+
+  it("a non-POV character's thought-only answer never reaches the writer at all", async () => {
+    // MERRITT is not the POV. What the moment lands on them as is theirs; handing it to the writer
+    // would only authorize narrating an inner life nobody gave it. With nothing said and nothing
+    // done, the answer arrives as nothing — no answer, not an accepted empty one.
+    const REACT = { ...ASK, wants: "reaction" };
+    const lintPayloads: string[] = [];
+    const thoughtOnly = { thought: "The lock has been sticking for a month; who is this?" };
+    const { events, writer, calls } = await runIt({
+      maxSteps: 10,
+      lintPayloads,
+      // Asked once more to let it surface, and it does not — so the answer is the one that stands.
+      characterReplies: [thoughtOnly, thoughtOnly],
+      writerReplies: [
+        { prose: "Riven crouches by the door.", consult: REACT, scene_done: false },
+        { prose: "Merritt's head tilts toward the sound.", scene_done: true },
+      ],
+    });
+
+    assert.equal(calls.characterCall, 2, "the repair asked them to let it reach the outside");
+    assert.ok(!events.some(e => e.t === "accept"), "nothing was accepted");
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.ok(!heard.includes("The lock has been sticking"), "the thought never reached the writer");
+    assert.match(heard, /\[NO ANSWER\] MERRITT/, "the writer was told nobody answered");
+    // The run record still carries it: the withholding is about the writer's desk, not the reader's view.
+    const answered = events.find(e => e.t === "answer") as any;
+    assert.match(answered?.thought ?? "", /sticking for a month/);
+    assert.ok(!lintPayloads.some(p => /MERRITT -- felt:/.test(p)), "and it granted nothing");
+  });
 });
 
 // -- A CLARIFICATION ON AN ATTEMPT THAT WAS THROWN AWAY -----------------------
-// The rule is that only the accepted answer enters history. A clarification is part of an answer:
-// the character asked for a fact and got one, and if that answer is rejected the fact was settled for
+// The rule: only the accepted answer enters history. A clarification is part of an answer — the
+// character asked for a fact and got one — so if that answer is rejected, the fact was settled for
 // an instance that no longer exists. The retry never heard it, so neither may the writer.
 describe("a clarification on a rejected attempt", () => {
   it("reaches neither the writer nor the clarifier, while the accepted attempt's does", async () => {
@@ -993,7 +1223,7 @@ describe("a clarification on a rejected attempt", () => {
         consult: {
           character: "MERRITT",
           situation: "Riven has the package under one arm and a hand flat on the service door.",
-          question: "Do you let them through, or do you stand up?",
+          question: "Do you let them through?",
           wants: "decision",
         },
         scene_done: false },
@@ -1007,8 +1237,12 @@ describe("a clarification on a rejected attempt", () => {
       { speech: "No.", action: "stands up off the crate" },
     ];
     const clarifierReplies = [{ answer: "Bolted, top and bottom." }, { answer: "Ten feet, behind them." }];
+    // A revision must move the situation to be sendable at all: the character is shown the
+    // situation and not the question, so a re-ask from the same one is the identical message.
     const judgeReplies = [
-      { verdict: "retry", revised: { question: "Do you stand up, or stay on the crate?" } },
+      { verdict: "retry", revised: {
+          situation: "The door has stopped rattling and someone is breathing on the other side of it.",
+          question: "Do you stand up to let them pass?", wants: "decision" } },
       { verdict: "accept" },
     ];
 
@@ -1017,31 +1251,26 @@ describe("a clarification on a rejected attempt", () => {
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
     ENGINE.stream = false;
-    globalThis.fetch = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const msgs = (body.messages ?? []).map((m: any) => String(m.content ?? ""));
-      const sys = msgs[0] ?? "";
-      const reply = (o: unknown) =>
-        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) return reply({ ok: true });
-      if (sys.includes("CHECKING ONE ANSWER")) return reply(judgeReplies[Math.min(judgeCall++, 1)]);
-      if (sys.includes("ANSWERING ONE QUESTION")) {
-        clarifierPrompts.push(msgs);
-        return reply(clarifierReplies[Math.min(clarifierCall++, 1)]);
-      }
-      if (sys.includes("YOUR OUTPUT FORMAT")) return reply(characterReplies[characterCall++]);
-      return reply(writerReplies[Math.min(writerCall++, 1)]);
-    }) as any;
+    const nextWriter = () => writerReplies[Math.min(writerCall++, 1)];
+    globalThis.fetch = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.answer": () => judgeReplies[Math.min(judgeCall++, 1)],
+      "judge.done": { ok: true },
+      "clarifier.answer": ({ messages }) => {
+        clarifierPrompts.push(messages);
+        return clarifierReplies[Math.min(clarifierCall++, 1)];
+      },
+      "character.consult": () => characterReplies[characterCall++],
+      "writer.ask": nextWriter,
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    }).fetchMock;
 
     armRun();
     try {
-      await quiet(() => writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      ));
+      await quiet(() => writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], agents, log: e => events.push(e),
+      })));
 
       assert.equal(clarifierCall, 2, "both attempts asked the author for a fact");
       assert.ok(events.some(e => e.t === "retry"), "the first answer was rejected");
@@ -1082,7 +1311,7 @@ describe("a deed promoted in the same reply that renders it", () => {
       { prose: "Something goes over in the dark by the bins.",
         consult: {
           reactors: [{ name: "MERRITT" }],
-          situation: "A bin goes over somewhere back down the corridor, out of sight.",
+          situation: "A bin goes over somewhere back down the corridor behind you, well out of sight.",
           question: "What does that land on you as?",
         },
         scene_done: false },
@@ -1095,32 +1324,25 @@ describe("a deed promoted in the same reply that renders it", () => {
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
     ENGINE.stream = false;
-    globalThis.fetch = (async (_url: string, init: any) => {
-      const body = JSON.parse(String(init.body));
-      const msgs = (body.messages ?? []).map((m: any) => String(m.content ?? ""));
-      const sys = msgs[0] ?? "";
-      const reply = (o: unknown) =>
-        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(o) } }] }));
-      if (sys.includes("CHECKING ONE PIECE YOU JUST WROTE")) {
-        lintRequests.push(msgs.join("\n"));
-        return reply({ ok: true });
-      }
-      if (sys.includes("WHICH REACTIONS MAY BECOME DEEDS"))
-        return reply({ verdicts: [{ name: "MERRITT", promotable: true }] });
-      if (sys.includes("YOUR OUTPUT FORMAT"))
-        return reply({ thought: "Someone is out there.", action: deed });
-      return reply(writerReplies[Math.min(writerCall++, 1)]);
-    }) as any;
+    const nextWriter = () => writerReplies[Math.min(writerCall++, 1)];
+    globalThis.fetch = siteFetch({
+      "judge.narration": ({ messages }) => {
+        lintRequests.push(messages.join("\n"));
+        return { ok: true };
+      },
+      "judge.done": { ok: true },
+      "judge.batch": { verdicts: [{ name: "MERRITT", promotable: true }] },
+      "character.consult": { thought: "Someone is out there.", action: deed },
+      "writer.ask": nextWriter,
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    }).fetchMock;
 
     armRun();
     try {
-      await quiet(() => writeScene(
-        sc.scenes[0], 1, sc.characters, agents,
-        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
-        { writer: "low", summary: sc.thinking.summary },
-        10, sc.maxProseWords, sc.retries, sc.clarifications,
-        sc.dir, e => events.push(e),
-      ));
+      await quiet(() => writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], agents, log: e => events.push(e),
+      })));
 
       const promoted = events.find(e => e.t === "promote") as any;
       assert.ok(promoted, "the deed was promoted");

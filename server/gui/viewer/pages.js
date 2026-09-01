@@ -1,7 +1,7 @@
 import { $, esc, basename, wireBackdropClose, tid } from "./util.js";
 import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
-import { renderBlock, wireReader } from "./blocks.js";
+import { renderBlocks, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
 import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
@@ -14,7 +14,7 @@ import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
-import { go, generating, syncHash, noteFocus, tagFocus, clearFocus } from "./nav.js";
+import { go, generating, syncHash, tagFocus, clearFocus } from "./nav.js";
 import { renderSession } from "./session.js";
 
 function restoreFocus(page, id) {
@@ -36,7 +36,7 @@ function restoreFocus(page, id) {
 function renderNav() {
   document.body.dataset.view = APP.view;
   const shelfTab = $("tab-shelf"), liveTab = $("tab-live"), readTab = $("tab-read");
-  // The shelf is the hub: reachable any time an engine is attached, mid-run included -- so nothing
+  // The shelf is the hub: reachable any time an engine is attached, mid-run included -- nothing
   // here disables a tab any more. The story page has no tab of its own; it reads as "shelf".
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
@@ -86,7 +86,7 @@ function renderShelf(page, keepFocus) {
   page.innerHTML = pickerHtml();
   $("railstats").innerHTML = "";
   // The new-story card opens the scaffold page (a route now, not a modal); an interview already
-  // running on the server is continued there rather than started again.
+  // running on the server is continued there, not started again.
   wirePicker(page, () => go("story"), () => go("scaffold"));
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -169,9 +169,9 @@ function liveHeaderHtml() {
   </div>`;
 }
 
-/** Titles reuse the app's own existing wording for each state rather than inventing a second
- *  vocabulary for the same thing -- "the writer wants your call" is what the reader card says, and
- *  "the step budget is spent" is what the budget prompt says. */
+/** Titles reuse the app's own wording for each state rather than inventing a second vocabulary for
+ *  the same thing -- "the writer wants your call" is what the reader card says, "the step budget
+ *  is spent" what the budget prompt says. */
 const PHASE_TITLE = {
   "writing": "A draft is arriving",
   "consulting": "A choice is being checked",
@@ -228,7 +228,7 @@ function renderLive(page, blocks) {
         ${chip(`${consults} consult${consults === 1 ? "" : "s"}`)}
         ${chip(APP.session.interactive ? "interactive" : "hands off")}
       </div>
-      <div class="prose">` + blocks.map(b => renderBlock(b, true)).join("") + `</div>
+       <div class="prose">` + renderBlocks(blocks, true) + `</div>
     </div>
   </section>`;
   wireConsultToggles(page);
@@ -241,7 +241,7 @@ function renderRead(page, blocks) {
   if (!blocks.length) {
     // A run CAN load fine and still have nothing to show -- a run killed before its first draft
     // leaves a log holding only `scene_start`. Saying "nothing loaded" there blames the wrong thing
-    // and reads exactly like a failed fetch, so an empty run says it is empty.
+    // and reads like a failed fetch, so an empty run says it is empty.
     const empty = READV.events.length > 0;
     page.innerHTML = chrome + `<div class="empty" data-tid="read.empty"><h2>${empty ? "This run is empty" : "Nothing loaded"}</h2>
       <p>${empty ? `${esc(READV.label || "it")} — the run was stopped before a word of it was written.
@@ -253,14 +253,14 @@ function renderRead(page, blocks) {
     setFoldable(false);
     return;
   }
-  page.innerHTML = chrome + `<div class="prose">` + blocks.map(b => renderBlock(b, false)).join("") + `</div>`;
+  page.innerHTML = chrome + `<div class="prose">` + renderBlocks(blocks, false) + `</div>`;
   wireConsultToggles(page);
   wireSavedRuns(page);
   setFoldable(blocks.some(b => b.kind === "consult"));
   renderRail(READV, blocks);
 }
 
-/** Backdrop click on the idea modal returns to the shelf — the interview lives on the server, so
+/** Backdrop click on the idea modal returns to the shelf -- the interview lives on the server, so
  *  leaving the page never abandons it; the shelf's "continue new story…" card comes back to it. */
 function wireModal(page) {
   wireBackdropClose(page, "iv-backdrop", () => go("shelf"));
@@ -297,11 +297,11 @@ function settleFocus(page) {
   t.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-/** Repainted every render(), regardless of view -- the header pill that opens the character card
- *  is visible on the live and read pages too, not just the shelf, so neither modal can live inside
- *  `#page` like the interview's does. Character card last: if a header pill is clicked while the
- *  run-ended modal is up, it stacks on top rather than being clicked through. Owned here rather
- *  than by either modal's own module, since painting "every overlay modal" isn't either one's job. */
+/** Repainted every render(), regardless of view -- the header pill that opens the character card is
+ *  visible on the live and read pages too, not just the shelf, so neither modal can live inside
+ *  `#page` like the interview's does. Character card last: clicked while the run-ended modal is up,
+ *  it stacks on top rather than being clicked through. Owned here rather than by either modal's own
+ *  module, since painting "every overlay modal" isn't either one's job. */
 function paintModals(goShelf) {
   const root = $("modalroot");
   if (!APP.runEnded && !APP.charCard) { if (root.innerHTML) root.innerHTML = ""; return; }
@@ -336,13 +336,13 @@ export function render() {
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
   // Empty on the shelf/story/handoff pages, and on live/read before there is anything to show --
-  // an empty bordered card with just the header is worse than no card at all.
+  // an empty bordered card with just a header is worse than no card at all.
   $("runctrl").hidden = !$("railstats").innerHTML && $("sessionbar").hidden;
   renderTimeline(blocks);
   wireTimeline();
-  // The scroll needs the NEW DOM, so it runs after the page above has been painted. syncHash last:
-  // every state change above (focus tag/clear, modal want) is reflected in the address bar without
-  // each mutator having to remember to call it. replaceState-only, so nothing re-enters go().
+  // The scroll needs the NEW DOM, so it runs after the page above is painted. syncHash last:
+  // every state change above (focus tag/clear, modal want) lands in the address bar without each
+  // mutator having to remember to call it. replaceState-only, so nothing re-enters go().
   settleFocus(page);
   syncHash();
 }

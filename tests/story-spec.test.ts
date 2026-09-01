@@ -9,8 +9,9 @@ import { join } from "node:path";
 
 import { loadStory, ROOT } from "../engine/story-format.ts";
 import { slugify } from "../engine/config-util.ts";
-import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, type SceneDef } from "../engine/story-spec.ts";
-import { quiet, quietSync, warnings } from "./helpers.ts";
+import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, specView, type SceneDef } from "../engine/story-spec.ts";
+import { StoryJson } from "../engine/story-schema.ts";
+import { quiet, quietSync } from "./helpers.ts";
 
 // -- STORY SPEC (scaffolding, SPEC-S §3) -----------------------------------
 describe("normalizeSpec", () => {
@@ -28,6 +29,13 @@ describe("normalizeSpec", () => {
     assert.deepEqual(problems, []);
     assert.equal(spec.scenes[0].pov, "RIVEN");
     assert.deepEqual(spec.characters[0].skills, ["lockpicking :: picks locks"]);
+  });
+
+  it("refuses to read a scene that came back as text, rather than taking its length as a word count", () => {
+    const { spec, problems } = normalizeSpec({ ...base, scene: "Behind Kessel's, at 3am." });
+    assert.equal(spec.scenes[0].length, 700);
+    assert.equal(spec.scenes[0].place, "");
+    assert.match(problems.join(" "), /came back as text/);
   });
 
   it("requires a belief, an impulse and voice samples on every character", () => {
@@ -53,11 +61,11 @@ describe("normalizeSpec", () => {
     assert.match(problems.join(" "), /telepathy/);
   });
 
-  it("keeps a restriction that names a penalty, a bible skill, or the character's own skill", () => {
+  it("keeps a restriction that names a bible skill or the character's own skill", () => {
     const { spec, problems } = normalizeSpec({
       ...base, characters: [{ ...base.characters[0],
-        skills: ["lockpicking :: picks locks"], restrictions: "deprived | bound | lockpicking" }] });
-    assert.deepEqual(spec.characters[0].restrictions, ["deprived", "bound", "lockpicking"]);
+        skills: ["lockpicking :: picks locks"], restrictions: "climbing | lockpicking" }] });
+    assert.deepEqual(spec.characters[0].restrictions, ["climbing", "lockpicking"]);
     assert.equal(problems.filter(p => /restrictions/.test(p)).length, 0);
   });
 
@@ -89,6 +97,78 @@ describe("normalizeSpec", () => {
       ...base, characters: [{ ...base.characters[0], skills: "climbing | keys :: by feel", restrictions: "sight" }] });
     assert.deepEqual(spec.characters[0].skills, ["climbing", "keys :: by feel"]);
     assert.deepEqual(spec.characters[0].restrictions, ["sight"]);
+  });
+
+  it("carries scene reach through, keyed by the character's own spelling of their name", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene,
+        reach: { riven: ["cameras :: perceiving through the security cameras"], GHOST: ["doors :: opening"] } } });
+    assert.deepEqual(spec.scenes[0].reach,
+                     { RIVEN: ["cameras :: perceiving through the security cameras"] });
+    assert.match(problems.join(" "), /GHOST/, "a grant to a non-character is dropped and reported");
+  });
+
+  it("drops a reach entry with no :: meaning — reach is never in the bible", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene,
+        reach: { RIVEN: ["cameras :: seeing through the lobby feed", "doors"] } } });
+    assert.deepEqual(spec.scenes[0].reach,
+                     { RIVEN: ["cameras :: seeing through the lobby feed"] });
+    assert.match(problems.join(" "), /doors/);
+  });
+
+  it("flags a roster name that is not one of the characters, and keeps it", () => {
+    const { spec, problems } = normalizeSpec({ ...base, scene: { ...base.scene, roster: ["RIVEN", "GHOST"] } });
+    assert.match(problems.join(" "), /roster "GHOST" is not one of the characters/);
+    assert.deepEqual(spec.scenes[0].roster, ["RIVEN", "GHOST"]);
+  });
+
+  it("flags a pov that is set but absent from a non-empty roster, and passes a pov that is in it", () => {
+    const twoChar = { ...base, characters: [{ ...base.characters[0] }, { ...base.characters[0], name: "MERRITT" }] };
+    const ok = normalizeSpec({ ...twoChar, scene: { ...base.scene, roster: ["RIVEN"], pov: "RIVEN" } });
+    assert.ok(!ok.problems.some(p => /not in the roster/.test(p)));
+    const bad = normalizeSpec({ ...twoChar, scene: { ...base.scene, roster: ["RIVEN"], pov: "MERRITT" } });
+    assert.match(bad.problems.join(" "), /pov "MERRITT" is not in the roster/);
+  });
+
+  it("reports (and keeps) a reach grant to someone absent from the roster", () => {
+    const twoChar = { ...base, characters: [{ ...base.characters[0] }, { ...base.characters[0], name: "MERRITT" }] };
+    const { spec, problems } = normalizeSpec({ ...twoChar, scene: { ...base.scene,
+      roster: ["MERRITT"], reach: { RIVEN: ["cameras :: perceiving through the feed"] } } });
+    assert.deepEqual(spec.scenes[0].reach, { RIVEN: ["cameras :: perceiving through the feed"] });
+    assert.match(problems.join(" "), /grants reach to "RIVEN", who is not in its roster/);
+  });
+
+  it("drops a reach entry colliding with a general, bible, or own skill name", () => {
+    const gen = normalizeSpec({ ...base, scene: { ...base.scene,
+      reach: { RIVEN: ["sight :: perceiving through cameras"] } } });
+    assert.match(gen.problems.join(" "), /collides with a skill name/);
+    assert.deepEqual(gen.spec.scenes[0].reach, {}, "a general-skill-named reach entry is dropped");
+
+    const own = normalizeSpec({ ...base, characters: [{ ...base.characters[0], skills: ["lockpicking :: picks locks"] }],
+      scene: { ...base.scene, reach: { RIVEN: ["lockpicking :: a second way to pick"] } } });
+    assert.match(own.problems.join(" "), /collides with a skill name/);
+    assert.deepEqual(own.spec.scenes[0].reach, {}, "a reach entry reusing the character's own skill is dropped");
+
+    const fine = normalizeSpec({ ...base, scene: { ...base.scene,
+      reach: { RIVEN: ["cameras :: perceiving through the feed"] } } });
+    assert.ok(!fine.problems.some(p => /collides/.test(p)));
+    assert.deepEqual(fine.spec.scenes[0].reach, { RIVEN: ["cameras :: perceiving through the feed"] });
+  });
+
+  it("an edit to scene.reach replaces that scene's grants", () => {
+    const withReach = normalizeSpec({
+      ...base, scene: { ...base.scene, reach: { RIVEN: ["cameras :: seeing"] } } }).spec;
+    const r = quietSync(() => applyEdits(withReach, { edits: [
+      { field: "scene.reach", value: { RIVEN: ["doors :: unlocking the service doors"] } }] }));
+    assert.deepEqual(r.spec.scenes[0].reach, { RIVEN: ["doors :: unlocking the service doors"] });
+    assert.equal(r.applied.length, 1);
+    // an empty object clears it entirely
+    const cleared = quietSync(() => applyEdits(r.spec, { edits: [{ field: "scene_1.reach", value: {} }] }));
+    assert.deepEqual(cleared.spec.scenes[0].reach, {});
+    // a malformed value is not a crash
+    const junk = quietSync(() => applyEdits(withReach, { edits: [{ field: "scene.reach", value: "nope" }] }));
+    assert.deepEqual(junk.spec.scenes[0].reach, {});
   });
 
   it("enforces the cast bounds and rejects duplicates", () => {
@@ -187,7 +267,7 @@ describe("applyEdits", () => {
     const added = edit("add_scene", { place: "  yard ", length: 801.4, question: "Follow?" });
     assert.deepEqual(added.applied[0].before, undefined);
     assert.deepEqual(added.applied[0].after, {
-      place: "yard", question: "Follow?", pov: "", length: 801, roster: [],
+      place: "yard", question: "Follow?", pov: "", length: 801, roster: [], reach: {},
     });
     const removed = quietSync(() => applyEdits(added.spec, { edits: [{ field: "remove_scene", value: 2 }] }));
     assert.deepEqual(removed.applied[0].before, added.spec.scenes[1]);
@@ -267,6 +347,33 @@ describe("applyEdits", () => {
                      ["climbing", "keys :: by feel"]);
     assert.deepEqual(edit("characters.RIVEN.restrictions", "hearing | smell").spec.characters[0].restrictions,
                      ["hearing", "smell"]);
+  });
+
+  it("flags a stale old-name reference left in another character's fields after a rename", () => {
+    const s = normalizeSpec({
+      title: "Doorway", premise: "A corridor.",
+      scene: { question: "Q?" },
+      characters: [
+        { name: "RIVEN", persona: "A courier.", knows: "Merritt told me the code.", skills: [], restrictions: [] },
+        { name: "MERRITT", persona: "A porter.", knows: "The lock sticks.", skills: [], restrictions: ["sight"] },
+      ],
+    }).spec;
+    const r = quietSync(() => applyEdits(s, { edits: [{ field: "characters.merritt.name", value: "MARA" }] }));
+    // The authored spelling, not the lower-case lookup key the rename map is built on.
+    assert.match(r.problems.join(" "), /RIVEN's knows still names "MERRITT", who was renamed to "MARA"/);
+  });
+
+  it("does not flag a rename that left no stale references", () => {
+    const s = normalizeSpec({
+      title: "Doorway", premise: "A corridor.",
+      scene: { question: "Q?" },
+      characters: [
+        { name: "RIVEN", persona: "A courier.", knows: "The code changed.", skills: [], restrictions: [] },
+        { name: "MERRITT", persona: "A porter.", knows: "The lock sticks.", skills: [], restrictions: ["sight"] },
+      ],
+    }).spec;
+    const r = quietSync(() => applyEdits(s, { edits: [{ field: "characters.merritt.name", value: "MARA" }] }));
+    assert.ok(!r.problems.some(p => /still names/.test(p)));
   });
 
   it("takes voice as a list or a pipe-separated string", () => {
@@ -415,11 +522,60 @@ describe("applyEdits", () => {
   });
 });
 
+describe("specView against the story schema", () => {
+  // The new-story editor validates its draft with the strict StoryJson schema. specView carries two
+  // shapes the schema rejects — `scene` as an alias for scenes[0], and skills split into
+  // {text, meaning} — and the editor's scaffoldStory() reconciles them. When it did not drop
+  // `scene`, every check failed with `Unrecognized key: "scene"` and the write button went dead on
+  // the first edit with nothing on screen to say why. This pins the contract that fix relies on.
+  const spec = normalizeSpec({
+    title: "Doorway", premise: "A corridor at 3am.", writer_style: "Plain.",
+    scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700,
+             roster: ["RIVEN"] },
+    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.", goal: "Get in.",
+                   belief: "Doors open.", impulse: "when stopped → talk", voice: ["Let me in."],
+                   skills: ["lockpicking"], restrictions: ["sight"] }],
+  }).spec;
+
+  /** story-edit.js scaffoldStory(), which is the only reconciliation between the two shapes. */
+  const asEditorDraft = () => {
+    const d: any = JSON.parse(JSON.stringify(specView(spec)));
+    delete d.scene;
+    d.characters = d.characters.map((c: any) => ({
+      ...c,
+      skills: (c.skills || []).map((s: any) =>
+        typeof s === "string" ? s : [s.text, s.meaning].filter(Boolean).join(" :: ")),
+    }));
+    return d;
+  };
+
+  it("carries a `scene` alias the schema rejects, so the editor has to drop it", () => {
+    const raw = StoryJson.safeParse(JSON.parse(JSON.stringify(specView(spec))));
+    assert.equal(raw.success, false, "specView is a view, not a story.json");
+    assert.match(raw.error!.issues.map(i => i.message).join(" "), /scene/);
+  });
+
+  it("validates once the editor has reconciled it", () => {
+    const r = StoryJson.safeParse(asEditorDraft());
+    assert.equal(r.success, true,
+                 `the new-story draft must validate as loaded: ${JSON.stringify(r.error?.issues)}`);
+  });
+
+  it("still validates after the edits an author actually makes", () => {
+    const d = asEditorDraft();
+    d.characters[0].restrictions = [];             // the edit from the bug report
+    d.characters[0].skills = [];
+    d.scenes[0].roster = [];
+    assert.equal(StoryJson.safeParse(d).success, true,
+                 "clearing a list field must not invalidate the draft");
+  });
+});
+
 describe("sceneDrift", () => {
-  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"] };
+  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
 
   it("returns [] for identical scenes", () => {
-    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"] };
+    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 
@@ -429,7 +585,7 @@ describe("sceneDrift", () => {
   });
 
   it("returns multiple changed fields in stable order", () => {
-    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"] };
+    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"], reach: {} };
     assert.deepEqual(sceneDrift(base, after), ["place", "pov", "length"]);
   });
 
@@ -455,7 +611,7 @@ describe("sceneDrift", () => {
   });
 
   it("ignores whitespace differences in strings", () => {
-    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"] };
+    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 });
@@ -468,6 +624,21 @@ describe("slugify", () => {
     assert.equal(slugify("???"), "", "nothing usable must yield nothing, not a fallback");
     assert.ok(slugify("x".repeat(80)).length <= 40);
     assert.ok(!slugify("Ends with punctuation ---").endsWith("-"));
+  });
+
+  // The accept step warns that a folder is taken before the click, so the viewer must know what the
+  // engine will name the folder. That is a second implementation, pinned here: if they drift, the
+  // warning silently stops matching what accept() actually refuses.
+  it("matches the viewer's copy, which the accept step warns from", async () => {
+    // The specifier goes through a variable on purpose: viewer JS is outside tsconfig's program, so
+    // a literal import would be a TS7016 with no declaration file. This keeps it a plain runtime
+    // import, which is all the test needs.
+    const utilPath = "../server/gui/viewer/util.js";
+    const viewerUtil = await import(utilPath) as { slugify: (s: string) => string };
+    const viewerSlugify = viewerUtil.slugify;
+    for (const s of ["The Cooling Loop", "  Bay 4 — Hatches!  ", "../../etc/passwd", "???",
+                     "Ünïcodé Tïtlé", "Ends with punctuation ---", "x".repeat(80), ""])
+      assert.equal(viewerSlugify(s), slugify(s), `viewer and engine disagree on ${JSON.stringify(s)}`);
   });
 });
 
@@ -512,7 +683,7 @@ describe("renderStory round trip", () => {
       assert.equal(elias.belief, "The relief boat is merely late, not lost.");
       assert.equal(elias.impulse, "When the light fails, winds it by hand before saying a word.");
       assert.deepEqual(elias.voice, ["\"She has been late before. She has never been lost.\""]);
-      // The two things that would silently change the SCENE if they were lost:
+      // The two things that would silently change the SCENE if lost:
       assert.ok(elias.skills.some(s => s.name === "writelog" && s.meaning.startsWith("drafting entries")));
       assert.ok(!mara.skills.some(s => s.name === "hearing"), "a restriction must survive as a real absence");
       assert.ok(mara.skills.some(s => s.name === "sight"), "and must not take anything else with it");

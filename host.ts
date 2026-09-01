@@ -4,9 +4,10 @@
  *  engine/ — routes receive behaviour through this object. */
 import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { LIVE } from "./live.ts";
+import { storyWriteBlocked } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { splitMeaning } from "./engine/skills.ts";
+import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
 import { directEdit, specView, characterPsychologyWarnings, type StorySpec } from "./engine/story-spec.ts";
@@ -100,6 +101,27 @@ async function persistStoryJson(dir: string, parsed: StoryJson): Promise<{ ok: t
 const characterCardWarnings = (parsed: StoryJson): string[] =>
   parsed.characters.flatMap(c => characterPsychologyWarnings(c.name, c.belief, c.impulse, c.voice));
 
+/** The two problems that are advisory warnings on load and check but a refused save, named once so
+ *  every surface words them identically. */
+const EMPTY_PREMISE = "Premise is empty — there is nothing to write.";
+const NO_CHARACTERS = "No characters defined — the writer would have nobody to consult.";
+
+/** The engine's advisory warnings about a parsed story. The editor's load view, the in-memory
+ *  checker and the save confirmation all return this same list, worded identically. */
+const storyWarnings = (parsed: StoryJson): string[] => [
+  ...(!parsed.premise.trim() ? [EMPTY_PREMISE] : []),
+  ...(!parsed.characters.length ? [NO_CHARACTERS] : []),
+  ...parsed.scenes.flatMap((s, i) => [
+    ...(!s.question ? [`Scene ${i + 1} has no question — the writer decides alone when the scene is done`] : []),
+    // The same case-insensitive orphan test loadStory applies (wording shared with it): sceneReach
+    // resolves the grant key case-insensitively, so only a key matching NO character is dead.
+    ...Object.keys(s.reach ?? {})
+      .filter(who => !parsed.characters.some(c => sameName(c.name, who)))
+      .map(who => `Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`),
+  ]),
+  ...characterCardWarnings(parsed),
+];
+
 export const HOST: ServerHost = {
   storyCards, selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
   newScaffoldSession, newHandoffSession, directEdit, specView,
@@ -108,15 +130,7 @@ export const HOST: ServerHost = {
   storyForEdit: async (dir) => {
     const loaded = await loadStoryJson(dir);
     if (!loaded.ok) return { ok: false, error: loaded.error, raw: loaded.raw };
-    const parsed = loaded.story;
-    const warnings: string[] = [];
-    if (!parsed.premise.trim()) warnings.push("Premise is empty — there is nothing to write.");
-    if (!parsed.characters.length) warnings.push("No characters defined — the writer would have nobody to consult.");
-    for (const [i, s] of parsed.scenes.entries()) {
-      if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
-    }
-    warnings.push(...characterCardWarnings(parsed));
-    return { ok: true, story: parsed, warnings };
+    return { ok: true, story: loaded.story, warnings: storyWarnings(loaded.story) };
   },
   fullCast: async (dir) => {
     const loaded = await loadStoryJson(dir);
@@ -129,6 +143,9 @@ export const HOST: ServerHost = {
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
       })),
+      // Reach stays per scene and never merges into a character's skills (I4): the GUI labels it
+      // with the scene it comes from so it can never read as intrinsic.
+      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {} })),
     };
   },
   checkStory: (story) => {
@@ -139,15 +156,7 @@ export const HOST: ServerHost = {
         issues: result.error.issues.map(i => ({ path: i.path.join(".") || "story", message: i.message })),
       };
     }
-    const parsed = result.data;
-    const warnings: string[] = [];
-    if (!parsed.premise.trim()) warnings.push("Premise is empty — there is nothing to write.");
-    if (!parsed.characters.length) warnings.push("No characters defined — the writer would have nobody to consult.");
-    for (const [i, s] of parsed.scenes.entries()) {
-      if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
-    }
-    warnings.push(...characterCardWarnings(parsed));
-    return { ok: true, warnings };
+    return { ok: true, warnings: storyWarnings(result.data) };
   },
   saveStory: async (dir, story) => {
     // Validate first
@@ -156,23 +165,21 @@ export const HOST: ServerHost = {
       return { ok: false, reason: "validation failed" };
     }
     const parsed = check.data;
-    if (!parsed.premise.trim()) return { ok: false, reason: "Premise is empty — there is nothing to write." };
-    if (!parsed.characters.length) return { ok: false, reason: "No characters defined — the writer would have nobody to consult." };
+    if (!parsed.premise.trim()) return { ok: false, reason: EMPTY_PREMISE };
+    if (!parsed.characters.length) return { ok: false, reason: NO_CHARACTERS };
 
-    // Guard: run must not be in flight (already checked by route, but double-check)
-    if (LIVE.running) return { ok: false, reason: "a run is in flight", status: 409 };
+    // Guard: nothing else may be reading or writing this story (route already checked; double-check)
+    const blocked = storyWriteBlocked();
+    if (blocked) return { ok: false, reason: blocked, status: 409 };
 
     const w = await persistStoryJson(dir, parsed);
     if (!w.ok) return { ok: false, reason: w.reason };
 
-    const warnings: string[] = [];
-    for (const [i, s] of parsed.scenes.entries()) {
-      if (!s.question) warnings.push(`Scene ${i + 1} has no question — the writer decides alone when the scene is done`);
-    }
-    return { ok: true, warnings };
+    return { ok: true, warnings: storyWarnings(parsed) };
   },
   discardScene: async (dir, n) => {
-    if (LIVE.running) return { ok: false, reason: "a run is in flight", status: 409 };
+    const blocked = storyWriteBlocked();
+    if (blocked) return { ok: false, reason: blocked, status: 409 };
     const loaded = await loadStoryJson(dir);
     if (!loaded.ok) return { ok: false, reason: `story.json does not load: ${loaded.error}` };
     const parsed = loaded.story;

@@ -12,10 +12,14 @@ that alters what a route serves.
       1,100 tokens each. At 10,000 preparing chapter 3 refuses even now that the worked example is
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
-- [ ] `npm run checkgui` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
-      browser-loaded, not part of the TS build — so a plain syntax error there (an `await` outside
-      `async` broke every screen on 2026-08-21, `6dc7047`) ships silently otherwise: ES module
-      linking fails for the whole viewer and every page renders as the bare shell, nothing in `#page`.
+- [ ] `npm run lint` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
+      browser-loaded, not part of the TS build — so what breaks there ships silently otherwise: a
+      plain syntax error (an `await` outside `async` broke every screen on 2026-08-21, `6dc7047`)
+      fails ES module linking for the whole viewer, and every page renders as the bare shell with
+      nothing in `#page`. ESLint parses all of those modules and resolves names across them, so it
+      also catches what the per-file `node --check` it replaced could not see: a name used but never
+      imported (`loadStories` in `story-page.js` threw a `ReferenceError` on every chapter discard
+      until the first lint run found it), and imports nothing references any more.
 - [ ] Start the app browser-driven — no story argument, or the picker never hands over to the GUI:
 
 ```bash
@@ -43,7 +47,7 @@ Rules for new work:
   `reaction.`, `timeline.`, `agents.`, `cast.`, `charcard.`, `runended.`).
 
 In the browser console, `[...document.querySelectorAll("[data-tid]")]` lists everything locatable;
-a CSS selector like `[data-tid="live.consult"][data-seq="3"] .attempt[data-n="1"]` pins one element.
+a CSS selector like `[data-tid="prose.consult"][data-seq="3"] .attempt[data-n="1"]` pins one element.
 
 **Locator mode** makes this a click instead of a query: press **ctrl/⌘+shift+L** anywhere (or load a
 page with `?locators=1` on its hash — note `syncHash()` drops unknown params on the next navigation,
@@ -52,7 +56,7 @@ its locator; clicking copies the full string to the clipboard and swallows the c
 a button is never pressing it:
 
 ```
-#/read?dir=the-final-meal&id=r7 :: prose.consult[seq=3] > consult.attempt[n=2]
+#/read?dir=<story>&id=r7 :: prose.consult[seq=3] > consult.attempt[n=2]
 ```
 
 The chain is built from the tid ancestors outward-in, each with its instance key folded in as
@@ -72,21 +76,40 @@ Reload on any such URL: the same spot comes back. That is the check.
 
 ## Order matters — read this before clicking anything
 
-`MAX_RUNS` is 3, so writing a run destroys the oldest retained one in that story. Where a check below
-depends on a *particular* retained run existing, it says so and comes first.
+`MAX_RUNS` is 10, so writing a run eventually destroys the oldest retained one in that story. Where a
+check below depends on a *particular* retained run existing, it says so and comes first.
 
 The `unattributed` case in section 1 went this way on 2026-08-20: the last run predating chapter
 numbers rotated out, and every run written since carries one. That branch of the grouping is
 unreachable in practice and cannot be re-checked live.
 
+## Pick your stories — do this before section 1
+
+`stories/` is the author's own content and is gitignored, so **this list never names a story**: every
+story it once named has since been deleted, taking a third of the pass with it. The checks below
+refer to stories by the role they have to play. Find today's cast first:
+
+```bash
+for d in stories/*/; do n=$(basename "$d"); echo "$n | scenes=$(node -p "JSON.parse(require('fs').readFileSync('$d/story.json','utf8')).scenes?.length??1") | chapters=[$(ls "$d/chapters" 2>/dev/null | grep -c json)] | runs=$(ls -d "$d"/out/*/ 2>/dev/null | wc -l)"; done
+```
+
+- **THE SERIAL** — two or more scenes and at least one written chapter. Sections 2, 4, 5, 9 and 10
+  run on it. **A story with two or more *written* chapters is what sections 1 and 5 want**; if none
+  exists, section 2 creates one by writing the next chapter, so run section 2 before them.
+- **THE SINGLETON** — one scene, two or more retained runs. Section 1's flat-list check needs it.
+- **THE BLANK** — no written chapters, for section 10's empty-reader check. If every story on disk
+  has one, make a throwaway: copy any `story.json` into `stories/scratch/` and leave it unrun.
+
+Where a check needs more than the role gives it, it says so and offers the skip.
+
 ## 1. Runs grouped by chapter — no run needed
 
-Shelf → `the-final-meal` → the *previous runs* list at the bottom.
+Shelf → **THE SERIAL** → the *previous runs* list at the bottom.
 
 Run IDs rotate, so read the truth off disk rather than trusting a list written here:
 
 ```bash
-for r in stories/the-final-meal/out/*/; do echo -n "$(basename $r) "; grep -o '"chapter":[0-9]*' "$r/writing-log.jsonl" | tail -1; done
+for r in stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o '"chapter":[0-9]*' "$r/writing-log.jsonl" | tail -1; done
 ```
 
 - [ ] Every run that command prints appears on the page, under a label matching the chapter it printed.
@@ -94,30 +117,36 @@ for r in stories/the-final-meal/out/*/; do echo -n "$(basename $r) "; grep -o '"
       scene list above them. A run the command shows no chapter for belongs under **unattributed**, last.
 - [ ] Clicking any of them still opens the read tab with that run loaded — the grouping nests the
       buttons one level deeper, so this is what proves the wiring survived it.
-- [ ] Now open a single-scene story (`doorway`, 3 runs, or `three-in-a-cupboard`, 4).
-      **No labels, flat list, exactly as before.** One group is not a grouping.
+- [ ] Now open **THE SINGLETON**. **No labels, flat list, exactly as before.** One group is not a
+      grouping. A SERIAL whose runs all sit in one chapter reads the same way, so if the grouped
+      check above had nothing to group, this one proves nothing either — write a second chapter
+      (section 2) and come back.
 
 *If labels are missing everywhere:* `RunSummary.chapter` is not reaching the story card.
 *If a single-scene story shows a label:* the one-group flat fallback is wrong.
 
 ## 2. Writing the chapter you asked for — the one that matters most
 
-On `the-final-meal`, click **write chapter 2** (chapter 2 exists, so this is a rewrite; that is fine,
-the point is which chapter the click selects).
+On **THE SERIAL**. Call `W` its last written chapter and `U` the next unwritten one. Both halves of
+this section matter: the rewrite confirm needs `W`, and everything after it needs the run to be for
+the chapter the click actually named.
 
-- [ ] **A written chapter asks first.** The click raises a confirm naming chapter 2 as a rewrite.
-      Cancel it: nothing is sent, the shelf stays put. Click again and accept.
+- [ ] **A written chapter asks first.** Click **write chapter W**. The click raises a confirm naming
+      chapter W as a rewrite. Cancel it: nothing is sent, the shelf stays put.
 
   Only a confirmed rewrite sends `replace`, and `chapters/` is the durable record, so the run
   refuses to start without it. The refusal is what covers a story list this page read before the
   chapter existed: leave the shelf open, write a chapter from another shell
-  (`npx tsx story-writer.ts stories/<story> --chapter=N`), then start that same chapter from the
+  (`npx tsx story-writer.ts stories/<story> --chapter=n`), then start that same chapter from the
   still-open page. No confirm is offered — the page does not know it exists — and the run must be
-  refused with `chapter N is already written` rather than overwriting it silently.
+  refused with `chapter n is already written` rather than overwriting it silently.
 
-- [ ] **Check the terminal, not the screen.** The run header must read `chapter 2 of 2`.
+- [ ] Now click **write chapter U** — unwritten, so no confirm — and let that be the run the rest of
+      this section follows.
 
-  If it reads `chapter 1 of 2`, `data-chapter` is not reaching `/select` and every per-chapter action
+- [ ] **Check the terminal, not the screen.** The run header must name chapter `U`, not chapter 1.
+
+  If it names the wrong chapter, `data-chapter` is not reaching `/select` and every per-chapter action
   in the viewer is decorative. Nothing else in this list matters until that is fixed.
 
 - [ ] While it runs, from another shell — this is the new `RunMeta`, which is what lets a browser
@@ -127,26 +156,28 @@ the point is which chapter the click selects).
 curl -s http://localhost:8080/run
 ```
 
-      The `run` object must carry `"chapter":2` and `"chapters":2`.
+      The `run` object's `chapter` must be `U`, and `chapters` the story's scene count.
 
 - [ ] Reload the browser mid-run. It reattaches to the running scene rather than showing an idle
       screen.
-- [ ] Let it finish. `stories/the-final-meal/chapters/2.json` now exists and is a byte-for-byte copy
-      of `stories/the-final-meal/story.json`. That snapshot is what section 5 needs.
+- [ ] Let it finish. `chapters/U.json` now exists under that story and is a byte-for-byte copy of its
+      `story.json`. That snapshot is what section 5 needs, and this run is what gives sections 1 and 5
+      a second written chapter to work with.
 
 ## 3. Reading accepted prose
 
-Still on `the-final-meal`, on a written chapter's row.
+Still on **THE SERIAL**, on a written chapter's row.
 
 - [ ] **read** opens the prose inline and the button becomes **close**.
 - [ ] **close** collapses it again.
 - [ ] Open chapter 1's prose, go back to the shelf, open another story: its chapter rows must not be
-      showing chapter 1's text. *This needs a second story with a written chapter — no other story has
-      one today, so either write one first or skip this and note it as unchecked.*
+      showing chapter 1's text. *Needs a second story with a written chapter; if only one story on
+      disk has one, write one first or record this as unchecked.*
 
 ## 4. The handoff
 
-`the-final-meal` story page → **prepare chapter 3**.
+**THE SERIAL**'s story page → **prepare chapter P**, where `P` is the one after `U`, the chapter
+section 2 wrote. (`P` has to be a scene the story does not have yet — that is what the handoff is for.)
 
 - [ ] No "preparing chapter 0" flashes at any point.
 - [ ] The opening round completes. If it refuses, the message names both numbers — "this round needs
@@ -155,38 +186,40 @@ Still on `the-final-meal`, on a written chapter's row.
       trigger this and compare N against a run of the same story before commit `8f1ea70`.)*
 - [ ] **Chapters written.** Under the proposed chapter, expect a `chapters written` list: one
       `✓ ch N · place · NNN words` row per accepted chapter (a brief "counting words…" first while the
-      counts fetch), closed by a `· ch 3 — being prepared` row. The word counts match the prose on
+      counts fetch), closed by a `· ch P — being prepared` row. The word counts match the prose on
       disk, and the list does not reappear-and-recount on every refinement round.
 - [ ] **History guard.** Tell the architect something like *"change scene 1's question to whether the
       cook ever intended to serve it"*. Expect the edit reported as **ignored**, reading
       `scene_1.question — chapter 1 is already written`, and expect the round to still apply everything
       else it proposed. It is an ignored edit, not an error.
 - [ ] **Accept.** No stale flash on accept. `story.json` is rewritten, and the story page now shows a
-      scene 3 row offering to write chapter 3.
-- [ ] **Discard the unwritten chapter.** On that same scene 3 row (accepted but not yet written), a
-      red **discard chapter 3** button sits beside **write chapter 3**. It appears only on the last
+      scene `P` row offering to write chapter `P`.
+- [ ] **Discard the unwritten chapter.** On that same scene `P` row (accepted but not yet written), a
+      red **discard chapter P** button sits beside **write chapter P**. It appears only on the last
       scene while unwritten — written chapters and any earlier scene have none. Click it, confirm the
-      dialog, and the scene 3 row disappears; the row for the last *written* chapter is untouched, and
-      **prepare chapter 3** can add it back. The button is disabled while a run is in flight.
+      dialog, and the scene `P` row disappears; the row for the last *written* chapter is untouched,
+      and **prepare chapter P** can add it back. The button is disabled while a run is in flight.
 - [ ] **Try again panel.** Unload the architect's model in LM Studio, then open a handoff. Expect a
       panel offering to retry, not a dead screen. Reload the model afterwards.
 
 ## 5. Drift warning — needs section 2 done first
 
-Only chapters written *after* snapshots existed can be checked; `the-final-meal`'s chapter 1 predates
-them and must stay quiet forever.
+Drift is detected by comparing a chapter's prose against the `chapters/<n>.json` snapshot taken when
+it was written, so only chapters that *have* one can be checked. Any chapter written before snapshots
+existed stays quiet forever — check `ls stories/<THE SERIAL>/chapters/` and use a chapter that has a
+`.json` beside its `.md`. Call it `S` — the chapter section 2 wrote is always one.
 
-- [ ] Hand-edit `stories/the-final-meal/story.json`, changing scene 2's `question`.
-- [ ] Open the handoff. Expect a warning on the panel: `chapter 2's prose was written from a different
+- [ ] Hand-edit that story's `story.json`, changing scene `S`'s `question`.
+- [ ] Open the handoff. Expect a warning on the panel: `chapter S's prose was written from a different
       scene definition (question)`.
-- [ ] Nothing is said about chapter 1 — it has no `chapters/1.json` to compare against.
+- [ ] A chapter with no `chapters/<n>.json` draws no warning — there is nothing to compare it to.
 - [ ] The warning does not block the handoff. Revising your own story is legitimate; the engine says
       so rather than undoing it.
 - [ ] Put the question back.
 
 ## 6. Story editor
 
-Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and click **edit story**).
+Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click **edit story**).
 
 - [ ] **Load.** The editor shows metadata, scenes, characters, facts, config and models sections.
 - [ ] **Sections are collapsible.** Metadata and scenes open by default; config, models and facts start closed.
@@ -197,6 +230,17 @@ Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and clic
 - [ ] **Dirty guard.** With unsaved changes, click **back to story**. A `confirm()` dialog warns about unsaved changes. Cancel stays on the editor; confirm navigates away.
 - [ ] **Dirty guard — browser close.** With unsaved changes, close the tab. The browser fires `beforeunload` with a confirmation. (Hard to automate; verify once.)
 - [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
+- [ ] **Reach editor.** In a scene's "Reach" textarea, add one line per grant, `NAME: thing :: meaning`
+      (e.g. `AURA: cameras :: perceiving through the lobby cameras`). Save, reopen the editor, confirm
+      the line survived. Delete the line and save — it is gone. A line with no colon is silently
+      dropped from the draft; a name that matches no character warns at load, not here.
+- [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
+      chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
+      still there, labelled by scene everywhere it shows.
+- [ ] **Reach never reads as intrinsic.** Open the live character sheet (§12) for a story whose
+      scenes carry reach: each grant appears as its own accent-coloured tag naming its scene
+      (`⇢ cameras · scene N`), separate from skills (`+…`) and restrictions (`no …`), and never as a
+      `+skill` on the same card.
 - [ ] **Character editor.** Change a character's persona, knows, or goal. Set a belief, an impulse, and one or two voice lines (one per line in the voice box). Add a skill. Verify after save.
 - [ ] **Character card warnings.** Clear a character's belief, impulse, and voice. After ~400ms `/story/check` shows the three "has no …" warnings; refilling them clears them again.
 - [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
@@ -204,6 +248,8 @@ Open `http://localhost:8080/#/edit?dir=the-final-meal` (or open a story and clic
 - [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
 - [ ] **Architect suggestion.** Expand "Ask the architect". Type a change request, click **suggest**. The button shows "thinking…" then returns results showing applied fields and any problems, and applied edits land in the form as unsaved changes (Save enabled). *(Requires LM Studio with the architect model loaded.)*
 - [ ] **Run-in-flight guard.** Start a run. While it runs, navigate to the editor. Expect: the editor refuses to load with "cannot edit while a run is in flight". Alternately, open a story, start its run, then in another tab open the editor — verify the 409 response.
+- [ ] **Loading-window guard.** Pick a story and immediately open the editor in another tab, before the scene starts. Expect a "cannot … while a story is loading" 409, and normal behaviour again once the run is on screen.
+- [ ] **Handoff lock.** Open the handoff panel for a story and leave it open. In another tab, try to save from the editor — expect "cannot … while a chapter handoff is open …". Abandon the handoff; the save goes through afterwards.
 - [ ] **Malformed story.** Directly open a story directory that has an unparseable `story.json` (modify one manually to be invalid JSON). The editor loads showing the error and the raw content (or `{ ok: false, error, raw }`).
 - [ ] **No concurrent edit loss.** Open the editor in two tabs. Edit in tab A, save. Tab B still shows stale data. Reload tab B — it gets the saved version.
 
@@ -280,7 +326,7 @@ Needs a run, so pair it with section 2. What the redesign changed:
 
 ## 10. The story reader
 
-No run needed, and nothing here destroys one, so this can go anywhere in the pass. `the-final-meal`
+No run needed, and nothing here destroys one, so this can go anywhere in the pass. **THE SERIAL**'s
 story page → **read story**. The button only appears once a story has a written chapter.
 
 - [ ] **It opens.** Every written chapter under its own `chapter N` divider, in numeric order, as
@@ -294,16 +340,14 @@ story page → **read story**. The button only appears once a story has a writte
 - [ ] **The saved-run view is untouched.** Open a retained run from the read tab, note which run it
       is, then open the reader and come back. `#/read?dir=&id=` still opens that run, still labelled —
       the reader must not have cleared it.
-- [ ] **Empty story.** Open the reader on a story with no written chapters, e.g. by hand at
-      `#/readstory?dir=doorway`. Expect *no chapters written yet*, not a blank page or a spinner that
-      never stops.
-- [ ] **A chapter that will not load.** Temporarily rename one of `stories/the-final-meal/chapters/`'s
-      prose files and reopen the reader. That chapter's slot says *could not load*; **the others still
+- [ ] **Empty story.** Open the reader on **THE BLANK** by hand at `#/readstory?dir=<THE BLANK>`.
+      Expect *no chapters written yet*, not a blank page or a spinner that never stops.
+- [ ] **A chapter that will not load.** Temporarily rename one of THE SERIAL's `chapters/*.md` prose
+      files and reopen the reader. That chapter's slot says *could not load*; **the others still
       render**. One bad chapter must not blank the story. Put the file back.
 - [ ] **Switching stories.** Open the reader on one story, go back, open it on another: the second
       must never show the first one's prose under the second one's title, not even for a frame. *Needs
-      a second story with a written chapter — see the note in section 3; write one first or record
-      this as unchecked.*
+      a second story with a written chapter — see the note in section 3.*
 - [ ] **Narrow the window below 900px.** The prose column reflows and stays readable.
 
 ## 11. Story-wide search
@@ -334,6 +378,10 @@ Needs a run, so pair it with section 2. A read-only panel in the live rail.
       restrictions; this panel shows `knows`, `goal`, `belief`, `impulse` and the quoted voice lines
       too — proof it is the `/cast` fetch, not the
       `scene_start` names. (Pick a story whose characters have a non-empty `knows`.)
+- [ ] **Reach shows per scene, labelled.** On a story whose scene carries a `reach` grant, the
+      character it names gets an accent-coloured `⇢ name · scene N` tag with a tooltip explaining it
+      is available only through where they are standing here — visibly distinct from both `+skill`
+      and `no restriction`, never merged into either list.
 - [ ] **Read-only.** No inputs, no buttons, nothing to click — it is for the human reviewing what a
       consult was working from, never an edit surface.
 - [ ] **Live only.** Switch to the read tab: no cast panel there. It belongs to a running scene.
@@ -387,6 +435,14 @@ a *new* story folder — so it can go anywhere in the pass.
       *cast*, then *settings*, *technical*, and *scene*, ticking each passed gate. House style and run
       settings appear in a highlighted current-stage section at the top of the proposal as their gates
       land; the earlier stages remain below it. The button is gone at the *scene* gate.
+- [ ] **The cast gate can refuse.** Approving *cast* with a cast whose restrictions do not bite on the
+      tension (easiest: refine the cast until nobody has a restriction, then approve) comes back as a
+      judgement card headed **the cast gate**, not a red failure line — it names what would need a
+      restriction and says *approve again to overrule this*. The checklist pointer stays on *cast* and
+      no next stage appears. The approve button becomes **approve anyway →** in the warning colour;
+      clicking it within 8 seconds passes the gate, and waiting longer than that returns it to
+      **approve & continue →**. Refine instead of overruling and the button reverts once the round
+      lands, so an armed override never carries to a later gate.
 - [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
       to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
       Answering re-runs that stage.
@@ -395,10 +451,20 @@ a *new* story folder — so it can go anywhere in the pass.
 - [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no checklist**,
       sidebar walk *one-shot*.
 - [ ] **Edit in full.** The sidebar's **edit in full →** opens the schema editor on the same draft;
-      a change there is reflected on the proposal card when you come **back to interview**.
+      a change there is reflected on the proposal card when you come **back to interview**. Change a
+      field there — clear a character's restrictions, say — and **confirm and write** stays enabled:
+      the draft the editor validates is a story, not a spec view, and the first edit is what triggers
+      the first check. If something ever does invalidate it, the reason renders above the button
+      rather than leaving it dead with nothing said.
 - [ ] **Accept.** The sidebar's **accept & choose folder** opens the folder step in the main column
       (**write story.json →**). On success the run starts and the page follows to the live screen.
       Accepting over unsent text or a `problems` flag takes a confirming second click.
+- [ ] **The folder step says what is taken, before the click.** Type the name of a story that already
+      exists: the step says *stories/&lt;slug&gt; already exists — pick another name* and **write
+      story.json →** goes disabled, updating as you type without the caret jumping. Type a name that
+      slugifies to something different (`Bay 4 — Hatches!`) and it previews *this lands in
+      stories/bay-4-hatches* instead. Two stories built from one premise get the same title and so
+      the same slug, which is how this is hit in practice.
 - [ ] **Abandon** (second click) drops the session and returns to the shelf.
 - [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
       server, not the tab.

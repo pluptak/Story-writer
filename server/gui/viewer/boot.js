@@ -7,8 +7,8 @@ import { tryHttp, loadDeepLinkedRun } from "./sse.js";
 // ---- boot ---------------------------------------------------------------
 export async function boot() {
   // Sub-page deep links (&block=, &modal=) are read before anything loads, so whichever flow this
-  // boot takes lands with them still pending -- pages.js's settle picks them up once the target
-  // exists on screen.
+  // boot takes lands with them pending -- pages.js's settle picks them up once the target exists
+  // on screen.
   const p = parseHashParams();
   if (p.get("block")) APP.focusSeq = Number(p.get("block"));
   if (p.get("modal")) APP.modalWant = p.get("modal");

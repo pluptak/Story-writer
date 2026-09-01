@@ -14,7 +14,7 @@ import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
 import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
-import type { ScaffoldSession, NextChapterSession, ScaffoldRound } from "../engine/architect.ts";
+import type { ScaffoldSession, NextChapterSession } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson } from "../engine/story-schema.ts";
@@ -55,14 +55,15 @@ export interface ServerHost {
     ok: false; error: string; raw?: object
   }>;
   /** A story's full authored cast for the live screen's read-only character sheet. Same load and
-   *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted. On a
-   *  story that will not parse, returns `{ ok:false, error }`. */
+   *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted.
+   *  `scenes[].reach` is the per-scene grant, kept OUT of the characters (I4: reach is
+   *  character-in-place, never intrinsic). On a story that will not parse, returns `{ ok:false, error }`. */
   fullCast(dir: string): Promise<{
     ok: true; characters: {
       name: string; persona: string; knows: string; goal: string;
       belief: string; impulse: string; voice: string[];
       skills: { text: string; meaning: string }[]; restrictions: string[];
-    }[];
+    }[]; scenes?: { n: number; reach: Record<string, string[]> }[];
   } | {
     ok: false; error: string;
   }>;
@@ -109,10 +110,20 @@ async function serveFile(res: ServerResponse, url: URL, contentType: string) {
   }
 }
 
-let serverStarted = false;
-/** Start the viewer's HTTP server once: static GUI files, SSE at /events, and dispatch to the route modules. */
-export function startServer(port: number, host: ServerHost, bindAddr: string = "127.0.0.1") {
-  if (serverStarted) return; serverStarted = true;
+/** A started viewer's HTTP server. `close()` ends every SSE client, stops the keep-alive ping,
+ *  and frees the port — after which a fresh `startServer` may bind again. */
+export interface ServerHandle {
+  /** Resolves with the port actually bound — the requested one, or the ephemeral port when 0 was
+   *  asked for. Never resolves if the bind failed. */
+  bound: Promise<number>;
+  close(): Promise<void>;
+}
+
+let started: { handle: ServerHandle } | null = null;
+/** Start the viewer's HTTP server once: static GUI files, SSE at /events, and dispatch to the route
+ *  modules. Idempotent — every call returns the same handle until it is closed. */
+export function startServer(port: number, host: ServerHost, bindAddr: string = "127.0.0.1"): ServerHandle {
+  if (started) return started.handle;
   LIVE.port = port;
   const viewerPath = new URL("./gui/viewer.html", import.meta.url);
   const viewerCssPath = new URL("./gui/viewer.css", import.meta.url);
@@ -154,8 +165,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         json(res, 200, {
           run: LIVE.meta, awaitingContinue: LIVE.awaitingContinue, events: liveHistory.length,
           running: LIVE.running, stopping: RUN.stopped && LIVE.running, where: LIVE.where,
-          picking: LIVE.awaitingPick, armed: LIVE.readerArmed, paused: LIVE.paused,
-          pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
+          picking: LIVE.awaitingPick, loading: LIVE.loading, armed: LIVE.readerArmed,
+          paused: LIVE.paused, pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
           interactive: LIVE.interactive,
         });
 
@@ -212,12 +223,33 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
     }
   });
 
-  server.on("error", (e: NodeJS.ErrnoException) => {
-    console.error(`\n${C.red}Could not start the viewer on port ${port}: ${e.message}${C.reset}`);
-    console.error(`${C.dim}Another run may already be serving. Try --port=${port + 1}.${C.reset}`);
+  const bound = new Promise<number>((resolve, reject) => {
+    server.listen(port, bindAddr, () => {
+      const a = server.address();
+      const bound = typeof a === "object" && a !== null ? a.port : port;
+      console.log(`\n${C.bold}▶ live viewer: http://localhost:${bound}/${C.reset}\n`);
+      resolve(bound);
+    });
+    server.on("error", (e: NodeJS.ErrnoException) => {
+      console.error(`\n${C.red}Could not start the viewer on port ${port}: ${e.message}${C.reset}`);
+      console.error(`${C.dim}Another run may already be serving. Try --port=${port + 1}.${C.reset}`);
+      // A no-op once the bind has landed (a resolved promise ignores reject); before it, the caller
+      // must not be left waiting on a port that never opened.
+      reject(e);
+    });
   });
-  server.listen(port, bindAddr, () => {
-    console.log(`\n${C.bold}▶ live viewer: http://localhost:${port}/${C.reset}\n`);
-  });
-  setInterval(() => { for (const c of sseClients) { try { c.write(": ping\n\n"); } catch {} } }, 15000);
+  const ping = setInterval(() => { for (const c of sseClients) { try { c.write(": ping\n\n"); } catch {} } }, 15000);
+
+  const handle: ServerHandle = {
+    bound,
+    close: () => new Promise<void>(resolve => {
+      clearInterval(ping);
+      for (const c of sseClients) { try { (c as ServerResponse).end(); } catch { } }
+      sseClients.clear();
+      server.close(() => { started = null; resolve(); });
+      server.closeIdleConnections();
+    }),
+  };
+  started = { handle };
+  return handle;
 }
