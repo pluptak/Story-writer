@@ -51,6 +51,26 @@ export const CharacterDef = z.strictObject({
 
 export type CharacterDef = z.infer<typeof CharacterDef>;
 
+/** One world event the architect authors: a fault alarm firing, an incoming call — the one category
+ *  no character decides. Two forms per beat, not one: `hold` (what the writer may not start until
+ *  told) and `fired` (what has happened). The spike proved the held form is not decoration —
+ *  pre-firing is obedience, since the scene's question names the event. `at` is the trigger, a
+ *  fraction of the chapter's word target. `memories` are per-character knowledge implanted when the
+ *  beat fires — what they always knew and had no reason to think about — keyed by character name.
+ *  `state` is authored bookkeeping the engine reads but never writes back: `void` is skipped,
+ *  `pending`/`fired` both arm the beat for a fresh run (re-running a chapter re-fires its beat);
+ *  only the handoff or the owner ever writes state. */
+export const TimelineDef = z.strictObject({
+  chapter: z.number().int().min(1),
+  hold: z.string().min(1),
+  fired: z.string().min(1),
+  at: z.number().min(0).max(1).default(0.45),
+  memories: z.record(z.string(), z.string()).default({}),
+  state: z.enum(["pending", "fired", "void"]).default("pending"),
+});
+
+export type TimelineDef = z.infer<typeof TimelineDef>;
+
 /** How much reasoning each agent uses: writer, character, and the summarizer. */
 export const ThinkingConfig = z.strictObject({
   writer: thinkLevel.default("low"),
@@ -95,6 +115,10 @@ export const StoryJson = z.strictObject({
   writerStyle: z.string().default(""),
   /** World truths known to anyone who would know them — the writer sees these as THE FACTS. */
   facts: z.array(z.string()).default([]),
+  /** World events the architect authors, fired into the writer one at a time (PLANS.md: the world
+   *  timeline). Story-level, not per-scene: an entry carries a per-character memory map, which
+   *  SceneDef has no shape for, and story-level is what lets the handoff re-aim a stranded beat. */
+  timeline: z.array(TimelineDef).default([]),
   characters: z.array(CharacterDef).default([]),
   config: RunConfig,
   models: ModelsConfig.prefault(() => ({})),

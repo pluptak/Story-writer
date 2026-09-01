@@ -207,25 +207,24 @@ describe("writeInstruction", () => {
     assert.doesNotMatch(P.writeInstruction({ ...base, words: 50, target: 100 }), /exit/);
   });
 
-  // SPIKE (world timeline) — delete with the injection path.
   it("hands a fired world beat over as established fact, and is unchanged without one", () => {
     const plain = P.writeInstruction({ ...base, words: 50, target: 100 });
     const msg = P.writeInstruction({ ...base, words: 50, target: 100, fired: "The sounder took over." });
-    assert.match(msg, /\[WORLD] The sounder took over\. That has happened/);
+    assert.match(msg, /\[WORLD\] The sounder took over\. That has happened/);
     assert.match(msg, /nobody can decline it|nobody\s+can decline it/);
     assert.equal(P.writeInstruction({ ...base, words: 50, target: 100, fired: "" }), plain);
   });
 
-  // SPIKE (world timeline) — delete with the injection path.
   it("holds a withheld event back until it fires, and never sends both at once", () => {
     const held = P.writeInstruction({ ...base, words: 50, target: 100, hold: "the panel going into alarm" });
-    assert.match(held, /\[HOLD] the panel going into alarm -- that has NOT happened/);
-    assert.doesNotMatch(held, /\[WORLD]/);
+    assert.match(held, /\[HOLD\] the panel going into alarm -- that has NOT happened/);
+    assert.doesNotMatch(held, /\[WORLD\]/);
 
     const both = P.writeInstruction({ ...base, words: 50, target: 100, fired: "It fired.", hold: "the panel going into alarm" });
-    assert.match(both, /\[WORLD]/);
-    assert.doesNotMatch(both, /\[HOLD]/);
+    assert.match(both, /\[WORLD\]/);
+    assert.doesNotMatch(both, /\[HOLD\]/);
   });
+
 });
 
 describe("canonWants", () => {
@@ -270,6 +269,29 @@ describe("judgeRequest", () => {
   it("keeps the question and the answer alongside it", () => {
     const s = P.judgeRequest(p);
     for (const part of [p.question, "thought: t", "speech: s", "action: a"]) assert.ok(s.includes(part));
+  });
+});
+
+describe("memorySurfaced", () => {
+  it("renders the memory text and reads as knowledge, not as news", () => {
+    const s = P.memorySurfaced("the lighthouse keeps its beam on a half-minute swing");
+    assert.match(s, /the lighthouse keeps its beam on a half-minute swing/);
+    assert.match(s, /WHAT YOU ALSO KNOW/);
+  });
+
+  it("begins with blank lines so it appends cleanly to an existing system prompt", () => {
+    const s = P.memorySurfaced("anything");
+    assert.match(s, /^\n\n/);
+  });
+});
+
+describe("memoryMarker", () => {
+  it("carries the memory and forbids narrating the act of remembering", () => {
+    const mem = "the lighthouse keeps its beam on a half-minute swing";
+    const s = P.memoryMarker(mem);
+    assert.match(s, /\[YOU REMEMBER\]/);
+    assert.match(s, new RegExp(mem));
+    assert.match(s, /do not narrate remembering it/);
   });
 });
 

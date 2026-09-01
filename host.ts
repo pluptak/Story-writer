@@ -10,7 +10,7 @@ import { splitMeaning } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
-import { directEdit, specView, characterPsychologyWarnings, type StorySpec } from "./engine/story-spec.ts";
+import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
@@ -119,6 +119,9 @@ const storyWarnings = (parsed: StoryJson): string[] => [
       .filter(who => !parsed.characters.some(c => sameName(c.name, who)))
       .map(who => `Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`),
   ]),
+  ...parsed.timeline.flatMap((beat, i) =>
+    timelineBeatProblems(`timeline beat ${i + 1}`, beat, parsed.characters.map(c => c.name), parsed.scenes)),
+  ...timelineOrderProblems(parsed.timeline),
   ...characterCardWarnings(parsed),
 ];
 

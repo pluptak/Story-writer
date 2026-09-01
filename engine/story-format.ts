@@ -6,8 +6,8 @@ import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path"
 import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
-import { StoryJson, type SceneDef, type ThinkLevel } from "./story-schema.ts";
-import { rosterNameNotACharacter, reachNotInRoster } from "./story-spec.ts";
+import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
+import { rosterNameNotACharacter, reachNotInRoster, timelineBeatProblems, timelineOrderProblems } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -36,6 +36,8 @@ export interface StoryConfig {
   scenes: SceneDef[];
   writerStyle: string;
   facts: string[];
+  /** The world-event ledger, validated at load; warnings name the beats that cannot fire. */
+  timeline: TimelineDef[];
   retries: number;
   clarifications: number;
   maxSteps: number;
@@ -127,6 +129,17 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
 
   const config = parsed.config;
 
+  // The world-event ledger: string-check each beat against the cast and the scene count. A beat is
+  // never dropped for failing these — it is authored content the owner can see and fix — so the
+  // disposition lives entirely in the warning wording (shared with the proposal path).
+  for (const [i, beat] of parsed.timeline.entries()) {
+    for (const p of timelineBeatProblems(`timeline beat ${i + 1}`, beat,
+      characters.map(c => c.name), parsed.scenes))
+      warn(p);
+  }
+  for (const p of timelineOrderProblems(parsed.timeline))
+    warn(p);
+
   return {
     dir: base,
     title: parsed.title,
@@ -134,6 +147,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     scenes: parsed.scenes,
     writerStyle: parsed.writerStyle,
     facts: parsed.facts,
+    timeline: parsed.timeline,
     retries: config.retries,
     clarifications: config.clarifications,
     maxSteps: config.maxSteps,
@@ -251,6 +265,23 @@ export async function readChapters(storyDir: string): Promise<{ n: number; text:
   for (const n of await writtenChapters(storyDir))
     chapters.push({ n, text: await readFile(joinPath(base, "chapters", `${n}.md`), "utf8") });
   return chapters;
+}
+
+/** The world events a chapter was set up for and never reached, as its run recorded them. Empty for
+ *  a chapter that had none, that spent them all, or that ran before this was written down — the
+ *  handoff treats all three the same, since there is nothing to re-aim in any of them. */
+export async function readUnfiredBeats(storyDir: string, n: number): Promise<{ beat: string; at: number }[]> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const parsed = JSON.parse(await readFile(joinPath(base, "chapters", `${n}.unfired.json`), "utf8"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((b: unknown) => ({ beat: String((b as { beat?: unknown })?.beat ?? "").trim(),
+                              at: Number((b as { at?: unknown })?.at) }))
+      .filter(b => b.beat);
+  } catch {
+    return [];
+  }
 }
 
 /** The story definition a chapter was written from, or null for a chapter written before snapshots

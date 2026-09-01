@@ -21,7 +21,7 @@ run, which is the owner's to make, batched.
 
 ## Next
 
-Three items promoted out of the sections below, in the order they should be picked up. Each is
+Two items promoted out of the sections below, in the order they should be picked up. Each is
 decidable now and has live-run evidence behind it, and each is a reason to distrust what the writer
 hands everyone else.
 
@@ -31,45 +31,15 @@ put the writer, judge, narration lint and clarifier on `gemma-4-12b-it-qat-uncen
 left the characters on `e4b`. **Retained-run rotation has since removed `14-54-12-677Z` from disk**,
 so figures cited from it are not re-derivable; everything attributed to the other three is. Two
 further `e4b` runs, `21-35-36-919Z` (control) and `22-23-22-884Z` (the first under the shipped
-sense-lint, consult gate and person clause), are item 2's evidence; both are preserved
+sense-lint, consult gate and person clause), are item 1's evidence; both are preserved
 under `stories/doorway/experiments/` with the runs they are measured against.
 
 That model split is why the order is what it is. Raising the author-side model fixed or nearly fixed
-all three on its own — the fourth run finished in 13 steps with no degenerate questions, no
+both on its own — the fourth run finished in 13 steps with no degenerate questions, no
 person drift and no repetition — while the prose sense-lint's three holes, which led this list until
 they shipped, appeared on the page in both models: the one thing capability did not buy.
 
-### 1. An accepted piece can repeat what is already on the page
-
-Draft #2 of the doorway run re-emitted draft #1 **verbatim** — 386 identical characters, the whole
-opening paragraph — and appended one new sentence. Both were accepted and both were appended, so the
-scene opens with the same paragraph twice. Draft #3 then repeated Riven's `"Just delivering
-something…"` line from draft #2. Nothing between an accepted draft and the append to `scene.md`
-compares the new piece against the tail of the page.
-
-The writer restating is model behaviour; the page corruption is not, and this is the cheapest of
-these to close because it needs no model call.
-
-**Evidence since:** the class is intermittent rather than model-bound. It appeared in the first two
-runs (386 and 311 characters) and in neither of the last two — including run three, which was the
-same `e4b` model throughout. Run four left one 54-character repeat, a phrase rather than a paragraph.
-So a better author model is not the fix, but the defect is rarer than the first two runs implied, and
-that argues for the cheap guard rather than against it.
-
-Two decisions the plan has to make:
-
-- **Leaf home.** A new module in `engine/quote-lint.ts`'s shape — no engine dependencies, one pure
-  function — rather than a branch inside the scene loop.
-- **Threshold and event.** A verbatim prefix is the easy case; near-verbatim needs a similarity
-  measure, and `quote-lint.ts:94` is the precedent in this repo (Dice coefficient ≥ 0.8). If it emits
-  an event at all, it inherits the same fold-or-case question `narration_quote_flag` is still open
-  on — decide it here rather than adding a second event nothing renders.
-
-**Done when** an accepted piece that repeats the page's tail is stripped or refused before the
-append, the threshold is chosen with the doorway 386-char case and quote-lint's 0.8 as the two
-reference points, and the event decision is made rather than deferred.
-
-### 2. Was the person clause the thing that cleaned the page, or was the run clean anyway?
+### 1. Was the person clause the thing that cleaned the page, or was the run clean anyway?
 
 The clause shipped (`prompts/writer.ts`, the POV line): person is the house style's to set, never
 the consult rhythm's. The first `e4b` run under it (`22-23-22-884Z`) had a clean page and clean
@@ -89,13 +59,13 @@ drifted, a different character each time: run one's HALE is `they` for the whole
 clean both times, so the stress is the cast size, not the model — two runs is still not a verdict,
 but it is no longer one.
 
-### 3. A scene has no representation of its own question being answered
+### 2. A scene has no representation of its own question being answered
 
 The doorway run ended `done: false`, at 64 steps against a `maxSteps` of 24 (four `budget` grants)
 and 933 words against a 700 target. Its question — "Does Riven get through the door before Merritt
 decides what to do about them?" — was answered at the midpoint: door open, satchel handed over,
 ledger signed. Everything after is epilogue, and in it Riven is consulted four more times about how
-fast to walk away while Merritt is asked five times whether to stand up. Item 2's person drift lives
+fast to walk away while Merritt is asked five times whether to stand up. Item 1's person drift lives
 **entirely** inside that epilogue, which is why this is ordered last: some of its evidence is not
 independent.
 
@@ -132,12 +102,25 @@ scene's question having been answered.** `scene_done` is the writer's to declare
 budget grants are spent against word count and step count, neither of which knows what the scene was
 for. Whatever the budget policy becomes, that absence is the thing it answers.
 
-**The world timeline** below is the candidate answer, and it reaches the same absence from the other
-side: it asks what keeps a scene under pressure toward its question rather than what should happen
-once the question is spent. Neither is decidable without the other, so whichever is picked up first
-settles the representation both need.
+**Half of that absence is now filled, as a measurement.** The done judge
+([`Judge.MD`](Judge.MD)) reads the page back against the scene's question when the writer declares
+it over and logs `done_flagged` when it is not settled there. **Unmeasured, and now worth watching:
+whether it is too lenient.** It has twice passed an `alarm-corridor` ending that reads as undecided
+— the most recent closes with Hale reaching for the ledger and Oduya shielding it — without
+flagging. Both are defensible as the question answered *no*, which the judge is explicitly told
+counts, but a judge that never flags anything is not an instrument. Nobody has yet read a run where
+it fired. What it does not do is act: it gated
+once, and the refusal was a nudge nobody could satisfy — told its question was unanswered, the writer
+wrote four more steps of the same deadlock, never declared done again, and ran out its budget,
+turning a bad ending into no ending. A deadlock breaks when a character chooses differently, which
+is never the writer's to write, so the refusal named a lever the writer does not hold. Re-arm it as
+a gate when a refusal can arrive with one.
 
-**Done when** — deliberately open. Do not start this one until 1 and 2 have shipped and a fresh
+**The world timeline** below is the candidate for that lever, and it reaches the same absence from
+the other side: it asks what keeps a scene under pressure toward its question rather than what should
+happen once the question is spent. The done judge is the instrument either one is measured with.
+
+**Done when** — deliberately open. Do not start this one until the item above is settled and a fresh
 `e4b` run has been read, since both change what its evidence looks like and only `e4b` still
 produces the failure.
 
@@ -146,11 +129,27 @@ produces the failure.
 Something is demonstrably wrong and the fix is known or nearly known. The split is by what verifies
 it: a code defect falls to `npx tsc --noEmit` and `npm test`, a prompt defect needs a live run.
 
-**In Next:** item 1, an accepted piece repeating what is already on the page.
-
 ### In code
 
-The first four are one chain, in dependency order — the attribution hint has to be worth trusting
+- **A character is written out of the scene and never declared gone.** Across six `alarm-*` runs the
+  writer emitted `exit` **zero** times, including a run where it narrated Tibbs leaving across seven
+  pieces and thirteen steps — *"Tibbs pushes off the wall and moves toward the exit"* through to
+  *"Tibbs is gone."* — while the loop kept Tibbs in `active`, kept consulting them, and kept naming
+  them in the neglect nudge from a stairwell they had already left. The departure is the problem: it
+  is gradual, so there is never one piece the writer would recognise as *the* exit, and nagging
+  harder about the field fights that. `exit_refused` has also never fired, so nothing in the record
+  distinguishes "declared and refused" from "never declared".
+
+  Partly addressed: the neglect nudge now offers the exit as its second reading (`52c0649`) — "X has
+  gone unconsulted" meant only *you forgot them* when it can equally mean *they left*. **That half is
+  unverified**, because it renders only alongside the nudge and the same commit correctly stops the
+  nudge firing in the four-hander that would have exercised it. Either give it a second carrier or
+  accept it is decoration.
+
+  Why it matters beyond tidiness: a POV exit ends the chapter, so an undeclared one silently costs
+  the loop its ending. One `alarm-wing` run had HALE walk downstairs and the scene ran on to the cap.
+
+The next four are one chain, in dependency order — the attribution hint has to be worth trusting
 before the match can be made to use it.
 
 - **The quote lint attributes a speaker by looking backwards only.** `attribute()` scans the 120
@@ -191,13 +190,6 @@ before the match can be made to use it.
   mechanical half then flags as fabricated, spending the scene's one redraft on a false positive.
   Grant `felt` into the mechanical ledger — after the two grant paths are made to agree about which
   replies carry it.
-- **`narration_quote_flag` reaches no reader.** The event is emitted in `writeScene` and typed in
-  `RunEvent`, but the viewer's event switch handles only `narration_flag`, so its `quote` and
-  `character` fields are dropped on arrival. Nothing is lost to the author today, because
-  `narration_flag` follows immediately carrying the same `why` — which is exactly why this went
-  unnoticed. Either the viewer grows a case for it (a `GUI-CHECKLIST.md` pass, and the grouping
-  question of whether it renders beside or instead of the flag that follows), or the event is
-  deleted and its two fields fold into `narration_flag`. Deciding which is the whole of the work.
 - **`sceneDrift` does not compare `reach`.** The snapshot-desync warning that guards the handoff
   compares place, question, pov, length and roster — but not the field the capability layer added,
   so a written chapter whose `reach` was hand-edited afterwards re-authors silently and the warning
@@ -253,7 +245,7 @@ Each has live scaffold evidence and a candidate fix; all four need a run to conf
 The next action is reading a run, not writing code. These are the owner's, batched. Each names what
 would settle it, and several gate work in the sections below.
 
-**In Next:** item 2. **The open-beat experiment** below is also here in kind — its whole
+**In Next:** item 1. **The open-beat experiment** below is also here in kind — its whole
 remaining cost is one more stage-3 run.
 
 - **The question gates now guard only the judge's re-ask, and that path is unmeasured.** Since
@@ -319,7 +311,7 @@ remaining cost is one more stage-3 run.
   aloud, and one invented escalation voiced through Wren. The texture reading holds, and the
   mechanical half now catches the whole class without a machine-label false positive among them.
   The Wren case cuts the other way too: the redraft that removed the fabrication removed the
-  scene's only escalation with it (see Next item 3).
+  scene's only escalation with it (see Next item 2).
 
   The rerun reproduced the acceptance shape live in these stories: the redraft itself fabricated
   ("Better move it now,"), the second flag came back `retried: true`, and the piece was accepted
@@ -439,7 +431,7 @@ unshipped, so a revert has to undo those passages too.**
 The engine permits something it should not, or has no representation for something it needs, and the
 fix is not decided. Nothing here should be built before its question is answered.
 
-**In Next:** item 3, a scene having no representation of its own question being answered.
+**In Next:** item 2, a scene having no representation of its own question being answered.
 
 - **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
   each. The round refuses with the numbers rather than letting the model return nothing, so a long
@@ -511,10 +503,14 @@ below: **The world timeline**.
 
 ## The world timeline
 
-**Proposed, nothing built.** The architect authors a timeline of **world events** — a fault alarm
-firing, an incoming call, the thing in the dark reaching the door — and an author-side agent fires
-them into the writer one at a time, revising what remains when a character's choice makes the next
-one impossible. It exists to keep a chapter under pressure toward the question it has to answer
+**Partly shipped — everything but the repair entity is in.** The ledger, the zero-inference firing
+mechanism, the architect's world gate and the handoff's re-aim all ship; what remains is the reader
+that decides a beat was preempted, contradicted or ignored. The mechanism was spiked and measured
+first — see *What the spike established* below before designing against this. The architect authors
+a timeline of **world
+events** — a fault alarm firing, an incoming call, the thing in the dark reaching the door — and an
+author-side agent fires them into the writer one at a time, revising what remains when a character's
+choice makes the next one impossible. It exists to keep a chapter under pressure toward the question it has to answer
 **without telling the writer the answer**, which is the fork every previous attempt at story
 direction has been impaled on: a writer given no destination stagnates, and a writer given the
 destination stops protecting who knows what.
@@ -602,45 +598,135 @@ still live and under pressure*, never *are we on the planned path*. The outcome 
 obligation the handoff carries. The timeline is the pressure that makes it likely, not the rail that
 guarantees it.
 
+### What the spike established (2026-08-29 → 09-01, deleted in `1d18577`)
+
+Four env-gated experiments ran on `alarm-corridor` (duo) and `alarm-wing` (four-hander), then were
+removed. The code is recoverable from `ad670c6` and `6704279`; what it bought is below.
+
+**Injection works, and withholding is half of it.** A beat handed to the writer as established fact
+— *this happened, nobody chose it, nobody can decline it, write it as already true* — reaches the
+page every time it fired. But injection alone is nearly redundant: the writer already fires the
+event unprompted in line one, because the scene's `question` names it, so pre-firing is obedience
+rather than error. The `[HOLD]` half — naming what the writer may not start until told — is what
+made the beat an event rather than a setting. **Both halves are load-bearing and neither is
+optional.**
+
+**A memory lands, hides, and changes reasoning without being quoted.** A per-character fact
+implanted at the moment the beat fires — a `knows` entry with a trigger, what they always knew and
+had no reason to think about — surfaced in three of four character-instances as a visible shift in
+their own `thought` field, with the wording never appearing in the prose or in their speech. HALE
+went from *"I need Oduya to help stabilize it through the door"* to *"this isn't about paperwork;
+the panel fault needs immediate attention"*; ODUYA went from *"the ledger must accurately record"*
+to *"my name is tied to the failure"*. It goes in `Agent.system`, not history: history is trimmed
+into a rolling digest and a memory summarized away mid-scene is a bug. `fork()` copies `system`, so
+a retry keeps it without learning it was a retry.
+
+**Why the alarm was inert before memories.** Read from `story.json`, needing no run: the two
+characters the scene's question turns on had nothing in `knows` the event could attach to — HALE
+holds the contract, the cage key and the ferry; ODUYA holds the paperwork, the log and head office.
+Neither held a consequence for ignoring a siren. Worse, both `impulse` fields are authored to
+entrench under pressure (*get more precise about the timetable*; *get slower and more procedural*),
+so an event carrying pressure and no stake **tightens** a deadlock rather than breaking it.
+
+**Both memory misfires were authoring, not plumbing**, and both are constraints on the architect:
+
+- *A memory about liability attaches to whatever the character already fears, not the cost you
+  meant.* ODUYA's named exposure in the log; it was written about the building standing occupied and
+  was read as exposure for granting an exception — so ODUYA got more obstructive, the opposite of the
+  intent. A memory must name its specific cost, not a general liability.
+- *A memory that contradicts its own beat loses to the beat.* HALE's said the cage stays shut while a
+  zone is in fault; the beat said the magnetic lock released and the door stands open. HALE reasoned
+  entirely from the open door and showed no uptake at all — the one instance of four with none. **A
+  beat and its memories are one authoring act and must agree about the world.**
+
+**What the spike could not establish, and no successor should claim without more runs:** anything
+about pacing or termination. Step counts swung 12→24 on the duo and 14→24 on the four-hander with
+the code path *unchanged*. Single-run comparisons do not survive that variance. Four runs were also
+wasted on a placeholder beat (`<same beat>` pasted literally from a command template), which is its
+own lesson about handing over run commands with holes in them.
+
 ### Open decisions
 
-- **Where the timeline lives.** Story-level `timeline[]` whose entries name the chapter they are
-  aimed at, or per-scene `beats[]` on `SceneDef`. Story-level is what makes a stranded beat re-aimable
-  by the handoff and matches what the architect would actually be authoring — a storyline, not one
-  scene's furniture; per-scene is the smaller schema change and matches `SceneDef`'s existing shape.
-- **What it costs per step.** The narration lint is the precedent for one call per piece, but this
-  would be a second. The cheaper shapes are firing only at beat boundaries (after a consult resolves)
-  or every N pieces, at the cost of a slower reaction to a choice that voids a beat.
-- **History or none.** Judge-shaped (fresh per call, `0.3`, reads the ledger) or clarifier-shaped (one
-  per scene, remembers what it settled). What it fires becomes true for the rest of the scene, which
-  argues clarifier; consistency argues judge. Fresh-per-call is the better default *if* the ledger is
-  genuinely the memory — which is what the one-ledger decision above is for.
-- **Who marks a beat landed**, the same call or a separate check. See `alarm-wing`.
-- **A world event that speaks needs a grant.** An incoming call has a voice on it, and
+- **~~Where the timeline lives.~~ Story-level `timeline[]`.** Settled by the memories: an entry is
+  per-(event, character), so it carries a map of memories beside the beat and hold text, which
+  `SceneDef` has no shape for. Story-level is also what lets the handoff re-aim a stranded beat.
+- **~~What it costs per step.~~ Nothing.** Firing, holding and implanting need no model call at all —
+  the spike ran on a fixed fractional trigger with zero inference. Only *repair* needs a model, and
+  repair is rare. This kills the per-step cost concern and means a working timeline ships before any
+  agent exists.
+- **Who decides a beat landed** — still open, and now open on both halves. "Landed" meant only *the
+  writer wrote it*; it never meant *it changed a decision*, and those came apart in every run. The
+  *wrote it* half looked mechanical and is not — see block 1 below for the measurements that killed
+  the bigram check. The *changed a decision* half no mechanical check can reach at all; the
+  `done_flagged` verdict from the done judge ([`Judge.MD`](Judge.MD)) is the closest instrument the
+  engine has, but it reads the scene's question, not the beat.
+- **History or none**, for the repair entity. Unchanged: judge-shaped (fresh, `0.3`) or
+  clarifier-shaped (one per scene, remembers). Now a smaller question, since the entity only handles
+  repair.
+- **A world event that speaks needs a grant.** Unchanged. An incoming call has a voice on it, and
   [`engine/quote-lint.ts`](engine/quote-lint.ts) matches every quoted line against the granted ledger.
-  A fired beat carrying dialogue must reach that ledger or the lint will flag the writer for rendering
-  precisely what it was handed — the same trap the promote path already solves by being processed just
+  A fired beat carrying dialogue must reach that ledger or the lint flags the writer for rendering
+  precisely what it was handed — the trap the promote path already solves by being processed just
   after the lint.
 
 ### Blocks
 
-1. **The ledger and the injection path, no model.** Schema, loading, and a beat rendered into
-   `[WRITE]` as established fact, fired on a fixed step trigger. Measures the only thing worth knowing
-   first — whether an injected event lands at all — against `alarm-wing`, and needs no entity.
-2. **The entity.** Fire/hold per boundary, given the page tail and the ledger.
-3. **Landing and the four repairs.**
-4. **The architect authors the timeline**, and the handoff re-aims stranded beats — which composes
-   with the chapter-summary step in [`PLANS-handoff.md`](PLANS-handoff.md), since a summary is already
-   the "what happened" representation a re-aim would read.
-5. **Docs and viewer.** `Architect.MD` for authoring, `Writer.MD` for what the writer receives,
-   `GUI-SPEC.md` for any new event.
+Only the repair entity is left. Everything else in this feature has shipped and its behaviour has
+moved to the document that owns it: the ledger and the schema to [`Architect.MD`](Architect.MD), what
+the writer receives to [`Writer.MD`](Writer.MD), what a memory is to
+[`Character.MD`](Character.MD), and the events to [`GUI-SPEC.md`](GUI-SPEC.md). What ships without it
+is a held-then-fired beat carrying stakes on a fixed trigger, authored by the architect's world gate
+and re-aimed by the handoff when a chapter never reaches it.
+
+**Landing, and the four repairs.** The entity, and the first model call in this feature:
+preempted / contradicted / fired-but-did-not-land / stranded. Only the last of those is handled
+today, and mechanically: a beat the scene never reached is recorded as `beat_stranded` and the
+handoff is asked to re-aim or void it. The other three need a reader.
+
+**A mechanical landing check was built and removed — do not rebuild it the same way.** It scored
+character-bigram Dice between the fired text and every window of the piece the injection asked
+for, at a threshold of `0.8` borrowed from quote-lint's near-verbatim precedent. Measured against
+the `alarm-wing` spike run, the piece that faithfully rendered the beat scores **0.73** — below
+the shipped threshold, so a clean landing read as a failure — while pieces with nothing to do
+with the beat score **0.49–0.64**. The whole dynamic range is 0.49–0.73 and the boundary would
+have to sit in the ~0.09 gap between one true positive and the worst false positive, fitted to a
+single event. Character bigrams have a high floor on any two English passages; that is fine for
+quote-lint, whose true positive is a *copied* string scoring ~1.0, and useless for a world beat,
+which is *rendered*. Content-word coverage of the beat separated better on the same run (0.43 for
+the true landing against 0.00–0.33) but is equally uncalibrated on n=1. Either metric needs
+several beats across several runs before it decides anything, and the model may simply be the
+right instrument here.
+
+**The escalation it drove carried a defect worth not repeating.** A beat awaiting its check and a
+beat that has *failed* one are different states, and the loop conflated them: any turn where the
+writer answered with a consult and no prose — legal, and common — drew the escalated injection,
+*"You were told last turn and the piece did not carry it"*, when there had been no piece. Whatever
+re-injects a beat must key on a check that ran and failed, never on one that has not run yet.
+
+The repairs have no live evidence behind them yet: no run has produced a choice that voids a beat.
+That is why this is last, and why building it against imagined breakage would repeat the landing
+check's mistake.
 
 ### Done when
 
-An `alarm-wing`-shaped run where the event lands: the scene terminates `done: true` near target with
-the alarm having forced a decision about the wing, rather than staying a background chime for the
-whole chapter. The `alarm-corridor` duo control (`done: true` at 17 steps, +9%) must not regress —
-a timeline that helps a four-hander and wrecks a two-hander is a pacing crutch, not a fix.
+**Not a step count.** The variance above makes any single-run pacing comparison meaningless, and the
+old criterion (`alarm-wing` terminates near target, duo control does not regress) was written before
+that was known. What replaces it:
+
+- ~~**The mechanism, per run and cheap to check:**~~ **Met** (`alarm-corridor`, 2026-09-01, one beat
+  authored into `story.json`, no environment variables): steps 1–5 carry no alarm word at all, the
+  beat fires into step 6 and the alarm appears exactly there, both memories implant, and neither
+  memory's wording reaches the prose. The scene closed `done: true` at 14 steps, 737 words (+5%),
+  nothing flagged and no answer owed.
+- **The effect, and it needs several runs per condition:** characters who received a memory reason
+  differently after it lands than before — read from their own `thought` fields, not from whether
+  they mention the event. That is the measurement that separates a beat that landed from a beat that
+  mattered, and it is the only one that distinguishes this feature from scenery with a volume knob.
+  One instance of each so far, in the same run: ODUYA's memory visibly redirected their reasoning
+  for two replies before their authored `impulse` reasserted; HALE's did not land at all. Both
+  readings, and the constraints drawn from them, are in [`Architect.MD`](Architect.MD).
+- **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
+  question rather than at the planned path. Without this the entity is a rail.
 
 ## Polish and cost
 
@@ -651,6 +737,15 @@ No defect and no decision owed: smaller quality work, prompt cost, and coverage.
   no longer carries it (`buildArchitect(d, false)`) and the staged walk embeds each stage's fields
   inline, so only `mode: "oneshot"` still pays — a whole-story proposal has no story yet to
   demonstrate the format with. Whether that path can drop or shrink the example is what is left.
+
+  **And it now carries the world-event rules too.** `TIMELINE_FIELDS` is ~888 estimated tokens and
+  `ARCHITECT_FORMAT` went from ~3,217 to ~4,105 with it — 28% growth on every one-shot prompt, for a
+  field the block itself says is usually `[]`. It is shared with the staged world gate rather than
+  duplicated, so the cost is paid once in source; the question is whether the one-shot path should
+  pay it at runtime. The cheap alternative is a short block there (what a world event is, the field
+  shapes, "usually empty") with the four memory rules left to the staged gate — at the price that a
+  beat authored in one-shot mode is authored without the rules that stop it misfiring. Not decided:
+  nobody has yet read a one-shot proposal that produced a beat.
 - **The story editor has no view of the session's tension sentence.** It steers the cast and scene
   stages but lives only in the conversation, so an author editing the story afterwards cannot see
   what the cast was built to serve.

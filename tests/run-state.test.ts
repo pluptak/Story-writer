@@ -350,8 +350,20 @@ describe("a scene that never ends", () => {
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
     ENGINE.stream = false;   // the non-streaming completion is the simpler shape to script
+    // Distinct beats, cycled: the repeat guard strips a piece that re-emits the page's tail, so a
+    // writer that sends the identical prose every turn never accumulates words and the hard cap
+    // could never fire. Four beats against a two-piece tail window means no piece ever repeats
+    // what the page just ended with.
+    const beats = [
+      "The corridor lights stutter and the cold finds its way through every seam.",
+      "Somewhere below, a door slams and the pipes answer with a knock.",
+      "Hale counts the seconds between the alarm's pulses and does not like the number.",
+      "The ledger under his arm has grown heavy as a paving stone.",
+    ];
+    let beat = 0;
     globalThis.fetch = (async () => new Response(JSON.stringify({
-      choices: [{ message: { content: JSON.stringify({ prose: "word ".repeat(25).trim(), scene_done: false }) } }],
+      choices: [{ message: { content: JSON.stringify({
+        prose: beats[beat++ % beats.length], scene_done: false }) } }],
     }))) as any;
 
     armRun();
@@ -372,6 +384,188 @@ describe("a scene that never ends", () => {
       resetLive();
     }
   });
+});
+
+// -- THE WORLD TIMELINE -------------------------------------------------------
+describe("the world timeline in the loop", () => {
+  const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
+
+  /** Writer sites share one reply queue; the narration lint and the done judge get fixed clean
+   *  verdicts. Same routing shape the narration-lint fixtures use. */
+  function scriptedFetch(writerReplies: Record<string, unknown>[]) {
+    let writerCall = 0;
+    const nextWriter = () => writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.done": { ok: true },
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
+    return fetchMock;
+  }
+
+  it("holds the beat before its trigger, fires it at the trigger as already true, and implants its memories into present characters", async () => {
+    const sc = await sc0();
+    const sd = { ...sc.scenes[0], length: 40, roster: [] };
+    const hold = "the fault alarm sounding";
+    const firedText = "the fault alarm sounds";
+    const rivenMem = "the wing is insured on occupancy, and her name is on the policy";
+    const timeline = [{
+      chapter: 1, hold, fired: firedText, at: 0.5,
+      memories: { RIVEN: rivenMem, NOBODY: "keyed to nobody — never implanted" },
+      state: "pending" as const,
+    }];
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+    const agents = new Map(sc.characters.map(c => [c.name.toLowerCase(), newCharacterAgent(c, sd.place, "low" as const)]));
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = scriptedFetch([
+      { prose: "word ".repeat(25).trim(), scene_done: false },   // words 0 -> hold
+      { prose: "another piece", scene_done: true },              // words 25 >= 20 -> fires
+    ]);
+    armRun();
+    try {
+      const r = await writeScene({
+        scene: sd, chapter: 1, characters: sc.characters, agents: agents,
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log, timeline,
+      });
+
+      assert.equal(r.done, true);
+
+      const beats = events.filter(e => e.t === "world_beat") as any[];
+      assert.equal(beats.length, 1, "fires once");
+      assert.equal(beats[0].beat, firedText);
+      assert.equal(beats[0].hold, hold, "the event records the held form it stood down");
+      assert.equal(beats[0].step, 2);
+
+      const memories = events.filter(e => e.t === "memory_surfaced") as any[];
+      assert.deepEqual(memories.map(m => m.character), ["RIVEN"],
+        "implanted for the one present character the beat names; NOBODY is skipped quietly");
+
+      const riven = agents.get("riven")!;
+      assert.match(riven.system, /WHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT: /);
+      assert.ok(riven.system.includes(rivenMem), "the memory rides in system, where trimming cannot summarize it away");
+      const markers = riven.history.filter(m => m.content.includes("[YOU REMEMBER]"));
+      assert.equal(markers.length, 1, "one trimmable marker of the moment, not a memory in history");
+
+      const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"));
+      assert.match(instructions[0].content, /\[HOLD\] the fault alarm sounding -- that has NOT happened/);
+      assert.doesNotMatch(instructions[0].content, /\[WORLD\]/);
+      assert.match(instructions[1].content, /\[WORLD\] the fault alarm sounds That has happened/);
+      assert.doesNotMatch(instructions[1].content, /\[HOLD\]/, "the hold stands down the moment the beat fires");
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+
+  it("records a beat whose trigger the scene never reached, and says nothing about other chapters", async () => {
+    // The scene closes at 3 words against a 40-word target, so a beat set at 0.9 never fires. Only
+    // a firing leaves a mark otherwise, so silence would read exactly like a beat that had landed.
+    const { events } = await runWith(
+      [{ ...beatAt(0.9), fired: "the roof gives way" },
+       { chapter: 2, hold: "h2", fired: "a beat for the next chapter", at: 0, memories: {}, state: "pending" as const },
+       { chapter: 1, hold: "h3", fired: "a beat nobody wants", at: 0.9, memories: {}, state: "void" as const }],
+      [{ prose: "a quiet piece", scene_done: true }]);
+
+    const stranded = events.filter(e => e.t === "beat_stranded") as any[];
+    assert.equal(stranded.length, 1, "this chapter's unfired beat only — not chapter 2's, not a void one");
+    assert.equal(stranded[0].beat, "the roof gives way");
+    assert.equal(stranded[0].at, 0.9);
+    assert.ok(!events.some(e => e.t === "world_beat"), "and nothing fired");
+  });
+
+  it("records nothing stranded when the beat fired", async () => {
+    const { events } = await runWith([beatAt(0)], [{ prose: "a quiet piece", scene_done: true }]);
+    assert.ok(events.some(e => e.t === "world_beat"));
+    assert.ok(!events.some(e => e.t === "beat_stranded"));
+  });
+
+  it("does nothing at all — no hold, no events — for beats aimed at another chapter", async () => {
+    const sc = await sc0();
+    const sd = { ...sc.scenes[0], length: 40, roster: [] };
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+    const timeline = [{
+      chapter: 2, hold: "held elsewhere", fired: "fired elsewhere", at: 0,
+      memories: { RIVEN: "never" }, state: "pending" as const,
+    }];
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = scriptedFetch([{ prose: "a quiet piece", scene_done: true }]);
+    armRun();
+    try {
+      await writeScene({
+        scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log, timeline,
+      });
+      assert.ok(!events.some(e => e.t === "world_beat" || e.t === "memory_surfaced"));
+      const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"));
+      assert.ok(instructions.every(i => !i.content.includes("[HOLD]") && !i.content.includes("[WORLD]")));
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+
+  const filler = "word ".repeat(25).trim();
+  const beatAt = (at: number) => ({
+    chapter: 1, hold: "the fault alarm sounding", fired: "the fault alarm sounds", at,
+    memories: {}, state: "pending" as const,
+  });
+  const runWith = async (
+    timeline: { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
+    replies: Record<string, unknown>[],
+  ) => {
+    const sc = await sc0();
+    const sd = { ...sc.scenes[0], length: 40, roster: [] };
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = scriptedFetch(replies);
+    armRun();
+    try {
+      const r = await writeScene({
+        scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log, timeline,
+      });
+      const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"))
+        .map(m => m.content as string);
+      return { r, events, instructions };
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  };
+
 });
 
 // -- THE NARRATION LINT -------------------------------------------------------
@@ -440,10 +634,8 @@ describe("the narration lint", () => {
       assert.match(flags[0].why, /unmatched quotation: "Not tonight,"/);
       assert.match(flags[0].why, /CANNOT sight/);
 
-      const quoteFlags = events.filter(e => e.t === "narration_quote_flag") as any[];
-      assert.equal(quoteFlags.length, 1);
-      assert.equal(quoteFlags[0].quote, "Not tonight,");
-
+      // The quotation finding renders once — through the joined narration_flag why above. There is
+      // no separate quotation event: it reached no reader that the flag did not.
       const drafts = events.filter(e => e.t === "draft") as any[];
       assert.equal(drafts.length, 1, "the flagged draft never got its own draft event");
       assert.equal(drafts[0].prose, cleanProse);
@@ -603,6 +795,108 @@ describe("the narration lint", () => {
     assert.ok(!events.some(e => e.t === "lint_failed"), "and it is not an outage either");
     assert.equal(events.filter(e => e.t === "schema_mismatch").length, 1,
       "one record of the shape problem is what distinguishes it from a clean pass");
+  });
+});
+
+// -- THE REPEAT GUARD ---------------------------------------------------------
+// A piece that opens by re-emitting the page's tail is stripped back to its new text before the
+// append (engine/repeat-lint.ts) — the doorway run appended a verbatim repeat of its opening
+// paragraph and then one new sentence, so the scene opened with the paragraph twice.
+describe("the repeat guard", () => {
+  const P = "The fault alarm kept ringing over the empty wing while the cold worked through every "
+          + "seam. Hale stood with the ledger under his arm and did not move.";
+
+  async function runRepeat(opts: { writerReplies: Record<string, unknown>[] }) {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const events: RunEvent[] = [];
+    let writerCall = 0;
+    const nextWriter = () => opts.writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.done": { ok: true },
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = fetchMock;
+
+    armRun();
+    try {
+      const r = await quiet(() => writeScene({
+        scene: sc.scenes[0], chapter: 1, characters: sc.characters, agents: new Map(),
+        premise: sc.premise, writerStyle: sc.writerStyle,
+        writerModel: sc.models.writer, summaryModel: sc.models.summary,
+        thinking: { writer: "low", summary: sc.thinking.summary },
+        maxSteps: 10, maxProseWords: sc.maxProseWords,
+        retries: sc.retries, clarifications: sc.clarifications,
+        dir: sc.dir, log: (e: RunEvent) => events.push(e),
+      }));
+      // LIVE.writer is captured before the finally's resetLive() clears it.
+      return { r, events, writer: LIVE.writer };
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  }
+
+  it("strips a piece that re-emits the tail verbatim and appends only the new sentence", async () => {
+    const { r, events, writer } = await runRepeat({
+      writerReplies: [
+        { prose: P, scene_done: false },
+        { prose: P + " Then the corridor lights died.", scene_done: true },
+      ],
+    });
+
+    assert.deepEqual(r.prose, [P, "Then the corridor lights died."],
+      "the paragraph is on the page once, and the new sentence after it");
+    const strips = events.filter(e => e.t === "repeat_strip") as any[];
+    assert.equal(strips.length, 1);
+    assert.equal(strips[0].whole, false, "the piece had a new sentence, and it survived");
+    assert.ok(strips[0].chars > 0 && strips[0].words > 0);
+    // The writer's own history records what was accepted, not what was attempted — its next draft
+    // reads a page that carries the paragraph once.
+    const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
+    assert.ok(!heard.includes("did not move. Then the corridor lights died."),
+      "the unstripped repeat never entered the writer's history");
+    assert.match(heard, /"prose":"Then the corridor lights died\."/);
+  });
+
+  it("counts a wholly-repeated piece as a turn that wrote nothing", async () => {
+    const { r, events } = await runRepeat({
+      writerReplies: [
+        { prose: P, scene_done: false },
+        { prose: P, scene_done: false },   // wholly repeated: nothing new
+        { prose: "Then the corridor lights died.", scene_done: true },
+      ],
+    });
+
+    const strips = events.filter(e => e.t === "repeat_strip") as any[];
+    assert.equal(strips.length, 1);
+    assert.equal(strips[0].whole, true, "the entire piece was already on the page");
+    assert.deepEqual(r.prose, [P, "Then the corridor lights died."],
+      "the repeated draft never reached the page");
+    const drafts = events.filter(e => e.t === "draft") as any[];
+    assert.equal(drafts.filter(d => d.prose).length, 2,
+      "two pieces of prose were written, not three");
+    assert.equal(r.done, true);
+  });
+
+  it("leaves an ordinary continuation untouched", async () => {
+    const second = "The corridor lights died all the same, and Hale counted the seconds.";
+    const { r, events } = await runRepeat({
+      writerReplies: [
+        { prose: P, scene_done: false },
+        { prose: second, scene_done: true },
+      ],
+    });
+
+    assert.deepEqual(r.prose, [P, second]);
+    assert.ok(!events.some(e => e.t === "repeat_strip"), "no strip event on a clean continuation");
   });
 });
 

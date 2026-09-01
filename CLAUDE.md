@@ -83,7 +83,7 @@ Requires **LM Studio running locally** at `http://localhost:1234/v1` with the st
 
 The engine (everything `story-writer.ts` used to hold in one file) lives under [engine/](engine/),
 split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `warnings.ts`,
-`quote-lint.ts`, `skills.ts` and
+`quote-lint.ts`, `repeat-lint.ts`, `skills.ts` and
 `story-schema.ts` have no engine dependencies; `llm-client.ts`, `agent.ts`, `sense-lint.ts`,
 `story-format.ts` and `story-spec.ts` build on those; `preflight.ts`, `consult.ts`, `architect.ts` and `scene-loop.ts`
 build on those in turn;
@@ -105,7 +105,7 @@ way.**
 | [story-writer.ts](story-writer.ts) | the composition root: import-time engine wiring and the console entry points (`--preflight`, `--consult`) — everything else starts from `app.ts` |
 | [app.ts](app.ts) | the application layer: run setup (`startChapterRun`), the story pick (browser-driven or console), the pick → run → pick loop, and the headless bootstrap (`--headless`) with its graceful-shutdown signal |
 | [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `SERVE`/`HEADLESS`/`PORT`/`STORY_DIR`, the `flag()` reader, and the retired-flag rejection |
-| [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, and the chapter snapshot |
+| [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, the chapter snapshot, and the unfired-beat sidecar the handoff reads |
 | [run-manifest.ts](run-manifest.ts) | which engine wrote a run — a source fingerprint taken at import time (so a stale `--serve` process is caught rather than mislabelled), the git revision beside it, and `out/<id>/manifest.json` |
 | [host.ts](host.ts) | the `ServerHost` object handed to `server/server.ts`, plus its story.json read/persist helpers and the architect session factories |
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the console echo, the per-run LLM log handles, the terminal status line |
@@ -114,6 +114,7 @@ way.**
 | [engine/warnings.ts](engine/warnings.ts) | the engine's warning sink — `WARN.sink` is swapped, never `console` |
 | [engine/quote-lint.ts](engine/quote-lint.ts) | the mechanical half of the narration lint: quoted lines matched against the granted ledger, no model call |
 | [engine/sense-lint.ts](engine/sense-lint.ts) | the other mechanical half: a restricted sense narrated anyway, matched by verb against the character's own CANNOT list, no model call |
+| [engine/repeat-lint.ts](engine/repeat-lint.ts) | the repeat guard: a drafted piece that re-emits the page's tail is stripped back to its new text before the append, no model call |
 | [engine/skills.ts](engine/skills.ts) | the general skill catalog, the special-skill bible, restriction and reach resolution (I1–I5), and a story's `skills:`/`restrictions:` overrides |
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming, and `SITE_HEADER` — the call site's stable name (`writer.draft`), sent as a header so the model never sees it and a fake or a replay can tell callers apart without matching drifting prompt text |

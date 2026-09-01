@@ -297,10 +297,10 @@ ScaffoldRound =
 POST /scaffold/start    { idea, model?, mode? } → only while picking; opens a session and runs the
                                                   first proposal. `mode` picks the walk:
                                                   "staged" (the default) runs the gated checklist —
-                                                   story → cast → settings → technical → scene, an author approval
-                                                  between stages — and "oneshot" is the whole-story
-                                                  proposal. The state's `gate` names the open stage
-                                                  ("story"…"scene"), null on a one-shot session.
+                                                   story → cast → settings → technical → scene → world,
+                                                  an author approval between stages — and "oneshot" is
+                                                  the whole-story proposal. The state's `gate` names the
+                                                  open stage ("story"…"world"), null on a one-shot session.
 POST /scaffold/say      { text }           → free-text turn; may return edits, a question, or a proposal.
                                              In staged mode it refines within the open gate (back-edits
                                              to earlier stages included) or answers `pendingAsk`.
@@ -460,12 +460,15 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    was accepted unchecked
   { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
                                                     the one redraft happened or it was logged and kept.
-                                                    `why` may carry two findings joined by ". " — the
-                                                    mechanical sense check and the LLM half run together
-  { t:"narration_quote_flag"; why; quote; character }
-                                                  — the mechanical quotation check fired (no model):
-                                                    `quote` is the unmatched line, `character` the nearest
-                                                    name before it or "unknown"; the one redraft follows
+                                                    `why` may carry three findings joined by ". " —
+                                                    the two mechanical checks (quotations, restricted
+                                                    senses) and the LLM half run together
+  { t:"repeat_strip"; chars; words; whole }      — the piece opened by re-emitting the page's tail
+                                                   (engine/repeat-lint.ts, no model call); the repeated
+                                                   prefix was stripped before the append, so the draft
+                                                   event that follows carries only the new text.
+                                                   `whole` true means the entire piece was already on
+                                                   the page and nothing was written this turn
   { t:"reader_ask"; step; framing; options[] }
   { t:"reader_answer"; answer }
   { t:"model_changed"; model }
@@ -483,6 +486,16 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    `pov` true means they were POV and the chapter ends
   { t:"exit_refused"; character }                — an exit named on a reply that wrote nothing;
                                                    nobody has left and the cast is unchanged
+  { t:"world_beat"; beat; hold; step }           — a world beat injected into the `[WRITE]` as
+                                                   already true (no model call): `beat` is the event,
+                                                   `hold` the held form it stood down. Nothing
+                                                   checks that it reached the page
+  { t:"beat_stranded"; beat; at }                — the scene ended without this beat ever firing:
+                                                   its trigger was never reached. Logged at scene
+                                                   close, one per unfired beat aimed at this chapter
+  { t:"memory_surfaced"; character }             — a fired beat implanted a memory into that
+                                                   character's system prompt; the wording itself
+                                                   reaches nobody but that character
   { t:"retry_capped"; character; count }
   { t:"done_deferred" }                          — the scene was about to end — `scene_done` declared,
                                                    or the hard length cap reached without declaring

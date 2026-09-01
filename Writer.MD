@@ -187,6 +187,30 @@ regardless of what `scene_done` says — logged as `forced_end`, rendered as a n
 gets that one last reply to close on its own terms; the engine just no longer takes "not yet" for an
 answer past that point.
 
+### The world timeline
+
+A story may carry a ledger of **world events** — a fault alarm firing, an incoming call, the thing
+in the dark reaching the door. Each beat has two forms. Before its trigger (`at`, a fraction of the
+scene's word target), the `[WRITE]` instruction carries a `[HOLD]` clause: what has **not**
+happened, which the writer may not start, have already underway, or build toward as imminent. At the
+trigger, the beat's `fired` form replaces it: `[WORLD] … That has happened — nobody in this scene
+chose it and nobody can decline it. Write it as already true, on the page, in this piece.` The two
+are never sent together; a beat fires once, in authored order, and its hold stands down the moment
+it does (`engine/world-timeline.ts` decides; the loop injects). The decision needs no model call.
+
+A world event is the one category no character decides, so it is never a consult: it arrives as
+established fact inside the `[WRITE]`, the way the length budget does. A fired beat may also carry
+**memories** — per-character knowledge implanted the moment it fires (see
+[`Character.MD`](Character.MD)).
+
+**Nothing checks that the event reached the page.** A beat is injected once and the writer is
+trusted with it; if the piece ignores it, the run record says the beat fired and nothing says it
+never landed. A mechanical check was built and removed — it could not tell a faithful rendering from
+an unrelated piece — and what replaces it is the repair entity's, still unbuilt.
+
+What the ledger is for, and the repairs when a character's choice breaks it, are still
+[PLANS.md](PLANS.md)'s.
+
 ### The narration lint
 
 Every drafted piece is checked once, before it is committed to the page: did it quote a line nobody
@@ -207,6 +231,23 @@ consult's `situation` stay the model's, because neither has a list to check agai
 one redraft, so a piece carrying two findings has to report both in the same message. What the lint
 judge is shown, the verdict shapes it may return, the mechanical halves' conservatism, and why a
 check nobody made must not read as a check that passed are [`Judge.MD`](Judge.MD)'s.
+
+### The repeat guard
+
+After the lint, and just before the append, a piece that **opens by re-emitting the page's tail** is
+stripped back to its genuinely new text (`engine/repeat-lint.ts`, no model call). The recorded
+failure: the doorway run's second draft re-emitted the first — 386 identical characters, the whole
+opening paragraph — and appended one new sentence, and both were accepted, so the scene opened with
+the paragraph twice. The guard matches the piece's leading sentences against the last two pieces
+(verbatim, or near-verbatim at the same Dice ≥ 0.8 bar the quote lint uses) and strips the repeated
+prefix at a sentence boundary, declining entirely rather than cutting mid-sentence. Everything that
+records the piece records the kept text — `pieces[]`, the writer's own history, the `draft` event
+and the incremental `scene.md` — so the writer's next draft reads a page that carries the paragraph
+once. A piece that repeats the page **in full** counts as a turn that wrote nothing. What is out of
+scope: a phrase repeated mid-piece (stripping it would mangle the prose), a callback to anything
+older than the tail (legitimate prose), and an echo under eight words (a tolerated phrasing
+callback). Every strip is logged as `repeat_strip`; the guard only ever removes a prefix it is
+confident about.
 
 ### An answer is not canon until it is on the page
 
