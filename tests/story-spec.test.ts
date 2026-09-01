@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { loadStory, ROOT } from "../engine/story-format.ts";
 import { slugify } from "../engine/config-util.ts";
-import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, specView, type SceneDef } from "../engine/story-spec.ts";
+import { normalizeSpec, applyEdits, directEdit, renderStory, sceneDrift, timelineDrift, specView, type SceneDef } from "../engine/story-spec.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { quiet, quietSync } from "./helpers.ts";
 
@@ -613,6 +613,131 @@ describe("sceneDrift", () => {
   it("ignores whitespace differences in strings", () => {
     const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
     assert.deepEqual(sceneDrift(base, after), []);
+  });
+});
+
+// -- TIMELINE (the world-event ledger) ---------------------------------------
+describe("timeline", () => {
+  const base = {
+    title: "Alarm", premise: "A wing under a fault alarm.",
+    scene: { place: "the corridor", question: "Who answers the alarm?", length: 700 },
+    characters: [
+      { name: "HALE", persona: "Holds the contract.", knows: "The cage key.", belief: "Paperwork rules.", impulse: "when pressed → procedural", voice: ["Read me the log."], restrictions: ["sight"] },
+      { name: "ODUYA", persona: "Owns the ledger.", knows: "Head office.", belief: "Exceptions cost.", impulse: "when doubted → cite policy", voice: ["Sign first."] },
+    ],
+  };
+  const beat = {
+    chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds",
+    memories: { HALE: "the wing is insured on occupancy" },
+  };
+
+  it("normalizes a well-formed ledger with its defaults, and complains about nothing", () => {
+    const { spec, problems } = normalizeSpec({ ...base, timeline: [beat] });
+    assert.deepEqual(problems, []);
+    assert.equal(spec.timeline.length, 1);
+    assert.equal(spec.timeline[0].at, 0.45);
+    assert.equal(spec.timeline[0].state, "pending");
+  });
+
+  it("reports a memory keyed to nobody and a beat aimed past the last scene, keeping both", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base,
+      timeline: [{ ...beat, memories: { HAIL: "typo" }, chapter: 9 }],
+    });
+    assert.equal(spec.timeline.length, 1, "a string-checkable problem is reported, never dropped");
+    const joined = problems.join(" ");
+    assert.match(joined, /memory to "HAIL"/);
+    assert.match(joined, /chapter 9, past the story's last scene/);
+  });
+
+  it("drops a malformed beat and names the field that failed", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, timeline: [{ chapter: 1, hold: "the alarm" }, beat],
+    });
+    assert.equal(spec.timeline.length, 1, "the malformed entry costs itself, not the ledger");
+    assert.equal(spec.timeline[0].fired, beat.fired);
+    assert.match(problems.join(" "), /timeline beat 1/);
+  });
+
+  it("survives an edit round: applyEdits round-trips a ledger it has no edits for", () => {
+    const { spec } = normalizeSpec({ ...base, timeline: [beat] });
+    const r = applyEdits(spec, { edits: [{ field: "title", value: "Alarm, revised" }] });
+    assert.deepEqual(r.spec.timeline, [{ ...beat, at: 0.45, memories: beat.memories, state: "pending" }]);
+    assert.deepEqual(r.ignored, []);
+  });
+
+  it("renders into story.json, and omits the field entirely when the ledger is empty", () => {
+    const models = { default: "m" };
+    const withBeat = JSON.parse(renderStory(normalizeSpec({ ...base, timeline: [beat] }).spec, models)["story.json"]);
+    assert.deepEqual(withBeat.timeline, [{ ...beat, at: 0.45, memories: beat.memories, state: "pending" }]);
+
+    const without = JSON.parse(renderStory(normalizeSpec(base).spec, models)["story.json"]);
+    assert.equal("timeline" in without, false, "no timeline field on stories that never had one");
+  });
+
+  it("renders a ledger a load will accept — normalize and renderStory agree about the shape", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), renderStory(normalizeSpec({ ...base, timeline: [beat] }).spec, { default: "m" })["story.json"], "utf8");
+      const sc = await quiet(() => loadStory(dir));
+      assert.equal(sc.timeline.length, 1);
+      assert.equal(sc.timeline[0].hold, beat.hold);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("renders a specView the schema still accepts once the editor drops its aliases", () => {
+    const spec = normalizeSpec({ ...base, timeline: [beat] }).spec;
+    const d: any = JSON.parse(JSON.stringify(specView(spec)));
+    delete d.scene;
+    d.characters = d.characters.map((c: any) => ({
+      ...c,
+      skills: (c.skills || []).map((s: any) =>
+        typeof s === "string" ? s : [s.text, s.meaning].filter(Boolean).join(" :: ")),
+    }));
+    const r = StoryJson.safeParse(d);
+    assert.equal(r.success, true, `the editor draft must validate: ${JSON.stringify(r.error?.issues)}`);
+    assert.equal(r.success && r.data.timeline.length, 1);
+  });
+});
+
+describe("timelineDrift", () => {
+  const beat = {
+    chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds",
+    at: 0.45, memories: { HALE: "the wing is insured on occupancy" }, state: "pending" as const,
+  };
+
+  it("returns [] for identical ledgers", () => {
+    assert.deepEqual(timelineDrift([beat], [{ ...beat }]), []);
+  });
+
+  it("returns [] when both sides are empty", () => {
+    assert.deepEqual(timelineDrift([], []), []);
+  });
+
+  it("names the beat and the field that changed", () => {
+    assert.deepEqual(timelineDrift([beat], [{ ...beat, fired: "the fault alarm sounds again" }]),
+      ["beat 1 (fired form)"]);
+    assert.deepEqual(timelineDrift([beat], [{ ...beat, at: 0.5, memories: { HALE: "other" } }]),
+      ["beat 1 (trigger, memories)"]);
+  });
+
+  it("ignores state changes — bookkeeping, not what the prose was written from", () => {
+    assert.deepEqual(timelineDrift([beat], [{ ...beat, state: "void" }]), []);
+  });
+
+  it("is case-insensitive about memory keys and whitespace about values", () => {
+    assert.deepEqual(timelineDrift([beat], [{ ...beat, memories: { hale: "  the wing is insured on occupancy  " } }]), []);
+  });
+
+  it("detects an added and a removed beat positionally", () => {
+    assert.deepEqual(timelineDrift([], [beat]), ["beat 1 added"]);
+    assert.deepEqual(timelineDrift([beat], []), ["beat 1 removed"]);
+  });
+
+  it("compares each position in order, not as a set", () => {
+    const second = { ...beat, chapter: 2, hold: "the second held event", fired: "the second event lands" };
+    assert.deepEqual(timelineDrift([beat, second], [second, beat]),
+      ["beat 1 (chapter, held form, fired form)", "beat 2 (chapter, held form, fired form)"]);
   });
 });
 

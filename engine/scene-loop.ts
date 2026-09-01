@@ -5,7 +5,7 @@ import { C } from "../ansi.ts";
 import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
-import type { ThinkLevel } from "./story-schema.ts";
+import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
 import {
   consult, normalizeConsult, normalizeReactionConsult, parseVerdict, parseBatchVerdict,
   parseClarifyAnswer, parseLintVerdict, missingShape, reviseConsult,
@@ -15,6 +15,7 @@ import { type Msg } from "./llm-client.ts";
 import { resolveReach, type Skill } from "./skills.ts";
 import { lintQuotations } from "./quote-lint.ts";
 import { lintRestrictedSenses } from "./sense-lint.ts";
+import { timelineTurn } from "./world-timeline.ts";
 import { LIVE, RUN, StoppedError, sseWrite, sseClients, runState } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 
@@ -108,6 +109,8 @@ export type RunEvent =
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "exit_refused"; character: string; chapter: number }
+  | { t: "world_beat"; beat: string; hold: string; step: number; chapter: number }
+  | { t: "memory_surfaced"; character: string; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
@@ -181,6 +184,7 @@ export async function writeScene(
   dir: string, log: (e: RunEvent) => void,
   maxCharacterRetries?: number,
   facts: string[] = [],
+  timeline: TimelineDef[] = [],
 ) {
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
@@ -267,6 +271,9 @@ export async function writeScene(
   // Only a promoted reaction action joins later, like the writer's own history folding only a
   // promoted deed; a reaction's un-promoted action never becomes canon.
   const granted: { character: string; speech: string; action: string; thought?: string }[] = [];
+  // Which world beats have fired this scene, held by entry identity (world-timeline.ts). A beat
+  // fires once; its held form stands down the moment it does.
+  const beatFired = new Set<TimelineDef>();
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
@@ -399,8 +406,30 @@ export async function writeScene(
     const words = wordCount();
     const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
     const hardCap = words >= sd.length * HARD_CAP_MULT;
+    // The world timeline (PLANS.md): a held event the writer may not start, and — at the trigger —
+    // a fired event injected as already true. Zero inference; the decision is world-timeline.ts's,
+    // and the implant lands before the instruction so the consult the writer opens in response
+    // already reasons from the memory.
+    const turn = timelineTurn(timeline, chapter, words, sd.length, beatFired);
+    if (turn.fired) {
+      beatFired.add(turn.fired);
+      console.log(`\n${C.cyan}(world beat fired at step ${steps + 1}, ${words}/${sd.length} words)${C.reset}`);
+      log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, step: steps + 1, chapter });
+      for (const [name, mem] of turn.memories) {
+        const def = defOf(name);
+        if (!def || !isActive(def.name)) continue;
+        const a = agents.get(def.name.toLowerCase());
+        if (!a) continue;
+        a.system += P.memorySurfaced(mem);
+        a.hear(P.memoryMarker(mem));
+        log({ t: "memory_surfaced", character: def.name, chapter });
+        if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
+      }
+    }
     writer.hear(P.writeInstruction({
       words, target: sd.length, maxProseWords, overran, neglected, hardCap,
+      ...(turn.fired ? { fired: turn.fired.fired } : {}),
+      ...(turn.hold ? { hold: turn.hold } : {}),
     }));
     let draftRaw: string;
     try {
@@ -979,6 +1008,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
       sc.thinking, sc.maxSteps, sc.maxProseWords, sc.retries, sc.clarifications,
       sc.dir, log, sc.maxCharacterRetries,
       sc.facts,
+      sc.timeline,
     );
     return r;
   } finally {

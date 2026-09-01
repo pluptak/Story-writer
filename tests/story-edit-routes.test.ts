@@ -14,6 +14,7 @@ const DOORWAY = {
   scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]> }],
   writerStyle: "Plain sentences.",
   facts: [] as string[],
+  timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
   characters: [
     { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: [] },
     { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: ["hearing"] },
@@ -37,6 +38,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
         scenes: DOORWAY.scenes,
         writerStyle: DOORWAY.writerStyle,
         facts: DOORWAY.facts,
+        timeline: DOORWAY.timeline,
         characters: DOORWAY.characters,
         config: {},
         models: {},

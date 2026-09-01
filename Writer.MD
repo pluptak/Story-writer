@@ -187,6 +187,30 @@ regardless of what `scene_done` says — logged as `forced_end`, rendered as a n
 gets that one last reply to close on its own terms; the engine just no longer takes "not yet" for an
 answer past that point.
 
+### The world timeline
+
+A story may carry a ledger of **world events** — a fault alarm firing, an incoming call, the thing
+in the dark reaching the door. Each beat has two forms. Before its trigger (`at`, a fraction of the
+scene's word target), the `[WRITE]` instruction carries a `[HOLD]` clause: what has **not**
+happened, which the writer may not start, have already underway, or build toward as imminent. At the
+trigger, the beat's `fired` form replaces it: `[WORLD] … That has happened — nobody in this scene
+chose it and nobody can decline it. Write it as already true, on the page, in this piece.` The two
+are never sent together; a beat fires once, in authored order, and its hold stands down the moment
+it does (`engine/world-timeline.ts` decides; the loop injects). The decision needs no model call.
+
+A world event is the one category no character decides, so it is never a consult: it arrives as
+established fact inside the `[WRITE]`, the way the length budget does. A fired beat may also carry
+**memories** — per-character knowledge implanted the moment it fires (see
+[`Character.MD`](Character.MD)).
+
+**Nothing checks that the event reached the page.** A beat is injected once and the writer is
+trusted with it; if the piece ignores it, the run record says the beat fired and nothing says it
+never landed. A mechanical check was built and removed — it could not tell a faithful rendering from
+an unrelated piece — and what replaces it is the repair entity's, still unbuilt.
+
+What the ledger is for, and the repairs when a character's choice breaks it, are still
+[PLANS.md](PLANS.md)'s.
+
 ### The narration lint
 
 Every drafted piece is checked once, before it is committed to the page: did it quote a line nobody

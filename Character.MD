@@ -50,6 +50,17 @@ knows is its persona, its skills, what it knew coming in, the situation as the a
 and what it has already said in this conversation — nothing else. It is told not to invent facts
 about the world but to ask for them; its own body, memory and feelings are its to invent freely.
 
+### What can arrive mid-scene
+
+A **memory**. A world beat that fires may carry per-character knowledge — what that character always
+knew and had no reason to think about until the event happened. The memory is appended to the system
+prompt (**WHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT**), never to history: history is
+trimmed into a rolling digest, and a memory summarized away mid-scene is a bug. One history marker
+records the moment (`[YOU REMEMBER] …`) — trimmable like any other message, and the character is
+told not to narrate the remembering. `fork()` copies the system prompt, so a retried instance keeps
+the memory without learning it was a retry. The run log records that a memory surfaced and to whom;
+its wording reaches nobody but the character it belongs to.
+
 ### What it is never shown
 
 - The premise, the story-level `facts`, the writer's prose, any other character's answer.

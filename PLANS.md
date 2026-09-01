@@ -537,8 +537,9 @@ below: **The world timeline**.
 
 ## The world timeline
 
-**Proposed. Nothing shipped, but the mechanism has been spiked and measured** — see *What the spike
-established* below before designing against this. The architect authors a timeline of **world
+**Partly shipped — the ledger and the zero-inference mechanism (blocks 1–2) are in; the rest is
+proposed.** The mechanism was spiked and measured first — see *What the spike established* below
+before designing against this. The architect authors a timeline of **world
 events** — a fault alarm firing, an incoming call, the thing in the dark reaching the door — and an
 author-side agent fires them into the writer one at a time, revising what remains when a character's
 choice makes the next one impossible. It exists to keep a chapter under pressure toward the question it has to answer
@@ -685,8 +686,10 @@ own lesson about handing over run commands with holes in them.
   the spike ran on a fixed fractional trigger with zero inference. Only *repair* needs a model, and
   repair is rare. This kills the per-step cost concern and means a working timeline ships before any
   agent exists.
-- **Who decides a beat landed** — still open, and the spike sharpened why. "Landed" meant only *the
+- **Who decides a beat landed** — still open, and now open on both halves. "Landed" meant only *the
   writer wrote it*; it never meant *it changed a decision*, and those came apart in every run. The
+  *wrote it* half looked mechanical and is not — see block 1 below for the measurements that killed
+  the bigram check. The *changed a decision* half no mechanical check can reach at all; the
   `done_flagged` verdict from the done judge ([`Judge.MD`](Judge.MD)) is the closest instrument the
   engine has, but it reads the scene's question, not the beat.
 - **History or none**, for the repair entity. Unchanged: judge-shaped (fresh, `0.3`) or
@@ -700,32 +703,54 @@ own lesson about handing over run commands with holes in them.
 
 ### Blocks
 
-Ordered so each ships alone and the model-free parts land first.
+The first two shipped. What remains, ordered so each ships alone.
 
-1. **The ledger.** `timeline[]` in [`engine/story-schema.ts`](engine/story-schema.ts) and its
-   `StoryConfig` loading. One entry is: the chapter it is aimed at, its **held** form (what the writer
-   may not start), its **fired** form (what has happened), a trigger, a per-character `memories` map,
-   and a state — pending / fired / void. Two forms per beat, not one; the spike proved the held form
-   is not decoration. No behaviour, no model.
-2. **Firing, holding and implanting — still no model.** Promote the spike onto the ledger: hold until
-   the trigger, fire once, implant that entry's memories into the present cast, log `world_beat` and
-   `memory_surfaced`. Zero inference. Shippable and already evidenced.
-3. **Landing, and the four repairs.** The entity, and the first model call in this feature. Preempted
-   / contradicted / fired-but-did-not-land / stranded. Try a mechanical signal before an agent — the
-   quotation and sense lints are the precedent for a check that needs no model.
-4. **The architect authors beats and memories together**, under three constraints the spike found:
+~~1. **The ledger.**~~ Shipped: `timeline[]` in [`engine/story-schema.ts`](engine/story-schema.ts),
+loaded into `StoryConfig` (`engine/story-format.ts`) and round-tripped through `StorySpec`
+(`engine/story-spec.ts`, which also carries `timelineDrift` beside `sceneDrift`). One entry is: the
+chapter it is aimed at, its **held** form, its **fired** form, a trigger (`at`, a fraction of the
+word target), a per-character `memories` map, and a state — pending / fired / void, bookkeeping the
+engine reads and never writes.
+~~2. **Firing, holding and implanting.**~~ Shipped: `engine/world-timeline.ts` decides, the loop
+injects — hold until the trigger, fire once, implant the entry's memories into the present cast, log
+`world_beat` and `memory_surfaced`. Zero inference. What the writer receives is
+[`Writer.MD`](Writer.MD)'s, what a memory is is [`Character.MD`](Character.MD)'s, the events are
+[`GUI-SPEC.md`](GUI-SPEC.md)'s.
+1. **Landing, and the four repairs.** The entity, and the first model call in this feature:
+   preempted / contradicted / fired-but-did-not-land / stranded.
+
+   **A mechanical landing check was built and removed — do not rebuild it the same way.** It scored
+   character-bigram Dice between the fired text and every window of the piece the injection asked
+   for, at a threshold of `0.8` borrowed from quote-lint's near-verbatim precedent. Measured against
+   the `alarm-wing` spike run, the piece that faithfully rendered the beat scores **0.73** — below
+   the shipped threshold, so a clean landing read as a failure — while pieces with nothing to do
+   with the beat score **0.49–0.64**. The whole dynamic range is 0.49–0.73 and the boundary would
+   have to sit in the ~0.09 gap between one true positive and the worst false positive, fitted to a
+   single event. Character bigrams have a high floor on any two English passages; that is fine for
+   quote-lint, whose true positive is a *copied* string scoring ~1.0, and useless for a world beat,
+   which is *rendered*. Content-word coverage of the beat separated better on the same run (0.43 for
+   the true landing against 0.00–0.33) but is equally uncalibrated on n=1. Either metric needs
+   several beats across several runs before it decides anything, and the model may simply be the
+   right instrument here.
+
+   **The escalation it drove carried a defect worth not repeating.** A beat awaiting its check and a
+   beat that has *failed* one are different states, and the loop conflated them: any turn where the
+   writer answered with a consult and no prose — legal, and common — drew the escalated injection,
+   *"You were told last turn and the piece did not carry it"*, when there had been no piece. Whatever
+   re-injects a beat must key on a check that ran and failed, never on one that has not run yet.
+2. **The architect authors beats and memories together**, under three constraints the spike found:
    a memory names a specific cost rather than a liability; a memory agrees with its beat about the
    world; and the scene's `question` names stakes rather than mechanisms, or it hands the writer the
    timeline through the back door.
-5. **The handoff re-aims stranded beats.** Composes with the chapter-summary step in
+3. **The handoff re-aims stranded beats.** Composes with the chapter-summary step in
    [`PLANS-handoff.md`](PLANS-handoff.md), since a summary is already the "what happened"
    representation a re-aim would read.
-6. **Docs and viewer.** `Architect.MD` for authoring, `Writer.MD` for what the writer receives,
-   `Character.MD` for what a memory is and when it arrives, `GUI-SPEC.md` for the new events.
+4. **Docs for the above.** `Architect.MD` for authoring; the viewer's rendering of the repair
+   events, if they render differently from a plain note.
 
-Blocks 1–2 are most of the value. A held-then-fired beat carrying stakes, on a fixed trigger, is
-close to the whole ask; 3–4 exist for when a character's choice breaks the timeline, which is real
-and predicted but has not yet happened in any run.
+A held-then-fired beat carrying stakes, on a fixed trigger, is the whole shipped mechanism. The
+remaining blocks exist for when a character's choice breaks the timeline, which is real and
+predicted but has not yet happened in any run.
 
 ### Done when
 

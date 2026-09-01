@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
 import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
 import { warn as emitWarn } from "./warnings.ts";
-import { StoryJson, type SceneDef, type ThinkLevel } from "./story-schema.ts";
-import { rosterNameNotACharacter, reachNotInRoster } from "./story-spec.ts";
+import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
+import { rosterNameNotACharacter, reachNotInRoster, timelineBeatProblems } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -35,6 +35,8 @@ export interface StoryConfig {
   scenes: SceneDef[];
   writerStyle: string;
   facts: string[];
+  /** The world-event ledger, validated at load; warnings name the beats that cannot fire. */
+  timeline: TimelineDef[];
   retries: number;
   clarifications: number;
   maxSteps: number;
@@ -126,6 +128,15 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
 
   const config = parsed.config;
 
+  // The world-event ledger: string-check each beat against the cast and the scene count. A beat is
+  // never dropped for failing these — it is authored content the owner can see and fix — so the
+  // disposition lives entirely in the warning wording (shared with the proposal path).
+  for (const [i, beat] of parsed.timeline.entries()) {
+    for (const p of timelineBeatProblems(`timeline beat ${i + 1}`, beat,
+      characters.map(c => c.name), parsed.scenes.length))
+      warn(p);
+  }
+
   return {
     dir: base,
     title: parsed.title,
@@ -133,6 +144,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     scenes: parsed.scenes,
     writerStyle: parsed.writerStyle,
     facts: parsed.facts,
+    timeline: parsed.timeline,
     retries: config.retries,
     clarifications: config.clarifications,
     maxSteps: config.maxSteps,

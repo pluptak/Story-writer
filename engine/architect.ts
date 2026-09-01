@@ -10,7 +10,7 @@ import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
-import { normalizeSpec, applyEdits, renderStory, sceneDrift, type StorySpec } from "./story-spec.ts";
+import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
 import { estimateTokens } from "./llm-client.ts";
@@ -719,10 +719,17 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
     try {
       const snapshot = await readChapterSpec(dir, c.n);
       if (!snapshot) continue;
-      const drifted = sceneDrift(normalizeSpec(snapshot).spec.scenes[c.n - 1], s.spec.scenes[c.n - 1]);
+      const written = normalizeSpec(snapshot);
+      const drifted = sceneDrift(written.spec.scenes[c.n - 1], s.spec.scenes[c.n - 1]);
       if (drifted.length)
         s.problems.push(`chapter ${c.n}'s prose was written from a different scene definition `
           + `(${drifted.join(", ")})`);
+      // Same guard for the world-event ledger: a beat edited after the chapter ran would re-author
+      // silently. `state` is bookkeeping, not drift, so voiding a spent beat passes quietly.
+      const beatDrift = timelineDrift(written.spec.timeline, s.spec.timeline);
+      if (beatDrift.length)
+        s.problems.push(`chapter ${c.n}'s world-event ledger changed since it was written `
+          + `(${beatDrift.join(", ")})`);
     } catch { /* a broken snapshot must not stop the handoff opening */ }
   }
   return s;

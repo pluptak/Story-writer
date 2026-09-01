@@ -19,6 +19,8 @@ const NOTE_META = {
   done_deferred:      { tone:"warn", label:"deferred",    critical:true },
   answer_unwritten:   { tone:"bad",  label:"unwritten",   critical:true },
   narration_flag:     { tone:"warn", label:"flagged",     critical:false },
+  world_beat:         { tone:"info", label:"world",       critical:true },
+  memory_surfaced:    { tone:"info", label:"remembers",   critical:false },
 };
 
 // ---- grouping -----------------------------------------------------------
@@ -93,6 +95,10 @@ export function build(store) {
       case "narration_flag": blocks.push({ kind:"note", t:e.t, seq:e.seq,
         text: e.retried ? `narration flagged again after a redraft — ${e.why} — kept anyway`
                         : `narration flagged — ${e.why} — redrafting`, }); break;
+      case "world_beat": blocks.push({ kind:"note", t:e.t, seq:e.seq,
+        text:`the world moves — ${e.beat}` + (e.hold ? ` (it had been held: ${e.hold})` : "") }); break;
+      case "memory_surfaced": blocks.push({ kind:"note", t:e.t, seq:e.seq,
+        text:`${e.character} remembers something they always knew, now that it bears on the moment` }); break;
       case "scene_end": blocks.push({ kind:"end", seq:e.seq, ...e }); break;
     }
   }

@@ -483,6 +483,13 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    `pov` true means they were POV and the chapter ends
   { t:"exit_refused"; character }                — an exit named on a reply that wrote nothing;
                                                    nobody has left and the cast is unchanged
+  { t:"world_beat"; beat; hold; step }           — a world beat injected into the `[WRITE]` as
+                                                   already true (no model call): `beat` is the event,
+                                                   `hold` the held form it stood down. Nothing
+                                                   checks that it reached the page
+  { t:"memory_surfaced"; character }             — a fired beat implanted a memory into that
+                                                   character's system prompt; the wording itself
+                                                   reaches nobody but that character
   { t:"retry_capped"; character; count }
   { t:"done_deferred" }                          — the scene was about to end — `scene_done` declared,
                                                    or the hard length cap reached without declaring

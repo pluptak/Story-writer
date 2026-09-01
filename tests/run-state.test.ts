@@ -393,6 +393,160 @@ describe("a scene that never ends", () => {
   });
 });
 
+// -- THE WORLD TIMELINE -------------------------------------------------------
+describe("the world timeline in the loop", () => {
+  const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
+
+  /** Writer sites share one reply queue; the narration lint and the done judge get fixed clean
+   *  verdicts. Same routing shape the narration-lint fixtures use. */
+  function scriptedFetch(writerReplies: Record<string, unknown>[]) {
+    let writerCall = 0;
+    const nextWriter = () => writerReplies[writerCall++];
+    const { fetchMock } = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.done": { ok: true },
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+    });
+    return fetchMock;
+  }
+
+  it("holds the beat before its trigger, fires it at the trigger as already true, and implants its memories into present characters", async () => {
+    const sc = await sc0();
+    const sd = { ...sc.scenes[0], length: 40, roster: [] };
+    const hold = "the fault alarm sounding";
+    const firedText = "the fault alarm sounds";
+    const rivenMem = "the wing is insured on occupancy, and her name is on the policy";
+    const timeline = [{
+      chapter: 1, hold, fired: firedText, at: 0.5,
+      memories: { RIVEN: rivenMem, NOBODY: "keyed to nobody — never implanted" },
+      state: "pending" as const,
+    }];
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+    const agents = new Map(sc.characters.map(c => [c.name.toLowerCase(), newCharacterAgent(c, sd.place, "low" as const)]));
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = scriptedFetch([
+      { prose: "word ".repeat(25).trim(), scene_done: false },   // words 0 -> hold
+      { prose: "another piece", scene_done: true },              // words 25 >= 20 -> fires
+    ]);
+    armRun();
+    try {
+      const r = await writeScene(
+        sd, 1, sc.characters, agents,
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log, undefined, [], timeline,
+      );
+
+      assert.equal(r.done, true);
+
+      const beats = events.filter(e => e.t === "world_beat") as any[];
+      assert.equal(beats.length, 1, "fires once");
+      assert.equal(beats[0].beat, firedText);
+      assert.equal(beats[0].hold, hold, "the event records the held form it stood down");
+      assert.equal(beats[0].step, 2);
+
+      const memories = events.filter(e => e.t === "memory_surfaced") as any[];
+      assert.deepEqual(memories.map(m => m.character), ["RIVEN"],
+        "implanted for the one present character the beat names; NOBODY is skipped quietly");
+
+      const riven = agents.get("riven")!;
+      assert.match(riven.system, /WHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT: /);
+      assert.ok(riven.system.includes(rivenMem), "the memory rides in system, where trimming cannot summarize it away");
+      const markers = riven.history.filter(m => m.content.includes("[YOU REMEMBER]"));
+      assert.equal(markers.length, 1, "one trimmable marker of the moment, not a memory in history");
+
+      const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"));
+      assert.match(instructions[0].content, /\[HOLD\] the fault alarm sounding -- that has NOT happened/);
+      assert.doesNotMatch(instructions[0].content, /\[WORLD\]/);
+      assert.match(instructions[1].content, /\[WORLD\] the fault alarm sounds That has happened/);
+      assert.doesNotMatch(instructions[1].content, /\[HOLD\]/, "the hold stands down the moment the beat fires");
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+
+  it("does nothing at all — no hold, no events — for beats aimed at another chapter", async () => {
+    const sc = await sc0();
+    const sd = { ...sc.scenes[0], length: 40, roster: [] };
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+    const timeline = [{
+      chapter: 2, hold: "held elsewhere", fired: "fired elsewhere", at: 0,
+      memories: { RIVEN: "never" }, state: "pending" as const,
+    }];
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = scriptedFetch([{ prose: "a quiet piece", scene_done: true }]);
+    armRun();
+    try {
+      await writeScene(
+        sd, 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log, undefined, [], timeline,
+      );
+      assert.ok(!events.some(e => e.t === "world_beat" || e.t === "memory_surfaced"));
+      const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"));
+      assert.ok(instructions.every(i => !i.content.includes("[HOLD]") && !i.content.includes("[WORLD]")));
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+
+  const filler = "word ".repeat(25).trim();
+  const beatAt = (at: number) => ({
+    chapter: 1, hold: "the fault alarm sounding", fired: "the fault alarm sounds", at,
+    memories: {}, state: "pending" as const,
+  });
+  const runWith = async (
+    timeline: { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
+    replies: Record<string, unknown>[],
+  ) => {
+    const sc = await sc0();
+    const sd = { ...sc.scenes[0], length: 40, roster: [] };
+    const events: RunEvent[] = [];
+    const log = (e: RunEvent) => events.push(e);
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = scriptedFetch(replies);
+    armRun();
+    try {
+      const r = await writeScene(
+        sd, 1, sc.characters, new Map(),
+        sc.premise, sc.writerStyle, sc.models.writer, sc.models.summary,
+        { writer: "low", summary: sc.thinking.summary },
+        10, sc.maxProseWords, sc.retries, sc.clarifications,
+        sc.dir, log, undefined, [], timeline,
+      );
+      const instructions = LIVE.writer!.history.filter(m => m.role === "user" && m.content.startsWith("[WRITE]"))
+        .map(m => m.content as string);
+      return { r, events, instructions };
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  };
+
+});
+
 // -- THE NARRATION LINT -------------------------------------------------------
 describe("the narration lint", () => {
   const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
