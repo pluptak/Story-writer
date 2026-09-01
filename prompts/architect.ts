@@ -604,6 +604,7 @@ export const castAsymmetryRequest = (
 /** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one. */
 export function architectNextChapter(
   premise: string, specJson: string, chaptersSoFar: { n: number; text: string }[],
+  unfired: { n: number; beat: string; at: number }[] = [],
 ): string {
   const last = chaptersSoFar.reduce((m, c) => Math.max(m, c.n), 0);
   const next = last + 1;
@@ -646,7 +647,23 @@ ${written}
 
 [THE STORY AS IT STANDS]
 ${specJson}
+${unfired.length ? `
+[WORLD EVENTS THAT NEVER HAPPENED]
+${unfired.map(u => `  - chapter ${u.n}, set for ${u.at} of the way in: ${u.beat}`).join("\n")}
 
+These are in the ledger above, still aimed at chapters that are now written. The chapter ended
+before each one's trigger, so none of them is anywhere in the prose -- do not look for it, and do
+not treat the story as though it happened. Each is now yours to settle, and leaving it where it is
+is the one thing that does nothing: a beat aimed at a written chapter can never fire.
+
+  - Still wanted, and the next chapter is where it belongs? Re-aim it: beat_<n>.chapter, and
+    beat_<n>.at if the new scene wants it earlier or later.
+  - Overtaken by what the people actually did -- someone already left, the thing it would have
+    threatened is settled -- then it is spent. beat_<n>.state "void" keeps it in the ledger as
+    something that was considered; remove_beat drops it outright. Prefer void.
+
+Its memories go with it either way; they are the beat's, not the chapter's.
+` : ""}
 CHAPTER ${next} ITSELF. If the story above already defines a scene ${next}, re-author it in place with
 scene_${next}.place / .question / .pov / .length / .roster -- it was sketched before chapter ${last}
 existed, so it is a starting point, not a commitment. If there is no scene ${next}, add one with
@@ -680,6 +697,10 @@ Reply with edits only, and nothing else:
    scene_<n>.reach     (an object: {"NAME": ["thing :: what they can do through it"]})
     add_scene          (a whole scene object: place, question, pov, length, roster)
    remove_scene       (the scene number)
+   beat_<n>.chapter · .at · .hold · .fired · .state          (the world-event ledger; .state is
+                                                             "pending", "fired" or "void")
+   beat_<n>.memories   (an object: {"NAME": "what they have always known"} -- replaces the map)
+   remove_beat        (the beat number)
    add_fact           (value is the fact text)
    remove_fact        (value is the fact number, 1-indexed)
    fact_<n>           (value is the new fact text; replaces fact at position n)

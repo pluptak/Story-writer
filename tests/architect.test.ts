@@ -960,6 +960,37 @@ describe("openNextChapter", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
+  // The sidecar the run writes beside a chapter it could not spend all its beats in. It is the only
+  // record of a beat that never fired: nothing is in the prose, and the chapter's own snapshot says
+  // what was aimed there, not what happened.
+  it("picks up each chapter's unfired world events and carries them into the round", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    try {
+      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      for (const n of [1, 2]) await writeFile(join(dir, "chapters", `${n}.md`), `chapter ${n}\n`, "utf8");
+      await writeFile(join(dir, "chapters", "2.unfired.json"),
+        JSON.stringify([{ beat: "The sounder takes over.", at: 0.45 }]), "utf8");
+
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.deepEqual(s.unfired, [{ n: 2, beat: "The sounder takes over.", at: 0.45 }]);
+      assert.match(architectNextChapter(s.spec.premise, "{}", s.chapters, s.unfired),
+                   /chapter 2, set for 0\.45 of the way in: The sounder takes over\./);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("carries nothing when a chapter left no sidecar, and survives one that will not parse", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    try {
+      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "chapter 1\n", "utf8");
+      await writeFile(join(dir, "chapters", "1.unfired.json"), "{ not json", "utf8");
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.deepEqual(s.unfired, [], "a broken sidecar must not cost the handoff its opening");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it("leaves the worked example out of the handoff agent, which the scaffold agent still carries", async () => {
     const dir = await mkdtemp(join(tmpdir(), "handoff-"));
     try {
@@ -1029,4 +1060,46 @@ describe("the scene question names stakes, not mechanisms", () => {
       assert.match(text, /already\s+underway/);
     });
   }
+});
+
+// -- THE HANDOFF AND THE WORLD-EVENT LEDGER --------------------------------
+// A beat that never fired leaves no trace in the prose, so the architect cannot read it off the
+// chapter the way it reads everything else. It arrives as its own list or not at all.
+describe("stranded world events in the handoff", () => {
+  const CH = [{ n: 1, text: "Chapter one prose." }];
+  const beat = { n: 1, beat: "The wing evacuation sounder takes over.", at: 0.45 };
+
+  it("names each unfired beat with the chapter and trigger it was waiting on", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    assert.match(t, /\[WORLD EVENTS THAT NEVER HAPPENED]/);
+    assert.match(t, /chapter 1, set for 0\.45 of the way in: The wing evacuation sounder takes over\./);
+  });
+
+  it("tells the architect not to look for it in the prose", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    assert.match(t, /none of them is anywhere in the prose/);
+    assert.match(t, /a beat aimed at a written chapter can never fire/);
+  });
+
+  it("offers re-aim and void, and prefers void to removal", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    assert.match(t, /Re-aim it: beat_<n>\.chapter/);
+    assert.match(t, /beat_<n>\.state "void"/);
+    assert.match(t, /Prefer void\./);
+  });
+
+  it("says nothing at all when no beat was stranded", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH);
+    assert.doesNotMatch(t, /WORLD EVENTS THAT NEVER HAPPENED/);
+    assert.doesNotMatch(t, /never fire/);
+  });
+
+  it("lists the ledger's edit fields either way — a beat may be edited without being stranded", () => {
+    for (const t of [P.architectNextChapter("A depot.", "{}", CH),
+                     P.architectNextChapter("A depot.", "{}", CH, [beat])]) {
+      assert.match(t, /beat_<n>\.chapter/);
+      assert.match(t, /beat_<n>\.memories/);
+      assert.match(t, /remove_beat/);
+    }
+  });
 });

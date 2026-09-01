@@ -9,7 +9,7 @@ import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
-import { ROOT, resolveStoryDir, readChapters, readChapterSpec, type Defaults } from "./story-format.ts";
+import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
@@ -602,7 +602,11 @@ export class NextChapterSession {
   private refusedLastRound: string[] = [];
 
   constructor(public architect: Agent, public defaults: Defaults, public dir: string,
-              public spec: StorySpec, public chapters: { n: number; text: string }[]) {}
+              public spec: StorySpec, public chapters: { n: number; text: string }[],
+              /** World events a written chapter was set up for and never reached. The architect
+               *  cannot read this off the prose -- an event that never happened leaves no trace --
+               *  so it arrives as its own list rather than as something to infer. */
+              public unfired: { n: number; beat: string; at: number }[] = []) {}
 
   /** The chapter this handoff is preparing: the one after the last written. */
   get chapter(): number { return this.chapters.reduce((m, c) => Math.max(m, c.n), 0) + 1; }
@@ -659,7 +663,7 @@ export class NextChapterSession {
    *  A successful edits round is then run through the same fill-gaps/verify passes as the scaffold,
    *  targeting the scene this handoff is preparing -- never an earlier, already-written one. */
   async propose(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
-    const prompt = P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters);
+    const prompt = P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters, this.unfired);
     const info = await modelInfo();
     const short = info && contextShortfall(info.get(this.architect.model),
                                            estimateTokens(this.architect.system + prompt), ENGINE.maxTokens);
@@ -714,7 +718,10 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
     throw new Error(`No chapters written yet in ${dir} — there is nothing for the handoff to read.`);
   const raw = JSON.parse(await readFile(joinPath(resolveStoryDir(dir), "story.json"), "utf8"));
   const n = normalizeSpec(raw);
-  const s = new NextChapterSession(await buildArchitect(d, false), d, dir, n.spec, chapters);
+  const unfired: { n: number; beat: string; at: number }[] = [];
+  for (const c of chapters)
+    for (const b of await readUnfiredBeats(dir, c.n)) unfired.push({ n: c.n, ...b });
+  const s = new NextChapterSession(await buildArchitect(d, false), d, dir, n.spec, chapters, unfired);
   s.problems = n.problems;
 
   // `refuse()` keeps the architect off a written chapter's scene, but a hand edit reaches it, and

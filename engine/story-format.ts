@@ -266,6 +266,23 @@ export async function readChapters(storyDir: string): Promise<{ n: number; text:
   return chapters;
 }
 
+/** The world events a chapter was set up for and never reached, as its run recorded them. Empty for
+ *  a chapter that had none, that spent them all, or that ran before this was written down — the
+ *  handoff treats all three the same, since there is nothing to re-aim in any of them. */
+export async function readUnfiredBeats(storyDir: string, n: number): Promise<{ beat: string; at: number }[]> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const parsed = JSON.parse(await readFile(joinPath(base, "chapters", `${n}.unfired.json`), "utf8"));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((b: unknown) => ({ beat: String((b as { beat?: unknown })?.beat ?? "").trim(),
+                              at: Number((b as { at?: unknown })?.at) }))
+      .filter(b => b.beat);
+  } catch {
+    return [];
+  }
+}
+
 /** The story definition a chapter was written from, or null for a chapter written before snapshots
  *  existed (or one whose snapshot will not parse). */
 export async function readChapterSpec(storyDir: string, n: number): Promise<unknown | null> {
