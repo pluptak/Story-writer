@@ -105,7 +105,7 @@ way.**
 | [story-writer.ts](story-writer.ts) | the composition root: import-time engine wiring and the console entry points (`--preflight`, `--consult`) — everything else starts from `app.ts` |
 | [app.ts](app.ts) | the application layer: run setup (`startChapterRun`), the story pick (browser-driven or console), the pick → run → pick loop, and the headless bootstrap (`--headless`) with its graceful-shutdown signal |
 | [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `SERVE`/`HEADLESS`/`PORT`/`STORY_DIR`, the `flag()` reader, and the retired-flag rejection |
-| [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, and the chapter snapshot |
+| [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, the chapter snapshot, and the unfired-beat sidecar the handoff reads |
 | [run-manifest.ts](run-manifest.ts) | which engine wrote a run — a source fingerprint taken at import time (so a stale `--serve` process is caught rather than mislabelled), the git revision beside it, and `out/<id>/manifest.json` |
 | [host.ts](host.ts) | the `ServerHost` object handed to `server/server.ts`, plus its story.json read/persist helpers and the architect session factories |
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the console echo, the per-run LLM log handles, the terminal status line |

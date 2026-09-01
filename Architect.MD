@@ -18,9 +18,9 @@ It has two modes:
 
 - **Scaffold**: turn a rough idea into a new `story.json` through questions, a proposal, refinements,
   and an explicit accept action. The scaffold itself has two walks: **staged** — the default — runs
-  the idea through a gated checklist (story → cast → settings → technical → scene → world) where each stage is
-  proposed
-  only after the author approved the last; **oneshot** proposes the whole story in one round.
+  the idea through a gated checklist (story → cast → settings → technical → scene → world) where each
+  stage is proposed only after the author approved the last; **oneshot** proposes the whole story in
+  one round.
 - **Handoff**: run between chapters, read the accepted chapter prose, and re-author the story
   definition for the next chapter.
 
@@ -129,12 +129,29 @@ inside a scene run.
   `chapters/<n>.json`. The snapshot lives beside the prose because `out/` is rotated at `MAX_RUNS`,
   and it is a verbatim copy so it records the authored story rather than a normalized one. Failing to
   write it costs the snapshot, never the chapter. Chapter discovery still keys on `<n>.md` alone.
+- A run that ended with world events it never reached also writes `chapters/<n>.unfired.json` — the
+  beat text and the trigger it was waiting on, one entry each. It exists because nothing else can
+  answer the question: the snapshot beside it records what was *aimed* at that chapter, never what
+  happened, and an event that never fired leaves nothing in the prose to read. Written only when
+  there is something to say, and losing it costs no more than the snapshot does.
 - A stopped or incomplete run does not replace an existing accepted chapter file.
 - The handoff reads the highest numbered accepted chapter and prepares the next number.
 - The architect proposes edits; it never writes directly during a conversation.
 - Accept writes `story.json`, validates it with preflight, and restores the previous file if
   validation fails.
 - The handoff does not start a run. The user starts the prepared chapter separately.
+
+**Stranded world events.** `openNextChapter` reads every written chapter's `.unfired.json` and the
+session carries the result into the round; absent, empty and unparseable are all treated as nothing
+to re-aim. When any exist the request gains a `[WORLD EVENTS THAT NEVER HAPPENED]` block naming each
+with its chapter and trigger, and the architect is told plainly that none of them is in the prose —
+otherwise it goes looking for an event that never occurred — and that leaving one where it is does
+nothing, since a beat aimed at a written chapter can never fire. Two ways out: re-aim it with
+`beat_<n>.chapter`, or `beat_<n>.state "void"`. **Void is preferred to `remove_beat`** — a beat that
+was considered and dropped is worth keeping in the ledger. Its memories travel with it either way;
+they belong to the beat, not the chapter. The block is absent entirely when nothing was stranded,
+while the beat edit fields stay in the `[CHANGE]` list either way, since a beat may need editing for
+other reasons.
 
 ### Edit surface
 
@@ -147,6 +164,10 @@ The architect can edit the fields supported by `engine/story-spec.ts`:
 - characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`, and `restrictions`
 - cast membership: `add_character` and `remove_character`
 - story facts: `add_fact`, `remove_fact`, and an indexed update of `facts[n]`
+- the world-event ledger: `beat_<n>.chapter`, `at`, `hold`, `fired`, `state`, and `memories`
+  (an object: `{"NAME": "what they have always known"}`, replacing the map wholesale), plus
+  `add_beat` and `remove_beat`. The spelling follows `scene_<n>` and `fact_<n>` — the two other
+  indexed collections an edit can address — rather than the schema's own `timeline` key
 
 Every character carries the three psychology fields — a possibly-false `belief`, one conditional
 `impulse` ("when X → Y"), and up to three quoted `voice` samples — alongside `persona`, `knows`,

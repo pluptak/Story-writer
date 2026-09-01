@@ -490,6 +490,9 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    already true (no model call): `beat` is the event,
                                                    `hold` the held form it stood down. Nothing
                                                    checks that it reached the page
+  { t:"beat_stranded"; beat; at }                — the scene ended without this beat ever firing:
+                                                   its trigger was never reached. Logged at scene
+                                                   close, one per unfired beat aimed at this chapter
   { t:"memory_surfaced"; character }             — a fired beat implanted a memory into that
                                                    character's system prompt; the wording itself
                                                    reaches nobody but that character

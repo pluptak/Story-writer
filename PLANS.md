@@ -503,9 +503,11 @@ below: **The world timeline**.
 
 ## The world timeline
 
-**Partly shipped — the ledger and the zero-inference mechanism (blocks 1–2) are in; the rest is
-proposed.** The mechanism was spiked and measured first — see *What the spike established* below
-before designing against this. The architect authors a timeline of **world
+**Partly shipped — everything but the repair entity is in.** The ledger, the zero-inference firing
+mechanism, the architect's world gate and the handoff's re-aim all ship; what remains is the reader
+that decides a beat was preempted, contradicted or ignored. The mechanism was spiked and measured
+first — see *What the spike established* below before designing against this. The architect authors
+a timeline of **world
 events** — a fault alarm firing, an incoming call, the thing in the dark reaching the door — and an
 author-side agent fires them into the writer one at a time, revising what remains when a character's
 choice makes the next one impossible. It exists to keep a chapter under pressure toward the question it has to answer
@@ -669,75 +671,41 @@ own lesson about handing over run commands with holes in them.
 
 ### Blocks
 
-The first two shipped. What remains, ordered so each ships alone.
+Only the repair entity is left. Everything else in this feature has shipped and its behaviour has
+moved to the document that owns it: the ledger and the schema to [`Architect.MD`](Architect.MD), what
+the writer receives to [`Writer.MD`](Writer.MD), what a memory is to
+[`Character.MD`](Character.MD), and the events to [`GUI-SPEC.md`](GUI-SPEC.md). What ships without it
+is a held-then-fired beat carrying stakes on a fixed trigger, authored by the architect's world gate
+and re-aimed by the handoff when a chapter never reaches it.
 
-~~1. **The ledger.**~~ Shipped: `timeline[]` in [`engine/story-schema.ts`](engine/story-schema.ts),
-loaded into `StoryConfig` (`engine/story-format.ts`) and round-tripped through `StorySpec`
-(`engine/story-spec.ts`, which also carries `timelineDrift` beside `sceneDrift`). One entry is: the
-chapter it is aimed at, its **held** form, its **fired** form, a trigger (`at`, a fraction of the
-word target), a per-character `memories` map, and a state — pending / fired / void, bookkeeping the
-engine reads and never writes.
-~~2. **Firing, holding and implanting.**~~ Shipped: `engine/world-timeline.ts` decides, the loop
-injects — hold until the trigger, fire once, implant the entry's memories into the present cast, log
-`world_beat` and `memory_surfaced`. Zero inference. What the writer receives is
-[`Writer.MD`](Writer.MD)'s, what a memory is is [`Character.MD`](Character.MD)'s, the events are
-[`GUI-SPEC.md`](GUI-SPEC.md)'s.
-1. **Landing, and the four repairs.** The entity, and the first model call in this feature:
-   preempted / contradicted / fired-but-did-not-land / stranded.
+**Landing, and the four repairs.** The entity, and the first model call in this feature:
+preempted / contradicted / fired-but-did-not-land / stranded. Only the last of those is handled
+today, and mechanically: a beat the scene never reached is recorded as `beat_stranded` and the
+handoff is asked to re-aim or void it. The other three need a reader.
 
-   **A mechanical landing check was built and removed — do not rebuild it the same way.** It scored
-   character-bigram Dice between the fired text and every window of the piece the injection asked
-   for, at a threshold of `0.8` borrowed from quote-lint's near-verbatim precedent. Measured against
-   the `alarm-wing` spike run, the piece that faithfully rendered the beat scores **0.73** — below
-   the shipped threshold, so a clean landing read as a failure — while pieces with nothing to do
-   with the beat score **0.49–0.64**. The whole dynamic range is 0.49–0.73 and the boundary would
-   have to sit in the ~0.09 gap between one true positive and the worst false positive, fitted to a
-   single event. Character bigrams have a high floor on any two English passages; that is fine for
-   quote-lint, whose true positive is a *copied* string scoring ~1.0, and useless for a world beat,
-   which is *rendered*. Content-word coverage of the beat separated better on the same run (0.43 for
-   the true landing against 0.00–0.33) but is equally uncalibrated on n=1. Either metric needs
-   several beats across several runs before it decides anything, and the model may simply be the
-   right instrument here.
+**A mechanical landing check was built and removed — do not rebuild it the same way.** It scored
+character-bigram Dice between the fired text and every window of the piece the injection asked
+for, at a threshold of `0.8` borrowed from quote-lint's near-verbatim precedent. Measured against
+the `alarm-wing` spike run, the piece that faithfully rendered the beat scores **0.73** — below
+the shipped threshold, so a clean landing read as a failure — while pieces with nothing to do
+with the beat score **0.49–0.64**. The whole dynamic range is 0.49–0.73 and the boundary would
+have to sit in the ~0.09 gap between one true positive and the worst false positive, fitted to a
+single event. Character bigrams have a high floor on any two English passages; that is fine for
+quote-lint, whose true positive is a *copied* string scoring ~1.0, and useless for a world beat,
+which is *rendered*. Content-word coverage of the beat separated better on the same run (0.43 for
+the true landing against 0.00–0.33) but is equally uncalibrated on n=1. Either metric needs
+several beats across several runs before it decides anything, and the model may simply be the
+right instrument here.
 
-   **The escalation it drove carried a defect worth not repeating.** A beat awaiting its check and a
-   beat that has *failed* one are different states, and the loop conflated them: any turn where the
-   writer answered with a consult and no prose — legal, and common — drew the escalated injection,
-   *"You were told last turn and the piece did not carry it"*, when there had been no piece. Whatever
-   re-injects a beat must key on a check that ran and failed, never on one that has not run yet.
-2. **The architect authors beats and memories together**, under four constraints, every one of them
-   from a memory that misfired in a live run rather than from one that worked:
-   - **A memory names a specific cost, not a liability.** Exposure attaches to whatever the
-     character already fears. ODUYA's first memory said a name goes in the log against the failure;
-     ODUYA read that as exposure for *granting an exception* — the existing fear — and got more
-     obstructive, the opposite of the intent. Re-authored to set the two costs against each other
-     (*a missing countersignature is a paragraph on Monday; a name on that list is a meeting*) it
-     landed on the first reply after implant: *"The sounder means the wing must be empty; I need to
-     log every name present now. This changes everything."*
-   - **A memory agrees with its beat about the world.** HALE's first memory said the cage stays shut
-     while a zone is in fault; the beat said the lock released and the door stands open. HALE
-     reasoned entirely from the open door and showed no uptake at all.
-   - **A memory opens an action rather than closing one** — a hypothesis, n=1, and the sharpest thing
-     the corridor run produced. HALE's second memory did not contradict the beat and still did not
-     land: it said the signature was unobtainable until the panel cleared, which makes HALE's whole
-     method (pressure ODUYA) pointless without offering a replacement, and HALE went on treating the
-     alarm as leverage for the schedule. ODUYA's landed and gave them something new to *do*. A memory
-     that says *here is another thing you now own* has somewhere to go; one that says *your plan is
-     futile* leaves the authored `goal` to win. Worth confirming before it becomes doctrine.
-   - **The scene's `question` names stakes, not mechanisms**, or it hands the writer the timeline
-     through the back door.
+**The escalation it drove carried a defect worth not repeating.** A beat awaiting its check and a
+beat that has *failed* one are different states, and the loop conflated them: any turn where the
+writer answered with a consult and no prose — legal, and common — drew the escalated injection,
+*"You were told last turn and the piece did not carry it"*, when there had been no piece. Whatever
+re-injects a beat must key on a check that ran and failed, never on one that has not run yet.
 
-   This block is now ahead of the repairs on evidence: the mechanism works and the bottleneck is
-   authoring — two of four memory instances across two runs failed, both for authoring reasons —
-   while the breakage the repairs exist for has not occurred in any run yet.
-3. **The handoff re-aims stranded beats.** Composes with the chapter-summary step in
-   [`PLANS-handoff.md`](PLANS-handoff.md), since a summary is already the "what happened"
-   representation a re-aim would read.
-4. **Docs for the above.** `Architect.MD` for authoring; the viewer's rendering of the repair
-   events, if they render differently from a plain note.
-
-A held-then-fired beat carrying stakes, on a fixed trigger, is the whole shipped mechanism. The
-remaining blocks exist for when a character's choice breaks the timeline, which is real and
-predicted but has not yet happened in any run.
+The repairs have no live evidence behind them yet: no run has produced a choice that voids a beat.
+That is why this is last, and why building it against imagined breakage would repeat the landing
+check's mistake.
 
 ### Done when
 
@@ -756,7 +724,7 @@ that was known. What replaces it:
   mattered, and it is the only one that distinguishes this feature from scenery with a volume knob.
   One instance of each so far, in the same run: ODUYA's memory visibly redirected their reasoning
   for two replies before their authored `impulse` reasserted; HALE's did not land at all. Both
-  readings are in block 2's constraints above.
+  readings, and the constraints drawn from them, are in [`Architect.MD`](Architect.MD).
 - **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
   question rather than at the planned path. Without this the entity is a rail.
 
