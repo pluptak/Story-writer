@@ -32,6 +32,12 @@ export function pickerHtml() {
     <div class="name">${APP.scaffold.active ? "↩ continue new story…" : "＋ start a new story"}</div>
     <p class="q">${APP.scaffold.active ? `back to "${esc(APP.scaffold.idea || "")}"` : "describe an idea and have one built"}</p>
   </button>`;
+
+  const catalogCard = `<button ${tid("shelf.catalog-card")} class="card new" data-catalog="1"${APP.picked ? " disabled" : ""}>
+    <div class="name">library of characters</div>
+    <p class="q">reusable characters outside any story</p>
+  </button>`;
+
   const divider = cards
     ? `<div class="divider"><span>or pick an existing one</span></div>`
     : `<p class="hint" style="text-align:center;margin:14px 0 0">no stories on the shelf yet — start one above</p>`;
@@ -40,15 +46,16 @@ export function pickerHtml() {
     <h2>Choose a story</h2>
     <p class="sub">${APP.picked ? "starting…" : "pick one to see what it's about"}</p>
     ${newCard}
+    ${catalogCard}
     ${divider}
     <div class="cards">${cards}</div>
   </section>`;
 }
 
-/** `openStory` is injected (pages.js, which owns navigation) rather than imported -- shelf.js sits
- *  underneath nav.js in the module graph (nav.js -> saved-runs.js -> here, for castChips), so
- *  importing nav.js back from here would close a cycle. */
-export function wirePicker(page, openStory, openNew = null) {
+/** `openStory` and `openCatalog` are injected (pages.js, which owns navigation) rather than imported
+ *  -- shelf.js sits underneath nav.js in the module graph (nav.js -> saved-runs.js -> here, for castChips),
+ *  so importing nav.js back from here would close a cycle. */
+export function wirePicker(page, openStory, openNew = null, openCatalog = null) {
   for (const b of page.querySelectorAll(".card[data-dir]"))
     b.addEventListener("click", () => { if (!APP.picked) {
       APP.storyDir = b.dataset.dir; APP.storyModel = ""; APP.storyError = ""; APP.runError = ""; openStory();
@@ -58,4 +65,7 @@ export function wirePicker(page, openStory, openNew = null) {
     // cycle). One ScaffoldSession lives on the server (GUI-SPEC §5.1), so a session already running
     // is continued there rather than started again; the card relabels itself to say so.
     b.addEventListener("click", () => { if (openNew) openNew(); });
+  for (const b of page.querySelectorAll(".card[data-catalog]"))
+    // Opens the catalog page (`openCatalog`, injected).
+    b.addEventListener("click", () => { if (openCatalog) openCatalog(); });
 }

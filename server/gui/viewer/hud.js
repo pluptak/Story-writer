@@ -1,6 +1,5 @@
 import { $, esc, basename, tid } from "./util.js";
 import { APP, LIVEV, READV, READER, storyName } from "./state.js";
-import { castSheetHtml } from "./cast-sheet.js";
 
 // The two small "paint a fixed chrome region from store state" pieces -- the `#src`/`#dot` source
 // indicator and the `#rail` progress panel. `pages.js` owns `#page`.
@@ -147,6 +146,5 @@ export function renderRail(store, blocks) {
     ${stat("retries", retries, retries ? "warn" : "")}
      ${store === LIVEV && APP.composing ? `<div class="composing" data-tid="rail.composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
         composing… ${APP.composing.secs}s</div>` : ""}
-     ${statsPanel}
-     ${castSheetHtml()}`;
+     ${statsPanel}`;
 }

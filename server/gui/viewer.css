@@ -497,6 +497,42 @@
   .timeline .tl-marker.retried { color:var(--warn); border-color:var(--warn); }
   .timeline .tl-marker.capped { background:color-mix(in srgb, var(--bad) 18%, var(--panel-2));
                                 border-color:var(--bad); color:var(--bad); }
+
+  /* ── character catalog ──────────────────────────────────────────────── */
+  .cat-empty-msg { margin:14px 0; color:var(--muted); }
+  .cat-layout { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+  .cat-list-panel { border:1px solid var(--line); border-radius:var(--r-xl); background:var(--panel); padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .catalog-entry { padding:10px; border:1px solid var(--line); border-radius:var(--r-lg); cursor:pointer; background:transparent; }
+  .catalog-entry:hover { border-color:var(--accent); }
+  .catalog-entry.selected { border-color:var(--accent); background:var(--panel-2); }
+  .cat-name { font-weight:600; color:var(--ink); }
+  .cat-tags { font-size:var(--fs-11); color:var(--muted); margin-top:3px; }
+  .cat-version { font-size:var(--fs-10); color:var(--faint); margin-top:3px; }
+  .cat-form-panel { display:flex; flex-direction:column; }
+  .cat-placeholder { text-align:center; color:var(--muted); padding:40px 20px; }
+  .cat-placeholder p { margin:0; }
+  .cat-placeholder .btn { margin-top:14px; }
+  .cat-form { border:1px solid var(--line); border-radius:var(--r-xl); background:var(--panel); padding:20px; }
+  .cat-block { margin-bottom:14px; }
+  .cat-block-label { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em; text-transform:uppercase; margin-bottom:8px; font-weight:600; }
+  .cat-block-label.cat-bad { color:var(--bad); }
+  .cat-block-label.cat-warn { color:var(--warn); }
+  .cat-btns { margin-top:20px; }
+  .cat-tags-picker { display:flex; flex-direction:column; gap:12px; margin-top:8px; }
+  .cat-tags-group { display:flex; flex-direction:column; gap:8px; }
+  .cat-facet-heading { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em; text-transform:uppercase;
+                       color:var(--faint); font-weight:600; }
+  .cat-tags-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .cat-tags-offvocab { border-top:1px solid var(--line); padding-top:12px; }
+  .cat-tags-notice { font-family:var(--mono); font-size:var(--fs-10); color:var(--warn); margin:6px 0 0; }
+  .cat-chip { font-family:var(--mono); font-size:var(--fs-11); padding:3px 9px; border-radius:var(--r-pill);
+              border:1px solid var(--line); background:var(--panel-2); white-space:nowrap;
+              color:var(--muted); cursor:pointer; }
+  .cat-chip:hover { border-color:var(--accent); }
+  .cat-chip:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .cat-chip.on { color:var(--accent); border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, var(--panel-2)); }
+  .cat-chip.off-vocab { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 50%, var(--line));
+                        background:color-mix(in srgb, var(--warn) 8%, var(--panel-2)); }
   .timeline .tl-marker.retried.capped { background:color-mix(in srgb, var(--bad) 28%, var(--panel-2)); }
 
   /* the read tab's per-agent panel -- reuses .cards/.divider/.hint/.said from the story page */
@@ -562,24 +598,19 @@
   .reader-view .hit-line mark { background:var(--accent); color:var(--panel); border-radius:var(--r-xs);
     padding:0 2px; }
 
-  /* the live character sheet — authored cast, read-only, in the rail */
-  .cast-sheet { margin-top:18px; }
-  .cast-sheet h3 { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em; text-transform:uppercase;
-    color:var(--faint); margin:0 0 8px; }
-  .cast-sheet .cast-note { font-size:var(--fs-12); color:var(--muted); margin:0; }
-  .cast-sheet .cast-note.bad { color:var(--bad); }
-  .cast-card { border:1px solid var(--line); border-radius:var(--r-lg); background:var(--panel-2);
-    padding:9px 11px; margin-bottom:8px; }
-  .cast-card .cast-name { font-family:var(--mono); font-size:var(--fs-11); color:var(--ink); margin-bottom:6px; }
-  .cast-card .cast-field { margin-bottom:5px; }
-  .cast-card .cast-field span { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.06em;
+  /* the character card's authored half — /cast fields behind a cast pill on the live screen */
+  .charcard .cast-note { font-size:var(--fs-12); color:var(--muted); margin:8px 0 0; }
+  .charcard .cast-note.bad { color:var(--bad); }
+  .charcard .cast-body { margin-top:10px; }
+  .charcard .cast-field { margin-bottom:5px; }
+  .charcard .cast-field span { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.06em;
     text-transform:uppercase; color:var(--faint); display:block; margin-bottom:1px; }
-  .cast-card .cast-field p { font-size:var(--fs-13); color:var(--muted); margin:0; line-height:1.45; }
-  .cast-card .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
-  .cast-card .cast-tags .yes { font-family:var(--mono); font-size:var(--fs-10); color:var(--good); }
-  .cast-card .cast-tags .no { font-family:var(--mono); font-size:var(--fs-10); color:var(--bad); }
-  .cast-card .cast-tags .reach { font-family:var(--mono); font-size:var(--fs-10); color:var(--accent); }
-  .cast-card .cast-voice { font-size:var(--fs-13); color:var(--muted); font-style:italic; margin:3px 0 0; line-height:1.45; }
+  .charcard .cast-field p { font-size:var(--fs-13); color:var(--muted); margin:0; line-height:1.45; }
+  .charcard .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
+  .charcard .cast-tags .yes { font-family:var(--mono); font-size:var(--fs-10); color:var(--good); }
+  .charcard .cast-tags .no { font-family:var(--mono); font-size:var(--fs-10); color:var(--bad); }
+  .charcard .cast-tags .reach { font-family:var(--mono); font-size:var(--fs-10); color:var(--accent); }
+  .charcard .cast-voice { font-size:var(--fs-13); color:var(--muted); font-style:italic; margin:3px 0 0; line-height:1.45; }
 
   .compare-panes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
   .compare-pane { min-width:0; border:1px solid var(--line); border-radius:var(--r-xl); background:var(--panel); padding:16px; }

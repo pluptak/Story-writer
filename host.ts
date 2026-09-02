@@ -17,6 +17,8 @@ import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type NextChapterSession,
 } from "./engine/architect.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "./engine/catalog.ts";
+import { CATALOG_KINDS, type CatalogKind } from "./engine/catalog-schema.ts";
 import type { ServerHost } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
@@ -90,8 +92,9 @@ async function persistStoryJson(dir: string, parsed: StoryJson): Promise<{ ok: t
   } catch (e) {
     return { ok: false, reason: `write failed: ${(e as Error).message}` };
   }
-  // Re-load to confirm (catches silently-corrupt writes on constrained filesystems).
-  try { await loadStory(dir); }
+  // Re-load to confirm (catches silently-corrupt writes on constrained filesystems), under the same
+  // bible a run would use — a story that saves clean should load clean where it will be written.
+  try { await loadStory(dir, undefined, await skillBible()); }
   catch (e) { return { ok: false, reason: `saved but does not load: ${(e as Error).message}` }; }
   return { ok: true };
 }
@@ -125,8 +128,15 @@ const storyWarnings = (parsed: StoryJson): string[] => [
   ...characterCardWarnings(parsed),
 ];
 
+/** Validate a catalog kind that arrived from the wire — returns the validated kind or null. */
+const validateCatalogKind = (kind: string): CatalogKind | null =>
+  CATALOG_KINDS.includes(kind as CatalogKind) ? (kind as CatalogKind) : null;
+
 export const HOST: ServerHost = {
-  storyCards, selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
+  selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
+  // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
+  // starts report the same skills.
+  storyCards: async () => storyCards(await skillBible()),
   newScaffoldSession, newHandoffSession, directEdit, specView,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
@@ -210,5 +220,35 @@ export const HOST: ServerHost = {
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
+  },
+  catalogEntries: async (kind) => {
+    const validated = validateCatalogKind(kind);
+    if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
+    const catalog = await loadCatalog(validated);
+    return { ok: true, entries: catalog.entries };
+  },
+  catalogCheck: async (kind, entry) => {
+    const validated = validateCatalogKind(kind);
+    if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
+    const bible = await skillBible();
+    const result = checkEntry(validated, entry, bible);
+    if (!result.ok) return { ok: false, issues: result.issues };
+    return { ok: true, problems: result.problems };
+  },
+  catalogSave: async (kind, entry) => {
+    const validated = validateCatalogKind(kind);
+    if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
+    const bible = await skillBible();
+    return await saveEntry(validated, entry, undefined, bible);
+  },
+  catalogDelete: async (kind, id) => {
+    const validated = validateCatalogKind(kind);
+    if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
+    const result = await deleteEntry(validated, id);
+    // Engine says *what happened* (missing: true); host says *what that means over HTTP* (404).
+    if (!result.ok && result.missing) {
+      return { ok: false, reason: result.reason, status: 404 };
+    }
+    return result;
   },
 };

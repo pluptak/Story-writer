@@ -5,7 +5,7 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
-import { resolveReach, type Skill } from "./skills.ts";
+import { bibleMeaningOf, resolveReach, type BibleLookup, type Skill } from "./skills.ts";
 import {
   normalizeConsult,
   parseClarifyAnswer, parseLintVerdict, missingShape,
@@ -36,10 +36,10 @@ export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] =
  *  what an intrinsic skill already covers (I3). Never called for a character-level view.
  *  Grant keys match case-insensitively, like roster and pov: a mis-cased key must warn at load,
  *  not silently grant nothing. */
-export function sceneReach(sd: SceneDef, def: CharacterDef): Skill[] {
+export function sceneReach(sd: SceneDef, def: CharacterDef, bible: BibleLookup = bibleMeaningOf): Skill[] {
   const grant = Object.entries(sd.reach ?? {})
     .find(([who]) => sameName(who, def.name))?.[1] ?? [];
-  return resolveReach(def.name, def.skills, def.limits.join(" | "), grant.join(" | "));
+  return resolveReach(def.name, def.skills, def.limits.join(" | "), grant.join(" | "), bible);
 }
 
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
@@ -251,6 +251,9 @@ export interface SceneRun {
   /** The human-interaction port (step budget, pause, reader seat). Defaults to LIVE_IO — the
    *  session's LIVE state and SSE bus — so a run can be driven without either. */
   io?: SceneIo;
+  /** The special-skill bible the scene's reach resolves against. Defaults to the in-code catalog,
+   *  so a hand-built SceneRun needs none; runChapter passes the one the story was loaded with. */
+  bible?: BibleLookup;
 }
 
 /** Write one scene: the draft/consult loop that stops at choices, consults, judges, and trims history. */
@@ -262,11 +265,12 @@ export async function writeScene(run: SceneRun) {
   const facts = run.facts ?? [];
   const timeline = run.timeline ?? [];
   const io = run.io ?? LIVE_IO;
+  const bible = run.bible ?? bibleMeaningOf;
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
   const active = new Set(rosterNames);          // the cast still in the scene; shrinks as one exits
   const isActive = (name: string) => [...active].some(n => sameName(n, name));
-  const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c)])));
+  const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, bible)])));
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
@@ -853,7 +857,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
   const agents = new Map<string, Agent>();
 
   for (const def of rosterOf(sc.characters, sd.roster)) {
-    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def)));
+    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def, sc.bible)));
   }
 
   LIVE.agents = agents;
@@ -868,6 +872,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
       dir: sc.dir, log, maxCharacterRetries: sc.maxCharacterRetries,
       facts: sc.facts,
       timeline: sc.timeline,
+      bible: sc.bible,
     });
   } finally {
     LIVE.writer = null; LIVE.agents = null; LIVE.log = null;

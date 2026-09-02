@@ -217,3 +217,44 @@ describe("removedCapabilities", () => {
     assert.deepEqual(removedCapabilities("X", "", ""), []);
   });
 });
+
+// -- INJECTED BIBLE ---------------------------------------------------------
+describe("injected bible", () => {
+  it("resolveSkills with an injected bible resolves a skill not in SPECIAL_SKILL_CATALOG to that bible's meaning with source: bible", () => {
+    const customBible = (name: string) => name === "custom-skill" ? "doing something custom" : undefined;
+    const s = resolveSkills("X", "custom-skill", "", "", customBible);
+    const found = s.find(x => x.name === "custom-skill");
+    assert.ok(found, "should find the custom skill");
+    assert.equal(found!.source, "bible", "should be tagged bible");
+    assert.equal(found!.meaning, "doing something custom", "should use the bible's meaning");
+  });
+
+  it("resolveSkills without the injected bible resolves the same skill as source: custom with empty meaning", () => {
+    const s = quietSync(() => resolveSkills("X", "custom-skill", ""));
+    const found = s.find(x => x.name === "custom-skill");
+    assert.ok(found, "should find the custom skill");
+    assert.equal(found.source, "custom", "should be tagged custom without the bible");
+    assert.equal(found.meaning, "", "should have empty meaning without the bible");
+  });
+
+  it("removedCapabilities with injected bible: a restriction naming an injected-bible skill IS removed and appears as a CANNOT", () => {
+    const customBible = (name: string) => name === "injected-skill" ? "an injected ability" : undefined;
+    const removed = quietSync(() => removedCapabilities("X", "", "injected-skill", "", customBible));
+    assert.deepEqual(removed, ["injected-skill"], "should list the removed skill");
+  });
+
+  it("removedCapabilities without injected bible: a restriction naming an unknown skill warns and removes nothing", () => {
+    let removed: string[] = [];
+    const w = warnings(() => { removed = removedCapabilities("X", "", "injected-skill"); });
+    assert.equal(w.length, 1, "should warn once about unknown skill");
+    assert.deepEqual(removed, [], "should remove nothing");
+  });
+
+  it("an authored :: meaning still beats the injected bible's meaning", () => {
+    const customBible = (name: string) => name === "lockpicking" ? "bible meaning" : undefined;
+    const s = resolveSkills("X", "lockpicking :: author's meaning", "", "", customBible);
+    const found = s.find(x => x.name === "lockpicking");
+    assert.ok(found, "should find lockpicking");
+    assert.equal(found!.meaning, "author's meaning", "author's meaning should win over bible");
+  });
+});

@@ -231,6 +231,55 @@ The story editor renders each scene's `reach` — the scene-scoped capability gr
 inside `StoryJson`'s scenes; it is character-in-place data and never appears on a character card in
 the editor.
 
+## Character catalog
+
+```
+GET  /catalog?kind=characters        → { ok:true, entries[] }
+                                       | { ok:false, reason }
+GET  /catalog/entry?kind=&id=        → { ok:true, entry }
+                                       | { ok:false, reason }        (400 no id · 404 no such entry)
+POST /catalog/check  { entry }       → { ok:true, problems[] }
+                                       | { ok:false, issues[] }      (both 200)
+POST /catalog/save   { kind?, entry }→ { ok:true, entry, problems[] }
+                                       | { ok:false, reason, issues? }
+POST /catalog/delete { kind?, id }   → { ok:true }
+                                       | { ok:false, reason }        (400 no id/kind · 404 no such entry)
+```
+
+A catalog is **global**: it lives beside `defaults.json`, not inside a story. So unlike the story
+editor these routes take no `dir`, and none of them consults the story-write lock — a run reading one
+story's `story.json` has no bearing on a shelf of reusable characters. `kind` selects which catalog —
+`characters`, `tags`, `styles` or `skills` — and decides the filename; an unknown kind is `400`,
+validated in the host because it arrives from a query string. Every route above is
+kind-parameterised, so a new kind is a registry entry in `engine/catalog.ts` and never a new route.
+
+A **character** entry is the **portable half** of a character: `id`, `version`, `name`, `tags[]`,
+`portablePersona`, `belief`, `impulse`, `voice[]`, `skills[]`, `restrictions[]`. There is
+deliberately no `goal` and no `knows` — those are story-positional — and no `model` or `maxRetries`,
+which are run configuration. What a catalog entry is and how it composes into a `CharacterDef` is
+[Architect.MD](Architect.MD)'s *Character catalog*. The other three: a **tag** is `id`, `version`,
+`facet`, `label`; a **style** is `id`, `version`, `name`, `tags[]`, `description`, `voice`; a
+**skill** is `id`, `version`, `name`, `meaning`, `tags[]`, and its `meaning` is the one prose field
+in any kind the schema refuses rather than reports missing ([Architect.MD](Architect.MD)'s *Skill
+bible* says why).
+
+`tags` and `skills` **seed** — a `GET` against a catalog whose file does not exist yet answers with
+the engine's starting vocabulary rather than an empty list, and the first save writes that whole seed
+out beside the edit. Once the file exists it wins entirely; a seeded entry the author deleted does
+not come back.
+
+**`issues` and `problems` are different answers and never merge.** `issues` are schema failures and
+nothing was written; `problems` are advisory (no belief, no voice samples, a skill carrying no
+`:: meaning`, a portable persona that names something story-specific) and the entry **was** written.
+`/catalog/check` returns either at `200`, because a validation verdict is an ordinary answer rather
+than an HTTP error; `/catalog/save` returns `issues` with `400`, since that one really did refuse.
+
+`/catalog/save` upserts on `id` and assigns `version` itself — 1 for a new entry, the stored version
+plus one for a replacement. A version sent by a caller is overwritten, so it is never a way to
+choose one. Both writes go
+through the same atomic `.tmp` rename as `/story/save`, then re-read and assert what they expected to
+find: that the entry is present at its new version, or that a deleted id is gone.
+
 ## Read-only cast view
 
 ```

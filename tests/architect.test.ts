@@ -615,6 +615,77 @@ describe("ScaffoldSession, staged", () => {
       assert.match(storyText, /stage 1 of 6/);
     });
   });
+
+  // Refining the open world gate. The architect authors the ledger as {"timeline": [...]}, so a
+  // refinement round a turn later reaches for that shape again -- observed live, with a beat
+  // correct in every field but the name it arrived under. While that gate is open the shape is
+  // the gate's own, so it folds through the stage's merge path rather than being refused.
+  describe("refining the open world gate", () => {
+    const BEAT = {
+      chapter: 1, at: 0.45,
+      hold: "the proximity alarm's first chime",
+      fired: "A proximity alert blares as an asteroid enters the flight path.",
+      memories: { ASTER: "The last rock through this sector took the west module and three people." },
+    };
+    const walkToWorld = async (...after: unknown[]) => {
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "it holds together" }, { timeline: [] }, ...after]);
+      await s.propose();
+      for (let i = 0; i < 5; i++) await s.approve();
+      assert.equal(s.stage, "world");
+      assert.deepEqual(s.spec.timeline, []);
+      return s;
+    };
+
+    it("takes a ledger sent as an edit named timeline", async () => {
+      const s = await walkToWorld({ edits: [{ field: "timeline", value: [BEAT] }], note: "the asteroid" });
+      const r = await s.say("Asteroid incoming");
+      assert.equal(r.kind, "proposal");
+      assert.equal((r as { stage?: string }).stage, "world");
+      assert.equal(s.spec.timeline.length, 1);
+      assert.equal(s.spec.timeline[0].fired, BEAT.fired);
+      assert.equal(s.spec.timeline[0].memories.ASTER, BEAT.memories.ASTER);
+    });
+
+    it("takes a ledger sent in the stage's own top-level shape", async () => {
+      const s = await walkToWorld({ timeline: [BEAT] });
+      assert.equal((await s.say("Asteroid incoming")).kind, "proposal");
+      assert.equal(s.spec.timeline.length, 1);
+    });
+
+    it("empties the ledger when the round says the story wants no events after all", async () => {
+      const s = await walkToWorld({ edits: [{ field: "timeline", value: [BEAT] }] },
+                                  { edits: [{ field: "timeline", value: [] }] });
+      await s.say("Asteroid incoming");
+      assert.equal(s.spec.timeline.length, 1);
+      await s.say("Drop it, the pressure is between them");
+      assert.deepEqual(s.spec.timeline, []);
+    });
+
+    it("keeps the other edits in a round that changed the ledger and something else", async () => {
+      const s = await walkToWorld({ edits: [
+        { field: "timeline", value: [BEAT] },
+        { field: "title", value: "Ghost in Hull" },
+      ] });
+      const r = await s.say("Asteroid incoming, and rename it");
+      assert.equal(r.kind, "edits");
+      assert.equal(s.spec.timeline.length, 1, "the ledger still folded in");
+      assert.equal(s.spec.title, "Ghost in Hull", "and the edit beside it applied");
+      assert.deepEqual((r as { ignored: string[] }).ignored, []);
+    });
+
+    it("leaves every other gate refusing timeline as an unknown field", async () => {
+      const s = stage([STORY_STAGE, CAST_STAGE,
+                       { edits: [{ field: "timeline", value: [BEAT] }] }]);
+      await s.propose();
+      await s.approve();
+      assert.equal(s.stage, "cast");
+      const r = await s.say("Asteroid incoming");
+      assert.equal(r.kind, "edits");
+      assert.match((r as { ignored: string[] }).ignored.join(" "), /unknown field "timeline"/);
+      assert.deepEqual(s.spec.timeline, []);
+    });
+  });
 });
 
 // -- THE HANDOFF -----------------------------------------------------------
@@ -1101,5 +1172,30 @@ describe("stranded world events in the handoff", () => {
       assert.match(t, /beat_<n>\.memories/);
       assert.match(t, /remove_beat/);
     }
+  });
+});
+
+// -- THE SCAFFOLD'S OWN EDIT SURFACE ---------------------------------------
+// A gate the author can refine is a gate whose field names the architect has been told. The world
+// gate shipped without them: every refinement round came back as {"field": "timeline"} -- the only
+// spelling the world stage teaches -- and was ignored as unknown.
+describe("the [CHANGE] field list covers every collection applyEdits accepts", () => {
+  const system = P.architectSystem({}, {}, "");
+
+  it("names the world-event ledger", () => {
+    assert.match(system, /beat_<n>\.chapter/);
+    assert.match(system, /beat_<n>\.memories/);
+    assert.match(system, /add_beat/);
+    assert.match(system, /remove_beat/);
+  });
+
+  it("names the story facts", () => {
+    assert.match(system, /add_fact/);
+    assert.match(system, /remove_fact/);
+    assert.match(system, /fact_<n>/);
+  });
+
+  it("steers toward the additive beat fields over resending the ledger whole", () => {
+    assert.match(system, /Reach for add_beat and beat_<n>\s+before resending "timeline" whole/);
   });
 });

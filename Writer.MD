@@ -314,9 +314,12 @@ a character's answer — and it tracks the `reader_ask`/`reader_answer` frames i
 
 ## The live screen
 
-The shipped screen: the run controls and the cast in the right-hand rail as cards, an
-eyebrow/headline/lede block at the top, and the prose in a card with a phase-derived title and a chip
-row. Two deliberate decisions behind it:
+The shipped screen: the run controls in the right-hand rail, an eyebrow/headline/lede block at the
+top, and the prose in a card with a phase-derived title and a chip row. The cast is the header's
+"cast in scene" chips and nothing more — there is no second cast panel in the rail. Clicking a chip
+opens a character card whose authored half (persona, knows, goal, belief, impulse, voice, and the
+capabilities with reach labelled per scene) is the `/cast` fetch for the run's story, live-screen
+only; elsewhere the card shows just what its pill knew. Two deliberate decisions behind it:
 
 - **The consult blocks were not simplified.** The shipped rendering carries the full per-attempt
   detail — the fresh-instance note, asked-back Q&A, the flags on a forced or re-asked attempt, judge

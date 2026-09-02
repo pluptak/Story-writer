@@ -1,4 +1,4 @@
-import { READV, APP } from "./state.js";
+import { READV, APP, CATALOG_KINDS } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
 import { go, parseHashParams } from "./nav.js";
@@ -12,6 +12,13 @@ export async function boot() {
   const p = parseHashParams();
   if (p.get("block")) APP.focusSeq = Number(p.get("block"));
   if (p.get("modal")) APP.modalWant = p.get("modal");
+  // Same reason, one page further on: the catalog seeds its kind from the URL, and the first
+  // go() syncs the hash from state -- so reading it after that would read a URL this boot
+  // had already overwritten with the default.
+  const kindParam = p.get("kind");
+  if (kindParam && CATALOG_KINDS.includes(kindParam)) {
+    APP.catalog.kind = kindParam;
+  }
   const src = new URLSearchParams(location.search).get("src");
   if (src) {
     try {

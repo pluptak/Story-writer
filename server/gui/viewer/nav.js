@@ -7,7 +7,7 @@ export const generating = () => APP.live && APP.session.running && !APP.session.
 
 export const parseHash = () => {
   const path = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return /^(shelf|story|live|read|readstory|compare|handoff|edit|scaffold)$/.test(path) ? path : null;
+  return /^(shelf|story|live|read|readstory|compare|handoff|edit|scaffold|catalog)$/.test(path) ? path : null;
 };
 export const parseHashParams = () => {
   const qs = location.hash.replace(/^#\/?/, "").split("?")[1] || "";
@@ -24,6 +24,11 @@ const hashFor = () => {
   if (APP.view === "story" && APP.storyDir) return withExtras(`#/story?dir=${encodeURIComponent(APP.storyDir)}`);
   if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
   if (APP.view === "scaffold") return "#/scaffold";
+  if (APP.view === "catalog") {
+    // Include kind in the URL so a reload lands back on the same catalog kind
+    const kind = APP.catalog.kind || "characters";
+    return kind !== "characters" ? `#/catalog?kind=${encodeURIComponent(kind)}` : "#/catalog";
+  }
   if (APP.view === "edit" && APP.editNew) return "#/edit?new=1";
   if (APP.view === "edit" && APP.editDir) return `#/edit?dir=${encodeURIComponent(APP.editDir)}`;
   if (APP.view === "readstory" && READER.dir) return `#/readstory?dir=${encodeURIComponent(READER.dir)}`;
@@ -80,8 +85,15 @@ export function go(v) {
     APP.editDir = ""; APP.editNew = false; APP.editFor = ""; APP.editStory = null; APP.editDraft = null;
     APP.editDirty = false; APP.editError = ""; APP.editIssues = []; APP.editRaw = null;
   }
+  // Leaving the catalog clears its armed delete timer -- an armed destructive action must not
+  // survive navigation.
+  if (APP.view === "catalog" && v !== "catalog") {
+    if (APP.catalog.deleteTimer) clearTimeout(APP.catalog.deleteTimer);
+    APP.catalog.deleteTimer = 0;
+    APP.catalog.armedDelete = false;
+  }
   APP.view = v;
-  if (v === "readstory" || v === "read" || (v === "compare" && !APP.stories) || v === "shelf" || v === "story" || v === "handoff" || v === "edit") loadStories();
+  if (v === "readstory" || v === "read" || (v === "compare" && !APP.stories) || v === "shelf" || v === "story" || v === "handoff" || v === "edit" || v === "catalog") loadStories();
   syncHash();
   APP.render();
   if (v === "live" && APP.wantReaderView) {

@@ -1,5 +1,10 @@
 import { basename } from "./util.js";
 
+/** The catalog kinds the viewer knows. The browser cannot import engine/catalog-schema.ts, so this
+ *  is the one place the viewer names them — boot, the URL guard and the tab strip all read it, so a
+ *  fifth kind is one edit, not three. Keep it in step with CATALOG_KINDS in engine/catalog-schema.ts. */
+export const CATALOG_KINDS = ["characters", "tags", "styles", "skills"];
+
 // Shared runtime state. ESM gives importers only a read-only view of a `let`, so everything that
 // gets REASSIGNED from outside its own module lives as a field on one exported object, `APP` --
 // the same trick live.ts's `LIVE`/`RUN` use engine-side. Values only mutated in place
@@ -115,9 +120,20 @@ export const APP = {
                                  // page is showing, so deriving it would rebuild the whole live event
                                  // log every frame just to read one boolean off it.
   readerError: null,            // the reader's own last refusal, shown beside its own card: {seq, text}
-  cast: null,                   // {dir, characters, loading, error}: the live screen's read-only
-                                 // character sheet, fetched from /cast for LIVEV.meta.story. dir-keyed
-                                 // so a new story's run refetches instead of showing the last cast.
+  cast: null,                   // {dir, characters, loading, error}: the authored sheet behind a
+                                 // cast pill's character card, fetched from /cast for
+                                 // LIVEV.meta.story on the live screen. dir-keyed so a new story's
+                                 // run refetches instead of showing the last cast.
+  // `loaded` is what stops the URL and the kind switcher fighting: the page seeds its kind from
+  // ?kind= only on arrival, and needs a way to tell "never fetched" from "fetched, empty".
+  catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,
+             issues:[], problems:[], armedDelete:false, deleteTimer:0,
+             kind:"characters",   // which catalog is being browsed: one of CATALOG_KINDS above
+             vocab:[]             // the tag entries, loaded once, used by the character form's tag picker.
+                                   // vocab is separate from entries because entries is whatever kind is on
+                                   // screen, while vocab is always the tags — the character form needs the
+                                   // vocabulary even while it is browsing characters
+           },  // the global character catalog, which unlike every other page is not scoped to a story
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };
 

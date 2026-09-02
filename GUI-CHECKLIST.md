@@ -1,9 +1,13 @@
 # GUI-CHECKLIST
 
-The manual pass that stands in for the GUI tests this repo does not have. `npm test` covers the
-engine and the route modules; **everything under [server/gui/](server/gui/) is verified by reading it
-and by running this list.** Run it after any change under `server/gui/`, and after any engine change
-that alters what a route serves.
+The manual pass for the parts of the GUI no automated test watches. `npm test` covers the engine and
+the route modules; **`npm run test:gui` covers the viewer's mechanical half** — boot, a scripted live
+run, deep links and modals, the editor's save path, discard, the catalog, and the handoff panel —
+in Playwright, driving the real server in-process over a fixture ServerHost, with no LM Studio and
+nothing in `stories/` touched. What that suite cannot see — layout, theme, focus, feel, and every
+section it does not name — is verified by reading the code and by running this list. Run the suite
+and the relevant sections after any change under `server/gui/`, and after any engine change that
+alters what a route serves.
 
 ## Before you start
 
@@ -12,6 +16,10 @@ that alters what a route serves.
       1,100 tokens each. At 10,000 preparing chapter 3 refuses even now that the worked example is
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
+- [ ] `npm run test:gui` green. The Playwright suite (`tests/gui/`, `playwright.config.ts`) is the
+      automated floor for sections 4, 6, 9, 12 and 15 below — a new machine needs
+      `npx playwright install chromium` once. It is also the boot check the next bullet describes:
+      a viewer module that fails to link fails the suite instead of shipping as the bare shell.
 - [ ] `npm run lint` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
       browser-loaded, not part of the TS build — so what breaks there ships silently otherwise: a
       plain syntax error (an `await` outside `async` broke every screen on 2026-08-21, `6dc7047`)
@@ -176,6 +184,10 @@ Still on **THE SERIAL**, on a written chapter's row.
 
 ## 4. The handoff
 
+**Automated:** the round panel and the two-click accept against a scripted architect
+(`tests/gui/handoff.spec.ts`), with no model. The conversation itself, the refusal numbers, and the
+drift warning below stay manual.
+
 **THE SERIAL**'s story page → **prepare chapter P**, where `P` is the one after `U`, the chapter
 section 2 wrote. (`P` has to be a scene the story does not have yet — that is what the handoff is for.)
 
@@ -219,6 +231,10 @@ existed stays quiet forever — check `ls stories/<THE SERIAL>/chapters/` and us
 
 ## 6. Story editor
 
+**Automated:** load, an edit saved through the real persist path (asserted on the file), the
+empty-premise refusal, and discard of the last unwritten scene from the story page
+(`tests/gui/story-edit.spec.ts`). Section collapse states and the suggest panel stay manual.
+
 Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click **edit story**).
 
 - [ ] **Load.** The editor shows metadata, scenes, characters, facts, config and models sections.
@@ -237,7 +253,8 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
       still there, labelled by scene everywhere it shows.
-- [ ] **Reach never reads as intrinsic.** Open the live character sheet (§12) for a story whose
+- [ ] **Reach never reads as intrinsic.** Open a cast pill's character card on the live screen (§12)
+      for a story whose
       scenes carry reach: each grant appears as its own accent-coloured tag naming its scene
       (`⇢ cameras · scene N`), separate from skills (`+…`) and restrictions (`no …`), and never as a
       `+skill` on the same card.
@@ -304,6 +321,11 @@ for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
 
 ## 9. Live writer screen
 
+**Automated:** a scripted run — prose pieces, consult blocks with attempt and verdict, note pills,
+the end marker, the agent rail, the session bar, header cast chips, and the run-start edge that
+pulls the viewer onto the live screen (`tests/gui/live-run.spec.ts`). What needs a real model's
+behaviour stays manual.
+
 Needs a run, so pair it with section 2. What the redesign changed:
 
 - [ ] The page opens with an eyebrow (`chapter N of M · story`), the **scene question as the
@@ -367,31 +389,41 @@ In the reader (section 10), using the search box above the prose.
       story: the box is empty and no prior hits remain. *(Needs a second story with a written
       chapter — same note as section 3.)*
 
-## 12. Live character sheet
+## 12. The character card behind a cast pill
 
-Needs a run, so pair it with section 2. A read-only panel in the live rail.
+**Automated:** the `&modal=` deep link reopening the card with the authored sheet, all three close
+paths (×, Escape, backdrop) dropping the param, and the URL sync around them
+(`tests/gui/deep-links.spec.ts`). Reach-labelling, the live-only fallback, and unavailability below
+stay manual.
 
-- [ ] **It appears while a run is live.** Below the rail's stats, a **cast** panel with a card per
-      character in the run, each showing persona / knows / goal / belief / impulse / voice samples
-      and the character's `+skill` / `no restriction` tags.
-- [ ] **It carries authored data the pills do not.** The header cast pills know only skills and
-      restrictions; this panel shows `knows`, `goal`, `belief`, `impulse` and the quoted voice lines
-      too — proof it is the `/cast` fetch, not the
+Needs a run, so pair it with section 2. The live header's cast pills open a modal; on the live
+screen the modal carries the authored sheet, and the rail holds no cast panel of its own.
+
+- [ ] **The pill opens the card.** Click a cast pill in the live header (or focus it and press
+      Enter): a modal titled with the character's name opens; Escape, the ×, or a backdrop click
+      closes it.
+- [ ] **It carries the authored data.** On the live screen the modal shows persona / knows / goal /
+      belief / impulse, the quoted voice lines, and the character's `+skill` / `no restriction`
+      tags — proof it is the `/cast` fetch, not the
       `scene_start` names. (Pick a story whose characters have a non-empty `knows`.)
 - [ ] **Reach shows per scene, labelled.** On a story whose scene carries a `reach` grant, the
       character it names gets an accent-coloured `⇢ name · scene N` tag with a tooltip explaining it
       is available only through where they are standing here — visibly distinct from both `+skill`
       and `no restriction`, never merged into either list.
-- [ ] **Read-only.** No inputs, no buttons, nothing to click — it is for the human reviewing what a
-      consult was working from, never an edit surface.
-- [ ] **Live only.** Switch to the read tab: no cast panel there. It belongs to a running scene.
-- [ ] **It survives a model swap and a pause** without refetching visibly or vanishing — the panel is
-      keyed by story, not by run state.
-- [ ] **Cast unavailable is graceful.** If `/cast` cannot answer, the panel reads *could not load
-      cast*; the rest of the rail — steps, words, stop — still works. (Force it by loading the live
-      screen with no engine behind it, per the section below.)
+- [ ] **Read-only.** No inputs, no edit affordances — it is for the human reviewing what a consult
+      was working from, never an edit surface.
+- [ ] **Live only.** The same pill on the shelf or the read tab opens the card with the pill's own
+      can/cannot row only — no authored fields, and no `/cast` fetch fires. The sheet belongs to a
+      running scene.
+- [ ] **It survives a model swap and a pause** without refetching visibly or losing the fields —
+      the sheet is keyed by story, not by run state.
+- [ ] **Cast unavailable is graceful.** If `/cast` cannot answer, the card says so in one muted line
+      and still shows the pill's can/cannot row. (Force it by loading the live screen with no engine
+      behind it, per the section below.)
+- [ ] **No duplicate cast panels.** The rail holds run controls and the model-calls panel and
+      nothing else — there is no second "cast" section beside the header's "cast in scene".
 - [ ] **The boundary holds.** This data is shown to you only. It must never appear in any agent's
-      transcript on the per-agent panel (section 8) — the sheet is a GUI read of already-authored
+      transcript on the per-agent panel (section 8) — the card is a GUI read of already-authored
       data, not anything the writer or a character is ever told.
 
 ## 13. Saved-run comparison
@@ -471,6 +503,120 @@ a *new* story folder — so it can go anywhere in the pass.
 - [ ] **Responsive.** Below 900px the sidebar stacks under the proposal; at 375px there is **no
       horizontal scrollbar**.
 
+## 15. Character catalog
+
+**Automated:** character create/list/delete behind the armed confirm, the seeded tag catalog, the
+seeded skill bible and a skill created through the real save path, and the kind riding the URL
+(`tests/gui/catalog.spec.ts`). The forms' field-level behaviour below stays manual.
+
+The global character library, accessible from the shelf and reloadable by direct navigation to
+`#/catalog`. Unlike every other page, the catalog is not scoped to a story.
+
+- [ ] **Entry point.** Shelf → **library of characters** card (under the "start a new story" card).
+      It navigates to `#/catalog`.
+- [ ] **Empty state.** On a first run with no catalog entries, the page reads as an invitation to add
+      one, not as an error or a broken panel. The empty state is clearly distinguished from a failed load.
+- [ ] **Load failure.** Break the catalog fetch (or unload the engine). The page shows the failure
+      message with a **retry** button.
+- [ ] **Issues vs. problems.** A cataloged entry is shown with two **separate, labelled blocks**:
+  - `issues` — schema failures or validations that prevent save. The entry is **not saved**. These are
+    red/error-coloured.
+  - `problems` — advisory warnings (e.g. missing fields that have defaults). The entry **was saved anyway**.
+    These are yellow/warning-coloured.
+  - The two must never be concatenated or merged into one list. A reader must be able to tell
+    "we refused to save this" from "we saved it, but look at this".
+- [ ] **Save with draft intact.** Add an entry. Introduce a validation error (e.g. an invalid JSON
+      field). Attempt to save. The save is rejected and the error appears in `issues`. The user's
+      drafted text stays on screen, not cleared.
+- [ ] **Delete takes two clicks.** Click the delete button on an entry. The button arms (changes
+      appearance, shows "confirm delete"). A second click within ~8 seconds deletes it. Wait longer
+      than ~8 seconds — the button disarms and returns to normal. A second click after disarming does
+      not delete.
+- [ ] **Armed state does not survive navigation.** Click delete on an entry to arm it. Without
+      clicking again, navigate away (back to shelf, to another story, or reload the page). Return to
+      `#/catalog`. The delete button is disarmed and the entry is still there — the armed state and
+      timer did not persist.
+- [ ] **Reload on `#/catalog`.** Close the tab, reopen the browser, and land directly on `#/catalog`
+      by pasting the URL. The catalog page comes back, not the shelf.
+- [ ] **Switching entries with unsaved edits.** Open an entry and make a change without saving. Click
+      another entry. A confirm dialog warns about unsaved changes. Cancel stays on the current entry;
+      confirm navigates to the other one.
+- [ ] **Switching kinds.** At the top of the catalog, a kind switcher shows four tabs: **characters**,
+      **tags**, **styles** and **skills** — one per entry in `CATALOG_KINDS` (`server/gui/viewer/state.js`),
+      which is the browser's copy of the engine's list. Clicking any of them switches the list and the
+      form to that kind. With unsaved edits in the form, clicking another tab warns with a confirm
+      dialog; cancel stays on the current kind, confirm switches and discards the draft.
+- [ ] **Tags render grouped by facet.** When browsing tags, the list groups entries under their facet,
+      not as one flat list of 24. Each facet has a visible header (`facet`), and tags are listed under
+      it. The grouping updates as the list changes.
+- [ ] **Editing a tag's label bumps its version and does not change the entry count.** Open a tag entry
+      and change its label. Save it. Its version number increments. The total number of tags on the
+      page stays the same — the entry is an update, not a new one.
+- [ ] **A duplicate facet+label reports the advisory and still saves.** Add a tag entry whose facet and
+      label match an existing one. Attempt to save. The save succeeds and the entry appears in the list;
+      a problem (yellow-coloured advisory) notes the duplicate. The data is retained.
+- [ ] **On a character, tag chips toggle on and off.** On a character's form, the tag picker (or equivalent)
+      shows tag chips. Click a chip to toggle it on or off. The character's tag list updates to reflect
+      the change. The chips show visually distinct on/off states.
+- [ ] **A character carrying a tag that is no longer in the vocabulary still shows it, marked as off-vocabulary.**
+      On a character entry that carries a tag no longer in the current tag vocabulary, that tag chip
+      displays marked as off-vocabulary (distinct from both selected and unselected, not styled as an error).
+      The chip reads as "still here, but not one of the current terms". On save, the tag persists — it is
+      not silently lost. The author owns their data, and losing it silently is the failure being guarded against.
+- [ ] **Reloading on `#/catalog?kind=tags` lands back on tags.** Reload the page while browsing tags
+      at `#/catalog?kind=tags`. The page comes back with tags loaded, not silently switched to characters.
+
+### Styles, the third kind
+
+A style is a reusable writer voice — the half of a house style that travels between stories. The other
+half, the clauses a story derives from its POV and its cast's restrictions, is deliberately NOT here.
+
+- [ ] **Every tab round-trips.** Characters and tags still behave exactly as the checks above
+      describe — the page was a binary before styles and every per-kind branch had to be widened.
+- [ ] **Empty style catalog reads as an invitation.** Styles have no seed, unlike tags. A first run
+      shows the create prompt, not a blank panel and not an error.
+- [ ] **Create and edit.** A style takes a name, a one-line description, tags (the same chip picker
+      the character form uses) and a voice. Saving lists it at v1 with its description under its name;
+      editing the voice and saving again makes it v2 without changing the entry count.
+- [ ] **A voice carrying a perception rule SAVES, with an advisory.** Put "nothing that is only
+      visible" (or "cannot see", "is blind") in a style's voice and save. It saves, and the advisory
+      appears in the `.prob` block — NOT as an error. This is the rule the preset/derived split exists
+      for: such a clause is load-bearing on the page, and a preset carrying one would take it away the
+      moment the author picked a different voice.
+- [ ] **An empty name is refused** with `issues` in `.said.bad`, and the description and voice you
+      typed are still on screen.
+- [ ] **Reloading on `#/catalog?kind=styles` lands back on styles**, with the parameter still in the
+      URL — not silently switched to characters.
+
+### Skills, the fourth kind
+
+The persisted special-skill bible. A skill takes a name, a meaning and tags; it takes no voice, no
+persona and no restrictions ([`Architect.MD`](Architect.MD)'s *Skill bible* says why restrictions get
+no catalog of their own).
+
+- [ ] **The seed is there before anything is saved.** A first run on `#/catalog?kind=skills` lists the
+      engine's three special skills — `lockpicking`, `climbing`, `sleight-of-hand` — with their
+      meanings. This is the tag behaviour, not the style behaviour: skills seed, styles do not.
+- [ ] **The first save materializes the whole seed.** Create one skill and save. The list holds four
+      entries, not one — the seed was written out beside the new entry, so every seeded skill is now
+      editable and deletable. Delete a seeded one and reload: it stays gone.
+- [ ] **The meaning is a paragraph, not a list.** Type a multi-line meaning with blank lines and save.
+      It comes back as one block of prose with its line breaks intact — it must not be split into
+      separate entries the way a character's voice samples are.
+- [ ] **An empty meaning is refused,** in `issues` in `.said.bad`, not reported as an advisory — the
+      one field in any kind the schema will not let through. The name you typed is still on screen.
+- [ ] **A name that is a general skill saves, with an advisory.** Add a skill called `sight` and save.
+      It saves, and the `.prob` block says every character already has it. Same for a name containing
+      `::`, and for a second spelling of a name already in the bible (`Sleight of Hand` beside
+      `sleight-of-hand`) — all three are advisories, none of them refuse.
+- [ ] **The character form stops calling a promoted skill unknown.** Add `telepathy :: reading minds`
+      to the bible. Then open a character and give them a bare `telepathy` in their skills with no
+      `:: meaning`. The advisory saying it is "not a bible skill, and it carries no `:: meaning`" is
+      **gone** — this is the whole point of the kind, and it is the check most likely to regress,
+      because it is the only one that crosses from one catalog kind to another.
+- [ ] **Reloading on `#/catalog?kind=skills` lands back on skills**, with the parameter still in the
+      URL — not silently switched to characters.
+
 ## Checking the viewer without an engine
 
 Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the
@@ -490,10 +636,13 @@ APP.view = "live"; APP.live = true; APP.render();
 That renders any state you like — every phase, an empty run, a stopped one — without spending a run to
 reach it. It is how sections 6-8 were built, and it is the only way to see a state that needs the
 engine to be in a particular mood. It does not replace a live pass: it cannot tell you that SSE
-delivers those events, only that the screen draws them correctly once it has them.
+delivers those events, only that the screen draws them correctly once it has them. `tests/gui/` is
+this trick made durable: the harness publishes the same event shapes through the real SSE bus, so
+the scripted screens it renders arrive the way a run's do.
 
 ## What this list cannot tell you
 
 It exercises the paths a person clicks. It says nothing about the ones they do not: an SSE reconnect
 mid-consult, two browsers attached at once, a run stopped at the exact moment a handoff opens. Those
-remain unverified in any form.
+remain unverified in any form. The Playwright suite is one page, one client, one connection — it
+shares this blindness exactly, and adds nothing for these.

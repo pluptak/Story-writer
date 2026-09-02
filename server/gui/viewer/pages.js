@@ -1,5 +1,5 @@
 import { $, esc, basename, wireBackdropClose, tid } from "./util.js";
-import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
+import { APP, LIVEV, READV, READER, FIELDS, open, storyName, CATALOG_KINDS } from "./state.js";
 import { build } from "./events.js";
 import { renderBlocks, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
@@ -7,14 +7,16 @@ import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
 import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
+import { catalogPageHtml, wireCatalog, loadCatalog } from "./catalog.js";
 import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
+import { ensureLiveCast } from "./cast-sheet.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
-import { go, generating, syncHash, tagFocus, clearFocus } from "./nav.js";
+import { go, generating, syncHash, tagFocus, clearFocus, parseHashParams } from "./nav.js";
 import { renderSession } from "./session.js";
 
 function restoreFocus(page, id) {
@@ -41,7 +43,7 @@ function renderNav() {
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
-  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" || APP.view === "scaffold" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
+  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" || APP.view === "scaffold" || APP.view === "catalog" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
     const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
@@ -72,6 +74,9 @@ function renderHeader() {
   // is one set too many.
   $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story) : "";
   $("castcard").hidden = !(APP.view === "live" && m.characters?.length);
+  // The authored sheet behind a pill's character card fetches once per story, first live frame --
+  // so the card is full when a pill is clicked instead of filling in as it is read.
+  if (APP.view === "live") ensureLiveCast();
 }
 
 function paintRibbon() {
@@ -87,7 +92,7 @@ function renderShelf(page, keepFocus) {
   $("railstats").innerHTML = "";
   // The new-story card opens the scaffold page (a route now, not a modal); an interview already
   // running on the server is continued there, not started again.
-  wirePicker(page, () => go("story"), () => go("scaffold"));
+  wirePicker(page, () => go("story"), () => go("scaffold"), () => go("catalog"));
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
@@ -113,6 +118,33 @@ function renderHandoff(page, keepFocus) {
   wireHandoff(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
+}
+
+function renderCatalog(page, keepFocus) {
+  page.innerHTML = catalogPageHtml();
+  $("railstats").innerHTML = "";
+  wireCatalog(page);
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+
+  applyCatalogUrlKind();
+}
+
+// The URL seeds the catalog's kind on ARRIVAL and on a hash change -- never on every render.
+// Inside the page the state is authoritative: a render triggered by the kind switcher reads a URL
+// syncHash has not caught up with yet, and letting that win resets the kind and races a second
+// load -- which is how tag entries came to be drawn through the character branch.
+let catalogUrlKind = null;
+function applyCatalogUrlKind() {
+  const urlKind = parseHashParams().get("kind") || "characters";
+  // The known kinds are defined in state.js's CATALOG_KINDS, not here, so adding a kind is one
+  // edit rather than three. The browser cannot import engine/catalog-schema.ts, so the viewer
+  // lists them by hand.
+  const kind = CATALOG_KINDS.includes(urlKind) ? urlKind : "characters";
+  const urlChanged = urlKind !== catalogUrlKind;
+  catalogUrlKind = urlKind;
+  if (APP.catalog.loading) return;
+  if ((urlChanged && kind !== APP.catalog.kind) || !APP.catalog.loaded) loadCatalog(kind);
 }
 
 function renderReader(page) {
@@ -329,6 +361,7 @@ export function render() {
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
+  else if (APP.view === "catalog") renderCatalog(page, keepFocus);
   else if (APP.view === "compare") renderComparison(page);
   else if (APP.view === "edit") renderEdit(page);
   else if (APP.view === "scaffold") renderScaffold(page, keepFocus);
