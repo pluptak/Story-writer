@@ -14,7 +14,7 @@ import {
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
 import { architectNextChapter, architectVerify } from "../prompts.ts";
 import * as P from "../prompts.ts";
-import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits } from "../engine/architect.ts";
+import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits, consultCostNote } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
 
@@ -614,6 +614,24 @@ describe("ScaffoldSession, staged", () => {
       const storyText = P.architectStoryStage("idea");
       assert.match(storyText, /stage 1 of 6/);
     });
+
+    it("the story stage carries the author's tags, and says nothing when there are none", () => {
+      assert.doesNotMatch(P.architectStoryStage("idea"), /\[THE TAGS\]/);
+      const withTags = P.architectStoryStage("idea", ["survival horror", "bleak"]);
+      assert.match(withTags, /\[THE TAGS\]/);
+      assert.match(withTags, /survival horror, bleak/);
+    });
+
+    it("an empty concept leaves the story stage byte-identical", () => {
+      assert.equal(P.architectStoryStage("idea"), P.architectStoryStage("idea", []));
+    });
+
+    it("the cast stage names the author's opening cast size only when they chose one", () => {
+      assert.doesNotMatch(P.architectCastStage("p", "t", "{}"), /The author asked for/);
+      const withSize = P.architectCastStage("p", "t", "{}", 3);
+      assert.match(withSize, /The author asked for 3 in/);
+      assert.match(withSize, /a target, not a quota/);
+    });
   });
 
   // Refining the open world gate. The architect authors the ledger as {"timeline": [...]}, so a
@@ -749,6 +767,120 @@ describe("architectVerify: reach rules", () => {
     assert.match(p, /neither scene_1\.place nor "facts" ever establishes/);
     // I5 stays a judgement call for the model, never a mechanical refusal
     assert.match(p, /This one is a judgement/);
+  });
+});
+
+describe("consultCostNote", () => {
+  it("says nothing about a duo", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: [], restrictions: [] },
+        { name: "B", persona: "", knows: "", skills: [], restrictions: [] },
+      ],
+      facts: [], config: { maxSteps: 24 },
+    }).spec;
+    assert.equal(consultCostNote(spec), "");
+  });
+
+  it("says nothing while the budget is still wide", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: [], restrictions: [] },
+        { name: "B", persona: "", knows: "", skills: [], restrictions: [] },
+        { name: "C", persona: "", knows: "", skills: [], restrictions: [] },
+      ],
+      facts: [], config: { maxSteps: 24 },
+    }).spec;
+    assert.equal(consultCostNote(spec), "");
+  });
+
+  it("prices a wide roster against a tight budget", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: [], restrictions: [] },
+        { name: "B", persona: "", knows: "", skills: [], restrictions: [] },
+        { name: "C", persona: "", knows: "", skills: [], restrictions: [] },
+        { name: "D", persona: "", knows: "", skills: [], restrictions: [] },
+      ],
+      facts: [], config: { maxSteps: 24 },
+    }).spec;
+    const note = consultCostNote(spec);
+    assert.notEqual(note, "");
+    assert.match(note, /4 characters/);
+    assert.match(note, /24/);
+    assert.match(note, /beats wide/);
+  });
+
+  it("says nothing before there is a cast", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [],
+      facts: [], config: { maxSteps: 24 },
+    }).spec;
+    assert.equal(consultCostNote(spec), "");
+  });
+
+  // Roster cost is only news once there is a scene to spend the budget on, so the note is the
+  // scene gate's alone. It also has to survive that gate's verify pass, which rebuilds `problems`
+  // from its own reading a moment after the stage content lands.
+  it("the consult cost shows at the scene gate, not before, and survives the verify pass", async () => {
+    const STORY_STAGE = {
+      title: "Test Story",
+      premise: "A test premise",
+      tension: "Character A wants X; Character B wants Y",
+      facts: [],
+    };
+    const CAST_STAGE = {
+      characters: [
+        { name: "A", persona: "First character", knows: "fact", skills: [], restrictions: [] },
+        { name: "B", persona: "Second character", knows: "fact", skills: [], restrictions: [] },
+        { name: "C", persona: "Third character", knows: "fact", skills: [], restrictions: [] },
+        { name: "D", persona: "Fourth character", knows: "fact", skills: [], restrictions: ["hearing"] },
+      ],
+    };
+    const SETTINGS_STAGE = { writer_style: "Plain prose." };
+    const TECHNICAL_STAGE = {
+      config: { maxSteps: 24, clarifications: 1, retries: 3, maxProseWords: 120 },
+    };
+    const SCENE_STAGE = { scene: { place: "the place", question: "What happens?", pov: "A", length: 700, roster: ["A", "B", "C", "D"] } };
+
+    const judgeSaying = (verdict: unknown) => () => new ScriptedAgent([JSON.stringify(verdict)]);
+    const passingJudge = judgeSaying({ ok: true });
+    const s = new ScaffoldSession(
+      new ScriptedAgent([
+        JSON.stringify(STORY_STAGE),
+        JSON.stringify(CAST_STAGE),
+        JSON.stringify(SETTINGS_STAGE),
+        JSON.stringify(TECHNICAL_STAGE),
+        JSON.stringify(SCENE_STAGE),
+        JSON.stringify({ edits: [], note: "verified" }),
+      ]),
+      SCAFFOLD_DEFAULTS,
+      "test idea",
+      undefined,
+      "staged",
+      passingJudge
+    );
+
+    await s.propose();
+    await s.approve();  // cast gate
+    assert.doesNotMatch(s.problems.join(" "), /beats wide/, "no cost note at cast gate");
+
+    await s.approve();  // settings gate
+    assert.doesNotMatch(s.problems.join(" "), /beats wide/, "no cost note at settings gate");
+
+    await s.approve();  // technical gate
+    assert.doesNotMatch(s.problems.join(" "), /beats wide/, "no cost note at technical gate");
+
+    await s.approve();  // scene gate
+    assert.equal(s.stage, "scene");
+    assert.equal(s.spec.characters.length, 4, "four in the roster");
+    assert.equal(s.spec.config.maxSteps, 24, "24 steps, so six beats wide");
+    assert.match(s.problems.join(" "), /4 characters against maxSteps 24/,
+                 "the scene gate prices the roster the author asked for");
   });
 });
 

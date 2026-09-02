@@ -313,11 +313,18 @@ whole-story shape from your instructions. Fields of other stages are dropped if 
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
-export const architectStoryStage = (idea: string) => `${checklistLine("story")}
+export const architectStoryStage = (idea: string, tags: readonly string[] = []) => `${checklistLine("story")}
 
 [THE IDEA]
 ${idea}
-
+${tags.length ? `
+[THE TAGS]
+The author chose these before you started: ${tags.join(", ")}.
+They say what KIND of story this should be -- the same idea told as survival horror and as
+adventure are different stories, and these words pick which one. Let them decide the tone and
+what kind of pressure the premise carries. They are not a plot, and not a list of things to
+include.
+` : ""}
 YOUR STAGE: the story's frame, and nothing else --
 
 {"title": "...",
@@ -349,7 +356,7 @@ the author cares most about. "Two lighthouse keepers" names who, and nothing at 
 
 ${STAGE_RULES}`;
 
-export const architectCastStage = (premise: string, tension: string, specSoFar: string) =>
+export const architectCastStage = (premise: string, tension: string, specSoFar: string, castSize = 0) =>
 `${checklistLine("cast")}
 
 [THE PREMISE]
@@ -373,7 +380,9 @@ YOUR STAGE: the cast, and nothing else --
 
 characters -- Every character costs consults out of a fixed step budget, so add a third or fourth
               only when they have their own stake in THE TENSION -- not because the cast feels thin
-              with two. Four is the maximum. These people exist to put that tension under strain:
+              with two. Four is the maximum.${castSize > 0 ? ` The author asked for ${castSize} in
+              the opening cast -- a target, not a quota: if the tension only supports fewer, propose
+              fewer and say why in "note".` : ""} These people exist to put that tension under strain:
               their goals collide inside it, their knowledge splits along it, their restrictions
               bite because of it. Author each of them AS THEY WALK INTO SCENE 1 -- what anyone
               becomes later is re-authored after real chapters exist, never today. For each:

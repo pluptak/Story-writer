@@ -59,6 +59,22 @@ export function newCastAsymmetryJudge(d: Defaults): Agent {
   return a;
 }
 
+/** Roster size is what a scene costs. Every character in the roster may be consulted at each beat,
+ *  so a wide cast spends the step budget on breadth instead of depth -- the `alarm-wing` runs hit
+ *  the 24-step cap with a wide roster while a duo on the same budget did not. Quiet below three
+ *  characters, and quiet when the budget is still at least eight beats wide; those are the shapes
+ *  that had room. Returns "" when there is nothing yet to price. */
+export function consultCostNote(spec: StorySpec): string {
+  const roster = spec.characters.length;
+  const maxSteps = spec.config.maxSteps;
+  if (roster < 3 || maxSteps <= 0) return "";
+  const beats = Math.floor(maxSteps / roster);
+  if (beats >= 8) return "";
+  return `${roster} characters against maxSteps ${maxSteps}: every one of them may be consulted at `
+    + `each beat, so the budget is about ${beats} beats wide — a roster this wide has run out of `
+    + `steps before the scene resolved`;
+}
+
 // -- SCAFFOLD SESSION ------------------------------------------------------
 
 /** Which of the two automatic follow-up passes ran, for the CLI/SSE to label. */
@@ -237,11 +253,16 @@ export class ScaffoldSession {
   private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
 
   /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
-   *  without it a test walking the checklist would reach for the network at the cast gate. */
+   *  without it a test walking the checklist would reach for the network at the cast gate.
+   *  `tags` and `castSize` are the author's concept, chosen before the architect ran: session-only,
+   *  like `tension`, and never a story.json field. Tags steer the story stage and stop there;
+   *  castSize is the OPENING cast's target size, which the cast stage reads. */
   constructor(public architect: Agent, public defaults: Defaults, public idea: string,
               public storiesDir: string = joinPath(ROOT, "stories"),
               public mode: "oneshot" | "staged" = "oneshot",
-              public newJudge?: () => Agent) {}
+              public newJudge?: () => Agent,
+              public tags: readonly string[] = [],
+              public castSize = 0) {}
 
   haveStory(): boolean { return this.spec.characters.length > 0; }
 
@@ -277,8 +298,8 @@ export class ScaffoldSession {
     const json = this.specJsonText();
     const insist = this.asks >= ScaffoldSession.MAX_ASKS ? `${P.STAGE_INSIST}\n\n` : "";
     switch (stage) {
-      case "story": return insist + P.architectStoryStage(this.idea);
-      case "cast": return insist + P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json);
+      case "story": return insist + P.architectStoryStage(this.idea, this.tags);
+      case "cast": return insist + P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.castSize);
       case "settings": return insist + P.architectSettingsStage(json);
       case "technical": return insist + P.architectTechnicalStage(json);
       case "scene": return insist + P.architectSceneStage(json);
@@ -355,13 +376,15 @@ export class ScaffoldSession {
   /** Problems a half-built story always has are not news: before the cast lands there are no
    *  characters, and before the scene lands there is no question for anything to answer. Those are
    *  suppressed; everything else shows verbatim. */
-  private static visibleProblems(spec: StorySpec, problems: string[]): string[] {
+  private static visibleProblems(spec: StorySpec, problems: string[], stage: P.ScaffoldStage | null = null): string[] {
     const castIn = spec.characters.length > 0;
     const sceneIn = Boolean(spec.scenes[0]?.question.trim());
-    return problems.filter(p =>
+    const filtered = problems.filter(p =>
       !(!castIn && p === "no characters at all")
       && !(!sceneIn && /has no question/.test(p))
       && !(!sceneIn && /^scene\b/.test(p)));
+    const note = stage === "scene" ? consultCostNote(spec) : "";
+    return note ? [...filtered, note] : filtered;
   }
 
   /** A world-gate reply's ledger, in either shape it arrives in: the stage's own top-level
@@ -387,7 +410,7 @@ export class ScaffoldSession {
     const n = normalizeSpec(this.mergedRaw(stage, out));
     archLog(`STAGE ${stage}: content accepted. problems=`, n.problems);
     this.spec = n.spec;
-    this.problems = ScaffoldSession.visibleProblems(this.spec, n.problems);
+    this.problems = ScaffoldSession.visibleProblems(this.spec, n.problems, stage);
     return { kind: "proposal", note: withAsk(out), stage };
   }
 
@@ -399,7 +422,12 @@ export class ScaffoldSession {
     const base = this.takeStaged(stage, r.out);
     if (!(stage === "scene" && base.kind === "proposal")) return base;
     const v = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, ["verify"]);
-    this.spec = v.spec; this.problems = v.problems;
+    // Back through visibleProblems rather than straight across: the verify pass rebuilds the list
+    // from its own reading, so anything the gate itself added -- the consult cost -- is gone unless
+    // it is recomputed here. The suppression half is a no-op this late (a cast and a scene both
+    // exist by now), so the only thing this restores is the note.
+    this.spec = v.spec;
+    this.problems = ScaffoldSession.visibleProblems(this.spec, v.problems, stage);
     if (v.question !== undefined) { this.pendingAsk = v.question; return { kind: "question", ask: v.question, stage, auto: v.auto }; }
     this.pendingAsk = "";
     return { ...base, auto: v.auto };
@@ -535,7 +563,7 @@ export class ScaffoldSession {
         // already folded in above, and the rest applies on top of it.
         const also = applyEdits(this.spec, { ...r.out, edits: rest });
         this.spec = also.spec;
-        this.problems = ScaffoldSession.visibleProblems(this.spec, also.problems);
+        this.problems = ScaffoldSession.visibleProblems(this.spec, also.problems, this.stage);
         this.refusedLastRound = also.ignored;
         archLog(`CHANGE world: ledger folded as stage content, then applied=[${also.applied.map(a => a.field).join(", ")}]`);
         return { kind: "edits", applied: also.applied, ignored: also.ignored, flags: [],
@@ -561,7 +589,7 @@ export class ScaffoldSession {
       }
       const e = applyEdits(this.spec, { ...r.out, edits: named });
       this.spec = e.spec;
-      this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems);
+      this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems, this.stage);
       this.pendingAsk = "";
       this.refusedLastRound = e.ignored;
       archLog(`CHANGE ${this.stage}: fields=[${raw.map(x => String(x?.field ?? "?")).join(", ")}] `
