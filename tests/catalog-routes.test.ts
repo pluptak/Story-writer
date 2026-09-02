@@ -36,7 +36,10 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
       }
       return { ok: false as const, reason: "unknown kind" };
     },
-    catalogCheck: (entry: any) => {
+    catalogCheck: (kind: string, entry: any) => {
+      if (kind !== "characters" && kind !== "tags") {
+        return { ok: false as const, reason: `no such catalog "${kind}"` };
+      }
       if (!entry.name) {
         return { ok: false as const, issues: ["name is required"] };
       }
@@ -190,7 +193,7 @@ describe("/catalog/entry (GET)", () => {
 describe("/catalog/check (POST)", () => {
   it("passes problems through on validation success", async () => {
     const h = makeHost({
-      catalogCheck: (entry: any) => ({
+      catalogCheck: (kind: string, entry: any) => ({
         ok: true as const,
         problems: ["some advisory"],
       }),
@@ -208,6 +211,50 @@ describe("/catalog/check (POST)", () => {
     assert.equal(r.code, 200);
     assert.equal(r.body.ok, false);
     assert.equal(r.body.issues[0], "name is required");
+  });
+
+  it("defaults kind to 'characters' when body omits it", async () => {
+    let capturedKind = "";
+    const h = makeHost({
+      catalogCheck: (kind: string, entry: any) => {
+        capturedKind = kind;
+        return { ok: true as const, problems: [] };
+      },
+    });
+    await callRoute(handleCatalogRoutes, "/catalog/check",
+      { entry: CHAR_ONE }, h);
+    assert.equal(capturedKind, "characters");
+  });
+
+  it("passes explicit kind: 'tags' through", async () => {
+    let capturedKind = "";
+    const h = makeHost({
+      catalogCheck: (kind: string, entry: any) => {
+        capturedKind = kind;
+        return { ok: true as const, problems: [] };
+      },
+    });
+    await callRoute(handleCatalogRoutes, "/catalog/check",
+      { kind: "tags", entry: CHAR_ONE }, h);
+    assert.equal(capturedKind, "tags");
+  });
+
+  it("returns 400 for unknown kind, distinguishable from schema failure", async () => {
+    const h = makeHost({
+      catalogCheck: (kind: string, entry: any) => {
+        if (kind !== "characters" && kind !== "tags") {
+          return { ok: false as const, reason: `no such catalog "${kind}"` };
+        }
+        return { ok: true as const, problems: [] };
+      },
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/check",
+      { kind: "unknown", entry: CHAR_ONE }, h);
+    assert.equal(r.code, 400);
+    assert.equal(r.body.ok, false);
+    assert.match(r.body.reason, /no such catalog/);
+    // Ensure it has reason, not issues
+    assert.equal(r.body.issues, undefined);
   });
 });
 

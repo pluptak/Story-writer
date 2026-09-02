@@ -1,60 +1,34 @@
-/** CATALOG — storage and validation for the character catalog. */
+/** CATALOG — storage and validation for character and tag catalogs. */
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
+import { z } from "zod";
 import { warn } from "./warnings.ts";
 import { characterPsychologyWarnings } from "./story-spec.ts";
 import { capabilityProblems } from "./skills.ts";
 import { ROOT } from "./story-format.ts";
-import { CharacterCatalog, LibraryCharacter, type CatalogKind } from "./catalog-schema.ts";
+import {
+  CharacterCatalog,
+  TAG_SEED, TagCatalog, TagEntry, type CatalogKind, type TagFacet,
+  LibraryCharacter,
+} from "./catalog-schema.ts";
 
-const KIND_TO_FILENAME: Record<CatalogKind, string> = {
-  characters: "catalog-characters.json",
+// -- REGISTRY ---------------------------------------------------------------
+
+/** Per-kind configuration: schema, filename, problems checker, and optional seed. */
+type CatalogRegistry = {
+  filename: string;
+  catalog: z.ZodType<any>;
+  entry: z.ZodType<any>;
+  problems: (entry: any) => string[];
+  seed?: () => any[];
 };
 
-function catalogPath(kind: CatalogKind, path?: string): string {
-  if (!KIND_TO_FILENAME[kind])
-    throw new Error(`Unknown catalog kind: ${kind}`);
-  return path ?? joinPath(ROOT, KIND_TO_FILENAME[kind]);
-}
-
-/** Every entry in one catalog. Missing file = empty catalog, silently. */
-export async function loadCatalog(kind: CatalogKind, path?: string): Promise<CharacterCatalog> {
-  const filePath = catalogPath(kind, path);
-  let raw: any;
-  try {
-    raw = JSON.parse(await readFile(filePath, "utf8"));
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
-      return { entries: [] };
-    }
-    warn(`${kind} catalog could not be read (${(e as Error).message}) — using empty catalog`);
-    return { entries: [] };
-  }
-
-  const result = CharacterCatalog.safeParse(raw);
-  if (!result.success) {
-    warn(`${kind} catalog could not be parsed — using empty catalog`);
-    return { entries: [] };
-  }
-
-  return result.data;
-}
-
-/** Validate one entry without saving it: schema issues first, then advisory problems. */
-export function checkEntry(raw: unknown): { ok: false; issues: string[] } | { ok: true; entry: LibraryCharacter; problems: string[] } {
-  const result = LibraryCharacter.safeParse(raw);
-  if (!result.success) {
-    const issues = result.error.issues.map(i => `${i.path.join(".") || "entry"}: ${i.message}`);
-    return { ok: false, issues };
-  }
-
-  const entry = result.data;
+/** Character-specific problems: psychology, capabilities, and portable-persona checks. */
+function characterProblems(entry: LibraryCharacter): string[] {
   const problems: string[] = [];
 
   problems.push(...characterPsychologyWarnings(entry.name, entry.belief, entry.impulse, entry.voice));
 
-  // The catalog is an editing surface: an unresolvable restriction is something to tell the author
-  // about, not something to silently delete from their entry.
   const capProblems = capabilityProblems(entry.name, entry.skills, entry.restrictions);
   problems.push(...capProblems.problems);
 
@@ -69,23 +43,130 @@ export function checkEntry(raw: unknown): { ok: false; issues: string[] } | { ok
     }
   }
 
+  return problems;
+}
+
+/** Tag-specific problems: advisory only. */
+function tagProblems(entry: TagEntry): string[] {
+  const problems: string[] = [];
+
+  // Check if label is already trimmed-lowercase
+  const trimmed = entry.label.trim().toLowerCase();
+  if (entry.label !== trimmed) {
+    problems.push(`${entry.label} is not lowercase — tags are matched by label, so "Bleak" and "bleak" would be two tags`);
+  }
+
+  return problems;
+}
+
+/** Registry of all catalog kinds. */
+const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
+  characters: {
+    filename: "catalog-characters.json",
+    catalog: CharacterCatalog,
+    entry: LibraryCharacter,
+    problems: characterProblems,
+  },
+  tags: {
+    filename: "catalog-tags.json",
+    catalog: TagCatalog,
+    entry: TagEntry,
+    problems: tagProblems,
+    seed: () => TAG_SEED.map(item => ({
+      ...item,
+      id: `${item.facet}-${item.label}`,
+      version: 1,
+    })),
+  },
+};
+
+function catalogPath(kind: CatalogKind, path?: string): string {
+  const reg = REGISTRY[kind];
+  if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
+  return path ?? joinPath(ROOT, reg.filename);
+}
+
+/** Every entry in one catalog. Missing file returns the seed (if one exists) or an empty catalog, silently.
+ *  When the file EXISTS, it wins entirely — the seed is not merged in. We don't merge because that
+ *  would resurrect a seed tag the author deliberately deleted, which is worse than a new engine
+ *  version's additions not appearing. The author's deletions are intentional and must be preserved.
+ *  The seed materializes on first save: when the author edits a tag in a fresh catalog, the save
+ *  persists the entire seed (24 tags) with the user's edit, making all tags editable, deletable,
+ *  and renameable going forward. */
+export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any> {
+  const reg = REGISTRY[kind];
+  if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
+
+  const filePath = catalogPath(kind, path);
+  let raw: any;
+  try {
+    raw = JSON.parse(await readFile(filePath, "utf8"));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+      // File is absent; return seed if one exists, otherwise empty catalog.
+      if (reg.seed) {
+        return { entries: reg.seed() };
+      }
+      return { entries: [] };
+    }
+    warn(`${kind} catalog could not be read (${(e as Error).message}) — using empty catalog`);
+    return { entries: [] };
+  }
+
+  const result = reg.catalog.safeParse(raw);
+  if (!result.success) {
+    warn(`${kind} catalog could not be parsed — using empty catalog`);
+    return { entries: [] };
+  }
+
+  return result.data;
+}
+
+/** Validate one entry without saving it: schema issues first, then advisory problems.
+ *  Synchronous and catalog-free — uses only the registry's entry schema and problems checker. */
+export function checkEntry(kind: CatalogKind, raw: unknown): { ok: false; issues: string[] } | { ok: true; entry: any; problems: string[] } {
+  const reg = REGISTRY[kind];
+  if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
+
+  const result = reg.entry.safeParse(raw);
+  if (!result.success) {
+    const issues = result.error.issues.map(i => `${i.path.join(".") || "entry"}: ${i.message}`);
+    return { ok: false, issues };
+  }
+
+  const entry = result.data;
+  const problems = reg.problems(entry);
+
   return { ok: true, entry, problems };
 }
 
-/** Insert or replace one entry by id, then persist. Bumps `version` on replace. */
+/** Insert or replace one entry by id, then persist. Bumps `version` on replace.
+ *  For tags, checks for duplicate facet+label pairs and reports them as advisory problems
+ *  (they don't block the save, since the catalog is an editing surface). */
 export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string):
-  Promise<{ ok: true; entry: LibraryCharacter; problems: string[] } | { ok: false; reason: string; issues?: string[] }> {
-  const check = checkEntry(raw);
+  Promise<{ ok: true; entry: any; problems: string[] } | { ok: false; reason: string; issues?: string[] }> {
+  const check = checkEntry(kind, raw);
   if (!check.ok) {
     return { ok: false, reason: "entry validation failed", issues: check.issues };
   }
 
   const entry = check.entry;
-  const problems = check.problems;
+  let problems = [...check.problems];
 
   const catalog = await loadCatalog(kind, path);
 
-  const existingIndex = catalog.entries.findIndex(e => e.id === entry.id);
+  // For tags, check for duplicate facet+label under a different id.
+  if (kind === "tags") {
+    const existing = (catalog.entries as TagEntry[]).find(
+      e => e.facet === entry.facet && e.label === entry.label && e.id !== entry.id
+    );
+    if (existing) {
+      // Duplicate detected, but still save — the catalog is an editing surface.
+      problems.push(`tag with facet "${entry.facet}" and label "${entry.label}" already exists with id "${existing.id}"`);
+    }
+  }
+
+  const existingIndex = catalog.entries.findIndex((e: any) => e.id === entry.id);
   const entryToSave = { ...entry };
   if (existingIndex >= 0) {
     entryToSave.version = catalog.entries[existingIndex].version + 1;
@@ -102,7 +183,7 @@ export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string):
 
   // Verify the entry was actually saved at the expected version.
   const reloaded = await loadCatalog(kind, path);
-  const saved = reloaded.entries.find(e => e.id === entry.id);
+  const saved = reloaded.entries.find((e: any) => e.id === entry.id);
   if (!saved || saved.version !== entryToSave.version) {
     return { ok: false, reason: "saved but does not load: entry not found or version mismatch" };
   }
@@ -115,7 +196,7 @@ export async function deleteEntry(kind: CatalogKind, id: string, path?: string):
   Promise<{ ok: true } | { ok: false; reason: string; missing?: true }> {
   const catalog = await loadCatalog(kind, path);
 
-  const existingIndex = catalog.entries.findIndex(e => e.id === id);
+  const existingIndex = catalog.entries.findIndex((e: any) => e.id === id);
   if (existingIndex === -1) {
     return { ok: false, reason: `entry "${id}" not found`, missing: true };
   }
@@ -129,7 +210,7 @@ export async function deleteEntry(kind: CatalogKind, id: string, path?: string):
 
   // Verify the entry was actually deleted.
   const reloaded = await loadCatalog(kind, path);
-  if (reloaded.entries.some(e => e.id === id)) {
+  if (reloaded.entries.some((e: any) => e.id === id)) {
     return { ok: false, reason: "saved but does not load: entry still present" };
   }
 
@@ -138,7 +219,7 @@ export async function deleteEntry(kind: CatalogKind, id: string, path?: string):
 
 /** Write one catalog to disk: temp file, then rename. Whether the write took is the caller's to
  *  confirm — each knows what it expects to find. */
-async function persist(kind: CatalogKind, catalog: CharacterCatalog, path?: string):
+async function persist(kind: CatalogKind, catalog: any, path?: string):
   Promise<{ ok: true } | { ok: false; reason: string }> {
   const filePath = catalogPath(kind, path);
   const tmpPath = filePath + ".tmp";

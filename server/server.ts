@@ -101,8 +101,13 @@ export interface ServerHost {
   }>;
   /** All entries in a catalog. `kind` is validated here because it arrives from the wire. */
   catalogEntries(kind: string): Promise<{ ok: true; entries: unknown[] } | { ok: false; reason: string }>;
-  /** Validate one catalog entry without saving. */
-  catalogCheck(entry: unknown): { ok: true; problems: string[] } | { ok: false; issues: string[] };
+  /** Validate one catalog entry without saving. `kind` is validated here because it arrives from
+   *  the wire; an unknown kind returns `reason`, not `issues`. Schema validation failure returns
+   *  `issues`; both schema and kind validation answers are 200 (validation is ordinary reply). */
+  catalogCheck(kind: string, entry: unknown):
+    { ok: true; problems: string[] } |
+    { ok: false; issues: string[] } |
+    { ok: false; reason: string };
   /** Insert or replace one catalog entry by id. */
   catalogSave(kind: string, entry: unknown): Promise<{ ok: true; entry: unknown; problems: string[] } | { ok: false; reason: string; status?: number; issues?: string[] }>;
   /** Remove one catalog entry by id. Fails if the id is not found. */

@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { LibraryCharacter, CharacterCatalog } from "../engine/catalog-schema.ts";
+import { LibraryCharacter, CharacterCatalog, TagEntry, TagCatalog, TAG_SEED, TAG_FACETS } from "../engine/catalog-schema.ts";
 import { capabilityProblems } from "../engine/skills.ts";
 
 // -- LIBRARY CHARACTER SCHEMA -----------------------------------------------
@@ -171,5 +171,147 @@ describe("capabilityProblems", () => {
     const result = capabilityProblems("Iris", [], ["custom-ability"], stubBible);
     assert.deepEqual(result.restrictions, ["custom-ability"]);
     assert.deepEqual(result.problems, []);
+  });
+});
+
+// -- TAG ENTRY SCHEMA -------------------------------------------------------
+describe("TagEntry schema", () => {
+  it("parses a full valid tag entry", () => {
+    const tag = TagEntry.parse({
+      id: "genre-scifi",
+      version: 1,
+      facet: "genre",
+      label: "science-fiction",
+    });
+    assert.equal(tag.id, "genre-scifi");
+    assert.equal(tag.facet, "genre");
+    assert.equal(tag.label, "science-fiction");
+  });
+
+  it("applies defaults for missing optional fields", () => {
+    const tag = TagEntry.parse({
+      id: "tone-hopeful",
+      facet: "tone",
+      label: "hopeful",
+    });
+    assert.equal(tag.version, 1, "should default version to 1");
+  });
+
+  it("rejects an unknown facet", () => {
+    const result = TagEntry.safeParse({
+      id: "bad",
+      facet: "unknownFacet",
+      label: "test",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing id", () => {
+    const result = TagEntry.safeParse({
+      facet: "genre",
+      label: "test",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects empty id", () => {
+    const result = TagEntry.safeParse({
+      id: "",
+      facet: "genre",
+      label: "test",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing facet", () => {
+    const result = TagEntry.safeParse({
+      id: "tag-id",
+      label: "test",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing label", () => {
+    const result = TagEntry.safeParse({
+      id: "tag-id",
+      facet: "genre",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects empty label", () => {
+    const result = TagEntry.safeParse({
+      id: "tag-id",
+      facet: "genre",
+      label: "",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects an unknown key (strictObject)", () => {
+    const result = TagEntry.safeParse({
+      id: "tag-id",
+      facet: "genre",
+      label: "test",
+      unknownField: "should fail",
+    });
+    assert.equal(result.success, false);
+  });
+});
+
+// -- TAG CATALOG SCHEMA -------------------------------------------------------
+describe("TagCatalog schema", () => {
+  it("parses an empty object into { entries: [] }", () => {
+    const catalog = TagCatalog.parse({});
+    assert.deepEqual(catalog.entries, []);
+  });
+
+  it("parses entries with multiple tags", () => {
+    const catalog = TagCatalog.parse({
+      entries: [
+        { id: "genre-scifi", facet: "genre", label: "science-fiction" },
+        { id: "tone-hopeful", facet: "tone", label: "hopeful" },
+      ],
+    });
+    assert.equal(catalog.entries.length, 2);
+    assert.equal(catalog.entries[0].facet, "genre");
+    assert.equal(catalog.entries[1].facet, "tone");
+  });
+});
+
+// -- TAG SEED -------------------------------------------------------
+describe("TAG_SEED", () => {
+  it("has entries in all three facets", () => {
+    const facets = new Set(TAG_SEED.map(e => e.facet));
+    assert.ok(facets.has("genre"), "should have genre tags");
+    assert.ok(facets.has("dramaticMode"), "should have dramaticMode tags");
+    assert.ok(facets.has("tone"), "should have tone tags");
+  });
+
+  it("has no duplicate facet+label pairs", () => {
+    const seen = new Set<string>();
+    for (const item of TAG_SEED) {
+      const key = `${item.facet}::${item.label}`;
+      assert.ok(!seen.has(key), `seed has duplicate facet+label: ${key}`);
+      seen.add(key);
+    }
+  });
+
+  it("contains the expected genre tags", () => {
+    const genreTags = TAG_SEED.filter(e => e.facet === "genre").map(e => e.label);
+    const expected = ["science-fiction", "fantasy", "mystery", "thriller", "horror", "literary", "historical", "western"];
+    assert.deepEqual(genreTags.sort(), expected.sort());
+  });
+
+  it("contains the expected dramaticMode tags", () => {
+    const modeTags = TAG_SEED.filter(e => e.facet === "dramaticMode").map(e => e.label);
+    const expected = ["adventure", "survival", "romance", "political", "procedural", "coming-of-age", "revenge", "redemption"];
+    assert.deepEqual(modeTags.sort(), expected.sort());
+  });
+
+  it("contains the expected tone tags", () => {
+    const toneTags = TAG_SEED.filter(e => e.facet === "tone").map(e => e.label);
+    const expected = ["hopeful", "bleak", "comic", "unsettling", "tender", "cold", "wry", "elegiac"];
+    assert.deepEqual(toneTags.sort(), expected.sort());
   });
 });

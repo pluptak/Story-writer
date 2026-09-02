@@ -223,8 +223,10 @@ export const HOST: ServerHost = {
     const catalog = await loadCatalog(validated);
     return { ok: true, entries: catalog.entries };
   },
-  catalogCheck: (entry) => {
-    const result = checkEntry(entry);
+  catalogCheck: (kind, entry) => {
+    const validated = validateCatalogKind(kind);
+    if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
+    const result = checkEntry(validated, entry);
     if (!result.ok) return { ok: false, issues: result.issues };
     return { ok: true, problems: result.problems };
   },

@@ -48,9 +48,14 @@ export async function handleCatalogRoutes(
 
   if (path === "/catalog/check" && req.method === "POST") {
     const o = await readJsonBody(req);
-    const r = host.catalogCheck(o.entry);
+    const kind = String(o.kind ?? "characters");
+    const r = host.catalogCheck(kind, o.entry);
     if (!r.ok) {
-      json(res, 200, { ok: false, issues: r.issues });
+      if ("reason" in r) {
+        json(res, 400, { ok: false, reason: r.reason });
+      } else {
+        json(res, 200, { ok: false, issues: r.issues });
+      }
     } else {
       json(res, 200, { ok: true, problems: r.problems });
     }
