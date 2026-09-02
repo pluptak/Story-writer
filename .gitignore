@@ -1,3 +1,4 @@
 node_modules/
 stories/*
+catalog-*.json
 architect-debug.log

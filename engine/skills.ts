@@ -216,6 +216,37 @@ export function resolveReach(who: string, skills: readonly Skill[], restrictions
   return reachLayer(who, k => held.has(k), restricted, reach.list);
 }
 
+/** Validate capabilities (skills and restrictions) at authoring time, returning advisory problems
+ *  and the filtered restriction list (those that resolve to known skills). The `bible` parameter
+ *  allows later stages to inject a user-editable skill bible on top of the in-code one; the in-code
+ *  lookup is the default. */
+export function capabilityProblems(
+  who: string,
+  skills: string[],
+  restrictionsRaw: string[],
+  bible: (name: string) => string | undefined = bibleMeaningOf,
+): { restrictions: string[]; problems: string[] } {
+  const problems: string[] = [];
+
+  for (const entry of skills) {
+    const { text, meaning } = splitMeaning(entry);
+    if (bible(text) === undefined && !meaning)
+      problems.push(`${who} has skill "${text}" — not a bible skill, and it carries no ":: meaning", so nobody can tell what it lets them do`);
+  }
+
+  const restrictions = restrictionsRaw.filter(l => {
+    const r = splitMeaning(l).text;
+    const rk = canonSkill(r);
+    const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === rk)
+      || bible(r) !== undefined
+      || skills.some(s => canonSkill(splitMeaning(s).text) === rk);
+    if (!ok) problems.push(`${who} "restrictions: ${l}" — not a known skill, so it would remove nothing`);
+    return ok;
+  });
+
+  return { restrictions, problems };
+}
+
 /**
  * What the authored restrictions took away, as explicit negative facts: the authored spelling of
  * every known capability removed — general AND special/bible AND reach. This is the writer-side

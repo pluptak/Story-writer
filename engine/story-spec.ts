@@ -1,5 +1,5 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
-import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
+import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems } from "./skills.ts";
 import { RunConfig, THINK_LEVELS, TimelineDef, type ThinkLevel, type SceneDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig, TimelineDef } from "./story-schema.ts";
@@ -130,20 +130,9 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     if (seen.has(name.toLowerCase())) { problems.push(`two characters called "${name}" — kept the first`); continue; }
     seen.add(name.toLowerCase());
     const skills = asStrings(c?.skills);
-    for (const entry of skills) {
-      const { text, meaning } = splitMeaning(entry);
-      if (bibleMeaningOf(text) === undefined && !meaning)
-        problems.push(`${name} has skill "${text}" — not a bible skill, and it carries no ":: meaning", so nobody can tell what it lets them do`);
-    }
-    const restrictions = asStrings(c?.restrictions ?? c?.lacks).filter(l => {
-      const r = splitMeaning(l).text;
-      const rk = canonSkill(r);
-      const ok = Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === rk)
-        || bibleMeaningOf(r) !== undefined
-        || skills.some(s => canonSkill(splitMeaning(s).text) === rk);
-      if (!ok) problems.push(`${name} "restrictions: ${l}" — not a known skill, so it would remove nothing`);
-      return ok;
-    });
+    const cap = capabilityProblems(name, skills, asStrings(c?.restrictions ?? c?.lacks));
+    const restrictions = cap.restrictions;
+    problems.push(...cap.problems);
     const voice = asStrings(c?.voice);
     if (voice.length > 3) { voice.length = 3; problems.push(`${name} came back with more than 3 voice samples — keeping the first 3`); }
     const belief = String(c?.belief ?? "").trim(), impulse = String(c?.impulse ?? "").trim();
