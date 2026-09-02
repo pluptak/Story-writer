@@ -285,6 +285,48 @@ describe("sceneReach", () => {
     } finally { WARN.sink = prev; }
     assert.deepEqual(said, [], "resolved skills are not a story redeclaring anything");
   });
+
+  it("returns the same reach grant names with and without a bible", () => {
+    const sd = SceneDef.parse({ reach: { MERRITT: grant } });
+    const def = reachDef([]);
+    const testBible = (name: string) => name.toLowerCase() === "cameras" ? "a camera" : undefined;
+
+    const withoutBible = sceneReach(sd, def);
+    const withBible = sceneReach(sd, def, testBible);
+
+    assert.deepEqual(
+      withoutBible.map(s => s.name),
+      withBible.map(s => s.name),
+      "reach grant names must not change based on the bible"
+    );
+  });
+
+  it("includes warnings about a restriction naming an unknown skill, but not with a bible", async () => {
+    const sd = SceneDef.parse({ reach: {} });
+    const defWithBibleRestriction = reachDef(["telepathy"]);
+
+    // Without a bible, the restriction on an unknown skill should warn
+    const warningsWithout: string[] = [];
+    const prevSink = WARN.sink;
+    WARN.sink = (m: string) => { warningsWithout.push(m); };
+    try {
+      sceneReach(sd, defWithBibleRestriction);
+    } finally { WARN.sink = prevSink; }
+
+    const testBible = (name: string) => name.toLowerCase() === "telepathy" ? "read minds" : undefined;
+
+    // With a bible that knows it, there should be no warnings
+    const warningsWith: string[] = [];
+    WARN.sink = (m: string) => { warningsWith.push(m); };
+    try {
+      sceneReach(sd, defWithBibleRestriction, testBible);
+    } finally { WARN.sink = prevSink; }
+
+    assert.ok(warningsWithout.some(w => w.includes("telepathy")),
+              "must warn about unknown restriction when no bible is given");
+    assert.equal(warningsWith.length, 0,
+                 "must not warn about a restriction when the bible knows it");
+  });
 });
 
 // -- RETRY CEILING ----------------------------------------------------------

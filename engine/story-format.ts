@@ -3,7 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { removedCapabilities, resolveSkills, type Skill } from "./skills.ts";
+import { bibleMeaningOf, removedCapabilities, resolveSkills, type BibleLookup, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
@@ -50,6 +50,11 @@ export interface StoryConfig {
   maxTokens: number;
   models: { default: string; writer: string; summary: string };
   characters: CharacterDef[];
+  /** The bible this story's capabilities were resolved against, carried so the per-scene reach layer
+   *  resolves the same names. I2 and I3 both depend on the two layers agreeing on which capabilities
+   *  exist, so resolving them against different bibles would be a bug that only surfaces on a
+   *  restriction — the expensive kind. */
+  bible: BibleLookup;
   maxCharacterRetries?: number;
 }
 
@@ -58,8 +63,11 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 /** Resolve a story directory against the repo root (an absolute path passes through unchanged). */
 export const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolvePath(ROOT, dir));
 
-/** Validate and load a story into a StoryConfig; a model override beats the story's own default. */
-export async function loadStory(dir: string, modelOverride?: string): Promise<StoryConfig> {
+/** Validate and load a story into a StoryConfig; a model override beats the story's own default.
+ *  `bible` is the special-skill bible the cast's capabilities resolve against — the in-code catalog
+ *  by default, the author's persisted one when the caller loads it. */
+export async function loadStory(dir: string, modelOverride?: string,
+                                bible: BibleLookup = bibleMeaningOf): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
   const storyPath = joinPath(base, "story.json");
   const raw = JSON.parse(await readFile(storyPath, "utf8"));
@@ -99,8 +107,9 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
       belief: c.belief,
       impulse: c.impulse,
       voice: c.voice,
-      skills: resolveSkills(name, skillsRaw, restrictionsRaw),
-      limits: removedCapabilities(name, skillsRaw, restrictionsRaw),
+      // Reach empty on both (I4): a character-level view never sees a scene's grant.
+      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", bible),
+      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", bible),
       maxRetries: c.maxRetries,
     });
   }
@@ -164,6 +173,7 @@ export async function loadStory(dir: string, modelOverride?: string): Promise<St
     maxTokens: config.maxTokens,
     models,
     characters,
+    bible,
     maxCharacterRetries: config.maxCharacterRetries,
   };
 }

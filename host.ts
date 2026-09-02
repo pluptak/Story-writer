@@ -92,8 +92,9 @@ async function persistStoryJson(dir: string, parsed: StoryJson): Promise<{ ok: t
   } catch (e) {
     return { ok: false, reason: `write failed: ${(e as Error).message}` };
   }
-  // Re-load to confirm (catches silently-corrupt writes on constrained filesystems).
-  try { await loadStory(dir); }
+  // Re-load to confirm (catches silently-corrupt writes on constrained filesystems), under the same
+  // bible a run would use — a story that saves clean should load clean where it will be written.
+  try { await loadStory(dir, undefined, await skillBible()); }
   catch (e) { return { ok: false, reason: `saved but does not load: ${(e as Error).message}` }; }
   return { ok: true };
 }
@@ -132,7 +133,10 @@ const validateCatalogKind = (kind: string): CatalogKind | null =>
   CATALOG_KINDS.includes(kind as CatalogKind) ? (kind as CatalogKind) : null;
 
 export const HOST: ServerHost = {
-  storyCards, selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
+  selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
+  // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
+  // starts report the same skills.
+  storyCards: async () => storyCards(await skillBible()),
   newScaffoldSession, newHandoffSession, directEdit, specView,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,

@@ -663,3 +663,79 @@ describe("story discovery", () => {
     }
   });
 });
+
+// -- THE INJECTED BIBLE ------------------------------------------------------
+// The run resolves capabilities against the author's persisted skill bible, passed in by app.ts.
+// Each case here is a pair: with the bible and without it, because only the pair proves the
+// parameter is read rather than accepted and dropped.
+describe("loadStory with an injected bible", () => {
+  const TELEPATHY = "reading another mind at close range";
+  const bible = (name: string) => (name === "telepathy" ? TELEPATHY : undefined);
+
+  const storyWith = async (character: Record<string, unknown>) => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    await writeFile(join(dir, "story.json"), JSON.stringify({
+      title: "T", premise: "A premise.",
+      scenes: [{ place: "Nowhere", question: "Does it?" }],
+      characters: [{ persona: "x", ...character }],
+    }), "utf8");
+    return dir;
+  };
+
+  it("gives a bare skill the bible's meaning, and tags it bible rather than custom", async () => {
+    const dir = await storyWith({ name: "SEER", skills: ["telepathy"] });
+    try {
+      const sc = await loadStory(dir, undefined, bible);
+      const skill = sc.characters[0].skills.find(s => s.name === "telepathy");
+      assert.ok(skill, "the skill must survive the load");
+      assert.equal(skill.meaning, TELEPATHY);
+      assert.equal(skill.source, "bible");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("leaves the same skill custom and meaningless without one — which is what the wiring fixes", async () => {
+    const dir = await storyWith({ name: "SEER", skills: ["telepathy"] });
+    try {
+      const sc = await quiet(() => loadStory(dir));
+      const skill = sc.characters[0].skills.find(s => s.name === "telepathy");
+      assert.ok(skill);
+      assert.equal(skill.meaning, "", "the in-code bible has never heard of it");
+      assert.equal(skill.source, "custom");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("lets a restriction name a bible skill, so it becomes a CANNOT instead of nothing", async () => {
+    const dir = await storyWith({ name: "GHOST", restrictions: ["telepathy"] });
+    try {
+      const kept: string[] = [];
+      const keep = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { kept.push(a.map(String).join(" ")); };
+      let withBible;
+      try { withBible = await loadStory(dir, undefined, bible); } finally { WARN.sink = keep; }
+      assert.deepEqual(withBible.characters[0].limits, ["telepathy"],
+                       "a bible skill the author removed is nameable, not merely absent");
+      assert.ok(!kept.some(w => w.includes("telepathy")),
+                "and the restriction resolves, so nothing warns that it removes nothing");
+
+      const warns: string[] = [];
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      let without;
+      try { without = await loadStory(dir); } finally { WARN.sink = orig; }
+      assert.deepEqual(without.characters[0].limits, [],
+                       "without the bible there is nothing by that name to remove");
+      assert.match(warns.join(" "), /telepathy/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("carries the bible it resolved against on the config, for the per-scene reach layer", async () => {
+    const dir = await storyWith({ name: "SEER", skills: ["telepathy"] });
+    try {
+      const sc = await loadStory(dir, undefined, bible);
+      assert.equal(sc.bible, bible, "the reach layer must resolve the same names the cast did");
+      const fallback = await quiet(() => loadStory(dir));
+      assert.equal(fallback.bible("lockpicking") !== undefined, true,
+                   "the default is the in-code catalog, not an empty bible");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});

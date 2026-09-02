@@ -496,13 +496,19 @@ below: **The world timeline**.
   owner **approves** it — a real gate distinct from accepting the story. That gate is what turns
   "prefer an existing skill" into a hard constraint; until it exists, custom skills stay allowed.
 
-  Two wiring jobs come before it, both deliberately deferred out of the editor round. The
-  architect's prompt still carries the in-code catalog rather than the author's, so a promoted skill
-  is invisible to the stage that would reuse it. And `resolveSkills` still resolves against the
-  in-code catalog at run time, so a character given a promoted skill with no `:: meaning` gets an
-  empty meaning in the scene — the bible parameter is threaded through `engine/skills.ts` and every
-  caller takes its default. Wire the run path before the proposal path: proposing entries into a
-  bible the run cannot read would be a gate over nothing.
+  One wiring job comes before it. The run path is done — `loadStory` resolves the cast against the
+  author's bible and carries it on the `StoryConfig` for the reach layer — but the **architect** is
+  still on the in-code catalog on both sides: its prompt carries `SPECIAL_SKILL_CATALOG`, and
+  `normalizeSpec` validates a proposed cast against it (`engine/story-spec.ts`, `capabilityProblems`
+  at the cast gate and `bibleMeaningOf` in restriction normalization). So a promoted skill is
+  invisible to the one stage that would reuse it, and the architect proposes the same capability
+  afresh with its own wording. Wire that before the proposal path: a gate for promoting skills into a
+  bible the proposer cannot read would be a gate over nothing.
+
+  The seam is the same one the run path used — the bible is a parameter, and only the top layer loads
+  one. The architect's is harder in one way: `buildArchitect` renders the catalog into a **prompt
+  string**, so the bible has to reach `prompts/architect.ts` already flattened to name-and-meaning
+  pairs, the way every other shape does.
 - **The character catalog reaches the architect.** The catalog itself is built — storage, routes and
   the `#/catalog` editor ([`Architect.MD`](Architect.MD), *Character catalog*) — and nothing consumes
   it. What is left is the import path at the **cast gate**, which changes what that gate *does*:

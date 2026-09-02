@@ -43,9 +43,9 @@ The architect's system prompt carries two in-code catalogs from `engine/skills.t
   matches; an entry not in the bible stays **custom** and keeps its authored `name :: meaning`.
   Bespoke per-story skills are first-class — but one that is neither a bible skill nor carries a
   `:: meaning` is reported back to the author as a non-fatal problem rather than silently kept.
-  The in-code catalog is now the **seed** of an editable one (*Skill bible* below); it is still what
-  the architect's prompt carries, because the author's bible reaches the catalog's own validation and
-  nothing else yet.
+  The in-code catalog is now the **seed** of an editable one (*Skill bible* below). A run resolves
+  against the author's bible; the architect's prompt still carries the in-code one, so a skill the
+  author promoted is one the architect cannot yet offer.
 
 Restrictions are a plain list of names — a general skill, a bible skill, or one of that character's
 own skills. A restriction is a **source-independent prohibition**: it names a capability unavailable
@@ -201,12 +201,20 @@ list of the same names that could drift from the first.
 the bible and is not editable. Every character has all of it unless a restriction removes it, so
 editing it would silently change every story at once; the bible is opt-in per character and can't.
 
-What reads the author's bible today is the catalog's own validation: `skillBible()` turns the
-persisted entries into the lookup `capabilityProblems` takes as a parameter, so the character editor
-stops calling a promoted skill unknown. Everything else — `resolveSkills` during a run, the
-architect's prompt — still reads the in-code catalog through the same parameter's default. Widening
-those is a later stage, and until it lands a promoted skill still needs its `:: meaning` in the story
-that uses it.
+`skillBible()` turns the persisted entries into the lookup every reader takes as a parameter. The
+catalog's validation passes it, so the character editor stops calling a promoted skill unknown, and
+**so does a run**: `loadStory` takes the bible, resolves the cast against it, and carries it on the
+`StoryConfig` so the per-scene reach layer resolves the same names — I2 and I3 both need the two
+layers to agree on which capabilities exist. The shelf's cards and preflight take it too, so a card
+and the run it starts report the same skills. Nothing loads it inside the engine: `app.ts`, `host.ts`
+and `story-writer.ts` load it and pass it down, and every engine function defaults to the in-code
+catalog when they don't.
+
+**The architect is the one reader still on the in-code catalog.** Its prompt carries
+`SPECIAL_SKILL_CATALOG`, and `normalizeSpec` validates a proposed cast against it, so a skill the
+author promoted is one the architect will neither offer nor recognize — it will propose the same
+capability afresh as a `custom` skill with its own wording. That is the next stage, and the propose →
+approve gate comes after it.
 
 ## Operating principle
 
