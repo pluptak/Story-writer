@@ -8,12 +8,7 @@
  *  from it on the first frame. */
 import type { Page } from "@playwright/test";
 import { LIVE, publish } from "../../live.ts";
-import { expect, test } from "./harness.ts";
-
-const arrive = async (page: Page, port: number, hash: string) => {
-  await page.goto("about:blank");
-  await page.goto(`http://127.0.0.1:${port}/${hash}`);
-};
+import { arrive, expect, test } from "./harness.ts";
 
 const runMeta = () => {
   LIVE.meta = {

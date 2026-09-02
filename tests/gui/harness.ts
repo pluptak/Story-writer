@@ -2,23 +2,30 @@
  *  ServerHost, so the browser exercises the genuine HTTP surface, static modules, and SSE bus
  *  against a deterministic backend — no LM Studio, no child process, nothing in stories/.
  *
- *  The fixture story is tests/fixtures/doorway (the committed worked example): its card, cast and
- *  scenes are read straight from its story.json, and dirs resolve there through the engine's own
- *  resolveStoryDir. Host methods no test has scripted yet throw, loudly, rather than pretend. */
-import { readFile } from "node:fs/promises";
+ *  The fixture story is tests/fixtures/doorway (the committed worked example). Everything that
+ *  touches story.json — the editor's load/check/save/discard, the handoff's accept — is delegated
+ *  to the REAL host (host.ts), so those paths run the engine's own logic against temp copies of
+ *  the fixture. Only what must differ is overridden: model discovery (none), the story registry
+ *  (temp dirs instead of stories/ discovery), the handoff session (scripted), and the catalog
+ *  (engine logic, temp files). Host methods no test has scripted yet throw, loudly. */
+import { readFile, writeFile, mkdtemp } from "node:fs/promises";
 import { join as joinPath } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test as base, expect, type Page } from "@playwright/test";
 
 import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
 import { LIVE, resetLive } from "../../live.ts";
-import { resolveStoryDir } from "../../engine/story-format.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry } from "../../engine/catalog.ts";
+import { CATALOG_KINDS, type CatalogKind } from "../../engine/catalog-schema.ts";
+import { HOST } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
+import type { NextChapterSession } from "../../engine/architect.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const FIXTURE_DIR = "tests/fixtures/doorway";
 
-type FixtureStory = {
+export type FixtureStory = {
   title: string; premise: string; writerStyle: string;
   scenes: { place: string; question: string; pov: string; length: number; roster: string[]; reach?: Record<string, string[]> }[];
   characters: { name: string; persona: string; knows: string; goal: string; belief: string;
@@ -38,64 +45,107 @@ async function fixtureStory(): Promise<FixtureStory> {
 /** `skill :: meaning` is the authored form; a card's chip shows the name only. */
 const skillName = (s: string) => s.split("::")[0].trim();
 
+/** The StoryCard a story.json's raw object renders as on the shelf and story pages. */
+export function cardFromStory(dir: string, raw: FixtureStory, name = dir): StoryCard {
+  return {
+    dir, name, ok: true, warnings: [],
+    title: raw.title, premise: raw.premise,
+    scene: {
+      place: raw.scenes[0].place, question: raw.scenes[0].question,
+      pov: raw.scenes[0].pov, length: raw.scenes[0].length,
+    },
+    scenes: raw.scenes.map(s => ({
+      place: s.place, question: s.question, pov: s.pov, length: s.length,
+      roster: s.roster, reach: s.reach ?? {},
+    })),
+    characters: raw.characters.map(c => ({
+      name: c.name, skills: c.skills.map(skillName), restrictions: c.restrictions,
+    })),
+    maxSteps: raw.config.maxSteps,
+    runs: [], chapters: [],
+  };
+}
+
+/** A temp directory holding a copy of the fixture's story.json — the story a write-path test
+ *  works on, so nothing committed or in stories/ is ever touched. */
+export async function copyFixtureStory(): Promise<string> {
+  const dir = await mkdtemp(joinPath(tmpdir(), "pw-story-"));
+  await writeFile(joinPath(dir, "story.json"), await readFile(joinPath(ROOT, FIXTURE_DIR, "story.json"), "utf8"));
+  return dir;
+}
+
+// -- PER-TEST REGISTRATION ----------------------------------------------------
+/** Temp stories sit in a registry of card PROVIDERS, not static cards: the real story discovery
+ *  re-reads the file on every /stories, so a card built from a snapshot would go stale the moment
+ *  a test writes to the story. Providers keep the page and the disk in step. */
+const extraStories = new Map<string, () => Promise<StoryCard> | StoryCard>();
+/** Put a temp story on the fixture host's shelf, so /stories, the editor, and the handoff's start
+ *  can name it — every route that guards a dir consults the same registry. Cleared per test. */
+export function registerStory(dir: string, getCard: () => Promise<StoryCard> | StoryCard) {
+  extraStories.set(dir, getCard);
+}
+
+let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
+/** Install the scripted handoff session a handoff test drives; null restores the refusal. */
+export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSession>) | null) { handoffFactory = f; }
+
 async function fixtureHost(): Promise<ServerHost> {
   const story = await fixtureStory();
   const notScripted = (what: string): never => { throw new Error(`the GUI harness has no behaviour for ${what}`); };
+  // The catalog is isolated through the engine's own optional path — real load/check/save/delete
+  // logic, temp files. One dir per process; the tests leave it as they found it.
+  const catalogDir = await mkdtemp(joinPath(tmpdir(), "pw-catalog-"));
+  const catalogFile = (kind: string) => joinPath(catalogDir, `catalog-${kind}.json`);
+  const withKind = (kind: string): CatalogKind => {
+    if (!CATALOG_KINDS.includes(kind as CatalogKind)) throw new Error(`no such catalog "${kind}"`);
+    return kind as CatalogKind;
+  };
   return {
-    storyCards: async (): Promise<StoryCard[]> => [{
-      dir: FIXTURE_DIR, name: FIXTURE_DIR, ok: true, warnings: [],
-      title: story.title, premise: story.premise,
-      scene: {
-        place: story.scenes[0].place, question: story.scenes[0].question,
-        pov: story.scenes[0].pov, length: story.scenes[0].length,
-      },
-      scenes: story.scenes.map(s => ({
-        place: s.place, question: s.question, pov: s.pov, length: s.length,
-        roster: s.roster, reach: s.reach ?? {},
-      })),
-      characters: story.characters.map(c => ({
-        name: c.name, skills: c.skills.map(skillName), restrictions: c.restrictions,
-      })),
-      maxSteps: story.config.maxSteps,
-      runs: [], chapters: [],
-    }],
-    selectableStory: async dir => (dir === FIXTURE_DIR ? FIXTURE_DIR : null),
-    resolveStoryDir: dir => (dir === FIXTURE_DIR ? resolveStoryDir(FIXTURE_DIR) : dir),
+    // The real host: every path that reads or writes story.json or validates a draft runs the
+    // engine's own code — the editor and the handoff's accept are not lookalikes.
+    ...HOST,
+    storyCards: async () => [
+      cardFromStory(FIXTURE_DIR, story),
+      ...(await Promise.all([...extraStories.values()].map(f => f()))),
+    ],
+    selectableStory: async dir => (dir === FIXTURE_DIR || extraStories.has(dir) ? dir : null),
+    loadedModelIds: async () => null,          // no LM Studio behind the harness — on purpose
     runDirs: async () => [],
     runLlmLogs: async () => notScripted("runLlmLogs"),
     readLlmLog: async () => notScripted("readLlmLog"),
-    writtenChapters: async () => [],
-    loadedModelIds: async () => null,          // no LM Studio behind the harness — on purpose
-    architectModel: async () => "none",
     newScaffoldSession: async () => notScripted("newScaffoldSession"),
-    newHandoffSession: async () => notScripted("newHandoffSession"),
-    directEdit: () => notScripted("directEdit"),
-    specView: () => notScripted("specView"),
+    newHandoffSession: async (dir) => {
+      if (!handoffFactory) throw new Error("no handoff scripted for this test");
+      return handoffFactory(dir);
+    },
     outDir: () => "",
-    storyForEdit: async () => notScripted("storyForEdit"),
-    fullCast: async () => ({
-      ok: true,
-      characters: story.characters.map(c => ({
-        name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
-        belief: c.belief, impulse: c.impulse, voice: c.voice,
-        skills: c.skills.map(s => {
-          const i = s.indexOf("::");
-          return i < 0 ? { text: s.trim(), meaning: "" } : { text: s.slice(0, i).trim(), meaning: s.slice(i + 2).trim() };
-        }),
-        restrictions: c.restrictions,
-      })),
-      scenes: story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {} })),
-    }),
-    checkStory: () => notScripted("checkStory"),
-    saveStory: async () => notScripted("saveStory"),
-    discardScene: async () => notScripted("discardScene"),
-    suggestEdits: async () => notScripted("suggestEdits"),
-    catalogEntries: async () => notScripted("catalogEntries"),
-    catalogCheck: () => notScripted("catalogCheck"),
-    catalogSave: async () => notScripted("catalogSave"),
-    catalogDelete: async () => notScripted("catalogDelete"),
-  };
+    catalogEntries: async (kind) => {
+      const v = withKind(kind);
+      const c = await loadCatalog(v, catalogFile(v));
+      return { ok: true, entries: c.entries };
+    },
+    catalogCheck: (kind, entry) => {
+      const v = withKind(kind);
+      const r = checkEntry(v, entry);
+      return r.ok ? { ok: true, problems: r.problems } : { ok: false, issues: r.issues };
+    },
+    catalogSave: async (kind, entry) => saveEntry(withKind(kind), entry, catalogFile(withKind(kind))),
+    catalogDelete: async (kind, id) => {
+      const r = await deleteEntry(withKind(kind), id, catalogFile(withKind(kind)));
+      return !r.ok && (r as { missing?: boolean }).missing
+        ? { ok: false, reason: r.reason, status: 404 }
+        : r;
+    },
+  } as ServerHost;
 }
+
+/** Deep-link arrival. A hash-only goto is a same-document navigation whose hashchange makes the
+ *  running app rewrite the URL from its own state — wiping any params. Going through about:blank
+ *  is a fresh document load, which is what pasting a URL is. */
+export const arrive = async (page: Page, port: number, hash: string) => {
+  await page.goto("about:blank");
+  await page.goto(`http://127.0.0.1:${port}/${hash}`);
+};
 
 /** The one fixture every GUI test builds on: a fresh server (ephemeral port — module singletons
  *  make sharing one across tests unsound), a page already pointed at it, and a cleared session
@@ -103,6 +153,8 @@ async function fixtureHost(): Promise<ServerHost> {
 export const test = base.extend<{ served: number }>({
   served: [async ({ page }: { page: Page }, use: (port: number) => Promise<void>) => {
     resetLive();
+    extraStories.clear();
+    handoffFactory = null;
     const handle: ServerHandle = startServer(0, await fixtureHost());
     const port = await handle.bound;
     await page.goto(`http://127.0.0.1:${port}/`);
@@ -110,7 +162,7 @@ export const test = base.extend<{ served: number }>({
     await handle.close();
     // A scripted run may have set the session fields publish()/run_state() read; a real process
     // leaves them behind between runs too, so the next test starts from the same clean slate.
-    LIVE.running = false; LIVE.where = "idle"; LIVE.meta = null;
+    LIVE.running = false; LIVE.where = "idle"; LIVE.meta = null; LIVE.storyLock = null;
     resetLive();
   }, { auto: true }],
 });
