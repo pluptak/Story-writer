@@ -364,6 +364,16 @@ export class ScaffoldSession {
       && !(!sceneIn && /^scene\b/.test(p)));
   }
 
+  /** A world-gate reply's ledger, in either shape it arrives in: the stage's own top-level
+   *  `timeline`, or an edit that names `timeline` because that is the shape the gate asked for one
+   *  turn earlier. Undefined when the reply is about anything else. */
+  private static worldLedger(out: Record<string, any>): unknown[] | undefined {
+    if (Array.isArray(out.timeline)) return out.timeline;
+    const edits = Array.isArray(out.edits) ? out.edits : [];
+    const named = edits.find((e: any) => String(e?.field ?? "").trim().toLowerCase() === "timeline");
+    return Array.isArray(named?.value) ? named.value : undefined;
+  }
+
   private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
     const ask = String(out.ask ?? "").trim();
     if (!ScaffoldSession.stageHasContent(stage, out)) {
@@ -511,6 +521,26 @@ export class ScaffoldSession {
       const r = await architectRound(this.architect,
         P.architectChange(text, this.specJsonText(), this.refusedLastRound));
       if ("error" in r) return { kind: "failed", error: r.error };
+      // The world gate's own shape stays valid for as long as that gate is open. The architect
+      // authored the ledger a turn earlier as {"timeline": [...]}, so a refinement round reaches
+      // for the same shape -- with a beat correct in every field but the name it arrived under.
+      // Fold it through the stage's merge path instead of refusing it as an unknown edit field.
+      const ledger = this.stage === "world" ? ScaffoldSession.worldLedger(r.out) : undefined;
+      if (ledger) {
+        const folded = this.takeStaged("world", { ...r.out, timeline: ledger });
+        const rest = (Array.isArray(r.out.edits) ? r.out.edits : [])
+          .filter((x: any) => String(x?.field ?? "").trim().toLowerCase() !== "timeline");
+        if (folded.kind !== "proposal" || !rest.length) { this.refusedLastRound = []; return folded; }
+        // A round that re-authored the ledger and changed something else keeps both: the ledger is
+        // already folded in above, and the rest applies on top of it.
+        const also = applyEdits(this.spec, { ...r.out, edits: rest });
+        this.spec = also.spec;
+        this.problems = ScaffoldSession.visibleProblems(this.spec, also.problems);
+        this.refusedLastRound = also.ignored;
+        archLog(`CHANGE world: ledger folded as stage content, then applied=[${also.applied.map(a => a.field).join(", ")}]`);
+        return { kind: "edits", applied: also.applied, ignored: also.ignored, flags: [],
+                 note: withAsk(r.out), stage: this.stage };
+      }
       const back = String(r.out.ask ?? "").trim();
       if (back && !Array.isArray(r.out.edits)) { this.pendingAsk = back; return { kind: "question", ask: back, stage: this.stage }; }
       if (!Array.isArray(r.out.edits))

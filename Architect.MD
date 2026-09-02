@@ -239,6 +239,12 @@ The session runs one of two walks, chosen when it opens.
   should.** Most stories are pure friction between people; an empty ledger is a complete answer, and
   the gate is optional the way `technical` is. That makes an empty array *content*: if it read as a
   missing answer the gate would report "neither world content nor a question" and stall.
+  While this gate is open a refinement naming `timeline` — top-level, or as an edit field, which is
+  the shape the architect reaches for a turn after authoring the ledger in it — is folded through
+  the stage's own merge path rather than refused as an unknown field, and the round comes back as a
+  proposal so the author sees the whole ledger it produced. Any other edits in the same round apply
+  on top. Every other gate still refuses `timeline`, and the prompt steers toward `add_beat`, which
+  cannot drop a beat the architect forgot to list.
 
 `propose()` opens the first gate; `approve()` passes the open gate and proposes the next stage's
 content in one call; refinement (`say`) applies edits within the open gate — back-edits to earlier

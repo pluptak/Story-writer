@@ -218,9 +218,10 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
      add_beat           (value is a whole beat object: chapter, at, hold, fired, memories)
      remove_beat        (value is the beat number)
 
-  Any other field name is ignored, and the author is told it was. "timeline" is not one of these
-  names -- the ledger is edited one beat at a time, never resent whole. "ask" and "note" are your
-  reply keys below -- they are never story fields, and naming them in an edit is always wrong. If the
+  Any other field name is ignored, and the author is told it was. Reach for add_beat and beat_<n>
+  before resending "timeline" whole: an add cannot drop a beat you forgot to list. "ask" and "note"
+  are your reply keys below -- they are never story fields, and naming them in an edit is always
+  wrong. If the
   change they asked for is ambiguous enough that you would be guessing at what they meant, use
   "ask" and change nothing.
 
