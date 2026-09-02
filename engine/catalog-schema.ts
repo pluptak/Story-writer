@@ -1,7 +1,7 @@
 /** ZOD SCHEMA for character catalog — reusable character templates and tag vocabularies. */
 import { z } from "zod";
 
-export const CATALOG_KINDS = ["characters", "tags"] as const;
+export const CATALOG_KINDS = ["characters", "tags", "styles"] as const;
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
 /** One character as a portable library entry: name, portable persona half, psychology, voice samples,
@@ -54,6 +54,32 @@ export const TagCatalog = z.strictObject({
 });
 
 export type TagCatalog = z.infer<typeof TagCatalog>;
+
+// -- WRITER STYLES -----------------------------------------------------------
+
+/** One writer style as a preset voice. The catalog holds only the reusable voice half; the derived
+ *  half (story-mandated perception clauses like no-omniscience, sight restrictions) is authored per
+ *  story. A style that carries such a clause would silently drop it when the voice is swapped, so
+ *  they must be authored per-story and never buried in a reusable preset. See Architect.MD for the
+ *  persona/style split. */
+export const LibraryStyle = z.strictObject({
+  id: z.string().min(1),
+  version: z.number().int().min(1).default(1),
+  name: z.string().min(1),
+  tags: z.array(z.string()).default([]),
+  description: z.string().default(""),
+  /** Person, tense, dialogue handling, vocabulary, what to leave out. What it must NOT hold:
+   *  anything derived from a particular cast or POV. */
+  voice: z.string().default(""),
+});
+
+export type LibraryStyle = z.infer<typeof LibraryStyle>;
+
+export const StyleCatalog = z.strictObject({
+  entries: z.array(LibraryStyle).default([]),
+});
+
+export type StyleCatalog = z.infer<typeof StyleCatalog>;
 
 /** Starting vocabulary the author is expected to edit, not a fixed taxonomy.
  *  The point of the editor is that changing the tags is cheap. Ids are derived from facet and label,

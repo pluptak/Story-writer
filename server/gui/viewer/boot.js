@@ -15,7 +15,11 @@ export async function boot() {
   // Same reason, one page further on: the catalog seeds its kind from the URL, and the first
   // go() syncs the hash from state -- so reading it after that would read a URL this boot
   // had already overwritten with the default.
-  if (p.get("kind") === "tags") APP.catalog.kind = "tags";
+  const knownKinds = ["characters", "tags", "styles"];
+  const kindParam = p.get("kind");
+  if (kindParam && knownKinds.includes(kindParam)) {
+    APP.catalog.kind = kindParam;
+  }
   const src = new URLSearchParams(location.search).get("src");
   if (src) {
     try {

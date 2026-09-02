@@ -15,17 +15,27 @@ function parseCommaSeparated(text) {
 }
 
 /** The server's entry -> the form's draft: every list becomes the text a textarea holds.
- *  APP.catalog holds two different shapes:
+ *  APP.catalog holds different shapes per kind:
  *  - `selected` is the server's entry record (arrays for tags, voice, skills, restrictions)
  *  - `draft` is what the form is editing (strings for all fields, since textareas hold strings)
  *  Keep them separate; the boundary functions convert between them.
- *  For tags: entry is {id, version, facet, label}, draft is {id, facet, label} */
+ *  For tags: entry is {id, version, facet, label}, draft is {id, facet, label}
+ *  For styles: entry is {id, version, name, description, tags, voice}, draft is {id, name, description, tags, voice} */
 function toDraft(entry, kind) {
   if (kind === "tags") {
     return {
       id: entry.id || "",
       facet: entry.facet || "",
       label: entry.label || ""
+    };
+  }
+  if (kind === "styles") {
+    return {
+      id: entry.id || "",
+      name: entry.name || "",
+      description: entry.description || "",
+      tags: (entry.tags || []).join(", "),
+      voice: entry.voice || ""
     };
   }
   // characters
@@ -49,6 +59,17 @@ function fromDraft(draft, id, kind) {
       id: id,
       facet: draft.facet.trim(),
       label: draft.label.trim()
+    };
+  }
+  if (kind === "styles") {
+    return {
+      id: id,
+      name: draft.name.trim(),
+      description: draft.description.trim(),
+      tags: parseCommaSeparated(draft.tags),
+      // A style's voice is one block of prose, not a list. The character's `voice` is samples and
+      // splits into lines; sharing that conversion here is what made the schema reject a style.
+      voice: draft.voice.trim()
     };
   }
   // characters
@@ -221,8 +242,8 @@ async function selectEntry(entry) {
   APP.catalog.draft = toDraft(entry, APP.catalog.kind);
   APP.catalog.issues = [];
   APP.catalog.problems = [];
-  if (APP.catalog.kind === "characters") {
-    loadVocab(); // Load tag vocab for the character form's picker
+  if (APP.catalog.kind === "characters" || APP.catalog.kind === "styles") {
+    loadVocab(); // Load tag vocab for the character/style form's picker
   }
   APP.render();
 }
@@ -241,7 +262,16 @@ async function createNew() {
       facet: "",
       label: ""
     };
+  } else if (APP.catalog.kind === "styles") {
+    APP.catalog.draft = {
+      id: "",
+      name: "",
+      description: "",
+      tags: "",
+      voice: ""
+    };
   } else {
+    // characters
     APP.catalog.draft = {
       id: "",
       name: "",
@@ -256,7 +286,7 @@ async function createNew() {
   }
   APP.catalog.issues = [];
   APP.catalog.problems = [];
-  if (APP.catalog.kind === "characters") {
+  if (APP.catalog.kind === "characters" || APP.catalog.kind === "styles") {
     loadVocab();
   }
   APP.render();
@@ -271,6 +301,12 @@ function isDirty(original, draft, kind) {
   if (kind === "tags") {
     return draft.facet !== originalDraft.facet ||
            draft.label !== originalDraft.label;
+  }
+  if (kind === "styles") {
+    return draft.name !== originalDraft.name ||
+           draft.description !== originalDraft.description ||
+           draft.tags !== originalDraft.tags ||
+           draft.voice !== originalDraft.voice;
   }
   // characters
   return draft.name !== originalDraft.name ||
@@ -299,7 +335,11 @@ async function saveDraft() {
     let entryId;
     if (APP.catalog.kind === "tags") {
       entryId = isNew ? generateId(d.facet, d.label, APP.catalog.entries.map(e => e.id)) : d.id;
+    } else if (APP.catalog.kind === "styles") {
+      // Styles: derive ID from name, same as characters
+      entryId = isNew ? generateId(d.name, null, APP.catalog.entries.map(e => e.id)) : d.id;
     } else {
+      // characters: derive ID from name
       entryId = isNew ? generateId(d.name, null, APP.catalog.entries.map(e => e.id)) : d.id;
     }
 
@@ -379,6 +419,7 @@ export function wireCatalog(page) {
   // Kind switcher
   on("cat-kind-characters", () => loadCatalog("characters"));
   on("cat-kind-tags", () => loadCatalog("tags"));
+  on("cat-kind-styles", () => loadCatalog("styles"));
 
   // Entry selection
   for (const row of page.querySelectorAll(".catalog-entry")) {
@@ -421,6 +462,14 @@ export function wireCatalog(page) {
   });
   onInput("cat-label", () => {
     if (APP.catalog.draft) APP.catalog.draft.label = page.querySelector("#cat-label").value;
+  });
+
+  // Style form field updates
+  onInput("cat-desc", () => {
+    if (APP.catalog.draft) APP.catalog.draft.description = page.querySelector("#cat-desc").value;
+  });
+  onInput("cat-style-voice", () => {
+    if (APP.catalog.draft) APP.catalog.draft.voice = page.querySelector("#cat-style-voice").value;
   });
 
   // Tag chip picker (character form)

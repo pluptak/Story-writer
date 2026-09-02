@@ -137,7 +137,9 @@ function renderCatalog(page, keepFocus) {
 let catalogUrlKind = null;
 function applyCatalogUrlKind() {
   const urlKind = parseHashParams().get("kind") || "characters";
-  const kind = urlKind === "tags" ? "tags" : "characters";
+  // The known kinds are named here rather than imported: the viewer is served as plain browser
+  // modules and cannot reach engine/catalog-schema.ts. Adding a kind means adding it here too.
+  const kind = ["characters", "tags", "styles"].includes(urlKind) ? urlKind : "characters";
   const urlChanged = urlKind !== catalogUrlKind;
   catalogUrlKind = urlKind;
   if (APP.catalog.loading) return;

@@ -10,6 +10,8 @@ import {
   CharacterCatalog,
   TAG_SEED, TagCatalog, TagEntry, type CatalogKind, type TagFacet,
   LibraryCharacter,
+  LibraryStyle,
+  StyleCatalog,
 } from "./catalog-schema.ts";
 
 // -- REGISTRY ---------------------------------------------------------------
@@ -59,6 +61,37 @@ function tagProblems(entry: TagEntry): string[] {
   return problems;
 }
 
+/** Style-specific problems: advisory only. The voice field is checked for story-mandated
+ *  perception clauses that must not travel in a reusable preset. */
+function styleProblems(entry: LibraryStyle): string[] {
+  const problems: string[] = [];
+
+  if (!entry.voice.trim()) {
+    problems.push(
+      `${entry.name} has no voice — the half of a house style that travels between stories`
+    );
+  } else {
+    // Check for story-specific perception clauses. Case-insensitive match on phrases
+    // that name perception rules derived per-story from POV and cast restrictions.
+    const perceptionMatch = entry.voice.match(/\b(cannot see|can't see|is blind|no omniscience|only visible|nothing that is only)\b/i);
+    if (perceptionMatch) {
+      problems.push(
+        `${entry.name}'s voice names a story-specific perception rule ("${perceptionMatch[1]}") — ` +
+        `those are derived per story from the POV and the cast's restrictions, so a preset carrying one ` +
+        `would take it away when the voice is swapped`
+      );
+    }
+  }
+
+  if (!entry.description.trim()) {
+    problems.push(
+      `${entry.name} has no description — presets are chosen from a list, and a name alone does not say what this one sounds like`
+    );
+  }
+
+  return problems;
+}
+
 /** Registry of all catalog kinds. */
 const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
   characters: {
@@ -77,6 +110,13 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
       id: `${item.facet}-${item.label}`,
       version: 1,
     })),
+  },
+  styles: {
+    filename: "catalog-styles.json",
+    catalog: StyleCatalog,
+    entry: LibraryStyle,
+    problems: styleProblems,
+    // No seed for styles; they are authored by the user and not provided by the engine.
   },
 };
 

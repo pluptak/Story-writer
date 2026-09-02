@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { LibraryCharacter, CharacterCatalog, TagEntry, TagCatalog, TAG_SEED, TAG_FACETS } from "../engine/catalog-schema.ts";
+import { LibraryCharacter, CharacterCatalog, TagEntry, TagCatalog, TAG_SEED, TAG_FACETS, LibraryStyle, StyleCatalog } from "../engine/catalog-schema.ts";
 import { capabilityProblems } from "../engine/skills.ts";
 
 // -- LIBRARY CHARACTER SCHEMA -----------------------------------------------
@@ -313,5 +313,92 @@ describe("TAG_SEED", () => {
     const toneTags = TAG_SEED.filter(e => e.facet === "tone").map(e => e.label);
     const expected = ["hopeful", "bleak", "comic", "unsettling", "tender", "cold", "wry", "elegiac"];
     assert.deepEqual(toneTags.sort(), expected.sort());
+  });
+});
+
+// -- LIBRARY STYLE SCHEMA -------------------------------------------------------
+describe("LibraryStyle schema", () => {
+  it("parses a full valid entry", () => {
+    const style = LibraryStyle.parse({
+      id: "style-123",
+      version: 1,
+      name: "Noir Detective",
+      tags: ["noir", "gritty"],
+      description: "First-person present-tense, world-weary voice",
+      voice: "I don't ask questions I don't want answered. The city keeps its secrets.",
+    });
+    assert.equal(style.id, "style-123");
+    assert.equal(style.name, "Noir Detective");
+    assert.deepEqual(style.tags, ["noir", "gritty"]);
+  });
+
+  it("applies defaults for missing optional fields", () => {
+    const style = LibraryStyle.parse({
+      id: "style-456",
+      name: "Minimal",
+    });
+    assert.equal(style.version, 1);
+    assert.deepEqual(style.tags, []);
+    assert.equal(style.description, "");
+    assert.equal(style.voice, "");
+  });
+
+  it("rejects an unknown key (strictObject)", () => {
+    const result = LibraryStyle.safeParse({
+      id: "style-xyz",
+      name: "Test",
+      unknownField: "should fail",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing id", () => {
+    const result = LibraryStyle.safeParse({
+      name: "NoId",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing name", () => {
+    const result = LibraryStyle.safeParse({
+      id: "style-noname",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects empty id", () => {
+    const result = LibraryStyle.safeParse({
+      id: "",
+      name: "EmptyId",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects empty name", () => {
+    const result = LibraryStyle.safeParse({
+      id: "style-empty-name",
+      name: "",
+    });
+    assert.equal(result.success, false);
+  });
+});
+
+// -- STYLE CATALOG SCHEMA -------------------------------------------------------
+describe("StyleCatalog schema", () => {
+  it("parses an empty object into { entries: [] }", () => {
+    const catalog = StyleCatalog.parse({});
+    assert.deepEqual(catalog.entries, []);
+  });
+
+  it("parses entries with multiple styles", () => {
+    const catalog = StyleCatalog.parse({
+      entries: [
+        { id: "style-1", name: "First Person" },
+        { id: "style-2", name: "Third Person Limited" },
+      ],
+    });
+    assert.equal(catalog.entries.length, 2);
+    assert.equal(catalog.entries[0].name, "First Person");
+    assert.equal(catalog.entries[1].name, "Third Person Limited");
   });
 });

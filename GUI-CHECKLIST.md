@@ -535,6 +535,29 @@ The global character library, accessible from the shelf and reloadable by direct
 - [ ] **Reloading on `#/catalog?kind=tags` lands back on tags.** Reload the page while browsing tags
       at `#/catalog?kind=tags`. The page comes back with tags loaded, not silently switched to characters.
 
+### Styles, the third kind
+
+A style is a reusable writer voice — the half of a house style that travels between stories. The other
+half, the clauses a story derives from its POV and its cast's restrictions, is deliberately NOT here.
+
+- [ ] **Three tabs, not two.** The switcher shows characters, tags and styles, and each round-trips.
+      Characters and tags still behave exactly as the checks above describe — the page was a binary
+      before styles and every per-kind branch had to be widened.
+- [ ] **Empty style catalog reads as an invitation.** Styles have no seed, unlike tags. A first run
+      shows the create prompt, not a blank panel and not an error.
+- [ ] **Create and edit.** A style takes a name, a one-line description, tags (the same chip picker
+      the character form uses) and a voice. Saving lists it at v1 with its description under its name;
+      editing the voice and saving again makes it v2 without changing the entry count.
+- [ ] **A voice carrying a perception rule SAVES, with an advisory.** Put "nothing that is only
+      visible" (or "cannot see", "is blind") in a style's voice and save. It saves, and the advisory
+      appears in the `.prob` block — NOT as an error. This is the rule the preset/derived split exists
+      for: such a clause is load-bearing on the page, and a preset carrying one would take it away the
+      moment the author picked a different voice.
+- [ ] **An empty name is refused** with `issues` in `.said.bad`, and the description and voice you
+      typed are still on screen.
+- [ ] **Reloading on `#/catalog?kind=styles` lands back on styles**, with the parameter still in the
+      URL — not silently switched to characters.
+
 ## Checking the viewer without an engine
 
 Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the
