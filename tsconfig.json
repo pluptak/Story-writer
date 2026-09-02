@@ -11,6 +11,7 @@
     "allowImportingTsExtensions": true
   },
   "include": [
+    "playwright.config.ts",
     "story-writer.ts", "cli-flags.ts", "run-and-save.ts", "host.ts", "prompts.ts", "live.ts", "ansi.ts",
     "engine/engine-state.ts", "engine/config-util.ts", "engine/json-extract.ts", "engine/warnings.ts",
     "engine/quote-lint.ts", "engine/repeat-lint.ts", "engine/story-schema.ts", "engine/skills.ts",
