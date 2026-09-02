@@ -106,6 +106,17 @@ export function characterSystem(p: {
   return `${CHARACTER_FORMAT}\n\n${p.persona.trim()}\n\n${extras}`;
 }
 
+/** Appended to a character's system prompt when a world event brings something they always knew to
+ *  the front of their mind. It sits outside `characterSystem` because it arrives mid-scene: the
+ *  system prompt is the only part of an agent that history trimming cannot summarize away. */
+export const memorySurfaced = (memory: string) =>
+  `\n\nWHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT: ${memory}`;
+
+export const memoryMarker = (memory: string) =>
+  `[YOU REMEMBER] ${memory}\n\nYou have always known this -- it simply had no bearing until now, `
+  + `and it is as certain to you as anything else you know. Do not announce that it came back to `
+  + `you and do not narrate remembering it. Act on it when it bears on what you are asked.`;
+
 // -- THE FOUR THINGS A CONSULT CAN ASK FOR ----------------------------------
 // Shared by the writer's WANTS field and by what the character is told it is being asked for,
 // so the two sides never learn different meanings for the same word -- and the canonical word

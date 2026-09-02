@@ -168,14 +168,17 @@ export function writerSystem(p: {
 
 export const writeInstruction = (p: {
   words: number; target: number; maxProseWords: number; overran: number; neglected: string[]; hardCap: boolean;
+  /** The world timeline (PLANS.md): a fired event arrives as something that HAS HAPPENED — past
+   *  tense, not declinable. The held form names what the writer may not start until told. Never
+   *  both at once; the soft version of firing is what an unassisted writer already produces. */
   fired?: string; hold?: string;
 }) =>
   `[WRITE] ${p.words} words so far, aiming at about ${p.target}.`
   + ` At most ${p.maxProseWords} words in this piece.`
   + (p.overran ? ` Your last piece ran to ${p.overran} words — far past that. Keep this one short.` : "")
   + (p.fired ? ` [WORLD] ${p.fired} That has happened — nobody in this scene chose it and nobody `
-    + `can decline it. Write it as already true, on the page, in this piece, and let it cost them `
-    + `something. Do not have anyone merely notice it.`
+      + `can decline it. Write it as already true, on the page, in this piece, and let it cost them `
+      + `something. Do not have anyone merely notice it.`
     : p.hold ? ` [HOLD] ${p.hold} -- that has NOT happened. Do not start it, do not have it already `
       + `underway, and do not build toward it as imminent. It is not yours to set off. Write the `
       + `scene as it stands; if it happens at all, you will be told that it has.` : "")

@@ -4,7 +4,7 @@ import { C } from "../ansi.ts";
 import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
-import type { ThinkLevel } from "./story-schema.ts";
+import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
 import { resolveReach, type Skill } from "./skills.ts";
 import {
   normalizeConsult,
@@ -14,6 +14,8 @@ import {
 import { judgeGate } from "./judge-gate.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
 import { lintPiece } from "./narration-lint.ts";
+import { stripRepeatedPrefix } from "./repeat-lint.ts";
+import { timelineTurn } from "./world-timeline.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { type Msg } from "./llm-client.ts";
 import { LIVE, RUN, StoppedError, LIVE_IO, type SceneIo } from "../live.ts";
@@ -177,12 +179,20 @@ export type RunEvent =
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "exit_refused"; character: string; chapter: number }
+  | { t: "world_beat"; beat: string; hold: string; step: number; chapter: number }
+  | { t: "beat_stranded"; beat: string; at: number; chapter: number }
+  | { t: "memory_surfaced"; character: string; chapter: number }
+  | { t: "repeat_strip"; chars: number; words: number; whole: boolean; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
   | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
 
 
 const OVERRUN_SLACK = 1.5;
+
+// The tail the repeat guard compares a new piece against: the last two pieces, capped. A callback
+// to an older beat is legitimate prose; re-emitting where the page ends is the defect.
+const REPEAT_TAIL_CHARS = 2000;
 
 const NEGLECT_GAP = 3;
 
@@ -199,21 +209,6 @@ const NARRATION_LINT_RETRIES = 1;
 // Judging an answer is classification, not composition: the writer's own 0.8 buys nothing here.
 const JUDGE_TEMPERATURE = 0.3;
 
-// SPIKE — the world timeline, ahead of block 1 (PLANS.md). One beat, injected once, with no schema,
-// no entity and no repair: it only measures whether an injected world event lands.
-// The beat text belongs to a run, not the engine, so it arrives by environment; an unset SPIKE_BEAT
-// leaves every instruction byte-identical to before. Delete this and its call site.
-//
-// The trigger is a fraction of the word target, not a step number: step counts vary with cast size
-// (17 for a duo, 24-31 for a four-hander), so the same absolute step lands at a different point in
-// each — which is the comparison the duo control exists to make.
-//
-// SPIKE_HOLD names what the writer may not start on its own until then. Without it the writer opens
-// with the event already underway — correct behaviour, since it is steering toward a scene question
-// that names the event, so firing it in line one is obedience, not error.
-const SPIKE_BEAT = process.env.SPIKE_BEAT?.trim() ?? "";
-const SPIKE_HOLD = process.env.SPIKE_HOLD?.trim() ?? "";
-const SPIKE_BEAT_AT = Number(process.env.SPIKE_BEAT_AT ?? 0.45);
 
 /** Cast members who have gone unconsulted for long enough that the writer may have lost one.
  *
@@ -250,6 +245,9 @@ export interface SceneRun {
   log: (e: RunEvent) => void;
   maxCharacterRetries?: number;
   facts?: string[];
+  /** The world-event ledger. Beats aimed at this chapter hold, fire once at their trigger, and
+   *  implant their memories into the cast present when they do (world-timeline.ts). */
+  timeline?: TimelineDef[];
   /** The human-interaction port (step budget, pause, reader seat). Defaults to LIVE_IO — the
    *  session's LIVE state and SSE bus — so a run can be driven without either. */
   io?: SceneIo;
@@ -262,6 +260,7 @@ export async function writeScene(run: SceneRun) {
           retries, clarifications, dir, log } = run;
   const maxCharacterRetries = run.maxCharacterRetries;
   const facts = run.facts ?? [];
+  const timeline = run.timeline ?? [];
   const io = run.io ?? LIVE_IO;
   const roster = rosterOf(characters, sd.roster);
   const rosterNames = roster.map(c => c.name);
@@ -341,7 +340,9 @@ export async function writeScene(run: SceneRun) {
   const granted: GrantedEntry[] = [];
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
-  let beatFired = false; // SPIKE (world timeline): the beat fires once, then the hold lifts.
+  // Which world beats have fired this scene, held by entry identity (world-timeline.ts). A beat
+  // fires once; its held form stands down the moment it does.
+  const beatFired = new Set<TimelineDef>();
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
@@ -467,14 +468,30 @@ export async function writeScene(run: SceneRun) {
     const words = wordCount();
     const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
     const hardCap = words >= sd.length * HARD_CAP_MULT;
-    const fired = SPIKE_BEAT && !beatFired && words >= sd.length * SPIKE_BEAT_AT ? SPIKE_BEAT : "";
-    if (fired) {
-      beatFired = true;
-      console.log(`\n${C.cyan}(world beat fired at step ${steps}, ${words}/${sd.length} words)${C.reset}`);
+    // The world timeline: a held event the writer may not start, and — at the trigger — a fired
+    // event injected as already true. Zero inference; the decision is world-timeline.ts's, and the
+    // implant lands before the instruction so the consult the writer opens in response already
+    // reasons from the memory.
+    const turn = timelineTurn(timeline, chapter, words, sd.length, beatFired);
+    if (turn.fired) {
+      beatFired.add(turn.fired);
+      console.log(`\n${C.cyan}(world beat fired at step ${steps + 1}, ${words}/${sd.length} words)${C.reset}`);
+      log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, step: steps + 1, chapter });
+      for (const [name, mem] of turn.memories) {
+        const def = defOf(name);
+        if (!def || !isActive(def.name)) continue;
+        const a = agents.get(nameKey(def.name));
+        if (!a) continue;
+        a.system += P.memorySurfaced(mem);
+        a.hear(P.memoryMarker(mem));
+        log({ t: "memory_surfaced", character: def.name, chapter });
+        if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
+      }
     }
     writer.hear(P.writeInstruction({
       words, target: sd.length, maxProseWords, overran, neglected, hardCap,
-      fired, hold: beatFired ? "" : SPIKE_HOLD,
+      ...(turn.fired ? { fired: turn.fired.fired } : {}),
+      ...(turn.hold ? { hold: turn.hold } : {}),
     }));
     let draftRaw: string;
     try {
@@ -538,6 +555,25 @@ export async function writeScene(run: SceneRun) {
       steps++;
     }
     if (stoppedMidLint) break;
+
+    // -- REPEAT GUARD: a piece that opens by re-emitting the page's tail is stripped back to its
+    // new text before anything records it — the doorway run appended a verbatim repeat of its
+    // opening paragraph plus one new sentence, so the scene opened with the paragraph twice. It
+    // runs after the lint (a redraft is checked like any other draft) and before the push, the
+    // writer's history and the draft event, so the page and everything the writer reads back carry
+    // the kept text. No model call; repeat-lint declines rather than cutting mid-sentence, so it
+    // only ever removes a prefix it is confident about.
+    if (reply.prose && pieces.length) {
+      const tail = pieces.slice(-2).join("\n\n").slice(-REPEAT_TAIL_CHARS);
+      const strip = stripRepeatedPrefix(reply.prose, tail);
+      if (strip) {
+        reply.prose = strip.kept;
+        reply.proseWords = strip.kept ? strip.kept.split(/\s+/).filter(Boolean).length : 0;
+        log({ t: "repeat_strip", chars: strip.chars, words: strip.words, whole: strip.whole, chapter });
+        console.log(`${C.yellow}(repeat stripped — the piece opened with ${strip.words} words `
+          + `already on the page${strip.whole ? "; nothing new was written" : ""})${C.reset}`);
+      }
+    }
 
     overran = reply.proseWords > maxProseWords * OVERRUN_SLACK ? reply.proseWords : 0;
     // A beat written after the answers landed is the writing turn they were owed; the consults this
@@ -792,6 +828,15 @@ export async function writeScene(run: SceneRun) {
       + `accepted, but not in the chapter)${C.reset}`);
   }
 
+  // A beat aimed at this chapter that never fired: the scene ended before its trigger, or ended
+  // early. Nothing else in the record says so, and the handoff has no other way to know there is
+  // something left to re-aim.
+  for (const b of timeline)
+    if (b.chapter === chapter && b.state !== "void" && !beatFired.has(b)) {
+      log({ t: "beat_stranded", beat: b.fired, at: b.at, chapter });
+      console.log(`${C.yellow}(the scene ended without the world event ever firing: ${b.fired})${C.reset}`);
+    }
+
   log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter, retries: Object.fromEntries(retryCounts) });
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
 }
@@ -822,6 +867,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
       retries: sc.retries, clarifications: sc.clarifications,
       dir: sc.dir, log, maxCharacterRetries: sc.maxCharacterRetries,
       facts: sc.facts,
+      timeline: sc.timeline,
     });
   } finally {
     LIVE.writer = null; LIVE.agents = null; LIVE.log = null;

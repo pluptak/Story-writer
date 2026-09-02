@@ -149,6 +149,32 @@ describe("StoryJson schema", () => {
       assert.ok(paths.includes("scenes.0.writerThink"), `expected scenes.0.writerThink in error paths, got ${JSON.stringify(paths)}`);
     }
   });
+
+  it("defaults the timeline to empty, and fills in every beat default", () => {
+    const r = StoryJson.parse({ characters: [{ name: "X" }] });
+    assert.deepEqual(r.timeline, []);
+
+    const t = StoryJson.parse({
+      characters: [{ name: "X" }],
+      timeline: [{ chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds" }],
+    }).timeline[0];
+    assert.equal(t.at, 0.45);
+    assert.deepEqual(t.memories, {});
+    assert.equal(t.state, "pending");
+  });
+
+  it("rejects a timeline beat with an empty hold or fired form, a bad state, or an unknown key", () => {
+    for (const beat of [
+      { chapter: 1, hold: "", fired: "the alarm sounds" },
+      { chapter: 1, hold: "the alarm", fired: "" },
+      { chapter: 1, hold: "the alarm", fired: "it sounds", state: "spent" },
+      { chapter: 1, hold: "the alarm", fired: "it sounds", when: "step 8" },
+      { chapter: 0, hold: "the alarm", fired: "it sounds" },
+    ]) {
+      const r = StoryJson.safeParse({ characters: [{ name: "X" }], timeline: [beat] });
+      assert.equal(r.success, false, `expected rejection for ${JSON.stringify(beat)}`);
+    }
+  });
 });
 
 // -- CONFIG VALIDATION -----------------------------------------------------
@@ -281,6 +307,71 @@ describe("loadStory warnings", () => {
       const sc = await quiet(() => loadStory(dir));
       assert.equal(sc.title, "");
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- TIMELINE (the world-event ledger) ---------------------------------------
+describe("loadStory timeline", () => {
+  const base = {
+    title: "T", premise: "A premise.",
+    scenes: [{ place: "Nowhere", question: "Q?" }],
+    characters: [{ name: "HALE", persona: "x" }, { name: "ODUYA", persona: "y" }],
+  };
+  const beat = {
+    chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds",
+    memories: { HALE: "the wing is insured on occupancy" },
+  };
+
+  async function loadWithWarnings(story: unknown) {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify(story), "utf8");
+      const warns: string[] = [];
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      let sc;
+      try { sc = await loadStory(dir); } finally { WARN.sink = orig; }
+      return { sc, warns };
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }
+
+  it("loads a well-formed beat into the StoryConfig with its defaults", async () => {
+    const { sc, warns } = await loadWithWarnings({ ...base, timeline: [beat] });
+    assert.equal(sc.timeline.length, 1);
+    assert.equal(sc.timeline[0].at, 0.45);
+    assert.equal(sc.timeline[0].state, "pending");
+    assert.deepEqual(sc.timeline[0].memories, { HALE: "the wing is insured on occupancy" });
+    assert.equal(warns.length, 0, `expected no warnings, got ${JSON.stringify(warns)}`);
+  });
+
+  it("warns when a memory is keyed to nobody in the cast, and keeps the beat", async () => {
+    const { sc, warns } = await loadWithWarnings({
+      ...base, timeline: [{ ...beat, memories: { HAIL: "typo'd name" } }],
+    });
+    assert.equal(sc.timeline.length, 1, "a bad memory key must not drop the beat");
+    assert.match(warns.join(" "), /memory to "HAIL"/);
+    assert.match(warns.join(" "), /never reaches a run/);
+  });
+
+  it("warns when a beat is aimed past the last scene, and keeps the beat — stories grow chapters", async () => {
+    const { sc, warns } = await loadWithWarnings({ ...base, timeline: [{ ...beat, chapter: 5 }] });
+    assert.equal(sc.timeline.length, 1);
+    assert.match(warns.join(" "), /chapter 5, past the story's last scene/);
+  });
+
+  it("warns when a beat's forms carry quoted speech — the quote lint would flag it as invented", async () => {
+    const { warns } = await loadWithWarnings({
+      ...base, timeline: [{ ...beat, fired: `the intercom crackles: "evacuate the wing"` }],
+    });
+    assert.match(warns.join(" "), /quoted speech/);
+    assert.match(warns.join(" "), /held|fired/);
+  });
+
+  it("carries authored state through unchanged — the load path reads it and never polices it", async () => {
+    const { sc, warns } = await loadWithWarnings({ ...base, timeline: [{ ...beat, state: "void" }] });
+    assert.equal(sc.timeline.length, 1);
+    assert.equal(sc.timeline[0].state, "void");
+    assert.equal(warns.length, 0);
   });
 });
 

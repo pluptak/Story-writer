@@ -13,6 +13,7 @@ import {
 } from "../engine/story-format.ts";
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
 import { architectNextChapter, architectVerify } from "../prompts.ts";
+import * as P from "../prompts.ts";
 import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
@@ -314,7 +315,8 @@ describe("ScaffoldSession, staged", () => {
 
   it("walks the checklist one approved gate at a time, merging as it goes", async () => {
     const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
-                     { edits: [], note: "it holds together" }]);
+                     { edits: [], note: "it holds together" }, // verify pass
+                     { timeline: [] }]); // world stage
 
     const first = await s.propose();
     assert.equal(first.kind, "proposal");
@@ -351,6 +353,10 @@ describe("ScaffoldSession, staged", () => {
     const heard = s.architect.history.map(h => h.content).join("\n");
     assert.match(heard, /\[VERIFY\]/);
     assert.doesNotMatch(heard, /\[FILL\]/);
+
+    const world = await s.approve();
+    assert.equal(gateOf(world), "world");
+    assert.deepEqual(s.spec.timeline, []);
 
     const done = await s.approve();
     assert.equal(done.kind, "nothing");
@@ -525,6 +531,89 @@ describe("ScaffoldSession, staged", () => {
     assert.equal(r.kind, "proposal");
     assert.match(s.architect.history.at(-2)!.content, /OVERRIDE: you have asked several times/);
     assert.equal(s.asks, 0);
+  });
+
+  describe("the world stage", () => {
+    const WORLD_WITH_BEAT = {
+      timeline: [{
+        chapter: 1,
+        at: 0.45,
+        hold: "the panel is still dark",
+        fired: "The alarm on the panel flashed red.",
+        memories: { ASTER: "The signal has a fault condition we have never seen." },
+      }],
+    };
+
+    // The one that proves the wiring rather than the wording: a proposed beat has to survive
+    // mergedRaw and normalizeSpec to reach the spec, memories and trigger intact.
+    it("folds a proposed beat onto the spec, with its trigger and memories", async () => {
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "it holds together" }, WORLD_WITH_BEAT]);
+      await s.propose();
+      for (const _ of ["cast", "settings", "technical", "scene"]) await s.approve();
+
+      const world = await s.approve();
+      assert.equal(world.kind, "proposal", "a well-formed beat is content, not nothing");
+      assert.equal(gateOf(world), "world");
+      assert.equal(s.spec.timeline.length, 1);
+      assert.equal(s.spec.timeline[0].fired, "The alarm on the panel flashed red.");
+      assert.equal(s.spec.timeline[0].hold, "the panel is still dark");
+      assert.equal(s.spec.timeline[0].at, 0.45);
+      assert.deepEqual(s.spec.timeline[0].memories,
+        { ASTER: "The signal has a fault condition we have never seen." });
+    });
+
+    // The one-shot format proposes a whole story in one reply, so it needs the same beat rules the
+    // staged gate has. They share one const rather than two copies that drift apart.
+    it("the one-shot format offers a timeline and marks it optional", () => {
+      assert.match(P.ARCHITECT_FORMAT, /"timeline": \[\]/);
+      assert.match(P.ARCHITECT_FORMAT, /timeline\s+-- OPTIONAL, and usually empty/);
+    });
+
+    it("both authoring surfaces carry the same beat rules, from one source", () => {
+      const staged = P.architectWorldStage("(so far)");
+      for (const rule of [/IT NAMES A SPECIFIC COST/, /IT AGREES WITH THE EVENT/,
+                          /IT OPENS AN ACTION/, /IT GOES TO WHOEVER MUST MOVE/,
+                          /MOST STORIES DO NOT NEED ONE/, /AT MOST ONE PER CHAPTER/,
+                          /No dialogue and no quotation marks/]) {
+        assert.match(staged, rule, `staged stage is missing ${rule}`);
+        assert.match(P.ARCHITECT_FORMAT, rule, `one-shot format is missing ${rule}`);
+      }
+    });
+
+    it("reports the world stage as stage 6 of 6 in the checklist", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /stage 6 of 6/);
+    });
+
+    it("carries the story-so-far to the world stage", () => {
+      const text = P.architectWorldStage("(the story so far)");
+      assert.match(text, /\(the story so far\)/);
+    });
+
+    it("tells the architect that an empty timeline is a complete and correct answer", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /MOST STORIES DO NOT NEED ONE/);
+      assert.match(text, /"timeline": \[\]/);
+    });
+
+    it("lists all four memory constraints: COST, AGREEMENT, ACTION, AUDIENCE", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /IT NAMES A SPECIFIC COST/);
+      assert.match(text, /IT AGREES WITH THE EVENT/);
+      assert.match(text, /IT OPENS AN ACTION/);
+      assert.match(text, /IT GOES TO WHOEVER MUST MOVE/);
+    });
+
+    it("forbids quoted speech in the fired form", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /No dialogue and no quotation marks/);
+    });
+
+    it("checklistLine() now reports six stages", () => {
+      const storyText = P.architectStoryStage("idea");
+      assert.match(storyText, /stage 1 of 6/);
+    });
   });
 });
 
@@ -871,6 +960,37 @@ describe("openNextChapter", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
+  // The sidecar the run writes beside a chapter it could not spend all its beats in. It is the only
+  // record of a beat that never fired: nothing is in the prose, and the chapter's own snapshot says
+  // what was aimed there, not what happened.
+  it("picks up each chapter's unfired world events and carries them into the round", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    try {
+      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      for (const n of [1, 2]) await writeFile(join(dir, "chapters", `${n}.md`), `chapter ${n}\n`, "utf8");
+      await writeFile(join(dir, "chapters", "2.unfired.json"),
+        JSON.stringify([{ beat: "The sounder takes over.", at: 0.45 }]), "utf8");
+
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.deepEqual(s.unfired, [{ n: 2, beat: "The sounder takes over.", at: 0.45 }]);
+      assert.match(architectNextChapter(s.spec.premise, "{}", s.chapters, s.unfired),
+                   /chapter 2, set for 0\.45 of the way in: The sounder takes over\./);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("carries nothing when a chapter left no sidecar, and survives one that will not parse", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    try {
+      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "chapter 1\n", "utf8");
+      await writeFile(join(dir, "chapters", "1.unfired.json"), "{ not json", "utf8");
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.deepEqual(s.unfired, [], "a broken sidecar must not cost the handoff its opening");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it("leaves the worked example out of the handoff agent, which the scaffold agent still carries", async () => {
     const dir = await mkdtemp(join(tmpdir(), "handoff-"));
     try {
@@ -922,5 +1042,64 @@ describe("suggestEdits", () => {
       assert.equal(r.kind, "failed");
       assert.match((r as { error: string }).error, /neither edits nor a question/);
     } finally { Agent.prototype.generate = orig; }
+  });
+});
+
+// -- WHAT THE ARCHITECT IS TOLD ABOUT THE SCENE QUESTION --------------------
+// The question reaches the writer's system prompt verbatim, so a question naming a world event
+// hands the writer the timeline through the back door — it opens the scene with the event already
+// underway, which is obedience rather than error. Both authoring surfaces have to say so.
+describe("the scene question names stakes, not mechanisms", () => {
+  for (const [surface, text] of [
+    ["the one-shot format", P.ARCHITECT_FORMAT],
+    ["the staged scene stage", P.architectSceneStage("(the story so far)")],
+  ] as const) {
+    it(`${surface} forbids a question that names an event the scene has not reached`, () => {
+      assert.match(text, /NAME THE STAKES, NOT THE MECHANISM/);
+      assert.match(text, /never what the world is about to do/);
+      assert.match(text, /already\s+underway/);
+    });
+  }
+});
+
+// -- THE HANDOFF AND THE WORLD-EVENT LEDGER --------------------------------
+// A beat that never fired leaves no trace in the prose, so the architect cannot read it off the
+// chapter the way it reads everything else. It arrives as its own list or not at all.
+describe("stranded world events in the handoff", () => {
+  const CH = [{ n: 1, text: "Chapter one prose." }];
+  const beat = { n: 1, beat: "The wing evacuation sounder takes over.", at: 0.45 };
+
+  it("names each unfired beat with the chapter and trigger it was waiting on", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    assert.match(t, /\[WORLD EVENTS THAT NEVER HAPPENED]/);
+    assert.match(t, /chapter 1, set for 0\.45 of the way in: The wing evacuation sounder takes over\./);
+  });
+
+  it("tells the architect not to look for it in the prose", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    assert.match(t, /none of them is anywhere in the prose/);
+    assert.match(t, /a beat aimed at a written chapter can never fire/);
+  });
+
+  it("offers re-aim and void, and prefers void to removal", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    assert.match(t, /Re-aim it: beat_<n>\.chapter/);
+    assert.match(t, /beat_<n>\.state "void"/);
+    assert.match(t, /Prefer void\./);
+  });
+
+  it("says nothing at all when no beat was stranded", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH);
+    assert.doesNotMatch(t, /WORLD EVENTS THAT NEVER HAPPENED/);
+    assert.doesNotMatch(t, /never fire/);
+  });
+
+  it("lists the ledger's edit fields either way — a beat may be edited without being stranded", () => {
+    for (const t of [P.architectNextChapter("A depot.", "{}", CH),
+                     P.architectNextChapter("A depot.", "{}", CH, [beat])]) {
+      assert.match(t, /beat_<n>\.chapter/);
+      assert.match(t, /beat_<n>\.memories/);
+      assert.match(t, /remove_beat/);
+    }
   });
 });

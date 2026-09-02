@@ -1,8 +1,8 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
 import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning } from "./skills.ts";
-import { RunConfig, THINK_LEVELS, type ThinkLevel, type SceneDef } from "./story-schema.ts";
+import { RunConfig, THINK_LEVELS, TimelineDef, type ThinkLevel, type SceneDef } from "./story-schema.ts";
 
-export type { SceneDef, CharacterDef, RunConfig } from "./story-schema.ts";
+export type { SceneDef, CharacterDef, RunConfig, TimelineDef } from "./story-schema.ts";
 
 /** What the architect proposes: a story in the working shape used for editing and rendering. */
 export interface StorySpec {
@@ -11,6 +11,10 @@ export interface StorySpec {
   scenes: SceneDef[];
   writerStyle: string;
   facts: string[];
+  /** The world-event ledger (PLANS.md: the world timeline). Story-level: an entry carries a
+   *  per-character memory map, which SceneDef has no shape for, and story-level is what lets the
+   *  handoff re-aim a stranded beat. */
+  timeline: TimelineDef[];
   config: RunConfig;
   models: { default: string; writer: string; summary: string };
   characters: Array<{
@@ -48,6 +52,60 @@ export function rosterNameNotACharacter(prefix: string, name: string): string {
 }
 export function reachNotInRoster(prefix: string, who: string): string {
   return `${prefix} grants reach to "${who}", who is not in its roster`;
+}
+
+/** The timeline-beat problems that are pure string work, shared by the load path (which warns and
+ *  keeps the beat) and the proposal path (which reports it), so the wording has one home — the same
+ *  rule `rosterNameNotACharacter` follows. A beat aimed past the last scene is not an error: stories
+ *  grow chapters, so it is reported, never dropped. Checks memory names against the target scene's
+ *  roster, accounting for the rule that an empty roster means the whole cast is in that scene. */
+export function timelineBeatProblems(prefix: string, beat: TimelineDef, cast: string[],
+                                     scenes: { roster: string[] }[]): string[] {
+  const out: string[] = [];
+  if (beat.chapter > scenes.length)
+    out.push(`${prefix} is aimed at chapter ${beat.chapter}, past the story's last scene — it cannot fire`);
+  for (const who of Object.keys(beat.memories)) {
+    const inCast = cast.some(c => c.toLowerCase() === who.trim().toLowerCase());
+    if (!inCast) {
+      out.push(`${prefix} keys a memory to "${who}", who is not one of the characters — the memory never reaches a run`);
+      continue;
+    }
+    const targetScene = scenes[beat.chapter - 1];
+    if (targetScene && targetScene.roster.length && !targetScene.roster.some(r => r.toLowerCase() === who.trim().toLowerCase()))
+      out.push(`${prefix} keys a memory to "${who}", who is not in chapter ${beat.chapter}'s roster — the memory never implants`);
+  }
+  for (const [form, text] of [["held", beat.hold], ["fired", beat.fired]] as const) {
+    if (/["“”]/.test(text))
+      out.push(`${prefix}'s ${form} form carries quoted speech — the quote lint will flag it as invented `
+        + `until world events can be granted lines; keep the event wordless for now`);
+  }
+  return out;
+}
+
+/** Check that beats in the same chapter fire in ascending trigger order. Beats fire in authored
+ *  order (one at a time), so a beat whose `at` is lower than an earlier beat's in the same chapter
+ *  can never fire at its trigger point — it will fire after the predecessor instead. */
+export function timelineOrderProblems(beats: TimelineDef[]): string[] {
+  const out: string[] = [];
+  const maxAtByChapter = new Map<number, { at: number; index: number }>();
+
+  for (const [i, beat] of beats.entries()) {
+    if (beat.state === "void") continue;
+
+    const chapter = beat.chapter;
+    const existing = maxAtByChapter.get(chapter);
+
+    if (existing && beat.at < existing.at) {
+      out.push(
+        `timeline beat ${i + 1} triggers at ${beat.at} of the way in, before beat ${existing.index + 1} at ${existing.at} `
+        + `which is authored ahead of it — beats fire in authored order, so it will fire immediately after that one instead of at its own point`
+      );
+    } else if (!existing || beat.at > existing.at) {
+      maxAtByChapter.set(chapter, { at: beat.at, index: i });
+    }
+  }
+
+  return out;
 }
 
 /** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing. */
@@ -175,6 +233,22 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
 
   const scenes: SceneDef[] = rawScenes.map((s, i) => readSceneDef(s, i === 0 ? "scene" : `scene ${i + 1}`));
 
+  // The world-event ledger. Each entry is validated on its own, so one malformed beat costs itself
+  // and not the ledger; the per-beat string checks are shared with the load path (wording has one home).
+  const timeline: TimelineDef[] = [];
+  for (const [i, rawBeat] of (Array.isArray(o.timeline) ? o.timeline : []).entries()) {
+    const beat = TimelineDef.safeParse(rawBeat);
+    if (!beat.success) {
+      const why = beat.error.issues[0];
+      problems.push(`timeline beat ${i + 1}: ${why.path.join(".") || "entry"} ${why.message} — dropped`);
+      continue;
+    }
+    problems.push(...timelineBeatProblems(`timeline beat ${i + 1}`, beat.data,
+      characters.map(c => c.name), scenes));
+    timeline.push(beat.data);
+  }
+  problems.push(...timelineOrderProblems(timeline));
+
   const config = RunConfig.parse(o.config ?? {});
 
   const models = {
@@ -189,6 +263,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     scenes,
     writerStyle: String(o.writer_style ?? o.writerStyle ?? "").trim(),
     facts: Array.isArray(o.facts) ? o.facts.map((f: unknown) => String(f).trim()).filter(Boolean) : [],
+    timeline,
     config,
     models,
     characters,
@@ -440,6 +515,53 @@ export function applyEdits(spec: StorySpec, raw: any): {
       continue;
     }
 
+    // -- THE WORLD-EVENT LEDGER ---------------------------------------------
+    // `beat_<n>` rather than `timeline.<n>`: the two other indexed collections an edit can address
+    // spell themselves `scene_<n>` and `fact_<n>`, and a third spelling for the same idea is a third
+    // thing to remember. `chapter` is editable like any other field — re-aiming a stranded beat at
+    // the next chapter is the handoff's whole job with this, and nothing about an already-written
+    // chapter depends on where a beat that never fired was pointing.
+    const beatMatch = field.match(/^beat_(\d+)\.(chapter|at|hold|fired|state|memories)$/);
+    if (beatMatch) {
+      const idx = Number(beatMatch[1]) - 1;
+      if (idx < 0 || idx >= draft.timeline.length) {
+        ignored.push(`${field} — beat ${beatMatch[1]} does not exist`); continue;
+      }
+      const beatField = beatMatch[2];
+      const before = (normalizedDraft().timeline[idx] as any)?.[beatField];
+      if (beatField === "chapter" || beatField === "at") draft.timeline[idx][beatField] = Number(value);
+      else if (beatField === "memories") {
+        draft.timeline[idx].memories = (value && typeof value === "object" && !Array.isArray(value))
+          ? Object.fromEntries(Object.entries(value)
+              .map(([k, v]) => [k.trim(), String(v).trim()] as const)
+              .filter(([k, v]) => k.length > 0 && v.length > 0))
+          : {};
+      }
+      else draft.timeline[idx][beatField] = scalar();
+      scalarResolver(`beat:${idx}.${beatField}`, next => (next.timeline[idx] as any)?.[beatField], before, field);
+      continue;
+    }
+    if (field === "add_beat") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        ignored.push("add_beat — the value must be a beat object"); continue;
+      }
+      draft.timeline.push(value);
+      const beatNumber = draft.timeline.length;
+      add({ field: `added beat ${beatNumber}`, before: undefined, after: undefined,
+            key: `added-beat:${beatNumber}`, snapshot: normalizedDraft().timeline[beatNumber - 1] });
+      continue;
+    }
+    if (field === "remove_beat") {
+      const n = Number(typeof value === "object" ? NaN : value);
+      if (!Number.isInteger(n) || n < 1 || n > draft.timeline.length) {
+        ignored.push(`remove_beat ${scalar() || "(nothing)"} — there is no beat ${scalar() || "(nothing)"}`); continue;
+      }
+      const before = normalizedDraft().timeline[n - 1];
+      draft.timeline.splice(n - 1, 1);
+      add({ field: `removed beat ${n}`, before, after: undefined, key: `removed-beat:${n}`, snapshot: undefined });
+      continue;
+    }
+
     // -- TECHNICAL EDITS ----------------------------------------------------
     // The "technical" checklist stage authors these; they must also be editable by an in-gate
     // [CHANGE] so a refinement round can tweak what the stage proposed. Option (a): models.* is
@@ -578,6 +700,30 @@ export function sceneDrift(before: SceneDef | undefined, after: SceneDef | undef
   return diff;
 }
 
+/** Which beats differ between two versions of the story's timeline, for the same purpose as
+ *  sceneDrift: a chapter's prose was written from a ledger that has since changed. Authored order
+ *  is the firing order, so entries compare positionally. `state` is the engine's bookkeeping and
+ *  never renders into a run, so changing it is not drift. */
+export function timelineDrift(before: TimelineDef[], after: TimelineDef[]): string[] {
+  const diff: string[] = [];
+  const normMem = (m: Record<string, string>) =>
+    new Map(Object.entries(m).map(([k, v]) => [k.trim().toLowerCase(), v.trim()] as const));
+  for (let i = 0; i < Math.max(before.length, after.length); i++) {
+    const was = before[i], now = after[i];
+    if (!was) { diff.push(`beat ${i + 1} added`); continue; }
+    if (!now) { diff.push(`beat ${i + 1} removed`); continue; }
+    const changed: string[] = [];
+    if (was.chapter !== now.chapter) changed.push("chapter");
+    if (was.hold.trim() !== now.hold.trim()) changed.push("held form");
+    if (was.fired.trim() !== now.fired.trim()) changed.push("fired form");
+    if (was.at !== now.at) changed.push("trigger");
+    const wasMem = normMem(was.memories), nowMem = normMem(now.memories);
+    if (wasMem.size !== nowMem.size || [...wasMem].some(([k, v]) => nowMem.get(k) !== v)) changed.push("memories");
+    if (changed.length) diff.push(`beat ${i + 1} (${changed.join(", ")})`);
+  }
+  return diff;
+}
+
 /** Render a spec to the story files on disk (currently just story.json), ready to write into a story folder. */
 export function renderStory(spec: StorySpec, models: { default: string }): Record<string, string> {
   const files: Record<string, string> = {};
@@ -608,6 +754,9 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     scenes: spec.scenes,
     writerStyle: spec.writerStyle,
     facts: spec.facts,
+    // Absent rather than empty, so a handoff accept or scaffold save does not add a field to
+    // stories that never had one — same rule as the optional model fields above.
+    ...(spec.timeline.length ? { timeline: spec.timeline } : {}),
     characters: charDefs,
     config: spec.config,
     models: renderedModels,
@@ -622,7 +771,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
 export function specView(spec: StorySpec) {
   return {
     title: spec.title, premise: spec.premise, scene: spec.scenes[0], scenes: spec.scenes, writerStyle: spec.writerStyle,
-    facts: spec.facts, config: spec.config, models: spec.models,
+    facts: spec.facts, timeline: spec.timeline, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
       name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,
       belief: c.belief, impulse: c.impulse, voice: c.voice,

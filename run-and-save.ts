@@ -137,6 +137,21 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
     } catch (e) {
       console.log(`${C.dim}chapter ${chapter}'s definition was not snapshotted — ${(e as Error).message}${C.reset}`);
     }
+
+    // Which world events this chapter was set up for and never reached. The snapshot beside it is a
+    // verbatim copy of story.json and says only what was AIMED here; nothing else on disk says what
+    // actually fired, and out/ rotates, so the handoff would have to guess. Written only when there
+    // is something to say, and losing it must never cost the chapter already safely written.
+    const stranded = events.filter(e => e.t === "beat_stranded" && e.chapter === chapter)
+      .map(e => ({ beat: (e as { beat: string }).beat, at: (e as { at: number }).at }));
+    if (stranded.length) {
+      try {
+        await writeFile(joinPath(chaptersDir, `${chapter}.unfired.json`),
+                        JSON.stringify(stranded, null, 2) + "\n", "utf8");
+      } catch (e) {
+        console.log(`${C.dim}chapter ${chapter}'s unfired world events were not recorded — ${(e as Error).message}${C.reset}`);
+      }
+    }
   } else {
     const why = r.stopped ? "the run was stopped"
       : !r.done ? "the run did not finish"
