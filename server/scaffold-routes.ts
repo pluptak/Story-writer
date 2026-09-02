@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { LIVE, sseWrite, setWhere } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
-import type { ServerHost } from "./server.ts";
+import type { ServerHost, Concept } from "./server.ts";
 import type { ScaffoldSession, ScaffoldRound, ScaffoldAccept } from "../engine/architect.ts";
 
 let SCAFFOLD: ScaffoldSession | null = null;
@@ -18,10 +18,29 @@ let scaffoldGen = 0;
 let scaffoldLast: ScaffoldRound | null = null;
 let scaffoldFolderAsk = "";                // why accept() would not derive a folder name
 let scaffoldStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is running, if any
+let scaffoldUnknownTags: string[] = [];    // tags the catalog does not hold; allowed, but reported
 
 const ABANDONED = "the interview was abandoned";
 const ABANDONED_WHILE_ACCEPTING =
   "the interview was abandoned while accepting — the story folder may exist on disk";
+
+const MAX_TAGS = 8;
+const MAX_TAG_LEN = 40;
+const MAX_CAST = 4;      // the cast stage's own ceiling: "Four is the maximum"
+
+/** The concept goes verbatim into a prompt, so its size is bounded here rather than trusted. Returns
+ *  the cleaned concept, or a reason it was refused. */
+function readConcept(o: Record<string, unknown>): { ok: true; concept: Concept } | { ok: false; reason: string } {
+  const rawTags = Array.isArray(o.tags) ? o.tags : [];
+  const tags = rawTags.map(t => String(t ?? "").trim()).filter(Boolean);
+  if (tags.length > MAX_TAGS) return { ok: false, reason: `at most ${MAX_TAGS} tags` };
+  const tooLong = tags.find(t => t.length > MAX_TAG_LEN);
+  if (tooLong) return { ok: false, reason: `tag "${tooLong.slice(0, 20)}…" is longer than ${MAX_TAG_LEN} characters` };
+  const castSize = Number(o.castSize ?? 0);
+  if (!Number.isInteger(castSize) || castSize < 0 || castSize > MAX_CAST)
+    return { ok: false, reason: `castSize must be a whole number from 0 to ${MAX_CAST}` };
+  return { ok: true, concept: { tags, castSize } };
+}
 
 function scaffoldState(host: ServerHost) {
   if (!SCAFFOLD) return { active: false };
@@ -39,6 +58,18 @@ function scaffoldState(host: ServerHost) {
     gate: SCAFFOLD.stage,          // staged mode only: the checklist gate that is open
     tension: SCAFFOLD.tension,     // the load-bearing conflict the story stage coined; session state,
                                    // never a story.json field, so it reaches the GUI only through here
+    concept: {
+      tags: SCAFFOLD.tags,
+      castSize: SCAFFOLD.castSize,
+      unknownTags: scaffoldUnknownTags,
+      // Each half steers exactly one gate and is spent once that gate has produced its content.
+      // Saying so is the point: a control that has stopped doing anything must not keep looking
+      // live. Both are asked as "would the next build of that stage's prompt read this?" — which
+      // is why cast size is measured against the cast, not against the open gate: it is at its most
+      // live during the STORY gate, before the cast prompt has ever been built.
+      tagsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.stage === "story",
+      castSizeSteers: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.spec.characters.length === 0,
+    },
     haveDraft,
     haveStory: SCAFFOLD.haveStory(),
     pendingAsk: SCAFFOLD.pendingAsk,
@@ -66,14 +97,14 @@ export async function handleScaffoldRoutes(
 
   const o = await readJsonBody(req);
   const what = path.slice("/scaffold/".length);
-  if (!["start", "say", "approve", "accept", "abandon", "set"].includes(what)) {
+  if (!["start", "say", "approve", "accept", "abandon", "set", "concept"].includes(what)) {
     json(res, 404, { ok: false, reason: `no such scaffold action: ${what}` });
 
   } else if (what === "abandon") {
     // The session dies here, but `scaffoldBusy` is left alone: if a round is in flight it must
     // keep the lock until its own finally clears it, so a second start cannot overlap it. The
     // round itself finds a stale `scaffoldGen` on return and drops everything it produced.
-    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = "";
+    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = ""; scaffoldUnknownTags = [];
     scaffoldGen++;
     publishScaffold(host);
     json(res, 200, { ok: true });
@@ -92,13 +123,17 @@ export async function handleScaffoldRoutes(
         json(res, 400, { ok: false, reason: `"${model}" is not loaded in LM Studio` }); return true;
       }
     }
+    const c = readConcept(o);
+    if (!c.ok) { json(res, 400, { ok: false, reason: c.reason }); return true; }
     scaffoldBusy = true; scaffoldLast = null; scaffoldFolderAsk = "";
     try {
       const mode = o.mode === "oneshot" ? "oneshot" : "staged";
-      const session = await host.newScaffoldSession(idea, model, mode);
+      const session = await host.newScaffoldSession(idea, model, mode, c.concept);
       // Abandoned while the session was being built: it must not resurrect itself.
       if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
       SCAFFOLD = session;
+      scaffoldUnknownTags = c.concept.tags.length ? await host.unknownTags(c.concept.tags) : [];
+      if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
       setWhere("building a new story", false);
       publishScaffold(host);
       const last = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(host); });
@@ -111,6 +146,18 @@ export async function handleScaffoldRoutes(
     json(res, 200, scaffoldState(host));
 
   } else if (!SCAFFOLD) { json(res, 400, { ok: false, reason: "no interview is open" });
+
+  } else if (what === "concept") {
+    // Revising the concept never re-runs a gate: it changes what the NEXT build of a stage prompt
+    // says. `tagsSteer` / `castSizeSteers` in the state is what tells the author whether that is
+    // still any gate at all.
+    const c = readConcept(o);
+    if (!c.ok) { json(res, 400, { ok: false, reason: c.reason }); return true; }
+    SCAFFOLD.tags = c.concept.tags;
+    SCAFFOLD.castSize = c.concept.castSize;
+    scaffoldUnknownTags = c.concept.tags.length ? await host.unknownTags(c.concept.tags) : [];
+    publishScaffold(host);
+    json(res, 200, scaffoldState(host));
 
   } else if (what === "set") {
     if (!SCAFFOLD.haveStory()) { json(res, 400, { ok: false, reason: "there is no story to change yet" }); return true; }

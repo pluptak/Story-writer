@@ -20,6 +20,11 @@ import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson } from "../engine/story-schema.ts";
 
+/** The author's concept, chosen before the architect runs and never written to story.json:
+ *  `tags` steer the story stage, `castSize` is the opening cast's target size for the cast
+ *  stage. Staged mode only — the one-shot walk has no gate for either to steer. */
+export type Concept = { tags: string[]; castSize: number };
+
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
   storyCards(): Promise<StoryCard[]>;
@@ -38,8 +43,14 @@ export interface ServerHost {
   architectModel(): Promise<string>;
   /** `mode` picks the scaffold's walk: "staged" runs the gated checklist
    *  (story → cast → settings → scene, an author approval between stages); "oneshot" is the
-   *  whole-story proposal. Omitted means staged. */
-  newScaffoldSession(idea: string, model?: string, mode?: "oneshot" | "staged"): Promise<ScaffoldSession>;
+   *  whole-story proposal. Omitted means staged. The optional `concept` carries the author's
+   *  pre-architect steering: tags and target cast size. */
+  newScaffoldSession(idea: string, model?: string, mode?: "oneshot" | "staged",
+                     concept?: Concept): Promise<ScaffoldSession>;
+  /** Which of these tags the tag catalog does not hold, in the order given. Off-vocabulary tags
+   *  are allowed — the catalog is a seed the author edits, not a gate — but they are reported so
+   *  a typo does not silently become a steering word. */
+  unknownTags(tags: string[]): Promise<string[]>;
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
   directEdit(spec: StorySpec, field: string, value: unknown):

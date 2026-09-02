@@ -19,7 +19,7 @@ import {
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "./engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind } from "./engine/catalog-schema.ts";
-import type { ServerHost } from "./server/server.ts";
+import type { ServerHost, Concept } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
 /** The architect's own knobs, which are the defaults' — not any one story's. */
@@ -48,9 +48,21 @@ async function withArchitectDefaults<T>(model: string, fn: (d: Defaults) => Prom
 }
 
 async function newScaffoldSession(idea: string, model = "",
-                                  mode: "oneshot" | "staged" = "oneshot"): Promise<ScaffoldSession> {
+                                  mode: "oneshot" | "staged" = "oneshot",
+                                  concept?: Concept): Promise<ScaffoldSession> {
   const d = await architectDefaults(model);
-  return new ScaffoldSession(await buildArchitect(d), d, idea, undefined, mode);
+  return new ScaffoldSession(await buildArchitect(d), d, idea, undefined, mode, undefined,
+                             concept?.tags ?? [], concept?.castSize ?? 0);
+}
+
+/** The tag catalog is the author's own file, so an unknown tag is news rather than an error: it is
+ *  still passed to the architect, and reported so a typo does not quietly become a steering word.
+ *  Matching is by trimmed lowercase label, the same key the catalog's own duplicate check uses. */
+async function unknownTags(tags: string[]): Promise<string[]> {
+  const cat = await loadCatalog("tags");
+  const known = new Set<string>((cat?.entries ?? []).map((e: { label?: unknown }) =>
+    String(e?.label ?? "").trim().toLowerCase()));
+  return tags.filter(t => !known.has(t.trim().toLowerCase()));
 }
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
@@ -137,7 +149,7 @@ export const HOST: ServerHost = {
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newScaffoldSession, newHandoffSession, directEdit, specView,
+  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   storyForEdit: async (dir) => {

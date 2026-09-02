@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 
 import { ScaffoldSession } from "../engine/architect.ts";
 import type { Defaults } from "../engine/story-format.ts";
+import type { Concept } from "../server/server.ts";
 import { LIVE, resetLive } from "../live.ts";
 import { handleScaffoldRoutes } from "../server/scaffold-routes.ts";
 import type { ServerHost } from "../server/server.ts";
@@ -34,12 +35,15 @@ const CAST_STAGE = {
 describe("/scaffold routes", () => {
   afterEach(() => resetLive());
 
-  const host = (script: unknown[]): ServerHost => ({
+  const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ServerHost => ({
     loadedModelIds: async () => null,
     specView: (s: unknown) => s,
-    newScaffoldSession: async (idea: string, _model?: string, mode?: "oneshot" | "staged") =>
+    unknownTags: async (tags: string[]) =>
+      tags.filter(t => !knownTags.includes(t.trim().toLowerCase())),
+    newScaffoldSession: async (idea: string, _model?: string, mode?: "oneshot" | "staged", concept?: Concept) =>
       new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
-                          DEFAULTS, idea, undefined, mode ?? "staged"),
+                          DEFAULTS, idea, undefined, mode ?? "staged", undefined,
+                          concept?.tags ?? [], concept?.castSize ?? 0),
   }) as unknown as ServerHost;
 
   const post = (path: string, body?: unknown, h: ServerHost = host([])) =>
@@ -170,5 +174,81 @@ describe("/scaffold routes", () => {
     } finally {
       LIVE.pickResolve = null; LIVE.awaitingPick = false;
     }
+  });
+
+  describe("the author's concept", () => {
+    it("carries the author's tags and cast size onto the session", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", tags: ["bleak"], castSize: 3 }, host([STORY_STAGE]));
+      assert.equal(opened.body.active, true);
+      assert.deepEqual(opened.body.concept.tags, ["bleak"]);
+      assert.equal(opened.body.concept.castSize, 3);
+      assert.deepEqual(opened.body.concept.unknownTags, []);
+    });
+
+    it("reports a tag the catalog does not hold, and opens anyway", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", tags: ["bleak", "sasquatch"] }, host([STORY_STAGE]));
+      assert.equal(opened.body.active, true);
+      assert.deepEqual(opened.body.concept.unknownTags, ["sasquatch"]);
+    });
+
+    it("refuses a cast size the cast stage could not honour", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([STORY_STAGE]);
+      await post("/scaffold/abandon", {}, h);  // clear any prior session
+      const result = await post("/scaffold/start", { idea: "...", castSize: 9 }, h);
+      assert.equal(result.code, 400);
+      assert.equal(result.body.ok, false);
+      assert.match(result.body.reason, /0 to 4/);
+    });
+
+    it("refuses more tags than a prompt should carry", async () => {
+      LIVE.awaitingPick = true;
+      const tags = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+      const result = await post("/scaffold/start", { idea: "...", tags }, host([STORY_STAGE]));
+      assert.equal(result.code, 400);
+      assert.equal(result.body.ok, false);
+      assert.match(result.body.reason, /at most 8/);
+    });
+
+    it("the concept can be revised while the session is open", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([STORY_STAGE]);
+      const opened = await post("/scaffold/start", { idea: "..." }, h);
+      assert.equal(opened.body.active, true);
+      const revised = await post("/scaffold/concept", { tags: ["adventure"], castSize: 2 }, h);
+      assert.equal(revised.body.active, true);
+      assert.deepEqual(revised.body.concept.tags, ["adventure"]);
+      assert.equal(revised.body.concept.castSize, 2);
+    });
+
+    // Each half is spent when the stage that reads it has produced content — not when its gate
+    // opens. Cast size is at its most live during the STORY gate, because the cast prompt that
+    // will read it has not been built yet.
+    it("each half of the concept stops steering once the stage that reads it has landed", async () => {
+      const h = host([STORY_STAGE, CAST_STAGE]);
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", tags: ["bleak"], castSize: 2 }, h);
+      assert.equal(opened.body.concept.tagsSteer, true, "the story gate is open, so tags still steer it");
+      assert.equal(opened.body.concept.castSizeSteers, true, "no cast yet, so the cast prompt is still ahead");
+      const next = await post("/scaffold/approve", {}, h);
+      assert.equal(next.body.concept.tagsSteer, false, "the story stage has landed; no later prompt reads tags");
+      assert.equal(next.body.concept.castSizeSteers, false, "the cast has landed; the size was already spent");
+    });
+
+    it("a one-shot walk has no gate for the concept to steer", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", mode: "oneshot", tags: ["bleak"], castSize: 3 }, host([{ ask: "?" }]));
+      assert.equal(opened.body.concept.tagsSteer, false);
+      assert.equal(opened.body.concept.castSizeSteers, false);
+    });
+
+    it("revising the concept before an interview is open is refused", async () => {
+      const h = host([]);
+      await post("/scaffold/abandon", {}, h);  // ensure no session is open
+      const result = await post("/scaffold/concept", { tags: ["adventure"] }, h);
+      assert.equal(result.body.reason, "no interview is open");
+    });
   });
 });
