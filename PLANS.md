@@ -495,11 +495,35 @@ below: **The world timeline**.
   the in-code seed. The architect may **propose** a bible addition; it lands only after the owner
   **approves** it — a real gate distinct from accepting the story. That gate is what turns "prefer an
   existing skill" into a hard constraint; until it exists, custom skills stay allowed.
-- **A structured personality selector.** `CharacterDef.persona` (with belief, impulse and voice)
-  drives per-character phrasing as free text today, and persona is documented as exactly the vehicle
-  for personality. The owner's goal is a dedicated personality editor where the architect picks from
-  a managed list instead of generating persona text on the spot — a bigger, separate feature to
-  design then, not an extension to bolt onto the cast stage now.
+- **The character catalog reaches the architect.** The catalog itself is built — storage, routes and
+  the `#/catalog` editor ([`Architect.MD`](Architect.MD), *Character catalog*) — and nothing consumes
+  it. What is left is the import path at the **cast gate**, which changes what that gate *does*:
+  understand → place → adapt → ask only what the import does not answer, rather than invent →
+  propose → refine. That is a stage prompt of its own, not a decorated `architectCastStage`: today's
+  prompt is written to propose and commit, while the imported path should ask more readily, because
+  the author has already made the choice the architect would otherwise invent.
+
+  The adaptation contract is fixed by field and needs no per-template declaration — `belief`,
+  `impulse`, `voice`, `skills` and `restrictions` are **preserved**; `goal` and `knows` are
+  **resolved per story**; `persona` is **composed** from the entry's portable half plus a story
+  context authored at the gate. That is what makes import awareness inspectable rather than a
+  behavioural hint: you can read a proposal and check which happened. A line telling the architect
+  "the author chose this one" cannot be checked and should not be written.
+
+  **Adaptation and cast quality are separate rules.** The contract says preserve, full stop; the cast
+  gate still judges whether the preserved capabilities bite on this tension. Judging is not adapting,
+  and blurring them reads as licence to rewrite a restriction during import.
+
+  Two things to build for: a fully imported cast may legitimately produce **no new characters at
+  all** — only edits and questions — so `stageHasContent` must accept that as content, the way the
+  world gate had to learn an empty ledger is an answer; and provenance stays **session-only**, since
+  `StoryJson` is a `z.strictObject` and the handoff must never know a character came from a template.
+
+- **The catalog's advisory reviewer.** Deferred deliberately until real entries exist to test it
+  against, and specified where it will live ([`Architect.MD`](Architect.MD)): architect-shaped rather
+  than judge-shaped, non-blocking, with mechanical validation still running after it. It exists
+  because a catalog amplifies the cast-sheet defects already logged above — one bad character, every
+  story after it.
 
 ## The world timeline
 

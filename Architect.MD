@@ -96,6 +96,78 @@ since the grant would never reach a run.
 
 Promotion of bespoke skills into a shared, approvable bible is planned work ([`PLANS.md`](PLANS.md)).
 
+## Character catalog
+
+**Status: the catalog and its screen are built; nothing reaches the architect yet.** The import path
+that would let a scaffold adapt a catalog entry is unbuilt and lives in [`PLANS.md`](PLANS.md).
+
+A reusable library of character templates, stored beside `defaults.json` rather than inside any
+story, so it is not scoped to one and survives every story it is used in. `engine/catalog-schema.ts`
+is its format's own definition, the way `story-schema.ts` is `story.json`'s; the routes are
+[`GUI-SPEC.md`](GUI-SPEC.md)'s *Character catalog*.
+
+**A library character is not a `CharacterDef`.** It carries only what travels between stories:
+
+| fields | in the catalog | why |
+| --- | --- | --- |
+| `belief`, `impulse`, `voice` | yes | psychology; rendered text the skill system never resolves |
+| `skills`, `restrictions` | yes | capability travels with the person |
+| `persona` | the portable half only | see below |
+| `goal`, `knows` | **no** | story-positional by construction — they only mean something inside one story |
+| `model`, `maxRetries` | **no** | run configuration, not identity |
+
+**Reach is never in a catalog.** A catalog entry is a character-level representation and I4 forbids
+it: a reach grant exists only while the scene that granted it is being written.
+
+### The persona splits the way the writer's style does
+
+A catalog entry holds a **portable persona** — temperament, manner, values, habits, the history that
+travels — and the story-specific half (where they stand now, who they are to this cast, what has just
+happened) is authored per story. They concatenate into the one `persona` string `story.json` already
+holds, so nothing downstream changes:
+
+```text
+portable persona + story context         = persona
+preset voice     + derived story clauses = writerStyle
+```
+
+One shape, two uses. In both, swapping the reusable half cannot silently drop the derived half. The
+rule that keeps the split honest: **the portable persona must read as valid on its own** — a template
+whose persona says "has just arrived" is describing one story, not a character.
+
+### The gate is mechanical; the advisor is not a gate
+
+```text
+edit  ⇄  advisor (unbuilt, optional, non-blocking)
+        ↓
+mechanical validation          ← always the last step
+        ↓
+owner approves → catalog
+```
+
+Validation reuses the engine's existing opinions rather than growing a second one:
+`characterPsychologyWarnings` for the psychology fields and `capabilityProblems` for skills and
+restrictions — the same function and the same wording `normalizeSpec` uses, so a cast sheet and a
+catalog entry cannot come to disagree about what a good `goal` looks like. Its skill source is a
+parameter, because the persistent skill bible will widen it.
+
+Two consequences worth stating:
+
+- **Everything the catalog reports is advisory except the schema.** An unresolvable restriction is
+  reported and **kept** — the catalog is an editing surface, so telling the author is right and
+  deleting their work behind their back is not.
+- **A catalog gate can only check the standalone half.** "Does this goal have agency" is answerable
+  about one character; "does this cast's asymmetry bite on the tension" is a property of a cast
+  against a story, and the catalog has neither. Per-story collision quality stays at the cast gate,
+  and the catalog cannot promise good casts.
+
+The **advisor** — logical inconsistencies, wording, proposals, help generating ideas — is deliberately
+deferred until real entries exist to test it against. When it arrives it is **architect-shaped, not
+judge-shaped**: the judge family is stateless, returns a verdict and gates, while this proposes edits
+the author accepts or ignores, which is the relationship the architect already has to a proposal. It
+never blocks, and mechanical validation still runs after it. It should read `CHARACTER_FIELDS` rather
+than grow a second account of what a good field is.
+
 ## Operating principle
 
 Agent history does not carry between chapters. Agents are rebuilt for every chapter and no character
