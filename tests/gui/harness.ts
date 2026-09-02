@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { test as base, expect, type Page } from "@playwright/test";
 
 import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
-import { resetLive } from "../../live.ts";
+import { LIVE, resetLive } from "../../live.ts";
 import { resolveStoryDir } from "../../engine/story-format.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
 
@@ -108,6 +108,9 @@ export const test = base.extend<{ served: number }>({
     await page.goto(`http://127.0.0.1:${port}/`);
     await use(port);
     await handle.close();
+    // A scripted run may have set the session fields publish()/run_state() read; a real process
+    // leaves them behind between runs too, so the next test starts from the same clean slate.
+    LIVE.running = false; LIVE.where = "idle"; LIVE.meta = null;
     resetLive();
   }, { auto: true }],
 });
