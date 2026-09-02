@@ -110,14 +110,14 @@ export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string):
   return { ok: true, entry: entryToSave, problems };
 }
 
-/** Remove one entry by id, then persist. Removing an id that is not there is `ok: false`. */
+/** Remove one entry by id, then persist. Removing an id that is not there is `ok: false` with `missing: true`. */
 export async function deleteEntry(kind: CatalogKind, id: string, path?: string):
-  Promise<{ ok: true } | { ok: false; reason: string }> {
+  Promise<{ ok: true } | { ok: false; reason: string; missing?: true }> {
   const catalog = await loadCatalog(kind, path);
 
   const existingIndex = catalog.entries.findIndex(e => e.id === id);
   if (existingIndex === -1) {
-    return { ok: false, reason: `entry "${id}" not found` };
+    return { ok: false, reason: `entry "${id}" not found`, missing: true };
   }
 
   catalog.entries.splice(existingIndex, 1);

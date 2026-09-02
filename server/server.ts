@@ -14,6 +14,7 @@ import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
 import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
+import { handleCatalogRoutes } from "./catalog-routes.ts";
 import type { ScaffoldSession, NextChapterSession } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
@@ -98,6 +99,14 @@ export interface ServerHost {
   } | {
     ok: false; error: string
   }>;
+  /** All entries in a catalog. `kind` is validated here because it arrives from the wire. */
+  catalogEntries(kind: string): Promise<{ ok: true; entries: unknown[] } | { ok: false; reason: string }>;
+  /** Validate one catalog entry without saving. */
+  catalogCheck(entry: unknown): { ok: true; problems: string[] } | { ok: false; issues: string[] };
+  /** Insert or replace one catalog entry by id. */
+  catalogSave(kind: string, entry: unknown): Promise<{ ok: true; entry: unknown; problems: string[] } | { ok: false; reason: string; status?: number; issues?: string[] }>;
+  /** Remove one catalog entry by id. Fails if the id is not found. */
+  catalogDelete(kind: string, id: string): Promise<{ ok: true } | { ok: false; reason: string; status?: number }>;
 }
 
 async function serveFile(res: ServerResponse, url: URL, contentType: string) {
@@ -204,6 +213,9 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         // handled
 
       } else if (await handleStoryReadRoutes(req, res, path, host)) {
+        // handled
+
+      } else if (await handleCatalogRoutes(req, res, path, host)) {
         // handled
 
       } else if (await handleRunLogRoutes(req, res, path, host)) {

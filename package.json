@@ -5,7 +5,7 @@
   "type": "module",
   "license": "ISC",
   "scripts": {
-    "test": "npx tsx --test tests/story-format.test.ts tests/skills.test.ts tests/json-extract.test.ts tests/consult.test.ts tests/story-spec.test.ts tests/architect.test.ts tests/llm-client.test.ts tests/server-routes.test.ts tests/scaffold-routes.test.ts tests/story-edit-routes.test.ts tests/story-read-routes.test.ts tests/run-state.test.ts tests/run-artifacts.test.ts tests/preflight.test.ts tests/quote-lint.test.ts tests/repeat-lint.test.ts tests/sense-lint.test.ts tests/app.test.ts tests/replay.test.ts tests/catalog.test.ts tests/catalog-schema.test.ts",
+    "test": "npx tsx --test tests/story-format.test.ts tests/skills.test.ts tests/json-extract.test.ts tests/consult.test.ts tests/story-spec.test.ts tests/architect.test.ts tests/llm-client.test.ts tests/server-routes.test.ts tests/scaffold-routes.test.ts tests/story-edit-routes.test.ts tests/story-read-routes.test.ts tests/run-state.test.ts tests/run-artifacts.test.ts tests/preflight.test.ts tests/quote-lint.test.ts tests/repeat-lint.test.ts tests/sense-lint.test.ts tests/app.test.ts tests/replay.test.ts tests/catalog.test.ts tests/catalog-routes.test.ts tests/catalog-schema.test.ts",
     "preflight": "npx tsx story-writer.ts --preflight",
     "typecheck": "npx tsc",
     "lint": "eslint ."

@@ -324,6 +324,7 @@ describe("deleteEntry", () => {
       assert.equal(result.ok, false);
       if (!result.ok) {
         assert.ok(result.reason.includes("not found"));
+        assert.equal(result.missing, true, "should have missing: true discriminant for not-found");
       }
     } finally {
       await rm(dir, { recursive: true, force: true });
