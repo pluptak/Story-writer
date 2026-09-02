@@ -1,7 +1,7 @@
 /** ZOD SCHEMA for character catalog — reusable character templates and tag vocabularies. */
 import { z } from "zod";
 
-export const CATALOG_KINDS = ["characters", "tags", "styles"] as const;
+export const CATALOG_KINDS = ["characters", "tags", "styles", "skills"] as const;
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
 /** One character as a portable library entry: name, portable persona half, psychology, voice samples,
@@ -80,6 +80,30 @@ export const StyleCatalog = z.strictObject({
 });
 
 export type StyleCatalog = z.infer<typeof StyleCatalog>;
+
+// -- SPECIAL SKILLS ----------------------------------------------------------
+
+/** One special skill as a bible entry: canonical name and its meaning. The `meaning` field is
+ *  deliberately REQUIRED (not defaulted to "") because a bible entry exists to give a skill its
+ *  canonical meaning. An entry without one would be looked up successfully and hand a character a
+ *  skill with no meaning — worse than not being in the bible at all. What it must NOT hold: reach.
+ *  A reach grant lives only inside the scene that grants it and carries its own `:: meaning`; it is
+ *  never a library entry (invariant I4, see `engine/skills.ts`'s module docstring). */
+export const LibrarySkill = z.strictObject({
+  id: z.string().min(1),
+  version: z.number().int().min(1).default(1),
+  name: z.string().min(1),
+  meaning: z.string().min(1),
+  tags: z.array(z.string()).default([]),
+});
+
+export type LibrarySkill = z.infer<typeof LibrarySkill>;
+
+export const SkillCatalog = z.strictObject({
+  entries: z.array(LibrarySkill).default([]),
+});
+
+export type SkillCatalog = z.infer<typeof SkillCatalog>;
 
 /** Starting vocabulary the author is expected to edit, not a fixed taxonomy.
  *  The point of the editor is that changing the tags is cheap. Ids are derived from facet and label,

@@ -43,3 +43,26 @@ test("the tag catalog seeds from the engine and its kind rides the URL", async (
   await expect(page).toHaveURL(/#\/catalog$/);
   await expect(page.getByTestId("catalog.entry-row")).toHaveCount(0);
 });
+
+test("the skill catalog seeds from the engine and new entries can be created", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // The engine's seed: 3 entries (lockpicking, climbing, sleight-of-hand)
+  const rows = page.getByTestId("catalog.entry-row");
+  await expect(rows.first()).toBeVisible();
+  await expect.poll(async () => rows.count()).toBe(3);
+  await expect(page).toHaveURL(/kind=skills/);
+
+  // Create a new skill
+  await page.locator("#cat-new").click();
+  await page.locator("#cat-name").fill("Telekinesis");
+  await page.locator("#cat-meaning").fill("The ability to move objects with the mind alone, no physical contact required.");
+  await page.locator("#cat-save").click();
+
+  // The saved entry is on the list, backed by the real save path.
+  await expect.poll(async () => rows.count()).toBe(4);
+  await expect.poll(async () => {
+    const entries = await page.getByTestId("catalog.entry-row").allTextContents();
+    return entries.some(text => text.includes("Telekinesis"));
+  }).toBe(true);
+});

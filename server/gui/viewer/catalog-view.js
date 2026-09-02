@@ -1,11 +1,12 @@
 import { esc, tid } from "./util.js";
-import { APP } from "./state.js";
+import { APP, CATALOG_KINDS } from "./state.js";
 
 /** Per-kind metadata: labels, empty-state text, and button wording.
  *  This is the single source of truth for kind-specific UI strings and form structures.
  *  Every call site reads from this table rather than checking `kind ===` inline. */
 const kindFacts = {
   characters: {
+    tabLabel: "Characters",
     pageTitle: "Character Catalog",
     pageSubtitle: "Build a library of reusable character templates",
     createLabel: "create character",
@@ -13,6 +14,7 @@ const kindFacts = {
     emptyMsg: "No characters yet. Create one to get started — it will be available to use in any story.",
   },
   tags: {
+    tabLabel: "Tags",
     pageTitle: "Tag Vocabulary",
     pageSubtitle: "Define a controlled vocabulary of story descriptors",
     createLabel: "create tag",
@@ -20,13 +22,84 @@ const kindFacts = {
     emptyMsg: "No tags yet. Create some to organize your characters — genres, dramatic modes, tones.",
   },
   styles: {
+    tabLabel: "Styles",
     pageTitle: "Style Catalog",
     pageSubtitle: "Build a library of reusable writer voices",
     createLabel: "create style",
     newLabel: "style",
     emptyMsg: "No styles yet. Create one to get started — it will be available to use in any story.",
   },
+  skills: {
+    tabLabel: "Skills",
+    pageTitle: "Skill Bible",
+    pageSubtitle: "The special skills a story can draw on by name",
+    createLabel: "create skill",
+    newLabel: "skill",
+    emptyMsg: "No skills yet. Create one to get started — it will be available for characters to use in any story.",
+  },
 };
+
+/** Build the catalog kind tabs from CATALOG_KINDS. */
+function tabsHtml() {
+  return `<div class="tabs">
+    ${CATALOG_KINDS.map(kind => {
+      const facts = kindFacts[kind];
+      const isCurrent = APP.catalog.kind === kind ? " current" : "";
+      return `<button class="tab${isCurrent}" id="cat-kind-${kind}">${esc(facts.tabLabel)}</button>`;
+    }).join("")}
+  </div>`;
+}
+
+/** Build the tag picker HTML for characters, styles, and skills. */
+function tagPickerHtml(cat, d) {
+  // Group vocabulary by facet
+  const byFacet = { genre: [], dramaticMode: [], tone: [] };
+  for (const tag of (cat.vocab || [])) {
+    if (Object.prototype.hasOwnProperty.call(byFacet, tag.facet)) {
+      byFacet[tag.facet].push(tag);
+    }
+  }
+
+  const currentTags = new Set((d.tags || "").split(",").map(t => t.trim()).filter(Boolean));
+  const facetLabels = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
+
+  let html = `<div class="cat-tags-picker">`;
+
+  for (const [facet, tags] of Object.entries(byFacet)) {
+    if (tags.length > 0) {
+      html += `<div class="cat-tags-group">
+        <div class="cat-facet-heading">${facetLabels[facet]}</div>
+        <div class="cat-tags-row">`;
+      for (const tag of tags) {
+        const isSelected = currentTags.has(tag.label);
+        html += `<button class="cat-chip${isSelected ? " on" : ""}"
+                   data-tag-label="${esc(tag.label)}"
+                   type="button">${esc(tag.label)}</button>`;
+      }
+      html += `</div></div>`;
+    }
+  }
+
+  // Off-vocabulary tags (not in the vocabulary but in the draft)
+  const vocabLabels = new Set(cat.vocab.map(t => t.label));
+  const offVocab = Array.from(currentTags).filter(t => !vocabLabels.has(t));
+  if (offVocab.length > 0) {
+    html += `<div class="cat-tags-group cat-tags-offvocab">
+      <div class="cat-facet-heading">Off-vocabulary</div>
+      <div class="cat-tags-row">`;
+    for (const label of offVocab) {
+      html += `<button class="cat-chip on off-vocab"
+                 data-tag-label="${esc(label)}"
+                 type="button" title="This tag is not in the vocabulary">${esc(label)}</button>`;
+    }
+    html += `</div>
+      <p class="cat-tags-notice">These tags are not in the vocabulary. They will be kept when you save.</p>
+    </div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
 
 export function catalogPageHtml() {
   const cat = APP.catalog;
@@ -57,11 +130,7 @@ export function catalogPageHtml() {
   if (!cat.entries.length && !cat.draft) {
     return `<section class="picker story">
       <h2>${pageTitle}</h2>
-      <div class="tabs">
-        <button class="tab${cat.kind === "characters" ? " current" : ""}" id="cat-kind-characters">Characters</button>
-        <button class="tab${cat.kind === "tags" ? " current" : ""}" id="cat-kind-tags">Tags</button>
-        <button class="tab${cat.kind === "styles" ? " current" : ""}" id="cat-kind-styles">Styles</button>
-      </div>
+      ${tabsHtml()}
       <p class="sub">${pageSubtitle}</p>
       <p class="cat-empty-msg">${facts.emptyMsg}</p>
       <div class="btns">
@@ -74,11 +143,7 @@ export function catalogPageHtml() {
   const body = [];
 
   // Tabs at the top
-  body.push(`<div class="tabs">
-    <button class="tab${cat.kind === "characters" ? " current" : ""}" id="cat-kind-characters">Characters</button>
-    <button class="tab${cat.kind === "tags" ? " current" : ""}" id="cat-kind-tags">Tags</button>
-    <button class="tab${cat.kind === "styles" ? " current" : ""}" id="cat-kind-styles">Styles</button>
-  </div>`);
+  body.push(tabsHtml());
 
   body.push(`<div class="cat-layout">
     <div class="cat-list-panel">`);
@@ -138,6 +203,19 @@ export function catalogPageHtml() {
         </div>
       `);
     }
+  } else if (cat.kind === "skills") {
+    // Skill entries: name + meaning + version
+    for (const entry of cat.entries) {
+      const isSelected = cat.selected?.id === entry.id;
+      body.push(`
+        <div ${tid("catalog.entry-row")} data-cat-id="${esc(entry.id)}"
+             class="catalog-entry${isSelected ? " selected" : ""}">
+          <div class="cat-name">${esc(entry.name || "(unnamed)")}</div>
+          ${entry.meaning ? `<div class="cat-desc">${esc(entry.meaning)}</div>` : ""}
+          <div class="cat-version">v${entry.version}</div>
+        </div>
+      `);
+    }
   }
 
   body.push(`</div>`);
@@ -188,52 +266,8 @@ export function catalogPageHtml() {
       // Tags picker using vocabulary
       body.push(`<div class="field">
         <label>Tags</label>
-        <div class="cat-tags-picker">`);
-
-      // Group vocabulary by facet
-      const byFacet = { genre: [], dramaticMode: [], tone: [] };
-      for (const tag of (cat.vocab || [])) {
-        if (Object.prototype.hasOwnProperty.call(byFacet, tag.facet)) {
-          byFacet[tag.facet].push(tag);
-        }
-      }
-
-      const currentTags = new Set((d.tags || "").split(",").map(t => t.trim()).filter(Boolean));
-      const facetLabels = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
-
-      for (const [facet, tags] of Object.entries(byFacet)) {
-        if (tags.length > 0) {
-          body.push(`<div class="cat-tags-group">
-            <div class="cat-facet-heading">${facetLabels[facet]}</div>
-            <div class="cat-tags-row">`);
-          for (const tag of tags) {
-            const isSelected = currentTags.has(tag.label);
-            body.push(`<button class="cat-chip${isSelected ? " on" : ""}"
-                         data-tag-label="${esc(tag.label)}"
-                         type="button">${esc(tag.label)}</button>`);
-          }
-          body.push(`</div></div>`);
-        }
-      }
-
-      // Off-vocabulary tags (not in the vocabulary but in the draft)
-      const vocabLabels = new Set(cat.vocab.map(t => t.label));
-      const offVocab = Array.from(currentTags).filter(t => !vocabLabels.has(t));
-      if (offVocab.length > 0) {
-        body.push(`<div class="cat-tags-group cat-tags-offvocab">
-          <div class="cat-facet-heading">Off-vocabulary</div>
-          <div class="cat-tags-row">`);
-        for (const label of offVocab) {
-          body.push(`<button class="cat-chip on off-vocab"
-                       data-tag-label="${esc(label)}"
-                       type="button" title="This tag is not in the vocabulary">${esc(label)}</button>`);
-        }
-        body.push(`</div>
-          <p class="cat-tags-notice">These tags are not in the vocabulary. They will be kept when you save.</p>
-        </div>`);
-      }
-
-      body.push(`</div></div>`);
+        ${tagPickerHtml(cat, d)}
+      </div>`);
 
       body.push(`<div class="field">
         <label for="cat-persona">Portable Persona</label>
@@ -295,56 +329,29 @@ export function catalogPageHtml() {
       // Tags picker for styles (same as characters)
       body.push(`<div class="field">
         <label>Tags</label>
-        <div class="cat-tags-picker">`);
-
-      // Group vocabulary by facet
-      const byFacet = { genre: [], dramaticMode: [], tone: [] };
-      for (const tag of (cat.vocab || [])) {
-        if (Object.prototype.hasOwnProperty.call(byFacet, tag.facet)) {
-          byFacet[tag.facet].push(tag);
-        }
-      }
-
-      const currentTags = new Set((d.tags || "").split(",").map(t => t.trim()).filter(Boolean));
-      const facetLabels = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
-
-      for (const [facet, tags] of Object.entries(byFacet)) {
-        if (tags.length > 0) {
-          body.push(`<div class="cat-tags-group">
-            <div class="cat-facet-heading">${facetLabels[facet]}</div>
-            <div class="cat-tags-row">`);
-          for (const tag of tags) {
-            const isSelected = currentTags.has(tag.label);
-            body.push(`<button class="cat-chip${isSelected ? " on" : ""}"
-                         data-tag-label="${esc(tag.label)}"
-                         type="button">${esc(tag.label)}</button>`);
-          }
-          body.push(`</div></div>`);
-        }
-      }
-
-      // Off-vocabulary tags
-      const vocabLabels = new Set(cat.vocab.map(t => t.label));
-      const offVocab = Array.from(currentTags).filter(t => !vocabLabels.has(t));
-      if (offVocab.length > 0) {
-        body.push(`<div class="cat-tags-group cat-tags-offvocab">
-          <div class="cat-facet-heading">Off-vocabulary</div>
-          <div class="cat-tags-row">`);
-        for (const label of offVocab) {
-          body.push(`<button class="cat-chip on off-vocab"
-                       data-tag-label="${esc(label)}"
-                       type="button" title="This tag is not in the vocabulary">${esc(label)}</button>`);
-        }
-        body.push(`</div>
-          <p class="cat-tags-notice">These tags are not in the vocabulary. They will be kept when you save.</p>
-        </div>`);
-      }
-
-      body.push(`</div></div>`);
+        ${tagPickerHtml(cat, d)}
+      </div>`);
 
       body.push(`<div class="field">
         <label for="cat-style-voice">Voice</label>
         <textarea id="cat-style-voice" placeholder="The reusable half of a writer's house style: person, tense, dialogue handling, vocabulary, what to leave out">${esc(d.voice || "")}</textarea>
+      </div>`);
+    } else if (cat.kind === "skills") {
+      // Skill form: name, meaning, tags
+      body.push(`<div class="field">
+        <label for="cat-name">Name</label>
+        <input id="cat-name" type="text" value="${esc(d.name || "")}" placeholder="The canonical spelling a story writes">
+      </div>`);
+
+      body.push(`<div class="field">
+        <label for="cat-meaning">Meaning</label>
+        <textarea id="cat-meaning" placeholder="What the skill lets a character do">${esc(d.meaning || "")}</textarea>
+      </div>`);
+
+      // Tags picker for skills
+      body.push(`<div class="field">
+        <label>Tags</label>
+        ${tagPickerHtml(cat, d)}
       </div>`);
     }
 

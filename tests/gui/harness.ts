@@ -16,7 +16,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
 import { LIVE, resetLive } from "../../live.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry } from "../../engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "../../engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind } from "../../engine/catalog-schema.ts";
 import { HOST } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
@@ -124,12 +124,21 @@ async function fixtureHost(): Promise<ServerHost> {
       const c = await loadCatalog(v, catalogFile(v));
       return { ok: true, entries: c.entries };
     },
-    catalogCheck: (kind, entry) => {
+    catalogCheck: async (kind, entry) => {
       const v = withKind(kind);
-      const r = checkEntry(v, entry);
+      // The harness must never read the user's real catalog at ROOT, which is why it passes its
+      // own temp-scoped skills bible instead.
+      const bible = await skillBible(catalogFile("skills"));
+      const r = checkEntry(v, entry, bible);
       return r.ok ? { ok: true, problems: r.problems } : { ok: false, issues: r.issues };
     },
-    catalogSave: async (kind, entry) => saveEntry(withKind(kind), entry, catalogFile(withKind(kind))),
+    catalogSave: async (kind, entry) => {
+      const v = withKind(kind);
+      // The harness must never read the user's real catalog at ROOT, which is why it passes its
+      // own temp-scoped skills bible instead.
+      const bible = await skillBible(catalogFile("skills"));
+      return saveEntry(v, entry, catalogFile(v), bible);
+    },
     catalogDelete: async (kind, id) => {
       const r = await deleteEntry(withKind(kind), id, catalogFile(withKind(kind)));
       return !r.ok && (r as { missing?: boolean }).missing

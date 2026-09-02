@@ -1,5 +1,5 @@
 import { $, esc, basename, wireBackdropClose, tid } from "./util.js";
-import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
+import { APP, LIVEV, READV, READER, FIELDS, open, storyName, CATALOG_KINDS } from "./state.js";
 import { build } from "./events.js";
 import { renderBlocks, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
@@ -137,9 +137,10 @@ function renderCatalog(page, keepFocus) {
 let catalogUrlKind = null;
 function applyCatalogUrlKind() {
   const urlKind = parseHashParams().get("kind") || "characters";
-  // The known kinds are named here rather than imported: the viewer is served as plain browser
-  // modules and cannot reach engine/catalog-schema.ts. Adding a kind means adding it here too.
-  const kind = ["characters", "tags", "styles"].includes(urlKind) ? urlKind : "characters";
+  // The known kinds are defined in state.js's CATALOG_KINDS, not here, so adding a kind is one
+  // edit rather than three. The browser cannot import engine/catalog-schema.ts, so the viewer
+  // lists them by hand.
+  const kind = CATALOG_KINDS.includes(urlKind) ? urlKind : "characters";
   const urlChanged = urlKind !== catalogUrlKind;
   catalogUrlKind = urlKind;
   if (APP.catalog.loading) return;

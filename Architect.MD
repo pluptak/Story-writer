@@ -43,6 +43,9 @@ The architect's system prompt carries two in-code catalogs from `engine/skills.t
   matches; an entry not in the bible stays **custom** and keeps its authored `name :: meaning`.
   Bespoke per-story skills are first-class — but one that is neither a bible skill nor carries a
   `:: meaning` is reported back to the author as a non-fatal problem rather than silently kept.
+  The in-code catalog is now the **seed** of an editable one (*Skill bible* below); it is still what
+  the architect's prompt carries, because the author's bible reaches the catalog's own validation and
+  nothing else yet.
 
 Restrictions are a plain list of names — a general skill, a bible skill, or one of that character's
 own skills. A restriction is a **source-independent prohibition**: it names a capability unavailable
@@ -94,7 +97,8 @@ own `:: meaning` — reach is never in the bible — and a grant keyed to a non-
 a problem. The loader additionally warns when a scene grants reach to someone not in its roster,
 since the grant would never reach a run.
 
-Promotion of bespoke skills into a shared, approvable bible is planned work ([`PLANS.md`](PLANS.md)).
+The bible the promotion would land in is built (*Skill bible* below); the **promotion** itself — the
+architect proposing an entry and the owner approving it — is planned work ([`PLANS.md`](PLANS.md)).
 
 ## Character catalog
 
@@ -149,7 +153,8 @@ Validation reuses the engine's existing opinions rather than growing a second on
 `characterPsychologyWarnings` for the psychology fields and `capabilityProblems` for skills and
 restrictions — the same function and the same wording `normalizeSpec` uses, so a cast sheet and a
 catalog entry cannot come to disagree about what a good `goal` looks like. Its skill source is a
-parameter, because the persistent skill bible will widen it.
+parameter, and the author's own bible is what the catalog passes into it (*Skill bible* below), so a
+skill the author added stops being reported as unknown the moment they add it.
 
 Two consequences worth stating:
 
@@ -167,6 +172,41 @@ judge-shaped**: the judge family is stateless, returns a verdict and gates, whil
 the author accepts or ignores, which is the relationship the architect already has to a proposal. It
 never blocks, and mechanical validation still runs after it. It should read `CHARACTER_FIELDS` rather
 than grow a second account of what a good field is.
+
+## Skill bible
+
+**Status: the bible and its editor are built; nothing proposes into it yet.** The architect's
+propose → owner-approves gate is unbuilt and lives in [`PLANS.md`](PLANS.md).
+
+The fourth catalog kind, beside characters, tags and styles, and stored the same way — a file next to
+`defaults.json`, global rather than scoped to a story. An entry is `id`, `version`, `name`, `meaning`
+and `tags[]`, and **`meaning` is required**: a bible entry exists to say what a skill lets a character
+do, so one without a meaning would be *found* by the lookup and hand the character a skill that means
+nothing — worse than not being in the bible at all. That is the one field the schema refuses rather
+than reports.
+
+`SPECIAL_SKILL_CATALOG` is the **seed**, exactly as `TAG_SEED` is for tags: an author who has never
+opened the screen sees the three in-code skills, and the first save materializes the whole seed
+alongside their edit. Once the file exists it wins entirely — a bible entry the author deleted stays
+deleted, because resurrecting it would be the engine overruling a deliberate choice.
+
+**Two things are deliberately not in it.** **Reach**, because a reach grant lives only inside the
+scene that granted it and carries its own `:: meaning` (I4) — a library of reach entries is the
+character-level representation I4 exists to forbid. And **restrictions**, because a restriction is
+not a thing of its own: it names a capability by canonical name and negates it. One namespace with a
+sign, and `resolveSkills` already settles the precedence, so a restriction catalog would be a second
+list of the same names that could drift from the first.
+
+**The general list stays in code.** `SKILL_CATALOG` — movement, speech, sight and the rest — is not
+the bible and is not editable. Every character has all of it unless a restriction removes it, so
+editing it would silently change every story at once; the bible is opt-in per character and can't.
+
+What reads the author's bible today is the catalog's own validation: `skillBible()` turns the
+persisted entries into the lookup `capabilityProblems` takes as a parameter, so the character editor
+stops calling a promoted skill unknown. Everything else — `resolveSkills` during a run, the
+architect's prompt — still reads the in-code catalog through the same parameter's default. Widening
+those is a later stage, and until it lands a promoted skill still needs its `:: meaning` in the story
+that uses it.
 
 ## Operating principle
 

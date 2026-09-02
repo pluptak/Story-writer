@@ -17,7 +17,7 @@ import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type NextChapterSession,
 } from "./engine/architect.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry } from "./engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "./engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind } from "./engine/catalog-schema.ts";
 import type { ServerHost } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
@@ -223,17 +223,19 @@ export const HOST: ServerHost = {
     const catalog = await loadCatalog(validated);
     return { ok: true, entries: catalog.entries };
   },
-  catalogCheck: (kind, entry) => {
+  catalogCheck: async (kind, entry) => {
     const validated = validateCatalogKind(kind);
     if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
-    const result = checkEntry(validated, entry);
+    const bible = await skillBible();
+    const result = checkEntry(validated, entry, bible);
     if (!result.ok) return { ok: false, issues: result.issues };
     return { ok: true, problems: result.problems };
   },
   catalogSave: async (kind, entry) => {
     const validated = validateCatalogKind(kind);
     if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
-    return await saveEntry(validated, entry);
+    const bible = await skillBible();
+    return await saveEntry(validated, entry, undefined, bible);
   },
   catalogDelete: async (kind, id) => {
     const validated = validateCatalogKind(kind);

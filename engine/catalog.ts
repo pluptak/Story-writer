@@ -1,10 +1,10 @@
-/** CATALOG — storage and validation for character and tag catalogs. */
+/** CATALOG — storage and validation for character, tag, style, and skill catalogs. */
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { z } from "zod";
 import { warn } from "./warnings.ts";
 import { characterPsychologyWarnings } from "./story-spec.ts";
-import { capabilityProblems } from "./skills.ts";
+import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, type BibleLookup } from "./skills.ts";
 import { ROOT } from "./story-format.ts";
 import {
   CharacterCatalog,
@@ -12,6 +12,8 @@ import {
   LibraryCharacter,
   LibraryStyle,
   StyleCatalog,
+  LibrarySkill,
+  SkillCatalog,
 } from "./catalog-schema.ts";
 
 // -- REGISTRY ---------------------------------------------------------------
@@ -21,17 +23,17 @@ type CatalogRegistry = {
   filename: string;
   catalog: z.ZodType<any>;
   entry: z.ZodType<any>;
-  problems: (entry: any) => string[];
+  problems: (entry: any, bible?: BibleLookup) => string[];
   seed?: () => any[];
 };
 
 /** Character-specific problems: psychology, capabilities, and portable-persona checks. */
-function characterProblems(entry: LibraryCharacter): string[] {
+function characterProblems(entry: LibraryCharacter, bible: BibleLookup = bibleMeaningOf): string[] {
   const problems: string[] = [];
 
   problems.push(...characterPsychologyWarnings(entry.name, entry.belief, entry.impulse, entry.voice));
 
-  const capProblems = capabilityProblems(entry.name, entry.skills, entry.restrictions);
+  const capProblems = capabilityProblems(entry.name, entry.skills, entry.restrictions, bible);
   problems.push(...capProblems.problems);
 
   if (!entry.portablePersona.trim()) {
@@ -92,6 +94,31 @@ function styleProblems(entry: LibraryStyle): string[] {
   return problems;
 }
 
+/** Skill-specific problems: advisory only. */
+function skillProblems(entry: LibrarySkill): string[] {
+  const problems: string[] = [];
+
+  if (!entry.meaning.trim()) {
+    problems.push(
+      `${entry.name} has no meaning — a bible entry exists to say what the skill lets a character do`
+    );
+  }
+
+  if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === canonSkill(entry.name))) {
+    problems.push(
+      `${entry.name} is a general skill every character already has — a bible entry by that name adds nothing`
+    );
+  }
+
+  if (entry.name.includes("::")) {
+    problems.push(
+      `${entry.name} contains "::" — that is the separator between a skill's name and its meaning in a story, so a name carrying one can never be matched`
+    );
+  }
+
+  return problems;
+}
+
 /** Registry of all catalog kinds. */
 const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
   characters: {
@@ -118,12 +145,37 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
     problems: styleProblems,
     // No seed for styles; they are authored by the user and not provided by the engine.
   },
+  skills: {
+    filename: "catalog-skills.json",
+    catalog: SkillCatalog,
+    entry: LibrarySkill,
+    problems: skillProblems,
+    // The in-code special-skill catalog is the seed; the file wins entirely once it exists.
+    seed: () => Object.entries(SPECIAL_SKILL_CATALOG).map(([name, meaning]) => ({ id: name, version: 1, name, meaning, tags: [] })),
+  },
 };
 
 function catalogPath(kind: CatalogKind, path?: string): string {
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
   return path ?? joinPath(ROOT, reg.filename);
+}
+
+/** The bible as the author has it: every entry in the persisted skills catalog, keyed by canonical
+ *  name. `loadCatalog` already resolves file-or-seed, so an absent file gives the in-code seed and a
+ *  present one wins entirely — an entry the author deleted stays deleted. A blank meaning is skipped
+ *  rather than returned, because a lookup that succeeds with no meaning is exactly the failure the
+ *  required `meaning` field exists to prevent. */
+export async function skillBible(path?: string): Promise<BibleLookup> {
+  const catalog = await loadCatalog("skills", path);
+  const map = new Map<string, string>();
+  for (const entry of catalog.entries) {
+    const trimmed = entry.meaning.trim();
+    if (trimmed) {
+      map.set(canonSkill(entry.name), trimmed);
+    }
+  }
+  return (name: string) => map.get(canonSkill(name));
 }
 
 /** Every entry in one catalog. Missing file returns the seed (if one exists) or an empty catalog, silently.
@@ -163,8 +215,9 @@ export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any
 }
 
 /** Validate one entry without saving it: schema issues first, then advisory problems.
- *  Synchronous and catalog-free — uses only the registry's entry schema and problems checker. */
-export function checkEntry(kind: CatalogKind, raw: unknown): { ok: false; issues: string[] } | { ok: true; entry: any; problems: string[] } {
+ *  Synchronous and catalog-free — the bible arrives as a parameter for exactly that reason:
+ *  the caller that can load one passes it, and the default is the in-code one. */
+export function checkEntry(kind: CatalogKind, raw: unknown, bible: BibleLookup = bibleMeaningOf): { ok: false; issues: string[] } | { ok: true; entry: any; problems: string[] } {
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
 
@@ -175,17 +228,18 @@ export function checkEntry(kind: CatalogKind, raw: unknown): { ok: false; issues
   }
 
   const entry = result.data;
-  const problems = reg.problems(entry);
+  const problems = reg.problems(entry, bible);
 
   return { ok: true, entry, problems };
 }
 
 /** Insert or replace one entry by id, then persist. Bumps `version` on replace.
- *  For tags, checks for duplicate facet+label pairs and reports them as advisory problems
- *  (they don't block the save, since the catalog is an editing surface). */
-export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string):
+ *  Kinds with an identity of their own beyond the id report a collision as an advisory problem —
+ *  a duplicate facet+label for tags, a duplicate canonical name for skills. Neither blocks the save,
+ *  since the catalog is an editing surface. */
+export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, bible: BibleLookup = bibleMeaningOf):
   Promise<{ ok: true; entry: any; problems: string[] } | { ok: false; reason: string; issues?: string[] }> {
-  const check = checkEntry(kind, raw);
+  const check = checkEntry(kind, raw, bible);
   if (!check.ok) {
     return { ok: false, reason: "entry validation failed", issues: check.issues };
   }
@@ -203,6 +257,17 @@ export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string):
     if (existing) {
       // Duplicate detected, but still save — the catalog is an editing surface.
       problems.push(`tag with facet "${entry.facet}" and label "${entry.label}" already exists with id "${existing.id}"`);
+    }
+  }
+
+  // For skills, check for canonical duplicate under a different id.
+  if (kind === "skills") {
+    const existing = (catalog.entries as LibrarySkill[]).find(
+      e => canonSkill(e.name) === canonSkill(entry.name) && e.id !== entry.id
+    );
+    if (existing) {
+      // Duplicate detected, but still save — the catalog is an editing surface.
+      problems.push(`a skill named "${existing.name}" is already in the bible (id "${existing.id}") — one skill must have one canonical spelling`);
     }
   }
 

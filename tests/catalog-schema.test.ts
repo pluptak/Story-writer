@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { LibraryCharacter, CharacterCatalog, TagEntry, TagCatalog, TAG_SEED, TAG_FACETS, LibraryStyle, StyleCatalog } from "../engine/catalog-schema.ts";
+import { LibraryCharacter, CharacterCatalog, TagEntry, TagCatalog, TAG_SEED, TAG_FACETS, LibraryStyle, StyleCatalog, LibrarySkill, SkillCatalog } from "../engine/catalog-schema.ts";
 import { capabilityProblems } from "../engine/skills.ts";
 
 // -- LIBRARY CHARACTER SCHEMA -----------------------------------------------
@@ -400,5 +400,114 @@ describe("StyleCatalog schema", () => {
     assert.equal(catalog.entries.length, 2);
     assert.equal(catalog.entries[0].name, "First Person");
     assert.equal(catalog.entries[1].name, "Third Person Limited");
+  });
+});
+
+// -- LIBRARY SKILL SCHEMA -------------------------------------------------------
+describe("LibrarySkill schema", () => {
+  it("parses a full valid entry", () => {
+    const skill = LibrarySkill.parse({
+      id: "lockpicking",
+      version: 1,
+      name: "Lockpicking",
+      meaning: "opening a mechanical lock without its key",
+      tags: ["security", "theft"],
+    });
+    assert.equal(skill.id, "lockpicking");
+    assert.equal(skill.name, "Lockpicking");
+    assert.equal(skill.meaning, "opening a mechanical lock without its key");
+    assert.deepEqual(skill.tags, ["security", "theft"]);
+  });
+
+  it("applies defaults for missing optional fields", () => {
+    const skill = LibrarySkill.parse({
+      id: "climbing",
+      name: "Climbing",
+      meaning: "ascending a sheer surface",
+    });
+    assert.equal(skill.version, 1);
+    assert.deepEqual(skill.tags, []);
+  });
+
+  it("rejects an entry with empty meaning", () => {
+    const result = LibrarySkill.safeParse({
+      id: "no-meaning",
+      name: "No Meaning",
+      meaning: "",
+      tags: [],
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects an unknown key (strictObject)", () => {
+    const result = LibrarySkill.safeParse({
+      id: "skill-id",
+      name: "Test",
+      meaning: "A skill",
+      unknownField: "should fail",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing id", () => {
+    const result = LibrarySkill.safeParse({
+      name: "NoId",
+      meaning: "A skill",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing name", () => {
+    const result = LibrarySkill.safeParse({
+      id: "skill-noname",
+      meaning: "A skill",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects missing meaning", () => {
+    const result = LibrarySkill.safeParse({
+      id: "skill-nomeaning",
+      name: "Test",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects empty id", () => {
+    const result = LibrarySkill.safeParse({
+      id: "",
+      name: "EmptyId",
+      meaning: "A skill",
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects empty name", () => {
+    const result = LibrarySkill.safeParse({
+      id: "skill-empty-name",
+      name: "",
+      meaning: "A skill",
+    });
+    assert.equal(result.success, false);
+  });
+});
+
+// -- SKILL CATALOG SCHEMA -------------------------------------------------------
+describe("SkillCatalog schema", () => {
+  it("parses an empty object into { entries: [] }", () => {
+    const catalog = SkillCatalog.parse({});
+    assert.deepEqual(catalog.entries, []);
+  });
+
+  it("parses entries with multiple skills", () => {
+    const catalog = SkillCatalog.parse({
+      entries: [
+        { id: "lockpicking", name: "Lockpicking", meaning: "opening locks" },
+        { id: "climbing", name: "Climbing", meaning: "ascending surfaces" },
+      ],
+    });
+    assert.equal(catalog.entries.length, 2);
+    assert.equal(catalog.entries[0].name, "Lockpicking");
+    assert.equal(catalog.entries[1].name, "Climbing");
   });
 });

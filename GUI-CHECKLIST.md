@@ -505,9 +505,9 @@ a *new* story folder — so it can go anywhere in the pass.
 
 ## 15. Character catalog
 
-**Automated:** character create/list/delete behind the armed confirm, the seeded tag catalog, and
-the kind riding the URL (`tests/gui/catalog.spec.ts`). The forms' field-level behaviour below stays
-manual.
+**Automated:** character create/list/delete behind the armed confirm, the seeded tag catalog, the
+seeded skill bible and a skill created through the real save path, and the kind riding the URL
+(`tests/gui/catalog.spec.ts`). The forms' field-level behaviour below stays manual.
 
 The global character library, accessible from the shelf and reloadable by direct navigation to
 `#/catalog`. Unlike every other page, the catalog is not scoped to a story.
@@ -541,10 +541,11 @@ The global character library, accessible from the shelf and reloadable by direct
 - [ ] **Switching entries with unsaved edits.** Open an entry and make a change without saving. Click
       another entry. A confirm dialog warns about unsaved changes. Cancel stays on the current entry;
       confirm navigates to the other one.
-- [ ] **Switching between characters and tags.** At the top of the catalog, a kind switcher shows two tabs:
-      **characters** and **tags**. Clicking either switches the list and the form to that kind. With
-      unsaved edits in the form, clicking the other tab warns with a confirm dialog; cancel stays on
-      the current kind, confirm switches and discards the draft.
+- [ ] **Switching kinds.** At the top of the catalog, a kind switcher shows four tabs: **characters**,
+      **tags**, **styles** and **skills** — one per entry in `CATALOG_KINDS` (`server/gui/viewer/state.js`),
+      which is the browser's copy of the engine's list. Clicking any of them switches the list and the
+      form to that kind. With unsaved edits in the form, clicking another tab warns with a confirm
+      dialog; cancel stays on the current kind, confirm switches and discards the draft.
 - [ ] **Tags render grouped by facet.** When browsing tags, the list groups entries under their facet,
       not as one flat list of 24. Each facet has a visible header (`facet`), and tags are listed under
       it. The grouping updates as the list changes.
@@ -570,9 +571,8 @@ The global character library, accessible from the shelf and reloadable by direct
 A style is a reusable writer voice — the half of a house style that travels between stories. The other
 half, the clauses a story derives from its POV and its cast's restrictions, is deliberately NOT here.
 
-- [ ] **Three tabs, not two.** The switcher shows characters, tags and styles, and each round-trips.
-      Characters and tags still behave exactly as the checks above describe — the page was a binary
-      before styles and every per-kind branch had to be widened.
+- [ ] **Every tab round-trips.** Characters and tags still behave exactly as the checks above
+      describe — the page was a binary before styles and every per-kind branch had to be widened.
 - [ ] **Empty style catalog reads as an invitation.** Styles have no seed, unlike tags. A first run
       shows the create prompt, not a blank panel and not an error.
 - [ ] **Create and edit.** A style takes a name, a one-line description, tags (the same chip picker
@@ -586,6 +586,35 @@ half, the clauses a story derives from its POV and its cast's restrictions, is d
 - [ ] **An empty name is refused** with `issues` in `.said.bad`, and the description and voice you
       typed are still on screen.
 - [ ] **Reloading on `#/catalog?kind=styles` lands back on styles**, with the parameter still in the
+      URL — not silently switched to characters.
+
+### Skills, the fourth kind
+
+The persisted special-skill bible. A skill takes a name, a meaning and tags; it takes no voice, no
+persona and no restrictions ([`Architect.MD`](Architect.MD)'s *Skill bible* says why restrictions get
+no catalog of their own).
+
+- [ ] **The seed is there before anything is saved.** A first run on `#/catalog?kind=skills` lists the
+      engine's three special skills — `lockpicking`, `climbing`, `sleight-of-hand` — with their
+      meanings. This is the tag behaviour, not the style behaviour: skills seed, styles do not.
+- [ ] **The first save materializes the whole seed.** Create one skill and save. The list holds four
+      entries, not one — the seed was written out beside the new entry, so every seeded skill is now
+      editable and deletable. Delete a seeded one and reload: it stays gone.
+- [ ] **The meaning is a paragraph, not a list.** Type a multi-line meaning with blank lines and save.
+      It comes back as one block of prose with its line breaks intact — it must not be split into
+      separate entries the way a character's voice samples are.
+- [ ] **An empty meaning is refused,** in `issues` in `.said.bad`, not reported as an advisory — the
+      one field in any kind the schema will not let through. The name you typed is still on screen.
+- [ ] **A name that is a general skill saves, with an advisory.** Add a skill called `sight` and save.
+      It saves, and the `.prob` block says every character already has it. Same for a name containing
+      `::`, and for a second spelling of a name already in the bible (`Sleight of Hand` beside
+      `sleight-of-hand`) — all three are advisories, none of them refuse.
+- [ ] **The character form stops calling a promoted skill unknown.** Add `telepathy :: reading minds`
+      to the bible. Then open a character and give them a bare `telepathy` in their skills with no
+      `:: meaning`. The advisory saying it is "not a bible skill, and it carries no `:: meaning`" is
+      **gone** — this is the whole point of the kind, and it is the check most likely to regress,
+      because it is the only one that crosses from one catalog kind to another.
+- [ ] **Reloading on `#/catalog?kind=skills` lands back on skills**, with the parameter still in the
       URL — not silently switched to characters.
 
 ## Checking the viewer without an engine

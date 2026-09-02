@@ -1,5 +1,5 @@
 import { reasonOr } from "./util.js";
-import { APP } from "./state.js";
+import { APP, CATALOG_KINDS } from "./state.js";
 import { syncHash } from "./nav.js";
 import { catalogPageHtml } from "./catalog-view.js";
 
@@ -20,7 +20,8 @@ function parseCommaSeparated(text) {
  *  - `draft` is what the form is editing (strings for all fields, since textareas hold strings)
  *  Keep them separate; the boundary functions convert between them.
  *  For tags: entry is {id, version, facet, label}, draft is {id, facet, label}
- *  For styles: entry is {id, version, name, description, tags, voice}, draft is {id, name, description, tags, voice} */
+ *  For styles: entry is {id, version, name, description, tags, voice}, draft is {id, name, description, tags, voice}
+ *  For skills: entry is {id, version, name, meaning, tags}, draft is {id, name, meaning, tags} */
 function toDraft(entry, kind) {
   if (kind === "tags") {
     return {
@@ -36,6 +37,14 @@ function toDraft(entry, kind) {
       description: entry.description || "",
       tags: (entry.tags || []).join(", "),
       voice: entry.voice || ""
+    };
+  }
+  if (kind === "skills") {
+    return {
+      id: entry.id || "",
+      name: entry.name || "",
+      meaning: entry.meaning || "",
+      tags: (entry.tags || []).join(", ")
     };
   }
   // characters
@@ -70,6 +79,15 @@ function fromDraft(draft, id, kind) {
       // A style's voice is one block of prose, not a list. The character's `voice` is samples and
       // splits into lines; sharing that conversion here is what made the schema reject a style.
       voice: draft.voice.trim()
+    };
+  }
+  if (kind === "skills") {
+    return {
+      id: id,
+      name: draft.name.trim(),
+      // A skill's meaning is one block of prose like a style's voice. Never use parseLines here.
+      meaning: draft.meaning.trim(),
+      tags: parseCommaSeparated(draft.tags)
     };
   }
   // characters
@@ -242,8 +260,9 @@ async function selectEntry(entry) {
   APP.catalog.draft = toDraft(entry, APP.catalog.kind);
   APP.catalog.issues = [];
   APP.catalog.problems = [];
-  if (APP.catalog.kind === "characters" || APP.catalog.kind === "styles") {
-    loadVocab(); // Load tag vocab for the character/style form's picker
+  const usesTags = k => k !== "tags";
+  if (usesTags(APP.catalog.kind)) {
+    loadVocab(); // Load tag vocab for the character/style/skill form's picker
   }
   APP.render();
 }
@@ -270,6 +289,13 @@ async function createNew() {
       tags: "",
       voice: ""
     };
+  } else if (APP.catalog.kind === "skills") {
+    APP.catalog.draft = {
+      id: "",
+      name: "",
+      meaning: "",
+      tags: ""
+    };
   } else {
     // characters
     APP.catalog.draft = {
@@ -286,7 +312,8 @@ async function createNew() {
   }
   APP.catalog.issues = [];
   APP.catalog.problems = [];
-  if (APP.catalog.kind === "characters" || APP.catalog.kind === "styles") {
+  const usesTags = k => k !== "tags";
+  if (usesTags(APP.catalog.kind)) {
     loadVocab();
   }
   APP.render();
@@ -307,6 +334,11 @@ function isDirty(original, draft, kind) {
            draft.description !== originalDraft.description ||
            draft.tags !== originalDraft.tags ||
            draft.voice !== originalDraft.voice;
+  }
+  if (kind === "skills") {
+    return draft.name !== originalDraft.name ||
+           draft.meaning !== originalDraft.meaning ||
+           draft.tags !== originalDraft.tags;
   }
   // characters
   return draft.name !== originalDraft.name ||
@@ -333,14 +365,15 @@ async function saveDraft() {
     // a saved entry's name/label must NOT change its id, or the save silently becomes an insert.
     const isNew = !d.id;
     let entryId;
-    if (APP.catalog.kind === "tags") {
-      entryId = isNew ? generateId(d.facet, d.label, APP.catalog.entries.map(e => e.id)) : d.id;
-    } else if (APP.catalog.kind === "styles") {
-      // Styles: derive ID from name, same as characters
-      entryId = isNew ? generateId(d.name, null, APP.catalog.entries.map(e => e.id)) : d.id;
+    if (isNew) {
+      // Tags combine facet and label; every other kind uses the name
+      if (APP.catalog.kind === "tags") {
+        entryId = generateId(d.facet, d.label, APP.catalog.entries.map(e => e.id));
+      } else {
+        entryId = generateId(d.name, null, APP.catalog.entries.map(e => e.id));
+      }
     } else {
-      // characters: derive ID from name
-      entryId = isNew ? generateId(d.name, null, APP.catalog.entries.map(e => e.id)) : d.id;
+      entryId = d.id;
     }
 
     // Build entry from form, converting text areas to arrays via fromDraft
@@ -417,9 +450,9 @@ export function wireCatalog(page) {
   };
 
   // Kind switcher
-  on("cat-kind-characters", () => loadCatalog("characters"));
-  on("cat-kind-tags", () => loadCatalog("tags"));
-  on("cat-kind-styles", () => loadCatalog("styles"));
+  for (const kind of CATALOG_KINDS) {
+    on(`cat-kind-${kind}`, () => loadCatalog(kind));
+  }
 
   // Entry selection
   for (const row of page.querySelectorAll(".catalog-entry")) {
@@ -470,6 +503,11 @@ export function wireCatalog(page) {
   });
   onInput("cat-style-voice", () => {
     if (APP.catalog.draft) APP.catalog.draft.voice = page.querySelector("#cat-style-voice").value;
+  });
+
+  // Skill form field updates
+  onInput("cat-meaning", () => {
+    if (APP.catalog.draft) APP.catalog.draft.meaning = page.querySelector("#cat-meaning").value;
   });
 
   // Tag chip picker (character form)

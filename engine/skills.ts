@@ -40,10 +40,16 @@
  * blocks. I1–I4 are mechanical and enforced here; I5 is an authoring principle.
  *
  * Resolution order: general catalog → the character's own `skills` → the scene's `reach`, with
- * restrictions applied by canon name across all three.
+ * restrictions applied by canon name across all three. The bible half of that resolution (special
+ * skills in the in-code `SPECIAL_SKILL_CATALOG`) is injectable — the in-code catalog is the default,
+ * and the author's persisted bible is passed in by the catalog. The general catalog is fixed in code.
  */
 /** SKILL CATALOG — the general skills every character has by default, and a story's overrides. */
 import { warn } from "./warnings.ts";
+
+/** A bible lookup: the canonical meaning for a skill name, whatever spelling it was written in.
+ *  `bibleMeaningOf` is the in-code default; a later stage passes the author's persisted bible. */
+export type BibleLookup = (name: string) => string | undefined;
 
 /** The general skill list: every character has all of these unless a story's `restrictions` removes them. */
 export const SKILL_CATALOG: Readonly<Record<string, string>> = Object.freeze({
@@ -96,7 +102,7 @@ export function splitMeaning(raw: string): { text: string; meaning: string } {
  *  general skill, a bible skill, one of that character's own skills, or — since restrictions negate
  *  over the whole capability set (I2) — something the scene's `reach` grants. Anything else warns
  *  here, exactly as resolveSkills has always warned, and removes nothing. */
-function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: string, granted = new Set<string>()) {
+function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: string, granted = new Set<string>(), bible: BibleLookup = bibleMeaningOf) {
   const split = (s: string) => s.split("|").map(x => x.trim()).filter(Boolean);
   const restricted = new Map<string, string>();          // canon -> authored spelling of what removed it
   const unresolved: string[] = [];
@@ -107,7 +113,7 @@ function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: stri
     if (!text) continue;
     const key = canonSkill(text);
     if (Object.prototype.hasOwnProperty.call(SKILL_CATALOG, key)
-      || bibleMeaningOf(text) !== undefined || declared.has(key) || granted.has(key)) {
+      || bible(text) !== undefined || declared.has(key) || granted.has(key)) {
       restricted.set(key, text);
     } else {
       unresolved.push(text);
@@ -141,10 +147,10 @@ function parseReach(who: string, reachRaw: string): { list: { key: string; name:
 
 /** The three capability layers resolved against each other: general catalog → the character's own
  *  `skills` → the scene's `reach`, with restrictions applied by canon name across all three. */
-function resolveLayers(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw: string): Map<string, Skill> {
+function resolveLayers(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw: string, bible: BibleLookup = bibleMeaningOf): Map<string, Skill> {
   const reach = parseReach(who, reachRaw);
   const { split, restricted } = parseRestrictions(who, skillsRaw, restrictionsRaw,
-    new Set(reach.list.map(r => r.key)));
+    new Set(reach.list.map(r => r.key)), bible);
 
   const out = new Map<string, Skill>();
   for (const [name, meaning] of Object.entries(SKILL_CATALOG))
@@ -158,11 +164,11 @@ function resolveLayers(who: string, skillsRaw: string, restrictionsRaw: string, 
       warn(`   (character ${who}: skills "${text}" redeclares a general skill — the story's wording wins)`);
     if (restricted.has(key))
       warn(`   (character ${who}: "${text}" is in both skills and restrictions — added back, so they HAVE it)`);
-    const bible = bibleMeaningOf(text) ?? "";
+    const fromBible = bible(text) ?? "";
     out.set(key, {
       name: text,
-      meaning: meaning || bible,   // a bible skill with no authored meaning takes the catalog's
-      source: bible ? "bible" : "custom",
+      meaning: meaning || fromBible,   // a bible skill with no authored meaning takes the catalog's
+      source: fromBible ? "bible" : "custom",
     });
   }
 
@@ -195,8 +201,8 @@ function reachLayer(who: string, held: (key: string) => boolean, restricted: Rea
  *  Precedence: a skill named directly in BOTH `skills` and `restrictions` is handed back (they HAVE
  *  it). `reachRaw` is the scene's grant for this character; pass nothing for any character-level
  *  view, so reach never leaks outside the scene that granted it (I4). */
-export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = ""): Skill[] {
-  return [...resolveLayers(who, skillsRaw, restrictionsRaw, reachRaw).values()];
+export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", bible: BibleLookup = bibleMeaningOf): Skill[] {
+  return [...resolveLayers(who, skillsRaw, restrictionsRaw, reachRaw, bible).values()];
 }
 
 /** Just the reach layer for one character in one scene — what the scene grants them through where
@@ -208,10 +214,10 @@ export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: s
  *  Taking it resolved rather than re-flattening it to `name :: meaning` and running the intrinsic
  *  layers a second time is what keeps a general the character simply has from reading as a story
  *  redeclaring one. */
-export function resolveReach(who: string, skills: readonly Skill[], restrictionsRaw: string, reachRaw: string): Skill[] {
+export function resolveReach(who: string, skills: readonly Skill[], restrictionsRaw: string, reachRaw: string, bible: BibleLookup = bibleMeaningOf): Skill[] {
   const reach = parseReach(who, reachRaw);
   const { restricted } = parseRestrictions(who, skills.map(s => s.name).join(" | "), restrictionsRaw,
-    new Set(reach.list.map(r => r.key)));
+    new Set(reach.list.map(r => r.key)), bible);
   const held = new Set(skills.map(s => canonSkill(s.name)));
   return reachLayer(who, k => held.has(k), restricted, reach.list);
 }
@@ -224,7 +230,7 @@ export function capabilityProblems(
   who: string,
   skills: string[],
   restrictionsRaw: string[],
-  bible: (name: string) => string | undefined = bibleMeaningOf,
+  bible: BibleLookup = bibleMeaningOf,
 ): { restrictions: string[]; problems: string[] } {
   const problems: string[] = [];
 
@@ -253,10 +259,10 @@ export function capabilityProblems(
  * CANNOT list, because absence-from-`can` hides exactly the special skills a restriction removed.
  * A skill named directly in both lists is one they HAVE and is not a cannot.
  */
-export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = ""): string[] {
+export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", bible: BibleLookup = bibleMeaningOf): string[] {
   const reach = parseReach(who, reachRaw);
   const { split, declared, restricted } = parseRestrictions(who, skillsRaw, restrictionsRaw,
-    new Set(reach.list.map(r => r.key)));
+    new Set(reach.list.map(r => r.key)), bible);
   const held = new Set<string>();   // canon keys an intrinsic skill already covers (I3 drops those entries)
   for (const [name] of Object.entries(SKILL_CATALOG)) held.add(canonSkill(name));
   for (const entry of split(skillsRaw)) {

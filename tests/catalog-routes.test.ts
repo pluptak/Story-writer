@@ -36,7 +36,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
       }
       return { ok: false as const, reason: "unknown kind" };
     },
-    catalogCheck: (kind: string, entry: any) => {
+    catalogCheck: async (kind: string, entry: any) => {
       if (kind !== "characters" && kind !== "tags") {
         return { ok: false as const, reason: `no such catalog "${kind}"` };
       }
@@ -193,7 +193,7 @@ describe("/catalog/entry (GET)", () => {
 describe("/catalog/check (POST)", () => {
   it("passes problems through on validation success", async () => {
     const h = makeHost({
-      catalogCheck: (kind: string, entry: any) => ({
+      catalogCheck: async (kind: string, entry: any) => ({
         ok: true as const,
         problems: ["some advisory"],
       }),
@@ -216,7 +216,7 @@ describe("/catalog/check (POST)", () => {
   it("defaults kind to 'characters' when body omits it", async () => {
     let capturedKind = "";
     const h = makeHost({
-      catalogCheck: (kind: string, entry: any) => {
+      catalogCheck: async (kind: string, entry: any) => {
         capturedKind = kind;
         return { ok: true as const, problems: [] };
       },
@@ -229,7 +229,7 @@ describe("/catalog/check (POST)", () => {
   it("passes explicit kind: 'tags' through", async () => {
     let capturedKind = "";
     const h = makeHost({
-      catalogCheck: (kind: string, entry: any) => {
+      catalogCheck: async (kind: string, entry: any) => {
         capturedKind = kind;
         return { ok: true as const, problems: [] };
       },
@@ -241,7 +241,7 @@ describe("/catalog/check (POST)", () => {
 
   it("returns 400 for unknown kind, distinguishable from schema failure", async () => {
     const h = makeHost({
-      catalogCheck: (kind: string, entry: any) => {
+      catalogCheck: async (kind: string, entry: any) => {
         if (kind !== "characters" && kind !== "tags") {
           return { ok: false as const, reason: `no such catalog "${kind}"` };
         }
