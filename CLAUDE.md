@@ -36,7 +36,7 @@ afterwards.
 | [Character.MD](Character.MD) | the character agent — what it holds and never sees, and the consult from its side |
 | [Clarifier.MD](Clarifier.MD) | the clarifier — the author's mid-scene fact answers, their bounds, and the rewind |
 | [Judge.MD](Judge.MD) | any judge variant — the per-answer gate, the narration lint, the batch judge, the cast judge |
-| [GUI-CHECKLIST.md](GUI-CHECKLIST.md) | you changed anything under `server/gui/` — the manual pass that stands in for the GUI tests this repo does not have |
+| [GUI-CHECKLIST.md](GUI-CHECKLIST.md) | you changed anything under `server/gui/` — `npm run test:gui` for the mechanical pass (Playwright, `tests/gui/`), the checklist for what it cannot see |
 | [PLANS.md](PLANS.md) | anything not built yet — every proposal, follow-up and known weak spot |
 | [defaults.md](defaults.md) | what `defaults.json` settles before a story exists |
 
@@ -68,6 +68,13 @@ Change is delivered in **small, independently-pausable blocks**, not whole featu
 
 ```bash
 npx tsx story-writer.ts stories/doorway --chapter=1
+```
+
+```bash
+npm test          # engine + route modules (node:test)
+npm run test:gui  # the viewer's mechanical pass (Playwright; npx playwright install chromium on a new machine)
+npm run lint      # eslint, including the viewer's browser modules
+npm run preflight # story-card listing against LM Studio
 ```
 
 One run writes **one chapter**. Between chapters, the viewer's handoff panel (started with `--serve`)

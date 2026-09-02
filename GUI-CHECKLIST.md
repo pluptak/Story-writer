@@ -1,9 +1,13 @@
 # GUI-CHECKLIST
 
-The manual pass that stands in for the GUI tests this repo does not have. `npm test` covers the
-engine and the route modules; **everything under [server/gui/](server/gui/) is verified by reading it
-and by running this list.** Run it after any change under `server/gui/`, and after any engine change
-that alters what a route serves.
+The manual pass for the parts of the GUI no automated test watches. `npm test` covers the engine and
+the route modules; **`npm run test:gui` covers the viewer's mechanical half** — boot, a scripted live
+run, deep links and modals, the editor's save path, discard, the catalog, and the handoff panel —
+in Playwright, driving the real server in-process over a fixture ServerHost, with no LM Studio and
+nothing in `stories/` touched. What that suite cannot see — layout, theme, focus, feel, and every
+section it does not name — is verified by reading the code and by running this list. Run the suite
+and the relevant sections after any change under `server/gui/`, and after any engine change that
+alters what a route serves.
 
 ## Before you start
 
@@ -12,6 +16,10 @@ that alters what a route serves.
       1,100 tokens each. At 10,000 preparing chapter 3 refuses even now that the worked example is
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
+- [ ] `npm run test:gui` green. The Playwright suite (`tests/gui/`, `playwright.config.ts`) is the
+      automated floor for sections 4, 6, 9, 12 and 15 below — a new machine needs
+      `npx playwright install chromium` once. It is also the boot check the next bullet describes:
+      a viewer module that fails to link fails the suite instead of shipping as the bare shell.
 - [ ] `npm run lint` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
       browser-loaded, not part of the TS build — so what breaks there ships silently otherwise: a
       plain syntax error (an `await` outside `async` broke every screen on 2026-08-21, `6dc7047`)
@@ -176,6 +184,10 @@ Still on **THE SERIAL**, on a written chapter's row.
 
 ## 4. The handoff
 
+**Automated:** the round panel and the two-click accept against a scripted architect
+(`tests/gui/handoff.spec.ts`), with no model. The conversation itself, the refusal numbers, and the
+drift warning below stay manual.
+
 **THE SERIAL**'s story page → **prepare chapter P**, where `P` is the one after `U`, the chapter
 section 2 wrote. (`P` has to be a scene the story does not have yet — that is what the handoff is for.)
 
@@ -218,6 +230,10 @@ existed stays quiet forever — check `ls stories/<THE SERIAL>/chapters/` and us
 - [ ] Put the question back.
 
 ## 6. Story editor
+
+**Automated:** load, an edit saved through the real persist path (asserted on the file), the
+empty-premise refusal, and discard of the last unwritten scene from the story page
+(`tests/gui/story-edit.spec.ts`). Section collapse states and the suggest panel stay manual.
 
 Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click **edit story**).
 
@@ -305,6 +321,11 @@ for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
 
 ## 9. Live writer screen
 
+**Automated:** a scripted run — prose pieces, consult blocks with attempt and verdict, note pills,
+the end marker, the agent rail, the session bar, header cast chips, and the run-start edge that
+pulls the viewer onto the live screen (`tests/gui/live-run.spec.ts`). What needs a real model's
+behaviour stays manual.
+
 Needs a run, so pair it with section 2. What the redesign changed:
 
 - [ ] The page opens with an eyebrow (`chapter N of M · story`), the **scene question as the
@@ -369,6 +390,11 @@ In the reader (section 10), using the search box above the prose.
       chapter — same note as section 3.)*
 
 ## 12. The character card behind a cast pill
+
+**Automated:** the `&modal=` deep link reopening the card with the authored sheet, all three close
+paths (×, Escape, backdrop) dropping the param, and the URL sync around them
+(`tests/gui/deep-links.spec.ts`). Reach-labelling, the live-only fallback, and unavailability below
+stay manual.
 
 Needs a run, so pair it with section 2. The live header's cast pills open a modal; on the live
 screen the modal carries the authored sheet, and the rail holds no cast panel of its own.
@@ -479,6 +505,10 @@ a *new* story folder — so it can go anywhere in the pass.
 
 ## 15. Character catalog
 
+**Automated:** character create/list/delete behind the armed confirm, the seeded tag catalog, and
+the kind riding the URL (`tests/gui/catalog.spec.ts`). The forms' field-level behaviour below stays
+manual.
+
 The global character library, accessible from the shelf and reloadable by direct navigation to
 `#/catalog`. Unlike every other page, the catalog is not scoped to a story.
 
@@ -577,10 +607,13 @@ APP.view = "live"; APP.live = true; APP.render();
 That renders any state you like — every phase, an empty run, a stopped one — without spending a run to
 reach it. It is how sections 6-8 were built, and it is the only way to see a state that needs the
 engine to be in a particular mood. It does not replace a live pass: it cannot tell you that SSE
-delivers those events, only that the screen draws them correctly once it has them.
+delivers those events, only that the screen draws them correctly once it has them. `tests/gui/` is
+this trick made durable: the harness publishes the same event shapes through the real SSE bus, so
+the scripted screens it renders arrive the way a run's do.
 
 ## What this list cannot tell you
 
 It exercises the paths a person clicks. It says nothing about the ones they do not: an SSE reconnect
 mid-consult, two browsers attached at once, a run stopped at the exact moment a handoff opens. Those
-remain unverified in any form.
+remain unverified in any form. The Playwright suite is one page, one client, one connection — it
+shares this blindness exactly, and adds nothing for these.
