@@ -38,6 +38,10 @@ export async function buildArchitect(d: Defaults, withExample = true): Promise<A
     withExample ? await architectExample() : "");
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
   a.think = d.thinking.architect;
+  // The edit surface the architect is allowed to name lives in here and nowhere else, so a round
+  // that sends an unknown field is either a model ignoring the list or a list the model never
+  // received. Only the system prompt tells those two apart, and it is sent once per session.
+  archLog(`─── SYSTEM (${a.model}, ~${estimateTokens(system)} tokens) ───\n${system}`);
   return a;
 }
 
@@ -530,6 +534,8 @@ export class ScaffoldSession {
       this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems);
       this.pendingAsk = "";
       this.refusedLastRound = e.ignored;
+      archLog(`CHANGE ${this.stage}: fields=[${raw.map(x => String(x?.field ?? "?")).join(", ")}] `
+        + `applied=[${e.applied.map(a => a.field).join(", ")}] ignored=[${e.ignored.join(", ")}]`);
       return { kind: "edits", applied: [...appliedExtra, ...e.applied], ignored: e.ignored, flags: [], note: withAsk(r.out), stage: this.stage };
     }
     const wasPatch = this.haveStory();
