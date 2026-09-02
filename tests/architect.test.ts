@@ -1103,3 +1103,28 @@ describe("stranded world events in the handoff", () => {
     }
   });
 });
+
+// -- THE SCAFFOLD'S OWN EDIT SURFACE ---------------------------------------
+// A gate the author can refine is a gate whose field names the architect has been told. The world
+// gate shipped without them: every refinement round came back as {"field": "timeline"} -- the only
+// spelling the world stage teaches -- and was ignored as unknown.
+describe("the [CHANGE] field list covers every collection applyEdits accepts", () => {
+  const system = P.architectSystem({}, {}, "");
+
+  it("names the world-event ledger", () => {
+    assert.match(system, /beat_<n>\.chapter/);
+    assert.match(system, /beat_<n>\.memories/);
+    assert.match(system, /add_beat/);
+    assert.match(system, /remove_beat/);
+  });
+
+  it("names the story facts", () => {
+    assert.match(system, /add_fact/);
+    assert.match(system, /remove_fact/);
+    assert.match(system, /fact_<n>/);
+  });
+
+  it("says the schema's own timeline key is not an edit field", () => {
+    assert.match(system, /"timeline" is not one of these\s+names/);
+  });
+});
