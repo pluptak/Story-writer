@@ -7,6 +7,7 @@ import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
 import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
+import { catalogPageHtml, wireCatalog } from "./catalog.js";
 import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
@@ -41,7 +42,7 @@ function renderNav() {
   shelfTab.hidden = !APP.live;
   liveTab.hidden = !APP.live;
   readTab.hidden = false;
-  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" || APP.view === "scaffold" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
+  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" || APP.view === "scaffold" || APP.view === "catalog" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
   for (const t of [shelfTab, liveTab, readTab]) {
     const isCurrent = t.dataset.view === shown;
     t.classList.toggle("current", isCurrent);
@@ -87,7 +88,7 @@ function renderShelf(page, keepFocus) {
   $("railstats").innerHTML = "";
   // The new-story card opens the scaffold page (a route now, not a modal); an interview already
   // running on the server is continued there, not started again.
-  wirePicker(page, () => go("story"), () => go("scaffold"));
+  wirePicker(page, () => go("story"), () => go("scaffold"), () => go("catalog"));
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
@@ -111,6 +112,14 @@ function renderHandoff(page, keepFocus) {
   page.innerHTML = handoffPageHtml();
   $("railstats").innerHTML = "";
   wireHandoff(page);
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+}
+
+function renderCatalog(page, keepFocus) {
+  page.innerHTML = catalogPageHtml();
+  $("railstats").innerHTML = "";
+  wireCatalog(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
@@ -329,6 +338,7 @@ export function render() {
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
+  else if (APP.view === "catalog") renderCatalog(page, keepFocus);
   else if (APP.view === "compare") renderComparison(page);
   else if (APP.view === "edit") renderEdit(page);
   else if (APP.view === "scaffold") renderScaffold(page, keepFocus);

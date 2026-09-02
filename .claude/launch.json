@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "viewer",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "story-writer.ts", "--headless", "--port=8099"],
+      "port": 8099,
+      "autoPort": false
+    }
+  ]
+}

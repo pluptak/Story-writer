@@ -118,6 +118,9 @@ export const APP = {
   cast: null,                   // {dir, characters, loading, error}: the live screen's read-only
                                  // character sheet, fetched from /cast for LIVEV.meta.story. dir-keyed
                                  // so a new story's run refetches instead of showing the last cast.
+  catalog: { loading:false, error:"", entries:[], selected:null, draft:null,
+             issues:[], problems:[], armedDelete:false, deleteTimer:0 },  // the global character catalog,
+                                 // which unlike every other page is not scoped to a story
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };
 

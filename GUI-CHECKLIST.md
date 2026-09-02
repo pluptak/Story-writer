@@ -471,6 +471,41 @@ a *new* story folder — so it can go anywhere in the pass.
 - [ ] **Responsive.** Below 900px the sidebar stacks under the proposal; at 375px there is **no
       horizontal scrollbar**.
 
+## 15. Character catalog
+
+The global character library, accessible from the shelf and reloadable by direct navigation to
+`#/catalog`. Unlike every other page, the catalog is not scoped to a story.
+
+- [ ] **Entry point.** Shelf → **library of characters** card (under the "start a new story" card).
+      It navigates to `#/catalog`.
+- [ ] **Empty state.** On a first run with no catalog entries, the page reads as an invitation to add
+      one, not as an error or a broken panel. The empty state is clearly distinguished from a failed load.
+- [ ] **Load failure.** Break the catalog fetch (or unload the engine). The page shows the failure
+      message with a **retry** button.
+- [ ] **Issues vs. problems.** A cataloged entry is shown with two **separate, labelled blocks**:
+  - `issues` — schema failures or validations that prevent save. The entry is **not saved**. These are
+    red/error-coloured.
+  - `problems` — advisory warnings (e.g. missing fields that have defaults). The entry **was saved anyway**.
+    These are yellow/warning-coloured.
+  - The two must never be concatenated or merged into one list. A reader must be able to tell
+    "we refused to save this" from "we saved it, but look at this".
+- [ ] **Save with draft intact.** Add an entry. Introduce a validation error (e.g. an invalid JSON
+      field). Attempt to save. The save is rejected and the error appears in `issues`. The user's
+      drafted text stays on screen, not cleared.
+- [ ] **Delete takes two clicks.** Click the delete button on an entry. The button arms (changes
+      appearance, shows "confirm delete"). A second click within ~8 seconds deletes it. Wait longer
+      than ~8 seconds — the button disarms and returns to normal. A second click after disarming does
+      not delete.
+- [ ] **Armed state does not survive navigation.** Click delete on an entry to arm it. Without
+      clicking again, navigate away (back to shelf, to another story, or reload the page). Return to
+      `#/catalog`. The delete button is disarmed and the entry is still there — the armed state and
+      timer did not persist.
+- [ ] **Reload on `#/catalog`.** Close the tab, reopen the browser, and land directly on `#/catalog`
+      by pasting the URL. The catalog page comes back, not the shelf.
+- [ ] **Switching entries with unsaved edits.** Open an entry and make a change without saving. Click
+      another entry. A confirm dialog warns about unsaved changes. Cancel stays on the current entry;
+      confirm navigates to the other one.
+
 ## Checking the viewer without an engine
 
 Most of the above can be checked without LM Studio or a run at all. `server/gui/` is static, and the
