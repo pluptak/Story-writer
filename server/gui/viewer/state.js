@@ -118,9 +118,16 @@ export const APP = {
   cast: null,                   // {dir, characters, loading, error}: the live screen's read-only
                                  // character sheet, fetched from /cast for LIVEV.meta.story. dir-keyed
                                  // so a new story's run refetches instead of showing the last cast.
-  catalog: { loading:false, error:"", entries:[], selected:null, draft:null,
-             issues:[], problems:[], armedDelete:false, deleteTimer:0 },  // the global character catalog,
-                                 // which unlike every other page is not scoped to a story
+  // `loaded` is what stops the URL and the kind switcher fighting: the page seeds its kind from
+  // ?kind= only on arrival, and needs a way to tell "never fetched" from "fetched, empty".
+  catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,
+             issues:[], problems:[], armedDelete:false, deleteTimer:0,
+             kind:"characters",   // which catalog is being browsed: characters | tags
+             vocab:[]             // the tag entries, loaded once, used by the character form's tag picker.
+                                   // vocab is separate from entries because entries is whatever kind is on
+                                   // screen, while vocab is always the tags — the character form needs the
+                                   // vocabulary even while it is browsing characters
+           },  // the global character catalog, which unlike every other page is not scoped to a story
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };
 

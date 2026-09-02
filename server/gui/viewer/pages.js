@@ -7,7 +7,7 @@ import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
 import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
-import { catalogPageHtml, wireCatalog } from "./catalog.js";
+import { catalogPageHtml, wireCatalog, loadCatalog } from "./catalog.js";
 import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
@@ -15,7 +15,7 @@ import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
-import { go, generating, syncHash, tagFocus, clearFocus } from "./nav.js";
+import { go, generating, syncHash, tagFocus, clearFocus, parseHashParams } from "./nav.js";
 import { renderSession } from "./session.js";
 
 function restoreFocus(page, id) {
@@ -122,6 +122,22 @@ function renderCatalog(page, keepFocus) {
   wireCatalog(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
+
+  applyCatalogUrlKind();
+}
+
+// The URL seeds the catalog's kind on ARRIVAL and on a hash change -- never on every render.
+// Inside the page the state is authoritative: a render triggered by the kind switcher reads a URL
+// syncHash has not caught up with yet, and letting that win resets the kind and races a second
+// load -- which is how tag entries came to be drawn through the character branch.
+let catalogUrlKind = null;
+function applyCatalogUrlKind() {
+  const urlKind = parseHashParams().get("kind") || "characters";
+  const kind = urlKind === "tags" ? "tags" : "characters";
+  const urlChanged = urlKind !== catalogUrlKind;
+  catalogUrlKind = urlKind;
+  if (APP.catalog.loading) return;
+  if ((urlChanged && kind !== APP.catalog.kind) || !APP.catalog.loaded) loadCatalog(kind);
 }
 
 function renderReader(page) {

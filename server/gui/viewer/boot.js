@@ -12,6 +12,10 @@ export async function boot() {
   const p = parseHashParams();
   if (p.get("block")) APP.focusSeq = Number(p.get("block"));
   if (p.get("modal")) APP.modalWant = p.get("modal");
+  // Same reason, one page further on: the catalog seeds its kind from the URL, and the first
+  // go() syncs the hash from state -- so reading it after that would read a URL this boot
+  // had already overwritten with the default.
+  if (p.get("kind") === "tags") APP.catalog.kind = "tags";
   const src = new URLSearchParams(location.search).get("src");
   if (src) {
     try {

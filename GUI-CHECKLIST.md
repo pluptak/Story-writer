@@ -505,6 +505,29 @@ The global character library, accessible from the shelf and reloadable by direct
 - [ ] **Switching entries with unsaved edits.** Open an entry and make a change without saving. Click
       another entry. A confirm dialog warns about unsaved changes. Cancel stays on the current entry;
       confirm navigates to the other one.
+- [ ] **Switching between characters and tags.** At the top of the catalog, a kind switcher shows two tabs:
+      **characters** and **tags**. Clicking either switches the list and the form to that kind. With
+      unsaved edits in the form, clicking the other tab warns with a confirm dialog; cancel stays on
+      the current kind, confirm switches and discards the draft.
+- [ ] **Tags render grouped by facet.** When browsing tags, the list groups entries under their facet,
+      not as one flat list of 24. Each facet has a visible header (`facet`), and tags are listed under
+      it. The grouping updates as the list changes.
+- [ ] **Editing a tag's label bumps its version and does not change the entry count.** Open a tag entry
+      and change its label. Save it. Its version number increments. The total number of tags on the
+      page stays the same — the entry is an update, not a new one.
+- [ ] **A duplicate facet+label reports the advisory and still saves.** Add a tag entry whose facet and
+      label match an existing one. Attempt to save. The save succeeds and the entry appears in the list;
+      a problem (yellow-coloured advisory) notes the duplicate. The data is retained.
+- [ ] **On a character, tag chips toggle on and off.** On a character's form, the tag picker (or equivalent)
+      shows tag chips. Click a chip to toggle it on or off. The character's tag list updates to reflect
+      the change. The chips show visually distinct on/off states.
+- [ ] **A character carrying a tag that is no longer in the vocabulary still shows it, marked as off-vocabulary.**
+      On a character entry that carries a tag no longer in the current tag vocabulary, that tag chip
+      displays marked as off-vocabulary (distinct from both selected and unselected, not styled as an error).
+      The chip reads as "still here, but not one of the current terms". On save, the tag persists — it is
+      not silently lost. The author owns their data, and losing it silently is the failure being guarded against.
+- [ ] **Reloading on `#/catalog?kind=tags` lands back on tags.** Reload the page while browsing tags
+      at `#/catalog?kind=tags`. The page comes back with tags loaded, not silently switched to characters.
 
 ## Checking the viewer without an engine
 

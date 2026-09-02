@@ -24,7 +24,11 @@ const hashFor = () => {
   if (APP.view === "story" && APP.storyDir) return withExtras(`#/story?dir=${encodeURIComponent(APP.storyDir)}`);
   if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
   if (APP.view === "scaffold") return "#/scaffold";
-  if (APP.view === "catalog") return "#/catalog";
+  if (APP.view === "catalog") {
+    // Include kind in the URL so a reload lands back on the same catalog kind
+    const kind = APP.catalog.kind || "characters";
+    return kind !== "characters" ? `#/catalog?kind=${encodeURIComponent(kind)}` : "#/catalog";
+  }
   if (APP.view === "edit" && APP.editNew) return "#/edit?new=1";
   if (APP.view === "edit" && APP.editDir) return `#/edit?dir=${encodeURIComponent(APP.editDir)}`;
   if (APP.view === "readstory" && READER.dir) return `#/readstory?dir=${encodeURIComponent(READER.dir)}`;

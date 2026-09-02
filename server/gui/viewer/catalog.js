@@ -1,5 +1,6 @@
 import { reasonOr } from "./util.js";
 import { APP } from "./state.js";
+import { syncHash } from "./nav.js";
 import { catalogPageHtml } from "./catalog-view.js";
 
 export { catalogPageHtml };
@@ -17,8 +18,17 @@ function parseCommaSeparated(text) {
  *  APP.catalog holds two different shapes:
  *  - `selected` is the server's entry record (arrays for tags, voice, skills, restrictions)
  *  - `draft` is what the form is editing (strings for all fields, since textareas hold strings)
- *  Keep them separate; the boundary functions convert between them. */
-function toDraft(entry) {
+ *  Keep them separate; the boundary functions convert between them.
+ *  For tags: entry is {id, version, facet, label}, draft is {id, facet, label} */
+function toDraft(entry, kind) {
+  if (kind === "tags") {
+    return {
+      id: entry.id || "",
+      facet: entry.facet || "",
+      label: entry.label || ""
+    };
+  }
+  // characters
   return {
     id: entry.id || "",
     name: entry.name || "",
@@ -33,7 +43,15 @@ function toDraft(entry) {
 }
 
 /** The form's draft -> the entry the server takes: every text field becomes its list. */
-function fromDraft(draft, id) {
+function fromDraft(draft, id, kind) {
+  if (kind === "tags") {
+    return {
+      id: id,
+      facet: draft.facet.trim(),
+      label: draft.label.trim()
+    };
+  }
+  // characters
   return {
     id: id,
     name: draft.name.trim(),
@@ -64,17 +82,29 @@ async function postCatalog(what, payload) {
   return j;
 }
 
-export async function loadCatalog() {
+export async function loadCatalog(kind) {
+  // Default to current kind if not specified
+  const targetKind = kind || APP.catalog.kind;
+
+  // Dirty guard: if there are unsaved changes, confirm before switching
+  if (APP.catalog.draft && isDirty(APP.catalog.selected, APP.catalog.draft, APP.catalog.kind)) {
+    if (!confirm("Discard unsaved changes?")) return;
+  }
+
   APP.catalog.loading = true;
   APP.catalog.error = "";
+  APP.catalog.kind = targetKind;
   APP.catalog.entries = [];
   APP.catalog.selected = null;
   APP.catalog.draft = null;
+  APP.catalog.issues = [];
+  APP.catalog.problems = [];
+  APP.catalog.armedDelete = false;
   APP.render();
 
   let j = null;
   try {
-    const r = await fetch("/catalog?kind=characters");
+    const r = await fetch(`/catalog?kind=${encodeURIComponent(targetKind)}`);
     j = await r.json();
   } catch {
     APP.catalog.loading = false;
@@ -87,11 +117,51 @@ export async function loadCatalog() {
   if (!j.ok) {
     APP.catalog.error = reasonOr(j, "could not load the catalog");
     APP.render();
+    syncHash();
     return;
   }
 
   APP.catalog.entries = j.entries || [];
+  APP.catalog.loaded = true;
   APP.render();
+  syncHash();
+}
+
+let vocabLoading = false;
+
+/** Drop the cached tag vocabulary after a write to it, so the character form's picker reflects the
+ *  edit. Without this the picker keeps showing a deleted tag as an ordinary selected chip, and the
+ *  off-vocabulary notice -- the whole point of that state -- never appears. */
+function invalidateVocab() {
+  APP.catalog.vocab = [];
+  vocabLoading = false;
+}
+
+/** Load the tag vocabulary once, on first need */
+export async function loadVocab() {
+  if (APP.catalog.vocab.length > 0) return; // Already loaded
+  if (vocabLoading) return; // Already in flight
+
+  vocabLoading = true;
+  try {
+    const r = await fetch("/catalog?kind=tags");
+    const j = await r.json();
+    if (j.ok) {
+      APP.catalog.vocab = j.entries || [];
+      APP.render();
+      syncHash();
+    } else {
+      APP.catalog.error = reasonOr(j, "could not load tag vocabulary");
+      APP.render();
+      syncHash();
+    }
+  } catch (err) {
+    APP.catalog.error = "tag vocabulary did not load: " + (err.message || "network error");
+    APP.render();
+    syncHash();
+  } finally {
+    vocabLoading = false;
+  }
 }
 
 function clearDeleteTimer() {
@@ -121,12 +191,14 @@ function armDelete() {
 async function confirmDelete() {
   if (!APP.catalog.selected) return;
 
-  const j = await postCatalog("delete", { kind: "characters", id: APP.catalog.selected.id });
+  const j = await postCatalog("delete", { kind: APP.catalog.kind, id: APP.catalog.selected.id });
   if (!j || !j.ok) {
     APP.catalog.error = reasonOr(j, "could not delete the entry");
     APP.render();
     return;
   }
+
+  if (APP.catalog.kind === "tags") invalidateVocab();
 
   // Remove from list and clear selection
   APP.catalog.entries = APP.catalog.entries.filter(e => e.id !== APP.catalog.selected.id);
@@ -140,48 +212,67 @@ async function confirmDelete() {
 
 async function selectEntry(entry) {
   // Dirty guard: if there are unsaved changes, confirm before discarding
-  if (APP.catalog.draft && isDirty(APP.catalog.selected, APP.catalog.draft)) {
+  if (APP.catalog.draft && isDirty(APP.catalog.selected, APP.catalog.draft, APP.catalog.kind)) {
     if (!confirm("Discard unsaved changes?")) return;
   }
 
   clearDeleteTimer();
   APP.catalog.selected = entry;
-  APP.catalog.draft = toDraft(entry);
+  APP.catalog.draft = toDraft(entry, APP.catalog.kind);
   APP.catalog.issues = [];
   APP.catalog.problems = [];
+  if (APP.catalog.kind === "characters") {
+    loadVocab(); // Load tag vocab for the character form's picker
+  }
   APP.render();
 }
 
 async function createNew() {
   // Dirty guard
-  if (APP.catalog.draft && isDirty(APP.catalog.selected, APP.catalog.draft)) {
+  if (APP.catalog.draft && isDirty(APP.catalog.selected, APP.catalog.draft, APP.catalog.kind)) {
     if (!confirm("Discard unsaved changes?")) return;
   }
 
   clearDeleteTimer();
   APP.catalog.selected = null;
-  APP.catalog.draft = {
-    id: "",
-    name: "",
-    tags: "",
-    portablePersona: "",
-    belief: "",
-    impulse: "",
-    voice: "",
-    skills: "",
-    restrictions: ""
-  };
+  if (APP.catalog.kind === "tags") {
+    APP.catalog.draft = {
+      id: "",
+      facet: "",
+      label: ""
+    };
+  } else {
+    APP.catalog.draft = {
+      id: "",
+      name: "",
+      tags: "",
+      portablePersona: "",
+      belief: "",
+      impulse: "",
+      voice: "",
+      skills: "",
+      restrictions: ""
+    };
+  }
   APP.catalog.issues = [];
   APP.catalog.problems = [];
+  if (APP.catalog.kind === "characters") {
+    loadVocab();
+  }
   APP.render();
 }
 
-function isDirty(original, draft) {
+function isDirty(original, draft, kind) {
   if (!draft) return false;
   if (!original) return !!Object.values(draft).some(v => v);
 
   // Compare like with like: convert original (entry shape) to draft shape before comparing
-  const originalDraft = toDraft(original);
+  const originalDraft = toDraft(original, kind);
+  if (kind === "tags") {
+    return draft.facet !== originalDraft.facet ||
+           draft.label !== originalDraft.label;
+  }
+  // characters
   return draft.name !== originalDraft.name ||
          draft.tags !== originalDraft.tags ||
          draft.portablePersona !== originalDraft.portablePersona ||
@@ -201,17 +292,22 @@ async function saveDraft() {
     APP.catalog.issues = [];
     APP.render();
 
-    // For new entries, generate an id from the name and check for collisions with existing entries.
+    // For new entries, generate an id from the appropriate fields.
     // For existing entries, preserve the id — it is the identity the server upserts on, so editing
-    // a saved character's name must NOT change its id, or the save silently becomes an insert.
+    // a saved entry's name/label must NOT change its id, or the save silently becomes an insert.
     const isNew = !d.id;
-    const entryId = isNew ? generateId(d.name, APP.catalog.entries.map(e => e.id)) : d.id;
+    let entryId;
+    if (APP.catalog.kind === "tags") {
+      entryId = isNew ? generateId(d.facet, d.label, APP.catalog.entries.map(e => e.id)) : d.id;
+    } else {
+      entryId = isNew ? generateId(d.name, null, APP.catalog.entries.map(e => e.id)) : d.id;
+    }
 
     // Build entry from form, converting text areas to arrays via fromDraft
-    const entry = fromDraft(d, entryId);
+    const entry = fromDraft(d, entryId, APP.catalog.kind);
 
     // Save directly; /catalog/save already validates and returns issues on failure
-    const saveJ = await postCatalog("save", { kind: "characters", entry });
+    const saveJ = await postCatalog("save", { kind: APP.catalog.kind, entry });
     if (!saveJ) return;
 
     if (saveJ.ok === false) {
@@ -234,8 +330,9 @@ async function saveDraft() {
     }
 
     // selected is the server's record; draft is what the form edits — keep their shapes separate
-    APP.catalog.selected = saved;
-    APP.catalog.draft = toDraft(saved);
+    if (APP.catalog.kind === "tags") invalidateVocab();
+  APP.catalog.selected = saved;
+    APP.catalog.draft = toDraft(saved, APP.catalog.kind);
     clearDeleteTimer();
     APP.render();
   } catch (error) {
@@ -245,8 +342,18 @@ async function saveDraft() {
 }
 
 /** Generate a slug from text: lowercase, non-alphanumerics to `-`, collapse repeats, trim.
- *  If it collides with an existing entry, append `-N` until unique. */
-function generateId(text, existingIds) {
+ *  If it collides with an existing entry, append `-N` until unique.
+ *  For tags, facet and label are combined. */
+function generateId(facetOrText, labelOrNull, existingIds) {
+  let text;
+  if (labelOrNull !== null && labelOrNull !== undefined) {
+    // Tag: combine facet and label
+    text = `${facetOrText}-${labelOrNull}`;
+  } else {
+    // Character: just the name
+    text = facetOrText;
+  }
+
   const base = String(text || "").toLowerCase().normalize("NFKD")
     .replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
   let id = base || "entry";
@@ -269,6 +376,10 @@ export function wireCatalog(page) {
     if (el) el.addEventListener("input", fn);
   };
 
+  // Kind switcher
+  on("cat-kind-characters", () => loadCatalog("characters"));
+  on("cat-kind-tags", () => loadCatalog("tags"));
+
   // Entry selection
   for (const row of page.querySelectorAll(".catalog-entry")) {
     row.addEventListener("click", () => {
@@ -278,12 +389,12 @@ export function wireCatalog(page) {
     });
   }
 
-  // Form field updates
+  // Character form field updates
   onInput("cat-name", () => {
     if (APP.catalog.draft) APP.catalog.draft.name = page.querySelector("#cat-name").value;
   });
-  onInput("cat-tags", () => {
-    if (APP.catalog.draft) APP.catalog.draft.tags = page.querySelector("#cat-tags").value;
+  onInput("cat-tags-input", () => {
+    if (APP.catalog.draft) APP.catalog.draft.tags = page.querySelector("#cat-tags-input").value;
   });
   onInput("cat-persona", () => {
     if (APP.catalog.draft) APP.catalog.draft.portablePersona = page.querySelector("#cat-persona").value;
@@ -303,6 +414,33 @@ export function wireCatalog(page) {
   onInput("cat-restrictions", () => {
     if (APP.catalog.draft) APP.catalog.draft.restrictions = page.querySelector("#cat-restrictions").value;
   });
+
+  // Tag form field updates
+  onInput("cat-facet", () => {
+    if (APP.catalog.draft) APP.catalog.draft.facet = page.querySelector("#cat-facet").value;
+  });
+  onInput("cat-label", () => {
+    if (APP.catalog.draft) APP.catalog.draft.label = page.querySelector("#cat-label").value;
+  });
+
+  // Tag chip picker (character form)
+  for (const chip of page.querySelectorAll(".cat-chip[data-tag-label]")) {
+    chip.addEventListener("click", () => {
+      if (!APP.catalog.draft) return;
+      const label = chip.getAttribute("data-tag-label");
+      if (!label) return;
+
+      const tags = parseCommaSeparated(APP.catalog.draft.tags);
+      const idx = tags.findIndex(t => t === label);
+      if (idx >= 0) {
+        tags.splice(idx, 1);
+      } else {
+        tags.push(label);
+      }
+      APP.catalog.draft.tags = tags.join(", ");
+      APP.render();
+    });
+  }
 
   // Buttons
   on("cat-save", saveDraft);
