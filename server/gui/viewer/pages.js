@@ -9,6 +9,7 @@ import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
 import { catalogPageHtml, wireCatalog, loadCatalog } from "./catalog.js";
 import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
+import { ensureLiveCast } from "./cast-sheet.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
@@ -73,6 +74,9 @@ function renderHeader() {
   // is one set too many.
   $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story) : "";
   $("castcard").hidden = !(APP.view === "live" && m.characters?.length);
+  // The authored sheet behind a pill's character card fetches once per story, first live frame --
+  // so the card is full when a pill is clicked instead of filling in as it is read.
+  if (APP.view === "live") ensureLiveCast();
 }
 
 function paintRibbon() {

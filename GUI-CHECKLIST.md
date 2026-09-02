@@ -237,7 +237,8 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
       still there, labelled by scene everywhere it shows.
-- [ ] **Reach never reads as intrinsic.** Open the live character sheet (§12) for a story whose
+- [ ] **Reach never reads as intrinsic.** Open a cast pill's character card on the live screen (§12)
+      for a story whose
       scenes carry reach: each grant appears as its own accent-coloured tag naming its scene
       (`⇢ cameras · scene N`), separate from skills (`+…`) and restrictions (`no …`), and never as a
       `+skill` on the same card.
@@ -367,31 +368,36 @@ In the reader (section 10), using the search box above the prose.
       story: the box is empty and no prior hits remain. *(Needs a second story with a written
       chapter — same note as section 3.)*
 
-## 12. Live character sheet
+## 12. The character card behind a cast pill
 
-Needs a run, so pair it with section 2. A read-only panel in the live rail.
+Needs a run, so pair it with section 2. The live header's cast pills open a modal; on the live
+screen the modal carries the authored sheet, and the rail holds no cast panel of its own.
 
-- [ ] **It appears while a run is live.** Below the rail's stats, a **cast** panel with a card per
-      character in the run, each showing persona / knows / goal / belief / impulse / voice samples
-      and the character's `+skill` / `no restriction` tags.
-- [ ] **It carries authored data the pills do not.** The header cast pills know only skills and
-      restrictions; this panel shows `knows`, `goal`, `belief`, `impulse` and the quoted voice lines
-      too — proof it is the `/cast` fetch, not the
+- [ ] **The pill opens the card.** Click a cast pill in the live header (or focus it and press
+      Enter): a modal titled with the character's name opens; Escape, the ×, or a backdrop click
+      closes it.
+- [ ] **It carries the authored data.** On the live screen the modal shows persona / knows / goal /
+      belief / impulse, the quoted voice lines, and the character's `+skill` / `no restriction`
+      tags — proof it is the `/cast` fetch, not the
       `scene_start` names. (Pick a story whose characters have a non-empty `knows`.)
 - [ ] **Reach shows per scene, labelled.** On a story whose scene carries a `reach` grant, the
       character it names gets an accent-coloured `⇢ name · scene N` tag with a tooltip explaining it
       is available only through where they are standing here — visibly distinct from both `+skill`
       and `no restriction`, never merged into either list.
-- [ ] **Read-only.** No inputs, no buttons, nothing to click — it is for the human reviewing what a
-      consult was working from, never an edit surface.
-- [ ] **Live only.** Switch to the read tab: no cast panel there. It belongs to a running scene.
-- [ ] **It survives a model swap and a pause** without refetching visibly or vanishing — the panel is
-      keyed by story, not by run state.
-- [ ] **Cast unavailable is graceful.** If `/cast` cannot answer, the panel reads *could not load
-      cast*; the rest of the rail — steps, words, stop — still works. (Force it by loading the live
-      screen with no engine behind it, per the section below.)
+- [ ] **Read-only.** No inputs, no edit affordances — it is for the human reviewing what a consult
+      was working from, never an edit surface.
+- [ ] **Live only.** The same pill on the shelf or the read tab opens the card with the pill's own
+      can/cannot row only — no authored fields, and no `/cast` fetch fires. The sheet belongs to a
+      running scene.
+- [ ] **It survives a model swap and a pause** without refetching visibly or losing the fields —
+      the sheet is keyed by story, not by run state.
+- [ ] **Cast unavailable is graceful.** If `/cast` cannot answer, the card says so in one muted line
+      and still shows the pill's can/cannot row. (Force it by loading the live screen with no engine
+      behind it, per the section below.)
+- [ ] **No duplicate cast panels.** The rail holds run controls and the model-calls panel and
+      nothing else — there is no second "cast" section beside the header's "cast in scene".
 - [ ] **The boundary holds.** This data is shown to you only. It must never appear in any agent's
-      transcript on the per-agent panel (section 8) — the sheet is a GUI read of already-authored
+      transcript on the per-agent panel (section 8) — the card is a GUI read of already-authored
       data, not anything the writer or a character is ever told.
 
 ## 13. Saved-run comparison

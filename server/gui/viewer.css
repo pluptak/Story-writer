@@ -598,24 +598,19 @@
   .reader-view .hit-line mark { background:var(--accent); color:var(--panel); border-radius:var(--r-xs);
     padding:0 2px; }
 
-  /* the live character sheet — authored cast, read-only, in the rail */
-  .cast-sheet { margin-top:18px; }
-  .cast-sheet h3 { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em; text-transform:uppercase;
-    color:var(--faint); margin:0 0 8px; }
-  .cast-sheet .cast-note { font-size:var(--fs-12); color:var(--muted); margin:0; }
-  .cast-sheet .cast-note.bad { color:var(--bad); }
-  .cast-card { border:1px solid var(--line); border-radius:var(--r-lg); background:var(--panel-2);
-    padding:9px 11px; margin-bottom:8px; }
-  .cast-card .cast-name { font-family:var(--mono); font-size:var(--fs-11); color:var(--ink); margin-bottom:6px; }
-  .cast-card .cast-field { margin-bottom:5px; }
-  .cast-card .cast-field span { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.06em;
+  /* the character card's authored half — /cast fields behind a cast pill on the live screen */
+  .charcard .cast-note { font-size:var(--fs-12); color:var(--muted); margin:8px 0 0; }
+  .charcard .cast-note.bad { color:var(--bad); }
+  .charcard .cast-body { margin-top:10px; }
+  .charcard .cast-field { margin-bottom:5px; }
+  .charcard .cast-field span { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.06em;
     text-transform:uppercase; color:var(--faint); display:block; margin-bottom:1px; }
-  .cast-card .cast-field p { font-size:var(--fs-13); color:var(--muted); margin:0; line-height:1.45; }
-  .cast-card .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
-  .cast-card .cast-tags .yes { font-family:var(--mono); font-size:var(--fs-10); color:var(--good); }
-  .cast-card .cast-tags .no { font-family:var(--mono); font-size:var(--fs-10); color:var(--bad); }
-  .cast-card .cast-tags .reach { font-family:var(--mono); font-size:var(--fs-10); color:var(--accent); }
-  .cast-card .cast-voice { font-size:var(--fs-13); color:var(--muted); font-style:italic; margin:3px 0 0; line-height:1.45; }
+  .charcard .cast-field p { font-size:var(--fs-13); color:var(--muted); margin:0; line-height:1.45; }
+  .charcard .cast-tags { margin-top:6px; display:flex; flex-wrap:wrap; gap:5px; }
+  .charcard .cast-tags .yes { font-family:var(--mono); font-size:var(--fs-10); color:var(--good); }
+  .charcard .cast-tags .no { font-family:var(--mono); font-size:var(--fs-10); color:var(--bad); }
+  .charcard .cast-tags .reach { font-family:var(--mono); font-size:var(--fs-10); color:var(--accent); }
+  .charcard .cast-voice { font-size:var(--fs-13); color:var(--muted); font-style:italic; margin:3px 0 0; line-height:1.45; }
 
   .compare-panes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
   .compare-pane { min-width:0; border:1px solid var(--line); border-radius:var(--r-xl); background:var(--panel); padding:16px; }

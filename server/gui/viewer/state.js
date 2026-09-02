@@ -115,9 +115,10 @@ export const APP = {
                                  // page is showing, so deriving it would rebuild the whole live event
                                  // log every frame just to read one boolean off it.
   readerError: null,            // the reader's own last refusal, shown beside its own card: {seq, text}
-  cast: null,                   // {dir, characters, loading, error}: the live screen's read-only
-                                 // character sheet, fetched from /cast for LIVEV.meta.story. dir-keyed
-                                 // so a new story's run refetches instead of showing the last cast.
+  cast: null,                   // {dir, characters, loading, error}: the authored sheet behind a
+                                 // cast pill's character card, fetched from /cast for
+                                 // LIVEV.meta.story on the live screen. dir-keyed so a new story's
+                                 // run refetches instead of showing the last cast.
   // `loaded` is what stops the URL and the kind switcher fighting: the page seeds its kind from
   // ?kind= only on arrival, and needs a way to tell "never fetched" from "fetched, empty".
   catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,

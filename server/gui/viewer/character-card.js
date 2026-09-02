@@ -1,10 +1,12 @@
 import { esc, wireBackdropClose, tid } from "./util.js";
 import { APP } from "./state.js";
+import { castCharacterSheet } from "./cast-sheet.js";
 
 // ---- the character card -----------------------------------------------------
 // A pill (header cast, a shelf card, or the story page) opens this modal for the character it
-// names. It currently shows only what the pill itself already knew (can/cannot); reading the
-// character's own markdown file is engine work for a later block.
+// names. It always shows what the pill itself knew (can/cannot/reach); on the live screen the
+// authored sheet fetched from /cast rides under it -- persona, knows, goal, belief, impulse, voice
+// and the per-scene reach the pill cannot name. Elsewhere the pill's own row is all there is.
 
 /** A clickable pill for one character, used by the header, the shelf cards and the story page. A
  *  `<span role="button">`, not a `<button>`, because the shelf's cast row sits inside a card that
@@ -27,6 +29,13 @@ export function charChip(c, dir) {
 export function characterCardModalHtml() {
   const c = APP.charCard;
   if (!c) return "";
+  const sheet = castCharacterSheet(c.name);
+  const body = sheet?.fields
+    ? `<div class="cast-body" data-tid="charcard.cast-summary">${sheet.fields}</div>`
+    : sheet?.note
+      ? `<p class="cast-note${sheet.bad ? " bad" : ""}">${esc(sheet.note)}</p>`
+      : `<p class="charmd-placeholder">the authored sheet is a live-screen thing — this card only
+          shows what its pill knew.</p>`;
   return `<div class="modal-backdrop" id="charcard-backdrop" data-tid="charcard.modal" role="dialog" aria-modal="true"
                aria-label="${esc(c.name)}">
     <section class="picker iv charcard">
@@ -36,8 +45,7 @@ export function characterCardModalHtml() {
         ${c.can.length ? `<span class="yes">can also ${esc(c.can.join(", "))}</span>` : ""}
         ${c.reach.length ? `<span class="reach" title="granted by the scene they are standing in, not intrinsic">reach ${esc(c.reach.join(", "))}</span>` : ""}
         ${c.cannot.length ? `<span class="no">cannot ${esc(c.cannot.join(", "))}</span>` : ""}</div>` : ""}
-      <p class="charmd-placeholder">the character sheet itself isn't wired up yet — this modal only
-        shows what its pill already knew.</p>
+      ${body}
     </section>
   </div>`;
 }
