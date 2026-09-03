@@ -373,9 +373,10 @@ about the story that resulted, flags are observations about the prose that alrea
 
 ## The concept
 
-What the author settles before the architect runs: an **idea**, **tags**, and an **opening cast size**.
-Session state on the `tension` pattern — never a `story.json` field, discarded at accept — but the
-mirror of it, because the architect coins the tension and the author chooses the concept.
+What the author settles before the architect runs: an **idea**, **tags**, an **opening cast size**, an
+import **tray**, and a **voice**. Session state on the `tension` pattern — never a `story.json` field,
+discarded at accept — but the mirror of it, because the architect coins the tension and the author
+chooses the concept.
 
 Each half reaches exactly one gate, and nothing else:
 
@@ -383,6 +384,8 @@ Each half reaches exactly one gate, and nothing else:
 | --- | --- | --- |
 | `tags` | the **story** stage | what *kind* of story this is — the same idea as survival horror and as adventure are different stories |
 | `castSize` | the **cast** stage | the opening cast's target size, which the tension can still overrule |
+| `imported` | the **cast** stage | these people, placed rather than invented (*Casting from the library*) |
+| `styleId` | the **settings** stage | the voice this story is narrated in (*The voice*) |
 
 **Tags steer the story gate and then stop steering.** `idea + tags → story gate → tension + premise →
 every later stage`. Afterwards they persist as author intent — display, revisiting the concept,
@@ -396,8 +399,8 @@ reintroduces an unarbitrated steering channel alongside the tension the whole ch
 The cast size is bounded by the cast stage's own ceiling of four, and is a target rather than a quota:
 the prompt says to propose fewer and explain why when the tension only supports fewer.
 
-**An empty concept costs nothing.** Both prompts are byte-identical without it, which is what makes it
-safe to leave alone and what the tests guard.
+**An empty concept costs nothing.** The story and cast prompts are byte-identical without it, which is
+what makes it safe to leave alone and what the tests guard.
 
 ### Cast size is unpriced; roster size is the cost
 
@@ -417,7 +420,9 @@ offering to revise a spent half rather than letting it go quietly inert: an edit
 steers the run, and does not, is worse than no editor.
 
 Cast size is measured against whether a cast exists rather than against the open gate, which means it
-is at its most live during the **story** gate — before the cast prompt has ever been built.
+is at its most live during the **story** gate — before the cast prompt has ever been built. The voice
+is measured the same way, against the spec's `writerStyle`, so it stays live across the story and cast
+rounds: the prompt that reads it is two gates further on.
 
 ## Casting from the library
 
@@ -470,6 +475,51 @@ a `z.strictObject`, so there is nowhere on disk to put it even if it were wanted
 a character, and re-authoring it between chapters is not a different job because of where it started.
 The tray is also marked **placed** rather than *spent* once the cast lands, because unlike the tags
 it was not discarded — it became the cast.
+
+## The voice
+
+The author may hand the settings gate a **style preset** from their catalog instead of leaving the
+house style to the architect. It is the third use of the same composition the fork already runs twice:
+
+```
+portable persona + story context         = persona      (casting from the library)
+preset voice     + derived story clauses = writerStyle  (the voice)
+```
+
+`writerStyle` is the half that **travels** — person, tense, what to do with dialogue, what to leave
+out — and `writerStyleConstraints` is the half read off *this* cast and *this* POV: what the narration
+may know. The writer sees them joined into one HOUSE STYLE block and cannot tell they were ever
+separate, which is the point. The split is an authoring distinction, and it earns its keep exactly
+once: when the voice is swapped and the story's own rules must not go with it. `styleProblems`
+(`engine/catalog.ts`) enforces the other direction — a preset whose voice names a perception rule is
+flagged, because a preset owning the whole string takes that rule away when it is replaced.
+
+**With a preset the gate narrows to one question.** The prompt is handed the voice and asked only for
+`writer_style_constraints`; an empty array is a real answer — *this story needs none* — the same shape
+the world gate uses for an empty ledger. **Without one it asks for both**, which is the first time
+anything has ever asked for the derived half: the field reached the schema, the spec, the story card
+and the writer's prompt before any prompt requested it.
+
+### The voice is preserved, not negotiated
+
+A `writer_style` sent back at that gate is dropped and the chosen voice stands, and the proposal
+carries a note saying so. This is the adaptation contract again, for the same reason: **preservation
+is where a model drifts where the author cannot see it.** The author picked this voice out of their
+own library; an architect that quietly "improves" it has taken a decision that was not offered.
+
+If the voice genuinely cannot serve the story — it narrates from a distance this POV cannot hold — the
+prompt says to name that in `note` and let the author change it, never to work around it in the
+constraints.
+
+### Tags rank; they do not steer
+
+The style picker orders presets by how many of the author's tags they carry, and **every preset stays
+on offer**. Ranking is the whole of it. Passing a tag into the settings prompt as well would give it a
+second, unarbitrated channel into the story alongside the tension — the rule the concept section
+already states, and the one place it would be easiest to break.
+
+**Which preset a story came from is not recorded.** The voice lands on `story.json`; the id does not.
+Provenance ends at accept here for the same reason it does for an imported character.
 
 ## Conversation rules
 
@@ -783,9 +833,9 @@ never imports engine modules directly. The old console walkthrough (`--new`, `--
   `/scaffold/start` and one approve — asserting the stepper tracks the published gate, the approve
   button names the gate it passes, and the tension reaches the rail as its text. The deeper gates
   (settings onward, and the blocked-gate override) stay in
-  [GUI-CHECKLIST.md](GUI-CHECKLIST.md)'s manual section 14. `fixtureHost` still spreads the real
-  `HOST`, so a future test that sends tags would reach `unknownTags` against the author's own
-  catalog at ROOT — it needs the same temp-file override the catalog methods already have.
+  [GUI-CHECKLIST.md](GUI-CHECKLIST.md)'s manual section 14. The concept's three catalog lookups
+  (`unknownTags`, `importCharacters`, `resolveStyle`) now read the harness's temp files rather than
+  the author's own catalog at ROOT, which the spread `HOST` would otherwise have reached.
 
 ## Safety and product constraints
 

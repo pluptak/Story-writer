@@ -479,14 +479,16 @@ below: **The world timeline**.
 - **The GUI redesign's remainder.** Built: the persistent shell (Stories / Workspace / Libraries),
   the mockup's warm-paper restyle with an authored dark palette, the architect's stepper with the
   gate-labelled approve and the tension as its text, the story map's scene detail (roster, reach,
-  hold-only beats), and the catalog's derived usage lines. What the mockups proposed and nothing
-  carries yet: the **conversation transcript** as the architect's primary UI — needs a host method
-  publishing the session's turns, and the owner has chosen to keep the plain last-round narration
-  until they ask for the history; the tag editor's **description** and **related-tags** fields
-  (schema work on `TagEntry`); **style presets reaching `writerStyle`** — nothing links
-  `LibraryStyle` to a story, and `writerStyle` is one free-text string with no shape for the
-  preset/constraint split; and the shelf's **"Draft · architect" badge** under Open design questions
-  below.
+  hold-only beats), the catalog's derived usage lines, and the concept's **voice picker** — a style
+  preset reaches the settings gate, whose voice becomes `writerStyle` while the clauses it derives
+  become `writerStyleConstraints` ([Architect.MD](Architect.MD), *The voice*). What the mockups
+  proposed and nothing carries yet: the **conversation transcript** as the architect's primary UI —
+  needs a host method publishing the session's turns, and the owner has chosen to keep the plain
+  last-round narration until they ask for the history; the tag editor's **description** and
+  **related-tags** fields (schema work on `TagEntry`); the story editor's **`writerStyleConstraints`
+  field** — the settings gate writes the derived half now, and the editor shows only the voice, so
+  the one place an author could correct a clause does not display it; and the shelf's
+  **"Draft · architect" badge** under Open design questions below.
 
 ## The world timeline
 

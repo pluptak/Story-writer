@@ -488,6 +488,16 @@ a *new* story folder — so it can go anywhere in the pass.
       disables the rest; deselecting brings the select back. An empty character catalog shows a link
       to `#/catalog` instead. Add a character on the catalog page and come back: the chip is there,
       because saving one drops the cached library rather than leaving a stale list.
+- [ ] **The voice.** Under *the voice* the style catalog's presets appear as chips, one choosable at
+      a time; clicking the chosen one again clears it, and the hint under the row changes to say what
+      the settings gate will do either way. An empty style catalog shows a link to
+      `#/catalog?kind=styles`. **Tag a preset and pick that tag:** the preset moves to the front of
+      the row and *nothing else changes* — every preset stays pickable, because a tag steers the
+      story gate and must never reach the settings prompt as well.
+- [ ] **The voice narrows the settings gate.** With a preset chosen, approve through to *settings*.
+      The round comes back with this story's narration rules and the preset's own voice on the draft
+      — not a house style the architect wrote. If it sent one anyway, the sidebar says it was
+      reverted and names the preset. Needs the architect model, so it belongs to a live pass.
 - [ ] **The imported cast gate is a different gate.** With a tray, approving *story* opens a *cast*
       round that places those people rather than inventing any: the proposal keeps their belief,
       impulse, voice, skills and restrictions exactly as the catalog holds them, fills in `goal` and

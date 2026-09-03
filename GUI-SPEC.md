@@ -381,7 +381,10 @@ concept =
   { tags: string[], castSize: number, unknownTags: string[], tagsSteer: boolean, castSizeSteers: boolean,
     imported: { libraryId: string, version: number, name: string }[],   // the import tray
     missingImports: string[],                                            // ids the catalog no longer holds
-    importsSteer: boolean }
+    importsSteer: boolean,
+    styleId: string, styleName: string,                                  // the chosen voice preset, "" for none
+    missingStyle: string,                                                // an id the catalog no longer holds
+    styleSteers: boolean }
 
 ScaffoldRound =
   | { kind:"proposal"; note; stage? }        — staged rounds carry the gate they belong to
@@ -407,12 +410,15 @@ POST /scaffold/approve                     → staged mode only: pass the open g
                                              stands, when the gate's content never landed
                                              (`kind:"nothing"`, "has not landed"), or past the last gate
                                              ("checklist is complete").
-POST /scaffold/concept  { tags?, castSize? } → revises the author's concept on the open session.
-                                             Same bounds as `start`, and `400` on either. Never
+POST /scaffold/concept  { tags?, castSize?, styleId? }
+                                           → revises the author's concept on the open session.
+                                             Same bounds as `start`, and `400` on either. Every
+                                             field is read: one the client omits is not "unchanged",
+                                             it is empty, and the pick it names is cleared. Never
                                              re-runs a gate: it changes what the NEXT build of a
                                              stage prompt says, which for a stage already passed
-                                             is nothing — `tagsSteer` / `castSizeSteers` are what
-                                             say whether that is still any stage at all.
+                                             is nothing — the `*Steer` flags are what say whether
+                                             that is still any stage at all.
 POST /scaffold/import   { importIds }      → replaces the import tray on the open session, wholesale
                                              rather than incrementally: the author's pick is a set,
                                              and a partial update would need a second answer for what
@@ -456,11 +462,12 @@ most 8 tags, 40 characters each, and a `castSize` of 0 (meaning "architect decid
 is the cast stage's own ceiling. This is the one place author text reaches a prompt without passing
 through the architect first.
 
-`tagsSteer`, `castSizeSteers` and `importsSteer` answer one question each: *would the next build of
-that stage's prompt read this?* Tags are live while the story gate is open; the cast size and the tray
-are live until a cast exists — which means both are at their most live during the STORY gate, before
-the cast prompt has ever been built. Once false, revising that half changes a string nothing will read
-again, and the viewer stops offering to.
+The four `*Steer` flags answer one question each: *would the next build of that stage's prompt read
+this?* Tags are live while the story gate is open; the cast size and the tray are live until a cast
+exists — which means both are at their most live during the STORY gate, before the cast prompt has
+ever been built. The style is live until the settings gate has put a voice on the spec, so it survives
+the story and cast rounds for the same reason. Once false, revising that half changes a string nothing
+will read again, and the viewer stops offering to.
 
 `imported` is the tray: the characters the author cast out of the catalog, carried as provenance and
 name only, because that is all a page needs. A non-empty tray forces `castSizeSteers` false — the tray
@@ -470,6 +477,13 @@ that ends at accept: no part of it reaches `story.json`, and the handoff never l
 from a template. `missingImports` are ids the catalog no longer holds; they are reported rather than
 fatal, because the catalog is the author's and a tray that silently shrank is worse than one that says
 what it lost.
+
+`styleId` / `styleName` are the voice preset the author picked out of the style catalog, resolved by
+the host so a page never has to. Chosen, it narrows the settings gate to this story's own narration
+rules and its `voice` becomes `writerStyle` verbatim; unchosen (`""`), that gate writes the whole house
+style as it always did. `missingStyle` is an id the catalog no longer holds — reported, not fatal, for
+the same reason `missingImports` is. Like the tray, none of it reaches `story.json`: the voice does,
+but which preset it came from does not.
 
 `bibleCandidates` are the bespoke skills this cast holds that the author's skill bible does not:
 a skill carrying its own `:: meaning` whose name is neither a general skill nor already in the bible.
