@@ -7,7 +7,7 @@ import { C } from "../ansi.ts";
 import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
-import { slugify } from "./config-util.ts";
+import { slugify, nameKey } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
@@ -75,7 +75,85 @@ export function consultCostNote(spec: StorySpec): string {
     + `steps before the scene resolved`;
 }
 
+/** The adaptation contract, applied rather than requested. The five fields that travel with a
+ *  character are restored from the library entry, and an import the reply left out is added back
+ *  unchanged: the author chose these people, so the architect may argue in "note" that one does not
+ *  fit, but may not un-choose them by omission.
+ *
+ *  Adding someone is reported rather than reverted, and the asymmetry is deliberate: preservation is
+ *  where a model reliably drifts and the author cannot see it, while an extra character is visible,
+ *  may well be what the author asked for mid-gate, and is cheap to delete. Returns what it had to
+ *  correct so the proposal carries its own receipt. */
+export function applyImportContract(
+  proposed: readonly unknown[], imported: readonly ImportedCharacter[],
+): { characters: Record<string, unknown>[]; notes: string[] } {
+  const TRAVELS = ["belief", "impulse", "voice", "skills", "restrictions"] as const;
+  // Compared as text so "changed" means what a reader would call changed: whitespace and element
+  // order are the only things this normalizes away.
+  const flat = (v: unknown) =>
+    Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean).join("|") : String(v ?? "").trim();
+  const copy = (v: string[]) => [...v];
+
+  const byName = new Map(imported.map(i => [nameKey(i.name), i]));
+  const matched = new Set<string>();
+  const characters: Record<string, unknown>[] = [];
+  const notes: string[] = [];
+
+  for (const entry of proposed) {
+    const c = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    const name = String(c.name ?? "").trim();
+    const from = byName.get(nameKey(name));
+    if (!from) {
+      characters.push(c);
+      notes.push(`${name || "an unnamed character"} is not one of the imported characters `
+        + `— the cast gate is not meant to add anyone`);
+      continue;
+    }
+    matched.add(nameKey(from.name));
+    for (const field of TRAVELS) {
+      // Only a non-empty proposed value counts as a change: leaving a field out is the reply being
+      // brief about something it was told it did not own, not an attempt to edit it.
+      const was = flat(c[field]);
+      if (was && was !== flat(from[field]))
+        notes.push(`${from.name}: the architect changed ${field}, which travels with the character `
+          + `— reverted to the library's`);
+    }
+    characters.push({ ...c,
+      belief: from.belief, impulse: from.impulse,
+      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions) });
+  }
+
+  for (const from of imported) {
+    if (matched.has(nameKey(from.name))) continue;
+    characters.push({ name: from.name, persona: from.portablePersona, knows: "", goal: "",
+      belief: from.belief, impulse: from.impulse,
+      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions) });
+    notes.push(`${from.name} was left out of the proposal — added back unchanged, because the `
+      + `author chose this character`);
+  }
+
+  return { characters, notes };
+}
+
 // -- SCAFFOLD SESSION ------------------------------------------------------
+
+/** One character the author imported from their catalog, as the session holds it. The preserved
+ *  half lives HERE rather than being read back off the spec, so the contract is enforced against
+ *  what the library said and not against whatever the last round left behind. Session-only, like
+ *  `tension` and the concept: `libraryId`/`version` are provenance that ends at accept — `StoryJson`
+ *  is a strict object with nowhere to put them, and the handoff must never know a character came
+ *  from a template. */
+export type ImportedCharacter = {
+  libraryId: string;
+  version: number;
+  name: string;
+  portablePersona: string;
+  belief: string;
+  impulse: string;
+  voice: string[];
+  skills: string[];
+  restrictions: string[];
+};
 
 /** Which of the two automatic follow-up passes ran, for the CLI/SSE to label. */
 export type AutoStage = "fillGaps" | "verify";
@@ -250,6 +328,10 @@ export class ScaffoldSession {
    *  and sharpens the scene stage's question. */
   tension = "";
 
+  /** The characters the author imported from the catalog, if any. Session-only; it changes what the
+   *  cast gate DOES (see `architectCastImportStage`) rather than what the story holds. */
+  imported: ImportedCharacter[] = [];
+
   private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
 
   /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
@@ -299,7 +381,11 @@ export class ScaffoldSession {
     const insist = this.asks >= ScaffoldSession.MAX_ASKS ? `${P.STAGE_INSIST}\n\n` : "";
     switch (stage) {
       case "story": return insist + P.architectStoryStage(this.idea, this.tags);
-      case "cast": return insist + P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.castSize);
+      // An imported cast changes what this gate DOES, so it is a different stage prompt rather than
+      // a decorated one -- and it takes no castSize, because the tray already is the cast size.
+      case "cast": return insist + (this.imported.length
+        ? P.architectCastImportStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.imported)
+        : P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.castSize));
       case "settings": return insist + P.architectSettingsStage(json);
       case "technical": return insist + P.architectTechnicalStage(json);
       case "scene": return insist + P.architectSceneStage(json);
@@ -307,10 +393,10 @@ export class ScaffoldSession {
     }
   }
 
-  private static stageHasContent(stage: P.ScaffoldStage, out: Record<string, any>): boolean {
+  private static stageHasContent(stage: P.ScaffoldStage, out: Record<string, any>, hasImports = false): boolean {
     switch (stage) {
       case "story": return Boolean(String(out.premise ?? "").trim() || String(out.title ?? "").trim());
-      case "cast": return Array.isArray(out.characters) && out.characters.length > 0;
+      case "cast": return Array.isArray(out.characters) && (out.characters.length > 0 || hasImports);
       case "settings": return Boolean(String(out.writer_style ?? "").trim());
       case "technical": return Boolean(out.config && typeof out.config === "object")
         || Array.isArray(out.characters) || Array.isArray(out.scenes);
@@ -399,7 +485,7 @@ export class ScaffoldSession {
 
   private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
     const ask = String(out.ask ?? "").trim();
-    if (!ScaffoldSession.stageHasContent(stage, out)) {
+    if (!ScaffoldSession.stageHasContent(stage, out, this.imported.length > 0)) {
       if (ask) { this.pendingAsk = ask; this.asks++; return { kind: "question", ask, stage }; }
       archLog(`STAGE ${stage}: NOTHING — neither stage content nor ask. out=`, out);
       return { kind: "nothing", why: `the reply contained neither ${stage} content nor a question`, stage };
@@ -407,10 +493,20 @@ export class ScaffoldSession {
     this.pendingAsk = ""; this.asks = 0;
     if (stage === "story" && String(out.tension ?? "").trim())
       this.tension = String(out.tension).trim();
-    const n = normalizeSpec(this.mergedRaw(stage, out));
+
+    // Apply the import contract if we're at the cast stage and have imports
+    let importNotes: string[] = [];
+    let mergedOut = out;
+    if (stage === "cast" && this.imported.length > 0 && Array.isArray(out.characters)) {
+      const contract = applyImportContract(out.characters, this.imported);
+      importNotes = contract.notes;
+      mergedOut = { ...out, characters: contract.characters };
+    }
+
+    const n = normalizeSpec(this.mergedRaw(stage, mergedOut));
     archLog(`STAGE ${stage}: content accepted. problems=`, n.problems);
     this.spec = n.spec;
-    this.problems = ScaffoldSession.visibleProblems(this.spec, n.problems, stage);
+    this.problems = ScaffoldSession.visibleProblems(this.spec, [...n.problems, ...importNotes], stage);
     return { kind: "proposal", note: withAsk(out), stage };
   }
 

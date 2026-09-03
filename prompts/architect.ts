@@ -11,14 +11,21 @@ import { catalogBlock, bibleBlock } from "./common.ts";
 
 /** The per-character field documentation, shared by the whole-story proposal format and the
  *  staged scaffold's cast stage -- one source of truth for what a character is made of. */
-const CHARACTER_FIELDS = `  name       -- one word, capitalised, how the writer will refer to them.
-  persona    -- who they are: history in a line or two, then how they hold themselves. Around 100
+// Split per field so the imported-cast stage can reuse the two it actually asks for -- goal and
+// knows -- rather than growing a second, drifting account of what a good one looks like. The join
+// below must stay byte-identical to the single literal these were cut from: every later stage's
+// prompt is built on it.
+const FIELD_NAME = `  name       -- one word, capitalised, how the writer will refer to them.`;
+
+const FIELD_PERSONA = `  persona    -- who they are: history in a line or two, then how they hold themselves. Around 100
                 words, concrete and particular, addressed to them ("You have...") or about them --
                 never a summary of their arc, and PROSE ONLY: knows, goal, belief, impulse, voice,
-                skills and restrictions are separate fields the engine renders itself.
-  knows      -- what they know walking in that the other characters do not. This is where a scene
-                gets its friction.
-  goal       -- what they want tonight, in their own terms, phrased so an outcome can be MEASURED
+                skills and restrictions are separate fields the engine renders itself.`;
+
+const FIELD_KNOWS = `  knows      -- what they know walking in that the other characters do not. This is where a scene
+                gets its friction.`;
+
+const FIELD_GOAL = `  goal       -- what they want tonight, in their own terms, phrased so an outcome can be MEASURED
                 against it ("every course served" -- not "do a good job"). Only the character
                 themself ever weighs whether they are closer to it or further away -- this is never
                 shown to the writer or evaluated by anyone outside the character's own agent. Apply
@@ -26,29 +33,37 @@ const CHARACTER_FIELDS = `  name       -- one word, capitalised, how the writer 
                 directly stop B from getting what they want? At least one pair must pass -- if both
                 goals could be satisfied in the same evening, rewrite them until one stands in the
                 other's way. Two compatible goals produce nothing to ask about; see DESIGN FOR
-                ASYMMETRY below.
-  belief     -- REQUIRED. One load-bearing conviction they walk in with, and it may be false.
+                ASYMMETRY below.`;
+
+const FIELD_BELIEF = `  belief     -- REQUIRED. One load-bearing conviction they walk in with, and it may be false.
                 Never a negation -- "does not know about X" hands them X. A keeper who must not
                 know of the death gets "believes he died peacefully in his sleep". When the
                 scene's cheapest path runs through surrendering their goal, author the belief
-                that makes surrender unthinkable to them specifically.
-  impulse    -- REQUIRED. One conditional rule, "when X -> Y", where X is a pressure THIS scene
+                that makes surrender unthinkable to them specifically.`;
+
+const FIELD_IMPULSE = `  impulse    -- REQUIRED. One conditional rule, "when X -> Y", where X is a pressure THIS scene
                 can actually apply: not "proud" but "when offered kindness, deflects with payment
                 first". Key the trigger to tonight's ask ("when asked to take the blame, names who
-                really decided").
-  voice      -- REQUIRED. One to three lines of dialogue in their own words -- models imitate
+                really decided").`;
+
+const FIELD_VOICE = `  voice      -- REQUIRED. One to three lines of dialogue in their own words -- models imitate
                 samples far better than adjectives. At least one line refusing or pushing back;
-                a character whose only sampled words are agreeable answers every question like one.
-  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by exact name;
+                a character whose only sampled words are agreeable answers every question like one.`;
+
+const FIELD_SKILLS = `  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by exact name;
                 bespoke "name :: meaning" ONLY when nothing fits -- an unknown bare name gets
                 flagged. Do not restate a general skill under a new name. Give someone something
-                the other cannot do.
-  restrictions -- what this character does NOT have: a single skill name (a general skill, a
+                the other cannot do.`;
+
+const FIELD_RESTRICTIONS = `  restrictions -- what this character does NOT have: a single skill name (a general skill, a
                 skill-bible skill, or one of their own). One character who cannot see, speak, or
                 move does more for a scene than any amount of backstory. AT LEAST ONE character
                 must have a restriction unless the idea makes it impossible, and it has to bite in
                 THIS scene -- prefer an information or action asymmetry over one the scene never
                 puts to the test.`;
+
+const CHARACTER_FIELDS = [FIELD_NAME, FIELD_PERSONA, FIELD_KNOWS, FIELD_GOAL, FIELD_BELIEF,
+  FIELD_IMPULSE, FIELD_VOICE, FIELD_SKILLS, FIELD_RESTRICTIONS].join("\n");
 
 /** The world-event documentation, shared by the whole-story proposal format and the staged
  *  scaffold's world stage -- one source of truth for what a beat is made of. Every rule under WHAT
@@ -390,6 +405,87 @@ ${CHARACTER_FIELDS}
 
 ${ASYMMETRY_RULES} And make the asymmetry serve THE TENSION: an imbalance the scene never puts
 to the test is decoration.
+
+${STAGE_RULES}`;
+
+/** One imported character, rendered for the cast gate. The portable persona is labelled as a half
+ *  on purpose: the stage's whole job is to finish it, and an unlabelled persona reads as done. */
+export type ImportedForPrompt = {
+  name: string; portablePersona: string; belief: string; impulse: string;
+  voice: readonly string[]; skills: readonly string[]; restrictions: readonly string[];
+};
+
+const importedCharacterBlock = (c: ImportedForPrompt) =>
+  `  NAME: ${c.name}
+    persona (the portable half, to be finished here): ${c.portablePersona || "(none written)"}
+    belief: ${c.belief || "(none)"}
+    impulse: ${c.impulse || "(none)"}
+    voice: ${c.voice.length ? c.voice.map(v => `"${v}"`).join("  ") : "(none)"}
+    skills: ${c.skills.length ? c.skills.join(", ") : "(none)"}
+    restrictions: ${c.restrictions.length ? c.restrictions.join(", ") : "(none)"}`;
+
+/** The cast gate when the author imported a cast from their library. A different stage prompt, not
+ *  a decorated `architectCastStage`: that one is written to invent, propose and commit, and this
+ *  path must understand, place, adapt, and ask about what the import does not answer. The
+ *  contract below is fixed by field and enforced by the engine afterwards, so it is stated as a
+ *  fact about what will happen rather than as an instruction that might be followed. */
+export const architectCastImportStage = (
+  premise: string, tension: string, specSoFar: string, imported: readonly ImportedForPrompt[],
+) => `${checklistLine("cast")}
+
+[THE PREMISE]
+${premise}
+
+[THE TENSION]
+${tension}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+[THE AUTHOR'S CAST]
+The author chose these people out of their own library before you started. They already exist.
+Your stage is not to invent a cast -- it is to place THIS one in THIS story.
+
+${imported.map(importedCharacterBlock).join("\n\n")}
+
+YOUR STAGE: the same people, resolved into this story --
+
+{"characters": [
+   {"name": "NAME", "persona": "...", "knows": "...", "goal": "...",
+    "belief": "...", "impulse": "when X -> Y", "voice": ["..."],
+    "skills": ["..."], "restrictions": ["..."]}],
+ "ask": "",
+ "note": ""}
+
+Return every one of them, with the whole object filled in. For each:
+
+  PRESERVE, unchanged: belief, impulse, voice, skills, restrictions. These travel with the person
+  and are not yours to adjust. Copy them across exactly as given above. If one of them looks wrong
+  for this story, say so in "note" -- the author decides. An edit to these five is reverted before
+  the author sees the proposal, so making one only loses you the chance to have mentioned it.
+
+  RESOLVE for this story: knows and goal. Neither is in the library, because neither means anything
+  outside the story it was written for. These are the fields you are here to supply.
+
+  COMPOSE the persona: the portable half above, kept word for word, and THEN this story's context
+  after it -- what they do here, who they are to the rest of the cast, where they stand as scene 1
+  opens, and what happened immediately before. The half above is who they are anywhere; what you
+  add is who they are tonight.
+
+${FIELD_KNOWS}
+${FIELD_GOAL}
+
+ASK RATHER THAN INVENT. This cast was chosen, not proposed. If you cannot tell what one of these
+people wants here, or how they know the others, that is the author's to answer and not yours to
+guess -- and you have more licence to ask at this stage than at one where you were inventing from
+nothing. Use "ask" and send nothing else.
+
+DO NOT ADD ANYONE. If the tension genuinely needs a person the author did not choose, say so in
+"note" and let them decide. A cast that quietly grows an uninvited member is no longer the
+author's cast.
+
+${ASYMMETRY_RULES} You cannot fix a shortfall here by editing what they can and cannot do -- that
+is preserved. Judge it, name it in "note", and let the author change the cast or the tension.
 
 ${STAGE_RULES}`;
 

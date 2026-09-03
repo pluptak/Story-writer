@@ -14,7 +14,7 @@ import {
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
 import { architectNextChapter, architectVerify } from "../prompts.ts";
 import * as P from "../prompts.ts";
-import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits, consultCostNote } from "../engine/architect.ts";
+import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits, consultCostNote, applyImportContract, type ImportedCharacter } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
 
@@ -438,6 +438,50 @@ describe("ScaffoldSession, staged", () => {
       assert.match(seen, /restrictions:/, "the cast arrives as a sheet, not as prose");
       assert.doesNotMatch(seen, /premise/i, "the judge is not handed the architect's whole draft");
     });
+
+    it("an imported cast makes an empty character list a real answer", async () => {
+      const IVET: ImportedCharacter = {
+        libraryId: "lib-ivet", version: 2, name: "IVET",
+        portablePersona: "Ex-locksmith, keeps every key on a labelled ring.",
+        belief: "Every lock has a polite way in.",
+        impulse: "when watched, slow down and narrate the work",
+        voice: ["Hold the door? I'd rather hold the lock."],
+        skills: ["lockpicking :: opening a mechanical lock without its key"],
+        restrictions: ["sight"],
+      };
+
+      const s = new ScaffoldSession(
+        new ScriptedAgent([JSON.stringify(STORY_STAGE), JSON.stringify({ characters: [] }), JSON.stringify(SETTINGS_STAGE)]),
+        SCAFFOLD_DEFAULTS, "test idea", undefined, "staged",
+        () => new ScriptedAgent([JSON.stringify({ ok: true })])
+      );
+      s.imported = [IVET];
+      await s.propose();
+      await s.approve();
+      assert.equal(s.stage, "cast");
+
+      const r = await s.approve();
+      assert.equal(r.kind, "proposal", "an empty character list with imports is content");
+      assert.equal(s.stage, "settings", "the gate advanced");
+      assert.equal(s.spec.characters.length, 1, "IVET was added from the import");
+      assert.equal(s.spec.characters[0].name, "IVET");
+    });
+
+    it("without an imported cast, an empty character list is still nothing", async () => {
+      const s = new ScaffoldSession(
+        new ScriptedAgent([JSON.stringify(STORY_STAGE), JSON.stringify({ characters: [] }), JSON.stringify(SETTINGS_STAGE)]),
+        SCAFFOLD_DEFAULTS, "test idea", undefined, "staged",
+        () => new ScriptedAgent([JSON.stringify({ ok: true })])
+      );
+      // imported is not set, stays []
+      await s.propose();
+      await s.approve();
+      assert.equal(s.stage, "cast");
+
+      const r = await s.approve();
+      assert.equal(r.kind, "nothing", "an empty character list without imports is nothing");
+      assert.equal(s.stage, "cast", "the gate did not advance");
+    });
   });
 
   it("does not report a half-built draft's missing pieces as problems", async () => {
@@ -613,6 +657,50 @@ describe("ScaffoldSession, staged", () => {
     it("checklistLine() now reports six stages", () => {
       const storyText = P.architectStoryStage("idea");
       assert.match(storyText, /stage 1 of 6/);
+    });
+
+    it("the imported cast stage states the contract and names the people", () => {
+      const IVET: ImportedCharacter = {
+        libraryId: "lib-ivet", version: 2, name: "IVET",
+        portablePersona: "Ex-locksmith, keeps every key on a labelled ring.",
+        belief: "Every lock has a polite way in.",
+        impulse: "when watched, slow down and narrate the work",
+        voice: ["Hold the door? I'd rather hold the lock."],
+        skills: ["lockpicking :: opening a mechanical lock without its key"],
+        restrictions: ["sight"],
+      };
+
+      const text = P.architectCastImportStage("p", "t", "{}", [IVET]);
+      assert.match(text, /\[THE AUTHOR'S CAST\]/);
+      assert.match(text, /IVET/);
+      assert.match(text, /Ex-locksmith, keeps every key on a labelled ring\./);
+      assert.match(text, /PRESERVE, unchanged/);
+      assert.match(text, /RESOLVE for this story/);
+      assert.match(text, /COMPOSE the persona/);
+      assert.match(text, /DO NOT ADD ANYONE/);
+    });
+
+    it("both cast stages document goal and knows from the same source", () => {
+      const IVET: ImportedCharacter = {
+        libraryId: "lib-ivet", version: 2, name: "IVET",
+        portablePersona: "Ex-locksmith, keeps every key on a labelled ring.",
+        belief: "Every lock has a polite way in.",
+        impulse: "when watched, slow down and narrate the work",
+        voice: ["Hold the door? I'd rather hold the lock."],
+        skills: ["lockpicking :: opening a mechanical lock without its key"],
+        restrictions: ["sight"],
+      };
+
+      const regular = P.architectCastStage("p", "t", "{}");
+      const imported = P.architectCastImportStage("p", "t", "{}", [IVET]);
+
+      // Check distinctive phrase from goal doc appears in both
+      assert.match(regular, /ZERO-SUM TEST/);
+      assert.match(imported, /ZERO-SUM TEST/);
+
+      // Check distinctive phrase from knows doc appears in both
+      assert.match(regular, /This is where a scene/);
+      assert.match(imported, /This is where a scene/);
     });
 
     it("the story stage carries the author's tags, and says nothing when there are none", () => {
@@ -881,6 +969,188 @@ describe("consultCostNote", () => {
     assert.equal(s.spec.config.maxSteps, 24, "24 steps, so six beats wide");
     assert.match(s.problems.join(" "), /4 characters against maxSteps 24/,
                  "the scene gate prices the roster the author asked for");
+  });
+});
+
+describe("applyImportContract", () => {
+  const IVET: ImportedCharacter = {
+    libraryId: "lib-ivet", version: 2, name: "IVET",
+    portablePersona: "Ex-locksmith, keeps every key on a labelled ring.",
+    belief: "Every lock has a polite way in.",
+    impulse: "when watched, slow down and narrate the work",
+    voice: ["Hold the door? I'd rather hold the lock."],
+    skills: ["lockpicking :: opening a mechanical lock without its key"],
+    restrictions: ["sight"],
+  };
+
+  it("reverts the five fields that travel with the character, and says which", () => {
+    const proposed = [{
+      name: "IVET",
+      persona: "A professional safe-breaker.",
+      knows: "The vault is empty.",
+      goal: "Get the key.",
+      belief: "All locks are puzzles.",
+      impulse: IVET.impulse,
+      voice: ["Why pick a lock when you can learn its maker?"],
+      skills: IVET.skills,
+      restrictions: ["hearing"],
+    }];
+
+    const result = applyImportContract(proposed, [IVET]);
+
+    const character = result.characters[0];
+    assert.equal(character.belief, IVET.belief);
+    assert.deepEqual(character.voice, IVET.voice);
+    assert.deepEqual(character.restrictions, IVET.restrictions);
+    assert.equal(character.impulse, IVET.impulse);
+    assert.deepEqual(character.skills, IVET.skills);
+    assert.equal(character.persona, "A professional safe-breaker.");
+    assert.equal(character.knows, "The vault is empty.");
+    assert.equal(character.goal, "Get the key.");
+
+    assert.equal(result.notes.length, 3);
+    assert.match(result.notes.join(" "), /the architect changed belief/);
+    assert.match(result.notes.join(" "), /the architect changed voice/);
+    assert.match(result.notes.join(" "), /the architect changed restrictions/);
+    assert.match(result.notes.join(" "), /reverted to the library's/);
+  });
+
+  it("does not count a field the proposal left empty as a change", () => {
+    const proposed = [{
+      name: "IVET",
+      persona: "Ex-locksmith, keeps every key on a labelled ring.",
+      knows: "",
+      goal: "",
+      belief: "",
+      impulse: "when watched, slow down and narrate the work",
+      voice: [],
+      skills: undefined,
+      restrictions: [],
+    }];
+
+    const result = applyImportContract(proposed, [IVET]);
+
+    const character = result.characters[0];
+    assert.equal(character.belief, IVET.belief);
+    assert.deepEqual(character.voice, IVET.voice);
+    assert.deepEqual(character.restrictions, IVET.restrictions);
+    assert.deepEqual(character.impulse, IVET.impulse);
+    assert.deepEqual(character.skills, IVET.skills);
+
+    assert.equal(result.notes.length, 0);
+  });
+
+  it("adds back an import the proposal left out", () => {
+    const proposed: unknown[] = [];
+
+    const result = applyImportContract(proposed, [IVET]);
+
+    assert.equal(result.characters.length, 1);
+    const character = result.characters[0];
+    assert.equal(character.name, "IVET");
+    assert.equal(character.persona, IVET.portablePersona);
+    assert.equal(character.goal, "");
+    assert.equal(character.knows, "");
+    assert.equal(character.belief, IVET.belief);
+    assert.deepEqual(character.voice, IVET.voice);
+    assert.deepEqual(character.skills, IVET.skills);
+    assert.deepEqual(character.restrictions, IVET.restrictions);
+
+    assert.match(result.notes[0], /was left out of the proposal/);
+  });
+
+  it("keeps a character the architect added, and says it should not have", () => {
+    const STRANGER = {
+      name: "STRANGER",
+      persona: "A mysterious figure.",
+      knows: "Something.",
+      goal: "To know.",
+      belief: "Knowledge is power.",
+      impulse: "ask questions",
+      voice: ["Who are you?"],
+      skills: [],
+      restrictions: [],
+    };
+
+    const proposed = [{
+      name: "IVET",
+      persona: IVET.portablePersona,
+      knows: "",
+      goal: "",
+      belief: IVET.belief,
+      impulse: IVET.impulse,
+      voice: IVET.voice,
+      skills: IVET.skills,
+      restrictions: IVET.restrictions,
+    }, STRANGER];
+
+    const result = applyImportContract(proposed, [IVET]);
+
+    assert.equal(result.characters.length, 2);
+    // IVET should be first (matched and kept from proposal)
+    assert.equal(result.characters[0].name, "IVET");
+    // STRANGER should be second (kept as-is, added by architect)
+    assert.deepEqual(result.characters[1], STRANGER);
+
+    assert.equal(result.notes.length, 1);
+    assert.match(result.notes[0], /is not one of the imported characters/);
+  });
+
+  it("hands back copies, so editing the cast cannot write through into the tray", () => {
+    const proposed = [{
+      name: "IVET",
+      persona: IVET.portablePersona,
+      knows: "",
+      goal: "",
+      belief: IVET.belief,
+      impulse: IVET.impulse,
+      voice: IVET.voice,
+      skills: IVET.skills,
+      restrictions: IVET.restrictions,
+    }];
+
+    const result = applyImportContract(proposed, [IVET]);
+    const character = result.characters[0] as Record<string, unknown>;
+
+    const originalVoiceLength = IVET.voice.length;
+    const originalSkillsLength = IVET.skills.length;
+    const originalRestrictionsLength = IVET.restrictions.length;
+
+    // Mutate the returned arrays
+    (character.voice as string[]).push("New quote.");
+    (character.skills as string[]).push("fake-skill :: a skill that was not there");
+    (character.restrictions as string[]).push("fake-restriction");
+
+    // Verify the original import is unchanged
+    assert.equal(IVET.voice.length, originalVoiceLength);
+    assert.equal(IVET.skills.length, originalSkillsLength);
+    assert.equal(IVET.restrictions.length, originalRestrictionsLength);
+  });
+
+  it("matches names the way the rest of the engine does", () => {
+    const proposed = [{
+      name: "  ivet  ",
+      persona: "A locksmith.",
+      knows: "",
+      goal: "",
+      belief: "Different.",
+      impulse: IVET.impulse,
+      voice: IVET.voice,
+      skills: IVET.skills,
+      restrictions: IVET.restrictions,
+    }];
+
+    const result = applyImportContract(proposed, [IVET]);
+
+    // Should match and revert the five fields
+    const character = result.characters[0];
+    assert.equal(character.belief, IVET.belief, "belief was reverted from import");
+    assert.equal(character.name, "  ivet  ", "name spacing preserved in output");
+
+    // No "not one of the imported characters" note
+    assert.ok(!result.notes.some(n => /is not one of the imported characters/.test(n)));
+    // But there should be a "changed belief" note since belief was different
+    assert.match(result.notes.join(" "), /the architect changed belief/);
   });
 });
 
