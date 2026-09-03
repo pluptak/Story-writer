@@ -270,6 +270,7 @@ the editor.
 ```
 GET  /catalog?kind=characters        → { ok:true, entries[] }
                                        | { ok:false, reason }
+GET  /catalog/config                 → { tagFacets, caps }
 GET  /catalog/usage                  → { ok:true, usage }   (read-only derivation, below)
 GET  /catalog/entry?kind=&id=        → { ok:true, entry }
                                        | { ok:false, reason }        (400 no id · 404 no such entry)
@@ -283,7 +284,9 @@ POST /catalog/delete { kind?, id }   → { ok:true }
 
 A catalog is **global**: it lives beside `defaults.json`, not inside a story. So unlike the story
 editor these routes take no `dir`, and none of them consults the story-write lock — a run reading one
-story's `story.json` has no bearing on a shelf of reusable characters. `kind` selects which catalog —
+story's `story.json` has no bearing on a shelf of reusable characters. `/catalog/config` is the
+catalog's own schema-derived shape — the tag facet enum and the character voice-sample cap — for the
+catalog editor to render without hand-copying `catalog-schema.ts`. `kind` selects which catalog —
 `characters`, `tags`, `styles` or `skills` — and decides the filename; an unknown kind is `400`,
 validated in the host because it arrives from a query string. Every route above is
 kind-parameterised, so a new kind is a registry entry in `engine/catalog.ts` and never a new route.

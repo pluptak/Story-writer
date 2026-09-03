@@ -1,5 +1,5 @@
 import { $, esc, reasonOr, slugify, tid } from "./util.js";
-import { APP, draft } from "./state.js";
+import { APP, draft, FACET_LABELS } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
 import { loadVocab, loadLibrary, loadStyles } from "./catalog.js";
@@ -56,8 +56,6 @@ const modeChoice = (value, title, blurb) => {
     <b>${title}</b><span>${blurb}</span></label>`;
 };
 
-const FACET_LABELS = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
-
 // The vocabulary is the tag catalog's, and only the catalog authors it: an off-vocabulary tag is
 // something the route tolerates, not something this picker offers. Curated is the point -- free
 // text here would be a second idea box.
@@ -65,12 +63,12 @@ function tagChipsHtml() {
   const vocab = APP.catalog.vocab || [];
   if (!vocab.length)
     return `<p class="hint">No tags in the catalog yet — <a href="#/catalog?kind=tags">add some</a> and they show up here.</p>`;
-  const rows = Object.entries(FACET_LABELS).map(([facet, label]) => {
+  const rows = APP.catalogConfig.tagFacets.map(facet => {
     const mine = vocab.filter(t => t.facet === facet);
     if (!mine.length) return "";
     const chips = mine.map(t =>
       `<button class="cat-chip${draft.tags.includes(t.label) ? " on" : ""}" data-tag-label="${esc(t.label)}" type="button">${esc(t.label)}</button>`).join("");
-    return `<div class="cat-tags-group"><div class="cat-facet-heading">${label}</div>
+    return `<div class="cat-tags-group"><div class="cat-facet-heading">${esc(FACET_LABELS[facet] ?? facet)}</div>
       <div class="cat-tags-row">${chips}</div></div>`;
   }).join("");
   return `<div class="cat-tags-picker">${rows}</div>`;

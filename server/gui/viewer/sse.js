@@ -4,7 +4,7 @@ import { build } from "./events.js";
 import { setSrc, renderRail, paintSrcbar } from "./hud.js";
 import { clearReaderDrafts } from "./blocks.js";
 import { go, parseHash, parseHashParams, syncHash } from "./nav.js";
-import { renderSession, disarm, loadModels, loadEditorConfig } from "./session.js";
+import { renderSession, disarm, loadModels, loadEditorConfig, loadCatalogConfig } from "./session.js";
 import { loadStories, loadRun } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { loadDeepLinkedComparison, loadComparisonRuns } from "./compare.js";
@@ -36,6 +36,7 @@ export async function tryHttp() {
     APP.live = true;
     loadModels();
     loadEditorConfig();
+    loadCatalogConfig();
     if (j.awaitingContinue) showPrompt(j.awaitingContinue);
     // An interview may already be open -- a reload mid-interview must land back in it. Independent
     // endpoints, fetched concurrently; either may fail without affecting the other.

@@ -19,8 +19,8 @@ import {
   type NextChapterSession, type ImportedCharacter, type StylePreset,
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
-import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
-import type { ServerHost, Concept, CatalogUsage, EditorConfig } from "./server/server.ts";
+import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
+import type { ServerHost, Concept, CatalogUsage, EditorConfig, CatalogConfig } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
 /** The architect's own knobs, which are the defaults' — not any one story's. */
@@ -297,6 +297,10 @@ export const HOST: ServerHost = {
       return { ok: false, error: (e as Error).message };
     }
   },
+  catalogConfig: (): CatalogConfig => ({
+    tagFacets: TAG_FACETS,
+    caps: { voiceSamples: VOICE_SAMPLE_CAP },
+  }),
   catalogEntries: async (kind) => {
     const validated = validateCatalogKind(kind);
     if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };

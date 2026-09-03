@@ -271,6 +271,10 @@ export function makeHost(overrides?: Record<string, any>): ServerHost {
       thinkingLevels: ["off", "low", "medium", "high", "default"],
       caps: { voiceSamples: 3 },
     }),
+    catalogConfig: () => ({
+      tagFacets: ["genre", "dramaticMode", "tone"],
+      caps: { voiceSamples: 3 },
+    }),
     storyForEdit: async () => ({ ok: false, error: "unused" }),
     fullCast: async () => ({ ok: false, error: "unused" }),
     checkStory: () => ({ ok: false, error: "unused", issues: [] }),

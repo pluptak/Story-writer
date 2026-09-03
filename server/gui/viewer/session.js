@@ -71,6 +71,18 @@ export async function loadEditorConfig() {
   } catch {}
 }
 
+/** The catalog's own schema-derived shape (tag facets, voice-sample cap) -- fetched once at boot,
+ *  same reasoning as loadEditorConfig above. */
+export async function loadCatalogConfig() {
+  try {
+    const j = await (await fetch("/catalog/config")).json();
+    if (j && j.tagFacets) {
+      APP.catalogConfig = j;
+      if (APP.view === "catalog" || APP.view === "scaffold") APP.render();
+    }
+  } catch {}
+}
+
 $("stop").onclick = async () => {
   if (!APP.session.running || APP.session.stopping) return;
   if (!APP.armed) { APP.armed = setTimeout(disarm, 4000); renderSession(); return; }

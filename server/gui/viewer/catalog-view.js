@@ -1,5 +1,5 @@
 import { esc, tid } from "./util.js";
-import { APP, CATALOG_KINDS } from "./state.js";
+import { APP, CATALOG_KINDS, FACET_LABELS } from "./state.js";
 
 /** Per-kind metadata: labels, empty-state text, and button wording.
  *  This is the single source of truth for kind-specific UI strings and form structures.
@@ -74,8 +74,8 @@ const tagStyles = label => APP.catalog.usage?.tags?.[folded(label)]?.styles ?? [
 
 /** Build the tag picker HTML for characters, styles, and skills. */
 function tagPickerHtml(cat, d) {
-  // Group vocabulary by facet
-  const byFacet = { genre: [], dramaticMode: [], tone: [] };
+  // Group vocabulary by facet -- the set of facets is APP.catalogConfig's, not this file's
+  const byFacet = Object.fromEntries(APP.catalogConfig.tagFacets.map(f => [f, []]));
   for (const tag of (cat.vocab || [])) {
     if (Object.prototype.hasOwnProperty.call(byFacet, tag.facet)) {
       byFacet[tag.facet].push(tag);
@@ -83,14 +83,13 @@ function tagPickerHtml(cat, d) {
   }
 
   const currentTags = new Set((d.tags || "").split(",").map(t => t.trim()).filter(Boolean));
-  const facetLabels = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
 
   let html = `<div class="cat-tags-picker">`;
 
   for (const [facet, tags] of Object.entries(byFacet)) {
     if (tags.length > 0) {
       html += `<div class="cat-tags-group">
-        <div class="cat-facet-heading">${facetLabels[facet]}</div>
+        <div class="cat-facet-heading">${FACET_LABELS[facet] ?? facet}</div>
         <div class="cat-tags-row">`;
       for (const tag of tags) {
         const isSelected = currentTags.has(tag.label);
@@ -306,7 +305,7 @@ export function catalogPageHtml() {
       </div>`);
 
       body.push(`<div class="field">
-        <label for="cat-voice">Voice Samples (one per line, max 3)</label>
+        <label for="cat-voice">Voice Samples (one per line, max ${APP.catalogConfig.caps.voiceSamples})</label>
         <textarea id="cat-voice" placeholder="Example lines of dialogue, one per line">${esc(d.voice || "")}</textarea>
       </div>`);
 
@@ -326,9 +325,8 @@ export function catalogPageHtml() {
         <label for="cat-facet">Facet</label>
         <select id="cat-facet" class="btn">
           <option value="">Select a facet…</option>
-          <option value="genre"${d.facet === "genre" ? " selected" : ""}>Genre</option>
-          <option value="dramaticMode"${d.facet === "dramaticMode" ? " selected" : ""}>Dramatic Mode</option>
-          <option value="tone"${d.facet === "tone" ? " selected" : ""}>Tone</option>
+          ${APP.catalogConfig.tagFacets.map(f =>
+            `<option value="${f}"${d.facet === f ? " selected" : ""}>${esc(FACET_LABELS[f] ?? f)}</option>`).join("")}
         </select>
       </div>`);
 

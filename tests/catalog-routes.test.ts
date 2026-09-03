@@ -402,6 +402,17 @@ describe("/catalog/delete (POST)", () => {
 });
 
 // -- SECTION ----
+describe("/catalog/config (GET)", () => {
+  it("returns the host's catalog-config projection verbatim", async () => {
+    const config = { tagFacets: ["genre", "dramaticMode", "tone"] as const, caps: { voiceSamples: 3 } };
+    const host = makeHost({ catalogConfig: () => config });
+    const r = await callGet(handleCatalogRoutes, "/catalog/config", host);
+    assert.equal(r.code, 200);
+    assert.deepEqual(r.json(), config);
+  });
+});
+
+// -- SECTION ----
 describe("route dispatch edge cases", () => {
   it("returns false for routes it does not handle", async () => {
     const r = await callRoute(handleCatalogRoutes, "/scaffold/say", {}, makeHost());

@@ -5,6 +5,11 @@ import { basename } from "./util.js";
  *  fifth kind is one edit, not three. Keep it in step with CATALOG_KINDS in engine/catalog-schema.ts. */
 export const CATALOG_KINDS = ["characters", "tags", "styles", "skills"];
 
+/** Display text for a tag facet id. Shared by the catalog's tag form and the interview's tag picker
+ *  so the two do not carry their own copies of the same three strings. Keyed by facet id -- an id
+ *  APP.catalogConfig.tagFacets names but this has no entry for falls back to the id itself. */
+export const FACET_LABELS = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
+
 // Shared runtime state. ESM gives importers only a read-only view of a `let`, so everything that
 // gets REASSIGNED from outside its own module lives as a field on one exported object, `APP` --
 // the same trick live.ts's `LIVE`/`RUN` use engine-side. Values only mutated in place
@@ -124,6 +129,12 @@ export const APP = {
                 requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: true, debug: false,
                 thinking: { writer: "low", character: "low", summary: "low" }, sceneLength: 700 },
     thinkingLevels: ["off", "low", "medium", "high", "default"],
+    caps: { voiceSamples: 3 },
+  },
+  // Schema-derived catalog shape, fetched once from /catalog/config -- same bootstrap-then-replace
+  // pattern as editorConfig above.
+  catalogConfig: {
+    tagFacets: ["genre", "dramaticMode", "tone"],
     caps: { voiceSamples: 3 },
   },
   expandAll: false,

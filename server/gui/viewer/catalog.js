@@ -99,7 +99,7 @@ function fromDraft(draft, id, kind) {
     portablePersona: draft.portablePersona.trim(),
     belief: draft.belief.trim(),
     impulse: draft.impulse.trim(),
-    voice: parseLines(draft.voice),
+    voice: parseLines(draft.voice).slice(0, APP.catalogConfig.caps.voiceSamples),
     skills: parseLines(draft.skills),
     restrictions: parseLines(draft.restrictions)
   };

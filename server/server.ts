@@ -20,6 +20,7 @@ import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson, ThinkLevel } from "../engine/story-schema.ts";
 import type { BibleLookup } from "../engine/skills.ts";
+import type { TagFacet } from "../engine/catalog-schema.ts";
 
 /** The author's concept, chosen before the architect runs and never written to story.json:
  *  `tags` steer the story stage, `castSize` is the opening cast's target size for the cast
@@ -48,6 +49,14 @@ export interface EditorConfig {
     sceneLength: number;
   };
   thinkingLevels: readonly ThinkLevel[];
+  caps: { voiceSamples: number };
+}
+
+/** The catalog's own schema-derived shape: the tag facet enum, and the character voice-sample cap
+ *  (the same VOICE_SAMPLE_CAP EditorConfig's caps.voiceSamples reads, since both schemas share it).
+ *  Same reasoning as EditorConfig: a small, explicit projection, never the schema itself. */
+export interface CatalogConfig {
+  tagFacets: readonly TagFacet[];
   caps: { voiceSamples: number };
 }
 
@@ -151,6 +160,9 @@ export interface ServerHost {
   } | {
     ok: false; error: string
   }>;
+  /** The catalog's schema-derived shape (tag facets, voice-sample cap) for the catalog editor —
+   *  never the schema itself, so the GUI stops hand-copying it. */
+  catalogConfig(): CatalogConfig;
   /** All entries in a catalog. `kind` is validated here because it arrives from the wire. */
   catalogEntries(kind: string): Promise<{ ok: true; entries: unknown[] } | { ok: false; reason: string }>;
   /** Validate one catalog entry without saving. `kind` is validated here because it arrives from
