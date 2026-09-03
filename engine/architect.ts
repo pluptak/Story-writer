@@ -8,7 +8,7 @@ import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify, nameKey } from "./config-util.ts";
-import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
+import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, type BibleLookup } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
@@ -32,9 +32,10 @@ async function architectExample(): Promise<string> {
  * edit field inline and sends the real story every round, so the example is the format said twice,
  * and it demonstrates the whole-story reply a handoff must *not* send.
  */
-export async function buildArchitect(d: Defaults, withExample = true): Promise<Agent> {
+export async function buildArchitect(d: Defaults, withExample = true,
+                                     bible: Readonly<Record<string, string>> = SPECIAL_SKILL_CATALOG): Promise<Agent> {
   const system = P.architectSystem(
-    SKILL_CATALOG, SPECIAL_SKILL_CATALOG,
+    SKILL_CATALOG, bible,
     withExample ? await architectExample() : "");
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
   a.think = d.thinking.architect;
@@ -254,6 +255,7 @@ async function runAutoPasses(
   onStage?: (stage: AutoStage) => void,
   refuse?: (edits: any[]) => { edits: any[]; refused: string[] },
   passes: readonly AutoStage[] = ["fillGaps", "verify"],
+  bible: BibleLookup = bibleMeaningOf,
 ): Promise<{ spec: StorySpec; problems: string[]; auto: AutoPass[]; question?: string }> {
   let cur = spec;
   let problems: string[] = [];
@@ -274,7 +276,7 @@ async function runAutoPasses(
       return undefined;
     }
     const guarded = refuse ? refuse(r.out.edits) : { edits: r.out.edits, refused: [] as string[] };
-    const e = applyEdits(cur, { edits: guarded.edits });
+    const e = applyEdits(cur, { edits: guarded.edits }, bible);
     cur = e.spec; problems = e.problems;
     archLog(`AUTOPASS ${stage}: applied=${e.applied.map(a => a.field)} ignored=[${[...guarded.refused, ...e.ignored].join(", ")}]`);
     auto.push({ stage, applied: e.applied, ignored: [...guarded.refused, ...e.ignored], note: withAsk(r.out), outcome: "edits" });
@@ -284,7 +286,7 @@ async function runAutoPasses(
   for (const stage of passes) {
     const prompt = stage === "fillGaps"
       ? P.architectFillGaps(specJson(cur), sceneField)
-      : P.architectVerify(specJson(cur), sceneField, applyEdits(cur, { edits: [] }).problems);
+      : P.architectVerify(specJson(cur), sceneField, applyEdits(cur, { edits: [] }, bible).problems);
     const ask = await runStage(stage, prompt);
     if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
   }
@@ -332,6 +334,11 @@ export class ScaffoldSession {
    *  cast gate DOES (see `architectCastImportStage`) rather than what the story holds. */
   imported: ImportedCharacter[] = [];
 
+  /** The bible this session validates a proposed cast against. Assigned by whoever built the
+   *  session, so the architect is judged by the bible the author edits rather than the one in the
+   *  source. Defaults to the in-code catalog for tests and any caller that has not loaded one. */
+  bible: BibleLookup = bibleMeaningOf;
+
   private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
 
   /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
@@ -350,7 +357,7 @@ export class ScaffoldSession {
 
   /** Replace the in-memory draft after a full GUI edit; nothing is written until accept(). */
   setSpec(raw: unknown): { applied: { field: string; before: unknown; after: unknown }[]; problems: string[] } {
-    const n = normalizeSpec(raw);
+    const n = normalizeSpec(raw, this.bible);
     this.spec = n.spec;
     this.problems = n.problems;
     this.pendingAsk = "";
@@ -503,7 +510,7 @@ export class ScaffoldSession {
       mergedOut = { ...out, characters: contract.characters };
     }
 
-    const n = normalizeSpec(this.mergedRaw(stage, mergedOut));
+    const n = normalizeSpec(this.mergedRaw(stage, mergedOut), this.bible);
     archLog(`STAGE ${stage}: content accepted. problems=`, n.problems);
     this.spec = n.spec;
     this.problems = ScaffoldSession.visibleProblems(this.spec, [...n.problems, ...importNotes], stage);
@@ -517,7 +524,7 @@ export class ScaffoldSession {
     if ("error" in r) return { kind: "failed", error: r.error };
     const base = this.takeStaged(stage, r.out);
     if (!(stage === "scene" && base.kind === "proposal")) return base;
-    const v = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, ["verify"]);
+    const v = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, ["verify"], this.bible);
     // Back through visibleProblems rather than straight across: the verify pass rebuilds the list
     // from its own reading, so anything the gate itself added -- the consult cost -- is gone unless
     // it is recomputed here. The suppression half is a no-op this late (a cast and a scene both
@@ -597,7 +604,7 @@ export class ScaffoldSession {
   }
 
   private takeProposal(out: Record<string, any>): ScaffoldRound {
-    const n = normalizeSpec(out);
+    const n = normalizeSpec(out, this.bible);
     if (!n.spec.characters.length) {
       const back = String(out.ask ?? "").trim();
       if (back) { this.pendingAsk = back; this.asks++; return { kind: "question", ask: back }; }
@@ -614,7 +621,7 @@ export class ScaffoldSession {
    *  propose() or via say() following a clarifying question. Any other round kind passes through untouched. */
   private async afterProposal(base: ScaffoldRound, onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
     if (base.kind !== "proposal") return base;
-    const r = await runAutoPasses(this.architect, this.spec, "scene", onStage);
+    const r = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, undefined, this.bible);
     this.spec = r.spec; this.problems = r.problems;
     if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
     this.pendingAsk = "";
@@ -657,7 +664,7 @@ export class ScaffoldSession {
         if (folded.kind !== "proposal" || !rest.length) { this.refusedLastRound = []; return folded; }
         // A round that re-authored the ledger and changed something else keeps both: the ledger is
         // already folded in above, and the rest applies on top of it.
-        const also = applyEdits(this.spec, { ...r.out, edits: rest });
+        const also = applyEdits(this.spec, { ...r.out, edits: rest }, this.bible);
         this.spec = also.spec;
         this.problems = ScaffoldSession.visibleProblems(this.spec, also.problems, this.stage);
         this.refusedLastRound = also.ignored;
@@ -683,7 +690,7 @@ export class ScaffoldSession {
           this.tension = after;
         }
       }
-      const e = applyEdits(this.spec, { ...r.out, edits: named });
+      const e = applyEdits(this.spec, { ...r.out, edits: named }, this.bible);
       this.spec = e.spec;
       this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems, this.stage);
       this.pendingAsk = "";
@@ -700,7 +707,7 @@ export class ScaffoldSession {
     const back = String(r.out.ask ?? "").trim();
     if (back && !r.out.edits) { this.pendingAsk = back; return { kind: "question", ask: back }; }
 
-    const e = applyEdits(this.spec, r.out);
+    const e = applyEdits(this.spec, r.out, this.bible);
     this.spec = e.spec; this.problems = e.problems;
     this.pendingAsk = "";
     this.refusedLastRound = e.ignored;
@@ -757,6 +764,11 @@ export class NextChapterSession {
   pendingAsk = "";
   edited = false;                              // has any round changed the spec
 
+  /** The bible this session validates a proposed cast against. Assigned by whoever built the
+   *  session, so the architect is judged by the bible the author edits rather than the one in the
+   *  source. Defaults to the in-code catalog for tests and any caller that has not loaded one. */
+  bible: BibleLookup = bibleMeaningOf;
+
   /** What the last edits round refused or could not apply, fed back once so the architect stops
    *  repeating a field the engine will not take. Cleared by any edits round that refuses nothing. */
   private refusedLastRound: string[] = [];
@@ -808,7 +820,7 @@ export class NextChapterSession {
     }
 
     const guarded = this.refuse(r.out.edits);
-    const e = applyEdits(this.spec, { edits: guarded.edits });
+    const e = applyEdits(this.spec, { edits: guarded.edits }, this.bible);
     this.spec = e.spec; this.problems = e.problems; this.pendingAsk = "";
     this.edited = true;
     this.refusedLastRound = [...guarded.refused, ...e.ignored];
@@ -833,7 +845,7 @@ export class NextChapterSession {
     const base = this.take(await architectRound(this.architect, prompt));
     if (base.kind !== "edits") return base;
 
-    const r = await runAutoPasses(this.architect, this.spec, `scene_${this.chapter}`, onStage, edits => this.refuse(edits));
+    const r = await runAutoPasses(this.architect, this.spec, `scene_${this.chapter}`, onStage, edits => this.refuse(edits), undefined, this.bible);
     this.spec = r.spec; this.problems = r.problems;
     if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
     this.pendingAsk = "";
@@ -872,16 +884,18 @@ export class NextChapterSession {
 }
 
 /** Open a handoff on a story that has at least one chapter written; throws if it has none, or does not parse. */
-export async function openNextChapter(d: Defaults, dir: string): Promise<NextChapterSession> {
+export async function openNextChapter(d: Defaults, dir: string, bible: Readonly<Record<string, string>> = SPECIAL_SKILL_CATALOG): Promise<NextChapterSession> {
   const chapters = await readChapters(dir);
   if (!chapters.length)
     throw new Error(`No chapters written yet in ${dir} — there is nothing for the handoff to read.`);
   const raw = JSON.parse(await readFile(joinPath(resolveStoryDir(dir), "story.json"), "utf8"));
-  const n = normalizeSpec(raw);
+  const bibleLookup = bibleFrom(bible);
+  const n = normalizeSpec(raw, bibleLookup);
   const unfired: { n: number; beat: string; at: number }[] = [];
   for (const c of chapters)
     for (const b of await readUnfiredBeats(dir, c.n)) unfired.push({ n: c.n, ...b });
-  const s = new NextChapterSession(await buildArchitect(d, false), d, dir, n.spec, chapters, unfired);
+  const s = new NextChapterSession(await buildArchitect(d, false, bible), d, dir, n.spec, chapters, unfired);
+  s.bible = bibleLookup;
   s.problems = n.problems;
 
   // `refuse()` keeps the architect off a written chapter's scene, but a hand edit reaches it, and
@@ -891,7 +905,7 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
     try {
       const snapshot = await readChapterSpec(dir, c.n);
       if (!snapshot) continue;
-      const written = normalizeSpec(snapshot);
+      const written = normalizeSpec(snapshot, bibleLookup);
       const drifted = sceneDrift(written.spec.scenes[c.n - 1], s.spec.scenes[c.n - 1]);
       if (drifted.length)
         s.problems.push(`chapter ${c.n}'s prose was written from a different scene definition `
@@ -912,12 +926,12 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
 /** A stateless architect call: given the current story spec and the author's instruction, return
  *  proposed edits — with the edited spec itself, so a GUI can adopt it into its draft. Creates a
  *  fresh agent per call, so no history carries between invocations. */
-export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
+export async function suggestEdits(d: Defaults, spec: StorySpec, text: string, bible: Readonly<Record<string, string>> = SPECIAL_SKILL_CATALOG):
   Promise<{ kind: "edits"; spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[];
             ignored: string[]; problems: string[]; note: string }
          | { kind: "question"; ask: string }
          | { kind: "failed"; error: string }> {
-  const agent = await buildArchitect(d, false);
+  const agent = await buildArchitect(d, false, bible);
   const specJson = JSON.stringify({ ...spec, writer_style: spec.writerStyle }, null, 1);
   const prompt = P.architectChange(text, specJson);
   const r = await architectRound(agent, prompt);
@@ -929,7 +943,7 @@ export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
     return { kind: "failed", error: said.why };
   }
 
-  const e = applyEdits(spec, r.out);
+  const e = applyEdits(spec, r.out, bibleFrom(bible));
   return {
     kind: "edits", spec: e.spec, applied: e.applied, ignored: e.ignored, problems: e.problems,
     note: String(r.out.note ?? "").trim(),

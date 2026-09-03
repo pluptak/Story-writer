@@ -4,7 +4,7 @@ import { join as joinPath } from "node:path";
 import { z } from "zod";
 import { warn } from "./warnings.ts";
 import { characterPsychologyWarnings } from "./story-spec.ts";
-import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, type BibleLookup } from "./skills.ts";
+import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, bibleFrom, type BibleLookup } from "./skills.ts";
 import { ROOT } from "./story-format.ts";
 import {
   CharacterCatalog,
@@ -161,21 +161,28 @@ function catalogPath(kind: CatalogKind, path?: string): string {
   return path ?? joinPath(ROOT, reg.filename);
 }
 
+/** The persisted bible as name → meaning pairs. Entries with a blank meaning are dropped: a bible
+ *  entry exists to say what a skill lets a character do, and one that says nothing is not a bible
+ *  entry. This is the shape the architect's system prompt needs. */
+export async function skillBibleEntries(path?: string): Promise<Record<string, string>> {
+  const catalog = await loadCatalog("skills", path);
+  const entries: Record<string, string> = {};
+  for (const entry of catalog.entries) {
+    const trimmed = entry.meaning.trim();
+    if (trimmed) {
+      entries[entry.name] = trimmed;
+    }
+  }
+  return entries;
+}
+
 /** The bible as the author has it: every entry in the persisted skills catalog, keyed by canonical
  *  name. `loadCatalog` already resolves file-or-seed, so an absent file gives the in-code seed and a
  *  present one wins entirely — an entry the author deleted stays deleted. A blank meaning is skipped
  *  rather than returned, because a lookup that succeeds with no meaning is exactly the failure the
  *  required `meaning` field exists to prevent. */
 export async function skillBible(path?: string): Promise<BibleLookup> {
-  const catalog = await loadCatalog("skills", path);
-  const map = new Map<string, string>();
-  for (const entry of catalog.entries) {
-    const trimmed = entry.meaning.trim();
-    if (trimmed) {
-      map.set(canonSkill(entry.name), trimmed);
-    }
-  }
-  return (name: string) => map.get(canonSkill(name));
+  return bibleFrom(await skillBibleEntries(path));
 }
 
 /** Every entry in one catalog. Missing file returns the seed (if one exists) or an empty catalog, silently.

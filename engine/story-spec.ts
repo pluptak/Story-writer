@@ -1,5 +1,5 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
-import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems } from "./skills.ts";
+import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems, type BibleLookup } from "./skills.ts";
 import { RunConfig, THINK_LEVELS, TimelineDef, type ThinkLevel, type SceneDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig, TimelineDef } from "./story-schema.ts";
@@ -108,8 +108,10 @@ export function timelineOrderProblems(beats: TimelineDef[]): string[] {
   return out;
 }
 
-/** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing. */
-export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] } {
+/** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing.
+ *  The bible is a parameter so the architect validates against the one the author edits, not the one
+ *  in the source. */
+export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { spec: StorySpec; problems: string[] } {
   const problems: string[] = [];
   const o = raw ?? {};
   const rawScenes: any[] = Array.isArray(o.scenes) ? o.scenes
@@ -130,7 +132,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     if (seen.has(name.toLowerCase())) { problems.push(`two characters called "${name}" — kept the first`); continue; }
     seen.add(name.toLowerCase());
     const skills = asStrings(c?.skills);
-    const cap = capabilityProblems(name, skills, asStrings(c?.restrictions ?? c?.lacks));
+    const cap = capabilityProblems(name, skills, asStrings(c?.restrictions ?? c?.lacks), bible);
     const restrictions = cap.restrictions;
     problems.push(...cap.problems);
     const voice = asStrings(c?.voice);
@@ -199,7 +201,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
         // the reach entry is dropped. Surfaces here, not only mid-run.
         const key = canonSkill(text);
         if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === key)
-            || bibleMeaningOf(text) !== undefined || ownSkillKeys.has(key)) {
+            || bible(text) !== undefined || ownSkillKeys.has(key)) {
           problems.push(`${ch.name}'s reach "${text}" collides with a skill name — name the INTERFACE, not the sense or capability it substitutes for; the entry is dropped`);
           return false;
         }
@@ -280,7 +282,7 @@ function canonicalField(field: string): string {
     .replace(/\[([^\]\d][^\]]*)\]/g, ".$1");
 }
 
-export function applyEdits(spec: StorySpec, raw: any): {
+export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bibleMeaningOf): {
   spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; problems: string[];
 } {
   type Applied = { field: string; before: unknown; after: unknown };
@@ -316,7 +318,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
     }
     return undefined;
   };
-  const normalizedDraft = () => normalizeSpec(draft).spec;
+  const normalizedDraft = () => normalizeSpec(draft, bible).spec;
   const add = (entry: Omit<Work, "after"> & { after?: unknown }) => work.push(entry as Work);
   const scalarResolver = (key: string, resolve: (next: StorySpec) => unknown, before: unknown, field = key) => {
     const normalized = normalizedDraft();
@@ -648,7 +650,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
     }
   }
 
-  const { spec: next, problems } = normalizeSpec(draft);
+  const { spec: next, problems } = normalizeSpec(draft, bible);
   const counts = new Map<string, number>();
   for (const e of work) counts.set(e.key, (counts.get(e.key) ?? 0) + 1);
   const applied = work.map(({ field, before, snapshot, resolve, key }) => ({

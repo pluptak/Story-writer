@@ -12,6 +12,7 @@ import {
   loadStory, type Defaults,
 } from "../engine/story-format.ts";
 import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts";
+import { bibleFrom } from "../engine/skills.ts";
 import { architectNextChapter, architectVerify } from "../prompts.ts";
 import * as P from "../prompts.ts";
 import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits, consultCostNote, applyImportContract, type ImportedCharacter } from "../engine/architect.ts";
@@ -1151,6 +1152,142 @@ describe("applyImportContract", () => {
     assert.ok(!result.notes.some(n => /is not one of the imported characters/.test(n)));
     // But there should be a "changed belief" note since belief was different
     assert.match(result.notes.join(" "), /the architect changed belief/);
+  });
+});
+
+describe("the architect validates against the author's bible", () => {
+  it("a bare skill the in-code catalog does not know is a problem", () => {
+    const spec = {
+      title: "Test", premise: "A test", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "Someone", knows: "", skills: ["tidewalking"], restrictions: [] },
+      ],
+      facts: [], config: { maxSteps: 24 },
+    };
+    const result = normalizeSpec(spec);
+    assert.ok(result.problems.some(p => /not a bible skill/.test(p)),
+              `expected a "not a bible skill" problem, got: ${JSON.stringify(result.problems)}`);
+  });
+
+  it("the same skill is clean once it is in the author's bible", () => {
+    const spec = {
+      title: "Test", premise: "A test", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "Someone", knows: "", skills: ["tidewalking"], restrictions: [] },
+      ],
+      facts: [], config: { maxSteps: 24 },
+    };
+    const authorBible = bibleFrom({ tidewalking: "reading the turn of a tide by standing in it" });
+    const result = normalizeSpec(spec, authorBible);
+    assert.ok(!result.problems.some(p => /not a bible skill/.test(p)),
+              `expected no "not a bible skill" problem, got: ${JSON.stringify(result.problems)}`);
+    assert.ok(result.spec.characters[0].skills.includes("tidewalking"),
+              "tidewalking should still be in the character's skills");
+  });
+
+  it("a restriction may name a bible skill the source has never heard of", () => {
+    const spec = {
+      title: "Test", premise: "A test", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "Someone", knows: "", skills: [], restrictions: ["tidewalking"] },
+      ],
+      facts: [], config: { maxSteps: 24 },
+    };
+
+    // With default bible, restriction is not recognized
+    const resultDefault = normalizeSpec(spec);
+    assert.ok(resultDefault.problems.some(p => /would remove nothing/.test(p)),
+              `expected a "would remove nothing" problem with default bible, got: ${JSON.stringify(resultDefault.problems)}`);
+    assert.ok(!resultDefault.spec.characters[0].restrictions.includes("tidewalking"),
+              "the restriction should be dropped when it names nothing known");
+
+    // With author's bible, restriction is recognized
+    const authorBible = bibleFrom({ tidewalking: "reading the turn of a tide by standing in it" });
+    const resultAuthor = normalizeSpec(spec, authorBible);
+    assert.ok(!resultAuthor.problems.some(p => /would remove nothing/.test(p)),
+              `expected no "would remove nothing" problem with author's bible, got: ${JSON.stringify(resultAuthor.problems)}`);
+    assert.ok(resultAuthor.spec.characters[0].restrictions.includes("tidewalking"),
+              "the restriction should survive when the bible knows the skill");
+  });
+
+  it("bibleFrom matches names the way the rest of the engine does", () => {
+    const authorBible = bibleFrom({ "Tide Walking": "m" });
+    const result = authorBible("tide_walking");
+    assert.equal(result, "m", "canonicalization should match underscores to spaces");
+  });
+
+  it("a change round is judged by the session's bible, not the source's", async () => {
+    const STORY_STAGE = {
+      title: "Test Story",
+      premise: "A test premise",
+      tension: "Character A wants X",
+      facts: [],
+    };
+    const CAST_STAGE = {
+      characters: [
+        { name: "A", persona: "First character", knows: "fact", skills: [], restrictions: [] },
+      ],
+    };
+    const SETTINGS_STAGE = { writer_style: "Plain prose." };
+    const SCENE_STAGE = { scene: { place: "the place", question: "What happens?", pov: "A", length: 700, roster: ["A"] } };
+
+    const authorBible = bibleFrom({ tidewalking: "reading the turn of a tide by standing in it" });
+    const judgeSaying = (verdict: unknown) => () => new ScriptedAgent([JSON.stringify(verdict)]);
+    const passingJudge = judgeSaying({ ok: true });
+
+    // First test: session with author's bible should accept tidewalking
+    const s = new ScaffoldSession(
+      new ScriptedAgent([
+        JSON.stringify(STORY_STAGE),
+        JSON.stringify(CAST_STAGE),
+        JSON.stringify(SETTINGS_STAGE),
+        JSON.stringify(SCENE_STAGE),
+        JSON.stringify({ edits: [], note: "verified" }),
+        JSON.stringify({ edits: [{ field: "characters.A.skills", value: ["tidewalking"] }] }),
+      ]),
+      SCAFFOLD_DEFAULTS,
+      "test idea",
+      undefined,
+      "staged",
+      passingJudge
+    );
+    s.bible = authorBible;
+
+    await s.propose();
+    for (let i = 0; i < 4; i++) await s.approve();  // walk through story, cast, settings, scene
+    assert.equal(s.stage, "scene");
+
+    const r = await s.say("add tidewalking");
+    assert.equal(r.kind, "edits");
+    assert.ok(!s.problems.some(p => /not a bible skill/.test(p)),
+              `with author's bible, expected no "not a bible skill" problem, got: ${JSON.stringify(s.problems)}`);
+
+    // Second test: session with default bible should reject tidewalking
+    const s2 = new ScaffoldSession(
+      new ScriptedAgent([
+        JSON.stringify(STORY_STAGE),
+        JSON.stringify(CAST_STAGE),
+        JSON.stringify(SETTINGS_STAGE),
+        JSON.stringify(SCENE_STAGE),
+        JSON.stringify({ edits: [], note: "verified" }),
+        JSON.stringify({ edits: [{ field: "characters.A.skills", value: ["tidewalking"] }] }),
+      ]),
+      SCAFFOLD_DEFAULTS,
+      "test idea",
+      undefined,
+      "staged",
+      passingJudge
+    );
+    // Don't set s2.bible, so it uses the default
+
+    await s2.propose();
+    for (let i = 0; i < 4; i++) await s2.approve();
+    assert.equal(s2.stage, "scene");
+
+    const r2 = await s2.say("add tidewalking");
+    assert.equal(r2.kind, "edits");
+    assert.ok(s2.problems.some(p => /not a bible skill/.test(p)),
+              `with default bible, expected a "not a bible skill" problem, got: ${JSON.stringify(s2.problems)}`);
   });
 });
 

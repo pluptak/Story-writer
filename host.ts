@@ -6,7 +6,7 @@ import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { storyWriteBlocked } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { splitMeaning } from "./engine/skills.ts";
+import { splitMeaning, bibleFrom } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
@@ -17,7 +17,7 @@ import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type NextChapterSession, type ImportedCharacter,
 } from "./engine/architect.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "./engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import type { ServerHost, Concept } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
@@ -51,8 +51,11 @@ async function newScaffoldSession(idea: string, model = "",
                                   mode: "oneshot" | "staged" = "oneshot",
                                   concept?: Concept): Promise<ScaffoldSession> {
   const d = await architectDefaults(model);
-  return new ScaffoldSession(await buildArchitect(d), d, idea, undefined, mode, undefined,
+  const entries = await skillBibleEntries();
+  const session = new ScaffoldSession(await buildArchitect(d, true, entries), d, idea, undefined, mode, undefined,
                              concept?.tags ?? [], concept?.castSize ?? 0);
+  session.bible = bibleFrom(entries);
+  return session;
 }
 
 /** The tag catalog is the author's own file, so an unknown tag is news rather than an error: it is
@@ -86,7 +89,8 @@ async function importCharacters(ids: string[]): Promise<{ imported: ImportedChar
 }
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
-  return openNextChapter(await architectDefaults(model), dir);
+  const entries = await skillBibleEntries();
+  return openNextChapter(await architectDefaults(model), dir, entries);
 }
 
 /** Read and Zod-parse a story's story.json. Shared by storyForEdit and fullCast so there is exactly
@@ -243,8 +247,9 @@ export const HOST: ServerHost = {
   suggestEdits: async (spec, text) => {
     const specObj = spec as StorySpec;
     try {
+      const entries = await skillBibleEntries();
       return await withArchitectDefaults(flag("model") ?? "", async d => {
-        const r = await statelessSuggest(d, specObj, String(text ?? ""));
+        const r = await statelessSuggest(d, specObj, String(text ?? ""), entries);
         if (r.kind === "failed") return { ok: false as const, error: r.error };
         if (r.kind === "question") return { ok: true as const, kind: "question" as const, ask: r.ask };
         return { ok: true as const, kind: "edits" as const, spec: r.spec, applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
