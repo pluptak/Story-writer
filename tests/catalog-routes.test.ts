@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 
 import { handleCatalogRoutes } from "../server/catalog-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { callRoute, callGet } from "./helpers.ts";
+import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 
 const CHAR_ONE = {
   id: "char-one",
@@ -29,7 +29,7 @@ const CHAR_TWO = {
 };
 
 function makeHost(overrides?: Partial<ServerHost>): ServerHost {
-  return {
+  return baseHost({
     catalogEntries: async (kind: string) => {
       if (kind === "characters") {
         return { ok: true as const, entries: [CHAR_ONE, CHAR_TWO] };
@@ -67,29 +67,8 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
       }
       return { ok: false as const, reason: `entry "${id}" not found`, status: 404 };
     },
-    // Unused by these routes
-    selectableStory: async () => null,
-    storyForEdit: async () => ({ ok: false, error: "unused" }),
-    checkStory: () => ({ ok: false, error: "unused", issues: [] }),
-    saveStory: async () => ({ ok: false, reason: "unused" }),
-    discardScene: async () => ({ ok: false, reason: "unused", status: 400 }),
-    suggestEdits: async () => ({ ok: false, error: "unused" }),
-    storyCards: async () => [],
-    resolveStoryDir: (d: string) => d,
-    runDirs: async () => [],
-    runLlmLogs: async () => [],
-    readLlmLog: async () => null,
-    writtenChapters: async () => [],
-    availableModelIds: async () => null,
-    architectModel: async () => "none",
-    newScaffoldSession: async () => { throw new Error("unused"); },
-    newHandoffSession: async () => { throw new Error("unused"); },
-    directEdit: () => ({ ok: false, reason: "unused" }),
-    specView: (s: unknown) => s,
-    outDir: () => "",
-    fullCast: async () => ({ ok: false, error: "unused" }),
     ...overrides,
-  } as unknown as ServerHost;
+  });
 }
 
 // -- SECTION ----

@@ -233,6 +233,53 @@ export async function callGet(handler: RouteHandler, url: string, host: ServerHo
   return { handled, code, headers, text: sent, json: () => JSON.parse(sent) };
 }
 
+// -- A SHARED FAKE SERVER HOST -----------------------------------------------
+/** A `ServerHost` with every member set to a safe default that fails loudly if a route calls it
+ *  unscripted — a refusal shaped like the real one, or a throw naming the call "unused". Override
+ *  only the members the test under it actually exercises; this is the one shape every route test
+ *  fakes a host with, promoted so ServerHost's own shape stays the only thing to update.
+ *
+ *  `overrides` is deliberately untyped against `ServerHost` itself: a route double often returns a
+ *  deliberately trimmed shape (a `story.config` with none of the run defaults, a cast entry missing
+ *  fields the route under test never reads) that the real interface would reject. The final cast is
+ *  what makes that legal, same as every hand-rolled fake this replaces did with its own trailing
+ *  `as unknown as ServerHost`. */
+export function makeHost(overrides?: Record<string, any>): ServerHost {
+  return {
+    storyCards: async () => [],
+    selectableStory: async () => null,
+    resolveStoryDir: (d: string) => d,
+    runDirs: async () => [],
+    runLlmLogs: async () => [],
+    readLlmLog: async () => null,
+    writtenChapters: async () => [],
+    availableModelIds: async () => null,
+    providerName: "none",
+    architectModel: async () => "none",
+    newScaffoldSession: async () => { throw new Error("unused"); },
+    unknownTags: async () => [],
+    importCharacters: async () => ({ imported: [], missing: [] }),
+    resolveStyle: async () => null,
+    newHandoffSession: async () => { throw new Error("unused"); },
+    directEdit: () => ({ ok: false, reason: "unused" }),
+    specView: (s: unknown) => s,
+    outDir: () => "",
+    storyForEdit: async () => ({ ok: false, error: "unused" }),
+    fullCast: async () => ({ ok: false, error: "unused" }),
+    checkStory: () => ({ ok: false, error: "unused", issues: [] }),
+    saveStory: async () => ({ ok: false, reason: "unused" }),
+    discardScene: async () => ({ ok: false, reason: "unused", status: 400 }),
+    suggestEdits: async () => ({ ok: false, error: "unused" }),
+    catalogEntries: async () => ({ ok: false, reason: "unused" }),
+    catalogCheck: async () => ({ ok: false, reason: "unused" }),
+    catalogSave: async () => ({ ok: false, reason: "unused" }),
+    catalogDelete: async () => ({ ok: false, reason: "unused" }),
+    catalogUsage: async () => ({ tags: {}, skills: {} }),
+    promoteSkill: async () => ({ ok: false, reason: "unused" }),
+    ...overrides,
+  } as unknown as ServerHost;
+}
+
 // -- A SCENE RUN FOR TESTS --------------------------------------------------
 /** A `SceneRun` for a fixture story, with the fields most call sites share already filled in.
  *  Overrides win wholesale: pass `{ scene: sd, agents, log, maxSteps: 30 }` and the rest is the

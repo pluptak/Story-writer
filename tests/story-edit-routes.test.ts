@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { LIVE, resetLive, armRun } from "../live.ts";
 import { handleStoryEditRoutes } from "../server/story-edit-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { callRoute, callGet } from "./helpers.ts";
+import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 
 const DOORWAY = {
   title: "The Fog Signal",
@@ -29,7 +29,7 @@ const DOORWAY = {
 let suggestCalls = 0;
 
 function makeHost(overrides?: Partial<ServerHost>): ServerHost {
-  return {
+  return baseHost({
     selectableStory: async (d: string) => (d === "stories/doorway" || d === "doorway" ? "stories/doorway" : null),
     storyForEdit: async (dir: string) => {
       if (dir !== "stories/doorway") return { ok: false, error: "not found" };
@@ -67,22 +67,8 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
         note: "",
       };
     },
-    // Unused by these routes
-    storyCards: async () => [],
-    resolveStoryDir: (d: string) => d,
-    runDirs: async () => [],
-    runLlmLogs: async () => [],
-    readLlmLog: async () => null,
-    writtenChapters: async () => [],
-    availableModelIds: async () => null,
-    architectModel: async () => "none",
-    newScaffoldSession: async () => { throw new Error("unused"); },
-    newHandoffSession: async () => { throw new Error("unused"); },
-    directEdit: () => ({ ok: false, reason: "unused" }),
-    specView: (s: unknown) => s,
-    outDir: () => "",
     ...overrides,
-  } as unknown as ServerHost;
+  });
 }
 
 // -- SECTION ----
