@@ -262,6 +262,7 @@ the editor.
 ```
 GET  /catalog?kind=characters        → { ok:true, entries[] }
                                        | { ok:false, reason }
+GET  /catalog/usage                  → { ok:true, usage }   (read-only derivation, below)
 GET  /catalog/entry?kind=&id=        → { ok:true, entry }
                                        | { ok:false, reason }        (400 no id · 404 no such entry)
 POST /catalog/check  { entry }       → { ok:true, problems[] }
@@ -305,6 +306,15 @@ plus one for a replacement. A version sent by a caller is overwritten, so it is 
 choose one. Both writes go
 through the same atomic `.tmp` rename as `/story/save`, then re-read and assert what they expected to
 find: that the entry is present at its new version, or that a deleted id is gone.
+
+`GET /catalog/usage` derives what the other catalogs reference — the "used by 4 characters" line and
+the tag page's grouping. **Derived, not authored**: a tag's counts come from the characters, styles
+and skills whose `tags[]` fold to its label; a skill's count from the characters whose `skills`
+lines name it, matched the way every identity comparison is. The tag page's STORY/STYLE split is the
+same derivation — a tag is **STYLE** when some style carries it, **STORY** when none does — so the
+editor gains no "used for" checkbox, and the grouping moves the moment a style picks the tag up. It
+reads the catalogs it was asked for and nothing else; a failure to derive is the caller's to
+decorate away, which the viewer does by keeping its last known counts.
 
 ## Read-only cast view
 

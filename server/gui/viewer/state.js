@@ -136,6 +136,8 @@ export const APP = {
   catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,
              issues:[], problems:[], armedDelete:false, deleteTimer:0,
              kind:"characters",   // which catalog is being browsed: one of CATALOG_KINDS above
+             usage:null,          // what the other catalogs reference — the "used by" lines and the
+                                  // tag page's derived STORY/STYLE grouping (/catalog/usage)
              vocab:[],            // the tag entries, loaded once, used by the character form's tag picker.
                                    // vocab is separate from entries because entries is whatever kind is on
                                    // screen, while vocab is always the tags — the character form needs the

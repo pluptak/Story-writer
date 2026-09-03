@@ -557,6 +557,8 @@
   .catalog-entry.selected { border-color:var(--accent); background:var(--panel-2); }
   .cat-name { font-weight:600; color:var(--ink); }
   .cat-tags { font-size:var(--fs-11); color:var(--muted); margin-top:3px; }
+  .cat-usage { font-size:var(--fs-11); color:var(--faint); margin-top:3px; }
+  .cat-facet { font-weight:400; color:var(--faint); }
   .cat-version { font-size:var(--fs-10); color:var(--faint); margin-top:3px; }
   .cat-form-panel { display:flex; flex-direction:column; }
   .cat-placeholder { text-align:center; color:var(--muted); padding:40px 20px; }

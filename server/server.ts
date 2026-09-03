@@ -26,6 +26,16 @@ import type { BibleLookup } from "../engine/skills.ts";
  *  stage. Staged mode only — the one-shot walk has no gate for either to steer. */
 export type Concept = { tags: string[]; castSize: number };
 
+/** What the reusable vocabulary is being used by, derived by scanning the other catalogs — the
+ *  "18 uses" line, observed rather than authored. Tags are keyed by folded label (what entries
+ *  store); a style carries the STYLE NAMES whose tags include it, for the tag page's "commonly
+ *  associated" line. Skills are keyed by the name a character's `skills` line names, counted
+ *  with the engine's own case-insensitive identity match. */
+export interface CatalogUsage {
+  tags: Record<string, { characters: number; styles: string[]; skills: number }>;
+  skills: Record<string, number>;
+}
+
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
   storyCards(): Promise<StoryCard[]>;
@@ -130,6 +140,8 @@ export interface ServerHost {
   catalogSave(kind: string, entry: unknown): Promise<{ ok: true; entry: unknown; problems: string[] } | { ok: false; reason: string; status?: number; issues?: string[] }>;
   /** Remove one catalog entry by id. Fails if the id is not found. */
   catalogDelete(kind: string, id: string): Promise<{ ok: true } | { ok: false; reason: string; status?: number }>;
+  /** Which catalogs reference which entries — read-only derivation over the other kinds. */
+  catalogUsage(): Promise<CatalogUsage>;
   /** Put a bespoke skill into the author's bible and hand back a lookup over the NEW bible. The
    *  caller assigns that to the open session, because the session validates against a bible it was
    *  handed when it opened — without the swap the skill it just promoted would still read as

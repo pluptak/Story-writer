@@ -50,6 +50,28 @@ function tabsHtml() {
   </div>`;
 }
 
+/** The "used by" line a list row and a detail pane share. Derived from /catalog/usage — observed,
+ *  never authored, so it says what actually references the entry and nothing about intent. */
+const folded = s => String(s ?? "").trim().toLowerCase();
+function tagUsageHtml(label) {
+  const u = APP.catalog.usage?.tags?.[folded(label)];
+  if (!u) return "";
+  const parts = [];
+  if (u.characters) parts.push(`${u.characters} character${u.characters === 1 ? "" : "s"}`);
+  if (u.styles.length) parts.push(`${u.styles.length} style${u.styles.length === 1 ? "" : "s"}`);
+  if (u.skills) parts.push(`${u.skills} skill${u.skills === 1 ? "" : "s"}`);
+  return parts.length ? `<div class="cat-usage">used by ${parts.join(" · ")}</div>` : "";
+}
+function skillUsageHtml(name) {
+  const u = APP.catalog.usage?.skills || {};
+  const n = u[folded(name)] ?? 0;
+  return n ? `<div class="cat-usage">used by ${n} character${n === 1 ? "" : "s"}</div>` : "";
+}
+/** Whether any style carries the label — the whole of the derived STYLE cut. */
+const tagIsStyle = label => (APP.catalog.usage?.tags?.[folded(label)]?.styles?.length ?? 0) > 0;
+/** The style names that carry the label, for the tag editor's "commonly associated" line. */
+const tagStyles = label => APP.catalog.usage?.tags?.[folded(label)]?.styles ?? [];
+
 /** Build the tag picker HTML for characters, styles, and skills. */
 function tagPickerHtml(cat, d) {
   // Group vocabulary by facet
@@ -164,32 +186,30 @@ export function catalogPageHtml() {
       `);
     }
   } else if (cat.kind === "tags") {
-    // Tag entries: grouped by facet, label + version
-    const byFacet = { genre: [], dramaticMode: [], tone: [] };
-    for (const entry of cat.entries) {
-      if (Object.prototype.hasOwnProperty.call(byFacet, entry.facet)) {
-        byFacet[entry.facet].push(entry);
-      }
-    }
-
-    const facetLabels = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
-    for (const [facet, entries] of Object.entries(byFacet)) {
-      if (entries.length > 0) {
-        body.push(`<div class="cat-tags-group">
-          <div class="cat-facet-heading">${facetLabels[facet]}</div>`);
-        for (const entry of entries) {
-          const isSelected = cat.selected?.id === entry.id;
-          body.push(`
-            <div ${tid("catalog.entry-row")} data-cat-id="${esc(entry.id)}"
-                 class="catalog-entry${isSelected ? " selected" : ""}">
-              <div class="cat-name">${esc(entry.label || "(unnamed)")}</div>
-              <div class="cat-version">v${entry.version}</div>
-            </div>
-          `);
-        }
-        body.push(`</div>`);
-      }
-    }
+    // The tags list is grouped by the derived cut, not the authored facet: a tag is STYLE when
+    // some style carries it and STORY when none does — observed from the catalogs, so the editor
+    // gains no checkbox and the grouping moves the moment a style picks the tag up. The facet
+    // each tag was authored under rides along on the row.
+    const groups = { story: [], style: [] };
+    for (const entry of cat.entries) groups[tagIsStyle(entry.label) ? "style" : "story"].push(entry);
+    const groupHead = (name, entries) => {
+      if (!entries.length) return "";
+      const rows = entries.map(entry => {
+        const isSelected = cat.selected?.id === entry.id;
+        return `
+          <div ${tid("catalog.entry-row")} data-cat-id="${esc(entry.id)}"
+               class="catalog-entry${isSelected ? " selected" : ""}">
+            <div class="cat-name">${esc(entry.label || "(unnamed)")}<span class="cat-facet"> · ${esc(entry.facet)}</span></div>
+            ${tagUsageHtml(entry.label)}
+            <div class="cat-version">v${entry.version}</div>
+          </div>
+        `;
+      }).join("");
+      return `<div class="cat-tags-group">
+        <div class="cat-facet-heading">${name}</div>${rows}</div>`;
+    };
+    body.push(groupHead("STORY", groups.story));
+    body.push(groupHead("STYLE", groups.style));
   } else if (cat.kind === "styles") {
     // Style entries: name + description + version
     for (const entry of cat.entries) {
@@ -204,7 +224,7 @@ export function catalogPageHtml() {
       `);
     }
   } else if (cat.kind === "skills") {
-    // Skill entries: name + meaning + version
+    // Skill entries: name + meaning + who uses them
     for (const entry of cat.entries) {
       const isSelected = cat.selected?.id === entry.id;
       body.push(`
@@ -212,6 +232,7 @@ export function catalogPageHtml() {
              class="catalog-entry${isSelected ? " selected" : ""}">
           <div class="cat-name">${esc(entry.name || "(unnamed)")}</div>
           ${entry.meaning ? `<div class="cat-desc">${esc(entry.meaning)}</div>` : ""}
+          ${skillUsageHtml(entry.name)}
           <div class="cat-version">v${entry.version}</div>
         </div>
       `);
@@ -315,6 +336,13 @@ export function catalogPageHtml() {
         <label for="cat-label">Label</label>
         <input id="cat-label" type="text" value="${esc(d.label || "")}" placeholder="e.g. Science Fiction, Comedy, Melancholic">
       </div>`);
+
+      // Observed association, not authored: the styles that carry this tag today. It is derived
+      // from the style catalog, so it updates when a style's tags change and needs no field here.
+      const stylesFor = tagStyles(d.label);
+      if (stylesFor.length)
+        body.push(`<div class="field"><label>Styles commonly associated</label>
+          <div class="cat-tags-row">${stylesFor.map(s => `<span class="cat-chip on">${esc(s)}</span>`).join("")}</div></div>`);
     } else if (cat.kind === "styles") {
       // Style form: name, description, tags, voice
       body.push(`<div class="field">
@@ -348,6 +376,9 @@ export function catalogPageHtml() {
         <label for="cat-meaning">Meaning</label>
         <textarea id="cat-meaning" placeholder="What the skill lets a character do">${esc(d.meaning || "")}</textarea>
       </div>`);
+
+      body.push(`<div class="field"><label>Usage</label>${skillUsageHtml(d.name)
+        || `<p class="hint">no character carries it yet</p>`}</div>`);
 
       // Tags picker for skills
       body.push(`<div class="field">

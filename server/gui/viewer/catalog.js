@@ -163,8 +163,21 @@ export async function loadCatalog(kind) {
 
   APP.catalog.entries = j.entries || [];
   APP.catalog.loaded = true;
+  refreshUsage();
   APP.render();
   syncHash();
+}
+
+/** What the other catalogs reference, for the list's "used by" lines and the tag page's derived
+ *  STORY/STYLE grouping and styles-associated line. Derived server-side over all kinds at once; a
+ *  failure leaves the last known usage rather than erroring the page — counts are decoration, the
+ *  entries are the data. */
+export async function refreshUsage() {
+  try {
+    const r = await fetch("/catalog/usage");
+    const j = await r.json();
+    if (j.ok) APP.catalog.usage = j.usage;
+  } catch { /* keep what was there */ }
 }
 
 let vocabLoading = false;
@@ -283,6 +296,7 @@ async function confirmDelete() {
   APP.catalog.error = "";
   APP.catalog.issues = [];
   APP.catalog.problems = [];
+  refreshUsage();
   APP.render();
 }
 
@@ -445,6 +459,7 @@ async function saveDraft() {
     APP.catalog.selected = saved;
     APP.catalog.draft = toDraft(saved, APP.catalog.kind);
     clearDeleteTimer();
+    refreshUsage();
     APP.render();
   } catch (error) {
     APP.catalog.error = error.message || "save failed";

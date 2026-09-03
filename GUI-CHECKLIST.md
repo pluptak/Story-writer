@@ -611,9 +611,18 @@ The global character library, accessible from the shelf and reloadable by direct
       dialog; cancel stays on the current kind, confirm switches and discards the draft. The nav's
       **Libraries** group switches kinds by navigation too — each entry seeds the kind before the page
       loads, landing on the same view the switcher would show.
-- [ ] **Tags render grouped by facet.** When browsing tags, the list groups entries under their facet,
-      not as one flat list of 24. Each facet has a visible header (`facet`), and tags are listed under
-      it. The grouping updates as the list changes.
+- [ ] **Tags render grouped STORY / STYLE, derived.** When browsing tags, the list groups entries
+      under two observed headings: **STORY** (no style carries the tag) and **STYLE** (some style
+      does), with each tag's authored facet riding along on its row. The grouping moves by itself —
+      add the tag to a style, save, and the tag reappears under STYLE; remove it and it falls back
+      to STORY. No editor field decides this.
+- [ ] **Usage lines are observed counts.** A tag row reads *used by N characters · M styles · K
+      skills* (whichever are non-zero); a skill row reads *used by N characters*. Save a character
+      carrying a tag and the tag's count climbs without another edit; delete the character and it
+      falls back.
+- [ ] **A tag's detail shows the styles associated with it.** Open a tag that at least one style
+      carries: *Styles commonly associated* names those styles as chips. A tag no style carries
+      shows no such block — an empty labelled block would read as data that is not there.
 - [ ] **Editing a tag's label bumps its version and does not change the entry count.** Open a tag entry
       and change its label. Save it. Its version number increments. The total number of tags on the
       page stays the same — the entry is an update, not a new one.

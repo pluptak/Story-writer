@@ -19,7 +19,7 @@ import {
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
-import type { ServerHost, Concept } from "./server/server.ts";
+import type { ServerHost, Concept, CatalogUsage } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
 /** The architect's own knobs, which are the defaults' — not any one story's. */
@@ -299,5 +299,30 @@ export const HOST: ServerHost = {
       return { ok: false, reason: result.reason, status: 404 };
     }
     return result;
+  },
+  catalogUsage: async () => {
+    const [characters, styles, skills] = await Promise.all(
+      (["characters", "styles", "skills"] as const).map(k => loadCatalog(k)));
+    const usage: CatalogUsage = { tags: {}, skills: {} };
+    const tagFor = (label: unknown) => {
+      const key = String(label ?? "").trim().toLowerCase();
+      if (!key) return null;
+      return usage.tags[key] ?? (usage.tags[key] = { characters: 0, styles: [], skills: 0 });
+    };
+    for (const c of characters.entries as { tags?: string[] }[])
+      for (const t of c.tags ?? []) { const u = tagFor(t); if (u) u.characters++; }
+    for (const s of styles.entries as { name?: string; tags?: string[] }[])
+      for (const t of s.tags ?? []) { const u = tagFor(t); if (u) u.styles.push(String(s.name || "")); }
+    for (const k of skills.entries as { tags?: string[] }[])
+      for (const t of k.tags ?? []) { const u = tagFor(t); if (u) u.skills++; }
+    // A skill is "used by" a character when resolution would find it: the name a character's
+    // `name :: meaning` line holds, matched the way every identity comparison is (sameName).
+    for (const c of characters.entries as { skills?: string[] }[])
+      for (const raw of c.skills ?? []) {
+        const name = splitMeaning(String(raw)).text;
+        const key = Object.keys(usage.skills).find(k => sameName(k, name)) ?? name;
+        usage.skills[key] = (usage.skills[key] ?? 0) + 1;
+      }
+    return usage;
   },
 };

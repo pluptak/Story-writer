@@ -154,6 +154,9 @@ async function fixtureHost(): Promise<ServerHost> {
         ? { ok: false, reason: r.reason, status: 404 }
         : r;
     },
+    // Usage is derived from the temp catalogs, which start empty — never from the author's real
+    // files at ROOT, which the spread HOST would read.
+    catalogUsage: async () => ({ tags: {}, skills: {} }),
   } as ServerHost;
 }
 
