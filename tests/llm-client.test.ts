@@ -204,29 +204,24 @@ describe("completeStream SSE frame parsing", () => {
   it("rethrows stream error when RUN.stopped (stops recovery on line 122)", async () => {
     armRun();
     const encoder = new TextEncoder();
-    let readCount = 0;
-    let hasErrored = false;
 
-    class BreakAfterData extends ReadableStream<Uint8Array> {
-      constructor() {
-        super({
-          pull(controller) {
-            readCount++;
-            if (readCount === 1) {
-              // Send text with complete JSON so recovery would normally keep it
-              controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"{\\"result\\":\\"ok\\"}"}}]}\n'));
-            } else if (readCount === 2 && !hasErrored) {
-              // Second attempt: error the stream
-              hasErrored = true;
-              controller.error(new Error("stream broke mid-transmission"));
-            }
-          },
-        });
-      }
-    }
-
-    globalThis.fetch = async () => new Response(new BreakAfterData(),
-      { headers: { "content-type": "text/event-stream" } }) as any;
+    globalThis.fetch = (async (_url: any) => {
+      // The readiness probes ask the models route first; only the chat call gets the broken stream.
+      if (String(_url).endsWith("/models")) return new Response("{}", { status: 200 }) as any;
+      let pulls = 0;
+      return new Response(new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls++;
+          if (pulls === 1) {
+            // Send text with complete JSON so recovery would normally keep it
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"{\\"result\\":\\"ok\\"}"}}]}\n'));
+          } else {
+            // Second attempt: error the stream
+            controller.error(new Error("stream broke mid-transmission"));
+          }
+        },
+      }), { headers: { "content-type": "text/event-stream" } }) as any;
+    }) as any;
 
     // Stop the run before starting the stream, so RUN.stopped=true
     // when the stream error is caught on line 122

@@ -1,6 +1,7 @@
 /**
  * The request coordinator: one attempt per slot, no overlap, cancel- and budget-aware waits,
- * and the surfaced QUEUE state.
+ * and the surfaced QUEUE state. The readiness probes that precede a call are metadata and
+ * deliberately outside the queue — the fakes here answer them instantly and count only chat.
  */
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -12,15 +13,18 @@ import { armRun, stopRun, StoppedError } from "../live.ts";
 
 const MSGS = [{ role: "user" as const, content: "test" }];
 const reply = () => new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }));
+const modelsReply = () => new Response("{}", { status: 200 });
+const isChat = (url: unknown) => !String(url).endsWith("/models");
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 describe("the request queue", () => {
   const origFetch = globalThis.fetch;
   afterEach(() => { globalThis.fetch = origFetch; armRun(); });
 
-  it("never lets two requests be on the wire at once", async () => {
+  it("never lets two chat requests be on the wire at once", async () => {
     let onWire = 0, overlapped = false;
-    globalThis.fetch = (async () => {
+    globalThis.fetch = (async (url: any) => {
+      if (!isChat(url)) return modelsReply();
       if (++onWire > 1) overlapped = true;
       await sleep(15);
       onWire--;
@@ -38,7 +42,8 @@ describe("the request queue", () => {
   it("surfaces who holds the slot and how deep the queue is, and empties both after", async () => {
     let release: (() => void) | undefined;
     let held = false;
-    globalThis.fetch = (async () => {
+    globalThis.fetch = (async (url: any) => {
+      if (!isChat(url)) return modelsReply();
       if (!held) {
         held = true;
         await new Promise<void>(r => { release = r; });
@@ -62,7 +67,8 @@ describe("the request queue", () => {
 
   it("holds the slot until a stream is fully consumed", async () => {
     const events: string[] = [];
-    globalThis.fetch = (async (_url: any, init: any) => {
+    globalThis.fetch = (async (url: any, init: any) => {
+      if (!isChat(url)) return modelsReply();
       const isStream = new Headers(init.headers).get("X-SW-Site") === "writer.draft";
       if (!isStream) { events.push("second-start"); return reply(); }
       events.push("stream-start");
@@ -91,7 +97,8 @@ describe("the request queue", () => {
     NET.retries = 1; NET.backoffMs = 0;
     let calls = 0;
     const order: string[] = [];
-    globalThis.fetch = (async (_url: any, init: any) => {
+    globalThis.fetch = (async (url: any, init: any) => {
+      if (!isChat(url)) return modelsReply();
       const site = new Headers(init.headers).get("X-SW-Site");
       if (site === "retrying") {
         calls++;
@@ -119,11 +126,12 @@ describe("the request queue", () => {
   it("gives up when the wait budget runs out, without spending a request or a retry", async () => {
     const savedWait = QUEUE_LIMITS.waitMs;
     QUEUE_LIMITS.waitMs = 40;
-    let fetches = 0;
+    let chatFetches = 0;
     let release: (() => void) | undefined;
     try {
-      globalThis.fetch = (async () => {
-        fetches++;
+      globalThis.fetch = (async (url: any) => {
+        if (!isChat(url)) return modelsReply();
+        chatFetches++;
         await new Promise<void>(r => { release = r; });   // the holder never finishes on its own
         return reply();
       }) as any;
@@ -133,7 +141,7 @@ describe("the request queue", () => {
       await assert.rejects(
         () => complete("m", MSGS, 0.5),
         (e: Error) => e instanceof QueueGaveUpError && /waiting for its turn/.test(e.message));
-      assert.equal(fetches, 1, "the queued call never reached the wire");
+      assert.equal(chatFetches, 1, "the queued call never reached the wire");
       release!();
       await holder;
     } finally {
@@ -143,7 +151,15 @@ describe("the request queue", () => {
 
   it("unwinds queued calls when the run stops", async () => {
     let release: (() => void) | undefined;
-    globalThis.fetch = (async () => { await new Promise<void>(r => { release = r; }); return reply(); }) as any;
+    let held = false;
+    globalThis.fetch = (async (url: any) => {
+      if (!isChat(url)) return modelsReply();
+      if (!held) {
+        held = true;
+        await new Promise<void>(r => { release = r; });
+      }
+      return reply();
+    }) as any;
     armRun();
     const holder = complete("m", MSGS, 0.5);
     await sleep(5);

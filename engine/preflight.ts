@@ -91,6 +91,17 @@ async function fetchModelInfo(timeoutMs: number): Promise<Map<string, ModelInfo>
   return out;
 }
 
+/** The single-GPU reality: every switch between distinct models can mean unloading one and
+ *  loading another on a constrained machine — seconds to minutes per switch, over and over.
+ *  Pure, so the tests can hold it against shapes without a server. */
+export function modelSwapWarning(models: string[]): string | null {
+  const distinct = [...new Set(models.filter(Boolean))];
+  if (distinct.length < 2) return null;
+  return `${distinct.length} distinct models across writer/cast/summary (${distinct.join(", ")}) — `
+    + `each switch between them may load and unload a model on a single-GPU machine; `
+    + `consider one model for the cast`;
+}
+
 export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): Promise<PreflightResult> {
   const task = preflightChain.then(async (): Promise<PreflightResult> => {
     const warnings: string[] = [];
@@ -127,6 +138,10 @@ export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): 
           warnings.push(`   (${m} is loaded with only ${mi.loadedContext} tokens of context — `
             + `the architect's opening handoff round alone is about 7,000)`);
       }
+
+      // No server call needed: the story's own model list says how much switching a chapter does.
+      const swap = modelSwapWarning(wanted);
+      if (swap) warnings.push(`   (${swap})`);
 
       return {
         ok: true, warnings,

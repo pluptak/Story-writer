@@ -3,7 +3,7 @@
  *  `reasoning_effort` belong on the wire all come from the selected provider (provider.ts). */
 import { C } from "../ansi.ts";
 import { RUN, StoppedError } from "../live.ts";
-import { ENGINE, progressDone } from "./engine-state.ts";
+import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
 import { topLevelObjects } from "./json-extract.ts";
 import { PROVIDER } from "./provider.ts";
@@ -66,7 +66,8 @@ function parseUsage(u: any): CompletionUsage | null {
 
 /** The retry/backoff knobs, settable per run from a story's config. */
 export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800,
-                     probeTimeoutMs: 1500, recoveryProbes: 2, maxCallMs: 600_000 };
+                     probeTimeoutMs: 1500, recoveryProbes: 2, maxCallMs: 600_000,
+                     loadWaitMs: 300_000 };
 
 /** The last failure the transport classified — what a status line or the viewer wants first. */
 export const TELEMETRY = { last: null as
@@ -219,9 +220,52 @@ async function postChat(body: string, signal: AbortSignal, call?: CallSite) {
   return res;
 }
 
+// -- MODEL READINESS --------------------------------------------------------
+/** Thrown when the server never finishes bringing a model up within the wait budget. */
+export class ModelLoadTimeoutError extends Error { }
+
+/** Models the not-loaded warning has already fired for — once per process, not once per call. */
+const notLoadedWarned = new Set<string>();
+
+/** Wait for the server to finish bringing `model` up before the first attempt, so a load in
+ *  progress never burns retry attempts or trips the idle deadline. A model the server reports
+ *  as not loaded is only warned about: the engine never loads models on its own — that is
+ *  orchestration, and on a limited-VRAM box it is the operator's call. Metadata only, asked
+ *  before the queue: it does no model work and never preempts anything. */
+async function waitReady(model: string) {
+  if (!PROVIDER.capabilities.modelRuntimeInspection) return;
+  const m = (await PROVIDER.inspectModels(NET.probeTimeoutMs))?.get(model);
+  if (!m || m.state === "loaded" || m.state === "unknown") return;
+  if (m.state === "not-loaded") {
+    if (!notLoadedWarned.has(model)) {
+      notLoadedWarned.add(model);
+      warn(`   ${C.yellow}⚠${C.reset} ${model} is not loaded in ${PROVIDER.displayName} — the first call `
+        + `may wait on a just-in-time load, or fail fast if JIT loading is off`);
+    }
+    return;
+  }
+  // state "loading": the server is already bringing it up — wait it out.
+  const startedAt = Date.now();
+  try {
+    for (;;) {
+      if (RUN.stopped) throw new StoppedError();
+      if (Date.now() - startedAt > NET.loadWaitMs)
+        throw new ModelLoadTimeoutError(`${model} is still loading after ${Math.round(NET.loadWaitMs / 1000)}s `
+          + `— load it in ${PROVIDER.displayName} first, or raise the wait`);
+      await new Promise(r => setTimeout(r, 1000));
+      const state = (await PROVIDER.inspectModels(NET.probeTimeoutMs))?.get(model)?.state;
+      if (state !== "loading") return;   // loaded — or the load gave up server-side; let the call report it
+      progress(`waiting for ${model} to load… ${Math.round((Date.now() - startedAt) / 1000)}s`);
+    }
+  } finally {
+    progressDone();
+  }
+}
+
 /** One non-streaming completion, with retry/backoff; throws StoppedError when the run is stopped. */
 export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low",
                                call?: CallSite): Promise<Completion> {
+  await waitReady(model);
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal, call);
     // Read the body as text first: a 200 whose body will not parse (a proxy error page, LM Studio
@@ -252,6 +296,7 @@ export async function complete(model: string, messages: Msg[], temperature: numb
 export async function completeStream(model: string, messages: Msg[], temperature: number,
                                      onDelta: (d: string) => void, think: ThinkLevel = "low",
                                      call?: CallSite): Promise<Completion> {
+  await waitReady(model);
   return withRetry(`${model} stream`, async (signal, heartbeat) => {
     const res = await postChat(requestBody(model, messages, temperature, true, think), signal, call);
     if (!res.body) throw new LmError(`${PROVIDER.displayName} returned no stream body`, undefined, true);
