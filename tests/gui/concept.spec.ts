@@ -23,9 +23,12 @@ test("the idea modal offers the tag catalog's own vocabulary", async ({ page, se
   // The cast-size select exists with the correct option values.
   const castSizeSelect = page.locator("#f-cast-size");
   await expect(castSizeSelect).toBeVisible();
+  // Read through locators rather than evaluateAll: this project's tsconfig has no DOM lib, so a
+  // handler annotated with an HTML element type does not typecheck.
   const options = castSizeSelect.locator("option");
-  const values = await options.evaluateAll(nodes => nodes.map(n => (n as HTMLOptionElement).value));
-  expect(values).toEqual(["0", "2", "3", "4"]);
+  await expect(options).toHaveCount(4);
+  for (const [i, value] of ["0", "2", "3", "4"].entries())
+    await expect(options.nth(i)).toHaveAttribute("value", value);
 });
 
 test("a chip toggles and stays toggled through the re-render it causes", async ({ page, served }) => {
