@@ -67,6 +67,9 @@ export type LiveFrame =
   | RunStateFrame
   | { t: "run_reset" }
   | { t: "run_error"; message: string }
+  | { t: "provider_state"; provider: string; baseUrl: string;
+      inFlight: number; depth: number; current: string;
+      lastFailure: { what: string; kind: string; message: string; agent?: string; at: number } | null }
   | { t: "scaffold"; state: unknown }
   | { t: "handoff"; state: unknown };
 

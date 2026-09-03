@@ -12,6 +12,7 @@ import { startServer, type ServerHandle } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { NET } from "./engine/llm-client.ts";
 import { loadStory, chooseStory, writtenChapters, type StoryConfig } from "./engine/story-format.ts";
+import { startupRefusal } from "./engine/run-gate.ts";
 import { warn } from "./engine/warnings.ts";
 import { runAndSave } from "./run-and-save.ts";
 import { skillBible } from "./engine/catalog.ts";
@@ -98,6 +99,13 @@ export async function startChapterRun(dir: string, chapter = 1, cli: CliConfig,
     const refusal = await chapterStartRefusal(sc.dir, chapter,
                                               opts.replace === true || cli.replace !== undefined);
     if (refusal) throw new Error(refusal);
+
+    // Then the provider gate: refusing beats failing call-by-call three minutes in. A model the
+    // provider has but has not loaded only warns (the transport waits out the JIT load); a model
+    // it does not know at all stops the run here, naming what it could not find.
+    const gate = await startupRefusal([sc.models.default, sc.models.writer, sc.models.summary,
+                                       ...sc.characters.map(c => c.model)]);
+    if (gate) throw new Error(gate);
 
     return runAndSave(sc, dir, chapter, { serving: cli.serve, serve: () => startServer(cli.port, HOST) });
   } finally {

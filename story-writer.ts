@@ -12,7 +12,7 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { C } from "./ansi.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { LMSTUDIO_URL, lmUrlsDerivable } from "./engine/llm-client.ts";
+import { PROVIDER } from "./engine/provider.ts";
 import { discoverStories, type StoryConfig } from "./engine/story-format.ts";
 import { runPreflight, contextFit } from "./engine/preflight.ts";
 import { skillBible } from "./engine/catalog.ts";
@@ -32,10 +32,10 @@ setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
 // a layer above agent.ts — so the same sink pattern as setDebugWrite wires it in from here.
 setFitWarning(contextFit);
 
-if (!lmUrlsDerivable(LMSTUDIO_URL))
-  warn(`LM_STUDIO_URL (${LMSTUDIO_URL}) does not end in /chat/completions — the /models and `
-    + `/api/v0/models endpoints derived from it will hit the wrong route, and model checks `
-    + `will report "unreachable" no matter what is loaded`);
+// The old env variable named the full chat-completions URL; the provider layer wants the base.
+// The alias still works — normalizeBaseUrl strips the suffix — but say so once, at startup only.
+if (process.env.LM_STUDIO_URL && !process.env.LLM_BASE_URL)
+  warn(`LM_STUDIO_URL is deprecated — use LLM_BASE_URL (a base URL such as ${PROVIDER.baseUrl})`);
 
 ENGINE.serve = SERVE || HEADLESS;
 // Plain --serve goes quiet (the viewer is the monitor); headless serves AND echoes (its console is).
@@ -141,7 +141,8 @@ if (IS_MAIN) {
   } else {
     main().catch(e => {
       console.error("\n[story-writer error]", e.message);
-      console.error("Check that LM Studio's server is running and the model identifiers are correct.");
+      console.error(`Check that ${PROVIDER.displayName}'s server is running at ${PROVIDER.baseUrl} `
+        + `and the model identifiers are correct.`);
       process.exitCode = 1;
     });
   }

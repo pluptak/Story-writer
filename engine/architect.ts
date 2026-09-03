@@ -7,12 +7,13 @@ import { C } from "../ansi.ts";
 import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
-import { slugify } from "./config-util.ts";
-import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG } from "./skills.ts";
+import { slugify, nameKey } from "./config-util.ts";
+import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, splitMeaning, canonSkill, type BibleLookup } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
+import { PROVIDER } from "./provider.ts";
 import { estimateTokens } from "./llm-client.ts";
 
 async function architectExample(): Promise<string> {
@@ -32,9 +33,10 @@ async function architectExample(): Promise<string> {
  * edit field inline and sends the real story every round, so the example is the format said twice,
  * and it demonstrates the whole-story reply a handoff must *not* send.
  */
-export async function buildArchitect(d: Defaults, withExample = true): Promise<Agent> {
+export async function buildArchitect(d: Defaults, withExample = true,
+                                     bible: Readonly<Record<string, string>> = SPECIAL_SKILL_CATALOG): Promise<Agent> {
   const system = P.architectSystem(
-    SKILL_CATALOG, SPECIAL_SKILL_CATALOG,
+    SKILL_CATALOG, bible,
     withExample ? await architectExample() : "");
   const a = new Agent("ARCHITECT", d.models.architect, system, 0.9);
   a.think = d.thinking.architect;
@@ -59,7 +61,141 @@ export function newCastAsymmetryJudge(d: Defaults): Agent {
   return a;
 }
 
+/** Roster size is what a scene costs. Every character in the roster may be consulted at each beat,
+ *  so a wide cast spends the step budget on breadth instead of depth -- the `alarm-wing` runs hit
+ *  the 24-step cap with a wide roster while a duo on the same budget did not. Quiet below three
+ *  characters, and quiet when the budget is still at least eight beats wide; those are the shapes
+ *  that had room. Returns "" when there is nothing yet to price. */
+export function consultCostNote(spec: StorySpec): string {
+  const roster = spec.characters.length;
+  const maxSteps = spec.config.maxSteps;
+  if (roster < 3 || maxSteps <= 0) return "";
+  const beats = Math.floor(maxSteps / roster);
+  if (beats >= 8) return "";
+  return `${roster} characters against maxSteps ${maxSteps}: every one of them may be consulted at `
+    + `each beat, so the budget is about ${beats} beats wide — a roster this wide has run out of `
+    + `steps before the scene resolved`;
+}
+
+/** A bespoke skill the architect invented, offered for promotion into the author's bible. */
+export type BibleCandidate = { name: string; meaning: string; heldBy: string[] };
+
+/** The bespoke skills in a cast, as promotion candidates: a skill carrying its own ":: meaning"
+ *  whose name is neither a general skill nor already in the bible. Writing one IS the proposal, so
+ *  this is derived from the spec rather than asked for in a reply — a skill nobody in the cast holds
+ *  cannot appear here, which a prompt field could not promise.
+ *
+ *  Reach is never a candidate (I4). A reach entry exists only while its scene is being written and
+ *  must not become an intrinsic skill, so only `character.skills` is read here — never `scene.reach`.
+ *  Duplicates collapse on the canonical name, keeping the first authored spelling and meaning. */
+export function bibleCandidates(spec: StorySpec, bible: BibleLookup = bibleMeaningOf): BibleCandidate[] {
+  // Every name comparison in this engine goes through canonSkill, and this one must too: a raw
+  // `text in SKILL_CATALOG` would let "Sight :: seeing" through as a candidate, and would silently
+  // swallow a skill called "toString" on the way past.
+  const general = new Set(Object.keys(SKILL_CATALOG).map(canonSkill));
+  const candidates = new Map<string, BibleCandidate>();
+
+  for (const character of spec.characters) {
+    for (const entry of character.skills) {
+      const { text, meaning } = splitMeaning(entry);
+      if (!meaning.trim()) continue;                  // a bare name is a reference, not a proposal
+      const key = canonSkill(text);
+      if (general.has(key)) continue;                 // everyone already has it
+      if (bible(text) !== undefined) continue;        // already promoted
+
+      if (!candidates.has(key)) candidates.set(key, { name: text, meaning: meaning.trim(), heldBy: [] });
+      const held = candidates.get(key)!.heldBy;
+      if (!held.includes(character.name)) held.push(character.name);
+    }
+  }
+
+  return [...candidates.values()];
+}
+
+/** The adaptation contract, applied rather than requested. The five fields that travel with a
+ *  character are restored from the library entry, and an import the reply left out is added back
+ *  unchanged: the author chose these people, so the architect may argue in "note" that one does not
+ *  fit, but may not un-choose them by omission.
+ *
+ *  Adding someone is reported rather than reverted, and the asymmetry is deliberate: preservation is
+ *  where a model reliably drifts and the author cannot see it, while an extra character is visible,
+ *  may well be what the author asked for mid-gate, and is cheap to delete. Returns what it had to
+ *  correct so the proposal carries its own receipt. */
+export function applyImportContract(
+  proposed: readonly unknown[], imported: readonly ImportedCharacter[],
+): { characters: Record<string, unknown>[]; notes: string[] } {
+  const TRAVELS = ["belief", "impulse", "voice", "skills", "restrictions"] as const;
+  // Compared as text so "changed" means what a reader would call changed: whitespace and element
+  // order are the only things this normalizes away.
+  const flat = (v: unknown) =>
+    Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean).join("|") : String(v ?? "").trim();
+  const copy = (v: string[]) => [...v];
+
+  const byName = new Map(imported.map(i => [nameKey(i.name), i]));
+  const matched = new Set<string>();
+  const characters: Record<string, unknown>[] = [];
+  const notes: string[] = [];
+
+  for (const entry of proposed) {
+    const c = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    const name = String(c.name ?? "").trim();
+    const from = byName.get(nameKey(name));
+    if (!from) {
+      characters.push(c);
+      notes.push(`${name || "an unnamed character"} is not one of the imported characters `
+        + `— the cast gate is not meant to add anyone`);
+      continue;
+    }
+    matched.add(nameKey(from.name));
+    for (const field of TRAVELS) {
+      // Only a non-empty proposed value counts as a change: leaving a field out is the reply being
+      // brief about something it was told it did not own, not an attempt to edit it.
+      const was = flat(c[field]);
+      if (was && was !== flat(from[field]))
+        notes.push(`${from.name}: the architect changed ${field}, which travels with the character `
+          + `— reverted to the library's`);
+    }
+    characters.push({ ...c,
+      belief: from.belief, impulse: from.impulse,
+      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions) });
+  }
+
+  for (const from of imported) {
+    if (matched.has(nameKey(from.name))) continue;
+    characters.push({ name: from.name, persona: from.portablePersona, knows: "", goal: "",
+      belief: from.belief, impulse: from.impulse,
+      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions) });
+    notes.push(`${from.name} was left out of the proposal — added back unchanged, because the `
+      + `author chose this character`);
+  }
+
+  return { characters, notes };
+}
+
 // -- SCAFFOLD SESSION ------------------------------------------------------
+
+/** One character the author imported from their catalog, as the session holds it. The preserved
+ *  half lives HERE rather than being read back off the spec, so the contract is enforced against
+ *  what the library said and not against whatever the last round left behind. Session-only, like
+ *  `tension` and the concept: `libraryId`/`version` are provenance that ends at accept — `StoryJson`
+ *  is a strict object with nowhere to put them, and the handoff must never know a character came
+ *  from a template. */
+export type ImportedCharacter = {
+  libraryId: string;
+  version: number;
+  name: string;
+  portablePersona: string;
+  belief: string;
+  impulse: string;
+  voice: string[];
+  skills: string[];
+  restrictions: string[];
+};
+
+/** The style preset the author picked from their catalog. Session-only: the `voice` becomes the
+ *  spec's `writerStyle`, but WHICH preset it came from is authoring provenance and story.json has
+ *  no room for it. */
+export type StylePreset = { id: string; name: string; voice: string };
 
 /** Which of the two automatic follow-up passes ran, for the CLI/SSE to label. */
 export type AutoStage = "fillGaps" | "verify";
@@ -160,6 +296,7 @@ async function runAutoPasses(
   onStage?: (stage: AutoStage) => void,
   refuse?: (edits: any[]) => { edits: any[]; refused: string[] },
   passes: readonly AutoStage[] = ["fillGaps", "verify"],
+  bible: BibleLookup = bibleMeaningOf,
 ): Promise<{ spec: StorySpec; problems: string[]; auto: AutoPass[]; question?: string }> {
   let cur = spec;
   let problems: string[] = [];
@@ -180,7 +317,7 @@ async function runAutoPasses(
       return undefined;
     }
     const guarded = refuse ? refuse(r.out.edits) : { edits: r.out.edits, refused: [] as string[] };
-    const e = applyEdits(cur, { edits: guarded.edits });
+    const e = applyEdits(cur, { edits: guarded.edits }, bible);
     cur = e.spec; problems = e.problems;
     archLog(`AUTOPASS ${stage}: applied=${e.applied.map(a => a.field)} ignored=[${[...guarded.refused, ...e.ignored].join(", ")}]`);
     auto.push({ stage, applied: e.applied, ignored: [...guarded.refused, ...e.ignored], note: withAsk(r.out), outcome: "edits" });
@@ -190,7 +327,7 @@ async function runAutoPasses(
   for (const stage of passes) {
     const prompt = stage === "fillGaps"
       ? P.architectFillGaps(specJson(cur), sceneField)
-      : P.architectVerify(specJson(cur), sceneField, applyEdits(cur, { edits: [] }).problems);
+      : P.architectVerify(specJson(cur), sceneField, applyEdits(cur, { edits: [] }, bible).problems);
     const ask = await runStage(stage, prompt);
     if (ask !== undefined) return { spec: cur, problems, auto, question: ask };
   }
@@ -234,20 +371,41 @@ export class ScaffoldSession {
    *  and sharpens the scene stage's question. */
   tension = "";
 
+  /** The characters the author imported from the catalog, if any. Session-only; it changes what the
+   *  cast gate DOES (see `architectCastImportStage`) rather than what the story holds. */
+  imported: ImportedCharacter[] = [];
+
+  /** The style preset the author chose, if any. Assigned by whoever built the session, like
+   *  `imported`: it changes what the settings gate is ASKED for rather than what the story holds. */
+  style: StylePreset | null = null;
+
+  /** The bible this session validates a proposed cast against. Assigned by whoever built the
+   *  session, so the architect is judged by the bible the author edits rather than the one in the
+   *  source. Defaults to the in-code catalog for tests and any caller that has not loaded one. */
+  bible: BibleLookup = bibleMeaningOf;
+
   private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
 
   /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
-   *  without it a test walking the checklist would reach for the network at the cast gate. */
+   *  without it a test walking the checklist would reach for the network at the cast gate.
+   *  `tags` and `castSize` are the author's concept, chosen before the architect ran: session-only,
+   *  like `tension`, and never a story.json field. Tags steer the story stage and stop there;
+   *  castSize is the OPENING cast's target size, which the cast stage reads. */
   constructor(public architect: Agent, public defaults: Defaults, public idea: string,
               public storiesDir: string = joinPath(ROOT, "stories"),
               public mode: "oneshot" | "staged" = "oneshot",
-              public newJudge?: () => Agent) {}
+              public newJudge?: () => Agent,
+              public tags: readonly string[] = [],
+              public castSize = 0) {}
 
   haveStory(): boolean { return this.spec.characters.length > 0; }
 
+  /** This session's promotion candidates, derived on demand from the spec it has built. */
+  bibleCandidates(): BibleCandidate[] { return bibleCandidates(this.spec, this.bible); }
+
   /** Replace the in-memory draft after a full GUI edit; nothing is written until accept(). */
   setSpec(raw: unknown): { applied: { field: string; before: unknown; after: unknown }[]; problems: string[] } {
-    const n = normalizeSpec(raw);
+    const n = normalizeSpec(raw, this.bible);
     this.spec = n.spec;
     this.problems = n.problems;
     this.pendingAsk = "";
@@ -277,20 +435,27 @@ export class ScaffoldSession {
     const json = this.specJsonText();
     const insist = this.asks >= ScaffoldSession.MAX_ASKS ? `${P.STAGE_INSIST}\n\n` : "";
     switch (stage) {
-      case "story": return insist + P.architectStoryStage(this.idea);
-      case "cast": return insist + P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json);
-      case "settings": return insist + P.architectSettingsStage(json);
+      case "story": return insist + P.architectStoryStage(this.idea, this.tags);
+      // An imported cast changes what this gate DOES, so it is a different stage prompt rather than
+      // a decorated one -- and it takes no castSize, because the tray already is the cast size.
+      case "cast": return insist + (this.imported.length
+        ? P.architectCastImportStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.imported)
+        : P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.castSize));
+      case "settings": return insist + P.architectSettingsStage(json,
+        this.style ? { name: this.style.name, voice: this.style.voice } : undefined);
       case "technical": return insist + P.architectTechnicalStage(json);
       case "scene": return insist + P.architectSceneStage(json);
       case "world": return insist + P.architectWorldStage(json);
     }
   }
 
-  private static stageHasContent(stage: P.ScaffoldStage, out: Record<string, any>): boolean {
+  private static stageHasContent(stage: P.ScaffoldStage, out: Record<string, any>, hasImports = false, hasStyle = false): boolean {
     switch (stage) {
       case "story": return Boolean(String(out.premise ?? "").trim() || String(out.title ?? "").trim());
-      case "cast": return Array.isArray(out.characters) && out.characters.length > 0;
-      case "settings": return Boolean(String(out.writer_style ?? "").trim());
+      case "cast": return Array.isArray(out.characters) && (out.characters.length > 0 || hasImports);
+      case "settings": return hasStyle
+        ? Array.isArray(out.writer_style_constraints)
+        : Boolean(String(out.writer_style ?? "").trim());
       case "technical": return Boolean(out.config && typeof out.config === "object")
         || Array.isArray(out.characters) || Array.isArray(out.scenes);
       case "scene": return Boolean(out.scene && typeof out.scene === "object");
@@ -310,7 +475,13 @@ export class ScaffoldSession {
     } else if (stage === "cast") {
       raw.characters = Array.isArray(out.characters) ? out.characters : [];
     } else if (stage === "settings") {
-      raw.writer_style = String(out.writer_style ?? "").trim();
+      // The preset is the author's pick, not the architect's to restate: a voice sent back at this
+      // gate is dropped and the chosen one stands. Same contract as an imported character's
+      // travelling half -- preservation is where a model drifts invisibly.
+      raw.writer_style = this.style ? this.style.voice : String(out.writer_style ?? "").trim();
+      if (Array.isArray(out.writer_style_constraints))
+        raw.writer_style_constraints = out.writer_style_constraints
+          .map((c: unknown) => String(c ?? "").trim()).filter(Boolean);
     } else if (stage === "technical") {
       // Config is a strict schema: strip nulls and any key the schema does not know so a partial
       // reply cannot fail to parse, then let normalizeSpec re-fill the rest with defaults.
@@ -355,13 +526,15 @@ export class ScaffoldSession {
   /** Problems a half-built story always has are not news: before the cast lands there are no
    *  characters, and before the scene lands there is no question for anything to answer. Those are
    *  suppressed; everything else shows verbatim. */
-  private static visibleProblems(spec: StorySpec, problems: string[]): string[] {
+  private static visibleProblems(spec: StorySpec, problems: string[], stage: P.ScaffoldStage | null = null): string[] {
     const castIn = spec.characters.length > 0;
     const sceneIn = Boolean(spec.scenes[0]?.question.trim());
-    return problems.filter(p =>
+    const filtered = problems.filter(p =>
       !(!castIn && p === "no characters at all")
       && !(!sceneIn && /has no question/.test(p))
       && !(!sceneIn && /^scene\b/.test(p)));
+    const note = stage === "scene" ? consultCostNote(spec) : "";
+    return note ? [...filtered, note] : filtered;
   }
 
   /** A world-gate reply's ledger, in either shape it arrives in: the stage's own top-level
@@ -376,7 +549,7 @@ export class ScaffoldSession {
 
   private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
     const ask = String(out.ask ?? "").trim();
-    if (!ScaffoldSession.stageHasContent(stage, out)) {
+    if (!ScaffoldSession.stageHasContent(stage, out, this.imported.length > 0, Boolean(this.style))) {
       if (ask) { this.pendingAsk = ask; this.asks++; return { kind: "question", ask, stage }; }
       archLog(`STAGE ${stage}: NOTHING — neither stage content nor ask. out=`, out);
       return { kind: "nothing", why: `the reply contained neither ${stage} content nor a question`, stage };
@@ -384,10 +557,30 @@ export class ScaffoldSession {
     this.pendingAsk = ""; this.asks = 0;
     if (stage === "story" && String(out.tension ?? "").trim())
       this.tension = String(out.tension).trim();
-    const n = normalizeSpec(this.mergedRaw(stage, out));
+
+    // Apply the import contract if we're at the cast stage and have imports
+    let importNotes: string[] = [];
+    let mergedOut = out;
+    if (stage === "cast" && this.imported.length > 0 && Array.isArray(out.characters)) {
+      const contract = applyImportContract(out.characters, this.imported);
+      importNotes = contract.notes;
+      mergedOut = { ...out, characters: contract.characters };
+    }
+
+    // The settings counterpart of the import contract's receipt: the revert happens in mergedRaw,
+    // and this is what tells the author it happened.
+    const styleNotes: string[] = [];
+    if (stage === "settings" && this.style) {
+      const sent = String(out.writer_style ?? "").trim();
+      if (sent && sent !== this.style.voice.trim())
+        styleNotes.push(`the architect rewrote the voice, which is the preset's `
+          + `— reverted to "${this.style.name}"`);
+    }
+
+    const n = normalizeSpec(this.mergedRaw(stage, mergedOut), this.bible);
     archLog(`STAGE ${stage}: content accepted. problems=`, n.problems);
     this.spec = n.spec;
-    this.problems = ScaffoldSession.visibleProblems(this.spec, n.problems);
+    this.problems = ScaffoldSession.visibleProblems(this.spec, [...n.problems, ...importNotes, ...styleNotes], stage);
     return { kind: "proposal", note: withAsk(out), stage };
   }
 
@@ -398,8 +591,13 @@ export class ScaffoldSession {
     if ("error" in r) return { kind: "failed", error: r.error };
     const base = this.takeStaged(stage, r.out);
     if (!(stage === "scene" && base.kind === "proposal")) return base;
-    const v = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, ["verify"]);
-    this.spec = v.spec; this.problems = v.problems;
+    const v = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, ["verify"], this.bible);
+    // Back through visibleProblems rather than straight across: the verify pass rebuilds the list
+    // from its own reading, so anything the gate itself added -- the consult cost -- is gone unless
+    // it is recomputed here. The suppression half is a no-op this late (a cast and a scene both
+    // exist by now), so the only thing this restores is the note.
+    this.spec = v.spec;
+    this.problems = ScaffoldSession.visibleProblems(this.spec, v.problems, stage);
     if (v.question !== undefined) { this.pendingAsk = v.question; return { kind: "question", ask: v.question, stage, auto: v.auto }; }
     this.pendingAsk = "";
     return { ...base, auto: v.auto };
@@ -473,7 +671,7 @@ export class ScaffoldSession {
   }
 
   private takeProposal(out: Record<string, any>): ScaffoldRound {
-    const n = normalizeSpec(out);
+    const n = normalizeSpec(out, this.bible);
     if (!n.spec.characters.length) {
       const back = String(out.ask ?? "").trim();
       if (back) { this.pendingAsk = back; this.asks++; return { kind: "question", ask: back }; }
@@ -490,7 +688,7 @@ export class ScaffoldSession {
    *  propose() or via say() following a clarifying question. Any other round kind passes through untouched. */
   private async afterProposal(base: ScaffoldRound, onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
     if (base.kind !== "proposal") return base;
-    const r = await runAutoPasses(this.architect, this.spec, "scene", onStage);
+    const r = await runAutoPasses(this.architect, this.spec, "scene", onStage, undefined, undefined, this.bible);
     this.spec = r.spec; this.problems = r.problems;
     if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
     this.pendingAsk = "";
@@ -533,9 +731,9 @@ export class ScaffoldSession {
         if (folded.kind !== "proposal" || !rest.length) { this.refusedLastRound = []; return folded; }
         // A round that re-authored the ledger and changed something else keeps both: the ledger is
         // already folded in above, and the rest applies on top of it.
-        const also = applyEdits(this.spec, { ...r.out, edits: rest });
+        const also = applyEdits(this.spec, { ...r.out, edits: rest }, this.bible);
         this.spec = also.spec;
-        this.problems = ScaffoldSession.visibleProblems(this.spec, also.problems);
+        this.problems = ScaffoldSession.visibleProblems(this.spec, also.problems, this.stage);
         this.refusedLastRound = also.ignored;
         archLog(`CHANGE world: ledger folded as stage content, then applied=[${also.applied.map(a => a.field).join(", ")}]`);
         return { kind: "edits", applied: also.applied, ignored: also.ignored, flags: [],
@@ -559,9 +757,9 @@ export class ScaffoldSession {
           this.tension = after;
         }
       }
-      const e = applyEdits(this.spec, { ...r.out, edits: named });
+      const e = applyEdits(this.spec, { ...r.out, edits: named }, this.bible);
       this.spec = e.spec;
-      this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems);
+      this.problems = ScaffoldSession.visibleProblems(this.spec, e.problems, this.stage);
       this.pendingAsk = "";
       this.refusedLastRound = e.ignored;
       archLog(`CHANGE ${this.stage}: fields=[${raw.map(x => String(x?.field ?? "?")).join(", ")}] `
@@ -576,7 +774,7 @@ export class ScaffoldSession {
     const back = String(r.out.ask ?? "").trim();
     if (back && !r.out.edits) { this.pendingAsk = back; return { kind: "question", ask: back }; }
 
-    const e = applyEdits(this.spec, r.out);
+    const e = applyEdits(this.spec, r.out, this.bible);
     this.spec = e.spec; this.problems = e.problems;
     this.pendingAsk = "";
     this.refusedLastRound = e.ignored;
@@ -633,6 +831,11 @@ export class NextChapterSession {
   pendingAsk = "";
   edited = false;                              // has any round changed the spec
 
+  /** The bible this session validates a proposed cast against. Assigned by whoever built the
+   *  session, so the architect is judged by the bible the author edits rather than the one in the
+   *  source. Defaults to the in-code catalog for tests and any caller that has not loaded one. */
+  bible: BibleLookup = bibleMeaningOf;
+
   /** What the last edits round refused or could not apply, fed back once so the architect stops
    *  repeating a field the engine will not take. Cleared by any edits round that refuses nothing. */
   private refusedLastRound: string[] = [];
@@ -684,7 +887,7 @@ export class NextChapterSession {
     }
 
     const guarded = this.refuse(r.out.edits);
-    const e = applyEdits(this.spec, { edits: guarded.edits });
+    const e = applyEdits(this.spec, { edits: guarded.edits }, this.bible);
     this.spec = e.spec; this.problems = e.problems; this.pendingAsk = "";
     this.edited = true;
     this.refusedLastRound = [...guarded.refused, ...e.ignored];
@@ -705,11 +908,11 @@ export class NextChapterSession {
                                            estimateTokens(this.architect.system + prompt), ENGINE.maxTokens);
     if (short) return { kind: "failed", error:
       `this round needs about ${short.needs} tokens and ${this.architect.model} is loaded with ${short.has} — `
-      + `raise its context length in LM Studio and try again` };
+      + `raise its context length in ${PROVIDER.displayName} and try again` };
     const base = this.take(await architectRound(this.architect, prompt));
     if (base.kind !== "edits") return base;
 
-    const r = await runAutoPasses(this.architect, this.spec, `scene_${this.chapter}`, onStage, edits => this.refuse(edits));
+    const r = await runAutoPasses(this.architect, this.spec, `scene_${this.chapter}`, onStage, edits => this.refuse(edits), undefined, this.bible);
     this.spec = r.spec; this.problems = r.problems;
     if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
     this.pendingAsk = "";
@@ -748,16 +951,18 @@ export class NextChapterSession {
 }
 
 /** Open a handoff on a story that has at least one chapter written; throws if it has none, or does not parse. */
-export async function openNextChapter(d: Defaults, dir: string): Promise<NextChapterSession> {
+export async function openNextChapter(d: Defaults, dir: string, bible: Readonly<Record<string, string>> = SPECIAL_SKILL_CATALOG): Promise<NextChapterSession> {
   const chapters = await readChapters(dir);
   if (!chapters.length)
     throw new Error(`No chapters written yet in ${dir} — there is nothing for the handoff to read.`);
   const raw = JSON.parse(await readFile(joinPath(resolveStoryDir(dir), "story.json"), "utf8"));
-  const n = normalizeSpec(raw);
+  const bibleLookup = bibleFrom(bible);
+  const n = normalizeSpec(raw, bibleLookup);
   const unfired: { n: number; beat: string; at: number }[] = [];
   for (const c of chapters)
     for (const b of await readUnfiredBeats(dir, c.n)) unfired.push({ n: c.n, ...b });
-  const s = new NextChapterSession(await buildArchitect(d, false), d, dir, n.spec, chapters, unfired);
+  const s = new NextChapterSession(await buildArchitect(d, false, bible), d, dir, n.spec, chapters, unfired);
+  s.bible = bibleLookup;
   s.problems = n.problems;
 
   // `refuse()` keeps the architect off a written chapter's scene, but a hand edit reaches it, and
@@ -767,7 +972,7 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
     try {
       const snapshot = await readChapterSpec(dir, c.n);
       if (!snapshot) continue;
-      const written = normalizeSpec(snapshot);
+      const written = normalizeSpec(snapshot, bibleLookup);
       const drifted = sceneDrift(written.spec.scenes[c.n - 1], s.spec.scenes[c.n - 1]);
       if (drifted.length)
         s.problems.push(`chapter ${c.n}'s prose was written from a different scene definition `
@@ -788,12 +993,12 @@ export async function openNextChapter(d: Defaults, dir: string): Promise<NextCha
 /** A stateless architect call: given the current story spec and the author's instruction, return
  *  proposed edits — with the edited spec itself, so a GUI can adopt it into its draft. Creates a
  *  fresh agent per call, so no history carries between invocations. */
-export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
+export async function suggestEdits(d: Defaults, spec: StorySpec, text: string, bible: Readonly<Record<string, string>> = SPECIAL_SKILL_CATALOG):
   Promise<{ kind: "edits"; spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[];
             ignored: string[]; problems: string[]; note: string }
          | { kind: "question"; ask: string }
          | { kind: "failed"; error: string }> {
-  const agent = await buildArchitect(d, false);
+  const agent = await buildArchitect(d, false, bible);
   const specJson = JSON.stringify({ ...spec, writer_style: spec.writerStyle }, null, 1);
   const prompt = P.architectChange(text, specJson);
   const r = await architectRound(agent, prompt);
@@ -805,7 +1010,7 @@ export async function suggestEdits(d: Defaults, spec: StorySpec, text: string):
     return { kind: "failed", error: said.why };
   }
 
-  const e = applyEdits(spec, r.out);
+  const e = applyEdits(spec, r.out, bibleFrom(bible));
   return {
     kind: "edits", spec: e.spec, applied: e.applied, ignored: e.ignored, problems: e.problems,
     note: String(r.out.note ?? "").trim(),

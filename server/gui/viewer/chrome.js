@@ -3,6 +3,7 @@ import { APP, READV, open } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
 import { go } from "./nav.js";
+import { cancelLibraryPicker } from "./library-picker.js";
 
 // ---- chrome -------------------------------------------------------------
 $("expand").onclick = () => {
@@ -60,14 +61,15 @@ addEventListener("drop", e => {
   openLog(f);
 });
 
-// Escape closes the topmost modal only -- character card stacks above run-ended, which sits above
-// the interview. Each close is that modal's own "dismiss, never submit" path.
+// Escape closes the topmost modal only -- picker stacks above character card, which stacks above
+// run-ended, which sits above the interview. Each close is that modal's own "dismiss, never submit" path.
 addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const backdrops = [...document.querySelectorAll(".modal-backdrop")];
   const top = backdrops[backdrops.length - 1];
   if (!top) return;
   if (top.id === "iv-backdrop") { e.preventDefault(); go("shelf"); return; }
+  if (top.id === "picker-backdrop") { e.preventDefault(); cancelLibraryPicker(); return; }
   if (top.id === "charcard-backdrop") { APP.charCard = null; APP.modalWant = ""; }
   else if (top.id === "runended-backdrop") APP.runEnded = null;
   else return;

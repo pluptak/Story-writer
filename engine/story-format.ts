@@ -35,6 +35,7 @@ export interface StoryConfig {
   premise: string;
   scenes: SceneDef[];
   writerStyle: string;
+  writerStyleConstraints: string[];
   facts: string[];
   /** The world-event ledger, validated at load; warnings name the beats that cannot fire. */
   timeline: TimelineDef[];
@@ -155,6 +156,7 @@ export async function loadStory(dir: string, modelOverride?: string,
     premise: parsed.premise,
     scenes: parsed.scenes,
     writerStyle: parsed.writerStyle,
+    writerStyleConstraints: parsed.writerStyleConstraints,
     facts: parsed.facts,
     timeline: parsed.timeline,
     retries: config.retries,

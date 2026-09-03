@@ -2,7 +2,8 @@
 
 The manual pass for the parts of the GUI no automated test watches. `npm test` covers the engine and
 the route modules; **`npm run test:gui` covers the viewer's mechanical half** — boot, a scripted live
-run, deep links and modals, the editor's save path, discard, the catalog, and the handoff panel —
+run, deep links and modals, the editor's save path, discard, the catalog, the scaffold's concept
+fields, and the handoff panel —
 in Playwright, driving the real server in-process over a fixture ServerHost, with no LM Studio and
 nothing in `stories/` touched. What that suite cannot see — layout, theme, focus, feel, and every
 section it does not name — is verified by reading the code and by running this list. Run the suite
@@ -17,7 +18,8 @@ alters what a route serves.
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
 - [ ] `npm run test:gui` green. The Playwright suite (`tests/gui/`, `playwright.config.ts`) is the
-      automated floor for sections 4, 6, 9, 12 and 15 below — a new machine needs
+      automated floor for sections 4, 6, 9, 12 and 15 below, and for section 14's concept fields
+      (only those — the walk itself needs the architect) — a new machine needs
       `npx playwright install chromium` once. It is also the boot check the next bullet describes:
       a viewer module that fails to link fails the suite instead of shipping as the bare shell.
 - [ ] `npm run lint` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
@@ -123,12 +125,24 @@ for r in stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o '"ch
 - [ ] Every run that command prints appears on the page, under a label matching the chapter it printed.
 - [ ] Groups are labelled in a left-hand column and ordered by chapter number ascending, matching the
       scene list above them. A run the command shows no chapter for belongs under **unattributed**, last.
-- [ ] Clicking any of them still opens the read tab with that run loaded — the grouping nests the
+- [ ] Clicking any of them still opens the Saved runs view with that run loaded — the grouping nests the
       buttons one level deeper, so this is what proves the wiring survived it.
 - [ ] Now open **THE SINGLETON**. **No labels, flat list, exactly as before.** One group is not a
       grouping. A SERIAL whose runs all sit in one chapter reads the same way, so if the grouped
       check above had nothing to group, this one proves nothing either — write a second chapter
       (section 2) and come back.
+
+The map's scene detail — who is here, reach, world beats. The doorway fixture carries none of these,
+so a story that does (or a scratch story.json with a `roster`, a `reach` entry and one timeline beat
+aimed at its chapter) stands in:
+
+- [ ] Each scene row shows **who is here** as chips and its **reach here** as per-character chips —
+      a reach grant reads as `NAME · thing — meaning`, under the scene, never inside a character's
+      own skill list.
+- [ ] A chapter's **world event** renders under its scene as *N% through the scene* with the hold
+      text, and **no memories** — the interview is the only screen that sees them. A beat the
+      handoff voided still shows, struck through.
+- [ ] A story with none of the three shows scene rows exactly as before — no empty labelled blocks.
 
 *If labels are missing everywhere:* `RunSummary.chapter` is not reaching the story card.
 *If a single-scene story shows a label:* the one-group flat fallback is wrong.
@@ -275,7 +289,7 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 The strip lives outside `#page`, above the layout, so most of what can go wrong with it is about
 which view it is showing and whether it clears itself.
 
-Cheapest check first — it follows the read tab, so no run is needed:
+Cheapest check first — it follows the read view, so no run is needed:
 
 - [ ] Story page → *previous runs* → read any run that has consults in it. A **consults** strip
       appears above the page with one marker per consult, named for the character.
@@ -299,7 +313,7 @@ Capped markers need a story that can hit the ceiling — nothing on disk sets on
 
 ## 8. Per-agent model-call panel
 
-Also read-tab only, so no run is needed. Ground truth, to check the numbers against:
+Also Saved-runs only, so no run is needed. Ground truth, to check the numbers against:
 
 ```bash
 for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
@@ -341,7 +355,7 @@ Needs a run, so pair it with section 2. What the redesign changed:
 - [ ] The rail shows phase, steps, words, model, then the bar and counts. Phase tracks what the run is
       doing; model shows the override or `story default`.
 - [ ] The status bar reads `<story> · chapter N of M`, agreeing with the terminal's own run header.
-- [ ] On the read tab the rail drops phase and model, and there is no headline or prose card — both
+- [ ] On the read view the rail drops phase and model, and there is no headline or prose card — both
       are live-only.
 - [ ] **Narrow the window below 900px.** The rail stacks below the prose and stays visible. If it
       vanishes, the only way to stop a run has gone with it.
@@ -359,7 +373,7 @@ story page → **read story**. The button only appears once a story has a writte
       the hash is written twice, once by `go()` before the story is known and again by `loadReader`.
       Reload the page on that URL: it comes back to the same story's prose, not the shelf.
 - [ ] **back** returns to the story page it was opened from, not the shelf.
-- [ ] **The saved-run view is untouched.** Open a retained run from the read tab, note which run it
+- [ ] **The saved-run view is untouched.** Open a retained run from the Saved runs view, note which run it
       is, then open the reader and come back. `#/read?dir=&id=` still opens that run, still labelled —
       the reader must not have cleared it.
 - [ ] **Empty story.** Open the reader on **THE BLANK** by hand at `#/readstory?dir=<THE BLANK>`.
@@ -412,7 +426,7 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
       and `no restriction`, never merged into either list.
 - [ ] **Read-only.** No inputs, no edit affordances — it is for the human reviewing what a consult
       was working from, never an edit surface.
-- [ ] **Live only.** The same pill on the shelf or the read tab opens the card with the pill's own
+- [ ] **Live only.** The same pill on the shelf or the Saved runs view opens the card with the pill's own
       can/cannot row only — no authored fields, and no `/cast` fetch fires. The sheet belongs to a
       running scene.
 - [ ] **It survives a model swap and a pause** without refetching visibly or losing the fields —
@@ -460,28 +474,86 @@ a *new* story folder — so it can go anywhere in the pass.
       shell: the idea box, two "how it proposes" radio cards (**stage by stage** selected), the model
       select, and **propose →**. Escape or a backdrop click returns to the shelf. The card now reads
       **continue new story…** — clicking it comes back to the same session.
+- [ ] **The concept.** Between the radio cards and the model select sits *the concept* — the tag
+      picker (three facet rows, **Genre** / **Dramatic Mode** / **Tone**, filled from the tag
+      catalog) and an **opening cast** select. Chips toggle; a chosen chip and a chosen size both
+      survive switching to **the whole story at once** and back, because they live in the page's
+      draft rather than in the markup. Choosing the one-shot walk removes the whole block: it has
+      no story gate for tags to steer and no cast gate for a size to reach. With an empty tag
+      catalog the picker is replaced by a link to `#/catalog?kind=tags` — the vocabulary is the
+      catalog's alone, and nothing here authors a tag.
+- [ ] **Casting from the library.** Under *cast from the library* the catalog's characters appear as
+      chips. Picking one **replaces the opening-cast select** with a line saying the imported cast is
+      already the size — the tray is the answer, so the number stops being one. A fourth pick
+      disables the rest; deselecting brings the select back. An empty character catalog shows a link
+      to `#/catalog` instead. Add a character on the catalog page and come back: the chip is there,
+      because saving one drops the cached library rather than leaving a stale list.
+- [ ] **The voice.** Under *the voice* the style catalog's presets appear as chips, one choosable at
+      a time; clicking the chosen one again clears it, and the hint under the row changes to say what
+      the settings gate will do either way. An empty style catalog shows a link to
+      `#/catalog?kind=styles`. **Tag a preset and pick that tag:** the preset moves to the front of
+      the row and *nothing else changes* — every preset stays pickable, because a tag steers the
+      story gate and must never reach the settings prompt as well.
+- [ ] **The voice narrows the settings gate.** With a preset chosen, approve through to *settings*.
+      The round comes back with this story's narration rules and the preset's own voice on the draft
+      — not a house style the architect wrote. If it sent one anyway, the sidebar says it was
+      reverted and names the preset. Needs the architect model, so it belongs to a live pass.
+- [ ] **The imported cast gate is a different gate.** With a tray, approving *story* opens a *cast*
+      round that places those people rather than inventing any: the proposal keeps their belief,
+      impulse, voice, skills and restrictions exactly as the catalog holds them, fills in `goal` and
+      `knows`, and extends each persona with this story's context. **Read the sidebar's flags after
+      that round** — if the architect edited a travelling field, the engine reverted it and says so
+      there; if it dropped somebody, they are back with a note. Those messages are the contract
+      working, not a failure. This needs the architect model, so it belongs to a live pass.
+- [ ] **What the concept does, and stops doing.** Once a staged session is open, the sidebar carries
+      *tags* and *opening cast* beside *tension*, and **revise concept** opens the same picker
+      inline. Each half is marked **· spent** once the stage that reads it has produced content —
+      tags at the story stage, cast size at the cast stage — and once all of it is spent the revise
+      button disappears rather than going quietly inert. An imported cast reads **· placed** rather
+      than *spent*: the tray was not discarded, it became the cast. A tag the catalog does not hold
+      shows as an advisory under the stats and is sent to the architect anyway; an imported id the
+      catalog no longer holds shows as a second advisory saying it was dropped. **The word "spent"
+      is load-bearing:** it is the difference between a control that steers a prompt ahead and one
+      that edits a string nobody will read again.
+- [ ] **Promoting a skill the cast invented.** When a landed cast holds a bespoke
+      `name :: meaning` skill your bible does not have, a **new skills** card appears in the sidebar
+      naming it, what it means, and who holds it. **promote to bible** writes it to
+      `#/catalog?kind=skills` and the candidate disappears — it is re-derived from the cast, not
+      removed by the page, so the only way for it to vanish is for the bible to really hold it now.
+      Check the skills catalog afterwards. Two things that should NOT happen: a bare skill with no
+      `:: meaning` offered as a candidate, and a scene's `reach` entry offered as one — reach is
+      never promotable (I4). **A promoted skill does not appear in the architect's own list until
+      the next session**, because the system prompt is sent once; validation accepts it immediately,
+      which is the part to check.
+- [ ] **Revising after a reload.** Reload the page mid-session and open **revise concept** without
+      ever seeing the idea modal. Both pickers must fill. They are fed from the catalog on first
+      need, and the load has to be triggered by the panel — not by the picker markup, which only
+      exists once the data has arrived. An empty picker here is that circularity coming back.
 - [ ] **Staged walk.** After **propose →**, the story stage lands (title, premise, tension, facts — no
       cast yet). Its proposal card immediately shows those fields, and the composer says *what should
-      change?*, not *say more about it*. The checklist shows *story* open, the rest upcoming; the sidebar
-      reads walk *staged* · open gate *story* · on disk *nothing yet*. **approve & continue →** opens
-      *cast*, then *settings*, *technical*, and *scene*, ticking each passed gate. House style and run
-      settings appear in a highlighted current-stage section at the top of the proposal as their gates
-      land; the earlier stages remain below it. The button is gone at the *scene* gate.
+      change?*, not *say more about it*. The **left rail's stepper** shows *Concept* as the open row —
+      number dot, accent border, its one-line summary — with the later steps pending; the sidebar
+      reads walk *staged* · open gate *story* · on disk *nothing yet*, and the tension the stage
+      coined appears in the rail **as its sentence**, not a "coined" flag. **accept the concept & continue →**
+      opens *cast* — the stepper ticks *Concept* and highlights *Cast* — then *Voice*, *Technical* and
+      *Scenes*, the label following each gate. House style and run settings appear in a highlighted
+      current-stage section at the top of the proposal as their gates land; the earlier stages remain
+      below it. The button is gone at the *world* gate.
 - [ ] **The cast gate can refuse.** Approving *cast* with a cast whose restrictions do not bite on the
       tension (easiest: refine the cast until nobody has a restriction, then approve) comes back as a
       judgement card headed **the cast gate**, not a red failure line — it names what would need a
-      restriction and says *approve again to overrule this*. The checklist pointer stays on *cast* and
+      restriction and says *approve again to overrule this*. The stepper's pointer stays on *Cast* and
       no next stage appears. The approve button becomes **approve anyway →** in the warning colour;
       clicking it within 8 seconds passes the gate, and waiting longer than that returns it to
-      **approve & continue →**. Refine instead of overruling and the button reverts once the round
-      lands, so an armed override never carries to a later gate.
+      **accept the cast & continue →**. Refine instead of overruling and the button reverts once the
+      round lands, so an armed override never carries to a later gate.
 - [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
       to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
       Answering re-runs that stage.
 - [ ] **Refinement stays put.** Type a change and **send**: it applies within the open gate and the
       checklist pointer does not move. Round labels carry the gate (`[cast] changed: …`).
-- [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no checklist**,
-      sidebar walk *one-shot*.
+- [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no stepper rail**
+      (the two-panel shell it always had), sidebar walk *one-shot*.
 - [ ] **Edit in full.** The sidebar's **edit in full →** opens the schema editor on the same draft;
       a change there is reflected on the proposal card when you come **back to interview**. Change a
       field there — clear a character's restrictions, say — and **confirm and write** stays enabled:
@@ -500,8 +572,9 @@ a *new* story folder — so it can go anywhere in the pass.
 - [ ] **Abandon** (second click) drops the session and returns to the shelf.
 - [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
       server, not the tab.
-- [ ] **Responsive.** Below 900px the sidebar stacks under the proposal; at 375px there is **no
-      horizontal scrollbar**.
+- [ ] **Responsive.** Below 900px the sidebar stacks under the proposal and the **stepper rail
+      disappears** — the status bar's `gate:` word still says where the walk stands; at 375px there is
+      **no horizontal scrollbar**.
 
 ## 15. Character catalog
 
@@ -545,10 +618,21 @@ The global character library, accessible from the shelf and reloadable by direct
       **tags**, **styles** and **skills** — one per entry in `CATALOG_KINDS` (`server/gui/viewer/state.js`),
       which is the browser's copy of the engine's list. Clicking any of them switches the list and the
       form to that kind. With unsaved edits in the form, clicking another tab warns with a confirm
-      dialog; cancel stays on the current kind, confirm switches and discards the draft.
-- [ ] **Tags render grouped by facet.** When browsing tags, the list groups entries under their facet,
-      not as one flat list of 24. Each facet has a visible header (`facet`), and tags are listed under
-      it. The grouping updates as the list changes.
+      dialog; cancel stays on the current kind, confirm switches and discards the draft. The nav's
+      **Libraries** group switches kinds by navigation too — each entry seeds the kind before the page
+      loads, landing on the same view the switcher would show.
+- [ ] **Tags render grouped STORY / STYLE, derived.** When browsing tags, the list groups entries
+      under two observed headings: **STORY** (no style carries the tag) and **STYLE** (some style
+      does), with each tag's authored facet riding along on its row. The grouping moves by itself —
+      add the tag to a style, save, and the tag reappears under STYLE; remove it and it falls back
+      to STORY. No editor field decides this.
+- [ ] **Usage lines are observed counts.** A tag row reads *used by N characters · M styles · K
+      skills* (whichever are non-zero); a skill row reads *used by N characters*. Save a character
+      carrying a tag and the tag's count climbs without another edit; delete the character and it
+      falls back.
+- [ ] **A tag's detail shows the styles associated with it.** Open a tag that at least one style
+      carries: *Styles commonly associated* names those styles as chips. A tag no style carries
+      shows no such block — an empty labelled block would read as data that is not there.
 - [ ] **Editing a tag's label bumps its version and does not change the entry count.** Open a tag entry
       and change its label. Save it. Its version number increments. The total number of tags on the
       page stays the same — the entry is an update, not a new one.
@@ -571,7 +655,7 @@ The global character library, accessible from the shelf and reloadable by direct
 A style is a reusable writer voice — the half of a house style that travels between stories. The other
 half, the clauses a story derives from its POV and its cast's restrictions, is deliberately NOT here.
 
-- [ ] **Every tab round-trips.** Characters and tags still behave exactly as the checks above
+- [ ] **Every kind round-trips.** Characters and tags still behave exactly as the checks above
       describe — the page was a binary before styles and every per-kind branch had to be widened.
 - [ ] **Empty style catalog reads as an invitation.** Styles have no seed, unlike tags. A first run
       shows the create prompt, not a blank panel and not an error.
@@ -639,6 +723,29 @@ engine to be in a particular mood. It does not replace a live pass: it cannot te
 delivers those events, only that the screen draws them correctly once it has them. `tests/gui/` is
 this trick made durable: the harness publishes the same event shapes through the real SSE bus, so
 the scripted screens it renders arrive the way a run's do.
+
+### The persistent shell
+
+The sidenav is fixed chrome, so most of what can go wrong is reachability and what the groups show.
+Without an engine attached (`go()` rewrites everything but `read`/`readstory`/`compare` to `read`):
+
+- [ ] **Only what is reachable is visible.** Stories and Libraries show no items; the Workspace group
+      shows only **Saved runs** and **Manuscript**. A group whose every item is hidden must not render
+      as a bare heading — a hidden group follows its children.
+- [ ] **With an engine attached**, all three groups appear: My stories / + New story; Architect / Story
+      map / Write / Manuscript / Saved runs; Characters / Styles / Tags / Skill Bible.
+- [ ] **The Architect item is whichever session is live.** Start a new story (+ New story), then
+      navigate away and click **Architect** — the interview continues, not a second one. With a
+      handoff open on a story, clicking **Architect** lands on the handoff panel.
+- [ ] **Each Libraries entry lands on its kind.** Click Tags: the URL reads `#/catalog?kind=tags` and
+      the tag list loads — not characters. Deep-linking `#/catalog?kind=skills` cold does the same.
+- [ ] **The current item is marked.** The view you are on reads as `current` (and `aria-current="page"`),
+      including the aliases: the story page marks **Story map**, the editor marks **Story map**, the
+      scaffold and the handoff both mark **Architect**.
+- [ ] **Below 900px the nav is a horizontal strip** above the page, groups inline, scrolling rather
+      than stacking; below 680px it hides with the other chrome.
+- [ ] **Both themes.** The nav reads correctly with `data-theme="dark"` and `"light"` — group headings,
+      hover and the current marker in each.
 
 ## What this list cannot tell you
 

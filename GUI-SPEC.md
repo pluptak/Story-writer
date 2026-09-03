@@ -78,6 +78,32 @@ These four lines are the **entire** coupling between the API and the specific GU
 serve fixed files by fixed path — nothing about them is generated from, or aware of, engine or story
 state. See "Replacing the GUI" below.
 
+## The viewer's navigation
+
+The page is a persistent shell — topbar, srcbar breadcrumb, sidenav, run rail — over one `#page` the
+current view replaces. The sidenav's three groups are the author's mental model, not the schema's:
+**Stories** (`shelf` — My stories, `scaffold` — + New story), **Workspace** (`scaffold`/`handoff` —
+Architect, whichever session is live; `story` — Story map; `live` — Write; `readstory` — Manuscript;
+`read` — Saved runs), and **Libraries** (the character catalog's four kinds, one entry each:
+`characters`, `styles`, `tags`, `skills`). The principle the grouping follows: **the GUI exposes the
+author's mental model, while the schema remains the engine's executable model** — nothing in the nav
+names a `story.json` top-level object.
+
+The view strings are a URL contract, not UI labels: `#/shelf`, `#/story?dir=`, `#/live`, `#/read?dir=&id=`,
+`#/readstory?dir=`, `#/compare?dir=&a=&b=`, `#/scaffold`, `#/handoff?dir=`, `#/edit?dir=` or `#/edit?new=1`,
+and `#/catalog?kind=`. Sub-page targets ride along — `&block=` names a consult to open, `&modal=` the
+character card to reopen — so the URL a bug report pastes is the pinpoint. Views are renamed in the
+labels only; the strings behind the hash never change, because bookmarks and pasted URLs outlive any
+rendering.
+
+Reachability has one rule, in `go()`: with no engine attached, every view but `read`, `readstory` and
+`compare` is rewritten to `read`. The nav does not restate that rule — it reads it. An item whose
+destination is unreachable hides rather than landing somewhere other than where it says, and a group
+whose every item is hidden hides with its children. A hidden view is not a removed one: `live`,
+`read`, `compare` and `edit` have no nav entries of their own beyond those five, and are reached from
+the pages that own them (a story card, a run list, the story page's buttons). The catalog's kind is
+seeded from the URL on arrival; inside the page the kind switcher owns it (below, *Character catalog*).
+
 ## Session / run info
 
 ```
@@ -114,8 +140,10 @@ There is no separate "list runs" route; a run only exists as a story's `runs[]` 
 GET /models
   → { ids: string[], reachable: boolean, current: string | null, architect: string }
 ```
-`ids` is whatever LM Studio currently reports loaded; `reachable: false` means LM Studio itself could
-not be reached (distinct from "reachable but empty").
+`ids` is whatever the configured provider reports as AVAILABLE (with just-in-time loading, LM
+Studio lists downloaded models too — this is the pick-from list, not a residency report);
+`reachable: false` means the provider itself could not be reached (distinct from "reachable but
+empty").
 
 ```
 GET /log.jsonl            → the in-progress run's writing-log.jsonl, or 404 before one exists
@@ -236,6 +264,7 @@ the editor.
 ```
 GET  /catalog?kind=characters        → { ok:true, entries[] }
                                        | { ok:false, reason }
+GET  /catalog/usage                  → { ok:true, usage }   (read-only derivation, below)
 GET  /catalog/entry?kind=&id=        → { ok:true, entry }
                                        | { ok:false, reason }        (400 no id · 404 no such entry)
 POST /catalog/check  { entry }       → { ok:true, problems[] }
@@ -279,6 +308,15 @@ plus one for a replacement. A version sent by a caller is overwritten, so it is 
 choose one. Both writes go
 through the same atomic `.tmp` rename as `/story/save`, then re-read and assert what they expected to
 find: that the entry is present at its new version, or that a deleted id is gone.
+
+`GET /catalog/usage` derives what the other catalogs reference — the "used by 4 characters" line and
+the tag page's grouping. **Derived, not authored**: a tag's counts come from the characters, styles
+and skills whose `tags[]` fold to its label; a skill's count from the characters whose `skills`
+lines name it, matched the way every identity comparison is. The tag page's STORY/STYLE split is the
+same derivation — a tag is **STYLE** when some style carries it, **STORY** when none does — so the
+editor gains no "used for" checkbox, and the grouping moves the moment a style picks the tag up. It
+reads the catalogs it was asked for and nothing else; a failure to derive is the caller's to
+decorate away, which the viewer does by keeping its last known counts.
 
 ## Read-only cast view
 
@@ -333,8 +371,20 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 
 ```
 GET  /scaffold
-  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, haveDraft, haveStory, pendingAsk,
-                          problems[], last: ScaffoldRound | null, needsFolder, model, spec }
+  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, concept, haveDraft, haveStory,
+                          pendingAsk, problems[], bibleCandidates[], last: ScaffoldRound | null,
+                          needsFolder, model, spec }
+
+bibleCandidates = { name: string, meaning: string, heldBy: string[] }[]
+
+concept =
+  { tags: string[], castSize: number, unknownTags: string[], tagsSteer: boolean, castSizeSteers: boolean,
+    imported: { libraryId: string, version: number, name: string }[],   // the import tray
+    missingImports: string[],                                            // ids the catalog no longer holds
+    importsSteer: boolean,
+    styleId: string, styleName: string,                                  // the chosen voice preset, "" for none
+    missingStyle: string,                                                // an id the catalog no longer holds
+    styleSteers: boolean }
 
 ScaffoldRound =
   | { kind:"proposal"; note; stage? }        — staged rounds carry the gate they belong to
@@ -343,7 +393,8 @@ ScaffoldRound =
   | { kind:"nothing"; why; stage? }
   | { kind:"failed"; error }
 
-POST /scaffold/start    { idea, model?, mode? } → only while picking; opens a session and runs the
+POST /scaffold/start    { idea, model?, mode?, tags?, castSize?, importIds? }
+                                                → only while picking; opens a session and runs the
                                                   first proposal. `mode` picks the walk:
                                                   "staged" (the default) runs the gated checklist —
                                                    story → cast → settings → technical → scene → world,
@@ -359,6 +410,28 @@ POST /scaffold/approve                     → staged mode only: pass the open g
                                              stands, when the gate's content never landed
                                              (`kind:"nothing"`, "has not landed"), or past the last gate
                                              ("checklist is complete").
+POST /scaffold/concept  { tags?, castSize?, styleId? }
+                                           → revises the author's concept on the open session.
+                                             Same bounds as `start`, and `400` on either. Every
+                                             field is read: one the client omits is not "unchanged",
+                                             it is empty, and the pick it names is cleared. Never
+                                             re-runs a gate: it changes what the NEXT build of a
+                                             stage prompt says, which for a stage already passed
+                                             is nothing — the `*Steer` flags are what say whether
+                                             that is still any stage at all.
+POST /scaffold/import   { importIds }      → replaces the import tray on the open session, wholesale
+                                             rather than incrementally: the author's pick is a set,
+                                             and a partial update would need a second answer for what
+                                             absence means. At most 4 (the cast stage's ceiling);
+                                             `400` past that. Ids the catalog cannot resolve come back
+                                             in `concept.missingImports` rather than failing the call.
+POST /scaffold/promote  { name }           → puts one of `bibleCandidates` into the author's skill
+                                             bible. Only a name the session is currently offering is
+                                             accepted (`400` otherwise), so the wire cannot name an
+                                             arbitrary skill and have it written to the catalog. The
+                                             open session is handed a lookup over the new bible, and
+                                             the candidate is gone from the reply because the list is
+                                             re-derived, not edited.
 POST /scaffold/set      { field, value }   → direct edit, bypassing the model — today `field` may only
                                              be `"scene.length"` (`DIRECT_FIELDS`); alternatively
                                              `{ story }` replaces the in-memory draft from the full
@@ -378,6 +451,47 @@ stage lands. Do not confuse it with `gate`, which is the checklist position and 
 a `story.json` field, so it reaches the GUI only through this state object — read-only, for display; the
 architect edits it by field name (see `/scaffold/say`) but it never lands on disk. Empty on a one-shot
 session and until the story stage names it.
+
+`concept` is the author's half of the same kind of state, and the mirror of `tension`: chosen before
+the architect runs rather than coined by it, session-only, discarded at accept. `tags` reach the story
+stage's prompt and `castSize` the cast stage's, and neither is read anywhere else — a one-shot session
+has no gate for either, so both `*Steer` flags are false there. `unknownTags` are the ones the tag
+catalog does not hold; they are sent to the architect anyway, because that catalog is a seed the author
+edits rather than a gate. **The bounds are enforced at the route, not trusted from the client** — at
+most 8 tags, 40 characters each, and a `castSize` of 0 (meaning "architect decides") through 4, which
+is the cast stage's own ceiling. This is the one place author text reaches a prompt without passing
+through the architect first.
+
+The four `*Steer` flags answer one question each: *would the next build of that stage's prompt read
+this?* Tags are live while the story gate is open; the cast size and the tray are live until a cast
+exists — which means both are at their most live during the STORY gate, before the cast prompt has
+ever been built. The style is live until the settings gate has put a voice on the spec, so it survives
+the story and cast rounds for the same reason. Once false, revising that half changes a string nothing
+will read again, and the viewer stops offering to.
+
+`imported` is the tray: the characters the author cast out of the catalog, carried as provenance and
+name only, because that is all a page needs. A non-empty tray forces `castSizeSteers` false — the tray
+IS the opening cast's size — and switches the cast gate to a different stage prompt with an enforced
+adaptation contract ([Architect.MD](Architect.MD), *Casting from the library*). It is session state
+that ends at accept: no part of it reaches `story.json`, and the handoff never learns a character came
+from a template. `missingImports` are ids the catalog no longer holds; they are reported rather than
+fatal, because the catalog is the author's and a tray that silently shrank is worse than one that says
+what it lost.
+
+`styleId` / `styleName` are the voice preset the author picked out of the style catalog, resolved by
+the host so a page never has to. Chosen, it narrows the settings gate to this story's own narration
+rules and its `voice` becomes `writerStyle` verbatim; unchosen (`""`), that gate writes the whole house
+style as it always did. `missingStyle` is an id the catalog no longer holds — reported, not fatal, for
+the same reason `missingImports` is. Like the tray, none of it reaches `story.json`: the voice does,
+but which preset it came from does not.
+
+`bibleCandidates` are the bespoke skills this cast holds that the author's skill bible does not:
+a skill carrying its own `:: meaning` whose name is neither a general skill nor already in the bible.
+They are **derived from the spec on every read**, never stored — a candidate stops being one the
+moment it is promoted or the cast stops holding it, and a stored list would go stale both ways.
+Writing `name :: meaning` on a character IS the proposal, so nothing is asked of the model for this;
+reach is never a candidate (I4). Promotion is a gate distinct from accepting the story: accepting
+never writes a bible entry.
 
 `haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
 be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its
@@ -462,6 +576,13 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` ([live.ts:37](live.ts#
 { t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; interactive }
 { t:"run_reset" }                        — a new run is about to start; discard everything and refetch
 { t:"run_error"; message }               — a story failed to load or run; the picker is coming back
+{ t:"provider_state"; provider; baseUrl; inFlight; depth; current; lastFailure }
+                                           — the inference server's request line changed: a call took
+                                           or released the slot, a caller queued or gave up, or a call
+                                           failed. `current` names the holder ("" when idle) and
+                                           `lastFailure` is the transport's classification of the
+                                           most recent failure (null before one). Sent on change only,
+                                           never on a timer — the srcbar chip paints it
 { t:"scaffold"; state }                  — mirrors GET /scaffold
 { t:"handoff"; state }                   — mirrors GET /next-chapter
 ```

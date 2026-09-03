@@ -1,7 +1,7 @@
 /**
  * CATALOG ROUTES — reusable character templates stored globally beside defaults.json,
- * not within any story. Routes: `/catalog` (GET), `/catalog/entry` (GET), `/catalog/check` (POST),
- * `/catalog/save` (POST), `/catalog/delete` (POST).
+ * not within any story. Routes: `/catalog` (GET), `/catalog/usage` (GET), `/catalog/entry` (GET),
+ * `/catalog/check` (POST), `/catalog/save` (POST), `/catalog/delete` (POST).
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -22,6 +22,11 @@ export async function handleCatalogRoutes(
     } else {
       json(res, 200, { ok: true, entries: r.entries });
     }
+    return true;
+  }
+
+  if (path === "/catalog/usage" && req.method === "GET") {
+    json(res, 200, { ok: true, usage: await host.catalogUsage() });
     return true;
   }
 

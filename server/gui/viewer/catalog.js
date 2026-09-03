@@ -2,6 +2,7 @@ import { reasonOr } from "./util.js";
 import { APP, CATALOG_KINDS } from "./state.js";
 import { syncHash } from "./nav.js";
 import { catalogPageHtml } from "./catalog-view.js";
+import { openLibraryPicker } from "./library-picker.js";
 
 export { catalogPageHtml };
 
@@ -162,24 +163,56 @@ export async function loadCatalog(kind) {
 
   APP.catalog.entries = j.entries || [];
   APP.catalog.loaded = true;
+  refreshUsage();
   APP.render();
   syncHash();
 }
 
-let vocabLoading = false;
+/** What the other catalogs reference, for the list's "used by" lines and the tag page's derived
+ *  STORY/STYLE grouping and styles-associated line. Derived server-side over all kinds at once; a
+ *  failure leaves the last known usage rather than erroring the page — counts are decoration, the
+ *  entries are the data. */
+export async function refreshUsage() {
+  try {
+    const r = await fetch("/catalog/usage");
+    const j = await r.json();
+    if (j.ok) APP.catalog.usage = j.usage;
+  } catch { /* keep what was there */ }
+}
+
+// "Loaded" is tracked apart from "non-empty" because an EMPTY catalog is a real answer, and the
+// two loaders that keyed on `.length` re-fetched forever when they got one: every load ends in a
+// render, every render re-runs the wiring that starts the load. A catalog nobody has authored yet
+// -- characters and styles both, on a new install -- span the page instead of settling.
+let vocabLoading = false, vocabLoaded = false;
+let libraryLoading = false, libraryLoaded = false;
+let stylesLoading = false, stylesLoaded = false;
 
 /** Drop the cached tag vocabulary after a write to it, so the character form's picker reflects the
  *  edit. Without this the picker keeps showing a deleted tag as an ordinary selected chip, and the
  *  off-vocabulary notice -- the whole point of that state -- never appears. */
 function invalidateVocab() {
   APP.catalog.vocab = [];
-  vocabLoading = false;
+  vocabLoading = false; vocabLoaded = false;
+}
+
+/** Drop the cached character library after a write to it, so the scaffold's import picker reflects
+ *  the edit. Without this a deleted character can still be selected in the tray. */
+function invalidateLibrary() {
+  APP.catalog.library = [];
+  libraryLoading = false; libraryLoaded = false;
+}
+
+/** Drop the cached style presets after a write to one, so the scaffold's voice picker reflects the
+ *  edit -- and so a preset whose voice was rewritten is offered with the new one. */
+function invalidateStyles() {
+  APP.catalog.styles = [];
+  stylesLoading = false; stylesLoaded = false;
 }
 
 /** Load the tag vocabulary once, on first need */
 export async function loadVocab() {
-  if (APP.catalog.vocab.length > 0) return; // Already loaded
-  if (vocabLoading) return; // Already in flight
+  if (vocabLoaded || vocabLoading) return;   // already here, or already on its way
 
   vocabLoading = true;
   try {
@@ -199,7 +232,65 @@ export async function loadVocab() {
     APP.render();
     syncHash();
   } finally {
-    vocabLoading = false;
+    // Marked loaded whatever happened: a load that failed shows its error and waits to be
+    // invalidated, rather than being retried by the very render it just caused.
+    vocabLoading = false; vocabLoaded = true;
+  }
+}
+
+/** Load the style presets once, on first need */
+export async function loadStyles() {
+  if (stylesLoaded || stylesLoading) return;   // already here, or already on its way
+
+  stylesLoading = true;
+  try {
+    const r = await fetch("/catalog?kind=styles");
+    const j = await r.json();
+    if (j.ok) {
+      APP.catalog.styles = j.entries || [];
+      APP.render();
+      syncHash();
+    } else {
+      APP.catalog.error = reasonOr(j, "could not load style presets");
+      APP.render();
+      syncHash();
+    }
+  } catch (err) {
+    APP.catalog.error = "style presets did not load: " + (err.message || "network error");
+    APP.render();
+    syncHash();
+  } finally {
+    // Marked loaded whatever happened: a load that failed shows its error and waits to be
+    // invalidated, rather than being retried by the very render it just caused.
+    stylesLoading = false; stylesLoaded = true;
+  }
+}
+
+/** Load the character library once, on first need */
+export async function loadLibrary() {
+  if (libraryLoaded || libraryLoading) return;   // already here, or already on its way
+
+  libraryLoading = true;
+  try {
+    const r = await fetch("/catalog?kind=characters");
+    const j = await r.json();
+    if (j.ok) {
+      APP.catalog.library = j.entries || [];
+      APP.render();
+      syncHash();
+    } else {
+      APP.catalog.error = reasonOr(j, "could not load character library");
+      APP.render();
+      syncHash();
+    }
+  } catch (err) {
+    APP.catalog.error = "character library did not load: " + (err.message || "network error");
+    APP.render();
+    syncHash();
+  } finally {
+    // Marked loaded whatever happened: a load that failed shows its error and waits to be
+    // invalidated, rather than being retried by the very render it just caused.
+    libraryLoading = false; libraryLoaded = true;
   }
 }
 
@@ -238,6 +329,8 @@ async function confirmDelete() {
   }
 
   if (APP.catalog.kind === "tags") invalidateVocab();
+  if (APP.catalog.kind === "characters") invalidateLibrary();
+  if (APP.catalog.kind === "styles") invalidateStyles();
 
   // Remove from list and clear selection
   APP.catalog.entries = APP.catalog.entries.filter(e => e.id !== APP.catalog.selected.id);
@@ -246,6 +339,7 @@ async function confirmDelete() {
   APP.catalog.error = "";
   APP.catalog.issues = [];
   APP.catalog.problems = [];
+  refreshUsage();
   APP.render();
 }
 
@@ -404,9 +498,12 @@ async function saveDraft() {
 
     // selected is the server's record; draft is what the form edits — keep their shapes separate
     if (APP.catalog.kind === "tags") invalidateVocab();
-  APP.catalog.selected = saved;
+    if (APP.catalog.kind === "characters") invalidateLibrary();
+  if (APP.catalog.kind === "styles") invalidateStyles();
+    APP.catalog.selected = saved;
     APP.catalog.draft = toDraft(saved, APP.catalog.kind);
     clearDeleteTimer();
+    refreshUsage();
     APP.render();
   } catch (error) {
     APP.catalog.error = error.message || "save failed";
@@ -508,6 +605,38 @@ export function wireCatalog(page) {
   // Skill form field updates
   onInput("cat-meaning", () => {
     if (APP.catalog.draft) APP.catalog.draft.meaning = page.querySelector("#cat-meaning").value;
+  });
+
+  // Skills library picker (character form)
+  on("cat-skills-pick", () => {
+    // The bible is the source of canonical skills; a bespoke one is still typed in the field. So the
+    // picker owns only the lines that name a bible entry -- the rest are carried through untouched,
+    // and deselecting a bible skill removes just that line.
+
+    // A line's name is the part before `::` -- the authored form is `name :: meaning`.
+    const nameOf = line => {
+      const i = line.indexOf("::");
+      return (i >= 0 ? line.slice(0, i) : line).trim().toLowerCase();
+    };
+    const currentLines = parseLines(APP.catalog.draft?.skills || "");
+
+    openLibraryPicker({
+      kind: "skills",
+      title: "Skill Bible",
+      hint: "A skill the bible does not carry is still typed straight into the field.",
+      preselect: currentLines.map(nameOf),
+      done: (chosen, offered) => {
+        if (!APP.catalog.draft) return;      // the form went away while the overlay was open
+        // Split on what the bible OFFERED, not on what was chosen. A line the bible does not know
+        // is bespoke and survives untouched; a line it does know belongs to the picker, so
+        // deselecting one removes it instead of leaving it standing.
+        const known = new Set(offered.map(e => (e.name || "").trim().toLowerCase()));
+        const bespoke = currentLines.filter(line => !known.has(nameOf(line)));
+        const picked = chosen.map(e => `${e.name} :: ${e.meaning}`);
+        APP.catalog.draft.skills = bespoke.concat(picked).join("\n");
+        // The picker's done path renders.
+      },
+    });
   });
 
   // Tag chip picker (character form)

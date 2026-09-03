@@ -245,8 +245,7 @@ Each has live scaffold evidence and a candidate fix; all four need a run to conf
 The next action is reading a run, not writing code. These are the owner's, batched. Each names what
 would settle it, and several gate work in the sections below.
 
-**In Next:** item 1. **The open-beat experiment** below is also here in kind — its whole
-remaining cost is one more stage-3 run.
+**In Next:** item 1.
 
 - **The question gates now guard only the judge's re-ask, and that path is unmeasured.** Since
   `14022cf` the writer's consult carries no `question` and no `wants`, so `normalizeConsult`'s
@@ -260,6 +259,18 @@ remaining cost is one more stage-3 run.
   and that is the churn figure worth watching instead. Entered here because the entry it replaces
   (*"Did the instruction pass fix the consult-gate churn?"*, formerly Next item 1) asked about a
   field the writer no longer sends.
+- **A stage-3 consult has never been read for `narration_flag` on invented deeds and stillness.**
+  Stage 3 (the consult is a character and a situation, shipped at `14022cf`) gave up the question
+  field that receipted the writer's stops, leaving THE ONE RULE and the stop-while-the-pressure-is-live
+  rule as the only pressure toward stopping at choices. The failure would be quiet: competent,
+  low-consequence answers that break no rule, pass the judge, pass the lint, and let the scene die
+  politely. The one check that would catch it is the narration lint's deeds-and-stillness read — and
+  until `9fd2410` every quotation hit short-circuited that check for its piece, so it has effectively
+  never run on a stage-3 scene: the one run read as clean put three unasked-for stillnesses on the
+  page ("Jules remains glued to the terminal", "Sara remains anchored to the console", "Kane remains
+  hunched over the lever"). **Done when** a post-`9fd2410` stage-3 run is read for that flag — a
+  clean page closes the question this entry keeps alive; a dirty one reopens the writer's receipt as
+  a defect.
 - **The LLM half of the narration lint has still never fired.** Two of its four checks are mechanical
   now — quotations against the granted ledger (`engine/quote-lint.ts`) and restricted senses against
   the CANNOT list (`engine/sense-lint.ts`) — leaving deeds and consult-situation quality to the
@@ -344,88 +355,6 @@ remaining cost is one more stage-3 run.
   alike every time. Worth measuring before it is worth fixing — count repeated body-move phrasings
   per chapter first.
 
-## The open-beat experiment (branch `pov-thought-withholding`)
-
-Built in three stages, run twelve times, unmerged. It lives here rather than in
-[Writer.MD](Writer.MD) because the part still undecided has not earned a surface document; the
-passages it would rewrite are named at the end so whoever ships it knows what to fix.
-
-**The question it asked.** A character carries a persona and a goal, and `CHARACTER_FORMAT` insists
-that what it wants is the measure of every answer. Is the consult's `question` doing work the
-situation and the goal do not already do? The field turned out to hold four separable jobs — the
-writer's receipt that it found a fork before stopping, the only channel for stakes the character
-cannot see, the return shape (`wants`), and the judge's anchor — and the objection lands against the
-second alone. Hence three stages, one job at a time.
-
-### What the runs established
-
-Not the outcome numbers; see the caveats below. What holds is mechanical, checkable from the
-transcripts, and has a large enough denominator not to need statistics:
-
-- **A non-POV thought does not reach the writer.** 0 of 4, against 19 of 23 in the pre-stage-1
-  baseline, with a positive control on the same runs (POV thoughts reached it 9/9 and 2/2).
-- **A non-POV reaction surfaces when asked to.** 33 of 33, with **zero** repairs fired — the
-  prospective gloss did the work, so no ask was spent on an unanswerable question.
-- **A character finds the fork unaided.** 54 consults across stages 2 and 3 produced 2 retries, and
-  both were the judge reading `wants` as a ceiling rather than a floor — instrument error, fixed in
-  `f835fb3`. Not one character failed to answer a moment it had not been pointed into. That was the
-  wager and it holds.
-- **The refusal churn was the gate charging for an unread field.** 18 refused consults across three
-  stage-2 runs; 0 across two stage-3 runs.
-- **`wants` was suppressing speech.** 18 speech / 5 action under stage 3, against 4 / 14 under
-  stage 2 — the opposite of the predicted risk that nobody would speak once nothing asked them to.
-
-### What the runs did NOT establish, and the caveats that matter
-
-- **Every quote-flag figure in this experiment is contaminated.** Machine labels ('Shutdown',
-  "Fatal", "off") were counted as invented dialogue until the fix in `9fd2410`. No cross-arm
-  comparison on that number means anything, including an "8x fewer invented lines" reading that was
-  drawn and then withdrawn mid-experiment.
-- **Prose quality is unmeasured.** One stage-3 scene was read end to end: coherent, and it answers
-  the scene's question by a better route than the premise anticipated (Elias does not convince Sara;
-  he and Kane overpower her at the lever and she concedes after). That is one scene.
-- **The writer's receipt is unmeasured, and is the live risk.** Stage 3 gives up job 1. Only THE ONE
-  RULE and the stop-while-the-pressure-is-live rule still hold the writer to stopping at choices, and
-  two runs cannot say whether they do. The failure would be quiet: competent, low-consequence answers
-  that break no rule, pass the judge, pass the lint, and let the scene die politely.
-- **How the evidence went wrong is worth as much as the evidence.** Three of the first four runs were
-  written by an engine other than the working tree, because a `git checkout` does not reach a running
-  `--serve` process; rotation at `MAX_RUNS = 3` destroyed an arm mid-series; and single runs were
-  twice read as signal, once producing a correction that was itself based on a mislabelled run.
-  [run-manifest.ts](run-manifest.ts) exists because of this, and every run since identifies itself.
-
-### The conclusion that was not expected
-
-**Stage 2 is not a merge target and never was.** It is the configuration where the writer pays to
-compose a question, the gate charges a step to refuse it, and no character ever reads it — pure
-overhead, and its three runs are the longest and most refusal-ridden in the series. It was a
-measurement device for isolating job 2. The two coherent end states are keeping the question and
-showing it, or deleting it.
-
-So the branch holds two shippable things and one instrument:
-
-| | what | state |
-| --- | --- | --- |
-| **Stage 1 + reaction fix** | a thought reaches the writer only from inside the POV; a non-POV reaction has to surface | strong mechanism evidence, no counter-evidence, independent of the rest |
-| **Infrastructure** | the run manifest, retention at 10, the repeat guard, the unchanged-situation retry refusal, the quote-lint fix | every one a defect the experiment surfaced; none depends on it |
-| **Stage 3** | the consult is a character and a situation | coherent end state, one unmeasured risk |
-
-### Done when
-
-One more stage-3 run, read for `narration_flag` on **invented deeds and stillness**. Until `9fd2410`
-every quotation hit short-circuited that check for its piece, so it has effectively never run on a
-stage-3 scene — which is how a run that showed as clean put three unasked-for stillnesses on the page
-("Jules remains glued to the terminal", "Sara remains anchored to the console", "Kane remains hunched
-over the lever"). That is the one check that would catch the writer no longer stopping at choices,
-and it is the one number between stage 3 and a merge decision.
-
-Stage 2 shipped at `6a9041d` and stage 3 at `14022cf`. The surface docs have caught up with both:
-[Writer.MD](Writer.MD) now describes the retry as the one place a fork is named in words, the
-unchanged-situation refusal, the single POV floor an open beat has in place of the four shapes, and
-the `wants` menu's move to `prompts/judge.ts`; [GUI-SPEC.md](GUI-SPEC.md) records that `question` and
-`wants` are `""` on every consult the writer sends. **Nothing in the docs now describes stage 3 as
-unshipped, so a revert has to undo those passages too.**
-
 ## Open design questions
 
 The engine permits something it should not, or has no representation for something it needs, and the
@@ -483,61 +412,83 @@ the engine permits something the asymmetry forbids.
   cross-character restriction form, or leaving this to `facts`, is open — it is the same distinction
   the "a removed special skill is a cannot, not an absence" work was about, and it currently holds
   only for general and bible skills.
+- **Skill Bible aliases are resolution semantics, not a UI field.** `engine/skills.ts` resolves
+  skills, restrictions and reach **by name**, through `nameKey`/`sameName` — the single funnel every
+  case-insensitive identity comparison goes through. Aliases would change which name a restriction
+  matches, and whether a removed skill reads as a CANNOT or an absence — the same distinction the
+  "a removed special skill is a cannot, not an absence" work settled. Design against that module's
+  invariants (its docstring carries all five) before any editor shows an alias field.
+- **A "Draft · architect" badge on the shelf.** A story reaches the shelf only once `story.json`
+  exists, and the scaffold session is session-only that dies on restart — so the mockup's badge has
+  three readings, ascending in cost: derive it from `chapters.length === 0` (free; cannot see an
+  interview abandoned before accept, because nothing is on disk yet), a session badge while this
+  process holds that story's session (free; vanishes on restart — the new-story card's
+  "continue new story…" already does a version of this), or persisting scaffold drafts to disk
+  (engine work, half-written stories that do not preflight, a directory before a name). Only the
+  owner can say which they wanted; nothing is built until then.
 
 ## Directions
 
 Big, unbuilt, and shaping rather than corrective. One carries enough design to have its own section
 below: **The world timeline**.
 
-- **Promotion into the skill bible.** The bible itself is built — a persisted catalog kind beside
-  `defaults.json`, seeded from the in-code `SPECIAL_SKILL_CATALOG`, with its own editor
-  ([`Architect.MD`](Architect.MD), *Skill bible*). What is left is **promotion**: the architect
-  **proposes** a bible addition when a scaffold invents a bespoke skill, and it lands only after the
-  owner **approves** it — a real gate distinct from accepting the story. That gate is what turns
-  "prefer an existing skill" into a hard constraint; until it exists, custom skills stay allowed.
+- **"Prefer an existing skill" is still advice, not a rule.** Promotion is built — the architect
+  reads the author's bible on both sides, a bespoke `name :: meaning` in a landed cast is derived as
+  a promotion candidate, and `/scaffold/promote` is the owner's gate
+  ([`Architect.MD`](Architect.MD), *Skill bible → Promotion*). What the gate has not yet bought is
+  the constraint it was supposed to enable: a bespoke skill is still accepted everywhere, so an
+  author who never promotes anything gets the same behaviour as before, and one who promotes
+  diligently still sees the architect coin a fresh synonym whenever it does not recognise a name.
 
-  One wiring job comes before it. The run path is done — `loadStory` resolves the cast against the
-  author's bible and carries it on the `StoryConfig` for the reach layer — but the **architect** is
-  still on the in-code catalog on both sides: its prompt carries `SPECIAL_SKILL_CATALOG`, and
-  `normalizeSpec` validates a proposed cast against it (`engine/story-spec.ts`, `capabilityProblems`
-  at the cast gate and `bibleMeaningOf` in restriction normalization). So a promoted skill is
-  invisible to the one stage that would reuse it, and the architect proposes the same capability
-  afresh with its own wording. Wire that before the proposal path: a gate for promoting skills into a
-  bible the proposer cannot read would be a gate over nothing.
+  Making it hard means refusing a bespoke skill whose meaning matches something already in the
+  bible — and *matches* is the problem. Name equality is already enforced. Meaning equality is a
+  judgement, which puts it in the advisory reviewer's territory rather than the schema's. **Done
+  when** a scaffold has been run twice against a bible the first run filled, and the second run's
+  cast is read for whether it reused the promoted names or reinvented them. That measurement is
+  worth more than the rule: if reuse is already high, the rule buys nothing.
 
-  The seam is the same one the run path used — the bible is a parameter, and only the top layer loads
-  one. The architect's is harder in one way: `buildArchitect` renders the catalog into a **prompt
-  string**, so the bible has to reach `prompts/architect.ts` already flattened to name-and-meaning
-  pairs, the way every other shape does.
-- **The character catalog reaches the architect.** The catalog itself is built — storage, routes and
-  the `#/catalog` editor ([`Architect.MD`](Architect.MD), *Character catalog*) — and nothing consumes
-  it. What is left is the import path at the **cast gate**, which changes what that gate *does*:
-  understand → place → adapt → ask only what the import does not answer, rather than invent →
-  propose → refine. That is a stage prompt of its own, not a decorated `architectCastStage`: today's
-  prompt is written to propose and commit, while the imported path should ask more readily, because
-  the author has already made the choice the architect would otherwise invent.
+  Two smaller things this left behind. **The system prompt is not re-rendered mid-session**, so a
+  skill promoted during a scaffold is accepted by validation immediately but absent from the
+  architect's own list until the next session; re-rendering means rebuilding the agent and losing
+  the conversation. And **`directEdit` still normalizes against the in-code bible** — it
+  re-normalizes the whole spec to change `scene.length`, so it can report a bible problem against
+  the wrong catalog. Fixing it means making `ServerHost.directEdit` async for an advisory-only
+  effect.
+- **Casting from the library, past the opening cast.** The import path itself is built — the tray,
+  the cast gate's own stage prompt, and the adaptation contract the engine enforces rather than
+  requests ([`Architect.MD`](Architect.MD), *Casting from the library*). What is unbuilt is
+  everything that follows from a cast the author picked rather than the architect invented:
 
-  The adaptation contract is fixed by field and needs no per-template declaration — `belief`,
-  `impulse`, `voice`, `skills` and `restrictions` are **preserved**; `goal` and `knows` are
-  **resolved per story**; `persona` is **composed** from the entry's portable half plus a story
-  context authored at the gate. That is what makes import awareness inspectable rather than a
-  behavioural hint: you can read a proposal and check which happened. A line telling the architect
-  "the author chose this one" cannot be checked and should not be written.
-
-  **Adaptation and cast quality are separate rules.** The contract says preserve, full stop; the cast
-  gate still judges whether the preserved capabilities bite on this tension. Judging is not adapting,
-  and blurring them reads as licence to rewrite a restriction during import.
-
-  Two things to build for: a fully imported cast may legitimately produce **no new characters at
-  all** — only edits and questions — so `stageHasContent` must accept that as content, the way the
-  world gate had to learn an empty ledger is an answer; and provenance stays **session-only**, since
-  `StoryJson` is a `z.strictObject` and the handoff must never know a character came from a template.
+  - **The contract has never met a real model.** Preservation is enforced, so it cannot fail
+    quietly — but the notes it emits are the measurement. A run whose proposal reverts nothing says
+    the prompt is carrying the rule; a run that reverts on every character says the prompt is not,
+    and the enforcement is all that stands between the author and a rewritten restriction. **Done
+    when** one imported scaffold is read for which of those it is.
+  - **An imported cast may make the cast judge ask the wrong question.** Its single question is
+    whether the cast's asymmetry bites on the tension. With an imported cast the author has already
+    committed to these people, so a refusal is advice about the *tension*, not the cast — and the
+    gate's overrule wording is written for a cast the architect proposed.
+  - **A tray larger than the opening cast has no representation.** Four chosen, two in scene 1 is
+    the deferred-introduction fork below, and the tray is where it would live.
 
 - **The catalog's advisory reviewer.** Deferred deliberately until real entries exist to test it
   against, and specified where it will live ([`Architect.MD`](Architect.MD)): architect-shaped rather
   than judge-shaped, non-blocking, with mechanical validation still running after it. It exists
   because a catalog amplifies the cast-sheet defects already logged above — one bad character, every
   story after it.
+- **The GUI redesign's remainder.** Built: the persistent shell (Stories / Workspace / Libraries),
+  the mockup's warm-paper restyle with an authored dark palette, the architect's stepper with the
+  gate-labelled approve and the tension as its text, the story map's scene detail (roster, reach,
+  hold-only beats), the catalog's derived usage lines, and the concept's **voice picker** — a style
+  preset reaches the settings gate, whose voice becomes `writerStyle` while the clauses it derives
+  become `writerStyleConstraints` ([Architect.MD](Architect.MD), *The voice*). What the mockups
+  proposed and nothing carries yet: the **conversation transcript** as the architect's primary UI —
+  needs a host method publishing the session's turns, and the owner has chosen to keep the plain
+  last-round narration until they ask for the history; the tag editor's **description** and
+  **related-tags** fields (schema work on `TagEntry`); the story editor's **`writerStyleConstraints`
+  field** — the settings gate writes the derived half now, and the editor shows only the voice, so
+  the one place an author could correct a clause does not display it; and the shelf's
+  **"Draft · architect" badge** under Open design questions below.
 
 ## The world timeline
 

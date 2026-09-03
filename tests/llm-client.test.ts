@@ -2,7 +2,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { complete, completeStream, NET, lmUrlsDerivable, SITE_HEADER, AGENT_HEADER } from "../engine/llm-client.ts";
+import { complete, completeStream, NET, SITE_HEADER, AGENT_HEADER } from "../engine/llm-client.ts";
 import { stopRun, armRun } from "../live.ts";
 
 /** Build a ReadableStream from an array of chunks. */
@@ -204,29 +204,24 @@ describe("completeStream SSE frame parsing", () => {
   it("rethrows stream error when RUN.stopped (stops recovery on line 122)", async () => {
     armRun();
     const encoder = new TextEncoder();
-    let readCount = 0;
-    let hasErrored = false;
 
-    class BreakAfterData extends ReadableStream<Uint8Array> {
-      constructor() {
-        super({
-          pull(controller) {
-            readCount++;
-            if (readCount === 1) {
-              // Send text with complete JSON so recovery would normally keep it
-              controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"{\\"result\\":\\"ok\\"}"}}]}\n'));
-            } else if (readCount === 2 && !hasErrored) {
-              // Second attempt: error the stream
-              hasErrored = true;
-              controller.error(new Error("stream broke mid-transmission"));
-            }
-          },
-        });
-      }
-    }
-
-    globalThis.fetch = async () => new Response(new BreakAfterData(),
-      { headers: { "content-type": "text/event-stream" } }) as any;
+    globalThis.fetch = (async (_url: any) => {
+      // The readiness probes ask the models route first; only the chat call gets the broken stream.
+      if (String(_url).endsWith("/models")) return new Response("{}", { status: 200 }) as any;
+      let pulls = 0;
+      return new Response(new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls++;
+          if (pulls === 1) {
+            // Send text with complete JSON so recovery would normally keep it
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"{\\"result\\":\\"ok\\"}"}}]}\n'));
+          } else {
+            // Second attempt: error the stream
+            controller.error(new Error("stream broke mid-transmission"));
+          }
+        },
+      }), { headers: { "content-type": "text/event-stream" } }) as any;
+    }) as any;
 
     // Stop the run before starting the stream, so RUN.stopped=true
     // when the stream error is caught on line 122
@@ -404,16 +399,18 @@ describe("retry classification (non-JSON reply bodies)", () => {
     const saved = { timeoutMs: NET.timeoutMs, retries: NET.retries, backoffMs: NET.backoffMs };
     NET.timeoutMs = 250; NET.retries = 1; NET.backoffMs = 0;
     armRun();
-    let calls = 0;
+    let calls = 0, probes = 0;
     try {
-      globalThis.fetch = async () => {
+      globalThis.fetch = (async (_url: any) => {
+        if (String(_url).endsWith("/models")) { probes++; return new Response("{}", { status: 200 }) as any; }
         calls++;
         if (calls === 1) return new Response("<!doctype html><html>proxy error page</html>",
                                             { headers: { "content-type": "text/html" } }) as any;
         return new Response(JSON.stringify({ choices: [{ message: { content: "second try" } }] })) as any;
-      };
+      }) as any;
       const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
       assert.equal(calls, 2, "the unparseable body spent a retry instead of killing the call");
+      assert.ok(probes >= 1, "the health gate asked the provider between the attempts");
       assert.equal(result.text, "second try");
     } finally {
       Object.assign(NET, saved);
@@ -448,22 +445,6 @@ describe("retry classification (non-JSON reply bodies)", () => {
     } finally {
       Object.assign(NET, saved);
     }
-  });
-});
-
-// -- URL DERIVATION GUARD ----
-describe("lmUrlsDerivable", () => {
-  it("accepts chat-completions URLs, with or without a trailing slash", () => {
-    assert.equal(lmUrlsDerivable("http://localhost:1234/v1/chat/completions"), true);
-    assert.equal(lmUrlsDerivable("http://localhost:1234/v1/chat/completions/"), true);
-    assert.equal(lmUrlsDerivable("http://host.docker.internal:1234/v1/chat/completions"), true,
-      "the devcontainer's host-gateway form");
-  });
-
-  it("rejects URLs whose /models derivation would silently hit the wrong route", () => {
-    assert.equal(lmUrlsDerivable("http://localhost:1234/v1"), false);
-    assert.equal(lmUrlsDerivable("http://localhost:1234/api/v0/chat"), false);
-    assert.equal(lmUrlsDerivable(""), false);
   });
 });
 

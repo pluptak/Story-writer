@@ -47,9 +47,9 @@ export async function handleRunControl(
     if (LIVE.running && !LIVE.paused) { json(res, 400, { ok: false, reason: "pause the run before changing its model" }); return true; }
     const model = String(o.model ?? "").trim();
     if (!model) { LIVE.modelOverride = null; json(res, 200, { ok: true }); return true; }
-    const ids = await host.loadedModelIds();
+    const ids = await host.availableModelIds();
     if (ids !== null && !ids.includes(model)) {
-      json(res, 400, { ok: false, reason: `"${model}" is not loaded in LM Studio` }); return true;
+      json(res, 400, { ok: false, reason: `"${model}" is not available in ${host.providerName}` }); return true;
     }
     LIVE.modelOverride = model;
     if (LIVE.paused && LIVE.writer && LIVE.agents) {

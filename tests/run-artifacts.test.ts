@@ -424,6 +424,26 @@ describe("prompt construction", () => {
               "the writer must not be handed the personas");
   });
 
+  it("the style constraints join the house style, and an empty list changes nothing", async () => {
+    // The load-bearing claim of the preset/constraint split: the author sees two fields, the writer
+    // sees one HOUSE STYLE block. If an empty list ever altered the prompt, every existing story's
+    // writer would silently change with it -- so byte-identity is asserted, not assumed.
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const cast = writerCast(sc.characters, sc.scenes[0].roster);
+    const empty = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle, sc.facts, []);
+    // The house style is the last thing in the prompt, so this pins its exact content: no trailing
+    // newline, no empty line where a constraint would have gone.
+    assert.ok(empty.endsWith(`HOUSE STYLE:\n${sc.writerStyle.trim()}`),
+              "with no constraints the block must be the style alone, unchanged");
+
+    const withOnes = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle, sc.facts,
+                                ["No omniscience.", "  ", "Do not narrate what ASTER cannot perceive."]);
+    assert.match(withOnes, /HOUSE STYLE:[\s\S]*No omniscience\./);
+    assert.match(withOnes, /Do not narrate what ASTER cannot perceive\./);
+    // Blank entries are dropped rather than emitted as empty lines in the middle of the block.
+    assert.ok(!/No omniscience\.\n\n+Do not narrate/.test(withOnes), "a blank constraint must not survive as a gap");
+  });
+
   it("a removed special skill is named under CANNOT, not merely absent from can", async () => {
     // The live gap this pins: a removed lockpicking would be invisible if only absence-from-can spoke.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));

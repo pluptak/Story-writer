@@ -1,5 +1,5 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
-import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems } from "./skills.ts";
+import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems, type BibleLookup } from "./skills.ts";
 import { RunConfig, THINK_LEVELS, TimelineDef, type ThinkLevel, type SceneDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig, TimelineDef } from "./story-schema.ts";
@@ -10,6 +10,7 @@ export interface StorySpec {
   premise: string;
   scenes: SceneDef[];
   writerStyle: string;
+  writerStyleConstraints: string[];
   facts: string[];
   /** The world-event ledger (PLANS.md: the world timeline). Story-level: an entry carries a
    *  per-character memory map, which SceneDef has no shape for, and story-level is what lets the
@@ -108,8 +109,10 @@ export function timelineOrderProblems(beats: TimelineDef[]): string[] {
   return out;
 }
 
-/** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing. */
-export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] } {
+/** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing.
+ *  The bible is a parameter so the architect validates against the one the author edits, not the one
+ *  in the source. */
+export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { spec: StorySpec; problems: string[] } {
   const problems: string[] = [];
   const o = raw ?? {};
   const rawScenes: any[] = Array.isArray(o.scenes) ? o.scenes
@@ -130,7 +133,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     if (seen.has(name.toLowerCase())) { problems.push(`two characters called "${name}" — kept the first`); continue; }
     seen.add(name.toLowerCase());
     const skills = asStrings(c?.skills);
-    const cap = capabilityProblems(name, skills, asStrings(c?.restrictions ?? c?.lacks));
+    const cap = capabilityProblems(name, skills, asStrings(c?.restrictions ?? c?.lacks), bible);
     const restrictions = cap.restrictions;
     problems.push(...cap.problems);
     const voice = asStrings(c?.voice);
@@ -199,7 +202,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
         // the reach entry is dropped. Surfaces here, not only mid-run.
         const key = canonSkill(text);
         if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === key)
-            || bibleMeaningOf(text) !== undefined || ownSkillKeys.has(key)) {
+            || bible(text) !== undefined || ownSkillKeys.has(key)) {
           problems.push(`${ch.name}'s reach "${text}" collides with a skill name — name the INTERFACE, not the sense or capability it substitutes for; the entry is dropped`);
           return false;
         }
@@ -251,6 +254,7 @@ export function normalizeSpec(raw: any): { spec: StorySpec; problems: string[] }
     premise: String(o.premise ?? "").trim(),
     scenes,
     writerStyle: String(o.writer_style ?? o.writerStyle ?? "").trim(),
+    writerStyleConstraints: asStrings(o.writer_style_constraints ?? o.writerStyleConstraints),
     facts: Array.isArray(o.facts) ? o.facts.map((f: unknown) => String(f).trim()).filter(Boolean) : [],
     timeline,
     config,
@@ -280,13 +284,13 @@ function canonicalField(field: string): string {
     .replace(/\[([^\]\d][^\]]*)\]/g, ".$1");
 }
 
-export function applyEdits(spec: StorySpec, raw: any): {
+export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bibleMeaningOf): {
   spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; problems: string[];
 } {
   type Applied = { field: string; before: unknown; after: unknown };
   type Work = Applied & { key: string; snapshot: unknown; resolve?: (next: StorySpec) => unknown };
   const work: Work[] = [], ignored: string[] = [];
-  const draft: any = JSON.parse(JSON.stringify({ ...spec, writer_style: spec.writerStyle, scenes: spec.scenes }));
+  const draft: any = JSON.parse(JSON.stringify({ ...spec, writer_style: spec.writerStyle, writer_style_constraints: spec.writerStyleConstraints, scenes: spec.scenes }));
   const rawEdits = Array.isArray(raw?.edits) ? raw.edits : [];
   // The canonical edit shape is {"field": "...", "value": ...}. Some models instead emit a single
   // object whose KEYS are the field names ({"title": "...", "premise": "..."}). Expand those into the
@@ -316,7 +320,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
     }
     return undefined;
   };
-  const normalizedDraft = () => normalizeSpec(draft).spec;
+  const normalizedDraft = () => normalizeSpec(draft, bible).spec;
   const add = (entry: Omit<Work, "after"> & { after?: unknown }) => work.push(entry as Work);
   const scalarResolver = (key: string, resolve: (next: StorySpec) => unknown, before: unknown, field = key) => {
     const normalized = normalizedDraft();
@@ -339,6 +343,12 @@ export function applyEdits(spec: StorySpec, raw: any): {
       const before = normalizedDraft().writerStyle;
       draft.writer_style = scalar();
       scalarResolver("writer_style", next => next.writerStyle, before, "writer_style");
+      continue;
+    }
+    if (field === "writer_style_constraints" || field === "writerStyleConstraints") {
+      const before = normalizedDraft().writerStyleConstraints;
+      draft.writer_style_constraints = asStrings(value);
+      scalarResolver("writer_style_constraints", next => next.writerStyleConstraints, before, "writer_style_constraints");
       continue;
     }
     if (field === "facts") {
@@ -648,7 +658,7 @@ export function applyEdits(spec: StorySpec, raw: any): {
     }
   }
 
-  const { spec: next, problems } = normalizeSpec(draft);
+  const { spec: next, problems } = normalizeSpec(draft, bible);
   const counts = new Map<string, number>();
   for (const e of work) counts.set(e.key, (counts.get(e.key) ?? 0) + 1);
   const applied = work.map(({ field, before, snapshot, resolve, key }) => ({
@@ -742,6 +752,9 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     premise: spec.premise,
     scenes: spec.scenes,
     writerStyle: spec.writerStyle,
+    // Absent rather than empty, so a handoff accept or scaffold save does not add a field to
+    // stories that never had one — same rule as the optional model fields and timeline above.
+    ...(spec.writerStyleConstraints.length ? { writerStyleConstraints: spec.writerStyleConstraints } : {}),
     facts: spec.facts,
     // Absent rather than empty, so a handoff accept or scaffold save does not add a field to
     // stories that never had one — same rule as the optional model fields above.
@@ -760,6 +773,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
 export function specView(spec: StorySpec) {
   return {
     title: spec.title, premise: spec.premise, scene: spec.scenes[0], scenes: spec.scenes, writerStyle: spec.writerStyle,
+    writerStyleConstraints: spec.writerStyleConstraints,
     facts: spec.facts, timeline: spec.timeline, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
       name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,

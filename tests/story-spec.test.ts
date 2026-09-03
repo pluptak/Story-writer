@@ -1108,4 +1108,94 @@ describe("renderStory shape", () => {
     assert.equal(story.scenes[0].pov, "");
     assert.equal(story.scenes[0].length, 700);
   });
+
+  it("omits writerStyleConstraints when empty, and includes it when non-empty", () => {
+    const base = {
+      title: "Test", premise: "A premise.",
+      scene: { question: "Q?" },
+      characters: [{ name: "X", persona: "Person." }],
+    };
+    const without = JSON.parse(renderStory(normalizeSpec(base).spec, { default: "m" })["story.json"]);
+    assert.equal("writerStyleConstraints" in without, false, "omitted when empty");
+
+    const withConstraints = JSON.parse(renderStory(
+      normalizeSpec({ ...base, writerStyleConstraints: ["no omniscience"] }).spec,
+      { default: "m" }
+    )["story.json"]);
+    assert.deepEqual(withConstraints.writerStyleConstraints, ["no omniscience"]);
+  });
+});
+
+describe("writerStyleConstraints", () => {
+  const base = {
+    title: "Doorway", premise: "A corridor at 3am.",
+    scene: { place: "Behind Kessel's", question: "Does she get in?", pov: "RIVEN", length: 700 },
+    characters: [{ name: "RIVEN", persona: "A courier.", knows: "The code changed.",
+      belief: "The back door is still unlocked.", impulse: "When challenged, shows the crate label first.",
+      voice: ["I deliver."],
+      skills: ["lockpicking"], restrictions: [] }],
+  };
+
+  it("normalizeSpec accepts both writer_style_constraints and writerStyleConstraints", () => {
+    const snake = normalizeSpec({ ...base, writer_style_constraints: ["no omniscience"] }).spec;
+    assert.deepEqual(snake.writerStyleConstraints, ["no omniscience"]);
+
+    const camel = normalizeSpec({ ...base, writerStyleConstraints: ["no omniscience"] }).spec;
+    assert.deepEqual(camel.writerStyleConstraints, ["no omniscience"]);
+  });
+
+  it("normalizeSpec defaults writerStyleConstraints to an empty array", () => {
+    const { spec } = normalizeSpec(base);
+    assert.deepEqual(spec.writerStyleConstraints, []);
+  });
+
+  it("applyEdits handles writer_style_constraints and writerStyleConstraints", () => {
+    const spec = normalizeSpec(base).spec;
+    const r = quietSync(() => applyEdits(spec, {
+      edits: [{ field: "writer_style_constraints", value: ["no omniscience", "do not narrate X's thoughts"] }],
+    }));
+    assert.deepEqual(r.spec.writerStyleConstraints, ["no omniscience", "do not narrate X's thoughts"]);
+    assert.equal(r.applied.length, 1);
+    assert.deepEqual(r.applied[0].before, []);
+
+    // Also accept camelCase
+    const camel = quietSync(() => applyEdits(spec, {
+      edits: [{ field: "writerStyleConstraints", value: "a constraint" }],
+    }));
+    assert.deepEqual(camel.spec.writerStyleConstraints, ["a constraint"]);
+  });
+
+  it("specView includes writerStyleConstraints", () => {
+    const spec = normalizeSpec({ ...base, writerStyleConstraints: ["no omniscience"] }).spec;
+    const view = specView(spec);
+    assert.deepEqual(view.writerStyleConstraints, ["no omniscience"]);
+  });
+
+  it("loadStory carries writerStyleConstraints from story.json", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const spec = normalizeSpec({ ...base, writerStyleConstraints: ["constraint one", "constraint two"] }).spec;
+      await writeFile(
+        join(dir, "story.json"),
+        renderStory(spec, { default: "m" })["story.json"],
+        "utf8"
+      );
+      const sc = await quiet(() => loadStory(dir));
+      assert.deepEqual(sc.writerStyleConstraints, ["constraint one", "constraint two"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("loadStory defaults writerStyleConstraints to an empty array when not present", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const spec = normalizeSpec(base).spec;
+      await writeFile(
+        join(dir, "story.json"),
+        renderStory(spec, { default: "m" })["story.json"],
+        "utf8"
+      );
+      const sc = await quiet(() => loadStory(dir));
+      assert.deepEqual(sc.writerStyleConstraints, []);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
 });

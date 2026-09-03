@@ -89,6 +89,14 @@ const CANON_BIBLE: ReadonlyMap<string, string> =
 /** The bible's canonical meaning for a skill name, whatever spelling it was written in. */
 export const bibleMeaningOf = (name: string): string | undefined => CANON_BIBLE.get(canonSkill(name));
 
+/** A `BibleLookup` over an explicit name→meaning map. The bible reaches the architect as PAIRS,
+ *  because one of its two consumers renders it into a prompt string; this is the other consumer's
+ *  view of the same map, so the two cannot disagree about what is in it. */
+export const bibleFrom = (entries: Readonly<Record<string, string>>): BibleLookup => {
+  const m = new Map(Object.entries(entries).map(([k, v]) => [canonSkill(k), v] as const));
+  return name => m.get(canonSkill(name));
+};
+
 // A story may write `name :: what it means`; the meaning is optional, the name is not.
 /** Split a `name :: what it means` entry; the meaning is optional, the name is not. */
 export function splitMeaning(raw: string): { text: string; meaning: string } {
