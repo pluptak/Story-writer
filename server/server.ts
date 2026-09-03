@@ -15,11 +15,10 @@ import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
 import { handleCatalogRoutes } from "./catalog-routes.ts";
-import type { ScaffoldSession, NextChapterSession, ImportedCharacter, StylePreset } from "../engine/architect.ts";
+import type { NextChapterSession } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson, ThinkLevel } from "../engine/story-schema.ts";
-import type { BibleLookup } from "../engine/skills.ts";
 import type { TagFacet } from "../engine/catalog-schema.ts";
 
 /** The author's concept, chosen before the architect runs and never written to story.json:
@@ -60,6 +59,54 @@ export interface CatalogConfig {
   caps: { voiceSamples: number };
 }
 
+/** One in-progress interview's full snapshot — what GET /scaffold and every /scaffold/* action
+ *  returns. Declared here rather than derived from engine/architect.ts's ScaffoldRound, so
+ *  server/scaffold-routes.ts never needs that module even as a type; `last` and `bibleCandidates`
+ *  are opaque/small enough that hand-restating the shape costs nothing and buys the boundary. */
+export type ScaffoldState =
+  | { active: false }
+  | {
+      active: true;
+      idea: string;
+      mode: "oneshot" | "staged";
+      busy: boolean;
+      stage: "" | "fillGaps" | "verify";
+      gate: string | null;
+      tension: string;
+      concept: {
+        tags: readonly string[]; castSize: number; unknownTags: string[];
+        imported: { libraryId: string; version: number; name: string }[];
+        missingImports: string[];
+        styleId: string; styleName: string; missingStyle: string;
+        tagsSteer: boolean; castSizeSteers: boolean; importsSteer: boolean; styleSteers: boolean;
+      };
+      haveDraft: boolean;
+      haveStory: boolean;
+      pendingAsk: string;
+      problems: string[];
+      bibleCandidates: { name: string; meaning: string; heldBy: string[] }[];
+      last: unknown;
+      needsFolder: string;
+      model: string;
+      spec: unknown;
+      storyDraft: unknown;
+    };
+
+/** One scaffold action's outcome: the resulting state, or a refusal naming the status to answer with. */
+export type ScaffoldActionResult =
+  | { ok: true; state: ScaffoldState }
+  | { ok: false; reason: string; status?: number; issues?: string[] };
+
+/** accept()'s outcome. Distinct from ScaffoldActionResult: a non-"written" result is not always a
+ *  refusal of the call (the route answers 200 for "needs_folder"/"unloadable"), and the route needs
+ *  the written files/dir, not a state snapshot — the session is gone once this succeeds. */
+export type ScaffoldAcceptResult =
+  | { ok: true; kind: "written"; dir: string; files: string[]; warnings: string[]; status: 200 }
+  | { ok: false; kind: "unloadable"; dir: string; files: string[]; error: string; warnings: string[]; status: 200 }
+  | { ok: false; kind: "needs_folder"; reason: string; status: 200 }
+  | { ok: false; kind: "no_story"; status: 400 }
+  | { ok: false; reason: string; status: number };
+
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
   storyCards(): Promise<StoryCard[]>;
@@ -79,32 +126,39 @@ export interface ServerHost {
   providerName: string;
   /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
   architectModel(): Promise<string>;
-  /** `mode` picks the scaffold's walk: "staged" runs the gated checklist
-   *  (story → cast → settings → scene, an author approval between stages); "oneshot" is the
-   *  whole-story proposal. Omitted means staged. The optional `concept` carries the author's
-   *  pre-architect steering: tags and target cast size. */
-  newScaffoldSession(idea: string, model?: string, mode?: "oneshot" | "staged",
-                     concept?: Concept): Promise<ScaffoldSession>;
-  /** Which of these tags the tag catalog does not hold, in the order given. Off-vocabulary tags
-   *  are allowed — the catalog is a seed the author edits, not a gate — but they are reported so
-   *  a typo does not silently become a steering word. */
-  unknownTags(tags: string[]): Promise<string[]>;
-  /** Resolve character-catalog ids into the scaffold's import tray. A id the catalog no longer holds
-   *  comes back in `missing` rather than failing the call: the catalog is the author's and they may
-   *  have deleted an entry since choosing it, and a tray that silently shrank is worse than one that
-   *  says what it lost. */
-  importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }>;
-  /** One style preset from the author's catalog, by id. Null when the id names nothing — a preset
-   *  deleted between the pick and the round is news for the author, not an error. */
-  resolveStyle(id: string): Promise<StylePreset | null>;
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
-  directEdit(spec: StorySpec, field: string, value: unknown):
-    { ok: false; reason: string } | { ok: true; spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; problems: string[] };
   specView(spec: StorySpec): unknown;
   /** The spec as a plain StoryJson-shaped object (no `scene` alias, no exploded skills) — what the
    *  scaffold's editor draft loads directly instead of reconciling specView's shape into it. */
   storyJsonShape(spec: StorySpec, models: { default: string }): unknown;
+  /** The open interview's current snapshot, or `{active:false}`. Never mutates or publishes. */
+  scaffoldState(): ScaffoldState;
+  /** Opens a new interview: `mode` picks the walk ("staged" runs the gated checklist, "oneshot" is
+   *  the whole-story proposal), `concept` is the author's pre-architect steering (tags/cast
+   *  size/style), `importIds` is the opening tray. Refuses (409) if a round is already in flight, or
+   *  if abandoned while this one was still getting under way. */
+  scaffoldStart(input: { idea: string; model: string; mode: "oneshot" | "staged";
+                         concept: Concept; importIds: string[] }): Promise<ScaffoldActionResult>;
+  /** A free-text turn against the open interview. */
+  scaffoldSay(text: string): Promise<ScaffoldActionResult>;
+  /** Staged mode only: pass the open checklist gate and propose the next stage's content. `override`
+   *  is the author overruling a gate that came back blocked. */
+  scaffoldApprove(override: boolean): Promise<ScaffoldActionResult>;
+  /** Revises the author's concept on the open session — never re-runs a gate. */
+  scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult>;
+  /** Replaces the import tray on the open session, wholesale. */
+  scaffoldImport(ids: string[]): Promise<ScaffoldActionResult>;
+  /** Puts one of the session's current bible candidates into the author's skill bible. */
+  scaffoldPromote(name: string): Promise<ScaffoldActionResult>;
+  /** Direct edit, bypassing the model: `{field, value}` for a single scalar field (today only
+   *  "scene.length"), or `{story}` to replace the in-memory draft wholesale from the full editor. */
+  scaffoldSet(input: { story?: unknown; field?: string; value?: unknown }): ScaffoldActionResult;
+  /** Writes the accepted story to disk and ends the session on success. */
+  scaffoldAccept(folder: string): Promise<ScaffoldAcceptResult>;
+  /** Drops the open interview unconditionally — a round in flight discovers this and discards
+   *  whatever it was about to commit rather than being resurrected. */
+  scaffoldAbandon(): void;
   /** The current run's output folder, or "" before a run has committed one. */
   outDir(): string;
   /** Schema-derived defaults, thinking levels and caps for the story editor and the new-story form —
@@ -182,14 +236,6 @@ export interface ServerHost {
   catalogDelete(kind: string, id: string): Promise<{ ok: true } | { ok: false; reason: string; status?: number }>;
   /** Which catalogs reference which entries — read-only derivation over the other kinds. */
   catalogUsage(): Promise<CatalogUsage>;
-  /** Put a bespoke skill into the author's bible and hand back a lookup over the NEW bible. The
-   *  caller assigns that to the open session, because the session validates against a bible it was
-   *  handed when it opened — without the swap the skill it just promoted would still read as
-   *  unknown for the rest of the conversation. */
-  promoteSkill(name: string, meaning: string): Promise<
-    { ok: true; bible: BibleLookup; problems: string[] } |
-    { ok: false; reason?: string; issues?: string[] }
-  >;
 }
 
 async function serveFile(res: ServerResponse, url: URL, contentType: string) {

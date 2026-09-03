@@ -4,7 +4,7 @@
  *  engine/ — routes receive behaviour through this object. */
 import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { storyWriteBlocked } from "./live.ts";
+import { storyWriteBlocked, sseWrite, setWhere } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { splitMeaning, bibleFrom, canonSkill } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
@@ -17,10 +17,14 @@ import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type NextChapterSession, type ImportedCharacter, type StylePreset,
+  type ScaffoldRound, type ScaffoldAccept,
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
-import type { ServerHost, Concept, CatalogUsage, EditorConfig, CatalogConfig } from "./server/server.ts";
+import type {
+  ServerHost, Concept, CatalogUsage, EditorConfig, CatalogConfig,
+  ScaffoldState, ScaffoldActionResult, ScaffoldAcceptResult,
+} from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
 /** The architect's own knobs, which are the defaults' — not any one story's. */
@@ -112,6 +116,295 @@ async function resolveStyle(id: string): Promise<StylePreset | null> {
   return found ? { id: found.id, name: found.name, voice: found.voice } : null;
 }
 
+// -- SCAFFOLD (the new-story interview) --------------------------------------------------------
+// SCAFFOLD and its bookkeeping are private to this module: server/scaffold-routes.ts only ever
+// calls HOST.scaffold*() and gets back a full state snapshot or a refusal to forward as-is.
+// scaffoldBusy guards against two overlapping rounds; scaffoldGen guards against a round's own
+// result landing after the session was abandoned out from under it -- abandon is allowed to
+// interrupt an in-flight round rather than wait for it, so every multi-step action captures
+// scaffoldGen at entry and re-checks it after each await.
+let SCAFFOLD: ScaffoldSession | null = null;
+let scaffoldBusy = false;
+let scaffoldGen = 0;
+let scaffoldLast: ScaffoldRound | null = null;
+let scaffoldStage: "" | "fillGaps" | "verify" = "";
+let scaffoldFolderAsk = "";                  // why accept() would not derive a folder name
+let scaffoldUnknownTags: string[] = [];      // tags the catalog does not hold; allowed, but reported
+let scaffoldMissingImports: string[] = [];   // ids the catalog no longer holds
+let scaffoldMissingStyle = "";               // the style id that could not be resolved
+
+const SCAFFOLD_ABANDONED = "the interview was abandoned";
+const SCAFFOLD_ABANDONED_WHILE_ACCEPTING =
+  "the interview was abandoned while accepting — the story folder may exist on disk";
+const SCAFFOLD_BUSY = "a round is already in flight";
+const SCAFFOLD_NOT_OPEN = "no interview is open";
+
+export function scaffoldSnapshot(): ScaffoldState {
+  if (!SCAFFOLD) return { active: false };
+  const haveDraft = Boolean(
+    SCAFFOLD.spec.title || SCAFFOLD.spec.premise || SCAFFOLD.spec.characters.length
+    || SCAFFOLD.spec.writerStyle || SCAFFOLD.spec.facts.length
+    || SCAFFOLD.spec.scenes.some(scene => scene.place || scene.question || scene.pov),
+  );
+  return {
+    active: true,
+    idea: SCAFFOLD.idea,
+    mode: SCAFFOLD.mode,
+    busy: scaffoldBusy,
+    stage: scaffoldStage,
+    gate: SCAFFOLD.stage,          // staged mode only: the checklist gate that is open
+    tension: SCAFFOLD.tension,     // the load-bearing conflict the story stage coined; session state,
+                                    // never a story.json field, so it reaches the GUI only through here
+    concept: {
+      tags: SCAFFOLD.tags,
+      castSize: SCAFFOLD.castSize,
+      unknownTags: scaffoldUnknownTags,
+      imported: SCAFFOLD.imported.map(i => ({ libraryId: i.libraryId, version: i.version, name: i.name })),
+      missingImports: scaffoldMissingImports,
+      styleId: SCAFFOLD.style?.id ?? "",
+      styleName: SCAFFOLD.style?.name ?? "",
+      missingStyle: scaffoldMissingStyle,
+      // Each half steers exactly one gate and is spent once that gate has produced its content.
+      // Saying so is the point: a control that has stopped doing anything must not keep looking
+      // live. Both are asked as "would the next build of that stage's prompt read this?" — which
+      // is why cast size is measured against the cast, not against the open gate: it is at its most
+      // live during the STORY gate, before the cast prompt has ever been built.
+      tagsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.stage === "story",
+      // An imported tray IS the cast size, so the number stops being an answer to anything.
+      castSizeSteers: SCAFFOLD.mode !== "oneshot" && !SCAFFOLD.imported.length && SCAFFOLD.spec.characters.length === 0,
+      importsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.spec.characters.length === 0,
+      // Spent once the settings gate has produced a voice — which, with a preset in hand, is the
+      // preset's own. Measured against the spec rather than the open gate, like the other two.
+      styleSteers: SCAFFOLD.mode !== "oneshot" && !SCAFFOLD.spec.writerStyle.trim(),
+    },
+    haveDraft,
+    haveStory: SCAFFOLD.haveStory(),
+    pendingAsk: SCAFFOLD.pendingAsk,
+    problems: SCAFFOLD.problems,
+    // Derived from the spec each time rather than stored: a candidate stops being one the moment it
+    // is promoted or the cast stops holding it, and a stored list would go stale in both directions.
+    bibleCandidates: SCAFFOLD.bibleCandidates(),
+    last: scaffoldLast,
+    needsFolder: scaffoldFolderAsk,
+    model: SCAFFOLD.defaults.models.architect,
+    spec: haveDraft ? specView(SCAFFOLD.spec) : null,
+    // StoryJson-shaped, unlike `spec` above (specView's GUI-facing shape) — this is what the
+    // "review new story" editor loads directly, so the browser never reconciles one shape into
+    // the other itself.
+    storyDraft: haveDraft ? storyJsonShape(SCAFFOLD.spec, SCAFFOLD.defaults.models) : null,
+  };
+}
+
+function publishScaffold(): void {
+  sseWrite({ t: "scaffold", state: scaffoldSnapshot() });
+}
+
+/** Test-only substitution for what scaffoldStart/Concept/Import/Promote call internally: a real
+ *  model (newScaffoldSession) and the real catalog files (unknownTags/importCharacters/
+ *  resolveStyle/promoteSkill). This is the only way to script an interview when driving it through
+ *  the real ServerHost, whose scaffold*() methods take no extra arguments to inject through —
+ *  mirrors ScaffoldSession's own injectable `newJudge`, for the same reason: without it, a test
+ *  walking the checklist reaches for a real model or the author's real catalog. Pass null to
+ *  restore the real implementations. */
+let scaffoldTestHooks: {
+  session?: typeof newScaffoldSession;
+  tags?: typeof unknownTags;
+  imports?: typeof importCharacters;
+  style?: typeof resolveStyle;
+  promote?: typeof promoteSkill;
+} | null = null;
+
+export function setScaffoldTestHooks(hooks: typeof scaffoldTestHooks): void {
+  scaffoldTestHooks = hooks;
+}
+
+/** Resolve the author's style pick onto the session, and say so when the id names nothing. Returns
+ *  the id it could not find, or "". Assigned unconditionally by every caller for the same reason the
+ *  tray is: a pick that resolves must clear a previous session's report of one that did not. */
+async function applyStyleTo(session: ScaffoldSession, styleId: string): Promise<string> {
+  if (!styleId) { session.style = null; return ""; }
+  const found = await (scaffoldTestHooks?.style ?? resolveStyle)(styleId);
+  session.style = found;
+  return found ? "" : styleId;
+}
+
+export async function scaffoldStart(input: {
+  idea: string; model: string; mode: "oneshot" | "staged"; concept: Concept; importIds: string[];
+}): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  const gen = scaffoldGen;
+  scaffoldBusy = true; scaffoldLast = null; scaffoldFolderAsk = "";
+  try {
+    const session = await (scaffoldTestHooks?.session ?? newScaffoldSession)(input.idea, input.model, input.mode, input.concept);
+    // Abandoned while the session was being built: it must not resurrect itself.
+    if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+    SCAFFOLD = session;
+    scaffoldUnknownTags = input.concept.tags.length ? await (scaffoldTestHooks?.tags ?? unknownTags)(input.concept.tags) : [];
+    if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+    // Assigned whether or not there are ids: a start that imports nothing must clear what the
+    // last session could not find, or the new interview reports a loss it never had.
+    const resolved = input.importIds.length
+      ? await (scaffoldTestHooks?.imports ?? importCharacters)(input.importIds) : { imported: [], missing: [] };
+    if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+    SCAFFOLD.imported = resolved.imported;
+    scaffoldMissingImports = resolved.missing;
+    scaffoldMissingStyle = await applyStyleTo(SCAFFOLD, input.concept.styleId);
+    if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+    setWhere("building a new story", false);
+    publishScaffold();
+    const last = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(); });
+    if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+    scaffoldLast = last;
+  } catch (e) {
+    scaffoldLast = { kind: "failed", error: (e as Error).message };
+  } finally { scaffoldBusy = false; scaffoldStage = ""; }
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+export async function scaffoldSay(text: string): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  const gen = scaffoldGen;
+  const session = SCAFFOLD;
+  scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
+  try {
+    const r = await session.say(text, stage => { scaffoldStage = stage; publishScaffold(); });
+    if (gen === scaffoldGen) scaffoldLast = r;
+  } catch (e) {
+    if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
+  } finally { scaffoldBusy = false; scaffoldStage = ""; }
+  if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+export async function scaffoldApprove(override: boolean): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  const gen = scaffoldGen;
+  const session = SCAFFOLD;
+  scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
+  try {
+    const r = await session.approve(stage => { scaffoldStage = stage; publishScaffold(); }, override);
+    if (gen === scaffoldGen) scaffoldLast = r;
+  } catch (e) {
+    if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
+  } finally { scaffoldBusy = false; scaffoldStage = ""; }
+  if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+export async function scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  // Revising the concept never re-runs a gate: it changes what the NEXT build of a stage prompt
+  // says. `tagsSteer` / `castSizeSteers` in the state is what tells the author whether that is
+  // still any gate at all.
+  SCAFFOLD.tags = concept.tags;
+  SCAFFOLD.castSize = concept.castSize;
+  scaffoldUnknownTags = concept.tags.length ? await (scaffoldTestHooks?.tags ?? unknownTags)(concept.tags) : [];
+  scaffoldMissingStyle = await applyStyleTo(SCAFFOLD, concept.styleId);
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+export async function scaffoldImport(ids: string[]): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  // Replaces the tray wholesale rather than adding to it: the author's pick is a set, and a
+  // partial update would need a second answer for "what does absence mean".
+  const resolved = await (scaffoldTestHooks?.imports ?? importCharacters)(ids);
+  SCAFFOLD.imported = resolved.imported;
+  scaffoldMissingImports = resolved.missing;
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+export async function scaffoldPromote(name: string): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  // The owner's approval, and a gate distinct from accepting the story: a skill lands in the
+  // bible here or not at all, and accepting a story never writes one.
+  const found = SCAFFOLD.bibleCandidates().find(c => c.name === name);
+  if (!found) return { ok: false, reason: `"${name}" is not a promotion candidate`, status: 400 };
+  const r = await (scaffoldTestHooks?.promote ?? promoteSkill)(found.name, found.meaning);
+  if (!r.ok) return { ok: false, reason: r.reason ?? "", status: 400, issues: r.issues };
+  SCAFFOLD.bible = r.bible;
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+export function scaffoldSet(input: { story?: unknown; field?: string; value?: unknown }): ScaffoldActionResult {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  if (!SCAFFOLD.haveStory()) return { ok: false, reason: "there is no story to change yet", status: 400 };
+  if (input.story && typeof input.story === "object") {
+    const r = SCAFFOLD.setSpec(input.story);
+    scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "updated from the story editor" };
+    publishScaffold();
+    return { ok: true, state: scaffoldSnapshot() };
+  }
+  const r = directEdit(SCAFFOLD.spec, String(input.field ?? ""), input.value);
+  if (!r.ok) return { ok: false, reason: r.reason, status: 400 };
+  SCAFFOLD.spec = r.spec; SCAFFOLD.problems = r.problems;
+  scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "" };
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+export async function scaffoldAccept(folder: string): Promise<ScaffoldAcceptResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  const gen = scaffoldGen;
+  const session = SCAFFOLD;
+  scaffoldBusy = true; publishScaffold();
+  let r: ScaffoldAccept;
+  try { r = await session.accept(folder); }
+  catch (e) {
+    scaffoldBusy = false; publishScaffold();
+    return { ok: false, reason: (e as Error).message, status: 500 };
+  }
+  scaffoldBusy = false;
+  if (gen !== scaffoldGen) {
+    // Abandoned while the write was in flight. The story folder may exist on disk either way,
+    // but nothing is resolved and no run starts.
+    publishScaffold();
+    return { ok: false, reason: SCAFFOLD_ABANDONED_WHILE_ACCEPTING, status: 409 };
+  }
+  if (r.kind !== "written") {
+    scaffoldFolderAsk = r.kind === "needs_folder" ? r.reason : "";
+    publishScaffold();
+    if (r.kind === "needs_folder") return { ok: false, kind: "needs_folder", reason: r.reason, status: 200 };
+    if (r.kind === "unloadable")
+      return { ok: false, kind: "unloadable", dir: r.dir, files: r.files, error: r.error, warnings: r.warnings, status: 200 };
+    return { ok: false, kind: "no_story", status: 400 };
+  }
+  SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = "";
+  publishScaffold();
+  return { ok: true, kind: "written", dir: r.dir, files: r.files, warnings: r.warnings, status: 200 };
+}
+
+export function scaffoldAbandon(): void {
+  // The session dies here, but `scaffoldBusy` is left alone: if a round is in flight it must
+  // keep the lock until its own finally clears it, so a second start cannot overlap it. The
+  // round itself finds a stale `scaffoldGen` on return and drops everything it produced.
+  SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = "";
+  scaffoldUnknownTags = []; scaffoldMissingImports = []; scaffoldMissingStyle = "";
+  scaffoldGen++;
+  publishScaffold();
+}
+
+/** Test-only reset for the scaffold's private module state, mirroring live.ts's resetLive() — a
+ *  test importing scaffoldStart/Say/etc. directly shares this module's singleton across cases and
+ *  must clear it between them, the same leak Playwright's harness had for the same reason. */
+export function resetScaffoldForTests(): void {
+  SCAFFOLD = null; scaffoldBusy = false; scaffoldGen++;
+  scaffoldLast = null; scaffoldStage = ""; scaffoldFolderAsk = "";
+  scaffoldUnknownTags = []; scaffoldMissingImports = []; scaffoldMissingStyle = "";
+}
+
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
   const entries = await skillBibleEntries();
   return openNextChapter(await architectDefaults(model), dir, entries);
@@ -198,7 +491,10 @@ export const HOST: ServerHost = {
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newScaffoldSession, newHandoffSession, directEdit, specView, storyJsonShape, unknownTags, importCharacters, resolveStyle, promoteSkill,
+  newHandoffSession, specView, storyJsonShape,
+  scaffoldState: scaffoldSnapshot,
+  scaffoldStart, scaffoldSay, scaffoldApprove, scaffoldConcept, scaffoldImport, scaffoldPromote,
+  scaffoldSet, scaffoldAccept, scaffoldAbandon,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   editorConfig: (): EditorConfig => {

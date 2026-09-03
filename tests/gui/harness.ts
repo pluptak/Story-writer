@@ -19,7 +19,8 @@ import { LIVE, resetLive } from "../../live.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "../../engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
          type TagEntry } from "../../engine/catalog-schema.ts";
-import { HOST } from "../../host.ts";
+import { canonSkill } from "../../engine/skills.ts";
+import { HOST, setScaffoldTestHooks } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
 import type { ImportedCharacter, NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
 
@@ -92,16 +93,68 @@ export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSessio
 
 type ScaffoldArgs = { idea: string; model: string; mode: "oneshot" | "staged"; tags: string[]; castSize: number; styleId: string };
 let scaffoldFactory: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null = null;
-/** Install the scripted scaffold session a scaffold test drives; null restores the refusal. */
-export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null) { scaffoldFactory = f; }
+
+// The per-test temp catalog dir, module-scope so setScaffoldFactory's hooks (registered by the
+// test BEFORE the `served` fixture creates it) and fixtureHost() (which creates it) agree on the
+// same path -- reassigned fresh in fixtureHost() at the start of every test.
+let catalogDir = "";
+const catalogFile = (kind: string) => joinPath(catalogDir, `catalog-${kind}.json`);
+
+/** Install the scripted scaffold session a scaffold test drives; null restores the refusal. Also
+ *  wires host.ts's scaffold test hooks (setScaffoldTestHooks), the only way to script an interview
+ *  when driving it through the real ServerHost — and to keep its tag/import/style/promote lookups
+ *  off the author's real catalog at ROOT, the same reason every other catalog call here uses a temp
+ *  file: newScaffoldSession and the three catalog lookups are no longer part of ServerHost at all
+ *  (Block 5, PLANS.md), so overriding the returned host object can no longer reach them. */
+export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null) {
+  scaffoldFactory = f;
+  if (!f) { setScaffoldTestHooks(null); return; }
+  setScaffoldTestHooks({
+    session: (idea, model, mode, concept) => {
+      if (!scaffoldFactory) throw new Error("no scaffold scripted for this test");
+      return scaffoldFactory({ idea, model: model ?? "", mode: mode ?? "oneshot",
+                               tags: concept?.tags ?? [], castSize: concept?.castSize ?? 0,
+                               styleId: concept?.styleId ?? "" });
+    },
+    tags: async (tags) => {
+      const known = new Set(((await loadCatalog("tags", catalogFile("tags"))).entries as TagEntry[])
+        .map(e => String(e.label ?? "").trim().toLowerCase()));
+      return tags.filter(t => !known.has(t.trim().toLowerCase()));
+    },
+    imports: async (ids) => {
+      const byId = new Map(((await loadCatalog("characters", catalogFile("characters"))).entries as LibraryCharacter[])
+        .map(e => [e.id, e] as const));
+      const imported: ImportedCharacter[] = [], missing: string[] = [];
+      for (const id of ids) {
+        const e = byId.get(id);
+        if (!e) { missing.push(id); continue; }
+        imported.push({ libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
+                        belief: e.belief, impulse: e.impulse,
+                        voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions] });
+      }
+      return { imported, missing };
+    },
+    style: async (id) => {
+      const entries = (await loadCatalog("styles", catalogFile("styles"))).entries as LibraryStyle[];
+      const e = entries.find(x => x.id === id.trim());
+      return e ? { id: e.id, name: e.name, voice: e.voice } : null;
+    },
+    promote: async (name, meaning) => {
+      const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning, tags: [] };
+      const bible = await skillBible(catalogFile("skills"));
+      const result = await saveEntry("skills", entry, catalogFile("skills"), bible);
+      if (!result.ok) return result;
+      return { ok: true as const, bible: await skillBible(catalogFile("skills")), problems: result.problems };
+    },
+  });
+}
 
 async function fixtureHost(): Promise<ServerHost> {
   const story = await fixtureStory();
   const notScripted = (what: string): never => { throw new Error(`the GUI harness has no behaviour for ${what}`); };
   // The catalog is isolated through the engine's own optional path — real load/check/save/delete
   // logic, temp files. One dir per process; the tests leave it as they found it.
-  const catalogDir = await mkdtemp(joinPath(tmpdir(), "pw-catalog-"));
-  const catalogFile = (kind: string) => joinPath(catalogDir, `catalog-${kind}.json`);
+  catalogDir = await mkdtemp(joinPath(tmpdir(), "pw-catalog-"));
   const withKind = (kind: string): CatalogKind => {
     if (!CATALOG_KINDS.includes(kind as CatalogKind)) throw new Error(`no such catalog "${kind}"`);
     return kind as CatalogKind;
@@ -119,42 +172,11 @@ async function fixtureHost(): Promise<ServerHost> {
     runDirs: async () => [],
     runLlmLogs: async () => notScripted("runLlmLogs"),
     readLlmLog: async () => notScripted("readLlmLog"),
-    newScaffoldSession: async (idea, model, mode, concept) => {
-      if (!scaffoldFactory) throw new Error("no scaffold scripted for this test");
-      return scaffoldFactory({ idea, model: model ?? "", mode: mode ?? "oneshot",
-                               tags: concept?.tags ?? [], castSize: concept?.castSize ?? 0,
-                               styleId: concept?.styleId ?? "" });
-    },
     newHandoffSession: async (dir) => {
       if (!handoffFactory) throw new Error("no handoff scripted for this test");
       return handoffFactory(dir);
     },
     outDir: () => "",
-    // The three concept lookups go through the temp catalog for the same reason every other catalog
-    // call does: the spread HOST reads the author's own files at ROOT, and a GUI test must not.
-    resolveStyle: async (id) => {
-      const entries = (await loadCatalog("styles", catalogFile("styles"))).entries as LibraryStyle[];
-      const e = entries.find(x => x.id === id.trim());
-      return e ? { id: e.id, name: e.name, voice: e.voice } : null;
-    },
-    unknownTags: async (tags) => {
-      const known = new Set(((await loadCatalog("tags", catalogFile("tags"))).entries as TagEntry[])
-        .map(e => String(e.label ?? "").trim().toLowerCase()));
-      return tags.filter(t => !known.has(t.trim().toLowerCase()));
-    },
-    importCharacters: async (ids) => {
-      const byId = new Map(((await loadCatalog("characters", catalogFile("characters"))).entries as LibraryCharacter[])
-        .map(e => [e.id, e] as const));
-      const imported: ImportedCharacter[] = [], missing: string[] = [];
-      for (const id of ids) {
-        const e = byId.get(id);
-        if (!e) { missing.push(id); continue; }
-        imported.push({ libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
-                        belief: e.belief, impulse: e.impulse,
-                        voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions] });
-      }
-      return { imported, missing };
-    },
     catalogEntries: async (kind) => {
       const v = withKind(kind);
       const c = await loadCatalog(v, catalogFile(v));

@@ -1,13 +1,20 @@
-/** Routes for the scaffold interview: the staged checklist (start/approve/say) and cleanup. */
+/** Routes for the scaffold interview: the staged checklist (start/approve/say) and cleanup.
+ *
+ *  Drives the REAL host.ts HOST object through handleScaffoldRoutes -- not a hand-rolled
+ *  ServerHost, since SCAFFOLD and its bookkeeping are private to host.ts now (Block 5, PLANS.md).
+ *  setScaffoldTestHooks substitutes the model (a ScriptedAgent) and the three catalog lookups
+ *  (tags/imports/style), the only pieces that would otherwise reach a real model or a real catalog
+ *  file; everything else -- busy/gen/state-snapshot bookkeeping, the checklist, concept steering,
+ *  promotion -- is the genuine implementation. */
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { ScaffoldSession } from "../engine/architect.ts";
 import type { Defaults } from "../engine/story-format.ts";
-import type { Concept } from "../server/server.ts";
 import { LIVE, resetLive } from "../live.ts";
 import { handleScaffoldRoutes } from "../server/scaffold-routes.ts";
 import type { ServerHost } from "../server/server.ts";
+import { HOST, setScaffoldTestHooks, resetScaffoldForTests } from "../host.ts";
 import { callRoute, quiet, ScriptedAgent } from "./helpers.ts";
 
 const DEFAULTS: Defaults = {
@@ -33,7 +40,7 @@ const CAST_STAGE = {
 };
 
 describe("/scaffold routes", () => {
-  afterEach(() => resetLive());
+  afterEach(() => { resetScaffoldForTests(); resetLive(); });
 
   const LIB = [
     { id: "lib-ivet", version: 2, name: "IVET", portablePersona: "Ex-locksmith.", belief: "b",
@@ -47,41 +54,43 @@ describe("/scaffold routes", () => {
     { id: "style-verbose", version: 1, name: "Verbose", voice: "Elaborate, descriptive, flowery prose.", tags: [], description: "" },
   ];
 
-  const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ServerHost => ({
-    availableModelIds: async () => null,
-    specView: (s: unknown) => s,
-    storyJsonShape: (s: unknown) => s,
-    unknownTags: async (tags: string[]) =>
-      tags.filter(t => !knownTags.includes(t.trim().toLowerCase())),
-    importCharacters: async (ids: string[]) => {
-      const byId = new Map(LIB.map(e => [e.id, e]));
-      const imported = [];
-      const missing = [];
-      for (const id of ids) {
-        const e = byId.get(id);
-        if (!e) { missing.push(id); continue; }
-        imported.push({
-          libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
-          belief: e.belief, impulse: e.impulse,
-          voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions],
-        });
-      }
-      return { imported, missing };
-    },
-    resolveStyle: async (id: string) => {
-      const byId = new Map(STYLES.map(e => [e.id, e]));
-      const found = byId.get(id.trim());
-      return found ? { id: found.id, name: found.name, voice: found.voice } : null;
-    },
-    newScaffoldSession: async (idea: string, _model?: string, mode?: "oneshot" | "staged", concept?: Concept) =>
+  /** Configures the real HOST's scaffold test hooks (a scripted architect over `script`, and the
+   *  tag/import/style lookups against the fixed LIB/STYLES tables above) and returns HOST itself --
+   *  every test drives the same singleton, which is why afterEach resets it. */
+  const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ServerHost => {
+    setScaffoldTestHooks({
       // The scripted cast judge is not optional furniture: without it the cast gate builds a real
       // one and reaches for the network, and whether a test that crosses that gate passes then
       // depends on what a live model happens to say.
-      new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
-                          DEFAULTS, idea, undefined, mode ?? "staged",
-                          () => new ScriptedAgent([JSON.stringify({ ok: true })]),
-                          concept?.tags ?? [], concept?.castSize ?? 0),
-  }) as unknown as ServerHost;
+      session: async (idea, _model, mode, concept) =>
+        new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
+                            DEFAULTS, idea, undefined, mode ?? "staged",
+                            () => new ScriptedAgent([JSON.stringify({ ok: true })]),
+                            concept?.tags ?? [], concept?.castSize ?? 0),
+      tags: async (tags: string[]) => tags.filter(t => !knownTags.includes(t.trim().toLowerCase())),
+      imports: async (ids: string[]) => {
+        const byId = new Map(LIB.map(e => [e.id, e]));
+        const imported = [];
+        const missing = [];
+        for (const id of ids) {
+          const e = byId.get(id);
+          if (!e) { missing.push(id); continue; }
+          imported.push({
+            libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
+            belief: e.belief, impulse: e.impulse,
+            voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions],
+          });
+        }
+        return { imported, missing };
+      },
+      style: async (id: string) => {
+        const byId = new Map(STYLES.map(e => [e.id, e]));
+        const found = byId.get(id.trim());
+        return found ? { id: found.id, name: found.name, voice: found.voice } : null;
+      },
+    });
+    return HOST;
+  };
 
   const post = (path: string, body?: unknown, h: ServerHost = host([])) =>
     quiet(() => callRoute(handleScaffoldRoutes, path, body ?? {}, h));
@@ -155,7 +164,8 @@ describe("/scaffold routes", () => {
     LIVE.awaitingPick = true;
     let release!: (s: ScaffoldSession) => void;
     const gated = new Promise<ScaffoldSession>(r => { release = r; });
-    const h = { ...host([]), newScaffoldSession: () => gated } as unknown as ServerHost;
+    setScaffoldTestHooks({ session: () => gated });
+    const h = HOST;
 
     const startP = post("/scaffold/start", { idea: "two lighthouse keepers" }, h);
     await yieldMicrotasks();                       // let start reach its await
@@ -193,8 +203,8 @@ describe("/scaffold routes", () => {
         accept: () => gated,
         setSpec: () => ({}),
       } as unknown as ScaffoldSession;
-      const h = { ...host([]),
-        newScaffoldSession: async () => session } as unknown as ServerHost;
+      setScaffoldTestHooks({ session: async () => session });
+      const h = HOST;
       await post("/scaffold/start", { idea: "two lighthouse keepers" }, h);
 
       const acceptP = post("/scaffold/accept", { folder: "the-fog-signal" }, h);
@@ -447,14 +457,20 @@ describe("/scaffold routes", () => {
         ],
       };
       const SETTINGS_STAGE = { writer_style: "Plain prose." };
-      const h = {
-        ...host([STORY_STAGE, CAST_WITH_SKILL, SETTINGS_STAGE]),
-        promoteSkill: async (name: string, meaning: string) => {
-          // The fake returns a bible that knows the promoted skill, so it ceases being a candidate.
+      const script = [STORY_STAGE, CAST_WITH_SKILL, SETTINGS_STAGE];
+      setScaffoldTestHooks({
+        session: async (idea, _model, mode, concept) =>
+          new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
+                              DEFAULTS, idea, undefined, mode ?? "staged",
+                              () => new ScriptedAgent([JSON.stringify({ ok: true })]),
+                              concept?.tags ?? [], concept?.castSize ?? 0),
+        // The fake returns a bible that knows the promoted skill, so it ceases being a candidate.
+        promote: async (name: string, meaning: string) => {
           const newBible = { tidewalking: meaning };
           return { ok: true as const, bible: (n: string) => newBible[n as keyof typeof newBible], problems: [] };
         },
-      } as unknown as ServerHost;
+      });
+      const h = HOST;
       LIVE.awaitingPick = true;
       const opened = await post("/scaffold/start", { idea: "..." }, h);
       assert.equal(opened.body.gate, "story");
