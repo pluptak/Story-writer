@@ -2,7 +2,7 @@ import { $, esc, reasonOr, slugify, tid } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
-import { loadVocab, loadLibrary } from "./catalog.js";
+import { loadVocab, loadLibrary, loadStyles } from "./catalog.js";
 
 // ---- the scaffold interview --------------------------------------------------
 // One page, four things always visible in the staged walk: the step they are on, the proposed
@@ -101,16 +101,43 @@ function importPickerHtml() {
   return `<div class="cat-tags-row">${chips}</div>`;
 }
 
-// The concept is staged-only: the one-shot walk has no story gate for tags to steer and no cast
-// gate for a size to reach, so offering either there would be a control that does nothing. Callers
-// make that call -- the modal by the chosen mode, the sidebar by whether either half still steers
-// a gate ahead.
+// The presets the author's tags speak to, first. Ranking is ALL this does with them: a tag is a
+// steering word for the story gate and nothing else, and passing one into the settings prompt as
+// well would give it a second, unarbitrated channel into the story. Every preset stays on offer.
+function rankedStyles() {
+  const chosen = new Set(draft.tags.map(t => t.toLowerCase()));
+  const hits = e => (e.tags || []).filter(t => chosen.has(String(t).toLowerCase())).length;
+  return (APP.catalog.styles || []).map((e, i) => ({ e, i, n: hits(e) }))
+    .sort((a, b) => b.n - a.n || a.i - b.i).map(x => x.e);
+}
+
+// One voice, or none. Picking one narrows the settings gate to this story's own narration rules;
+// picking none leaves it writing the whole house style, which is what it has always done.
+function stylePickerHtml() {
+  const styles = rankedStyles();
+  if (!styles.length)
+    return `<p class="hint">No styles in the catalog yet — <a href="#/catalog?kind=styles">add some</a> and you can pick one here.</p>`;
+  const chips = styles.map(e =>
+    `<button class="cat-chip${draft.styleId === e.id ? " on" : ""}" data-style-id="${esc(e.id)}" type="button"` +
+    ` title="${esc(e.description || e.voice)}">${esc(e.name)}</button>`).join("");
+  const picked = styles.find(e => e.id === draft.styleId);
+  return `<div class="cat-tags-row">${chips}</div>` + (picked
+    ? `<p class="hint">The architect is handed this voice and asked only what THIS cast and POV make impossible to narrate.</p>`
+    : `<p class="hint">Pick none and the architect writes the house style itself.</p>`);
+}
+
+// The concept is staged-only: the one-shot walk has no story gate for tags to steer, no cast gate
+// for a size to reach and no settings gate to hand a voice, so offering any of them there would be
+// a control that does nothing. Callers make that call -- the modal by the chosen mode, the sidebar
+// by whether any half still steers a gate ahead.
 function conceptFieldsHtml() {
-  return `<label class="field-label">the concept <span class="hint">optional — it steers the first two gates</span></label>
+  return `<label class="field-label">the concept <span class="hint">optional — it steers the gates ahead</span></label>
     ${tagChipsHtml()}
     <label class="field-label">cast from the library <span class="hint">optional</span></label>
     ${importPickerHtml()}
-    ${draft.importIds.length ? `<p class="hint">The imported cast is the opening cast, so its size is already chosen.</p>` : castSizeFieldHtml()}`;
+    ${draft.importIds.length ? `<p class="hint">The imported cast is the opening cast, so its size is already chosen.</p>` : castSizeFieldHtml()}
+    <label class="field-label">the voice <span class="hint">optional — a preset from your style catalog</span></label>
+    ${stylePickerHtml()}`;
 }
 
 function ideaModalHtml() {
@@ -430,6 +457,7 @@ function sidebarHtml(s) {
     if (c.imported && c.imported.length)
       stats.push(stat("cast from library", c.imported.map(i => i.name).join(", ")
         + (c.importsSteer ? "" : " · placed")));
+    if (c.styleName) stats.push(stat("voice", c.styleName + (c.styleSteers ? "" : " · spent")));
   }
   stats.push(stat("on disk", s.needsFolder ? "pending accept" : "nothing yet"));
 
@@ -456,10 +484,14 @@ function sidebarHtml(s) {
     ? `<div class="prob">no longer in the catalog: ${esc(c.missingImports.join(", "))} — these were dropped from the cast</div>`
     : "";
 
+  const styleWarning = c.missingStyle
+    ? `<div class="prob">the style "${esc(c.missingStyle)}" is no longer in the catalog — the architect writes the house style itself</div>`
+    : "";
+
   // Revising is offered only while some half still reaches a prompt ahead. Once both are spent the
   // control disappears rather than going quietly inert -- an editor that cannot change the run is
   // worse than no editor, because it looks like it can.
-  const conceptLive = s.mode !== "oneshot" && (c.tagsSteer || c.castSizeSteers || c.importsSteer);
+  const conceptLive = s.mode !== "oneshot" && (c.tagsSteer || c.castSizeSteers || c.importsSteer || c.styleSteers);
   const conceptEditor = !conceptLive ? "" : APP.conceptOpen
     ? `<div data-tid="scaffold.concept-editor">${conceptFieldsHtml()}
         <div class="side-actions">
@@ -505,6 +537,7 @@ function sidebarHtml(s) {
       ${tensionShape}
       ${conceptWarning}
       ${importsWarning}
+      ${styleWarning}
       ${conceptEditor}
       <div class="side-actions">${actions.join("")}</div>
     </div>
@@ -620,7 +653,8 @@ async function startInterview() {
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
                    mode, gate: mode === "staged" ? "story" : null };
   APP.render();
-  const concept = mode === "oneshot" ? {} : { tags: draft.tags, castSize: draft.castSize, importIds: draft.importIds };
+  const concept = mode === "oneshot" ? {}
+    : { tags: draft.tags, castSize: draft.castSize, importIds: draft.importIds, styleId: draft.styleId };
   const j = await postScaffold("start", { idea, model: draft.model, mode, ...concept });
   // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear -- fall
   // back to an inactive session so the idea modal comes back with the idea still in it.
@@ -684,6 +718,7 @@ export function wireScaffold(page) {
   if (page.querySelector("#iv-backdrop") || page.querySelector('[data-tid="scaffold.concept-editor"]')) {
     loadVocab();
     loadLibrary();
+    loadStyles();
   }
 
   // The character library is fetched once for the import picker.
@@ -704,6 +739,15 @@ export function wireScaffold(page) {
       else if (draft.importIds.length < MAX_IMPORTS) draft.importIds.push(id);
       APP.render();
     });
+  // One at a time, and clicking the chosen one clears it: "no preset" is a real answer, not the
+  // absence of one, and it is what the settings gate did before this existed.
+  for (const chip of page.querySelectorAll(".cat-chip[data-style-id]"))
+    chip.addEventListener("click", () => {
+      const id = chip.getAttribute("data-style-id");
+      draft.styleId = draft.styleId === id ? "" : id;
+      APP.render();
+    });
+
   const cast = page.querySelector("#f-cast-size");
   if (cast) cast.addEventListener("change", () => { draft.castSize = Number(cast.value) || 0; });
 
@@ -747,6 +791,7 @@ export function wireScaffold(page) {
       draft.tags = [];
       draft.castSize = 0;
       draft.importIds = [];
+      draft.styleId = "";
       go("shelf");
     });
   });
@@ -757,11 +802,12 @@ export function wireScaffold(page) {
     draft.tags = [...(c.tags || [])];
     draft.castSize = c.castSize || 0;
     draft.importIds = (c.imported || []).map(i => i.libraryId);
+    draft.styleId = c.styleId || "";
     APP.conceptOpen = true; APP.render();
   });
   on("iv-concept-cancel", () => { APP.conceptOpen = false; APP.render(); });
   on("iv-concept-save", async () => {
-    await postScaffold("concept", { tags: draft.tags, castSize: draft.castSize });
+    await postScaffold("concept", { tags: draft.tags, castSize: draft.castSize, styleId: draft.styleId });
     await postScaffold("import", { importIds: draft.importIds });
     APP.conceptOpen = false; APP.render();
   });

@@ -17,10 +17,11 @@ import { test as base, expect, type Page } from "@playwright/test";
 import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
 import { LIVE, resetLive } from "../../live.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "../../engine/catalog.ts";
-import { CATALOG_KINDS, type CatalogKind } from "../../engine/catalog-schema.ts";
+import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
+         type TagEntry } from "../../engine/catalog-schema.ts";
 import { HOST } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
-import type { NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
+import type { ImportedCharacter, NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const FIXTURE_DIR = "tests/fixtures/doorway";
@@ -89,7 +90,7 @@ let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null
 /** Install the scripted handoff session a handoff test drives; null restores the refusal. */
 export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSession>) | null) { handoffFactory = f; }
 
-type ScaffoldArgs = { idea: string; model: string; mode: "oneshot" | "staged"; tags: string[]; castSize: number };
+type ScaffoldArgs = { idea: string; model: string; mode: "oneshot" | "staged"; tags: string[]; castSize: number; styleId: string };
 let scaffoldFactory: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null = null;
 /** Install the scripted scaffold session a scaffold test drives; null restores the refusal. */
 export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null) { scaffoldFactory = f; }
@@ -121,13 +122,39 @@ async function fixtureHost(): Promise<ServerHost> {
     newScaffoldSession: async (idea, model, mode, concept) => {
       if (!scaffoldFactory) throw new Error("no scaffold scripted for this test");
       return scaffoldFactory({ idea, model: model ?? "", mode: mode ?? "oneshot",
-                               tags: concept?.tags ?? [], castSize: concept?.castSize ?? 0 });
+                               tags: concept?.tags ?? [], castSize: concept?.castSize ?? 0,
+                               styleId: concept?.styleId ?? "" });
     },
     newHandoffSession: async (dir) => {
       if (!handoffFactory) throw new Error("no handoff scripted for this test");
       return handoffFactory(dir);
     },
     outDir: () => "",
+    // The three concept lookups go through the temp catalog for the same reason every other catalog
+    // call does: the spread HOST reads the author's own files at ROOT, and a GUI test must not.
+    resolveStyle: async (id) => {
+      const entries = (await loadCatalog("styles", catalogFile("styles"))).entries as LibraryStyle[];
+      const e = entries.find(x => x.id === id.trim());
+      return e ? { id: e.id, name: e.name, voice: e.voice } : null;
+    },
+    unknownTags: async (tags) => {
+      const known = new Set(((await loadCatalog("tags", catalogFile("tags"))).entries as TagEntry[])
+        .map(e => String(e.label ?? "").trim().toLowerCase()));
+      return tags.filter(t => !known.has(t.trim().toLowerCase()));
+    },
+    importCharacters: async (ids) => {
+      const byId = new Map(((await loadCatalog("characters", catalogFile("characters"))).entries as LibraryCharacter[])
+        .map(e => [e.id, e] as const));
+      const imported: ImportedCharacter[] = [], missing: string[] = [];
+      for (const id of ids) {
+        const e = byId.get(id);
+        if (!e) { missing.push(id); continue; }
+        imported.push({ libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
+                        belief: e.belief, impulse: e.impulse,
+                        voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions] });
+      }
+      return { imported, missing };
+    },
     catalogEntries: async (kind) => {
       const v = withKind(kind);
       const c = await loadCatalog(v, catalogFile(v));

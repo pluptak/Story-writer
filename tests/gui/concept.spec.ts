@@ -1,7 +1,8 @@
-/** Block 5 — the concept fields in the idea modal, backed by the real tag catalog.
- *  The tag picker and cast-size select are visible only for staged walks, reload through
- *  mode changes, and survive switching back and forth. */
+/** Block 5 — the concept fields in the idea modal, backed by the real tag and style catalogs.
+ *  The tag picker, cast-size select and voice picker are visible only for staged walks, reload
+ *  through mode changes, and survive switching back and forth. */
 import { arrive, expect, test } from "./harness.ts";
+import type { Page } from "@playwright/test";
 
 test("the idea modal offers the tag catalog's own vocabulary", async ({ page, served }) => {
   await arrive(page, served, "#/scaffold");
@@ -145,4 +146,79 @@ test("a character in the catalog can be cast, and the tray takes over the cast s
   await expect(del).toHaveText(/delete — sure\?/);
   await del.click();
   await expect(page.getByTestId("catalog.entry-row")).toHaveCount(0);
+});
+
+// -- THE VOICE ---------------------------------------------------------------
+// The style catalog has no engine seed -- presets are the author's own -- so these write two
+// through the real save path first, which is also what proves the picker's cache is dropped on a
+// write rather than serving a stale list for the life of the page.
+const STYLES = [
+  { id: "style-plain", version: 1, name: "Plain report", tags: ["thriller"],
+    description: "Flat, unhurried, no adjectives it has not earned.",
+    voice: "Third person, past tense. Short sentences. No metaphor." },
+  { id: "style-lush", version: 1, name: "Lush close third", tags: ["fantasy"],
+    description: "Dense sensory prose held tight to one head.",
+    voice: "Third person, present tense. Long sentences, heavy on the senses." },
+];
+
+const seedStyles = async (page: Page, port: number) => {
+  for (const entry of STYLES)
+    await page.request.post(`http://127.0.0.1:${port}/catalog/save`, { data: { kind: "styles", entry } });
+};
+
+test("with no presets authored, the voice picker says so instead of offering nothing", async ({ page, served }) => {
+  await arrive(page, served, "#/scaffold");
+  await expect(page.locator("#iv-backdrop")).toContainText("No styles in the catalog yet");
+  await expect(page.locator("button.cat-chip[data-style-id]")).toHaveCount(0);
+});
+
+test("the voice picker offers the style catalog's presets, ranked by the chosen tags", async ({ page, served }) => {
+  await seedStyles(page, served);
+  await arrive(page, served, "#/scaffold");
+
+  const chips = page.locator("button.cat-chip[data-style-id]");
+  await expect(chips).toHaveCount(2);
+  // Catalog order until a tag speaks for one of them.
+  await expect(chips.nth(0)).toHaveText("Plain report");
+  await expect(chips.nth(1)).toHaveText("Lush close third");
+
+  // A tag ranks the presets and does nothing else to them: both are still on offer.
+  await page.locator('button.cat-chip[data-tag-label="fantasy"]').click();
+  await expect(chips).toHaveCount(2);
+  await expect(chips.nth(0)).toHaveText("Lush close third");
+  await expect(chips.nth(1)).toHaveText("Plain report");
+});
+
+test("a voice is picked one at a time, and picking the chosen one again clears it", async ({ page, served }) => {
+  await seedStyles(page, served);
+  await arrive(page, served, "#/scaffold");
+
+  const plain = page.locator('button.cat-chip[data-style-id="style-plain"]');
+  const lush = page.locator('button.cat-chip[data-style-id="style-lush"]');
+
+  await plain.click();
+  await expect(plain).toHaveClass(/on/);
+  await expect(page.locator("#iv-backdrop")).toContainText("asked only what THIS cast and POV");
+
+  // A second pick replaces the first rather than adding to it.
+  await lush.click();
+  await expect(lush).toHaveClass(/on/);
+  await expect(plain).not.toHaveClass(/on/);
+
+  // And clicking the chosen one clears it: "no preset" is an answer, not the absence of one.
+  await lush.click();
+  await expect(lush).not.toHaveClass(/on/);
+  await expect(page.locator("#iv-backdrop")).toContainText("the architect writes the house style itself");
+});
+
+test("the voice belongs to the staged walk only", async ({ page, served }) => {
+  await seedStyles(page, served);
+  await arrive(page, served, "#/scaffold");
+  await expect(page.locator("button.cat-chip[data-style-id]")).toHaveCount(2);
+
+  await page.locator('input[name="mode"][value="oneshot"]').click();
+  await expect(page.locator("button.cat-chip[data-style-id]")).toHaveCount(0);
+
+  await page.locator('input[name="mode"][value="staged"]').click();
+  await expect(page.locator("button.cat-chip[data-style-id]")).toHaveCount(2);
 });

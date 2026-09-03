@@ -180,28 +180,39 @@ export async function refreshUsage() {
   } catch { /* keep what was there */ }
 }
 
-let vocabLoading = false;
-let libraryLoading = false;
+// "Loaded" is tracked apart from "non-empty" because an EMPTY catalog is a real answer, and the
+// two loaders that keyed on `.length` re-fetched forever when they got one: every load ends in a
+// render, every render re-runs the wiring that starts the load. A catalog nobody has authored yet
+// -- characters and styles both, on a new install -- span the page instead of settling.
+let vocabLoading = false, vocabLoaded = false;
+let libraryLoading = false, libraryLoaded = false;
+let stylesLoading = false, stylesLoaded = false;
 
 /** Drop the cached tag vocabulary after a write to it, so the character form's picker reflects the
  *  edit. Without this the picker keeps showing a deleted tag as an ordinary selected chip, and the
  *  off-vocabulary notice -- the whole point of that state -- never appears. */
 function invalidateVocab() {
   APP.catalog.vocab = [];
-  vocabLoading = false;
+  vocabLoading = false; vocabLoaded = false;
 }
 
 /** Drop the cached character library after a write to it, so the scaffold's import picker reflects
  *  the edit. Without this a deleted character can still be selected in the tray. */
 function invalidateLibrary() {
   APP.catalog.library = [];
-  libraryLoading = false;
+  libraryLoading = false; libraryLoaded = false;
+}
+
+/** Drop the cached style presets after a write to one, so the scaffold's voice picker reflects the
+ *  edit -- and so a preset whose voice was rewritten is offered with the new one. */
+function invalidateStyles() {
+  APP.catalog.styles = [];
+  stylesLoading = false; stylesLoaded = false;
 }
 
 /** Load the tag vocabulary once, on first need */
 export async function loadVocab() {
-  if (APP.catalog.vocab.length > 0) return; // Already loaded
-  if (vocabLoading) return; // Already in flight
+  if (vocabLoaded || vocabLoading) return;   // already here, or already on its way
 
   vocabLoading = true;
   try {
@@ -221,14 +232,43 @@ export async function loadVocab() {
     APP.render();
     syncHash();
   } finally {
-    vocabLoading = false;
+    // Marked loaded whatever happened: a load that failed shows its error and waits to be
+    // invalidated, rather than being retried by the very render it just caused.
+    vocabLoading = false; vocabLoaded = true;
+  }
+}
+
+/** Load the style presets once, on first need */
+export async function loadStyles() {
+  if (stylesLoaded || stylesLoading) return;   // already here, or already on its way
+
+  stylesLoading = true;
+  try {
+    const r = await fetch("/catalog?kind=styles");
+    const j = await r.json();
+    if (j.ok) {
+      APP.catalog.styles = j.entries || [];
+      APP.render();
+      syncHash();
+    } else {
+      APP.catalog.error = reasonOr(j, "could not load style presets");
+      APP.render();
+      syncHash();
+    }
+  } catch (err) {
+    APP.catalog.error = "style presets did not load: " + (err.message || "network error");
+    APP.render();
+    syncHash();
+  } finally {
+    // Marked loaded whatever happened: a load that failed shows its error and waits to be
+    // invalidated, rather than being retried by the very render it just caused.
+    stylesLoading = false; stylesLoaded = true;
   }
 }
 
 /** Load the character library once, on first need */
 export async function loadLibrary() {
-  if (APP.catalog.library.length > 0) return; // Already loaded
-  if (libraryLoading) return; // Already in flight
+  if (libraryLoaded || libraryLoading) return;   // already here, or already on its way
 
   libraryLoading = true;
   try {
@@ -248,7 +288,9 @@ export async function loadLibrary() {
     APP.render();
     syncHash();
   } finally {
-    libraryLoading = false;
+    // Marked loaded whatever happened: a load that failed shows its error and waits to be
+    // invalidated, rather than being retried by the very render it just caused.
+    libraryLoading = false; libraryLoaded = true;
   }
 }
 
@@ -288,6 +330,7 @@ async function confirmDelete() {
 
   if (APP.catalog.kind === "tags") invalidateVocab();
   if (APP.catalog.kind === "characters") invalidateLibrary();
+  if (APP.catalog.kind === "styles") invalidateStyles();
 
   // Remove from list and clear selection
   APP.catalog.entries = APP.catalog.entries.filter(e => e.id !== APP.catalog.selected.id);
@@ -456,6 +499,7 @@ async function saveDraft() {
     // selected is the server's record; draft is what the form edits — keep their shapes separate
     if (APP.catalog.kind === "tags") invalidateVocab();
     if (APP.catalog.kind === "characters") invalidateLibrary();
+  if (APP.catalog.kind === "styles") invalidateStyles();
     APP.catalog.selected = saved;
     APP.catalog.draft = toDraft(saved, APP.catalog.kind);
     clearDeleteTimer();
