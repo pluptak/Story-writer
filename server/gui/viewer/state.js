@@ -28,6 +28,8 @@ export const APP = {
   session: { running:false, stopping:false, where:"", picking:false, loading:false, armed:false,
              paused:false, pausing:false, model:null, interactive:true },  // the process, not the story
   composing: null,             // ephemeral: {who, secs, chars} -- live only
+  provider: null,              // the last provider_state frame: who serves the models and how
+                               // busy the request line is; null until the engine says so
   armed: 0,                    // timer id: the stop button is waiting for its confirming second click
   stories: null,                // story cards from /stories -- feeds the shelf and the story page
   picked: "",                  // a choice already sent; keeps a double-click from being two picks
@@ -112,7 +114,7 @@ export const APP = {
   editSuggestText: "",         // draft text in the suggestion textarea
   editSuggestBusy: false,      // suggestion in flight
   editSuggestResult: null,     // {ok, kind, applied, ignored, problems, note} from /story/suggest
-  modelIds: [],                 // what LM Studio has loaded; fetched once, used by both dropdowns
+  modelIds: [],                 // what the configured provider reports loaded; fetched once, used by both dropdowns
   modelDefault: "",             // the model an interview would use if you chose nothing
   expandAll: false,
   wantReaderView: false,        // a reader consult just arrived: scroll to it once the run page is showing

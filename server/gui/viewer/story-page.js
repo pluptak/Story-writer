@@ -21,7 +21,8 @@ export const scenesOf = card =>
   card.scenes?.length ? card.scenes.map((s, i) => ({ ...s, n: i + 1 }))
   : card.scene ? [{ ...card.scene, n: 1 }] : [];
 
-// The story's own default is preselected only once it is actually loaded in LM Studio -- picking an
+// The story's own default is preselected only once it is actually loaded in the configured
+// inference server -- picking an
 // unloaded model would just fail the run, so there is nothing to gain by defaulting to it.
 function modelSelectHtml(s) {
   const def = s.defaultModel || "";

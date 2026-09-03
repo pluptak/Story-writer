@@ -9,7 +9,7 @@ import { ReadableStream } from "node:stream/web";
 
 import { complete, completeStream, NET } from "../engine/llm-client.ts";
 import { QUEUE, QUEUE_LIMITS, QueueGaveUpError } from "../engine/req-queue.ts";
-import { armRun, stopRun, StoppedError } from "../live.ts";
+import { armRun, stopRun, StoppedError, sseClients } from "../live.ts";
 
 const MSGS = [{ role: "user" as const, content: "test" }];
 const reply = () => new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }));
@@ -169,5 +169,39 @@ describe("the request queue", () => {
     await assert.rejects(() => queued, StoppedError);
     release!();
     await holder;
+  });
+
+  it("broadcasts provider_state frames as the request line changes", async () => {
+    let release: (() => void) | undefined;
+    let held = false;
+    globalThis.fetch = (async (url: any) => {
+      if (!isChat(url)) return modelsReply();
+      if (!held) {
+        held = true;
+        await new Promise<void>(r => { release = r; });
+      }
+      return reply();
+    }) as any;
+    const frames: any[] = [];
+    const client = { write: (s: string) => frames.push(JSON.parse(s.replace(/^data: /, "").trim())) };
+    sseClients.add(client);
+    try {
+      armRun();
+      const holder = complete("m", MSGS, 0.5, "low", { site: "writer.draft", agent: "WRITER" });
+      await sleep(5);
+      const second = complete("m", MSGS, 0.5);
+      await sleep(5);
+      release!();
+      await Promise.all([holder, second]);
+      const states = frames.filter(f => f.t === "provider_state");
+      assert.ok(states.length >= 3, "a frame when the slot is taken, when one queues, and when both finish");
+      assert.equal(states[0].provider, "LM Studio");
+      assert.ok(states.some(f => f.current.includes("WRITER") && f.depth === 1),
+        "the queue's busy moment was announced");
+      assert.equal(states.at(-1).inFlight, 0);
+      assert.equal(states.at(-1).current, "");
+    } finally {
+      sseClients.delete(client);
+    }
   });
 });

@@ -560,6 +560,13 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` ([live.ts:37](live.ts#
 { t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; interactive }
 { t:"run_reset" }                        — a new run is about to start; discard everything and refetch
 { t:"run_error"; message }               — a story failed to load or run; the picker is coming back
+{ t:"provider_state"; provider; baseUrl; inFlight; depth; current; lastFailure }
+                                           — the inference server's request line changed: a call took
+                                           or released the slot, a caller queued or gave up, or a call
+                                           failed. `current` names the holder ("" when idle) and
+                                           `lastFailure` is the transport's classification of the
+                                           most recent failure (null before one). Sent on change only,
+                                           never on a timer — the srcbar chip paints it
 { t:"scaffold"; state }                  — mirrors GET /scaffold
 { t:"handoff"; state }                   — mirrors GET /next-chapter
 ```

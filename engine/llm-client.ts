@@ -7,7 +7,7 @@ import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
 import { topLevelObjects } from "./json-extract.ts";
 import { PROVIDER } from "./provider.ts";
-import { onceAdmitted, QueueGaveUpError } from "./req-queue.ts";
+import { onceAdmitted, QueueGaveUpError, TELEMETRY, announceProviderState } from "./req-queue.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 
 /** A deliberately pessimistic token estimate -- prose runs about 4 chars/token, the JSON the
@@ -68,10 +68,6 @@ function parseUsage(u: any): CompletionUsage | null {
 export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800,
                      probeTimeoutMs: 1500, recoveryProbes: 2, maxCallMs: 600_000,
                      loadWaitMs: 300_000 };
-
-/** The last failure the transport classified — what a status line or the viewer wants first. */
-export const TELEMETRY = { last: null as
-  { what: string; kind: string; message: string; site?: string; agent?: string; at: number } | null };
 
 /** The JSON body for one completion. Exported for the capability tests: whether
  *  `reasoning_effort` goes on the wire is the provider's decision, not the caller's. */
@@ -151,6 +147,7 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
       if (e instanceof ProviderDownError || e instanceof CallBudgetError) throw e;
       const kind = failureKind(e);
       TELEMETRY.last = { what, kind, message: (e as Error).message, site: call?.site, agent: call?.agent, at: Date.now() };
+      announceProviderState();
       const err = e as LmError;
       const retryable = idleAborted || err.retryable
         || (err.status === undefined && e instanceof Error);

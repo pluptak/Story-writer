@@ -8,8 +8,9 @@
  *
  *  What this cannot do: reserve the server against other clients (LM Studio's own chat, another
  *  app). A stalled call while QUEUE looks idle is that case — say so, when asked. */
-import { RUN, StoppedError } from "../live.ts";
+import { RUN, StoppedError, sseWrite } from "../live.ts";
 import { warn } from "./warnings.ts";
+import { PROVIDER } from "./provider.ts";
 import type { CallSite } from "./llm-client.ts";
 
 /** Raised when a queued call's wait budget ran out. Deliberately NOT retryable: the holder of
@@ -40,7 +41,7 @@ export const QUEUE_LIMITS = {
   waitMs: envInt("LLM_QUEUE_TIMEOUT_MS", 600_000),
 };
 
-/** What the transport is doing right now, for status lines and (later) the viewer. */
+/** What the transport is doing right now, for status lines and the viewer. */
 export const QUEUE = {
   inFlight: 0,
   /** Callers waiting for a slot — the queue's visible length. */
@@ -48,6 +49,26 @@ export const QUEUE = {
   /** Who holds the slot: agent and call site, or "" when idle. */
   current: "",
 };
+
+/** The last failure the transport classified — the first thing a status line or the viewer wants. */
+export const TELEMETRY = { last: null as
+  { what: string; kind: string; message: string; site?: string; agent?: string; at: number } | null };
+
+/** The provider_state frame: who is serving, what the request line looks like, and what last
+ *  went wrong. Broadcast whenever any of that changes. */
+export function providerStateFrame() {
+  return {
+    t: "provider_state" as const,
+    provider: PROVIDER.displayName,
+    baseUrl: PROVIDER.baseUrl,
+    inFlight: QUEUE.inFlight,
+    depth: QUEUE.depth,
+    current: QUEUE.current,
+    lastFailure: TELEMETRY.last,
+  };
+}
+/** Push the current provider state to any attached viewer. Silent when nobody watches. */
+export const announceProviderState = () => sseWrite(providerStateFrame());
 
 interface Waiter {
   settle: () => void;
@@ -67,6 +88,7 @@ function take(label_: string) {
   QUEUE.inFlight = inFlight;
   QUEUE.depth = waiters.length;
   QUEUE.current = label_;
+  announceProviderState();
 }
 
 /** Wait for a slot. Resolves when one is held; rejects with StoppedError when the run stops
@@ -84,7 +106,7 @@ function acquire(what: string, call?: CallSite): Promise<void> {
       QUEUE.depth = waiters.length;
     };
     entry.settle = () => { remove(); take(who); resolve(); };
-    entry.reject = (e) => { remove(); reject(e); };
+    entry.reject = (e) => { remove(); announceProviderState(); reject(e); };
     entry.timer = setTimeout(() => {
       entry.reject(new QueueGaveUpError(
         `gave up after ${Math.round(QUEUE_LIMITS.waitMs / 1000)}s waiting for its turn — `
@@ -94,6 +116,7 @@ function acquire(what: string, call?: CallSite): Promise<void> {
     entry.onStop = () => entry.reject(new StoppedError());
     waiters.push(entry);
     QUEUE.depth = waiters.length;
+    announceProviderState();
     RUN.abort.signal.addEventListener("abort", entry.onStop, { once: true });
   });
 }
@@ -106,6 +129,8 @@ function release() {
   if (next && inFlight < QUEUE_LIMITS.maxInFlight) {
     waiters.shift();
     next.settle();
+  } else {
+    announceProviderState();
   }
 }
 

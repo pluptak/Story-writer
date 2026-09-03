@@ -57,6 +57,24 @@ export function paintSrcbar() {
   const store = APP.view === "read" ? READV : LIVEV;
   const isLive = (APP.view === "read" || APP.view === "live") && store.isLive;
   $("dot").className = "dot" + (isLive ? " live" : "");
+  paintProviderChip();
+}
+
+/** The provider chip in the srcbar: which server is serving, what its request line is doing,
+ *  and whether the last model call failed. Painted from the provider_state SSE frames; hidden
+ *  until the first one arrives, so a bare harness or a detached read shows nothing. */
+export function paintProviderChip() {
+  const el = $("provchip");
+  if (!el) return;
+  const p = APP.provider;
+  if (!p) { el.hidden = true; return; }
+  el.hidden = false;
+  const busy = p.current ? ` · ${p.current}` : "";
+  const queued = p.depth ? ` · ${p.depth} queued` : "";
+  const fail = p.lastFailure ? ` · ⚠ ${p.lastFailure.kind}` : "";
+  el.textContent = `${p.provider}${busy}${queued}${fail}`;
+  el.title = p.baseUrl + (p.lastFailure ? `\n${p.lastFailure.what}: ${p.lastFailure.message}` : "");
+  el.classList.toggle("warn", !!p.lastFailure);
 }
 export function setSrc(store, text, isLive) { store.source = text; store.isLive = isLive; paintSrcbar(); }
 
