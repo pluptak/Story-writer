@@ -1,34 +1,37 @@
 :root {
-    --bg:#eceff4; --panel:#fff; --panel-2:#f4f6fa; --ink:#161b22; --muted:#5b6675; --faint:#667180;
-    --line:#dbe1ea; --accent:#0d6f8b; --warn:#a2650c; --bad:#b03a30; --good:#2c7a4b;
+    /* Warm paper, ported from mockups/architect. The dark palette is authored to the same intent:
+       warm charcoal rather than blue-gray, the accent lightened until it holds on the darker ground. */
+    --bg:#f3f1ec; --panel:#fffdfa; --panel-2:#ebe7df; --ink:#22221f; --muted:#6f6b62; --faint:#8f8a80;
+    --line:#ddd8cf; --accent:#5d5a7d; --warn:#9b6b29; --bad:#9b4d4d; --good:#3f775f;
     --judge:#6d54c4; --batch-judge:#a84fb0; --narration-judge:#c2547e; --clarifier:#7d6d14;
-    --shadow:0 1px 2px rgba(20,32,52,.05),0 6px 20px rgba(20,32,52,.06);
-    --sans: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --scroll:#cfc9be;
+    --shadow:0 1px 2px rgba(42,35,25,.05),0 8px 24px rgba(42,35,25,.09);
+    --sans: Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     --serif: Georgia,"Iowan Old Style","Palatino Linotype",ui-serif,serif;
     --mono: ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
     /* type + radius scales — theme-independent, so they live only here. Half-pixel and one-off
        sizes were snapped to the nearest step; pick from these rather than adding a new value. */
     --fs-10:10px; --fs-11:11px; --fs-12:12px; --fs-13:13px; --fs-14:14px; --fs-15:15px;
     --fs-16:16px; --fs-18:18px; --fs-20:20px; --fs-21:21px; --fs-24:24px;
-    --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:13px; --r-pill:999px;
+    --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:16px; --r-pill:999px;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0d1117; --panel:#151b24; --panel-2:#11161e; --ink:#dfe6f0; --muted:#8b97a8; --faint:#808b9c;
-      --line:#242c38; --accent:#4fc3dd; --warn:#e0a84a; --bad:#ef7a6e; --good:#5fce87;
+    :root { --bg:#211e1a; --panel:#2a2723; --panel-2:#242119; --ink:#eae6dd; --muted:#a59e92; --faint:#8c867b;
+      --line:#3d382f; --accent:#a9a3d6; --warn:#d8a559; --bad:#dd8a7f; --good:#82bd9c;
       --judge:#b18cff; --batch-judge:#e08ae0; --narration-judge:#ef8ab0; --clarifier:#cbc04a;
-      --scroll:#303b4a;
-      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35); }
+      --scroll:#3d382f;
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.4); }
   }
-  :root[data-theme="dark"]{ --bg:#0d1117;--panel:#151b24;--panel-2:#11161e;--ink:#dfe6f0;--muted:#8b97a8;--faint:#808b9c;
-    --line:#242c38;--accent:#4fc3dd;--warn:#e0a84a;--bad:#ef7a6e;--good:#5fce87;
+  :root[data-theme="dark"]{ --bg:#211e1a;--panel:#2a2723;--panel-2:#242119;--ink:#eae6dd;--muted:#a59e92;--faint:#8c867b;
+    --line:#3d382f;--accent:#a9a3d6;--warn:#d8a559;--bad:#dd8a7f;--good:#82bd9c;
     --judge:#b18cff;--batch-judge:#e08ae0;--narration-judge:#ef8ab0;--clarifier:#cbc04a;
-    --scroll:#303b4a;
-    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35); }
-  :root[data-theme="light"]{ --bg:#eceff4;--panel:#fff;--panel-2:#f4f6fa;--ink:#161b22;--muted:#5b6675;--faint:#667180;
-    --line:#dbe1ea;--accent:#0d6f8b;--warn:#a2650c;--bad:#b03a30;--good:#2c7a4b;
+    --scroll:#3d382f;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.4); }
+  :root[data-theme="light"]{ --bg:#f3f1ec;--panel:#fffdfa;--panel-2:#ebe7df;--ink:#22221f;--muted:#6f6b62;--faint:#8f8a80;
+    --line:#ddd8cf;--accent:#5d5a7d;--warn:#9b6b29;--bad:#9b4d4d;--good:#3f775f;
     --judge:#6d54c4;--batch-judge:#a84fb0;--narration-judge:#c2547e;--clarifier:#7d6d14;
-    --scroll:#c3ccda;
-    --shadow:0 1px 2px rgba(20,32,52,.05),0 6px 20px rgba(20,32,52,.06); }
+    --scroll:#cfc9be;
+    --shadow:0 1px 2px rgba(42,35,25,.05),0 8px 24px rgba(42,35,25,.09); }
 
   * { box-sizing: border-box; }
   /* native form controls (checkboxes, number spinners, the select caret) pick up the theme accent */
@@ -52,7 +55,7 @@
   .brand .q { font-size:var(--fs-12); color:var(--muted); margin-top:1px; }
 
  .tabs { display:flex; gap:4px; }
-  .tab { font-family:var(--mono); font-size:var(--fs-11); text-transform:uppercase; letter-spacing:.06em;
+  .tab { font-family:var(--sans); font-size:var(--fs-12); font-weight:500;
          color:var(--muted); background:transparent; border:1px solid transparent; border-radius:var(--r-md);
          padding:6px 10px; cursor:pointer; }
   .tab:hover { color:var(--ink); }
@@ -67,7 +70,7 @@
   .tabasked[hidden] { display:none; }
 
   .cast { display:flex; gap:6px; flex-wrap:wrap; }
-  .chip { font-family:var(--mono); font-size:var(--fs-11); padding:3px 9px; border-radius:var(--r-pill);
+  .chip { font-family:var(--sans); font-size:var(--fs-12); padding:3px 10px; border-radius:var(--r-pill);
           border:1px solid var(--line); background:var(--panel-2); white-space:nowrap;
           color:inherit; cursor:pointer; }
   .chip:hover, .chip:focus-visible { border-color:var(--accent); }
@@ -76,9 +79,11 @@
   .chip .no { color:var(--bad); }
   .chip .reach { color:var(--accent); }
   .chip .yes { color:var(--good); }
-  .btn { font-family:var(--mono); font-size:var(--fs-11); text-transform:uppercase; letter-spacing:.06em;
+  /* Controls speak in the sentence-case sans voice; the uppercase mono voice is the LABELS' alone
+     (.label, .eyebrow, .rail h3, .field label), which is the split mockups/architect draws. */
+  .btn { font-family:var(--sans); font-size:var(--fs-12); font-weight:600;
          color:var(--muted); background:var(--panel-2); border:1px solid var(--line);
-         padding:6px 10px; border-radius:var(--r-md); cursor:pointer; }
+         padding:6px 11px; border-radius:var(--r-md); cursor:pointer; }
   .btn:hover { color:var(--ink); border-color:var(--accent); }
   .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .btn[disabled] { opacity:.4; cursor:not-allowed; }
@@ -91,10 +96,9 @@
      so it reads as amber rather than the alarm red `armed` uses. */
   .btn.off { color:var(--warn); border-color:var(--warn); }
   .btn.off:hover { color:var(--warn); border-color:var(--warn); }
-  /* a <select> wearing .btn keeps the button's box but drops its label voice -- tracked-out
-     uppercase around a native dropdown reads as broken */
-  select.btn { font-family:var(--sans); font-size:var(--fs-12); text-transform:none; letter-spacing:normal;
-               color:var(--ink); padding:5px 8px; }
+  /* a <select> wearing .btn keeps the button's box but drops its weight -- 600 around a native
+     dropdown caret reads as broken */
+  select.btn { font-weight:400; font-size:var(--fs-12); color:var(--ink); padding:5px 8px; }
   select.btn:hover { border-color:var(--accent); }
   select.btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
@@ -470,8 +474,11 @@
   
   .btns .spacer { flex:1 1 0; min-width:0; }
   .hint { font-family:var(--mono); font-size:var(--fs-10); color:var(--faint); letter-spacing:.04em; }
-  .btn.primary { color:var(--accent); border-color:var(--accent); }
-  .btn.primary[disabled] { color:var(--muted); border-color:var(--line); }
+  /* the mockup's primary is the solid one: ink fill, paper text -- the one dark button on a card,
+     visible before it is read */
+  .btn.primary { background:var(--ink); border-color:var(--ink); color:var(--bg); }
+  .btn.primary:hover { color:var(--bg); border-color:var(--ink); filter:brightness(1.15); }
+  .btn.primary[disabled] { background:var(--panel-2); border-color:var(--line); color:var(--muted); filter:none; }
   .thinking { font-family:var(--mono); font-size:var(--fs-11); color:var(--accent); margin-top:14px; }
   .thinking i { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--accent);
                 margin-right:6px; animation:pulse 1.2s ease-in-out infinite; }
