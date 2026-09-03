@@ -489,26 +489,28 @@ the engine permits something the asymmetry forbids.
 Big, unbuilt, and shaping rather than corrective. One carries enough design to have its own section
 below: **The world timeline**.
 
-- **Promotion into the skill bible.** The bible itself is built — a persisted catalog kind beside
-  `defaults.json`, seeded from the in-code `SPECIAL_SKILL_CATALOG`, with its own editor
-  ([`Architect.MD`](Architect.MD), *Skill bible*). What is left is **promotion**: the architect
-  **proposes** a bible addition when a scaffold invents a bespoke skill, and it lands only after the
-  owner **approves** it — a real gate distinct from accepting the story. That gate is what turns
-  "prefer an existing skill" into a hard constraint; until it exists, custom skills stay allowed.
+- **"Prefer an existing skill" is still advice, not a rule.** Promotion is built — the architect
+  reads the author's bible on both sides, a bespoke `name :: meaning` in a landed cast is derived as
+  a promotion candidate, and `/scaffold/promote` is the owner's gate
+  ([`Architect.MD`](Architect.MD), *Skill bible → Promotion*). What the gate has not yet bought is
+  the constraint it was supposed to enable: a bespoke skill is still accepted everywhere, so an
+  author who never promotes anything gets the same behaviour as before, and one who promotes
+  diligently still sees the architect coin a fresh synonym whenever it does not recognise a name.
 
-  One wiring job comes before it. The run path is done — `loadStory` resolves the cast against the
-  author's bible and carries it on the `StoryConfig` for the reach layer — but the **architect** is
-  still on the in-code catalog on both sides: its prompt carries `SPECIAL_SKILL_CATALOG`, and
-  `normalizeSpec` validates a proposed cast against it (`engine/story-spec.ts`, `capabilityProblems`
-  at the cast gate and `bibleMeaningOf` in restriction normalization). So a promoted skill is
-  invisible to the one stage that would reuse it, and the architect proposes the same capability
-  afresh with its own wording. Wire that before the proposal path: a gate for promoting skills into a
-  bible the proposer cannot read would be a gate over nothing.
+  Making it hard means refusing a bespoke skill whose meaning matches something already in the
+  bible — and *matches* is the problem. Name equality is already enforced. Meaning equality is a
+  judgement, which puts it in the advisory reviewer's territory rather than the schema's. **Done
+  when** a scaffold has been run twice against a bible the first run filled, and the second run's
+  cast is read for whether it reused the promoted names or reinvented them. That measurement is
+  worth more than the rule: if reuse is already high, the rule buys nothing.
 
-  The seam is the same one the run path used — the bible is a parameter, and only the top layer loads
-  one. The architect's is harder in one way: `buildArchitect` renders the catalog into a **prompt
-  string**, so the bible has to reach `prompts/architect.ts` already flattened to name-and-meaning
-  pairs, the way every other shape does.
+  Two smaller things this left behind. **The system prompt is not re-rendered mid-session**, so a
+  skill promoted during a scaffold is accepted by validation immediately but absent from the
+  architect's own list until the next session; re-rendering means rebuilding the agent and losing
+  the conversation. And **`directEdit` still normalizes against the in-code bible** — it
+  re-normalizes the whole spec to change `scene.length`, so it can report a bible problem against
+  the wrong catalog. Fixing it means making `ServerHost.directEdit` async for an advisory-only
+  effect.
 - **Casting from the library, past the opening cast.** The import path itself is built — the tray,
   the cast gate's own stage prompt, and the adaptation contract the engine enforces rather than
   requests ([`Architect.MD`](Architect.MD), *Casting from the library*). What is unbuilt is

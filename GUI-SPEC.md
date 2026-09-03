@@ -334,7 +334,10 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 ```
 GET  /scaffold
   → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, concept, haveDraft, haveStory,
-                          pendingAsk, problems[], last: ScaffoldRound | null, needsFolder, model, spec }
+                          pendingAsk, problems[], bibleCandidates[], last: ScaffoldRound | null,
+                          needsFolder, model, spec }
+
+bibleCandidates = { name: string, meaning: string, heldBy: string[] }[]
 
 concept =
   { tags: string[], castSize: number, unknownTags: string[], tagsSteer: boolean, castSizeSteers: boolean,
@@ -378,6 +381,13 @@ POST /scaffold/import   { importIds }      → replaces the import tray on the o
                                              absence means. At most 4 (the cast stage's ceiling);
                                              `400` past that. Ids the catalog cannot resolve come back
                                              in `concept.missingImports` rather than failing the call.
+POST /scaffold/promote  { name }           → puts one of `bibleCandidates` into the author's skill
+                                             bible. Only a name the session is currently offering is
+                                             accepted (`400` otherwise), so the wire cannot name an
+                                             arbitrary skill and have it written to the catalog. The
+                                             open session is handed a lookup over the new bible, and
+                                             the candidate is gone from the reply because the list is
+                                             re-derived, not edited.
 POST /scaffold/set      { field, value }   → direct edit, bypassing the model — today `field` may only
                                              be `"scene.length"` (`DIRECT_FIELDS`); alternatively
                                              `{ story }` replaces the in-memory draft from the full
@@ -422,6 +432,14 @@ that ends at accept: no part of it reaches `story.json`, and the handoff never l
 from a template. `missingImports` are ids the catalog no longer holds; they are reported rather than
 fatal, because the catalog is the author's and a tray that silently shrank is worse than one that says
 what it lost.
+
+`bibleCandidates` are the bespoke skills this cast holds that the author's skill bible does not:
+a skill carrying its own `:: meaning` whose name is neither a general skill nor already in the bible.
+They are **derived from the spec on every read**, never stored — a candidate stops being one the
+moment it is promoted or the cast stops holding it, and a stored list would go stale both ways.
+Writing `name :: meaning` on a character IS the proposal, so nothing is asked of the model for this;
+reach is never a candidate (I4). Promotion is a gate distinct from accepting the story: accepting
+never writes a bible entry.
 
 `haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
 be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its

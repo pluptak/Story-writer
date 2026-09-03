@@ -493,6 +493,16 @@ a *new* story folder — so it can go anywhere in the pass.
       catalog no longer holds shows as a second advisory saying it was dropped. **The word "spent"
       is load-bearing:** it is the difference between a control that steers a prompt ahead and one
       that edits a string nobody will read again.
+- [ ] **Promoting a skill the cast invented.** When a landed cast holds a bespoke
+      `name :: meaning` skill your bible does not have, a **new skills** card appears in the sidebar
+      naming it, what it means, and who holds it. **promote to bible** writes it to
+      `#/catalog?kind=skills` and the candidate disappears — it is re-derived from the cast, not
+      removed by the page, so the only way for it to vanish is for the bible to really hold it now.
+      Check the skills catalog afterwards. Two things that should NOT happen: a bare skill with no
+      `:: meaning` offered as a candidate, and a scene's `reach` entry offered as one — reach is
+      never promotable (I4). **A promoted skill does not appear in the architect's own list until
+      the next session**, because the system prompt is sent once; validation accepts it immediately,
+      which is the part to check.
 - [ ] **Revising after a reload.** Reload the page mid-session and open **revise concept** without
       ever seeing the idea modal. Both pickers must fill. They are fed from the catalog on first
       need, and the load has to be triggered by the panel — not by the picker markup, which only

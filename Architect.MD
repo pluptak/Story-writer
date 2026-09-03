@@ -43,9 +43,8 @@ The architect's system prompt carries two in-code catalogs from `engine/skills.t
   matches; an entry not in the bible stays **custom** and keeps its authored `name :: meaning`.
   Bespoke per-story skills are first-class — but one that is neither a bible skill nor carries a
   `:: meaning` is reported back to the author as a non-fatal problem rather than silently kept.
-  The in-code catalog is now the **seed** of an editable one (*Skill bible* below). A run resolves
-  against the author's bible; the architect's prompt still carries the in-code one, so a skill the
-  author promoted is one the architect cannot yet offer.
+  The in-code catalog is now the **seed** of an editable one (*Skill bible* below), and both a run
+  and the architect resolve against the author's bible — the prompt above is rendered from it.
 
 Restrictions are a plain list of names — a general skill, a bible skill, or one of that character's
 own skills. A restriction is a **source-independent prohibition**: it names a capability unavailable
@@ -97,13 +96,13 @@ own `:: meaning` — reach is never in the bible — and a grant keyed to a non-
 a problem. The loader additionally warns when a scene grants reach to someone not in its roster,
 since the grant would never reach a run.
 
-The bible the promotion would land in is built (*Skill bible* below); the **promotion** itself — the
-architect proposing an entry and the owner approving it — is planned work ([`PLANS.md`](PLANS.md)).
+A bespoke skill an accepted cast holds can be **promoted** into the bible the author keeps
+(*Skill bible* below); reach never can (I4).
 
 ## Character catalog
 
-**Status: the catalog and its screen are built; nothing reaches the architect yet.** The import path
-that would let a scaffold adapt a catalog entry is unbuilt and lives in [`PLANS.md`](PLANS.md).
+**Status: built, including the import path** — a scaffold can cast from this library and adapt what
+it finds (*Casting from the library* below).
 
 A reusable library of character templates, stored beside `defaults.json` rather than inside any
 story, so it is not scoped to one and survives every story it is used in. `engine/catalog-schema.ts`
@@ -175,8 +174,8 @@ than grow a second account of what a good field is.
 
 ## Skill bible
 
-**Status: the bible and its editor are built; nothing proposes into it yet.** The architect's
-propose → owner-approves gate is unbuilt and lives in [`PLANS.md`](PLANS.md).
+**Status: built, including promotion.** What is *not* built is making bespoke skills an error —
+the gate exists, but "prefer an existing skill" is still advice rather than a rule.
 
 The fourth catalog kind, beside characters, tags and styles, and stored the same way — a file next to
 `defaults.json`, global rather than scoped to a story. An entry is `id`, `version`, `name`, `meaning`
@@ -210,11 +209,46 @@ and the run it starts report the same skills. Nothing loads it inside the engine
 and `story-writer.ts` load it and pass it down, and every engine function defaults to the in-code
 catalog when they don't.
 
-**The architect is the one reader still on the in-code catalog.** Its prompt carries
-`SPECIAL_SKILL_CATALOG`, and `normalizeSpec` validates a proposed cast against it, so a skill the
-author promoted is one the architect will neither offer nor recognize — it will propose the same
-capability afresh as a `custom` skill with its own wording. That is the next stage, and the propose →
-approve gate comes after it.
+**The architect reads it too, on both sides.** Its system prompt is rendered from the author's
+bible, and every path that validates a proposed cast — `normalizeSpec`, `applyEdits`, the
+fillGaps/verify passes, the stateless suggestion — takes the same bible as a parameter. Each session
+carries the one it was handed when it opened. `applyEdits` is the easy one to miss and the one that
+matters most: it is what a refinement round and the whole handoff go through, so wiring only the
+stage rounds would leave the architect on the in-code catalog for most of a conversation.
+
+The bible reaches the architect as **name-and-meaning pairs**, because one of its two consumers
+renders it into a prompt string rather than looking names up in it; `bibleFrom` builds the lookup over
+that same map, so the two views cannot disagree about what is in it.
+
+One reader is still on the in-code catalog: `directEdit`, which re-normalizes the whole spec in order
+to change `scene.length` and so can report a bible problem against the wrong catalog. Fixing it means
+making `ServerHost.directEdit` async for an advisory-only effect, so it is recorded rather than done.
+
+### Promotion
+
+A bespoke skill in an accepted cast is the architect saying this story needed a capability the bible
+does not have. **Promotion is the author putting it there**, and the candidates are **derived from the
+spec rather than asked for in a reply**: writing `name :: meaning` on a character already *is* the
+proposal, and a `bible: [...]` field in the reply would be a second, unverifiable account of the same
+thing — one the model could fill with skills nobody holds. Deriving them means a candidate cannot name
+a skill the cast does not have, which no prompt field could promise.
+
+A candidate is a skill carrying its own `:: meaning` whose name is neither a general skill nor already
+in the bible. **Reach is never a candidate (I4)** — only `character.skills` is read. Candidates are
+re-derived on every read, because a stored list would go stale in both directions: a candidate stops
+being one the moment it is promoted, or the moment the cast stops holding it.
+
+`/scaffold/promote` is the gate, and it is **distinct from accepting the story**: a skill lands in the
+bible there or not at all, and accepting a story never writes one. Only a name the session is
+currently offering may be promoted, so the wire cannot name an arbitrary skill and have it written
+into the author's catalog. Promotion writes through the same validated path the skill editor uses —
+one way into the catalog, one set of rules — and hands the open session a lookup over the new bible,
+without which the skill just promoted would read as unknown for the rest of the conversation.
+
+**The system prompt is not re-rendered.** It is sent once per session, so a skill promoted mid-scaffold
+is accepted by validation from that moment but does not appear in the architect's own list until the
+next session. Re-rendering it would mean rebuilding the agent and losing the conversation, which costs
+more than it buys.
 
 ## Operating principle
 
