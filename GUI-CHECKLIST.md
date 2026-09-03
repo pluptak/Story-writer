@@ -132,6 +132,18 @@ for r in stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o '"ch
       check above had nothing to group, this one proves nothing either — write a second chapter
       (section 2) and come back.
 
+The map's scene detail — who is here, reach, world beats. The doorway fixture carries none of these,
+so a story that does (or a scratch story.json with a `roster`, a `reach` entry and one timeline beat
+aimed at its chapter) stands in:
+
+- [ ] Each scene row shows **who is here** as chips and its **reach here** as per-character chips —
+      a reach grant reads as `NAME · thing — meaning`, under the scene, never inside a character's
+      own skill list.
+- [ ] A chapter's **world event** renders under its scene as *N% through the scene* with the hold
+      text, and **no memories** — the interview is the only screen that sees them. A beat the
+      handoff voided still shows, struck through.
+- [ ] A story with none of the three shows scene rows exactly as before — no empty labelled blocks.
+
 *If labels are missing everywhere:* `RunSummary.chapter` is not reaching the story card.
 *If a single-scene story shows a label:* the one-group flat fallback is wrong.
 

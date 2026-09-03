@@ -3,6 +3,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { LMSTUDIO_MODELS_URL, LMSTUDIO_REST_MODELS_URL, estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
+import type { TimelineDef } from "./story-schema.ts";
 import { bibleMeaningOf, type BibleLookup } from "./skills.ts";
 import { ENGINE } from "./engine-state.ts";
 import { WARN } from "./warnings.ts";
@@ -23,6 +24,8 @@ export interface PreflightResult {
     characters: { name: string; skills: number; added: string[]; restrictions: string[] }[];
     scene: { place: string; question: string; pov: string; length: number };
     scenes: SceneDef[];
+    timeline: TimelineDef[];
+    writerStyle: string;
     maxSteps: number; retries: number; clarifications: number; maxProseWords: number;
     models: { default: string; writer: string; summary: string };
     modelCheck: "ok" | "missing" | "unreachable";
@@ -160,6 +163,8 @@ export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): 
           })),
           scene: sc.scenes[0],
           scenes: sc.scenes,
+          timeline: sc.timeline,
+          writerStyle: sc.writerStyle,
           maxSteps: sc.maxSteps, retries: sc.retries, clarifications: sc.clarifications,
           maxProseWords: sc.maxProseWords,
           models: sc.models, modelCheck, missingModels,
@@ -179,6 +184,8 @@ export interface StoryCard {
   premise?: string;
   scene?: { place: string; question: string; pov: string; length: number };
   scenes?: SceneDef[];
+  timeline?: TimelineDef[];
+  writerStyle?: string;
   characters?: { name: string; skills: string[]; restrictions: string[] }[];
   maxSteps?: number;
   defaultModel?: string;
@@ -230,6 +237,8 @@ export async function storyCards(bible: BibleLookup = bibleMeaningOf): Promise<S
         premise: s.premise,
         scene: s.scene,
         scenes: s.scenes,
+        timeline: s.timeline,
+        writerStyle: s.writerStyle,
         characters: s.characters.map(c => ({ name: c.name, skills: c.added, restrictions: c.restrictions })),
         maxSteps: s.maxSteps,
         defaultModel: s.models.default,

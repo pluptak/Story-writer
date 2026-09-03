@@ -43,22 +43,56 @@ export const wordsPovHtml = scene => `~${scene.length ?? "?"} words${scene.pov ?
 
 /** `discardable` is set by the caller for the last authored scene when it is unwritten and not the
  *  only one -- the one an accepted-but-never-written chapter leaves behind (see nextChapterOf). */
-function sceneRowHtml(scene, chapters, canWrite, why, discardable) {
+function sceneRowHtml(scene, chapters, canWrite, why, discardable, beats) {
   const written = chapters.includes(scene.n);
   const open = APP.chapter?.dir === APP.storyDir && APP.chapter.n === scene.n;
   const next = !written && scene.n === nextChapterOf(chapters);
   const tag = written ? `<span class="tag written">written</span>`
             : next ? `<span class="tag next">next</span>` : "";
   const runWhy = runningReason();   // discard is blocked by a run in flight, not by picking-readiness
+  const detail = sceneDetailHtml(scene, beats || []);
   return `<div class="cardwrap"><div class="scenerow" data-tid="story.scene-row" data-chapter="${scene.n}">
     <div class="sc-q">${esc(scene.question || "(no scene question)")}${tag}</div>
     <div class="sc-meta">chapter ${scene.n}${scene.place ? " · " + esc(scene.place) : ""} · ${wordsPovHtml(scene)}</div>
+    ${detail}
     <button ${tid("story.write-btn")} class="btn${next ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
     ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
     ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
     ${open ? `<div class="prose" style="margin-top:12px">${paras(APP.chapter.text)}</div>` : ""}
     ${open && APP.chapterError ? `<div class="said bad">${esc(APP.chapterError)}</div>` : ""}
   </div></div>`;
+}
+
+/** The scene's own detail: who is here, the reach the scene grants, and any world beat aimed at this
+ *  chapter, rendered as the percentage of the scene it fires at. The beat's HOLD only -- its
+ *  memories are the interview's to judge and a run's to hide inside a character; a map the author
+ *  browses casually is deliberately not a third place to read them. Voided beats still show -- they
+ *  were authored -- but read as struck from the plan. */
+function sceneDetailHtml(scene, beats) {
+  const roster = (scene.roster || []).length
+    ? `<div class="mapfield"><span>who is here</span>
+        <div class="mapchips">${scene.roster.map(n => `<span class="mchip">${esc(n)}</span>`).join("")}</div></div>`
+    : "";
+  const reachRows = Object.entries(scene.reach || {}).filter(([, g]) => (g || []).length);
+  const reach = reachRows.length
+    ? `<div class="mapfield"><span>reach here</span>
+        <div class="mapchips">${reachRows.map(([who, grants]) => (grants || []).map(g => {
+          const at = g.indexOf("::");
+          const thing = (at >= 0 ? g.slice(0, at) : g).trim();
+          const meaning = at >= 0 ? g.slice(at + 2).trim() : "";
+          return `<span class="mchip"${meaning ? ` title="${esc(meaning)}"` : ""}>${esc(who)} · ${esc(thing)}${meaning ? ` — ${esc(meaning)}` : ""}</span>`;
+        }).join("")).join("")}</div></div>`
+    : "";
+  const mine = beats.filter(b => b.chapter === scene.n);
+  const beatRows = mine.length
+    ? `<div class="mapfield"><span>world events</span>
+        <div class="mapbeats">${mine.map(b => `<div class="mapbeat${b.state === "void" ? " voided" : ""}">
+          <span class="when">world event · ${b.state === "void" ? "voided · " : ""}${Math.round((Number(b.at) || 0) * 100)}% through the scene</span>
+          <span class="hold">${esc(b.hold)}</span>
+        </div>`).join("")}</div></div>`
+    : "";
+  const body = roster + reach + beatRows;
+  return body ? `<div class="map-extra">${body}</div>` : "";
 }
 
 /** Runs filed under the chapter they wrote, ascending to match the scene list above, newest first
@@ -128,6 +162,7 @@ export function storyPageHtml() {
     <h2>${esc(s.name)}</h2>
     <p class="premise">${esc(s.premise || "")}</p>
     <div class="row">${castChips(s.characters, s.dir)}</div>
+    ${s.writerStyle ? `<div class="row" style="margin-top:8px"><span class="hint">voice</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
 
     <div class="row" style="margin-top:12px"><span class="hint">model</span>${modelSelectHtml(s)}</div>
     ${APP.storyError ? `<div class="said bad">${esc(APP.storyError)}</div>` : ""}
@@ -137,7 +172,8 @@ export function storyPageHtml() {
     <div class="divider"><span>scenes</span></div>
     <div class="cards">${scenesOf(s).map((sc, i, arr) =>
       sceneRowHtml(sc, s.chapters || [], canWrite, why,
-        i === arr.length - 1 && arr.length > 1 && !(s.chapters || []).includes(sc.n))).join("")}</div>
+        i === arr.length - 1 && arr.length > 1 && !(s.chapters || []).includes(sc.n),
+        s.timeline || [])).join("")}</div>
 
     ${handoffRowHtml(s)}
 

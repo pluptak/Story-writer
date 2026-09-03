@@ -853,6 +853,28 @@
   .scpage .side-tension { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
   .scpage .side-tension .label { display:block; margin-bottom:4px; }
   .scpage .side-tension .side-copy { font-family:var(--serif); font-size:var(--fs-13); color:var(--ink); }
+
+  /* ---- the story map's scene detail ----
+     Roster, reach and the chapter's world beats, under the scene row they belong to. The mockup's
+     map fields: a small caps label column, chips, and the beat as a bordered extract. */
+  .map-extra { margin-top:11px; padding-top:11px; border-top:1px solid var(--line);
+               display:grid; gap:9px; }
+  .mapfield { display:grid; grid-template-columns:92px minmax(0,1fr); gap:9px; align-items:baseline; }
+  .mapfield > span { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+                     text-transform:uppercase; color:var(--faint); }
+  .mapchips { display:flex; flex-wrap:wrap; gap:5px; }
+  .mchip { display:inline-block; padding:2px 9px; border:1px solid var(--line); border-radius:var(--r-pill);
+           background:var(--panel-2); font-size:var(--fs-11); color:var(--muted); }
+  .mapbeats { display:grid; gap:8px; }
+  .mapbeat { border-left:2px solid var(--warn); padding-left:10px; display:grid; gap:2px; }
+  .mapbeat .when { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.07em;
+                   text-transform:uppercase; color:var(--warn); }
+  .mapbeat .hold { font-family:var(--serif); font-size:var(--fs-13); color:var(--ink); }
+  .mapbeat.voided { opacity:.55; }
+  .mapbeat.voided .hold { text-decoration:line-through; }
+  @media (max-width: 680px) {
+    .mapfield { grid-template-columns:minmax(0,1fr); gap:3px; }
+  }
   .scpage .notice { margin-top:12px; padding:10px 11px; color:var(--good); background:var(--good-soft);
     border-radius:var(--r-md); font-size:var(--fs-12); }
 

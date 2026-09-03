@@ -298,6 +298,21 @@ or to skip past one that was never written, unless told otherwise — `--replace
 story page's confirm-then-send from the viewer. One explicit authorization covers both deviations,
 so a deliberate rerun stays one flag away rather than forbidden.
 
+## The story map
+
+The story page is the map of what the architect produced: the concept (premise), the cast as chips,
+and the voice the story's `writerStyle` states — the author's three answers, above the scene list
+they produced. Each scene row carries its own detail: **who is here** (the roster), **reach here**
+(the scene's own grants, named per character — never shown as an intrinsic skill, which is I4 read
+out loud), and any **world event** aimed at that chapter, rendered as the percentage of the scene it
+fires at.
+
+A beat shows its **hold only**. Its per-character memories are the architect interview's to judge —
+the only screen that sees them before a run hides them inside a character — and a map the author
+browses casually is deliberately not a second place to read them. A beat the handoff voided still
+appears, struck through: it was authored, and its absence would read as an omission rather than a
+decision.
+
 ## The reader seat
 
 `/consult-me` does not seat the reader in a character's chair. It arms the reader as the **director**
