@@ -509,26 +509,29 @@ a *new* story folder — so it can go anywhere in the pass.
       exists once the data has arrived. An empty picker here is that circularity coming back.
 - [ ] **Staged walk.** After **propose →**, the story stage lands (title, premise, tension, facts — no
       cast yet). Its proposal card immediately shows those fields, and the composer says *what should
-      change?*, not *say more about it*. The checklist shows *story* open, the rest upcoming; the sidebar
-      reads walk *staged* · open gate *story* · on disk *nothing yet*. **approve & continue →** opens
-      *cast*, then *settings*, *technical*, and *scene*, ticking each passed gate. House style and run
-      settings appear in a highlighted current-stage section at the top of the proposal as their gates
-      land; the earlier stages remain below it. The button is gone at the *scene* gate.
+      change?*, not *say more about it*. The **left rail's stepper** shows *Concept* as the open row —
+      number dot, accent border, its one-line summary — with the later steps pending; the sidebar
+      reads walk *staged* · open gate *story* · on disk *nothing yet*, and the tension the stage
+      coined appears in the rail **as its sentence**, not a "coined" flag. **accept the concept & continue →**
+      opens *cast* — the stepper ticks *Concept* and highlights *Cast* — then *Voice*, *Technical* and
+      *Scenes*, the label following each gate. House style and run settings appear in a highlighted
+      current-stage section at the top of the proposal as their gates land; the earlier stages remain
+      below it. The button is gone at the *world* gate.
 - [ ] **The cast gate can refuse.** Approving *cast* with a cast whose restrictions do not bite on the
       tension (easiest: refine the cast until nobody has a restriction, then approve) comes back as a
       judgement card headed **the cast gate**, not a red failure line — it names what would need a
-      restriction and says *approve again to overrule this*. The checklist pointer stays on *cast* and
+      restriction and says *approve again to overrule this*. The stepper's pointer stays on *Cast* and
       no next stage appears. The approve button becomes **approve anyway →** in the warning colour;
       clicking it within 8 seconds passes the gate, and waiting longer than that returns it to
-      **approve & continue →**. Refine instead of overruling and the button reverts once the round
-      lands, so an armed override never carries to a later gate.
+      **accept the cast & continue →**. Refine instead of overruling and the button reverts once the
+      round lands, so an armed override never carries to a later gate.
 - [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
       to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
       Answering re-runs that stage.
 - [ ] **Refinement stays put.** Type a change and **send**: it applies within the open gate and the
       checklist pointer does not move. Round labels carry the gate (`[cast] changed: …`).
-- [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no checklist**,
-      sidebar walk *one-shot*.
+- [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no stepper rail**
+      (the two-panel shell it always had), sidebar walk *one-shot*.
 - [ ] **Edit in full.** The sidebar's **edit in full →** opens the schema editor on the same draft;
       a change there is reflected on the proposal card when you come **back to interview**. Change a
       field there — clear a character's restrictions, say — and **confirm and write** stays enabled:
@@ -547,8 +550,9 @@ a *new* story folder — so it can go anywhere in the pass.
 - [ ] **Abandon** (second click) drops the session and returns to the shelf.
 - [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
       server, not the tab.
-- [ ] **Responsive.** Below 900px the sidebar stacks under the proposal; at 375px there is **no
-      horizontal scrollbar**.
+- [ ] **Responsive.** Below 900px the sidebar stacks under the proposal and the **stepper rail
+      disappears** — the status bar's `gate:` word still says where the walk stands; at 375px there is
+      **no horizontal scrollbar**.
 
 ## 15. Character catalog
 

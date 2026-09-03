@@ -719,7 +719,7 @@
   body[data-view="scaffold"] .rail { display:none; }
   body[data-view="scaffold"] .page { max-width:none; margin:0; padding:0; }
 
-  .scpage { max-width:1320px; margin:0 auto; padding:22px clamp(16px,4vw,40px) 90px; }
+  .scpage { max-width:1500px; margin:0 auto; padding:22px clamp(16px,4vw,40px) 90px; }
   .scpage .eyebrow { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.12em;
     text-transform:uppercase; color:var(--accent); margin:0 0 5px; }
   .scpage > .sc-head h2 { font-family:var(--serif); font-weight:400; font-size:clamp(23px,3.6vw,31px);
@@ -736,6 +736,10 @@
 
   /* the two-column shell: proposal+conversation, then the state sidebar */
   .scpage .shell { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; align-items:start; }
+  /* The staged walk's three panels -- steps, the work, the state; one-shot keeps two. The mockup's
+     270px rail, sticky so the position never scrolls away while the round below it is being read. */
+  .scpage .shell.gated { grid-template-columns:270px minmax(0,1fr) 300px; }
+  .scpage .stepper-rail { position:sticky; top:16px; align-self:start; min-width:0; }
   .scpage .workspace { min-width:0; display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
 
   .scpage .card { min-width:0; }
@@ -751,14 +755,22 @@
   .scpage .card-body > p { margin:0; color:var(--muted); font-size:var(--fs-13); }
 
   /* checklist chips (staged walk) */
-  .scpage .checklist { display:flex; gap:7px; margin:0 0 14px; overflow-x:auto; padding-bottom:2px; }
-  .scpage .gate { display:flex; align-items:center; gap:7px; min-width:max-content; padding:7px 11px;
-    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-pill); color:var(--muted);
-    font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.07em; text-transform:uppercase; }
-  .scpage .gate.done { color:var(--good); border-color:var(--good); background:var(--good-soft); }
+  /* The stepper: one row per gate, vertical, in the left rail. Done rows carry the tick, the open
+     row the accent border -- the old horizontal chips' semantics, given a column and the one-line
+     summary that used to live in a sidebar card. */
+  .scpage .checklist { display:grid; gap:6px; }
+  .scpage .gate { display:flex; align-items:flex-start; gap:9px; padding:8px 10px;
+    border:1px solid transparent; border-radius:var(--r-md); color:var(--muted); }
+  .scpage .gate i { flex:none; width:22px; height:22px; border-radius:50%; margin-top:1px;
+    border:1.5px solid currentColor; display:grid; place-items:center;
+    font-style:normal; font-size:var(--fs-11); font-weight:600; line-height:1; }
+  .scpage .gate-copy { display:grid; gap:1px; min-width:0; padding-top:1px; }
+  .scpage .gate-copy b { font-weight:600; font-size:var(--fs-13); color:inherit; }
+  .scpage .gate-copy small { display:block; color:var(--faint); font-size:var(--fs-11); line-height:1.4; }
+  .scpage .gate.done { color:var(--good); }
+  .scpage .gate.done i { background:var(--good); border-color:var(--good); color:var(--bg); }
   .scpage .gate.open { color:var(--ink); border-color:var(--accent); background:var(--accent-soft); }
-  .scpage .gate i { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
-  .scpage .gate.open i { animation:pulse 1.2s ease-in-out infinite; }
+  .scpage .gate.open i { border-color:var(--accent); background:var(--panel); color:var(--accent); }
 
   /* proposal panel: scene, question, facts, cast */
   .scpage .stage-section { margin-top:16px; padding-top:15px; border-top:1px solid var(--line); }
@@ -837,6 +849,10 @@
   .scpage .side-copy { margin:0; color:var(--muted); font-size:var(--fs-12); }
   .scpage .side-actions { display:grid; gap:8px; margin-top:14px; }
   .scpage .side-actions .btn { text-align:center; }
+  /* the tension as its text, under the stats it used to be a "coined" row of */
+  .scpage .side-tension { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+  .scpage .side-tension .label { display:block; margin-bottom:4px; }
+  .scpage .side-tension .side-copy { font-family:var(--serif); font-size:var(--fs-13); color:var(--ink); }
   .scpage .notice { margin-top:12px; padding:10px 11px; color:var(--good); background:var(--good-soft);
     border-radius:var(--r-md); font-size:var(--fs-12); }
 
@@ -854,8 +870,10 @@
   @media (max-width: 900px) {
     /* mobile: proposal before conversation is already the DOM order; drop the sidebar under it.
        minmax(0,1fr) — a bare 1fr is minmax(auto,1fr), whose content-based minimum lets a wide card
-       push the track past the viewport. */
-    .scpage .shell { grid-template-columns:minmax(0,1fr); }
+       push the track past the viewport. The stepper rail goes with the columns: a narrow screen
+       reads the round card, and the status bar's `gate:` word still says where the walk stands. */
+    .scpage .shell, .scpage .shell.gated { grid-template-columns:minmax(0,1fr); }
+    .scpage .stepper-rail { display:none; }
     .scpage aside { position:static; order:2; }
     .iv .choice-grid { grid-template-columns:1fr; }
   }

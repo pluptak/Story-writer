@@ -556,7 +556,10 @@ question") are suppressed until their owning stage has run.
 
 The load-bearing **tension** sentence coined at the story stage is session state, not a story.json
 field: it steers the cast stage's prompt, sharpens the scene stage's, and change rounds may edit it
-by field name without it ever reaching the file.
+by field name without it ever reaching the file. The sidebar shows it **as its text** — the cast was
+authored against the sentence, so the author reads the sentence, not a "coined" flag saying one
+exists. What still has no view of it is the story editor, which loads the file the tension never
+reaches.
 
 **Oneshot** keeps the original single-round behaviour: one whole-story proposal followed immediately
 by the two automatic passes below, then conversational refinement. Chosen with `mode: "oneshot"`
@@ -671,16 +674,20 @@ Behaviour:
   **spent** when the stage that reads it has landed, with **revise concept** offering the same picker
   inline until both are. Revising seeds from the session rather than the modal's draft: after a
   reload the draft is empty while the concept is not.
-- A staged session renders the checklist — story / cast / settings / technical / scene / world chips with the
-  open gate
-  highlighted and passed gates ticked. A one-shot session has no checklist; the status bar and round
-  narration carry its state.
+- A staged session renders the **stepper** — a left rail, one row per gate (Concept / Cast / Voice /
+  Technical / Scenes / World) with the open gate highlighted, passed gates ticked, and each row
+  carrying the one-line summary of what its gate holds. It is the checklist's only statement: the
+  round card no longer repeats it as chips, the proposal head no longer recites passed gates, and
+  the sidebar's gate-summary card is gone, because a position that was stated three times had three
+  places to drift. A one-shot session has no steps; the status bar and round narration carry its
+  state.
 - While `/scaffold/start`, `/scaffold/say` or `/scaffold/approve` is running, the composer is replaced
   by `.thinking` and the status dot pulses.
 - A `question` round shows the architect's question distinctly, focuses and relabels the answer field
   ("your answer" / "send answer →"), and hides the approve button while it stands.
 - The **approve & continue** button, in the composer, passes the open gate and proposes the next
-  stage's content. It is hidden at the last gate and while a question stands. Refinement never advances
+  stage's content, **labelled by the gate it passes** ("accept the concept", "accept the cast"). It is
+  hidden at the last gate and while a question stands. Refinement never advances
   a gate: only this button does. When the cast gate comes back `blocked`, the verdict renders as a
   judgement (not a failure) and the same button becomes **approve anyway** for 8 seconds — the first
   click is what discovered the block, so unlike accept the confirmation is armed by the reply rather
@@ -770,13 +777,15 @@ never imports engine modules directly. The old console walkthrough (`--new`, `--
   `stories/` is the user's own content and gitignored. A **handoff** architect no longer gets it —
   the handoff prompt names every edit field inline and resends the real story each round, so the
   example was the format said twice.
-- **The scaffold has no scripted session in the GUI harness**, so `tests/gui/` can cover the idea
-  modal (which needs no session) and nothing past it: `fixtureHost` refuses `newScaffoldSession`.
-  A `setScaffoldFactory` in the shape `setHandoffFactory` already has would open the sidebar, the
-  gate walk and the approve/refuse cards to the Playwright pass. Until then those stay in
-  [GUI-CHECKLIST.md](GUI-CHECKLIST.md)'s manual section 14. Note that `fixtureHost` spreads the real
-  `HOST`, so `unknownTags` would reach the author's own catalog at ROOT — it needs the same
-  temp-file override the catalog methods already have.
+- **The scaffold has a scripted session in the GUI harness**: `setScaffoldFactory`, in the shape
+  `setHandoffFactory` already had, installs a `ScaffoldSession` whose architect replies from a
+  script, and [`scaffold.spec.ts`](tests/gui/scaffold.spec.ts) walks a staged session through
+  `/scaffold/start` and one approve — asserting the stepper tracks the published gate, the approve
+  button names the gate it passes, and the tension reaches the rail as its text. The deeper gates
+  (settings onward, and the blocked-gate override) stay in
+  [GUI-CHECKLIST.md](GUI-CHECKLIST.md)'s manual section 14. `fixtureHost` still spreads the real
+  `HOST`, so a future test that sends tags would reach `unknownTags` against the author's own
+  catalog at ROOT — it needs the same temp-file override the catalog methods already have.
 
 ## Safety and product constraints
 

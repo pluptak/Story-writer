@@ -5,9 +5,10 @@ import { loadStories } from "./saved-runs.js";
 import { loadVocab, loadLibrary } from "./catalog.js";
 
 // ---- the scaffold interview --------------------------------------------------
-// One page, three things always visible: the proposed story, the current round, and a state
-// sidebar owning accept and abandon. The idea step is still a modal, shown over an empty scaffold
-// shell until the first proposal lands. Base styling ported from mockups/architect.
+// One page, four things always visible in the staged walk: the step they are on, the proposed
+// story, the current round, and a state sidebar owning accept and abandon. The idea step is still
+// a modal, shown over an empty scaffold shell until the first proposal lands. Base styling ported
+// from mockups/architect; the stepper is the mockup's left rail.
 
 const IDEA_PLACEHOLDER =
   "e.g. A locksmith is asked to open a door they installed years ago, for someone they don't recognise.";
@@ -15,6 +16,28 @@ const IDEA_PLACEHOLDER =
 // Must match ScaffoldSession.CHECKLIST. The gate the session is on drives the chip strip, the
 // draft label and which section renders as current, so a stage missing here loses all three.
 const GATES = ["story", "cast", "settings", "technical", "scene", "world"];
+
+// The stepper's display names, one-line descriptions, and approve labels. The engine's stage
+// strings never change -- CHECKLIST owns them -- so the author-facing vocabulary lives beside the
+// gate keys. The descriptions are the old sidebar helper card's prose, given to the step they
+// describe: the summary travels with the step instead of living in a card the step's reader has
+// already scrolled past.
+const GATE_LABELS = {
+  story: "Concept", cast: "Cast", settings: "Voice",
+  technical: "Technical", scene: "Scenes", world: "World",
+};
+const GATE_DESCS = {
+  story: "title, premise, tension, facts.",
+  cast: "who walks into scene 1.",
+  settings: "the house style.",
+  technical: "run settings and retry limits.",
+  scene: "scene 1 in full; later ones as sketches.",
+  world: "world events, and who remembers them.",
+};
+const APPROVE_LABELS = {
+  story: "accept the concept", cast: "accept the cast", settings: "accept the voice",
+  technical: "accept the run shape", scene: "accept the scene", world: "accept the world",
+};
 
 // ── the idea step (modal) ────────────────────────────────────────────────────
 
@@ -204,12 +227,10 @@ function stageSection(name, body, current) {
   </div>`;
 }
 
-/** The stage tag that labels what the draft is showing -- a passed gate leaves a tick, the open one
- *  is named in brackets. One-shot has no gate, so the label is just "draft so far". */
+/** The stage tag that labels what the draft is showing. The gate recital is gone -- the stepper in
+ *  the left rail owns the checklist position now, so the head keeps only the walk's name. */
 function draftLabel(s) {
-  if (!s.gate) return "draft so far";
-  const passed = GATES.slice(0, GATES.indexOf(s.gate)).map(g => `${g} ✓`).join(" · ");
-  return `draft so far · ${passed ? passed + " · " : ""}[${s.gate}]`;
+  return "draft so far";
 }
 
 function proposalHtml(s) {
@@ -250,13 +271,16 @@ function proposalHtml(s) {
   </section>`;
 }
 
-// ── the checklist (staged) ────────────────────────────────────────────────────
+// ── the stepper (staged) ──────────────────────────────────────────────────────
 
-function checklistHtml(s) {
+/** One row per gate, in the left rail -- done, open, or ahead. It is the checklist, the draft
+ *  label's gate recital, and the sidebar's gate summary collapsed into the one place that is
+ *  always visible, so the position question has one answer instead of three. */
+function stepperHtml(s) {
   if (!GATES.includes(s.gate)) return "";
   const cur = GATES.indexOf(s.gate);
   return `<div class="checklist" aria-label="checklist position" data-tid="scaffold.checklist">${GATES.map((g, i) =>
-    `<span${tid("scaffold.gate")} class="gate${i < cur ? " done" : i === cur ? " open" : ""}" data-gate="${g}"><i></i>${g}${i < cur ? " ✓" : ""}</span>`
+    `<span${tid("scaffold.gate")} class="gate${i < cur ? " done" : i === cur ? " open" : ""}" data-gate="${g}"><i>${i < cur ? "✓" : i + 1}</i><span class="gate-copy"><b>${GATE_LABELS[g]}</b><small>${GATE_DESCS[g]}</small></span></span>`
   ).join("")}</div>`;
 }
 
@@ -302,7 +326,6 @@ function roundHtml(s) {
   } else {
     parts.push(lastHtml(s.last));
   }
-  parts.push(checklistHtml(s));
 
   if (!busy) {
     const label = answering ? "your answer" : s.haveDraft ? "what should change?" : "say more about it";
@@ -321,11 +344,12 @@ function roundHtml(s) {
       const unsent = !!draft.say.trim();
       foot.push(`<button class="btn${unsent ? " primary" : ""}" id="iv-say">send</button>`);
       // approve passes the open gate; hidden at the last gate and while a question stands. Once a
-      // gate came back blocked, the same button overrules it and says so.
+      // gate came back blocked, the same button overrules it and says so. The label names the gate
+      // being passed -- "accept the cast" -- because "approve" stopped saying what the click does.
       if (s.gate && GATES.indexOf(s.gate) < GATES.length - 1)
         foot.push(APP.approveArmed
           ? `<button class="btn danger" id="iv-approve">approve anyway →</button>`
-          : `<button class="btn${unsent ? "" : " primary"}" id="iv-approve">approve &amp; continue →</button>`);
+          : `<button class="btn${unsent ? "" : " primary"}" id="iv-approve">${APPROVE_LABELS[s.gate]} &amp; continue →</button>`);
     }
   } else {
     foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
@@ -400,7 +424,6 @@ function sidebarHtml(s) {
   const stats = [stat("walk", walk)];
   if (s.mode !== "oneshot") {
     stats.push(stat("open gate", s.pendingAsk ? `${s.gate} (asked)` : s.gate || "—"));
-    if (s.tension) stats.push(stat("tension", "coined"));
     if (c.tags && c.tags.length)
       stats.push(stat("tags", c.tags.join(", ") + (c.tagsSteer ? "" : " · spent")));
     if (c.castSize) stats.push(stat("opening cast", c.castSize + (c.castSizeSteers ? "" : " · spent")));
@@ -444,16 +467,21 @@ function sidebarHtml(s) {
           <button class="btn" id="iv-concept-cancel">cancel</button></div></div>`
     : `<div class="side-actions"><button class="btn" id="iv-concept-edit">revise concept</button></div>`;
 
+  // The tension is the sentence, not the fact of one: it is what the cast was authored against, and
+  // "coined" said it exists without letting the author read it. Shown as its text, here, it is also
+  // what the story editor still has no view of -- that half stays open.
+  const tensionShape = s.tension
+    ? `<div class="side-tension"><span class="label">load-bearing tension</span>
+        <p class="side-copy">${esc(s.tension)}</p></div>`
+    : "";
+
+  // The staged helper card is gone: every gate's summary is its stepper row's description now, read
+  // beside the step instead of listed in a card. The one-shot walk has no steps, so its principle
+  // stays.
   const helper = s.mode === "oneshot"
     ? `<div class="side-card card"><h3>principle</h3>
         <p class="side-copy">The architect proposes; you accept. Nothing writes itself until you name a folder.</p></div>`
-    : `<div class="side-card card"><h3>the gates</h3>
-        <p class="side-copy"><b>story</b> — title, premise, tension, facts.<br>
-          <b>cast</b> — characters as they walk into scene 1.<br>
-          <b>settings</b> — house style.<br>
-          <b>technical</b> — run settings and retry limits.<br>
-          <b>scene</b> — scene 1 in full; later ones as sketches.<br><br>
-          Refinement stays within the open gate; only <b>approve</b> advances it.</p></div>`;
+    : "";
 
   // A bespoke skill is the architect telling you this cast needed a capability the bible does not
   // have. Promoting it is a write to the author's own catalog, so it is the author's click and not
@@ -474,6 +502,7 @@ function sidebarHtml(s) {
     <div class="side-card card" data-tid="scaffold.state-card">
       <h3>scaffold state</h3>
       ${stats.join("")}
+      ${tensionShape}
       ${conceptWarning}
       ${importsWarning}
       ${conceptEditor}
@@ -501,6 +530,9 @@ function activePageHtml(s) {
     + (s.model ? ` · built by ${esc(s.model)}` : "");
   const headline = s.pendingAsk ? "The architect has a question"
     : s.haveDraft ? "Does this look right?" : "Your story is taking shape";
+  // The stepper rides along only when there are steps to show; a one-shot walk keeps the two-panel
+  // shell it always had.
+  const gated = s.mode !== "oneshot";
 
   return `
     <div class="sc-head">
@@ -513,7 +545,8 @@ function activePageHtml(s) {
       <span>${statusText}</span>
       <span class="spacer">${spacer}</span>
     </div>
-    <div class="shell">
+    <div class="shell${gated ? " gated" : ""}">
+      ${gated ? `<aside class="stepper-rail">${stepperHtml(s)}</aside>` : ""}
       <div class="workspace">${err}${workspace.join("")}</div>
       ${sidebarHtml(s)}
     </div>`;

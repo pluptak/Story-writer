@@ -20,7 +20,7 @@ import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "../
 import { CATALOG_KINDS, type CatalogKind } from "../../engine/catalog-schema.ts";
 import { HOST } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
-import type { NextChapterSession } from "../../engine/architect.ts";
+import type { NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const FIXTURE_DIR = "tests/fixtures/doorway";
@@ -89,6 +89,11 @@ let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null
 /** Install the scripted handoff session a handoff test drives; null restores the refusal. */
 export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSession>) | null) { handoffFactory = f; }
 
+type ScaffoldArgs = { idea: string; model: string; mode: "oneshot" | "staged"; tags: string[]; castSize: number };
+let scaffoldFactory: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null = null;
+/** Install the scripted scaffold session a scaffold test drives; null restores the refusal. */
+export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null) { scaffoldFactory = f; }
+
 async function fixtureHost(): Promise<ServerHost> {
   const story = await fixtureStory();
   const notScripted = (what: string): never => { throw new Error(`the GUI harness has no behaviour for ${what}`); };
@@ -113,7 +118,11 @@ async function fixtureHost(): Promise<ServerHost> {
     runDirs: async () => [],
     runLlmLogs: async () => notScripted("runLlmLogs"),
     readLlmLog: async () => notScripted("readLlmLog"),
-    newScaffoldSession: async () => notScripted("newScaffoldSession"),
+    newScaffoldSession: async (idea, model, mode, concept) => {
+      if (!scaffoldFactory) throw new Error("no scaffold scripted for this test");
+      return scaffoldFactory({ idea, model: model ?? "", mode: mode ?? "oneshot",
+                               tags: concept?.tags ?? [], castSize: concept?.castSize ?? 0 });
+    },
     newHandoffSession: async (dir) => {
       if (!handoffFactory) throw new Error("no handoff scripted for this test");
       return handoffFactory(dir);
@@ -164,6 +173,7 @@ export const test = base.extend<{ served: number }>({
     resetLive();
     extraStories.clear();
     handoffFactory = null;
+    scaffoldFactory = null;
     const handle: ServerHandle = startServer(0, await fixtureHost());
     const port = await handle.bound;
     await page.goto(`http://127.0.0.1:${port}/`);
