@@ -75,22 +75,6 @@ const parseReach = text => {
 /** Deep clone by serialising -- Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-function scaffoldStory(spec) {
-  const story = clone(spec);
-  // specView carries `scene` as a convenience alias for scenes[0] -- the interview's proposal card
-  // reads it. StoryJson is strict, so leaving it on the draft makes every check fail with
-  // `Unrecognized key: "scene"`, disabling the write button on the first edit. The editor works
-  // from `scenes` throughout, so the alias is dropped here rather than removed from specView.
-  delete story.scene;
-  story.characters = (story.characters || []).map(c => ({
-    ...c,
-    skills: (c.skills || []).map(s => typeof s === "string" ? s : [s.text, s.meaning].filter(Boolean).join(" :: ")),
-  }));
-  story.config = story.config || {};
-  story.models = story.models || {};
-  return story;
-}
-
 /** Check whether two story objects differ structurally. */
 function deepEq(a, b) {
   try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
@@ -625,11 +609,10 @@ export function wireStoryEditor(page) {
   // Keyed by editFor, not editStory: a draft left over from another story must trigger a fresh load
   // here, never render as if it were this story's. No editError clause: a refusal belonging to
   // another story must not block this one -- loadEditor clears it.
-  if (APP.editNew && APP.scaffold?.spec && APP.editFor !== "__scaffold__") {
-    const loaded = scaffoldStory(APP.scaffold.spec);
+  if (APP.editNew && APP.scaffold?.storyDraft && APP.editFor !== "__scaffold__") {
     APP.editFor = "__scaffold__";
-    APP.editStory = clone(loaded);
-    APP.editDraft = clone(loaded);
+    APP.editStory = clone(APP.scaffold.storyDraft);
+    APP.editDraft = clone(APP.scaffold.storyDraft);
     APP.editWarnings = APP.scaffold.problems || [];
     APP.editIssues = [];
     clearSuggest();

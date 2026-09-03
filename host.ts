@@ -11,7 +11,7 @@ import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { PROVIDER } from "./engine/provider.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
-import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
+import { directEdit, specView, storyJsonShape, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson, THINK_LEVELS, VOICE_SAMPLE_CAP } from "./engine/story-schema.ts";
 import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
@@ -198,7 +198,7 @@ export const HOST: ServerHost = {
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters, resolveStyle, promoteSkill,
+  newScaffoldSession, newHandoffSession, directEdit, specView, storyJsonShape, unknownTags, importCharacters, resolveStyle, promoteSkill,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   editorConfig: (): EditorConfig => {

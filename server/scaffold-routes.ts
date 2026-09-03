@@ -115,6 +115,10 @@ function scaffoldState(host: ServerHost) {
     needsFolder: scaffoldFolderAsk,
     model: SCAFFOLD.defaults.models.architect,
     spec: haveDraft ? host.specView(SCAFFOLD.spec) : null,
+    // StoryJson-shaped, unlike `spec` above (specView's GUI-facing shape) — this is what the
+    // "review new story" editor loads directly, so the browser never reconciles one shape into
+    // the other itself.
+    storyDraft: haveDraft ? host.storyJsonShape(SCAFFOLD.spec, SCAFFOLD.defaults.models) : null,
   };
 }
 

@@ -102,6 +102,9 @@ export interface ServerHost {
   directEdit(spec: StorySpec, field: string, value: unknown):
     { ok: false; reason: string } | { ok: true; spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; problems: string[] };
   specView(spec: StorySpec): unknown;
+  /** The spec as a plain StoryJson-shaped object (no `scene` alias, no exploded skills) — what the
+   *  scaffold's editor draft loads directly instead of reconciling specView's shape into it. */
+  storyJsonShape(spec: StorySpec, models: { default: string }): unknown;
   /** The current run's output folder, or "" before a run has committed one. */
   outDir(): string;
   /** Schema-derived defaults, thinking levels and caps for the story editor and the new-story form —

@@ -382,7 +382,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 GET  /scaffold
   → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, concept, haveDraft, haveStory,
                           pendingAsk, problems[], bibleCandidates[], last: ScaffoldRound | null,
-                          needsFolder, model, spec }
+                          needsFolder, model, spec, storyDraft }
 
 bibleCandidates = { name: string, meaning: string, heldBy: string[] }[]
 
@@ -505,6 +505,12 @@ never writes a bible entry.
 `haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
 be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its
 stricter meaning: a cast exists and the draft is eligible for the edit and accept flows.
+
+`storyDraft` is present under the same `haveDraft` condition as `spec`, but StoryJson-shaped rather
+than specView's GUI-facing shape (no `scene` alias, skills not exploded into `{text, meaning}`) — it
+is what the "review new story" screen loads as its editor draft directly, the same shape
+`/story/edit` hands the ordinary story editor. `spec` stays specView-shaped for the interview's own
+read-only proposal card, which wants the exploded skills and the `scene` alias.
 
 One session at a time (`scaffoldBusy` is a module-level lock — a second `POST` while a round is in
 flight gets `409`). `accept` only resolves the parked story pick on `kind: "written"`; every other

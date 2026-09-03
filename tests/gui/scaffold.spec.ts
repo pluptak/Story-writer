@@ -70,6 +70,10 @@ test("the stepper tracks the gate, the approve button names it, and the tension 
     await expect(cast).toContainText("who walks into scene 1.");
     await expect(page.locator("#iv-approve")).toContainText("accept the cast");
   } finally {
+    // SCAFFOLD is a module-level singleton (server/scaffold-routes.ts), outliving this test's own
+    // server instance -- the next test to reach #/scaffold in this worker would otherwise inherit
+    // this session instead of the idea modal.
+    await page.request.post(`http://127.0.0.1:${served}/scaffold/abandon`).catch(() => {});
     setScaffoldFactory(null);
     LIVE.awaitingPick = false;
   }
