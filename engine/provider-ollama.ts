@@ -4,7 +4,7 @@
  *  Context length is fixed per-model by its Modelfile (`num_ctx`) and `/api/ps` does not
  *  report it, so both context numbers read as unknown and the fit checks degrade the way
  *  they do for any model the engine knows nothing about. */
-import { getJson, openAiRoot, openAiListModels,
+import { getJson, openAiHealth, openAiRoot, openAiListModels,
          type InferenceProvider, type ModelRuntime } from "./provider-util.ts";
 
 /** Parse GET /api/ps — the models currently resident in memory. */
@@ -33,6 +33,7 @@ export function newOllamaProvider(baseUrl: string, auth: Record<string, string>)
     },
     headers: () => ({ ...auth }),
     listModels: (timeoutMs) => openAiListModels(baseUrl, timeoutMs, auth),
+    health: (timeoutMs) => openAiHealth(baseUrl, timeoutMs, auth),
     async inspectModels(timeoutMs) {
       const body = await getJson(`${openAiRoot(baseUrl)}/api/ps`, timeoutMs, auth);
       return body ? parsePsModels(body) : null;

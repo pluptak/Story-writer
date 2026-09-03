@@ -2,7 +2,7 @@
  *  `/api/v1/models` (an inventory of everything downloaded, with `loaded_instances` per model);
  *  older installs only answer `/api/v0/models` (`state`/`loaded_context_length`). The adapter
  *  tries v1 first and falls back to v0, so either install reports the same shape. */
-import { getJson, openAiRoot, openAiListModels,
+import { getJson, openAiHealth, openAiRoot, openAiListModels,
          type InferenceProvider, type ModelRuntime } from "./provider-util.ts";
 
 /** Parse the current inventory (GET /api/v1/models). Returns `null` when the body is not that
@@ -58,6 +58,7 @@ export function newLmStudioProvider(baseUrl: string, auth: Record<string, string
     },
     headers: () => ({ ...auth }),
     listModels: (timeoutMs) => openAiListModels(baseUrl, timeoutMs, auth),
+    health: (timeoutMs) => openAiHealth(baseUrl, timeoutMs, auth),
     async inspectModels(timeoutMs) {
       const v1 = await getJson(`${root}/api/v1/models`, timeoutMs, auth);
       if (v1) {

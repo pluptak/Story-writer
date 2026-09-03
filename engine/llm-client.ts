@@ -65,7 +65,12 @@ function parseUsage(u: any): CompletionUsage | null {
 }
 
 /** The retry/backoff knobs, settable per run from a story's config. */
-export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };
+export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800,
+                     probeTimeoutMs: 1500, recoveryProbes: 2, maxCallMs: 600_000 };
+
+/** The last failure the transport classified — what a status line or the viewer wants first. */
+export const TELEMETRY = { last: null as
+  { what: string; kind: string; message: string; site?: string; agent?: string; at: number } | null };
 
 /** The JSON body for one completion. Exported for the capability tests: whether
  *  `reasoning_effort` goes on the wire is the provider's decision, not the caller's. */
@@ -81,11 +86,34 @@ class LmError extends Error {
   constructor(message: string, public status?: number, public retryable = false) { super(message); }
 }
 
+/** Thrown when the provider stops answering the model list during recovery — retrying blind
+ *  would only wait. The message names the endpoint and what to do. */
+export class ProviderDownError extends Error { }
+/** Thrown when a logical call has spent its whole wall-clock budget across attempts. */
+export class CallBudgetError extends Error { }
+
 const retryableStatus = (s: number) => s === 408 || s === 409 || s === 425 || s === 429 || s >= 500;
+
+/** What kind of failure an attempt ended with — the retry decision and every diagnostic word
+ *  hang off this. Exported for the failure tests. */
+export function failureKind(e: unknown): string {
+  if (e instanceof LmError) {
+    if (e.status !== undefined) return "http-error";
+    if (/non-JSON/.test(e.message)) return "invalid-response";
+    if (/empty/.test(e.message)) return "empty-response";
+    return "unknown";
+  }
+  const cause = String((e as { cause?: unknown })?.cause ?? "");
+  if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN/.test(cause)) return "unreachable";
+  if (/ECONNRESET|EPIPE|socket hang up|terminated|fetch failed/i.test(cause + String(e)))
+    return "connection-dropped";
+  return "unknown";
+}
 
 async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>,
                             call?: CallSite): Promise<T> {
   let last: unknown;
+  const startedAt = Date.now();
   for (let attempt = 0; ; attempt++) {
     if (RUN.stopped) throw new StoppedError();
     // Whether OUR idle deadline aborted the request (as opposed to the run's stop signal).
@@ -119,20 +147,45 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
       // Waiting twice cannot help: the holder of the slot was stuck for the whole budget, and
       // re-queueing would only wait again. Say what was holding it and let the caller see it.
       if (e instanceof QueueGaveUpError) throw e;
-      // Our own deadline, dropped connections, and any failure carrying no HTTP status (fetch
-      // itself, a reply body that never parsed) are worth a retry; a 4xx we caused is not.
-      // Body-parse failures arrive already wrapped as retryable LmErrors by complete(), so nothing
-      // needs name-based special-casing here.
+      if (e instanceof ProviderDownError || e instanceof CallBudgetError) throw e;
+      const kind = failureKind(e);
+      TELEMETRY.last = { what, kind, message: (e as Error).message, site: call?.site, agent: call?.agent, at: Date.now() };
       const err = e as LmError;
       const retryable = idleAborted || err.retryable
         || (err.status === undefined && e instanceof Error);
       if (idleAborted) last = new LmError(`${what}: no reply within ${NET.timeoutMs / 1000}s`, undefined, true);
       if (!retryable || attempt >= NET.retries) break;
       const wait = NET.backoffMs * 2 ** attempt + Math.floor(Math.random() * 250);
+      if (Date.now() - startedAt + wait > NET.maxCallMs)
+        throw new CallBudgetError(`${what}: gave up after ${Math.round((Date.now() - startedAt) / 1000)}s `
+          + `across ${attempt + 1} attempt${attempt ? "s" : ""} — the call's total budget is `
+          + `${Math.round(NET.maxCallMs / 1000)}s`);
       progressDone();
       warn(`   ${C.yellow}⟳${C.reset} ${what} failed (${(last as Error).message}) — retry `
         + `${attempt + 1}/${NET.retries} in ${wait}ms`);
       await new Promise(r => setTimeout(r, wait));
+      // Health gate before spending another model attempt. This is reachability, not model
+      // state: any HTTP answer (even a 500) means the server is standing. The probe is metadata
+      // only — no generation, no preemption — so it is asked directly, not through the queue.
+      let down = 0;
+      for (;;) {
+        if (await PROVIDER.health(NET.probeTimeoutMs)) {
+          if (kind === "unreachable" || kind === "connection-dropped")
+            warn(`   ${C.dim}${PROVIDER.displayName} is answering again — retrying${C.reset}`);
+          else if (idleAborted)
+            warn(`   ${C.yellow}${PROVIDER.displayName} is alive but the model stopped replying — `
+              + `another client may be preempting it${C.reset}`);
+          break;
+        }
+        down++;
+        if (down > NET.recoveryProbes)
+          throw new ProviderDownError(`${PROVIDER.displayName} at ${PROVIDER.baseUrl} is not answering `
+            + `— is its server running?`);
+        progressDone();
+        warn(`   ${C.dim}${PROVIDER.displayName} is not answering — giving it ${down}/${NET.recoveryProbes} `
+          + `chances to come back before giving up${C.reset}`);
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
   }
   throw last;

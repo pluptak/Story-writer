@@ -45,6 +45,9 @@ export interface InferenceProvider {
   /** The OpenAI-compatible model list: ids the server will accept as `model`. `null` means
    *  unreachable (distinct from an empty list). */
   listModels(timeoutMs: number): Promise<string[] | null>;
+  /** Whether the server answers AT ALL — any HTTP status counts, because "500 on /models" is
+   *  still a server standing. Metadata only: never generation, never preemption. */
+  health(timeoutMs: number): Promise<boolean>;
   /** Per-model runtime state from the server's native API, or `null` when it cannot report
    *  one (capability off, endpoint missing, or unreachable). Never cached here — the callers
    *  own their cache policy. */
@@ -91,6 +94,16 @@ export async function getJson(url: string, timeoutMs: number,
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }
+}
+
+/** Whether the server answers at all: any HTTP status (even 500 on /models) is a standing
+ *  server; only a transport failure — refused, timed out, reset — reads as down. */
+export async function openAiHealth(baseUrl: string, timeoutMs: number,
+                                   auth: Record<string, string>): Promise<boolean> {
+  try {
+    await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(timeoutMs), headers: auth });
+    return true;
+  } catch { return false; }
 }
 
 /** The OpenAI-compatible model list, shared by every adapter: ids the server will accept.

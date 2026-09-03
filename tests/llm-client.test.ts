@@ -404,16 +404,18 @@ describe("retry classification (non-JSON reply bodies)", () => {
     const saved = { timeoutMs: NET.timeoutMs, retries: NET.retries, backoffMs: NET.backoffMs };
     NET.timeoutMs = 250; NET.retries = 1; NET.backoffMs = 0;
     armRun();
-    let calls = 0;
+    let calls = 0, probes = 0;
     try {
-      globalThis.fetch = async () => {
+      globalThis.fetch = (async (_url: any) => {
+        if (String(_url).endsWith("/models")) { probes++; return new Response("{}", { status: 200 }) as any; }
         calls++;
         if (calls === 1) return new Response("<!doctype html><html>proxy error page</html>",
                                             { headers: { "content-type": "text/html" } }) as any;
         return new Response(JSON.stringify({ choices: [{ message: { content: "second try" } }] })) as any;
-      };
+      }) as any;
       const result = await complete("test-model", [{ role: "user", content: "test" }], 0.8);
       assert.equal(calls, 2, "the unparseable body spent a retry instead of killing the call");
+      assert.ok(probes >= 1, "the health gate asked the provider between the attempts");
       assert.equal(result.text, "second try");
     } finally {
       Object.assign(NET, saved);
