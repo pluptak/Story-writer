@@ -762,32 +762,30 @@ place that needs it instead of everywhere.
 
 ### Blocks
 
-1. **One shared `ServerHost` fake, and a boundary test.** `ServerHost` (30 members) is hand-faked in
-   five places — [tests/server-routes.test.ts](tests/server-routes.test.ts),
-   [tests/catalog-routes.test.ts:31](tests/catalog-routes.test.ts#L31) (already has a local
-   `makeHost(overrides)`), [tests/story-edit-routes.test.ts](tests/story-edit-routes.test.ts),
-   [tests/story-read-routes.test.ts:15](tests/story-read-routes.test.ts#L15),
-   [tests/gui/harness.ts:118](tests/gui/harness.ts#L118). Promote `makeHost` into
-   [tests/helpers.ts](tests/helpers.ts) beside `callRoute`/`callGet`
-   ([:206-233](tests/helpers.ts#L206)); adopt it in the other four. Land `tests/boundaries.test.ts`
-   asserting only what already holds — no runtime (non-`import type`) import of `engine/` under
-   `server/` — and add it to `npm test`. No source change.
-2. **Provider-work residue.** [engine/preflight.ts:70](engine/preflight.ts#L70) still hardcodes
-   `"raise its context length in LM Studio"` where `PROVIDER.displayName` is in scope (`architect.ts:911`
-   already does this right). `explicitLoad`/`explicitUnload`/`modelPreparation` on
-   `ProviderCapabilities` ([engine/provider-util.ts:20](engine/provider-util.ts#L20)) are set by all
-   three adapters and read nowhere — delete or justify. `tests/world-timeline.test.ts` is the only
-   test file on disk missing from `npm test` — add it and fix what it says. Leave `LM_STUDIO_URL`
-   alone, it's an intentional deprecation path.
-3. **An editor-configuration contract**, replacing the GUI's hand-copied schema defaults.
-   [story-edit.js](server/gui/viewer/story-edit.js) re-declares 13 Zod defaults (`retries ?? 2`,
-   `maxSteps ?? 24`, `thinking.* ?? "low"`, etc., [:224-241](server/gui/viewer/story-edit.js#L224))
-   plus `THINK_LEVELS` and the voice-sample cap, none checked against the schema by anything. Expose a
-   small, explicitly hand-enumerated projection (`{defaults, thinkingLevels, caps}`) as one host method
-   + one read route — *shape* hand-chosen, *values* derived from `StoryJson.parse({})` and the exported
-   `THINK_LEVELS`, never retyped. Same treatment, second commit, for `catalog.js`'s
-   `toDraft`/`fromDraft` ([:26-106](server/gui/viewer/catalog.js#L26)) and the duplicated
-   `CATALOG_KINDS` in `state.js`/`pages.js`.
+1. ~~**One shared `ServerHost` fake, and a boundary test.**~~ **Done.** `tests/helpers.ts` exports
+   `makeHost(overrides)`; `server-routes`, `catalog-routes`, `story-edit-routes` and
+   `story-read-routes` all build on it (`tests/gui/harness.ts`'s `fixtureHost()` was left alone — it
+   spreads the real `HOST` for genuine engine behaviour, never was a hand-faked stub). Overrides are
+   deliberately untyped against `ServerHost` (`Record<string, any>`), matching the looseness every
+   fake's own trailing `as unknown as ServerHost` already had. `tests/boundaries.test.ts` checks all
+   eight `server/*.ts` files for a non-`import type` import of `engine/`; none found.
+2. ~~**Provider-work residue.**~~ **Done.** `preflight.ts` reads `PROVIDER.displayName`.
+   `explicitLoad`/`explicitUnload`/`modelPreparation` deleted from `ProviderCapabilities` and all
+   three adapters, along with the test that only checked their shape. `tests/world-timeline.test.ts`
+   is in `npm test` (was already green). `LM_STUDIO_URL` untouched.
+3. ~~**An editor-configuration contract.**~~ **Done, two commits.** `GET /story/edit-config` serves
+   `{defaults, thinkingLevels, caps}` (host.ts, derived from `StoryJson.parse({})` and
+   `THINK_LEVELS`/`VOICE_SAMPLE_CAP`); `story-edit.js` fetches it once at boot and every hand-copied
+   default is gone. Second commit did the same for the catalog: `GET /catalog/config` serves
+   `{tagFacets, caps}`, replacing `catalog-view.js`'s and `interview.js`'s own hardcoded facet
+   lists/`<select>` options (four call sites, two files) and merging their duplicate
+   `facetLabels`/`FACET_LABELS` maps into one export. `catalog-schema.ts`'s own independent voice-cap
+   literal now reuses `story-schema.ts`'s `VOICE_SAMPLE_CAP`. Left alone, and why: `CATALOG_KINDS` —
+   `pages.js`'s own comment already shows it single-sourced to `state.js`, so the duplication this
+   entry named was stale; `catalog.js`'s `toDraft`/`fromDraft` — the prose-vs-list knowledge per field
+   is presentation logic a route can't cheaply hand over without introspecting the Zod schemas'
+   shapes at runtime, which is more machinery than four kinds that essentially never change shape
+   justify.
 4. **One faithful `StoryJson` shape for the editor.** The server offers `specView`
    ([engine/story-spec.ts:773](engine/story-spec.ts#L773), exploded skills + `scene` alias) and strict
    `StoryJson`, and makes the browser reconcile them via `scaffoldStory()`
