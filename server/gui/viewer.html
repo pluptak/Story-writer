@@ -12,11 +12,6 @@
 
 <div class="topbar">
   <div class="brand"><h1 id="title">story-writer</h1><div class="q" id="question"></div></div>
-  <nav class="tabs" id="tabs">
-    <button class="tab" id="tab-shelf" data-view="shelf" data-tid="chrome.tab" title="browse and choose a story" hidden>shelf</button>
-    <button class="tab" id="tab-live" data-view="live" data-tid="chrome.tab" title="the scene being written now" hidden>write<span class="tabasked" id="tabasked" hidden>· asked</span><span class="tabdot" id="tabdot" hidden></span></button>
-    <button class="tab" id="tab-read" data-view="read" data-tid="chrome.tab" title="a saved run, read-only" hidden>read</button>
-  </nav>
   <button class="btn" id="expand" title="expand or collapse every block" aria-pressed="false">expand all</button>
   <button class="btn" id="theme" title="switch colour theme" aria-pressed="false">theme</button>
 </div>
@@ -26,6 +21,28 @@
 <div class="timeline" id="timeline" data-tid="chrome.timeline" hidden></div>
 
 <div class="layout">
+  <nav class="sidenav" id="sidenav" data-tid="chrome.sidenav" aria-label="sections">
+    <div class="navgroup" id="navgroup-stories">
+      <h3>Stories</h3>
+      <button class="navitem" id="nav-shelf" data-view="shelf" data-tid="chrome.navitem" title="browse and choose a story">My stories</button>
+      <button class="navitem" id="nav-new" data-view="scaffold" data-tid="chrome.navitem" title="build a new story with the architect">+ New story</button>
+    </div>
+    <div class="navgroup" id="navgroup-workspace">
+      <h3>Workspace</h3>
+      <button class="navitem" id="nav-architect" data-view="scaffold" data-tid="chrome.navitem" title="the architect">Architect</button>
+      <button class="navitem" id="nav-story" data-view="story" data-tid="chrome.navitem" title="this story's scenes and chapters">Story map</button>
+      <button class="navitem" id="nav-live" data-view="live" data-tid="chrome.navitem" title="the scene being written now">Write<span class="tabasked" id="tabasked" hidden>· asked</span><span class="tabdot" id="tabdot" hidden></span></button>
+      <button class="navitem" id="nav-readstory" data-view="readstory" data-tid="chrome.navitem" title="the accepted prose">Manuscript</button>
+      <button class="navitem" id="nav-read" data-view="read" data-tid="chrome.navitem" title="a saved run, read-only">Saved runs</button>
+    </div>
+    <div class="navgroup" id="navgroup-libraries">
+      <h3>Libraries</h3>
+      <button class="navitem" id="nav-cat-characters" data-view="catalog" data-kind="characters" data-tid="chrome.navitem">Characters</button>
+      <button class="navitem" id="nav-cat-styles" data-view="catalog" data-kind="styles" data-tid="chrome.navitem">Styles</button>
+      <button class="navitem" id="nav-cat-tags" data-view="catalog" data-kind="tags" data-tid="chrome.navitem">Tags</button>
+      <button class="navitem" id="nav-cat-skills" data-view="catalog" data-kind="skills" data-tid="chrome.navitem">Skill Bible</button>
+    </div>
+  </nav>
   <main class="page" id="page"></main>
   <aside class="rail" id="rail">
     <section class="side" id="runctrl" data-tid="chrome.runctrl">

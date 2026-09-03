@@ -141,11 +141,39 @@
   .ribbon:not([hidden]) { display:flex; }
   body[data-view="read"] { background:color-mix(in srgb, var(--bg) 88%, var(--panel-2)); }
 
-  .layout { display:grid; grid-template-columns:minmax(0,1fr) 285px; align-items:start; }
+  .layout { display:grid; grid-template-columns:216px minmax(0,1fr) 285px; align-items:start; }
   /* The rail carries the run controls now, so it stacks on a narrow screen instead of vanishing --
      hiding it would take away the only way to stop a run. The `position` half of that has to come
      after the `.rail` rule below, not here, or equal specificity lets source order undo it. */
   @media (max-width: 900px) { .layout { grid-template-columns:1fr; } }
+
+  .sidenav { position:sticky; top:52px; padding:24px 14px; display:grid; gap:18px; align-content:start; min-width:0; }
+  .navgroup { display:grid; gap:2px; min-width:0; }
+  .navgroup[hidden] { display:none; }
+  .navgroup h3 { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.12em; text-transform:uppercase;
+                 color:var(--faint); margin:0 0 6px; font-weight:600; padding:0 8px; }
+  .navitem { display:flex; align-items:center; gap:5px; width:100%; text-align:left; font-family:var(--sans);
+             font-size:var(--fs-13); color:var(--muted); background:transparent; border:1px solid transparent;
+             border-radius:var(--r-md); padding:6px 8px; cursor:pointer; }
+  .navitem:hover { color:var(--ink); background:var(--panel-2); }
+  .navitem:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .navitem.current { color:var(--ink); background:var(--panel-2); border-color:var(--line); font-weight:600; }
+  .navitem[hidden] { display:none; }
+  /* Narrow: a horizontal strip, so the nav costs a line rather than a screen of height. Like the
+     `.rail` position rule above, this has to come AFTER the base rules -- equal specificity, so
+     source order is what decides, and stated first it would be silently undone. */
+  @media (max-width: 900px) {
+    /* flex, not grid columns: `grid-auto-flow:column` sizes the tracks evenly and the labels
+       collide with the group headings. Flex children size to their content, and `flex:none` keeps
+       the scroll container from shrinking them back. */
+    .sidenav { position:static; display:flex; align-items:center; gap:16px; overflow-x:auto;
+               padding:10px 16px; border-bottom:1px solid var(--line); }
+    .navgroup { display:flex; align-items:center; gap:4px; flex:none; }
+    .navgroup h3 { margin:0 2px 0 0; padding:0; white-space:nowrap; }
+    /* width:auto undoes the sidebar's width:100% -- as a flex item that would claim the whole
+       strip, and every label would sit on top of the next. */
+    .navitem { white-space:nowrap; flex:none; width:auto; }
+  }
 
   .page { padding:28px clamp(16px,4vw,40px) 140px; max-width:730px; margin:0 auto; width:100%; }
   .prose { font-family:var(--serif); font-size:var(--fs-18); line-height:1.66; }
@@ -346,6 +374,21 @@
                   color:var(--warn); display:block; margin-bottom:3px; }
   .iv .prob, .story .prob { color:var(--warn); font-size:var(--fs-13); margin-top:5px; }
   .iv .note { text-align:left; margin:10px 0 0; }
+
+  .libpick .sub { margin:2px 0 0; color:var(--muted); font-size:var(--fs-12); }
+  .libpick #picker-search { display:block; width:100%; margin:14px 0 10px; padding:9px 11px;
+    font-family:var(--sans); font-size:var(--fs-14); color:var(--ink); background:var(--panel-2);
+    border:1px solid var(--line); border-radius:var(--r-md); }
+  .pick-list { display:grid; gap:5px; max-height:44vh; overflow-y:auto; padding:2px; }
+  .pick-row { display:grid; gap:2px; text-align:left; width:100%; padding:9px 11px; cursor:pointer;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-md); color:var(--ink); }
+  .pick-row:hover { border-color:var(--accent); }
+  .pick-row:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .pick-row.on { border-color:var(--accent); background:var(--accent-soft); }
+  .pick-row[hidden] { display:none; }
+  .pick-row b { font-family:var(--mono); font-size:var(--fs-12); }
+  .pick-row span { color:var(--muted); font-size:var(--fs-12); }
+  .pick-row .meta { font-family:var(--mono); font-size:var(--fs-10); color:var(--faint); }
 
   .proposal { padding:15px 17px; margin-top:14px; }
   .proposal h3 { font-family:var(--serif); font-weight:400; font-size:var(--fs-20); margin:0 0 2px; }
@@ -664,9 +707,8 @@
   .btn.danger { color:var(--bad); }
   .btn.danger:hover { border-color:var(--bad); }
 
-  /* The scaffold view has no run controls, so it drops the rail and breaks out of the 730px page
-     column the other pages sit in -- the mockup's wide proposal+sidebar layout needs the room. */
-  body[data-view="scaffold"] .layout { grid-template-columns:1fr; }
+  /* The scaffold view has no run controls and no rail, so the nav and page split the width. */
+  body[data-view="scaffold"] .layout { grid-template-columns:216px minmax(0,1fr); }
   body[data-view="scaffold"] .rail { display:none; }
   body[data-view="scaffold"] .page { max-width:none; margin:0; padding:0; }
 
@@ -835,9 +877,10 @@
       --bg:#fff; --panel:#fff; --panel-2:#fff; --ink:#111; --muted:#333; --faint:#555;
       --line:#c9c9c9; --shadow:none; }
     body { background:#fff; }
-    .topbar, .srcbar, .sessionbar, .timeline, .ribbon, .rail, .tabs, .tabdot, .drop, .prompt,
+    .topbar, .srcbar, .sessionbar, .timeline, .ribbon, .rail, .sidenav, .tabs, .tabdot, .drop, .prompt,
     .modal-backdrop, .reader-search, .btn, .btns { display:none !important; }
-    .layout, body[data-view="scaffold"] .layout { display:block; }
+    .layout { display:block; }
+    body[data-view="scaffold"] .layout { display:block; }
     .page, .scpage { max-width:none; margin:0; padding:0; }
     /* the closed <details> hides its body; reveal the direct children of any collapsed consult */
     details:not([open]) > *:not(summary) { display:block !important; }

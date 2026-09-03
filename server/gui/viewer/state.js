@@ -126,6 +126,11 @@ export const APP = {
                                  // cast pill's character card, fetched from /cast for
                                  // LIVEV.meta.story on the live screen. dir-keyed so a new story's
                                  // run refetches instead of showing the last cast.
+  // The library picker's overlay state (library-picker.js). Separate from `catalog` on purpose:
+  // that is the catalog PAGE, and the picker opens OVER other pages -- sharing one slice would let
+  // the overlay wipe the form underneath it.
+  picker: { open:false, kind:"", title:"", hint:"", loading:false, error:"",
+            entries:[], search:"", chosen:[] },
   // `loaded` is what stops the URL and the kind switcher fighting: the page seeds its kind from
   // ?kind= only on arrival, and needs a way to tell "never fetched" from "fetched, empty".
   catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,

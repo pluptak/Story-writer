@@ -1,6 +1,9 @@
 import { $, esc, basename, tid } from "./util.js";
 import { APP, LIVEV, READV, READER, storyName } from "./state.js";
 
+/** The Libraries group's display names — the breadcrumb says which library, not which kind key. */
+const CATALOG_CRUMB = { characters: "characters", styles: "writer styles", tags: "tags", skills: "skill bible" };
+
 // The two small "paint a fixed chrome region from store state" pieces -- the `#src`/`#dot` source
 // indicator and the `#rail` progress panel. `pages.js` owns `#page`.
 
@@ -26,6 +29,7 @@ function crumbsFor() {
     case "handoff":   return [shelf, { label: name(APP.handoffDir), view: "story", dir: APP.handoffDir }, { label: "prepare chapter" }];
     case "compare":   return [shelf, { label: name(APP.compareDir), view: "story", dir: APP.compareDir }, { label: "compare runs" }];
     case "readstory": return [shelf, { label: name(READER.dir), view: "story", dir: READER.dir }, { label: "read story" }];
+    case "catalog":   return [{ label: "libraries" }, { label: CATALOG_CRUMB[APP.catalog.kind] || APP.catalog.kind }];
     case "read": {
       const d = READV.dir;
       if (!d) return [shelf, { label: (READV.source || "a run") + chapterSuffix(READV.meta) }];

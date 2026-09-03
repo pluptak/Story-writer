@@ -291,6 +291,7 @@ export function catalogPageHtml() {
 
       body.push(`<div class="field">
         <label for="cat-skills">Skills (name :: meaning, one per line)</label>
+        <button class="btn" id="cat-skills-pick" ${tid("catalog.skills-pick")}>search skill bible…</button>
         <textarea id="cat-skills" placeholder="e.g. leadership :: can inspire others to act">${esc(d.skills || "")}</textarea>
       </div>`);
 

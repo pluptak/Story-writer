@@ -78,6 +78,32 @@ These four lines are the **entire** coupling between the API and the specific GU
 serve fixed files by fixed path — nothing about them is generated from, or aware of, engine or story
 state. See "Replacing the GUI" below.
 
+## The viewer's navigation
+
+The page is a persistent shell — topbar, srcbar breadcrumb, sidenav, run rail — over one `#page` the
+current view replaces. The sidenav's three groups are the author's mental model, not the schema's:
+**Stories** (`shelf` — My stories, `scaffold` — + New story), **Workspace** (`scaffold`/`handoff` —
+Architect, whichever session is live; `story` — Story map; `live` — Write; `readstory` — Manuscript;
+`read` — Saved runs), and **Libraries** (the character catalog's four kinds, one entry each:
+`characters`, `styles`, `tags`, `skills`). The principle the grouping follows: **the GUI exposes the
+author's mental model, while the schema remains the engine's executable model** — nothing in the nav
+names a `story.json` top-level object.
+
+The view strings are a URL contract, not UI labels: `#/shelf`, `#/story?dir=`, `#/live`, `#/read?dir=&id=`,
+`#/readstory?dir=`, `#/compare?dir=&a=&b=`, `#/scaffold`, `#/handoff?dir=`, `#/edit?dir=` or `#/edit?new=1`,
+and `#/catalog?kind=`. Sub-page targets ride along — `&block=` names a consult to open, `&modal=` the
+character card to reopen — so the URL a bug report pastes is the pinpoint. Views are renamed in the
+labels only; the strings behind the hash never change, because bookmarks and pasted URLs outlive any
+rendering.
+
+Reachability has one rule, in `go()`: with no engine attached, every view but `read`, `readstory` and
+`compare` is rewritten to `read`. The nav does not restate that rule — it reads it. An item whose
+destination is unreachable hides rather than landing somewhere other than where it says, and a group
+whose every item is hidden hides with its children. A hidden view is not a removed one: `live`,
+`read`, `compare` and `edit` have no nav entries of their own beyond those five, and are reached from
+the pages that own them (a story card, a run list, the story page's buttons). The catalog's kind is
+seeded from the URL on arrival; inside the page the kind switcher owns it (below, *Character catalog*).
+
 ## Session / run info
 
 ```

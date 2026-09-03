@@ -2,6 +2,7 @@ import { reasonOr } from "./util.js";
 import { APP, CATALOG_KINDS } from "./state.js";
 import { syncHash } from "./nav.js";
 import { catalogPageHtml } from "./catalog-view.js";
+import { openLibraryPicker } from "./library-picker.js";
 
 export { catalogPageHtml };
 
@@ -545,6 +546,41 @@ export function wireCatalog(page) {
   // Skill form field updates
   onInput("cat-meaning", () => {
     if (APP.catalog.draft) APP.catalog.draft.meaning = page.querySelector("#cat-meaning").value;
+  });
+
+  // Skills library picker (character form)
+  on("cat-skills-pick", () => {
+    // The bible is the source of canonical skills; a bespoke one is still typed in the field. So the
+    // picker owns only the lines that name a bible entry -- the rest are carried through untouched,
+    // and deselecting a bible skill removes just that line.
+
+    // Read current textarea value and get names of each line
+    const skillsText = APP.catalog.draft?.skills || "";
+    const currentLines = parseLines(skillsText);
+    const currentNames = currentLines.map(line => {
+      const idx = line.indexOf("::");
+      return idx >= 0 ? line.substring(0, idx).trim() : line;
+    });
+
+    // Open picker with current names as preselection
+    openLibraryPicker({
+      kind: "skills",
+      title: "Skill Bible",
+      hint: "Select skills to add — type bespoke skills directly in the field",
+      preselect: currentNames,
+      done: entries => {
+        // Simplest correct approach: keep lines that are NOT in the chosen entries, then append
+        // chosen entries as name :: meaning. This preserves bespoke lines and dedupes.
+        const chosenNames = new Set(entries.map(e => e.name.toLowerCase()));
+        const kept = currentLines.filter(line => {
+          const name = line.indexOf("::") >= 0 ? line.substring(0, line.indexOf("::")).trim() : line;
+          return !chosenNames.has(name.toLowerCase());
+        });
+        const chosenLines = entries.map(e => `${e.name} :: ${e.meaning}`);
+        APP.catalog.draft.skills = kept.concat(chosenLines).join("\n");
+        // Picker's done path already called APP.render()
+      }
+    });
   });
 
   // Tag chip picker (character form)

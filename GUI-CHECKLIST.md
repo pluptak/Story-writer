@@ -125,7 +125,7 @@ for r in stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o '"ch
 - [ ] Every run that command prints appears on the page, under a label matching the chapter it printed.
 - [ ] Groups are labelled in a left-hand column and ordered by chapter number ascending, matching the
       scene list above them. A run the command shows no chapter for belongs under **unattributed**, last.
-- [ ] Clicking any of them still opens the read tab with that run loaded — the grouping nests the
+- [ ] Clicking any of them still opens the Saved runs view with that run loaded — the grouping nests the
       buttons one level deeper, so this is what proves the wiring survived it.
 - [ ] Now open **THE SINGLETON**. **No labels, flat list, exactly as before.** One group is not a
       grouping. A SERIAL whose runs all sit in one chapter reads the same way, so if the grouped
@@ -277,7 +277,7 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 The strip lives outside `#page`, above the layout, so most of what can go wrong with it is about
 which view it is showing and whether it clears itself.
 
-Cheapest check first — it follows the read tab, so no run is needed:
+Cheapest check first — it follows the read view, so no run is needed:
 
 - [ ] Story page → *previous runs* → read any run that has consults in it. A **consults** strip
       appears above the page with one marker per consult, named for the character.
@@ -301,7 +301,7 @@ Capped markers need a story that can hit the ceiling — nothing on disk sets on
 
 ## 8. Per-agent model-call panel
 
-Also read-tab only, so no run is needed. Ground truth, to check the numbers against:
+Also Saved-runs only, so no run is needed. Ground truth, to check the numbers against:
 
 ```bash
 for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
@@ -343,7 +343,7 @@ Needs a run, so pair it with section 2. What the redesign changed:
 - [ ] The rail shows phase, steps, words, model, then the bar and counts. Phase tracks what the run is
       doing; model shows the override or `story default`.
 - [ ] The status bar reads `<story> · chapter N of M`, agreeing with the terminal's own run header.
-- [ ] On the read tab the rail drops phase and model, and there is no headline or prose card — both
+- [ ] On the read view the rail drops phase and model, and there is no headline or prose card — both
       are live-only.
 - [ ] **Narrow the window below 900px.** The rail stacks below the prose and stays visible. If it
       vanishes, the only way to stop a run has gone with it.
@@ -361,7 +361,7 @@ story page → **read story**. The button only appears once a story has a writte
       the hash is written twice, once by `go()` before the story is known and again by `loadReader`.
       Reload the page on that URL: it comes back to the same story's prose, not the shelf.
 - [ ] **back** returns to the story page it was opened from, not the shelf.
-- [ ] **The saved-run view is untouched.** Open a retained run from the read tab, note which run it
+- [ ] **The saved-run view is untouched.** Open a retained run from the Saved runs view, note which run it
       is, then open the reader and come back. `#/read?dir=&id=` still opens that run, still labelled —
       the reader must not have cleared it.
 - [ ] **Empty story.** Open the reader on **THE BLANK** by hand at `#/readstory?dir=<THE BLANK>`.
@@ -414,7 +414,7 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
       and `no restriction`, never merged into either list.
 - [ ] **Read-only.** No inputs, no edit affordances — it is for the human reviewing what a consult
       was working from, never an edit surface.
-- [ ] **Live only.** The same pill on the shelf or the read tab opens the card with the pill's own
+- [ ] **Live only.** The same pill on the shelf or the Saved runs view opens the card with the pill's own
       can/cannot row only — no authored fields, and no `/cast` fetch fires. The sheet belongs to a
       running scene.
 - [ ] **It survives a model swap and a pause** without refetching visibly or losing the fields —
@@ -592,7 +592,9 @@ The global character library, accessible from the shelf and reloadable by direct
       **tags**, **styles** and **skills** — one per entry in `CATALOG_KINDS` (`server/gui/viewer/state.js`),
       which is the browser's copy of the engine's list. Clicking any of them switches the list and the
       form to that kind. With unsaved edits in the form, clicking another tab warns with a confirm
-      dialog; cancel stays on the current kind, confirm switches and discards the draft.
+      dialog; cancel stays on the current kind, confirm switches and discards the draft. The nav's
+      **Libraries** group switches kinds by navigation too — each entry seeds the kind before the page
+      loads, landing on the same view the switcher would show.
 - [ ] **Tags render grouped by facet.** When browsing tags, the list groups entries under their facet,
       not as one flat list of 24. Each facet has a visible header (`facet`), and tags are listed under
       it. The grouping updates as the list changes.
@@ -618,7 +620,7 @@ The global character library, accessible from the shelf and reloadable by direct
 A style is a reusable writer voice — the half of a house style that travels between stories. The other
 half, the clauses a story derives from its POV and its cast's restrictions, is deliberately NOT here.
 
-- [ ] **Every tab round-trips.** Characters and tags still behave exactly as the checks above
+- [ ] **Every kind round-trips.** Characters and tags still behave exactly as the checks above
       describe — the page was a binary before styles and every per-kind branch had to be widened.
 - [ ] **Empty style catalog reads as an invitation.** Styles have no seed, unlike tags. A first run
       shows the create prompt, not a blank panel and not an error.
@@ -686,6 +688,29 @@ engine to be in a particular mood. It does not replace a live pass: it cannot te
 delivers those events, only that the screen draws them correctly once it has them. `tests/gui/` is
 this trick made durable: the harness publishes the same event shapes through the real SSE bus, so
 the scripted screens it renders arrive the way a run's do.
+
+### The persistent shell
+
+The sidenav is fixed chrome, so most of what can go wrong is reachability and what the groups show.
+Without an engine attached (`go()` rewrites everything but `read`/`readstory`/`compare` to `read`):
+
+- [ ] **Only what is reachable is visible.** Stories and Libraries show no items; the Workspace group
+      shows only **Saved runs** and **Manuscript**. A group whose every item is hidden must not render
+      as a bare heading — a hidden group follows its children.
+- [ ] **With an engine attached**, all three groups appear: My stories / + New story; Architect / Story
+      map / Write / Manuscript / Saved runs; Characters / Styles / Tags / Skill Bible.
+- [ ] **The Architect item is whichever session is live.** Start a new story (+ New story), then
+      navigate away and click **Architect** — the interview continues, not a second one. With a
+      handoff open on a story, clicking **Architect** lands on the handoff panel.
+- [ ] **Each Libraries entry lands on its kind.** Click Tags: the URL reads `#/catalog?kind=tags` and
+      the tag list loads — not characters. Deep-linking `#/catalog?kind=skills` cold does the same.
+- [ ] **The current item is marked.** The view you are on reads as `current` (and `aria-current="page"`),
+      including the aliases: the story page marks **Story map**, the editor marks **Story map**, the
+      scaffold and the handoff both mark **Architect**.
+- [ ] **Below 900px the nav is a horizontal strip** above the page, groups inline, scrolling rather
+      than stacking; below 680px it hides with the other chrome.
+- [ ] **Both themes.** The nav reads correctly with `data-theme="dark"` and `"light"` — group headings,
+      hover and the current marker in each.
 
 ## What this list cannot tell you
 
