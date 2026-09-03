@@ -57,6 +57,20 @@ export async function loadModels() {
   } catch {}
 }
 
+/** Schema-derived editor defaults, thinking levels and caps -- fetched once at boot. APP.editorConfig
+ *  starts with a literal matching today's schema defaults (state.js), so the editor renders sensibly
+ *  even in the brief window before this resolves; this replaces it wholesale so drift in
+ *  story-schema.ts's own defaults reaches the form without anyone hand-copying a number. */
+export async function loadEditorConfig() {
+  try {
+    const j = await (await fetch("/story/edit-config")).json();
+    if (j && j.defaults) {
+      APP.editorConfig = j;
+      if (APP.view === "edit") APP.render();
+    }
+  } catch {}
+}
+
 $("stop").onclick = async () => {
   if (!APP.session.running || APP.session.stopping) return;
   if (!APP.armed) { APP.armed = setTimeout(disarm, 4000); renderSession(); return; }

@@ -213,6 +213,7 @@ silent overwrite.
 ```
 GET  /story/edit?dir=...     → { ok:true, story: StoryJson, warnings[] }
                                | { ok:false, error, raw? }
+GET  /story/edit-config      → { defaults, thinkingLevels, caps }
 POST /story/check  { story } → { ok:true, warnings[] }
                                | { ok:false, error, issues[] }
 POST /story/save   { dir, story } → { ok:true, warnings[] }
@@ -228,6 +229,11 @@ POST /story/suggest { spec, text } → { ok:true, kind:"edits",
 `/story/edit` loads the full Zod-parsed `StoryJson` from disk for editing, plus engine-level
 warnings. Returns `{ ok: false, raw }` when the file is on disk but will not parse, so the editor
 can show the error and the raw content.
+
+`/story/edit-config` is story-independent: schema-derived run-config defaults, the five thinking
+levels, and the voice-sample cap, for the editor and the new-story form to render without
+hand-copying `story-schema.ts`'s own defaults. Never blocked by the story-write lock — it names
+nothing about any one story.
 
 Every mutating action here (`edit`, `save`, `discard`, `suggest`) refuses with `409` while
 something else is reading or writing `story.json`: a run in flight, the loading window after a

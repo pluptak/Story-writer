@@ -150,6 +150,38 @@ describe("/story/edit (GET)", () => {
   });
 });
 
+describe("/story/edit-config (GET)", () => {
+  it("returns the host's editor-config projection verbatim", async () => {
+    const config = {
+      defaults: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140,
+                  requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: true, debug: false,
+                  thinking: { writer: "low" as const, character: "low" as const, summary: "low" as const }, sceneLength: 700 },
+      thinkingLevels: ["off", "low", "medium", "high", "default"] as const,
+      caps: { voiceSamples: 3 },
+    };
+    const host = makeHost({ editorConfig: () => config });
+    const r = await callGet(handleStoryEditRoutes, "/story/edit-config", host);
+    assert.equal(r.code, 200);
+    assert.deepEqual(r.json(), config);
+  });
+
+  it("is not blocked by the story-write lock — it names no story", async () => {
+    armRun();
+    try {
+      const config = {
+        defaults: { retries: 0, clarifications: 0, maxSteps: 1, maxProseWords: 1,
+                    requestTimeout: 1, attempts: 1, maxTokens: 1, stream: false, debug: false,
+                    thinking: { writer: "off" as const, character: "off" as const, summary: "off" as const }, sceneLength: 1 },
+        thinkingLevels: ["off", "low", "medium", "high", "default"] as const,
+        caps: { voiceSamples: 0 },
+      };
+      const host = makeHost({ editorConfig: () => config });
+      const r = await callGet(handleStoryEditRoutes, "/story/edit-config", host);
+      assert.equal(r.code, 200);
+    } finally { resetLive(); }
+  });
+});
+
 // -- SECTION ----
 describe("/story/check (POST)", () => {
   it("reports validation failures", async () => {

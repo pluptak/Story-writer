@@ -12,7 +12,7 @@ import { NET } from "./engine/llm-client.ts";
 import { PROVIDER } from "./engine/provider.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
 import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
-import { StoryJson } from "./engine/story-schema.ts";
+import { StoryJson, THINK_LEVELS, VOICE_SAMPLE_CAP } from "./engine/story-schema.ts";
 import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
@@ -20,7 +20,7 @@ import {
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
-import type { ServerHost, Concept, CatalogUsage } from "./server/server.ts";
+import type { ServerHost, Concept, CatalogUsage, EditorConfig } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
 /** The architect's own knobs, which are the defaults' — not any one story's. */
@@ -201,6 +201,20 @@ export const HOST: ServerHost = {
   newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters, resolveStyle, promoteSkill,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
+  editorConfig: (): EditorConfig => {
+    const d = StoryJson.parse({});
+    return {
+      defaults: {
+        retries: d.config.retries, clarifications: d.config.clarifications, maxSteps: d.config.maxSteps,
+        maxProseWords: d.config.maxProseWords, requestTimeout: d.config.requestTimeout,
+        attempts: d.config.attempts, maxTokens: d.config.maxTokens,
+        stream: d.config.stream, debug: d.config.debug, thinking: d.config.thinking,
+        sceneLength: d.scenes[0].length,
+      },
+      thinkingLevels: THINK_LEVELS,
+      caps: { voiceSamples: VOICE_SAMPLE_CAP },
+    };
+  },
   storyForEdit: async (dir) => {
     const loaded = await loadStoryJson(dir);
     if (!loaded.ok) return { ok: false, error: loaded.error, raw: loaded.raw };

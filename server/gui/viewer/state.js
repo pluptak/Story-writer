@@ -116,6 +116,16 @@ export const APP = {
   editSuggestResult: null,     // {ok, kind, applied, ignored, problems, note} from /story/suggest
   modelIds: [],                 // what the configured provider reports loaded; fetched once, used by both dropdowns
   modelDefault: "",             // the model an interview would use if you chose nothing
+  // Schema-derived editor defaults, fetched once from /story/edit-config. This literal is only the
+  // pre-fetch bootstrap value -- loadEditorConfig() (session.js) replaces it wholesale once the
+  // fetch resolves, same pattern as modelIds/modelDefault above.
+  editorConfig: {
+    defaults: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140,
+                requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: true, debug: false,
+                thinking: { writer: "low", character: "low", summary: "low" }, sceneLength: 700 },
+    thinkingLevels: ["off", "low", "medium", "high", "default"],
+    caps: { voiceSamples: 3 },
+  },
   expandAll: false,
   wantReaderView: false,        // a reader consult just arrived: scroll to it once the run page is showing
   awaitingReader: false,        // that consult is still unanswered -- the run is blocked on a human, not

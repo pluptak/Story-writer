@@ -18,7 +18,7 @@ import { handleCatalogRoutes } from "./catalog-routes.ts";
 import type { ScaffoldSession, NextChapterSession, ImportedCharacter, StylePreset } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
-import type { StoryJson } from "../engine/story-schema.ts";
+import type { StoryJson, ThinkLevel } from "../engine/story-schema.ts";
 import type { BibleLookup } from "../engine/skills.ts";
 
 /** The author's concept, chosen before the architect runs and never written to story.json:
@@ -35,6 +35,20 @@ export type Concept = { tags: string[]; castSize: number; styleId: string };
 export interface CatalogUsage {
   tags: Record<string, { characters: number; styles: string[]; skills: number }>;
   skills: Record<string, number>;
+}
+
+/** The editor's schema-derived defaults, thinking levels and voice cap — a small, explicitly
+ *  hand-enumerated projection of story-schema.ts's own defaults, never the schema itself. Adding a
+ *  new RunConfig field here is a deliberate choice, not something the editor picks up for free. */
+export interface EditorConfig {
+  defaults: {
+    retries: number; clarifications: number; maxSteps: number; maxProseWords: number;
+    requestTimeout: number; attempts: number; maxTokens: number; stream: boolean; debug: boolean;
+    thinking: { writer: ThinkLevel; character: ThinkLevel; summary: ThinkLevel };
+    sceneLength: number;
+  };
+  thinkingLevels: readonly ThinkLevel[];
+  caps: { voiceSamples: number };
 }
 
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
@@ -81,6 +95,10 @@ export interface ServerHost {
   specView(spec: StorySpec): unknown;
   /** The current run's output folder, or "" before a run has committed one. */
   outDir(): string;
+  /** Schema-derived defaults, thinking levels and caps for the story editor and the new-story form —
+   *  never the schema itself, so a change in story-schema.ts's defaults shows up here without the
+   *  GUI hand-copying it, and a new field does not appear until someone adds it to the projection. */
+  editorConfig(): EditorConfig;
   /** Load a story's full validated definition for editing. Returns the Zod-parsed StoryJson
    *  plus engine warnings. On parse failure returns the raw object so the editor can show the
    *  error and let the user fix the file. */

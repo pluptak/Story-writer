@@ -264,6 +264,13 @@ export function makeHost(overrides?: Record<string, any>): ServerHost {
     directEdit: () => ({ ok: false, reason: "unused" }),
     specView: (s: unknown) => s,
     outDir: () => "",
+    editorConfig: () => ({
+      defaults: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140,
+                  requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: true, debug: false,
+                  thinking: { writer: "low", character: "low", summary: "low" }, sceneLength: 700 },
+      thinkingLevels: ["off", "low", "medium", "high", "default"],
+      caps: { voiceSamples: 3 },
+    }),
     storyForEdit: async () => ({ ok: false, error: "unused" }),
     fullCast: async () => ({ ok: false, error: "unused" }),
     checkStory: () => ({ ok: false, error: "unused", issues: [] }),
