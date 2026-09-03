@@ -64,7 +64,9 @@ function parseUsage(u: any): CompletionUsage | null {
   return { promptTokens: pt, completionTokens: ct };
 }
 
-/** The retry/backoff knobs, settable per run from a story's config. */
+/** The retry/backoff knobs, settable per run from a story's config. `loadWaitMs` doubles as the
+ *  first-attempt idle deadline for a COLD model (not loaded / not resident), since a just-in-time
+ *  load legitimately takes minutes; every later attempt uses `timeoutMs`. */
 export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800,
                      probeTimeoutMs: 1500, recoveryProbes: 2, maxCallMs: 600_000,
                      loadWaitMs: 300_000 };
@@ -108,13 +110,16 @@ export function failureKind(e: unknown): string {
 }
 
 async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>,
-                            call?: CallSite): Promise<T> {
+                            call?: CallSite, firstIdleMs = 0): Promise<T> {
   let last: unknown;
   const startedAt = Date.now();
   for (let attempt = 0; ; attempt++) {
     if (RUN.stopped) throw new StoppedError();
     // Whether OUR idle deadline aborted the request (as opposed to the run's stop signal).
     let idleAborted = false;
+    // A cold model's first attempt may be a just-in-time load — give that one attempt a longer
+    // idle deadline; once bytes flow, the heartbeat reverts to the ordinary one.
+    const idleFor = attempt === 0 && firstIdleMs > NET.timeoutMs ? firstIdleMs : NET.timeoutMs;
     try {
       // One transport attempt holds the queue slot; the backoff between attempts, and a retry's
       // re-entry, happen off it — so a retry cannot monopolize a slot it is not using.
@@ -122,11 +127,11 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
         const ac = new AbortController();
         // An IDLE deadline, not a total-duration cap: `heartbeat()` pushes it back on each sign of
         // progress, so a long-but-streaming generation is never aborted mid-reply -- only a stalled
-        // connection that goes NET.timeoutMs without a byte is.
+        // connection that goes idleFor without a byte is.
         let timer: ReturnType<typeof setTimeout> | undefined;
         const heartbeat = () => {
           clearTimeout(timer);
-          timer = setTimeout(() => { idleAborted = true; ac.abort(); }, NET.timeoutMs);
+          timer = setTimeout(() => { idleAborted = true; ac.abort(); }, idleFor);
         };
         heartbeat();
         const onStop = () => ac.abort();
@@ -153,7 +158,7 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
       const err = e as LmError;
       const retryable = idleAborted || err.retryable
         || (err.status === undefined && e instanceof Error);
-      if (idleAborted) last = new LmError(`${what}: no reply within ${NET.timeoutMs / 1000}s`, undefined, true);
+      if (idleAborted) last = new LmError(`${what}: no reply within ${idleFor / 1000}s`, undefined, true);
       if (!retryable || attempt >= NET.retries) break;
       const wait = NET.backoffMs * 2 ** attempt + Math.floor(Math.random() * 250);
       if (Date.now() - startedAt + wait > NET.maxCallMs)
@@ -226,45 +231,55 @@ export class ModelLoadTimeoutError extends Error { }
 /** Models the not-loaded warning has already fired for — once per process, not once per call. */
 const notLoadedWarned = new Set<string>();
 
-/** Wait for the server to finish bringing `model` up before the first attempt, so a load in
- *  progress never burns retry attempts or trips the idle deadline. A model the server reports
- *  as not loaded is only warned about: the engine never loads models on its own — that is
- *  orchestration, and on a limited-VRAM box it is the operator's call. Metadata only, asked
+/** Wait for the server to finish bringing `model` up before the first attempt, and report
+ *  whether the model looked COLD — an explicit not-loaded, or absent from a runtime-only view
+ *  where absence means "not resident, the server will load it on request". A cold model's
+ *  just-in-time load can take minutes, so the caller gives the FIRST attempt a longer deadline
+ *  (the grace only extends a deadline — the engine never loads a model itself; that is
+ *  orchestration, and on a limited-VRAM box it is the operator's call). Metadata only, asked
  *  before the queue: it does no model work and never preempts anything. */
-async function waitReady(model: string) {
-  if (!PROVIDER.capabilities.modelRuntimeInspection) return;
-  const m = (await PROVIDER.inspectModels(NET.probeTimeoutMs))?.get(model);
-  if (!m || m.state === "loaded" || m.state === "unknown") return;
-  if (m.state === "not-loaded") {
+async function waitReady(model: string): Promise<boolean> {
+  if (!PROVIDER.capabilities.modelRuntimeInspection) return false;
+  const rt = await PROVIDER.inspectModels(NET.probeTimeoutMs);
+  if (!rt) return false;   // could not ask — grant no grace and raise no warning
+  const m = rt.get(model);
+  if (m?.state === "loaded" || m?.state === "unknown") return false;
+  if (m?.state === "loading") {
+    // The server is already bringing it up — wait it out.
+    const startedAt = Date.now();
+    try {
+      for (;;) {
+        if (RUN.stopped) throw new StoppedError();
+        if (Date.now() - startedAt > NET.loadWaitMs)
+          throw new ModelLoadTimeoutError(`${model} is still loading after ${Math.round(NET.loadWaitMs / 1000)}s `
+            + `— load it in ${PROVIDER.displayName} first, or raise the wait`);
+        await new Promise(r => setTimeout(r, 1000));
+        const state = (await PROVIDER.inspectModels(NET.probeTimeoutMs))?.get(model)?.state;
+        if (state !== "loading") return state !== "loaded";   // loaded → warm; gave up server-side → still cold
+        progress(`waiting for ${model} to load… ${Math.round((Date.now() - startedAt) / 1000)}s`);
+      }
+    } finally {
+      progressDone();
+    }
+  }
+  if (m?.state === "not-loaded") {
     if (!notLoadedWarned.has(model)) {
       notLoadedWarned.add(model);
       warn(`   ${C.yellow}⚠${C.reset} ${model} is not loaded in ${PROVIDER.displayName} — the first call `
         + `may wait on a just-in-time load, or fail fast if JIT loading is off`);
     }
-    return;
+    return true;
   }
-  // state "loading": the server is already bringing it up — wait it out.
-  const startedAt = Date.now();
-  try {
-    for (;;) {
-      if (RUN.stopped) throw new StoppedError();
-      if (Date.now() - startedAt > NET.loadWaitMs)
-        throw new ModelLoadTimeoutError(`${model} is still loading after ${Math.round(NET.loadWaitMs / 1000)}s `
-          + `— load it in ${PROVIDER.displayName} first, or raise the wait`);
-      await new Promise(r => setTimeout(r, 1000));
-      const state = (await PROVIDER.inspectModels(NET.probeTimeoutMs))?.get(model)?.state;
-      if (state !== "loading") return;   // loaded — or the load gave up server-side; let the call report it
-      progress(`waiting for ${model} to load… ${Math.round((Date.now() - startedAt) / 1000)}s`);
-    }
-  } finally {
-    progressDone();
-  }
+  // Absent from the answer. A full inventory (LM Studio) lists downloads too, so absence there
+  // means unknown — no grace, the call fails fast and says so. A runtime-only view (Ollama's
+  // /api/ps) holds residents, so absence IS the cold verdict.
+  return !PROVIDER.capabilities.fullInventory;
 }
 
 /** One non-streaming completion, with retry/backoff; throws StoppedError when the run is stopped. */
 export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low",
                                call?: CallSite): Promise<Completion> {
-  await waitReady(model);
+  const cold = await waitReady(model);
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal, call);
     // Read the body as text first: a 200 whose body will not parse (a proxy error page, LM Studio
@@ -288,14 +303,14 @@ export async function complete(model: string, messages: Msg[], temperature: numb
     // An empty 200 is the other shape "never replied" takes; spend a retry rather than a caller call.
     if (!assembled.text) throw new LmError(`${model} returned an empty completion`, undefined, true);
     return { ...assembled, brokenOff: false, usage: parseUsage(data.usage) };
-  }, call);
+  }, call, cold ? NET.loadWaitMs : 0);
 }
 
 /** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
 export async function completeStream(model: string, messages: Msg[], temperature: number,
                                      onDelta: (d: string) => void, think: ThinkLevel = "low",
                                      call?: CallSite): Promise<Completion> {
-  await waitReady(model);
+  const cold = await waitReady(model);
   return withRetry(`${model} stream`, async (signal, heartbeat) => {
     const res = await postChat(requestBody(model, messages, temperature, true, think), signal, call);
     if (!res.body) throw new LmError(`${PROVIDER.displayName} returned no stream body`, undefined, true);
@@ -355,5 +370,5 @@ export async function completeStream(model: string, messages: Msg[], temperature
     const out = assembled();
     if (!out.text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
     return { ...out, brokenOff: false, usage };
-  }, call);
+  }, call, cold ? NET.loadWaitMs : 0);
 }

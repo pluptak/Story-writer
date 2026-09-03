@@ -98,6 +98,65 @@ describe("model readiness before the first attempt", () => {
     const result = await complete("m", MSGS, 0.5);
     assert.equal(result.text, "ok");
   });
+
+  // -- THE FIRST-CALL GRACE FOR A COLD MODEL ----------------------------------
+  const savedNet = () => ({ timeoutMs: NET.timeoutMs, loadWaitMs: NET.loadWaitMs, retries: NET.retries, backoffMs: NET.backoffMs });
+
+  /** A chat fetch that answers after `ms` — aborting early if the transport gave up on it. */
+  const slowChat = (ms: number) => (async (_url: any, opts: { signal?: AbortSignal }) => {
+    if (String(_url).endsWith("/models")) return new Response("{}", { status: 200 }) as any;
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, ms);
+      opts.signal?.addEventListener("abort",
+        () => { clearTimeout(t); reject(new DOMException("aborted", "AbortError")); }, { once: true });
+    });
+    return chatReply();
+  }) as any;
+
+  it("grants a cold model's first attempt the load deadline — a JIT load is not a stall", async () => {
+    const saved = savedNet();
+    NET.timeoutMs = 80; NET.loadWaitMs = 5_000; NET.retries = 0;
+    PROVIDER.capabilities.modelRuntimeInspection = true;
+    restore = fakeInspect([rt("not-loaded")]);
+    globalThis.fetch = slowChat(200);   // longer than the ordinary idle deadline, shorter than the grace
+    armRun();
+    try {
+      const result = await complete("m", MSGS, 0.5);
+      assert.equal(result.text, "ok", "the load window outlived the ordinary deadline");
+    } finally { Object.assign(NET, saved); }
+  });
+
+  it("reads absence from a runtime-only view as cold too — not resident means JIT is coming", async () => {
+    const saved = savedNet();
+    NET.timeoutMs = 80; NET.loadWaitMs = 5_000; NET.retries = 0;
+    PROVIDER.capabilities.modelRuntimeInspection = true;
+    const savedFull = PROVIDER.capabilities.fullInventory;
+    PROVIDER.capabilities.fullInventory = false;
+    restore = fakeInspect([new Map()]);   // Ollama's /api/ps: the model is not resident
+    globalThis.fetch = slowChat(200);
+    armRun();
+    try {
+      const result = await complete("resident-elsewhere", MSGS, 0.5);
+      assert.equal(result.text, "ok");
+    } finally {
+      PROVIDER.capabilities.fullInventory = savedFull;
+      Object.assign(NET, saved);
+    }
+  });
+
+  it("grants no grace to a model a full inventory has never heard of — fail fast instead", async () => {
+    const saved = savedNet();
+    NET.timeoutMs = 80; NET.loadWaitMs = 5_000; NET.retries = 0; NET.backoffMs = 0;
+    PROVIDER.capabilities.modelRuntimeInspection = true;
+    restore = fakeInspect([new Map()]);   // LM Studio's inventory: absence means unknown
+    globalThis.fetch = slowChat(200);
+    armRun();
+    try {
+      await assert.rejects(() => complete("typo-model", MSGS, 0.5),
+        (e: Error) => e instanceof Error && /no reply within/.test(e.message),
+        "the ordinary deadline applies — an unknown model must not hang for the load window");
+    } finally { Object.assign(NET, saved); }
+  });
 });
 
 // -- THE ADAPTER SURFACE -----------------------------------------------------
