@@ -167,6 +167,7 @@ export async function loadCatalog(kind) {
 }
 
 let vocabLoading = false;
+let libraryLoading = false;
 
 /** Drop the cached tag vocabulary after a write to it, so the character form's picker reflects the
  *  edit. Without this the picker keeps showing a deleted tag as an ordinary selected chip, and the
@@ -174,6 +175,13 @@ let vocabLoading = false;
 function invalidateVocab() {
   APP.catalog.vocab = [];
   vocabLoading = false;
+}
+
+/** Drop the cached character library after a write to it, so the scaffold's import picker reflects
+ *  the edit. Without this a deleted character can still be selected in the tray. */
+function invalidateLibrary() {
+  APP.catalog.library = [];
+  libraryLoading = false;
 }
 
 /** Load the tag vocabulary once, on first need */
@@ -200,6 +208,33 @@ export async function loadVocab() {
     syncHash();
   } finally {
     vocabLoading = false;
+  }
+}
+
+/** Load the character library once, on first need */
+export async function loadLibrary() {
+  if (APP.catalog.library.length > 0) return; // Already loaded
+  if (libraryLoading) return; // Already in flight
+
+  libraryLoading = true;
+  try {
+    const r = await fetch("/catalog?kind=characters");
+    const j = await r.json();
+    if (j.ok) {
+      APP.catalog.library = j.entries || [];
+      APP.render();
+      syncHash();
+    } else {
+      APP.catalog.error = reasonOr(j, "could not load character library");
+      APP.render();
+      syncHash();
+    }
+  } catch (err) {
+    APP.catalog.error = "character library did not load: " + (err.message || "network error");
+    APP.render();
+    syncHash();
+  } finally {
+    libraryLoading = false;
   }
 }
 
@@ -238,6 +273,7 @@ async function confirmDelete() {
   }
 
   if (APP.catalog.kind === "tags") invalidateVocab();
+  if (APP.catalog.kind === "characters") invalidateLibrary();
 
   // Remove from list and clear selection
   APP.catalog.entries = APP.catalog.entries.filter(e => e.id !== APP.catalog.selected.id);
@@ -404,7 +440,8 @@ async function saveDraft() {
 
     // selected is the server's record; draft is what the form edits — keep their shapes separate
     if (APP.catalog.kind === "tags") invalidateVocab();
-  APP.catalog.selected = saved;
+    if (APP.catalog.kind === "characters") invalidateLibrary();
+    APP.catalog.selected = saved;
     APP.catalog.draft = toDraft(saved, APP.catalog.kind);
     clearDeleteTimer();
     APP.render();

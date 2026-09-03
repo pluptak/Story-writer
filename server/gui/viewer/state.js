@@ -131,10 +131,12 @@ export const APP = {
   catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,
              issues:[], problems:[], armedDelete:false, deleteTimer:0,
              kind:"characters",   // which catalog is being browsed: one of CATALOG_KINDS above
-             vocab:[]             // the tag entries, loaded once, used by the character form's tag picker.
+             vocab:[],            // the tag entries, loaded once, used by the character form's tag picker.
                                    // vocab is separate from entries because entries is whatever kind is on
                                    // screen, while vocab is always the tags — the character form needs the
                                    // vocabulary even while it is browsing characters
+             library:[]            // the character catalog's entries, cached for the scaffold's import picker,
+                                   // separate from entries for the same reason vocab is
            },  // the global character catalog, which unlike every other page is not scoped to a story
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };
@@ -159,7 +161,7 @@ export const handoffForPage = () =>
 // here and are written back in; focus is read off the document as the render begins, rather than
 // tracked through focus/blur -- removing a focused node does not reliably fire blur, and a click
 // on any button would clear a tracked value before the re-render it triggered.
-export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"", tags:[], castSize:0 };
+export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"", tags:[], castSize:0, importIds:[] };
 export const hdraft = { say:"" };
 
 export const FIELDS = /^[fh]-(idea|say|folder|model|mode|length)$|^r-say-\d+$/;

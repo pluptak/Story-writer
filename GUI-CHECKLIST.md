@@ -470,14 +470,33 @@ a *new* story folder — so it can go anywhere in the pass.
       no story gate for tags to steer and no cast gate for a size to reach. With an empty tag
       catalog the picker is replaced by a link to `#/catalog?kind=tags` — the vocabulary is the
       catalog's alone, and nothing here authors a tag.
+- [ ] **Casting from the library.** Under *cast from the library* the catalog's characters appear as
+      chips. Picking one **replaces the opening-cast select** with a line saying the imported cast is
+      already the size — the tray is the answer, so the number stops being one. A fourth pick
+      disables the rest; deselecting brings the select back. An empty character catalog shows a link
+      to `#/catalog` instead. Add a character on the catalog page and come back: the chip is there,
+      because saving one drops the cached library rather than leaving a stale list.
+- [ ] **The imported cast gate is a different gate.** With a tray, approving *story* opens a *cast*
+      round that places those people rather than inventing any: the proposal keeps their belief,
+      impulse, voice, skills and restrictions exactly as the catalog holds them, fills in `goal` and
+      `knows`, and extends each persona with this story's context. **Read the sidebar's flags after
+      that round** — if the architect edited a travelling field, the engine reverted it and says so
+      there; if it dropped somebody, they are back with a note. Those messages are the contract
+      working, not a failure. This needs the architect model, so it belongs to a live pass.
 - [ ] **What the concept does, and stops doing.** Once a staged session is open, the sidebar carries
       *tags* and *opening cast* beside *tension*, and **revise concept** opens the same picker
       inline. Each half is marked **· spent** once the stage that reads it has produced content —
-      tags at the story stage, cast size at the cast stage — and once both are spent the revise
-      button disappears rather than going quietly inert. A tag the catalog does not hold shows as
-      an advisory under the stats and is sent to the architect anyway. **The word "spent" is
-      load-bearing:** it is the difference between a control that steers a prompt ahead and one
+      tags at the story stage, cast size at the cast stage — and once all of it is spent the revise
+      button disappears rather than going quietly inert. An imported cast reads **· placed** rather
+      than *spent*: the tray was not discarded, it became the cast. A tag the catalog does not hold
+      shows as an advisory under the stats and is sent to the architect anyway; an imported id the
+      catalog no longer holds shows as a second advisory saying it was dropped. **The word "spent"
+      is load-bearing:** it is the difference between a control that steers a prompt ahead and one
       that edits a string nobody will read again.
+- [ ] **Revising after a reload.** Reload the page mid-session and open **revise concept** without
+      ever seeing the idea modal. Both pickers must fill. They are fed from the catalog on first
+      need, and the load has to be triggered by the panel — not by the picker markup, which only
+      exists once the data has arrived. An empty picker here is that circularity coming back.
 - [ ] **Staged walk.** After **propose →**, the story stage lands (title, premise, tension, facts — no
       cast yet). Its proposal card immediately shows those fields, and the composer says *what should
       change?*, not *say more about it*. The checklist shows *story* open, the rest upcoming; the sidebar

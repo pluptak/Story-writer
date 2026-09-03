@@ -2,7 +2,7 @@ import { $, esc, reasonOr, slugify, tid } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
-import { loadVocab } from "./catalog.js";
+import { loadVocab, loadLibrary } from "./catalog.js";
 
 // ---- the scaffold interview --------------------------------------------------
 // One page, three things always visible: the proposed story, the current round, and a state
@@ -60,6 +60,24 @@ const castSizeFieldHtml = () =>
         .map(([n, label]) => `<option value="${n}"${draft.castSize === n ? " selected" : ""}>${label}</option>`).join("")}
     </select></div>`;
 
+const MAX_IMPORTS = 4;   // the cast stage's ceiling, mirrored from server/scaffold-routes.ts
+
+// The catalog's characters, offered as a set to pick from. Picking one is not the same as the
+// architect inventing one: the cast gate switches to a different prompt entirely, and the fields
+// that travel with a character stop being the architect's to change.
+function importPickerHtml() {
+  const lib = APP.catalog.library || [];
+  if (!lib.length)
+    return `<p class="hint">No characters in the catalog yet — <a href="#/catalog">add some</a> and you can cast them here.</p>`;
+  const chips = lib.map(c => {
+    const on = draft.importIds.includes(c.id);
+    const full = !on && draft.importIds.length >= MAX_IMPORTS;
+    return `<button class="cat-chip${on ? " on" : ""}" data-import-id="${esc(c.id)}" type="button"${
+      full ? " disabled" : ""} title="${esc(c.portablePersona || c.name)}">${esc(c.name)}</button>`;
+  }).join("");
+  return `<div class="cat-tags-row">${chips}</div>`;
+}
+
 // The concept is staged-only: the one-shot walk has no story gate for tags to steer and no cast
 // gate for a size to reach, so offering either there would be a control that does nothing. Callers
 // make that call -- the modal by the chosen mode, the sidebar by whether either half still steers
@@ -67,7 +85,9 @@ const castSizeFieldHtml = () =>
 function conceptFieldsHtml() {
   return `<label class="field-label">the concept <span class="hint">optional — it steers the first two gates</span></label>
     ${tagChipsHtml()}
-    ${castSizeFieldHtml()}`;
+    <label class="field-label">cast from the library <span class="hint">optional</span></label>
+    ${importPickerHtml()}
+    ${draft.importIds.length ? `<p class="hint">The imported cast is the opening cast, so its size is already chosen.</p>` : castSizeFieldHtml()}`;
 }
 
 function ideaModalHtml() {
@@ -384,6 +404,9 @@ function sidebarHtml(s) {
     if (c.tags && c.tags.length)
       stats.push(stat("tags", c.tags.join(", ") + (c.tagsSteer ? "" : " · spent")));
     if (c.castSize) stats.push(stat("opening cast", c.castSize + (c.castSizeSteers ? "" : " · spent")));
+    if (c.imported && c.imported.length)
+      stats.push(stat("cast from library", c.imported.map(i => i.name).join(", ")
+        + (c.importsSteer ? "" : " · placed")));
   }
   stats.push(stat("on disk", s.needsFolder ? "pending accept" : "nothing yet"));
 
@@ -406,10 +429,14 @@ function sidebarHtml(s) {
     ? `<div class="prob">not in the tag catalog: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway</div>`
     : "";
 
+  const importsWarning = c.missingImports && c.missingImports.length
+    ? `<div class="prob">no longer in the catalog: ${esc(c.missingImports.join(", "))} — these were dropped from the cast</div>`
+    : "";
+
   // Revising is offered only while some half still reaches a prompt ahead. Once both are spent the
   // control disappears rather than going quietly inert -- an editor that cannot change the run is
   // worse than no editor, because it looks like it can.
-  const conceptLive = s.mode !== "oneshot" && (c.tagsSteer || c.castSizeSteers);
+  const conceptLive = s.mode !== "oneshot" && (c.tagsSteer || c.castSizeSteers || c.importsSteer);
   const conceptEditor = !conceptLive ? "" : APP.conceptOpen
     ? `<div data-tid="scaffold.concept-editor">${conceptFieldsHtml()}
         <div class="side-actions">
@@ -433,6 +460,7 @@ function sidebarHtml(s) {
       <h3>scaffold state</h3>
       ${stats.join("")}
       ${conceptWarning}
+      ${importsWarning}
       ${conceptEditor}
       <div class="side-actions">${actions.join("")}</div>
     </div>
@@ -543,7 +571,7 @@ async function startInterview() {
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
                    mode, gate: mode === "staged" ? "story" : null };
   APP.render();
-  const concept = mode === "oneshot" ? {} : { tags: draft.tags, castSize: draft.castSize };
+  const concept = mode === "oneshot" ? {} : { tags: draft.tags, castSize: draft.castSize, importIds: draft.importIds };
   const j = await postScaffold("start", { idea, model: draft.model, mode, ...concept });
   // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear -- fall
   // back to an inactive session so the idea modal comes back with the idea still in it.
@@ -600,15 +628,31 @@ export function wireScaffold(page) {
   for (const r of page.querySelectorAll('input[name="mode"]'))
     r.addEventListener("change", () => { if (r.checked) { draft.mode = r.value; APP.render(); } });
 
-  // The vocabulary is the catalog's, fetched once. loadVocab() re-renders when it lands, so the
-  // picker fills itself in rather than staying empty on a cold first open.
-  if (page.querySelector(".cat-tags-picker") || page.querySelector("#iv-backdrop")) loadVocab();
+  // Both pickers are fed from the catalog, fetched once each; each loader re-renders when it lands,
+  // so a picker fills itself in rather than staying empty on a cold first open. The trigger is the
+  // CONTAINER that always renders -- the modal, or the sidebar's concept editor -- never the picker
+  // markup itself, which only exists once the data it needs has already arrived.
+  if (page.querySelector("#iv-backdrop") || page.querySelector('[data-tid="scaffold.concept-editor"]')) {
+    loadVocab();
+    loadLibrary();
+  }
+
+  // The character library is fetched once for the import picker.
 
   for (const chip of page.querySelectorAll(".cat-chip[data-tag-label]"))
     chip.addEventListener("click", () => {
       const label = chip.getAttribute("data-tag-label");
       const at = draft.tags.indexOf(label);
       if (at >= 0) draft.tags.splice(at, 1); else draft.tags.push(label);
+      APP.render();
+    });
+
+  for (const chip of page.querySelectorAll(".cat-chip[data-import-id]"))
+    chip.addEventListener("click", () => {
+      const id = chip.getAttribute("data-import-id");
+      const at = draft.importIds.indexOf(id);
+      if (at >= 0) draft.importIds.splice(at, 1);
+      else if (draft.importIds.length < MAX_IMPORTS) draft.importIds.push(id);
       APP.render();
     });
   const cast = page.querySelector("#f-cast-size");
@@ -650,6 +694,7 @@ export function wireScaffold(page) {
       draft.idea = draft.say = draft.folder = "";
       draft.tags = [];
       draft.castSize = 0;
+      draft.importIds = [];
       go("shelf");
     });
   });
@@ -659,11 +704,13 @@ export function wireScaffold(page) {
     const c = APP.scaffold.concept || {};
     draft.tags = [...(c.tags || [])];
     draft.castSize = c.castSize || 0;
+    draft.importIds = (c.imported || []).map(i => i.libraryId);
     APP.conceptOpen = true; APP.render();
   });
   on("iv-concept-cancel", () => { APP.conceptOpen = false; APP.render(); });
   on("iv-concept-save", async () => {
     await postScaffold("concept", { tags: draft.tags, castSize: draft.castSize });
+    await postScaffold("import", { importIds: draft.importIds });
     APP.conceptOpen = false; APP.render();
   });
 

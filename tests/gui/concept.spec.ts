@@ -86,3 +86,63 @@ test("a chosen cast size survives switching walks", async ({ page, served }) => 
 
   await expect(chip).toHaveClass(/on/);
 });
+
+test("with an empty character catalog the import picker says where characters come from", async ({ page, served }) => {
+  await arrive(page, served, "#/scaffold");
+
+  // No import chips are present when the catalog is empty.
+  await expect(page.locator(".cat-chip[data-import-id]")).toHaveCount(0);
+
+  // The hint text is visible explaining where characters come from.
+  await expect(page.getByText(/No characters in the catalog yet/)).toBeVisible();
+
+  // The cast-size select is still present: nothing is imported yet, so the size still means something.
+  await expect(page.locator("#f-cast-size")).toBeVisible();
+});
+
+test("a character in the catalog can be cast, and the tray takes over the cast size", async ({ page, served }) => {
+  // Create a character in the catalog.
+  await arrive(page, served, "#/catalog");
+  await page.locator("#cat-new").click();
+  await page.locator("#cat-name").fill("IVET");
+  await page.locator("#cat-persona").fill("Ex-locksmith, keeps every key on a labelled ring.");
+  await page.locator("#cat-belief").fill("Every lock has a polite way in.");
+  await page.locator("#cat-impulse").fill("When watched, slow down and narrate the work.");
+  await page.locator("#cat-voice").fill('"Hold the door? I\'d rather hold the lock."');
+  await page.locator("#cat-skills").fill("lockpicking :: opening a mechanical lock without its key");
+  await page.locator("#cat-save").click();
+
+  // Go to the scaffold and wait for the IVET chip to appear.
+  await arrive(page, served, "#/scaffold");
+  const ivetChip = page.locator('button.cat-chip[data-import-id]').filter({ hasText: "IVET" });
+  await expect(ivetChip).toBeVisible();
+
+  // Before selecting, the cast-size select is present.
+  await expect(page.locator("#f-cast-size")).toBeVisible();
+
+  // Click the IVET chip to select it.
+  await ivetChip.click();
+  await expect(ivetChip).toHaveClass(/on/);
+
+  // The cast-size select is now gone because the imported cast is the opening cast.
+  await expect(page.locator("#f-cast-size")).toHaveCount(0);
+
+  // The hint text is visible explaining that the imported cast is the opening cast.
+  await expect(page.getByText(/The imported cast is the opening cast/)).toBeVisible();
+
+  // Click the IVET chip again to deselect it.
+  await ivetChip.click();
+  await expect(ivetChip).not.toHaveClass(/on/);
+
+  // The cast-size select is back.
+  await expect(page.locator("#f-cast-size")).toBeVisible();
+
+  // Clean up: delete the IVET character from the catalog so the next test sees it empty.
+  await arrive(page, served, "#/catalog");
+  await page.getByTestId("catalog.entry-row").first().click();
+  const del = page.locator("#cat-delete");
+  await del.click();
+  await expect(del).toHaveText(/delete — sure\?/);
+  await del.click();
+  await expect(page.getByTestId("catalog.entry-row")).toHaveCount(0);
+});
