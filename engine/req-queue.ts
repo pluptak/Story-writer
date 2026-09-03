@@ -79,24 +79,28 @@ interface Waiter {
 
 const waiters: Waiter[] = [];
 let inFlight = 0;
+/** The active slot holders' labels, oldest first — with `LLM_MAX_IN_FLIGHT > 1` there can be
+ *  several at once, and `QUEUE.current` names them all. */
+const holders: string[] = [];
 
 const label = (what: string, call?: CallSite) =>
   call?.agent ? `${call.agent} — ${call.site}` : call?.site ?? what;
 
-function take(label_: string) {
+function take(who: string) {
   inFlight++;
+  holders.push(who);
   QUEUE.inFlight = inFlight;
   QUEUE.depth = waiters.length;
-  QUEUE.current = label_;
+  QUEUE.current = holders.join(" · ");
   announceProviderState();
 }
 
-/** Wait for a slot. Resolves when one is held; rejects with StoppedError when the run stops
- *  first, or QueueGaveUpError when the wait budget runs out. */
-function acquire(what: string, call?: CallSite): Promise<void> {
+/** Wait for a slot. Resolves with the holder label this caller must release, or rejects with
+ *  StoppedError when the run stops first, or QueueGaveUpError when the wait budget runs out. */
+function acquire(what: string, call?: CallSite): Promise<string> {
   const who = label(what, call);
-  if (inFlight < QUEUE_LIMITS.maxInFlight) { take(who); return Promise.resolve(); }
-  return new Promise<void>((resolve, reject) => {
+  if (inFlight < QUEUE_LIMITS.maxInFlight) { take(who); return Promise.resolve(who); }
+  return new Promise<string>((resolve, reject) => {
     const entry = {} as Waiter;
     const remove = () => {
       const i = waiters.indexOf(entry);
@@ -105,7 +109,7 @@ function acquire(what: string, call?: CallSite): Promise<void> {
       RUN.abort.signal.removeEventListener("abort", entry.onStop);
       QUEUE.depth = waiters.length;
     };
-    entry.settle = () => { remove(); take(who); resolve(); };
+    entry.settle = () => { remove(); take(who); resolve(who); };
     entry.reject = (e) => { remove(); announceProviderState(); reject(e); };
     entry.timer = setTimeout(() => {
       entry.reject(new QueueGaveUpError(
@@ -121,10 +125,12 @@ function acquire(what: string, call?: CallSite): Promise<void> {
   });
 }
 
-function release() {
+function release(who: string) {
   inFlight--;
   QUEUE.inFlight = inFlight;
-  QUEUE.current = "";
+  const i = holders.indexOf(who);
+  if (i >= 0) holders.splice(i, 1);
+  QUEUE.current = holders.join(" · ");
   const next = waiters[0];
   if (next && inFlight < QUEUE_LIMITS.maxInFlight) {
     waiters.shift();
@@ -138,10 +144,10 @@ function release() {
  *  retry's backoff happens OFF the slot and its next attempt queues again from the back. */
 export async function onceAdmitted<T>(what: string, call: CallSite | undefined,
                                       fn: () => Promise<T>): Promise<T> {
-  await acquire(what, call);
+  const who = await acquire(what, call);
   try {
     return await fn();
   } finally {
-    release();
+    release(who);
   }
 }
