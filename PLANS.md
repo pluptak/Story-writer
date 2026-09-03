@@ -483,6 +483,20 @@ the engine permits something the asymmetry forbids.
   cross-character restriction form, or leaving this to `facts`, is open — it is the same distinction
   the "a removed special skill is a cannot, not an absence" work was about, and it currently holds
   only for general and bible skills.
+- **Skill Bible aliases are resolution semantics, not a UI field.** `engine/skills.ts` resolves
+  skills, restrictions and reach **by name**, through `nameKey`/`sameName` — the single funnel every
+  case-insensitive identity comparison goes through. Aliases would change which name a restriction
+  matches, and whether a removed skill reads as a CANNOT or an absence — the same distinction the
+  "a removed special skill is a cannot, not an absence" work settled. Design against that module's
+  invariants (its docstring carries all five) before any editor shows an alias field.
+- **A "Draft · architect" badge on the shelf.** A story reaches the shelf only once `story.json`
+  exists, and the scaffold session is session-only that dies on restart — so the mockup's badge has
+  three readings, ascending in cost: derive it from `chapters.length === 0` (free; cannot see an
+  interview abandoned before accept, because nothing is on disk yet), a session badge while this
+  process holds that story's session (free; vanishes on restart — the new-story card's
+  "continue new story…" already does a version of this), or persisting scaffold drafts to disk
+  (engine work, half-written stories that do not preflight, a directory before a name). Only the
+  owner can say which they wanted; nothing is built until then.
 
 ## Directions
 
@@ -533,6 +547,17 @@ below: **The world timeline**.
   than judge-shaped, non-blocking, with mechanical validation still running after it. It exists
   because a catalog amplifies the cast-sheet defects already logged above — one bad character, every
   story after it.
+- **The GUI redesign's remainder.** Built: the persistent shell (Stories / Workspace / Libraries),
+  the mockup's warm-paper restyle with an authored dark palette, the architect's stepper with the
+  gate-labelled approve and the tension as its text, the story map's scene detail (roster, reach,
+  hold-only beats), and the catalog's derived usage lines. What the mockups proposed and nothing
+  carries yet: the **conversation transcript** as the architect's primary UI — needs a host method
+  publishing the session's turns, and the owner has chosen to keep the plain last-round narration
+  until they ask for the history; the tag editor's **description** and **related-tags** fields
+  (schema work on `TagEntry`); **style presets reaching `writerStyle`** — nothing links
+  `LibraryStyle` to a story, and `writerStyle` is one free-text string with no shape for the
+  preset/constraint split; and the shelf's **"Draft · architect" badge** under Open design questions
+  below.
 
 ## The world timeline
 
