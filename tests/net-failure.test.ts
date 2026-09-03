@@ -6,6 +6,7 @@ import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { complete, NET, failureKind, ProviderDownError, CallBudgetError } from "../engine/llm-client.ts";
+import { TELEMETRY } from "../engine/req-queue.ts";
 import { PROVIDER } from "../engine/provider.ts";
 import { WARN } from "../engine/warnings.ts";
 import { armRun } from "../live.ts";
@@ -110,6 +111,8 @@ describe("the health gate between retries", () => {
       assert.equal(result.text, "ok");
       assert.ok(lines.some(l => /alive but the model stopped replying/.test(l)),
         "the preemption warning was raised");
+      assert.equal(TELEMETRY.last?.kind, "idle-timeout",
+        "the silent model is named as such, not as an unknown failure");
     } finally {
       WARN.sink = origSink;
       Object.assign(NET, saved);

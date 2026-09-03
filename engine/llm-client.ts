@@ -145,7 +145,9 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
       // re-queueing would only wait again. Say what was holding it and let the caller see it.
       if (e instanceof QueueGaveUpError) throw e;
       if (e instanceof ProviderDownError || e instanceof CallBudgetError) throw e;
-      const kind = failureKind(e);
+      // The idle deadline aborts with an opaque AbortError — the one classification failureKind
+      // cannot see, and the one the reader of a failure most wants named.
+      const kind = idleAborted ? "idle-timeout" : failureKind(e);
       TELEMETRY.last = { what, kind, message: (e as Error).message, site: call?.site, agent: call?.agent, at: Date.now() };
       announceProviderState();
       const err = e as LmError;
