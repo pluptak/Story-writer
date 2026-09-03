@@ -15,10 +15,10 @@ import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
-  type NextChapterSession,
+  type NextChapterSession, type ImportedCharacter,
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "./engine/catalog.ts";
-import { CATALOG_KINDS, type CatalogKind } from "./engine/catalog-schema.ts";
+import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import type { ServerHost, Concept } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
@@ -63,6 +63,26 @@ async function unknownTags(tags: string[]): Promise<string[]> {
   const known = new Set<string>((cat?.entries ?? []).map((e: { label?: unknown }) =>
     String(e?.label ?? "").trim().toLowerCase()));
   return tags.filter(t => !known.has(t.trim().toLowerCase()));
+}
+
+/** Ids in, tray entries out, in the order the author chose them. Only the portable half travels:
+ *  goal and knows are story-positional and the library does not carry them, and the cast gate is
+ *  where they get resolved. */
+async function importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }> {
+  const cat = await loadCatalog("characters");
+  const byId = new Map<string, LibraryCharacter>((cat?.entries ?? []).map((e: LibraryCharacter) => [e.id, e]));
+  const imported: ImportedCharacter[] = [];
+  const missing: string[] = [];
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (!e) { missing.push(id); continue; }
+    imported.push({
+      libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
+      belief: e.belief, impulse: e.impulse,
+      voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions],
+    });
+  }
+  return { imported, missing };
 }
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
@@ -149,7 +169,7 @@ export const HOST: ServerHost = {
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags,
+  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   storyForEdit: async (dir) => {

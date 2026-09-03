@@ -35,11 +35,33 @@ const CAST_STAGE = {
 describe("/scaffold routes", () => {
   afterEach(() => resetLive());
 
+  const LIB = [
+    { id: "lib-ivet", version: 2, name: "IVET", portablePersona: "Ex-locksmith.", belief: "b",
+      impulse: "i", voice: ["v"], skills: ["lockpicking :: opening a lock"], restrictions: ["sight"] },
+    { id: "lib-merritt", version: 1, name: "MERRITT", portablePersona: "From the boats.", belief: "b2",
+      impulse: "i2", voice: [], skills: [], restrictions: [] },
+  ];
+
   const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ServerHost => ({
     loadedModelIds: async () => null,
     specView: (s: unknown) => s,
     unknownTags: async (tags: string[]) =>
       tags.filter(t => !knownTags.includes(t.trim().toLowerCase())),
+    importCharacters: async (ids: string[]) => {
+      const byId = new Map(LIB.map(e => [e.id, e]));
+      const imported = [];
+      const missing = [];
+      for (const id of ids) {
+        const e = byId.get(id);
+        if (!e) { missing.push(id); continue; }
+        imported.push({
+          libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
+          belief: e.belief, impulse: e.impulse,
+          voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions],
+        });
+      }
+      return { imported, missing };
+    },
     newScaffoldSession: async (idea: string, _model?: string, mode?: "oneshot" | "staged", concept?: Concept) =>
       new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
                           DEFAULTS, idea, undefined, mode ?? "staged", undefined,
@@ -144,7 +166,7 @@ describe("/scaffold routes", () => {
       const gated = new Promise(r => { fireAccept = r; });
       const session = {
         idea: "two lighthouse keepers", mode: "staged", stage: "", tension: "",
-        pendingAsk: null, problems: [], edited: [],
+        pendingAsk: null, problems: [], edited: [], imported: [],
         defaults: { models: { architect: "none" } },
         // scaffoldState reads these fields directly, exactly as it does on a real early-session
         spec: { title: "", premise: "", characters: [], writerStyle: "", facts: [], scenes: [] },
@@ -248,6 +270,81 @@ describe("/scaffold routes", () => {
       const h = host([]);
       await post("/scaffold/abandon", {}, h);  // ensure no session is open
       const result = await post("/scaffold/concept", { tags: ["adventure"] }, h);
+      assert.equal(result.body.reason, "no interview is open");
+    });
+
+    it("an imported cast reaches the session's tray", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", importIds: ["lib-ivet"] }, host([STORY_STAGE]));
+      assert.equal(opened.body.active, true);
+      assert.deepEqual(opened.body.concept.imported, [{ libraryId: "lib-ivet", version: 2, name: "IVET" }]);
+      assert.deepEqual(opened.body.concept.missingImports, []);
+    });
+
+    it("an id the catalog no longer holds is reported, and the session still opens", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", importIds: ["lib-ivet", "gone"] }, host([STORY_STAGE]));
+      assert.equal(opened.body.active, true);
+      assert.equal(opened.body.concept.imported.length, 1);
+      assert.deepEqual(opened.body.concept.missingImports, ["gone"]);
+    });
+
+    it("the tray refuses more characters than the cast stage could hold", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([]);
+      const result = await post("/scaffold/start", { idea: "...", importIds: ["a", "b", "c", "d", "e"] }, h);
+      assert.equal(result.code, 400);
+      assert.match(result.body.reason, /at most 4/);
+    });
+
+    it("an imported tray takes over from the cast size", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", importIds: ["lib-ivet"], castSize: 3 }, host([STORY_STAGE]));
+      assert.equal(opened.body.concept.castSizeSteers, false, "castSizeSteers is false when tray is populated");
+      assert.equal(opened.body.concept.importsSteer, true, "importsSteer is true when no cast exists yet");
+
+      // Also test the other direction: with NO imports and castSize: 3
+      LIVE.awaitingPick = true;
+      const h = host([STORY_STAGE]);
+      await post("/scaffold/abandon", {}, h);  // clear prior session
+      const plain = await post("/scaffold/start", { idea: "...", importIds: [], castSize: 3 }, h);
+      assert.equal(plain.body.concept.castSizeSteers, true, "castSizeSteers is true when tray is empty");
+      assert.equal(plain.body.concept.importsSteer, true, "importsSteer is true when no cast exists");
+    });
+
+    it("the tray can be replaced on an open session", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([STORY_STAGE]);
+      await post("/scaffold/start", { idea: "..." }, h);
+
+      const updated = await post("/scaffold/import", { importIds: ["lib-merritt"] }, h);
+      assert.equal(updated.body.active, true);
+      assert.equal(updated.body.concept.imported.length, 1);
+      assert.deepEqual(updated.body.concept.imported[0].name, "MERRITT");
+
+      const cleared = await post("/scaffold/import", { importIds: [] }, h);
+      assert.equal(cleared.body.concept.imported.length, 0, "replacement, not accumulation");
+    });
+
+    // `start` overwrites the session in place, so anything it does not reassign belongs to the
+    // interview before it. A report of a character the author never asked for is exactly the kind
+    // of leak that reads as a real problem with the story in front of them.
+    it("a fresh interview does not inherit the last one's missing imports", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([STORY_STAGE]);
+      const first = await post("/scaffold/start", { idea: "...", importIds: ["gone"] }, h);
+      assert.deepEqual(first.body.concept.missingImports, ["gone"]);
+
+      LIVE.awaitingPick = true;
+      const second = await post("/scaffold/start", { idea: "...", importIds: [] }, host([STORY_STAGE]));
+      assert.deepEqual(second.body.concept.missingImports, [], "the new session starts clean");
+      assert.deepEqual(second.body.concept.imported, []);
+    });
+
+    it("importing before an interview is open is refused", async () => {
+      const h = host([]);
+      await post("/scaffold/abandon", {}, h);  // ensure no session is open
+      const result = await post("/scaffold/import", { importIds: ["lib-ivet"] }, h);
       assert.equal(result.body.reason, "no interview is open");
     });
   });

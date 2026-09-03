@@ -19,6 +19,7 @@ let scaffoldLast: ScaffoldRound | null = null;
 let scaffoldFolderAsk = "";                // why accept() would not derive a folder name
 let scaffoldStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is running, if any
 let scaffoldUnknownTags: string[] = [];    // tags the catalog does not hold; allowed, but reported
+let scaffoldMissingImports: string[] = [];   // ids the catalog no longer holds
 
 const ABANDONED = "the interview was abandoned";
 const ABANDONED_WHILE_ACCEPTING =
@@ -27,6 +28,7 @@ const ABANDONED_WHILE_ACCEPTING =
 const MAX_TAGS = 8;
 const MAX_TAG_LEN = 40;
 const MAX_CAST = 4;      // the cast stage's own ceiling: "Four is the maximum"
+const MAX_IMPORTS = 4;   // the cast stage's ceiling, same as MAX_CAST
 
 /** The concept goes verbatim into a prompt, so its size is bounded here rather than trusted. Returns
  *  the cleaned concept, or a reason it was refused. */
@@ -40,6 +42,14 @@ function readConcept(o: Record<string, unknown>): { ok: true; concept: Concept }
   if (!Number.isInteger(castSize) || castSize < 0 || castSize > MAX_CAST)
     return { ok: false, reason: `castSize must be a whole number from 0 to ${MAX_CAST}` };
   return { ok: true, concept: { tags, castSize } };
+}
+
+/** The import tray as ids. Resolving them needs the host, so this only checks the shape. */
+function readImportIds(o: Record<string, unknown>): { ok: true; ids: string[] } | { ok: false; reason: string } {
+  const raw = Array.isArray(o.importIds) ? o.importIds : [];
+  const ids = raw.map(x => String(x ?? "").trim()).filter(Boolean);
+  if (ids.length > MAX_IMPORTS) return { ok: false, reason: `at most ${MAX_IMPORTS} imported characters` };
+  return { ok: true, ids };
 }
 
 function scaffoldState(host: ServerHost) {
@@ -62,13 +72,17 @@ function scaffoldState(host: ServerHost) {
       tags: SCAFFOLD.tags,
       castSize: SCAFFOLD.castSize,
       unknownTags: scaffoldUnknownTags,
+      imported: SCAFFOLD.imported.map(i => ({ libraryId: i.libraryId, version: i.version, name: i.name })),
+      missingImports: scaffoldMissingImports,
       // Each half steers exactly one gate and is spent once that gate has produced its content.
       // Saying so is the point: a control that has stopped doing anything must not keep looking
       // live. Both are asked as "would the next build of that stage's prompt read this?" — which
       // is why cast size is measured against the cast, not against the open gate: it is at its most
       // live during the STORY gate, before the cast prompt has ever been built.
       tagsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.stage === "story",
-      castSizeSteers: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.spec.characters.length === 0,
+      // An imported tray IS the cast size, so the number stops being an answer to anything.
+      castSizeSteers: SCAFFOLD.mode !== "oneshot" && !SCAFFOLD.imported.length && SCAFFOLD.spec.characters.length === 0,
+      importsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.spec.characters.length === 0,
     },
     haveDraft,
     haveStory: SCAFFOLD.haveStory(),
@@ -97,14 +111,14 @@ export async function handleScaffoldRoutes(
 
   const o = await readJsonBody(req);
   const what = path.slice("/scaffold/".length);
-  if (!["start", "say", "approve", "accept", "abandon", "set", "concept"].includes(what)) {
+  if (!["start", "say", "approve", "accept", "abandon", "set", "concept", "import"].includes(what)) {
     json(res, 404, { ok: false, reason: `no such scaffold action: ${what}` });
 
   } else if (what === "abandon") {
     // The session dies here, but `scaffoldBusy` is left alone: if a round is in flight it must
     // keep the lock until its own finally clears it, so a second start cannot overlap it. The
     // round itself finds a stale `scaffoldGen` on return and drops everything it produced.
-    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = ""; scaffoldUnknownTags = [];
+    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = ""; scaffoldUnknownTags = []; scaffoldMissingImports = [];
     scaffoldGen++;
     publishScaffold(host);
     json(res, 200, { ok: true });
@@ -125,6 +139,8 @@ export async function handleScaffoldRoutes(
     }
     const c = readConcept(o);
     if (!c.ok) { json(res, 400, { ok: false, reason: c.reason }); return true; }
+    const tray = readImportIds(o);
+    if (!tray.ok) { json(res, 400, { ok: false, reason: tray.reason }); return true; }
     scaffoldBusy = true; scaffoldLast = null; scaffoldFolderAsk = "";
     try {
       const mode = o.mode === "oneshot" ? "oneshot" : "staged";
@@ -134,6 +150,12 @@ export async function handleScaffoldRoutes(
       SCAFFOLD = session;
       scaffoldUnknownTags = c.concept.tags.length ? await host.unknownTags(c.concept.tags) : [];
       if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
+      // Assigned whether or not there are ids: a start that imports nothing must clear what the
+      // last session could not find, or the new interview reports a loss it never had.
+      const resolved = tray.ids.length ? await host.importCharacters(tray.ids) : { imported: [], missing: [] };
+      if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
+      SCAFFOLD.imported = resolved.imported;
+      scaffoldMissingImports = resolved.missing;
       setWhere("building a new story", false);
       publishScaffold(host);
       const last = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(host); });
@@ -156,6 +178,17 @@ export async function handleScaffoldRoutes(
     SCAFFOLD.tags = c.concept.tags;
     SCAFFOLD.castSize = c.concept.castSize;
     scaffoldUnknownTags = c.concept.tags.length ? await host.unknownTags(c.concept.tags) : [];
+    publishScaffold(host);
+    json(res, 200, scaffoldState(host));
+
+  } else if (what === "import") {
+    // Replaces the tray wholesale rather than adding to it: the author's pick is a set, and a
+    // partial update would need a second answer for "what does absence mean".
+    const tray = readImportIds(o);
+    if (!tray.ok) { json(res, 400, { ok: false, reason: tray.reason }); return true; }
+    const resolved = await host.importCharacters(tray.ids);
+    SCAFFOLD.imported = resolved.imported;
+    scaffoldMissingImports = resolved.missing;
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 

@@ -15,7 +15,7 @@ import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
 import { handleCatalogRoutes } from "./catalog-routes.ts";
-import type { ScaffoldSession, NextChapterSession } from "../engine/architect.ts";
+import type { ScaffoldSession, NextChapterSession, ImportedCharacter } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson } from "../engine/story-schema.ts";
@@ -51,6 +51,11 @@ export interface ServerHost {
    *  are allowed — the catalog is a seed the author edits, not a gate — but they are reported so
    *  a typo does not silently become a steering word. */
   unknownTags(tags: string[]): Promise<string[]>;
+  /** Resolve character-catalog ids into the scaffold's import tray. A id the catalog no longer holds
+   *  comes back in `missing` rather than failing the call: the catalog is the author's and they may
+   *  have deleted an entry since choosing it, and a tray that silently shrank is worse than one that
+   *  says what it lost. */
+  importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }>;
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
   directEdit(spec: StorySpec, field: string, value: unknown):
