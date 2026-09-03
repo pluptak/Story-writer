@@ -9,6 +9,7 @@ import { ENGINE } from "./engine/engine-state.ts";
 import { splitMeaning, bibleFrom, canonSkill } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
+import { PROVIDER } from "./engine/provider.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
 import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson } from "./engine/story-schema.ts";
@@ -182,6 +183,7 @@ const validateCatalogKind = (kind: string): CatalogKind | null =>
 
 export const HOST: ServerHost = {
   selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
+  providerName: PROVIDER.displayName,
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),

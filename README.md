@@ -7,7 +7,7 @@ A story-writing engine where a **writer agent** drafts prose and **consults char
 ## Quick start
 
 ```bash
-# Ensure LM Studio is running at http://localhost:1234/v1 with the story's models loaded
+# Ensure your inference server is running (LM Studio by default, http://localhost:1234/v1) with the story's models loaded
 npx tsx story-writer.ts stories/doorway --chapter=1
 
 # Or launch the browser viewer
@@ -51,7 +51,12 @@ npm run preflight # story-card listing against LM Studio
 ## Requirements
 
 - **Node.js** (ESM, TypeScript)
-- **LM Studio** running at `http://localhost:1234/v1` with the models listed in each story's `story.json` loaded
+- A **local inference server** with the story's models loaded. The provider is selected from the
+  environment, never per story:
+  - `LLM_PROVIDER` — `lmstudio` (default) | `ollama` | `llamacpp`
+  - `LLM_BASE_URL` — the server's base URL ending in `/v1` (default `http://localhost:1234/v1` for
+    LM Studio; the old `LM_STUDIO_URL` full-chat-URL form still works)
+  - `LLM_API_KEY` — only for servers that want one
 - The default models in `defaults.json` are `gemma-4-12b-it-qat-uncensored-heretic`; override per-story in `story.json` → `models.default`
 
 ## Architecture

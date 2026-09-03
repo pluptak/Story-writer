@@ -2,7 +2,7 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { complete, completeStream, NET, lmUrlsDerivable, SITE_HEADER, AGENT_HEADER } from "../engine/llm-client.ts";
+import { complete, completeStream, NET, SITE_HEADER, AGENT_HEADER } from "../engine/llm-client.ts";
 import { stopRun, armRun } from "../live.ts";
 
 /** Build a ReadableStream from an array of chunks. */
@@ -448,22 +448,6 @@ describe("retry classification (non-JSON reply bodies)", () => {
     } finally {
       Object.assign(NET, saved);
     }
-  });
-});
-
-// -- URL DERIVATION GUARD ----
-describe("lmUrlsDerivable", () => {
-  it("accepts chat-completions URLs, with or without a trailing slash", () => {
-    assert.equal(lmUrlsDerivable("http://localhost:1234/v1/chat/completions"), true);
-    assert.equal(lmUrlsDerivable("http://localhost:1234/v1/chat/completions/"), true);
-    assert.equal(lmUrlsDerivable("http://host.docker.internal:1234/v1/chat/completions"), true,
-      "the devcontainer's host-gateway form");
-  });
-
-  it("rejects URLs whose /models derivation would silently hit the wrong route", () => {
-    assert.equal(lmUrlsDerivable("http://localhost:1234/v1"), false);
-    assert.equal(lmUrlsDerivable("http://localhost:1234/api/v0/chat"), false);
-    assert.equal(lmUrlsDerivable(""), false);
   });
 });
 

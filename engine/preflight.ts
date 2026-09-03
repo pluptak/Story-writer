@@ -1,7 +1,8 @@
 /** PRE-FLIGHT — checking a story loads and its models are available, and the story-card listing. */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { LMSTUDIO_MODELS_URL, LMSTUDIO_REST_MODELS_URL, estimateTokens, type Msg } from "./llm-client.ts";
+import { PROVIDER } from "./provider.ts";
+import { estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
 import type { TimelineDef } from "./story-schema.ts";
 import { bibleMeaningOf, type BibleLookup } from "./skills.ts";
@@ -37,38 +38,12 @@ export interface PreflightResult {
 let modelIdCache: { at: number; ids: Promise<string[] | null> } | null = null;
 export async function loadedModelIds(timeoutMs = 1500): Promise<string[] | null> {
   if (modelIdCache && Date.now() - modelIdCache.at < 5000) return modelIdCache.ids;
-  const ids = fetchModelIds(timeoutMs);
+  const ids = PROVIDER.listModels(timeoutMs);
   modelIdCache = { at: Date.now(), ids };
   return ids;
 }
-async function fetchModelIds(timeoutMs: number): Promise<string[] | null> {
-  try {
-    const res = await fetch(LMSTUDIO_MODELS_URL, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return null;
-    const j = await res.json() as { data?: Array<{ id?: unknown }> };
-    const ids = (j.data ?? []).map(m => String(m.id ?? "")).filter(Boolean);
-    return ids.length ? ids : null;
-  } catch { return null; }
-}
 
 export interface ModelInfo { loaded: boolean; loadedContext: number; maxContext: number; }
-
-/** Parse LM Studio's /api/v0/models body. Pure, so the fit rules below can be tested without a server. */
-export function parseModelInfo(body: unknown): Map<string, ModelInfo> {
-  const out = new Map<string, ModelInfo>();
-  const data = (body as { data?: unknown })?.data;
-  if (!Array.isArray(data)) return out;
-  for (const m of data) {
-    const id = String((m as any)?.id ?? "");
-    if (!id) continue;
-    out.set(id, {
-      loaded: (m as any)?.state === "loaded",
-      loadedContext: Number((m as any)?.loaded_context_length) || 0,
-      maxContext: Number((m as any)?.max_context_length) || 0,
-    });
-  }
-  return out;
-}
 
 /** Whether a prompt of this size fits the window the model is actually loaded with, given the reply
  *  the request also reserves. Returns null when it fits, or when nothing is known about the model --
@@ -99,7 +74,8 @@ export async function contextFit(model: string, msgs: Msg[]):
 }
 
 let modelInfoCache: { at: number; info: Promise<Map<string, ModelInfo> | null> } | null = null;
-/** Cached fetcher for model info from LM Studio's native API. Returns null when the endpoint is unreachable or not LM Studio. */
+/** Cached fetcher for the provider's per-model runtime info. Returns null when the provider
+ *  cannot answer (endpoint unreachable, or no runtime-inspection capability at all). */
 export async function modelInfo(timeoutMs = 1500): Promise<Map<string, ModelInfo> | null> {
   if (modelInfoCache && Date.now() - modelInfoCache.at < 5000) return modelInfoCache.info;
   const info = fetchModelInfo(timeoutMs);
@@ -107,11 +83,12 @@ export async function modelInfo(timeoutMs = 1500): Promise<Map<string, ModelInfo
   return info;
 }
 async function fetchModelInfo(timeoutMs: number): Promise<Map<string, ModelInfo> | null> {
-  try {
-    const res = await fetch(LMSTUDIO_REST_MODELS_URL, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return null;
-    return parseModelInfo(await res.json());
-  } catch { return null; }
+  const rt = await PROVIDER.inspectModels(timeoutMs);
+  if (!rt) return null;
+  const out = new Map<string, ModelInfo>();
+  for (const [id, m] of rt)
+    out.set(id, { loaded: m.state === "loaded", loadedContext: m.loadedContext, maxContext: m.maxContext });
+  return out;
 }
 
 export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): Promise<PreflightResult> {
@@ -131,12 +108,12 @@ export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): 
       let missingModels: string[] = [];
       if (loaded === null) {
         modelCheck = "unreachable";
-        warnings.push(`   (model check skipped: no model list from LM Studio at ${LMSTUDIO_MODELS_URL})`);
+        warnings.push(`   (model check skipped: no model list from ${PROVIDER.displayName} at ${PROVIDER.modelsUrl})`);
       } else {
         missingModels = wanted.filter(m => !loaded.includes(m));
         if (missingModels.length) {
           modelCheck = "missing";
-          warnings.push(`   (not loaded in LM Studio: ${missingModels.join(", ")} — every call using `
+          warnings.push(`   (not loaded in ${PROVIDER.displayName}: ${missingModels.join(", ")} — every call using `
             + `${missingModels.length > 1 ? "these" : "this"} will error)`);
         }
       }

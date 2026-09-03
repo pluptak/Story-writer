@@ -1,20 +1,13 @@
-/** API — the LM Studio HTTP client: request shaping, retry/backoff, and streaming. */
+/** API — the provider-agnostic HTTP client: request shaping, retry/backoff, and streaming.
+ *  Where the requests go, which headers they carry, and whether optional fields like
+ *  `reasoning_effort` belong on the wire all come from the selected provider (provider.ts). */
 import { C } from "../ansi.ts";
 import { RUN, StoppedError } from "../live.ts";
 import { ENGINE, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
 import { topLevelObjects } from "./json-extract.ts";
+import { PROVIDER } from "./provider.ts";
 import type { ThinkLevel } from "./story-schema.ts";
-
-export const LMSTUDIO_URL = process.env.LM_STUDIO_URL ?? "http://localhost:1234/v1/chat/completions";
-export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$/, "/models");
-/** LM Studio's own REST API, which unlike /v1/models reports load state and context length. */
-export const LMSTUDIO_REST_MODELS_URL = LMSTUDIO_URL.replace(/\/v1\/chat\/completions\/?$/, "/api/v0/models");
-
-/** Whether the two /models endpoints above can actually be derived from a chat-completions URL:
- *  both rewrite the trailing path, so an override without that suffix silently points the model
- *  checks at the chat route. The composition root warns once when an env override breaks this. */
-export const lmUrlsDerivable = (url: string) => /\/chat\/completions\/?$/.test(url.trim());
 
 /** A deliberately pessimistic token estimate -- prose runs about 4 chars/token, the JSON the
  *  architect trades in runs denser, and guessing high is the safe direction for a fit check. */
@@ -73,10 +66,13 @@ function parseUsage(u: any): CompletionUsage | null {
 /** The retry/backoff knobs, settable per run from a story's config. */
 export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };
 
-function requestBody(model: string, messages: Msg[], temperature: number, stream: boolean, think: ThinkLevel) {
+/** The JSON body for one completion. Exported for the capability tests: whether
+ *  `reasoning_effort` goes on the wire is the provider's decision, not the caller's. */
+export function requestBody(model: string, messages: Msg[], temperature: number, stream: boolean, think: ThinkLevel) {
   const body: Record<string, unknown> = { model, messages, temperature, max_tokens: ENGINE.maxTokens, stream };
   if (stream) body.stream_options = { include_usage: true };
-  if (think !== "default") body.reasoning_effort = think === "off" ? "none" : think;
+  if (think !== "default" && PROVIDER.capabilities.reasoningEffort)
+    body.reasoning_effort = think === "off" ? "none" : think;
   return JSON.stringify(body);
 }
 
@@ -144,13 +140,13 @@ export const AGENT_HEADER = "X-SW-Agent";
 export interface CallSite { site: string; agent?: string }
 
 async function postChat(body: string, signal: AbortSignal, call?: CallSite) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...PROVIDER.headers() };
   if (call?.site) headers[SITE_HEADER] = call.site;
   if (call?.agent) headers[AGENT_HEADER] = call.agent;
-  const res = await fetch(LMSTUDIO_URL, { method: "POST", headers, body, signal });
+  const res = await fetch(PROVIDER.chatUrl, { method: "POST", headers, body, signal });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new LmError(`LM Studio ${res.status}: ${detail.slice(0, 200)}`, res.status, retryableStatus(res.status));
+    throw new LmError(`${PROVIDER.displayName} ${res.status}: ${detail.slice(0, 200)}`, res.status, retryableStatus(res.status));
   }
   return res;
 }
@@ -190,7 +186,7 @@ export async function completeStream(model: string, messages: Msg[], temperature
                                      call?: CallSite): Promise<Completion> {
   return withRetry(`${model} stream`, async (signal, heartbeat) => {
     const res = await postChat(requestBody(model, messages, temperature, true, think), signal, call);
-    if (!res.body) throw new LmError(`LM Studio returned no stream body`, undefined, true);
+    if (!res.body) throw new LmError(`${PROVIDER.displayName} returned no stream body`, undefined, true);
     const reader = (res.body as any).getReader();
     const decoder = new TextDecoder();
     let buffer = "", contentBuf = "", reasonBuf = "", frameCount = 0;

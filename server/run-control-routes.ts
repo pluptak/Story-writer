@@ -49,7 +49,7 @@ export async function handleRunControl(
     if (!model) { LIVE.modelOverride = null; json(res, 200, { ok: true }); return true; }
     const ids = await host.loadedModelIds();
     if (ids !== null && !ids.includes(model)) {
-      json(res, 400, { ok: false, reason: `"${model}" is not loaded in LM Studio` }); return true;
+      json(res, 400, { ok: false, reason: `"${model}" is not loaded in ${host.providerName}` }); return true;
     }
     LIVE.modelOverride = model;
     if (LIVE.paused && LIVE.writer && LIVE.agents) {

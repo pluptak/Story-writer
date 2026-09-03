@@ -98,7 +98,7 @@ export async function handleNextChapterRoutes(
     if (model) {
       const ids = await host.loadedModelIds();
       if (ids !== null && !ids.includes(model)) {
-        json(res, 400, { ok: false, reason: `"${model}" is not loaded in LM Studio` }); return true;
+        json(res, 400, { ok: false, reason: `"${model}" is not loaded in ${host.providerName}` }); return true;
       }
     }
     handoffBusy = true; handoffLast = null;

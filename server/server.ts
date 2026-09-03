@@ -50,6 +50,9 @@ export interface ServerHost {
    *  a discovered story dir, not a resolved path. */
   writtenChapters(dir: string): Promise<number[]>;
   loadedModelIds(): Promise<string[] | null>;
+  /** The configured provider's display name ("LM Studio", "Ollama", …) — routes name the server
+   *  in user-facing refusals without importing the engine that knows it. */
+  providerName: string;
   /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
   architectModel(): Promise<string>;
   /** `mode` picks the scaffold's walk: "staged" runs the gated checklist

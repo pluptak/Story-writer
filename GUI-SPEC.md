@@ -140,8 +140,8 @@ There is no separate "list runs" route; a run only exists as a story's `runs[]` 
 GET /models
   → { ids: string[], reachable: boolean, current: string | null, architect: string }
 ```
-`ids` is whatever LM Studio currently reports loaded; `reachable: false` means LM Studio itself could
-not be reached (distinct from "reachable but empty").
+`ids` is whatever the configured provider currently reports loaded; `reachable: false` means the
+provider itself could not be reached (distinct from "reachable but empty").
 
 ```
 GET /log.jsonl            → the in-progress run's writing-log.jsonl, or 404 before one exists

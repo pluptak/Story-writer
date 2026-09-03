@@ -13,6 +13,7 @@ import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats,
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
+import { PROVIDER } from "./provider.ts";
 import { estimateTokens } from "./llm-client.ts";
 
 async function architectExample(): Promise<string> {
@@ -879,7 +880,7 @@ export class NextChapterSession {
                                            estimateTokens(this.architect.system + prompt), ENGINE.maxTokens);
     if (short) return { kind: "failed", error:
       `this round needs about ${short.needs} tokens and ${this.architect.model} is loaded with ${short.has} — `
-      + `raise its context length in LM Studio and try again` };
+      + `raise its context length in ${PROVIDER.displayName} and try again` };
     const base = this.take(await architectRound(this.architect, prompt));
     if (base.kind !== "edits") return base;
 

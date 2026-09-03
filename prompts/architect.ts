@@ -580,7 +580,7 @@ config -- the engine's own knobs, not the story's. Send only what you would actu
   retries / clarifications / maxSteps / maxProseWords -- pacing and how many times a stuck step
          may retry before the writer forces a way forward.
   thinking -- how much the writer, each character, and the chapter summarizer reason. One of
-         off / low / medium / high / default (default means: send nothing, let LM Studio decide).
+         off / low / medium / high / default (default means: send nothing, let the server decide).
   requestTimeout / attempts / maxTokens -- network and generation ceilings.
   maxCharacterRetries -- optional cap on how many consult retries ONE character may cost per
          chapter before their answer is force-accepted; omit or null for no ceiling.

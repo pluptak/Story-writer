@@ -84,7 +84,11 @@ handoff are browser-only; passing their old console flags (`--new`, `--oneshot`,
 story argument, no console picker, no one-shot — with the browser driving from the shelf and Ctrl-C
 stopping any run in flight gracefully before exit.
 
-Requires **LM Studio running locally** at `http://localhost:1234/v1` with the story's models loaded.
+Requires a **local inference server** with the story's models loaded: **LM Studio** by default at
+`http://localhost:1234/v1`, with the **Ollama** and **llama.cpp** adapters also built in. Selection is
+environmental, never per story: `LLM_PROVIDER` (`lmstudio` | `ollama` | `llamacpp`), `LLM_BASE_URL`
+(the base ending in `/v1`; the old `LM_STUDIO_URL` full-chat-URL form still works), and `LLM_API_KEY`
+for servers that want one.
 
 ## Architecture
 
@@ -125,7 +129,9 @@ way.**
 | [engine/skills.ts](engine/skills.ts) | the general skill catalog, the special-skill bible, restriction and reach resolution (I1–I5), and a story's `skills:`/`restrictions:` overrides. The bible half of every resolution is an injectable parameter (`BibleLookup`) defaulting to the in-code catalog, so the author's persisted bible can be passed in; the general list is fixed in code |
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/catalog-schema.ts](engine/catalog-schema.ts) | the Zod schema for a catalog of reusable assets, one per `CATALOG_KINDS` entry — `LibraryCharacter` is the portable half of a character, with no `goal`/`knows` (story-positional) and no reach (I4); `TagEntry`, `LibraryStyle` and `LibrarySkill` (the persisted special-skill bible, whose `meaning` is required) are the others |
-| [engine/llm-client.ts](engine/llm-client.ts) | the LM Studio HTTP client: request shaping, retry/backoff, streaming, and `SITE_HEADER` — the call site's stable name (`writer.draft`), sent as a header so the model never sees it and a fake or a replay can tell callers apart without matching drifting prompt text |
+| [engine/llm-client.ts](engine/llm-client.ts) | the provider-agnostic HTTP client: request shaping, retry/backoff, streaming, and `SITE_HEADER` — the call site's stable name (`writer.draft`), sent as a header so the model never sees it and a fake or a replay can tell callers apart without matching drifting prompt text |
+| [engine/provider-util.ts](engine/provider-util.ts) | the provider boundary's leaf half: the `InferenceProvider` shape, `ModelRuntime`, capability flags, URL normalization (`LLM_BASE_URL`), and the shared model-list GET |
+| [engine/provider.ts](engine/provider.ts) + [engine/provider-lmstudio.ts](engine/provider-lmstudio.ts), [engine/provider-ollama.ts](engine/provider-ollama.ts), [engine/provider-llamacpp.ts](engine/provider-llamacpp.ts) | provider selection from the environment into the one `PROVIDER` the transport and the model checks go through, plus one adapter per server — chat URLs are OpenAI-compatible everywhere; the adapters differ in their native model-state API (LM Studio: `/api/v1` with a `/api/v0` fallback; Ollama: `/api/ps`; llama.cpp: none) and their capability flags. Nothing outside the adapters names a server |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
 | [engine/story-format.ts](engine/story-format.ts) | loading and validating `story.json` (against `story-schema.ts`), building a `StoryConfig`, discovering stories on disk. `loadStory` takes the skill bible the cast resolves against and the `StoryConfig` carries it, so the per-scene reach layer resolves the same names |
 | [engine/catalog.ts](engine/catalog.ts) | the catalog beside `defaults.json`: load, check, upsert and delete, keyed by asset kind. Advisory problems reuse `characterPsychologyWarnings` and `capabilityProblems` rather than restating them, and `skillBible()` turns the persisted skill kind into the lookup the second of those takes |
