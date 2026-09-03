@@ -1822,6 +1822,155 @@ describe("stranded world events in the handoff", () => {
   });
 });
 
+// -- STYLE PRESET HANDLING ---------------------------------------------------
+describe("style preset feature", () => {
+  const STORY_STAGE = {
+    title: "Test Story",
+    premise: "A test premise",
+    tension: "Character A wants X; Character B wants Y",
+    facts: [],
+  };
+  const CAST_STAGE = { characters: STORY.characters };
+  const TECHNICAL_STAGE = {
+    config: { maxSteps: 24 },
+  };
+  const SCENE_STAGE = { scene: STORY.scene };
+
+  describe("architectSettingsStage prompts", () => {
+    it("without a preset, asks for both writer_style and writer_style_constraints", () => {
+      const text = P.architectSettingsStage("{}");
+      assert.match(text, /"writer_style": "\.\.\."/);
+      assert.match(text, /writer_style_constraints/);
+      assert.doesNotMatch(text, /\[THE VOICE THE AUTHOR CHOSE\]/);
+    });
+
+    it("with a preset, contains the preset name and voice, asks for constraints only, not style", () => {
+      const preset = { name: "Close third", voice: "Third person, past tense." };
+      const text = P.architectSettingsStage("{}", preset);
+      assert.match(text, /\[THE VOICE THE AUTHOR CHOSE\]/);
+      assert.match(text, /Close third/);
+      assert.match(text, /Third person, past tense\./);
+      assert.match(text, /writer_style_constraints/);
+      assert.doesNotMatch(text, /"writer_style": "\.\.\."/);
+      assert.match(text, /The voice above is SETTLED/);
+      assert.match(text, /it is not yours to rewrite/);
+    });
+  });
+
+  describe("staged session with style preset", () => {
+    const stage = (script: unknown[], newJudge: () => ScriptedAgent = () => new ScriptedAgent([JSON.stringify({ ok: true })])) =>
+      new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
+                          SCAFFOLD_DEFAULTS, "test idea", undefined, "staged", newJudge);
+
+    it("reverts a different writer_style sent by the architect, and notes it", async () => {
+      const SETTINGS_WITH_SENT_STYLE = {
+        writer_style: "First person, present tense.",
+        writer_style_constraints: [],
+      };
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_WITH_SENT_STYLE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "verified" }, // verify pass
+                       { timeline: [] }]); // world stage
+      s.style = { id: "preset1", name: "Close third", voice: "Third person, past tense." };
+
+      await s.propose();
+      // approve() advances to the next gate AND runs it, so the settings round is the second one.
+      // A third would run "technical", whose own visibleProblems would wipe this note.
+      await s.approve(); // -> cast
+      const settingsRound = await s.approve(); // -> settings
+      assert.equal(settingsRound.kind, "proposal");
+      assert.equal(s.spec.writerStyle, "Third person, past tense.", "the preset voice is kept, not the sent one");
+      assert.match(s.problems.join(" "), /the architect rewrote the voice/);
+      assert.match(s.problems.join(" "), /Close third/);
+    });
+
+    it("does not add a revert note when no writer_style is sent", async () => {
+      const SETTINGS_NO_STYLE = {
+        writer_style_constraints: ["prose shows only what the POV character sees"],
+      };
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_NO_STYLE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "verified" },
+                       { timeline: [] }]);
+      s.style = { id: "preset1", name: "Close third", voice: "Third person, past tense." };
+
+      await s.propose();
+      // approve() advances to the next gate AND runs it, so the settings round is the second one.
+      // A third would run "technical", whose own visibleProblems would wipe this note.
+      await s.approve(); // -> cast
+      const settingsRound = await s.approve(); // -> settings
+      assert.equal(settingsRound.kind, "proposal");
+      assert.equal(s.spec.writerStyle, "Third person, past tense.", "the preset voice is still set");
+      // No revert note when architect never sent a different voice
+      assert.doesNotMatch(s.problems.join(" "), /architect rewrote the voice/);
+    });
+
+    it("accepts a settings reply with only writer_style_constraints as a real proposal, not empty", async () => {
+      const SETTINGS_CONSTRAINTS_ONLY = {
+        writer_style_constraints: [],
+      };
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_CONSTRAINTS_ONLY, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "verified" },
+                       { timeline: [] }]);
+      s.style = { id: "preset1", name: "Close third", voice: "Third person, past tense." };
+
+      await s.propose();
+      // approve() advances to the next gate AND runs it, so the settings round is the second one.
+      // A third would run "technical", whose own visibleProblems would wipe this note.
+      await s.approve(); // -> cast
+      const settingsRound = await s.approve(); // -> settings
+      assert.equal(settingsRound.kind, "proposal", "constraints-only reply is a valid proposal");
+      assert.equal(s.stage, "settings", "the settings gate is the one that ran");
+      assert.equal(s.spec.writerStyle, "Third person, past tense.");
+      assert.deepEqual(s.spec.writerStyleConstraints, []);
+    });
+  });
+
+  describe("staged session without style preset", () => {
+    const stage = (script: unknown[]) =>
+      new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
+                          SCAFFOLD_DEFAULTS, "test idea", undefined, "staged",
+                          () => new ScriptedAgent([JSON.stringify({ ok: true })]));
+
+    it("lands writer_style_constraints from the settings reply on the spec", async () => {
+      const SETTINGS_WITH_BOTH = {
+        writer_style: "Third person, past tense.",
+        writer_style_constraints: ["prose knows only what POV can see", "no weather as metaphor"],
+      };
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_WITH_BOTH, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "verified" },
+                       { timeline: [] }]);
+      // No style preset
+
+      await s.propose();
+      await s.approve(); // story -> cast
+      await s.approve(); // cast -> settings
+      await s.approve(); // settings -> technical
+      await s.approve(); // technical -> scene
+      await s.approve(); // scene -> world
+
+      assert.deepEqual(s.spec.writerStyleConstraints,
+                      ["prose knows only what POV can see", "no weather as metaphor"]);
+    });
+
+    it("trims and filters blank constraints", async () => {
+      const SETTINGS_WITH_BLANKS = {
+        writer_style: "Third person.",
+        writer_style_constraints: ["  ", "a real constraint  ", "", "another  "],
+      };
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_WITH_BLANKS, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "verified" },
+                       { timeline: [] }]);
+      // No style preset
+
+      await s.propose();
+      await s.approve(); // story -> cast
+      await s.approve(); // cast -> settings
+
+      assert.equal(s.spec.writerStyle, "Third person.");
+      assert.deepEqual(s.spec.writerStyleConstraints, ["a real constraint", "another"]);
+    });
+  });
+});
+
 // -- THE SCAFFOLD'S OWN EDIT SURFACE ---------------------------------------
 // A gate the author can refine is a gate whose field names the architect has been told. The world
 // gate shipped without them: every refinement round came back as {"field": "timeline"} -- the only

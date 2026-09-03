@@ -192,6 +192,11 @@ export type ImportedCharacter = {
   restrictions: string[];
 };
 
+/** The style preset the author picked from their catalog. Session-only: the `voice` becomes the
+ *  spec's `writerStyle`, but WHICH preset it came from is authoring provenance and story.json has
+ *  no room for it. */
+export type StylePreset = { id: string; name: string; voice: string };
+
 /** Which of the two automatic follow-up passes ran, for the CLI/SSE to label. */
 export type AutoStage = "fillGaps" | "verify";
 
@@ -370,6 +375,10 @@ export class ScaffoldSession {
    *  cast gate DOES (see `architectCastImportStage`) rather than what the story holds. */
   imported: ImportedCharacter[] = [];
 
+  /** The style preset the author chose, if any. Assigned by whoever built the session, like
+   *  `imported`: it changes what the settings gate is ASKED for rather than what the story holds. */
+  style: StylePreset | null = null;
+
   /** The bible this session validates a proposed cast against. Assigned by whoever built the
    *  session, so the architect is judged by the bible the author edits rather than the one in the
    *  source. Defaults to the in-code catalog for tests and any caller that has not loaded one. */
@@ -432,18 +441,21 @@ export class ScaffoldSession {
       case "cast": return insist + (this.imported.length
         ? P.architectCastImportStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.imported)
         : P.architectCastStage(this.spec.premise || this.idea, this.tension || this.spec.premise, json, this.castSize));
-      case "settings": return insist + P.architectSettingsStage(json);
+      case "settings": return insist + P.architectSettingsStage(json,
+        this.style ? { name: this.style.name, voice: this.style.voice } : undefined);
       case "technical": return insist + P.architectTechnicalStage(json);
       case "scene": return insist + P.architectSceneStage(json);
       case "world": return insist + P.architectWorldStage(json);
     }
   }
 
-  private static stageHasContent(stage: P.ScaffoldStage, out: Record<string, any>, hasImports = false): boolean {
+  private static stageHasContent(stage: P.ScaffoldStage, out: Record<string, any>, hasImports = false, hasStyle = false): boolean {
     switch (stage) {
       case "story": return Boolean(String(out.premise ?? "").trim() || String(out.title ?? "").trim());
       case "cast": return Array.isArray(out.characters) && (out.characters.length > 0 || hasImports);
-      case "settings": return Boolean(String(out.writer_style ?? "").trim());
+      case "settings": return hasStyle
+        ? Array.isArray(out.writer_style_constraints)
+        : Boolean(String(out.writer_style ?? "").trim());
       case "technical": return Boolean(out.config && typeof out.config === "object")
         || Array.isArray(out.characters) || Array.isArray(out.scenes);
       case "scene": return Boolean(out.scene && typeof out.scene === "object");
@@ -463,7 +475,13 @@ export class ScaffoldSession {
     } else if (stage === "cast") {
       raw.characters = Array.isArray(out.characters) ? out.characters : [];
     } else if (stage === "settings") {
-      raw.writer_style = String(out.writer_style ?? "").trim();
+      // The preset is the author's pick, not the architect's to restate: a voice sent back at this
+      // gate is dropped and the chosen one stands. Same contract as an imported character's
+      // travelling half -- preservation is where a model drifts invisibly.
+      raw.writer_style = this.style ? this.style.voice : String(out.writer_style ?? "").trim();
+      if (Array.isArray(out.writer_style_constraints))
+        raw.writer_style_constraints = out.writer_style_constraints
+          .map((c: unknown) => String(c ?? "").trim()).filter(Boolean);
     } else if (stage === "technical") {
       // Config is a strict schema: strip nulls and any key the schema does not know so a partial
       // reply cannot fail to parse, then let normalizeSpec re-fill the rest with defaults.
@@ -531,7 +549,7 @@ export class ScaffoldSession {
 
   private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
     const ask = String(out.ask ?? "").trim();
-    if (!ScaffoldSession.stageHasContent(stage, out, this.imported.length > 0)) {
+    if (!ScaffoldSession.stageHasContent(stage, out, this.imported.length > 0, Boolean(this.style))) {
       if (ask) { this.pendingAsk = ask; this.asks++; return { kind: "question", ask, stage }; }
       archLog(`STAGE ${stage}: NOTHING — neither stage content nor ask. out=`, out);
       return { kind: "nothing", why: `the reply contained neither ${stage} content nor a question`, stage };
@@ -549,10 +567,20 @@ export class ScaffoldSession {
       mergedOut = { ...out, characters: contract.characters };
     }
 
+    // The settings counterpart of the import contract's receipt: the revert happens in mergedRaw,
+    // and this is what tells the author it happened.
+    const styleNotes: string[] = [];
+    if (stage === "settings" && this.style) {
+      const sent = String(out.writer_style ?? "").trim();
+      if (sent && sent !== this.style.voice.trim())
+        styleNotes.push(`the architect rewrote the voice, which is the preset's `
+          + `— reverted to "${this.style.name}"`);
+    }
+
     const n = normalizeSpec(this.mergedRaw(stage, mergedOut), this.bible);
     archLog(`STAGE ${stage}: content accepted. problems=`, n.problems);
     this.spec = n.spec;
-    this.problems = ScaffoldSession.visibleProblems(this.spec, [...n.problems, ...importNotes], stage);
+    this.problems = ScaffoldSession.visibleProblems(this.spec, [...n.problems, ...importNotes, ...styleNotes], stage);
     return { kind: "proposal", note: withAsk(out), stage };
   }
 

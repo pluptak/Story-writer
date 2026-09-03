@@ -489,20 +489,63 @@ is preserved. Judge it, name it in "note", and let the author change the cast or
 
 ${STAGE_RULES}`;
 
-export const architectSettingsStage = (specSoFar: string) => `${checklistLine("settings")}
+/** The style preset the author chose from their catalog, as this stage needs to see it. */
+export type StylePresetForPrompt = { name: string; voice: string };
+
+const SETTINGS_DERIVED =
+`writer_style_constraints -- the story-derived half: what THIS cast and THIS POV make impossible
+                            to narrate. Read them off the spec above -- the POV character's
+                            perception, and what the cast's restrictions mean the prose cannot
+                            claim. One clause each; send [] if this story needs none. These are
+                            rules about what the narration may KNOW, never how it sounds: "the
+                            prose knows only what Ana can see" belongs here, "short sentences"
+                            does not.`;
+
+export const architectSettingsStage = (specSoFar: string, preset?: StylePresetForPrompt) => {
+  if (preset) return `${checklistLine("settings")}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+[THE VOICE THE AUTHOR CHOSE]
+${preset.name}
+${preset.voice}
+
+YOUR STAGE: this story's narration rules, and nothing else --
+
+{"writer_style_constraints": [], "ask": "", "note": ""}
+
+The voice above is SETTLED. The author picked it from their own library; it is how this story
+sounds, and it is not yours to rewrite, extend or restate. Send no "writer_style" -- one sent
+here is reverted before the author sees the proposal, and the round is spent for nothing.
+
+${SETTINGS_DERIVED}
+
+If the voice genuinely cannot serve this story -- it narrates from a distance this POV cannot
+hold, or asks for something the cast makes impossible -- say so in "note" and let the author
+change it. Do not work around it in the constraints.
+
+${STAGE_RULES}`;
+
+  return `${checklistLine("settings")}
 
 [THE STORY SO FAR]
 ${specSoFar}
 
 YOUR STAGE: the house style, and nothing else --
 
-{"writer_style": "...", "ask": "", "note": ""}
+{"writer_style": "...", "writer_style_constraints": [], "ask": "", "note": ""}
 
 writer_style -- house style: person, tense, what to do with dialogue, what to leave out. Ground
                it in the premise and the tension -- a confession and a farce are narrated
-               differently, and saying which this is does more than listing rules.
+               differently, and saying which this is does more than listing rules. HOW THE PROSE
+               SOUNDS, never what it is allowed to know: this half is written to be reusable by
+               another story, so anything true only of this cast belongs below.
+
+${SETTINGS_DERIVED}
 
 ${STAGE_RULES}`;
+};
 
 export const architectSceneStage = (specSoFar: string) => `${checklistLine("scene")}
 
