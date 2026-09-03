@@ -337,7 +337,10 @@ GET  /scaffold
                           pendingAsk, problems[], last: ScaffoldRound | null, needsFolder, model, spec }
 
 concept =
-  { tags: string[], castSize: number, unknownTags: string[], tagsSteer: boolean, castSizeSteers: boolean }
+  { tags: string[], castSize: number, unknownTags: string[], tagsSteer: boolean, castSizeSteers: boolean,
+    imported: { libraryId: string, version: number, name: string }[],   // the import tray
+    missingImports: string[],                                            // ids the catalog no longer holds
+    importsSteer: boolean }
 
 ScaffoldRound =
   | { kind:"proposal"; note; stage? }        — staged rounds carry the gate they belong to
@@ -346,7 +349,7 @@ ScaffoldRound =
   | { kind:"nothing"; why; stage? }
   | { kind:"failed"; error }
 
-POST /scaffold/start    { idea, model?, mode?, tags?, castSize? }
+POST /scaffold/start    { idea, model?, mode?, tags?, castSize?, importIds? }
                                                 → only while picking; opens a session and runs the
                                                   first proposal. `mode` picks the walk:
                                                   "staged" (the default) runs the gated checklist —
@@ -369,6 +372,12 @@ POST /scaffold/concept  { tags?, castSize? } → revises the author's concept on
                                              stage prompt says, which for a stage already passed
                                              is nothing — `tagsSteer` / `castSizeSteers` are what
                                              say whether that is still any stage at all.
+POST /scaffold/import   { importIds }      → replaces the import tray on the open session, wholesale
+                                             rather than incrementally: the author's pick is a set,
+                                             and a partial update would need a second answer for what
+                                             absence means. At most 4 (the cast stage's ceiling);
+                                             `400` past that. Ids the catalog cannot resolve come back
+                                             in `concept.missingImports` rather than failing the call.
 POST /scaffold/set      { field, value }   → direct edit, bypassing the model — today `field` may only
                                              be `"scene.length"` (`DIRECT_FIELDS`); alternatively
                                              `{ story }` replaces the in-memory draft from the full
@@ -399,10 +408,20 @@ most 8 tags, 40 characters each, and a `castSize` of 0 (meaning "architect decid
 is the cast stage's own ceiling. This is the one place author text reaches a prompt without passing
 through the architect first.
 
-`tagsSteer` and `castSizeSteers` answer one question each: *would the next build of that stage's prompt
-read this?* Tags are live while the story gate is open; cast size is live until a cast exists — which
-means it is at its most live during the STORY gate, before the cast prompt has ever been built. Once
-false, revising that half changes a string nothing will read again, and the viewer stops offering to.
+`tagsSteer`, `castSizeSteers` and `importsSteer` answer one question each: *would the next build of
+that stage's prompt read this?* Tags are live while the story gate is open; the cast size and the tray
+are live until a cast exists — which means both are at their most live during the STORY gate, before
+the cast prompt has ever been built. Once false, revising that half changes a string nothing will read
+again, and the viewer stops offering to.
+
+`imported` is the tray: the characters the author cast out of the catalog, carried as provenance and
+name only, because that is all a page needs. A non-empty tray forces `castSizeSteers` false — the tray
+IS the opening cast's size — and switches the cast gate to a different stage prompt with an enforced
+adaptation contract ([Architect.MD](Architect.MD), *Casting from the library*). It is session state
+that ends at accept: no part of it reaches `story.json`, and the handoff never learns a character came
+from a template. `missingImports` are ids the catalog no longer holds; they are reported rather than
+fatal, because the catalog is the author's and a tray that silently shrank is worse than one that says
+what it lost.
 
 `haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
 be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its

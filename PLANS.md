@@ -509,29 +509,22 @@ below: **The world timeline**.
   one. The architect's is harder in one way: `buildArchitect` renders the catalog into a **prompt
   string**, so the bible has to reach `prompts/architect.ts` already flattened to name-and-meaning
   pairs, the way every other shape does.
-- **The character catalog reaches the architect.** The catalog itself is built — storage, routes and
-  the `#/catalog` editor ([`Architect.MD`](Architect.MD), *Character catalog*) — and nothing consumes
-  it. What is left is the import path at the **cast gate**, which changes what that gate *does*:
-  understand → place → adapt → ask only what the import does not answer, rather than invent →
-  propose → refine. That is a stage prompt of its own, not a decorated `architectCastStage`: today's
-  prompt is written to propose and commit, while the imported path should ask more readily, because
-  the author has already made the choice the architect would otherwise invent.
+- **Casting from the library, past the opening cast.** The import path itself is built — the tray,
+  the cast gate's own stage prompt, and the adaptation contract the engine enforces rather than
+  requests ([`Architect.MD`](Architect.MD), *Casting from the library*). What is unbuilt is
+  everything that follows from a cast the author picked rather than the architect invented:
 
-  The adaptation contract is fixed by field and needs no per-template declaration — `belief`,
-  `impulse`, `voice`, `skills` and `restrictions` are **preserved**; `goal` and `knows` are
-  **resolved per story**; `persona` is **composed** from the entry's portable half plus a story
-  context authored at the gate. That is what makes import awareness inspectable rather than a
-  behavioural hint: you can read a proposal and check which happened. A line telling the architect
-  "the author chose this one" cannot be checked and should not be written.
-
-  **Adaptation and cast quality are separate rules.** The contract says preserve, full stop; the cast
-  gate still judges whether the preserved capabilities bite on this tension. Judging is not adapting,
-  and blurring them reads as licence to rewrite a restriction during import.
-
-  Two things to build for: a fully imported cast may legitimately produce **no new characters at
-  all** — only edits and questions — so `stageHasContent` must accept that as content, the way the
-  world gate had to learn an empty ledger is an answer; and provenance stays **session-only**, since
-  `StoryJson` is a `z.strictObject` and the handoff must never know a character came from a template.
+  - **The contract has never met a real model.** Preservation is enforced, so it cannot fail
+    quietly — but the notes it emits are the measurement. A run whose proposal reverts nothing says
+    the prompt is carrying the rule; a run that reverts on every character says the prompt is not,
+    and the enforcement is all that stands between the author and a rewritten restriction. **Done
+    when** one imported scaffold is read for which of those it is.
+  - **An imported cast may make the cast judge ask the wrong question.** Its single question is
+    whether the cast's asymmetry bites on the tension. With an imported cast the author has already
+    committed to these people, so a refusal is advice about the *tension*, not the cast — and the
+    gate's overrule wording is written for a cast the architect proposed.
+  - **A tray larger than the opening cast has no representation.** Four chosen, two in scene 1 is
+    the deferred-introduction fork below, and the tray is where it would live.
 
 - **The catalog's advisory reviewer.** Deferred deliberately until real entries exist to test it
   against, and specified where it will live ([`Architect.MD`](Architect.MD)): architect-shaped rather

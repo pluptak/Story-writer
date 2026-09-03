@@ -385,6 +385,58 @@ steers the run, and does not, is worse than no editor.
 Cast size is measured against whether a cast exists rather than against the open gate, which means it
 is at its most live during the **story** gate — before the cast prompt has ever been built.
 
+## Casting from the library
+
+The author may fill an **import tray** from the character catalog instead of leaving the cast to the
+architect. A tray is session state like the rest of the concept, capped at the cast stage's four, and
+**it takes over from `castSize`** — the tray *is* the opening cast's size, so the number stops being
+an answer to anything and stops claiming to steer.
+
+A tray changes what the cast gate **does**, so it gets a stage prompt of its own rather than a
+decorated `architectCastStage`. That one is written to invent, propose and commit; this one must
+**understand → place → adapt → ask only what the import does not answer**, and it asks more readily,
+because the author has already made the choice the architect would otherwise have invented.
+
+### The adaptation contract
+
+Fixed by field, with no per-template declaration:
+
+| fields | contract |
+| --- | --- |
+| `belief`, `impulse`, `voice`, `skills`, `restrictions` | **preserve** — these travel with the person |
+| `knows`, `goal` | **resolve per story** — neither means anything outside the story it was written for, which is why the library does not carry them |
+| `persona` | **compose** — the portable half word for word, then this story's context after it |
+
+This is what makes import awareness inspectable rather than a behavioural hint: you can read a
+proposal and check which of the three happened to each field. A line telling the architect *the
+author chose this one, treat it specially* cannot be checked and is not written.
+
+**The preserve half is enforced, not requested.** `applyImportContract` restores the five travelling
+fields from the tray after the round and reports every correction, and an import the reply left out
+is added back unchanged — the author chose these people, so the architect may argue in `note` that
+one does not fit, but may not un-choose them by omission. The prompt therefore states the rule as a
+fact about what will happen rather than as an instruction that might be followed.
+
+**Adding someone is reported rather than reverted**, and the asymmetry is deliberate: preservation is
+where a model drifts invisibly, while an extra character is visible on the page, may well be what the
+author asked for mid-gate, and is cheap to delete.
+
+Because the tray is already a cast, `characters: []` becomes a real answer at this gate — *these are
+right as they are* — the way an empty ledger is at the world gate.
+
+**Adaptation and cast quality stay separate rules.** The contract says preserve, full stop; the cast
+gate still judges whether the preserved capabilities bite on this tension. Judging is not adapting,
+and blurring the two reads as licence to rewrite a restriction during import.
+
+### Provenance ends at accept
+
+The tray keeps `{libraryId, version}` for as long as the session lives and no longer. `StoryJson` is
+a `z.strictObject`, so there is nowhere on disk to put it even if it were wanted — and it is not:
+**the handoff must never know a character came from a template.** A character in an accepted story is
+a character, and re-authoring it between chapters is not a different job because of where it started.
+The tray is also marked **placed** rather than *spent* once the cast lands, because unlike the tags
+it was not discarded — it became the cast.
+
 ## Conversation rules
 
 ### Scaffold
