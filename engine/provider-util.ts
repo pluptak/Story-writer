@@ -24,12 +24,8 @@ export interface ProviderCapabilities {
    *  true for LM Studio (its /api/v1 lists downloads), false where the native view is only
    *  what is resident right now (Ollama's /api/ps) or where there is no native view. */
   fullInventory: boolean;
-  /** Whether the app can ask the server to load a model ahead of a call. */
-  modelPreparation: boolean;
   /** Whether `reasoning_effort` belongs on chat requests at all. */
   reasoningEffort: boolean;
-  explicitLoad: boolean;
-  explicitUnload: boolean;
 }
 
 /** One inference server: where it lives, what it can do, and the two model questions it may
