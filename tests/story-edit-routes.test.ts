@@ -13,6 +13,7 @@ const DOORWAY = {
   premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
   scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]> }],
   writerStyle: "Plain sentences.",
+  writerStyleConstraints: [] as string[],
   facts: [] as string[],
   timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
   characters: [
@@ -37,6 +38,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
         premise: DOORWAY.premise,
         scenes: DOORWAY.scenes,
         writerStyle: DOORWAY.writerStyle,
+        writerStyleConstraints: DOORWAY.writerStyleConstraints,
         facts: DOORWAY.facts,
         timeline: DOORWAY.timeline,
         characters: DOORWAY.characters,

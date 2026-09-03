@@ -26,6 +26,7 @@ export interface PreflightResult {
     scenes: SceneDef[];
     timeline: TimelineDef[];
     writerStyle: string;
+    writerStyleConstraints: string[];
     maxSteps: number; retries: number; clarifications: number; maxProseWords: number;
     models: { default: string; writer: string; summary: string };
     modelCheck: "ok" | "missing" | "unreachable";
@@ -165,6 +166,7 @@ export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): 
           scenes: sc.scenes,
           timeline: sc.timeline,
           writerStyle: sc.writerStyle,
+          writerStyleConstraints: sc.writerStyleConstraints,
           maxSteps: sc.maxSteps, retries: sc.retries, clarifications: sc.clarifications,
           maxProseWords: sc.maxProseWords,
           models: sc.models, modelCheck, missingModels,
@@ -186,6 +188,7 @@ export interface StoryCard {
   scenes?: SceneDef[];
   timeline?: TimelineDef[];
   writerStyle?: string;
+  writerStyleConstraints?: string[];
   characters?: { name: string; skills: string[]; restrictions: string[] }[];
   maxSteps?: number;
   defaultModel?: string;
@@ -239,6 +242,7 @@ export async function storyCards(bible: BibleLookup = bibleMeaningOf): Promise<S
         scenes: s.scenes,
         timeline: s.timeline,
         writerStyle: s.writerStyle,
+        writerStyleConstraints: s.writerStyleConstraints,
         characters: s.characters.map(c => ({ name: c.name, skills: c.added, restrictions: c.restrictions })),
         maxSteps: s.maxSteps,
         defaultModel: s.models.default,

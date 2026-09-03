@@ -113,6 +113,11 @@ export const StoryJson = z.strictObject({
   premise: z.string().default(""),
   scenes: z.array(SceneDef).min(1).prefault(() => [{}]),
   writerStyle: z.string().default(""),
+  /** The story-derived half of the house style -- perception clauses and the like, read off THIS
+   *  cast and POV. Kept beside `writerStyle` rather than inside it because a reusable preset must
+   *  never carry one (`styleProblems`, engine/catalog.ts), and only a separate list lets the preset
+   *  be swapped without taking the story's own rules with it. The writer sees the two joined. */
+  writerStyleConstraints: z.array(z.string()).default([]),
   /** World truths known to anyone who would know them — the writer sees these as THE FACTS. */
   facts: z.array(z.string()).default([]),
   /** World events the architect authors, fired into the writer one at a time (PLANS.md: the world

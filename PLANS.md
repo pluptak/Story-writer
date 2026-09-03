@@ -245,8 +245,7 @@ Each has live scaffold evidence and a candidate fix; all four need a run to conf
 The next action is reading a run, not writing code. These are the owner's, batched. Each names what
 would settle it, and several gate work in the sections below.
 
-**In Next:** item 1. **The open-beat experiment** below is also here in kind — its whole
-remaining cost is one more stage-3 run.
+**In Next:** item 1.
 
 - **The question gates now guard only the judge's re-ask, and that path is unmeasured.** Since
   `14022cf` the writer's consult carries no `question` and no `wants`, so `normalizeConsult`'s
@@ -260,6 +259,18 @@ remaining cost is one more stage-3 run.
   and that is the churn figure worth watching instead. Entered here because the entry it replaces
   (*"Did the instruction pass fix the consult-gate churn?"*, formerly Next item 1) asked about a
   field the writer no longer sends.
+- **A stage-3 consult has never been read for `narration_flag` on invented deeds and stillness.**
+  Stage 3 (the consult is a character and a situation, shipped at `14022cf`) gave up the question
+  field that receipted the writer's stops, leaving THE ONE RULE and the stop-while-the-pressure-is-live
+  rule as the only pressure toward stopping at choices. The failure would be quiet: competent,
+  low-consequence answers that break no rule, pass the judge, pass the lint, and let the scene die
+  politely. The one check that would catch it is the narration lint's deeds-and-stillness read — and
+  until `9fd2410` every quotation hit short-circuited that check for its piece, so it has effectively
+  never run on a stage-3 scene: the one run read as clean put three unasked-for stillnesses on the
+  page ("Jules remains glued to the terminal", "Sara remains anchored to the console", "Kane remains
+  hunched over the lever"). **Done when** a post-`9fd2410` stage-3 run is read for that flag — a
+  clean page closes the question this entry keeps alive; a dirty one reopens the writer's receipt as
+  a defect.
 - **The LLM half of the narration lint has still never fired.** Two of its four checks are mechanical
   now — quotations against the granted ledger (`engine/quote-lint.ts`) and restricted senses against
   the CANNOT list (`engine/sense-lint.ts`) — leaving deeds and consult-situation quality to the
@@ -343,88 +354,6 @@ remaining cost is one more stage-3 run.
   distinct: that one is several characters answering alike, this one is a single character rendered
   alike every time. Worth measuring before it is worth fixing — count repeated body-move phrasings
   per chapter first.
-
-## The open-beat experiment (branch `pov-thought-withholding`)
-
-Built in three stages, run twelve times, unmerged. It lives here rather than in
-[Writer.MD](Writer.MD) because the part still undecided has not earned a surface document; the
-passages it would rewrite are named at the end so whoever ships it knows what to fix.
-
-**The question it asked.** A character carries a persona and a goal, and `CHARACTER_FORMAT` insists
-that what it wants is the measure of every answer. Is the consult's `question` doing work the
-situation and the goal do not already do? The field turned out to hold four separable jobs — the
-writer's receipt that it found a fork before stopping, the only channel for stakes the character
-cannot see, the return shape (`wants`), and the judge's anchor — and the objection lands against the
-second alone. Hence three stages, one job at a time.
-
-### What the runs established
-
-Not the outcome numbers; see the caveats below. What holds is mechanical, checkable from the
-transcripts, and has a large enough denominator not to need statistics:
-
-- **A non-POV thought does not reach the writer.** 0 of 4, against 19 of 23 in the pre-stage-1
-  baseline, with a positive control on the same runs (POV thoughts reached it 9/9 and 2/2).
-- **A non-POV reaction surfaces when asked to.** 33 of 33, with **zero** repairs fired — the
-  prospective gloss did the work, so no ask was spent on an unanswerable question.
-- **A character finds the fork unaided.** 54 consults across stages 2 and 3 produced 2 retries, and
-  both were the judge reading `wants` as a ceiling rather than a floor — instrument error, fixed in
-  `f835fb3`. Not one character failed to answer a moment it had not been pointed into. That was the
-  wager and it holds.
-- **The refusal churn was the gate charging for an unread field.** 18 refused consults across three
-  stage-2 runs; 0 across two stage-3 runs.
-- **`wants` was suppressing speech.** 18 speech / 5 action under stage 3, against 4 / 14 under
-  stage 2 — the opposite of the predicted risk that nobody would speak once nothing asked them to.
-
-### What the runs did NOT establish, and the caveats that matter
-
-- **Every quote-flag figure in this experiment is contaminated.** Machine labels ('Shutdown',
-  "Fatal", "off") were counted as invented dialogue until the fix in `9fd2410`. No cross-arm
-  comparison on that number means anything, including an "8x fewer invented lines" reading that was
-  drawn and then withdrawn mid-experiment.
-- **Prose quality is unmeasured.** One stage-3 scene was read end to end: coherent, and it answers
-  the scene's question by a better route than the premise anticipated (Elias does not convince Sara;
-  he and Kane overpower her at the lever and she concedes after). That is one scene.
-- **The writer's receipt is unmeasured, and is the live risk.** Stage 3 gives up job 1. Only THE ONE
-  RULE and the stop-while-the-pressure-is-live rule still hold the writer to stopping at choices, and
-  two runs cannot say whether they do. The failure would be quiet: competent, low-consequence answers
-  that break no rule, pass the judge, pass the lint, and let the scene die politely.
-- **How the evidence went wrong is worth as much as the evidence.** Three of the first four runs were
-  written by an engine other than the working tree, because a `git checkout` does not reach a running
-  `--serve` process; rotation at `MAX_RUNS = 3` destroyed an arm mid-series; and single runs were
-  twice read as signal, once producing a correction that was itself based on a mislabelled run.
-  [run-manifest.ts](run-manifest.ts) exists because of this, and every run since identifies itself.
-
-### The conclusion that was not expected
-
-**Stage 2 is not a merge target and never was.** It is the configuration where the writer pays to
-compose a question, the gate charges a step to refuse it, and no character ever reads it — pure
-overhead, and its three runs are the longest and most refusal-ridden in the series. It was a
-measurement device for isolating job 2. The two coherent end states are keeping the question and
-showing it, or deleting it.
-
-So the branch holds two shippable things and one instrument:
-
-| | what | state |
-| --- | --- | --- |
-| **Stage 1 + reaction fix** | a thought reaches the writer only from inside the POV; a non-POV reaction has to surface | strong mechanism evidence, no counter-evidence, independent of the rest |
-| **Infrastructure** | the run manifest, retention at 10, the repeat guard, the unchanged-situation retry refusal, the quote-lint fix | every one a defect the experiment surfaced; none depends on it |
-| **Stage 3** | the consult is a character and a situation | coherent end state, one unmeasured risk |
-
-### Done when
-
-One more stage-3 run, read for `narration_flag` on **invented deeds and stillness**. Until `9fd2410`
-every quotation hit short-circuited that check for its piece, so it has effectively never run on a
-stage-3 scene — which is how a run that showed as clean put three unasked-for stillnesses on the page
-("Jules remains glued to the terminal", "Sara remains anchored to the console", "Kane remains hunched
-over the lever"). That is the one check that would catch the writer no longer stopping at choices,
-and it is the one number between stage 3 and a merge decision.
-
-Stage 2 shipped at `6a9041d` and stage 3 at `14022cf`. The surface docs have caught up with both:
-[Writer.MD](Writer.MD) now describes the retry as the one place a fork is named in words, the
-unchanged-situation refusal, the single POV floor an open beat has in place of the four shapes, and
-the `wants` menu's move to `prompts/judge.ts`; [GUI-SPEC.md](GUI-SPEC.md) records that `question` and
-`wants` are `""` on every consult the writer sends. **Nothing in the docs now describes stage 3 as
-unshipped, so a revert has to undo those passages too.**
 
 ## Open design questions
 

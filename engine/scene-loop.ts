@@ -51,8 +51,12 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[], style: string, facts: string[] = []): string {
-  return P.writerSystem({ premise, scene, cast, facts, style });
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[], style: string, facts: string[] = [], constraints: string[] = []): string {
+  // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
+  // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
+  // leaves the writer seeing exactly what a story with both typed into one field always saw.
+  const houseStyle = [style.trim(), ...constraints.map(c => c.trim()).filter(Boolean)].join("\n").trim();
+  return P.writerSystem({ premise, scene, cast, facts, style: houseStyle });
 }
 
 /** The cast actually in a scene; an empty roster means the whole cast. */
@@ -234,6 +238,7 @@ export interface SceneRun {
   agents: Map<string, Agent>;
   premise: string;
   writerStyle: string;
+  writerStyleConstraints: string[];
   writerModel: string;
   summaryModel: string;
   thinking: { writer: ThinkLevel; summary: ThinkLevel };
@@ -258,7 +263,7 @@ export interface SceneRun {
 
 /** Write one scene: the draft/consult loop that stops at choices, consults, judges, and trims history. */
 export async function writeScene(run: SceneRun) {
-  const { scene: sd, chapter, characters, agents, premise, writerStyle,
+  const { scene: sd, chapter, characters, agents, premise, writerStyle, writerStyleConstraints,
           writerModel, summaryModel, thinking, maxSteps, maxProseWords,
           retries, clarifications, dir, log } = run;
   const maxCharacterRetries = run.maxCharacterRetries;
@@ -271,7 +276,7 @@ export async function writeScene(run: SceneRun) {
   const active = new Set(rosterNames);          // the cast still in the scene; shrinks as one exits
   const isActive = (name: string) => [...active].some(n => sameName(n, name));
   const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, bible)])));
-  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts), 0.8);
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
   // A thought reaches the writer only from inside the POV. The narration lint already holds that
@@ -865,7 +870,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
   try {
     return await writeScene({
       scene: sd, chapter, characters: sc.characters, agents,
-      premise: sc.premise, writerStyle: sc.writerStyle,
+      premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
       writerModel: sc.models.writer, summaryModel: sc.models.summary,
       thinking: sc.thinking, maxSteps: sc.maxSteps, maxProseWords: sc.maxProseWords,
       retries: sc.retries, clarifications: sc.clarifications,

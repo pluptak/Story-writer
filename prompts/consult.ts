@@ -24,7 +24,7 @@ YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
 
 FIRST DECIDE: ask, or answer?
 
-  Read the situation and the question. Is there a fact of YOUR SITUATION -- something you would need
+  Read the situation. Is there a fact of YOUR SITUATION -- something you would need
   to see, hear, or already know in order to answer honestly -- that the author simply has not told
   you? Then ASK INSTEAD OF ANSWERING, with the "need" shape above.
 
@@ -153,17 +153,19 @@ const REACTION_OUTWARD =
   + `in how you hold yourself; not a deliberate act that redirects the scene. If it barely moves you, `
   + `that is an answer: show it small`;
 
-/** What stands where the question used to. The author still writes a question -- it is the fork it
- *  stopped at, it gates the consult and it travels with the answer on the record -- but the character
- *  is not shown it. The wager is that a persona with a goal does not need to be pointed at the fork
- *  in its own situation, and that being pointed was costing more than it bought: a question names one
- *  fork out of the several a moment holds, and a character answering the named one is answering the
+/** What stands where the question used to. The character is never shown one: on the writer's open
+ *  beat no question is written at all -- the situation is the whole of the ask -- and when the
+ *  judge's retry names a fork in words (directed mode), the situation is still the only part of
+ *  the ask the character reads; the question travels with the answer on the record instead. The
+ *  wager is that a persona with a goal does not need to be pointed at the fork in its own
+ *  situation, and that being pointed was costing more than it bought: a question names one fork
+ *  out of the several a moment holds, and a character answering the named one is answering the
  *  author's reading of the scene rather than its own. */
 const THE_MOMENT_IS_YOURS =
   `This is your moment and nobody is going to hand you a better one. Whatever you want tonight, if `
   + `it needs something from here, here is where you take it.`;
 
-export const askBlock = (req: { situation: string; question: string; wants: string },
+export const askBlock = (req: { situation: string; wants: string },
                          attempt = 1, pov = true) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
   + (req.wants ? `\nWhat they need from you: ${req.wants} (${
@@ -199,7 +201,7 @@ export const ANSWER_NOW =
   + `what you already know.`;
 
 export const EMPTY_REPLY =
-  `[EMPTY] That reply had no thought, no speech and no action. Answer the question.`;
+  `[EMPTY] That reply had no thought, no speech and no action. Answer what you were sent.`;
 
 const SHAPE_ASKED_FOR: Record<string, string> = {
   speech:   `You were asked what you SAY, and "speech" was empty. Put the words in "speech" — the `

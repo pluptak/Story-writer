@@ -472,7 +472,7 @@ describe("the world timeline in the loop", () => {
     try {
       const r = await writeScene({
         scene: sd, chapter: 1, characters: sc.characters, agents: agents,
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,
@@ -551,7 +551,7 @@ describe("the world timeline in the loop", () => {
     try {
       await writeScene({
         scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,
@@ -590,7 +590,7 @@ describe("the world timeline in the loop", () => {
     try {
       const r = await writeScene({
         scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,
@@ -869,7 +869,7 @@ describe("the repeat guard", () => {
     try {
       const r = await quiet(() => writeScene({
         scene: sc.scenes[0], chapter: 1, characters: sc.characters, agents: new Map(),
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,

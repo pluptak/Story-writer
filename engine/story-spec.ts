@@ -10,6 +10,7 @@ export interface StorySpec {
   premise: string;
   scenes: SceneDef[];
   writerStyle: string;
+  writerStyleConstraints: string[];
   facts: string[];
   /** The world-event ledger (PLANS.md: the world timeline). Story-level: an entry carries a
    *  per-character memory map, which SceneDef has no shape for, and story-level is what lets the
@@ -253,6 +254,7 @@ export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { 
     premise: String(o.premise ?? "").trim(),
     scenes,
     writerStyle: String(o.writer_style ?? o.writerStyle ?? "").trim(),
+    writerStyleConstraints: asStrings(o.writer_style_constraints ?? o.writerStyleConstraints),
     facts: Array.isArray(o.facts) ? o.facts.map((f: unknown) => String(f).trim()).filter(Boolean) : [],
     timeline,
     config,
@@ -288,7 +290,7 @@ export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bible
   type Applied = { field: string; before: unknown; after: unknown };
   type Work = Applied & { key: string; snapshot: unknown; resolve?: (next: StorySpec) => unknown };
   const work: Work[] = [], ignored: string[] = [];
-  const draft: any = JSON.parse(JSON.stringify({ ...spec, writer_style: spec.writerStyle, scenes: spec.scenes }));
+  const draft: any = JSON.parse(JSON.stringify({ ...spec, writer_style: spec.writerStyle, writer_style_constraints: spec.writerStyleConstraints, scenes: spec.scenes }));
   const rawEdits = Array.isArray(raw?.edits) ? raw.edits : [];
   // The canonical edit shape is {"field": "...", "value": ...}. Some models instead emit a single
   // object whose KEYS are the field names ({"title": "...", "premise": "..."}). Expand those into the
@@ -341,6 +343,12 @@ export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bible
       const before = normalizedDraft().writerStyle;
       draft.writer_style = scalar();
       scalarResolver("writer_style", next => next.writerStyle, before, "writer_style");
+      continue;
+    }
+    if (field === "writer_style_constraints" || field === "writerStyleConstraints") {
+      const before = normalizedDraft().writerStyleConstraints;
+      draft.writer_style_constraints = asStrings(value);
+      scalarResolver("writer_style_constraints", next => next.writerStyleConstraints, before, "writer_style_constraints");
       continue;
     }
     if (field === "facts") {
@@ -744,6 +752,9 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     premise: spec.premise,
     scenes: spec.scenes,
     writerStyle: spec.writerStyle,
+    // Absent rather than empty, so a handoff accept or scaffold save does not add a field to
+    // stories that never had one — same rule as the optional model fields and timeline above.
+    ...(spec.writerStyleConstraints.length ? { writerStyleConstraints: spec.writerStyleConstraints } : {}),
     facts: spec.facts,
     // Absent rather than empty, so a handoff accept or scaffold save does not add a field to
     // stories that never had one — same rule as the optional model fields above.
@@ -762,6 +773,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
 export function specView(spec: StorySpec) {
   return {
     title: spec.title, premise: spec.premise, scene: spec.scenes[0], scenes: spec.scenes, writerStyle: spec.writerStyle,
+    writerStyleConstraints: spec.writerStyleConstraints,
     facts: spec.facts, timeline: spec.timeline, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
       name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,
