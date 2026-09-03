@@ -43,6 +43,9 @@ The architect's system prompt carries two in-code catalogs from `engine/skills.t
   matches; an entry not in the bible stays **custom** and keeps its authored `name :: meaning`.
   Bespoke per-story skills are first-class — but one that is neither a bible skill nor carries a
   `:: meaning` is reported back to the author as a non-fatal problem rather than silently kept.
+  The in-code catalog is now the **seed** of an editable one (*Skill bible* below). A run resolves
+  against the author's bible; the architect's prompt still carries the in-code one, so a skill the
+  author promoted is one the architect cannot yet offer.
 
 Restrictions are a plain list of names — a general skill, a bible skill, or one of that character's
 own skills. A restriction is a **source-independent prohibition**: it names a capability unavailable
@@ -94,7 +97,124 @@ own `:: meaning` — reach is never in the bible — and a grant keyed to a non-
 a problem. The loader additionally warns when a scene grants reach to someone not in its roster,
 since the grant would never reach a run.
 
-Promotion of bespoke skills into a shared, approvable bible is planned work ([`PLANS.md`](PLANS.md)).
+The bible the promotion would land in is built (*Skill bible* below); the **promotion** itself — the
+architect proposing an entry and the owner approving it — is planned work ([`PLANS.md`](PLANS.md)).
+
+## Character catalog
+
+**Status: the catalog and its screen are built; nothing reaches the architect yet.** The import path
+that would let a scaffold adapt a catalog entry is unbuilt and lives in [`PLANS.md`](PLANS.md).
+
+A reusable library of character templates, stored beside `defaults.json` rather than inside any
+story, so it is not scoped to one and survives every story it is used in. `engine/catalog-schema.ts`
+is its format's own definition, the way `story-schema.ts` is `story.json`'s; the routes are
+[`GUI-SPEC.md`](GUI-SPEC.md)'s *Character catalog*.
+
+**A library character is not a `CharacterDef`.** It carries only what travels between stories:
+
+| fields | in the catalog | why |
+| --- | --- | --- |
+| `belief`, `impulse`, `voice` | yes | psychology; rendered text the skill system never resolves |
+| `skills`, `restrictions` | yes | capability travels with the person |
+| `persona` | the portable half only | see below |
+| `goal`, `knows` | **no** | story-positional by construction — they only mean something inside one story |
+| `model`, `maxRetries` | **no** | run configuration, not identity |
+
+**Reach is never in a catalog.** A catalog entry is a character-level representation and I4 forbids
+it: a reach grant exists only while the scene that granted it is being written.
+
+### The persona splits the way the writer's style does
+
+A catalog entry holds a **portable persona** — temperament, manner, values, habits, the history that
+travels — and the story-specific half (where they stand now, who they are to this cast, what has just
+happened) is authored per story. They concatenate into the one `persona` string `story.json` already
+holds, so nothing downstream changes:
+
+```text
+portable persona + story context         = persona
+preset voice     + derived story clauses = writerStyle
+```
+
+One shape, two uses. In both, swapping the reusable half cannot silently drop the derived half. The
+rule that keeps the split honest: **the portable persona must read as valid on its own** — a template
+whose persona says "has just arrived" is describing one story, not a character.
+
+### The gate is mechanical; the advisor is not a gate
+
+```text
+edit  ⇄  advisor (unbuilt, optional, non-blocking)
+        ↓
+mechanical validation          ← always the last step
+        ↓
+owner approves → catalog
+```
+
+Validation reuses the engine's existing opinions rather than growing a second one:
+`characterPsychologyWarnings` for the psychology fields and `capabilityProblems` for skills and
+restrictions — the same function and the same wording `normalizeSpec` uses, so a cast sheet and a
+catalog entry cannot come to disagree about what a good `goal` looks like. Its skill source is a
+parameter, and the author's own bible is what the catalog passes into it (*Skill bible* below), so a
+skill the author added stops being reported as unknown the moment they add it.
+
+Two consequences worth stating:
+
+- **Everything the catalog reports is advisory except the schema.** An unresolvable restriction is
+  reported and **kept** — the catalog is an editing surface, so telling the author is right and
+  deleting their work behind their back is not.
+- **A catalog gate can only check the standalone half.** "Does this goal have agency" is answerable
+  about one character; "does this cast's asymmetry bite on the tension" is a property of a cast
+  against a story, and the catalog has neither. Per-story collision quality stays at the cast gate,
+  and the catalog cannot promise good casts.
+
+The **advisor** — logical inconsistencies, wording, proposals, help generating ideas — is deliberately
+deferred until real entries exist to test it against. When it arrives it is **architect-shaped, not
+judge-shaped**: the judge family is stateless, returns a verdict and gates, while this proposes edits
+the author accepts or ignores, which is the relationship the architect already has to a proposal. It
+never blocks, and mechanical validation still runs after it. It should read `CHARACTER_FIELDS` rather
+than grow a second account of what a good field is.
+
+## Skill bible
+
+**Status: the bible and its editor are built; nothing proposes into it yet.** The architect's
+propose → owner-approves gate is unbuilt and lives in [`PLANS.md`](PLANS.md).
+
+The fourth catalog kind, beside characters, tags and styles, and stored the same way — a file next to
+`defaults.json`, global rather than scoped to a story. An entry is `id`, `version`, `name`, `meaning`
+and `tags[]`, and **`meaning` is required**: a bible entry exists to say what a skill lets a character
+do, so one without a meaning would be *found* by the lookup and hand the character a skill that means
+nothing — worse than not being in the bible at all. That is the one field the schema refuses rather
+than reports.
+
+`SPECIAL_SKILL_CATALOG` is the **seed**, exactly as `TAG_SEED` is for tags: an author who has never
+opened the screen sees the three in-code skills, and the first save materializes the whole seed
+alongside their edit. Once the file exists it wins entirely — a bible entry the author deleted stays
+deleted, because resurrecting it would be the engine overruling a deliberate choice.
+
+**Two things are deliberately not in it.** **Reach**, because a reach grant lives only inside the
+scene that granted it and carries its own `:: meaning` (I4) — a library of reach entries is the
+character-level representation I4 exists to forbid. And **restrictions**, because a restriction is
+not a thing of its own: it names a capability by canonical name and negates it. One namespace with a
+sign, and `resolveSkills` already settles the precedence, so a restriction catalog would be a second
+list of the same names that could drift from the first.
+
+**The general list stays in code.** `SKILL_CATALOG` — movement, speech, sight and the rest — is not
+the bible and is not editable. Every character has all of it unless a restriction removes it, so
+editing it would silently change every story at once; the bible is opt-in per character and can't.
+
+`skillBible()` turns the persisted entries into the lookup every reader takes as a parameter. The
+catalog's validation passes it, so the character editor stops calling a promoted skill unknown, and
+**so does a run**: `loadStory` takes the bible, resolves the cast against it, and carries it on the
+`StoryConfig` so the per-scene reach layer resolves the same names — I2 and I3 both need the two
+layers to agree on which capabilities exist. The shelf's cards and preflight take it too, so a card
+and the run it starts report the same skills. Nothing loads it inside the engine: `app.ts`, `host.ts`
+and `story-writer.ts` load it and pass it down, and every engine function defaults to the in-code
+catalog when they don't.
+
+**The architect is the one reader still on the in-code catalog.** Its prompt carries
+`SPECIAL_SKILL_CATALOG`, and `normalizeSpec` validates a proposed cast against it, so a skill the
+author promoted is one the architect will neither offer nor recognize — it will propose the same
+capability afresh as a `custom` skill with its own wording. That is the next stage, and the propose →
+approve gate comes after it.
 
 ## Operating principle
 
@@ -239,6 +359,12 @@ The session runs one of two walks, chosen when it opens.
   should.** Most stories are pure friction between people; an empty ledger is a complete answer, and
   the gate is optional the way `technical` is. That makes an empty array *content*: if it read as a
   missing answer the gate would report "neither world content nor a question" and stall.
+  While this gate is open a refinement naming `timeline` — top-level, or as an edit field, which is
+  the shape the architect reaches for a turn after authoring the ledger in it — is folded through
+  the stage's own merge path rather than refused as an unknown field, and the round comes back as a
+  proposal so the author sees the whole ledger it produced. Any other edits in the same round apply
+  on top. Every other gate still refuses `timeline`, and the prompt steers toward `add_beat`, which
+  cannot drop a beat the architect forgot to list.
 
 `propose()` opens the first gate; `approve()` passes the open gate and proposes the next stage's
 content in one call; refinement (`say`) applies edits within the open gate — back-edits to earlier
