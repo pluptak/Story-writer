@@ -59,6 +59,12 @@ describe("the startup gate", () => {
     assert.equal(await startupRefusal(WANTED), null);
   });
 
+  it("refuses when the server stands but reports an empty catalog", async () => {
+    restore = fakeProvider({ health: async () => true, listModels: ids() });
+    const refusal = (await startupRefusal(WANTED))!;
+    assert.match(refusal, /reports no available models/);
+  });
+
   it("starts when every wanted model is known to the provider", async () => {
     restore = fakeProvider({ health: async () => true, listModels: ids("gemma", "qwen", "other") });
     assert.equal(await startupRefusal(WANTED), null);

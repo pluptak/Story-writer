@@ -76,6 +76,17 @@ describe("makeProvider", () => {
     assert.equal(p.modelsUrl, "http://localhost:1234/v1/models");
   });
 
+  it("returns [] for a valid but empty catalog — a real answer, not a failure", async () => {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: [] }))) as any;
+    try {
+      const p = makeProvider("lmstudio", BASE, {});
+      const ids = await p.listModels(500);
+      assert.notEqual(ids, null, "empty is readable — only an unreadable list is null");
+      assert.deepEqual(ids, []);
+    } finally { globalThis.fetch = origFetch; }
+  });
+
   it("carries the auth header it was given", () => {
     const p = makeProvider("lmstudio", BASE, { Authorization: "Bearer tok" });
     assert.deepEqual(p.headers(), { Authorization: "Bearer tok" });

@@ -20,6 +20,9 @@ export async function startupRefusal(wanted: string[]): Promise<string | null> {
     return `${PROVIDER.displayName} at ${PROVIDER.baseUrl} is not answering — start its server, then run again`;
   const ids = await PROVIDER.listModels(NET.probeTimeoutMs);
   if (ids === null) return null;
+  if (!ids.length)
+    return `${PROVIDER.displayName} is standing but reports no available models at ${PROVIDER.baseUrl} — `
+      + `load one there, or fix the story's models, then run again`;
   const missing = models.filter(m => !ids.includes(m));
   if (!missing.length) return null;
   // A model the OpenAI list omits may still exist natively, downloaded but not loaded (LM

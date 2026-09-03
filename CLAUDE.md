@@ -140,7 +140,7 @@ way.**
 | [engine/catalog.ts](engine/catalog.ts) | the catalog beside `defaults.json`: load, check, upsert and delete, keyed by asset kind. Advisory problems reuse `characterPsychologyWarnings` and `capabilityProblems` rather than restating them, and `skillBible()` turns the persisted skill kind into the lookup the second of those takes |
 | [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` |
 | [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
-| [engine/run-gate.ts](engine/run-gate.ts) | the startup gate between a picked story and its run: refuse when the provider is unreachable or a wanted model is unknown to it, warn when a model exists but is not loaded, start anyway when the provider stands but its list cannot be read |
+| [engine/run-gate.ts](engine/run-gate.ts) | the startup gate between a picked story and its run: refuse when the provider is unreachable, its catalog is empty, or a wanted model is unknown to it, warn when a model exists but is not loaded, start anyway when the provider stands but its list cannot be read |
 | [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
 | [engine/judge-gate.ts](engine/judge-gate.ts) | the per-answer gate's attempt cycle — consult, judge, retry on a fresh fork, ceiling — extracted from the scene loop |
 | [engine/fanout.ts](engine/fanout.ts) | the reaction fan-out — one shared beat, isolated per-reactor consults, the writer's bundle, and the batch judge's promotable flags |

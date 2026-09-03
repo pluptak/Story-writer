@@ -111,12 +111,13 @@ export async function openAiHealth(baseUrl: string, timeoutMs: number,
 }
 
 /** The OpenAI-compatible model list, shared by every adapter: ids the server will accept.
- *  An empty list reads as "unreachable" — the same call the old LM Studio-only code made. */
+ *  `[]` is a real answer — a standing server that reports nothing available; `null` means the
+ *  list could not be read at all (unreachable, or a body that is not a model list). Callers
+ *  that must not confuse the two check for `null` and treat `[]` on its own terms. */
 export async function openAiListModels(baseUrl: string, timeoutMs: number,
                                        auth: Record<string, string>): Promise<string[] | null> {
   const body = await getJson(`${baseUrl}/models`, timeoutMs, auth);
   const data = (body as { data?: unknown })?.data;
   if (!Array.isArray(data)) return null;
-  const ids = data.map(m => String((m as { id?: unknown })?.id ?? "")).filter(Boolean);
-  return ids.length ? ids : null;
+  return data.map(m => String((m as { id?: unknown })?.id ?? "")).filter(Boolean);
 }
