@@ -379,6 +379,10 @@
   .iv .prob, .story .prob { color:var(--warn); font-size:var(--fs-13); margin-top:5px; }
   .iv .note { text-align:left; margin:10px 0 0; }
 
+  /* A field's "open the library" button hugs its own text -- `.field` is a column flex box, so
+     without this it stretches the full width and reads as the field's primary control. */
+  .field .pickopen { align-self:flex-start; }
+
   .libpick .sub { margin:2px 0 0; color:var(--muted); font-size:var(--fs-12); }
   .libpick #picker-search { display:block; width:100%; margin:14px 0 10px; padding:9px 11px;
     font-family:var(--sans); font-size:var(--fs-14); color:var(--ink); background:var(--panel-2);

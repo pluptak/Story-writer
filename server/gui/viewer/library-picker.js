@@ -1,8 +1,11 @@
-// ---- the library picker overlay ────────────────────────────────────────────
-// A focused modal that reads entries from a library (skills, characters, styles, tags)
-// and lets the caller pick a subset. The picker is READ-ONLY: editing library entries
-// stays on the library page. It gets its own APP.picker slice to avoid clobbering the
-// catalog page's state if opened over it.
+// ---- the library picker overlay ---------------------------------------------
+// A focused modal that reads entries from a library (skills, characters, styles, tags) and lets
+// the caller pick a subset -- so a page can draw on a library without navigating away to it.
+//
+// The picker is READ-ONLY. Editing a library entry stays on that library's own page, which is what
+// makes "the architect consumes the library, it does not manage it" true of the mechanism and not
+// only of the prose. It holds its own APP.picker slice for the same reason: `APP.catalog` is the
+// catalog PAGE, and an overlay sharing it would wipe the half-filled form underneath.
 
 import { esc, tid, reasonOr, wireBackdropClose } from "./util.js";
 import { APP } from "./state.js";
@@ -52,7 +55,7 @@ export async function openLibraryPicker({ kind, title, hint = "", preselect = []
     if (preselectNames.length > 0) {
       const preselectLower = new Set(preselectNames.map(n => n.trim().toLowerCase()));
       APP.picker.chosen = APP.picker.entries
-        .filter(e => preselectLower.has(entryFace(kind, e).name.toLowerCase()))
+        .filter(e => preselectLower.has((entryFace(kind, e).name || "").trim().toLowerCase()))
         .map(e => e.id);
     }
 
@@ -185,4 +188,8 @@ export function wireLibraryPicker(root) {
   if (closeBtn) closeBtn.addEventListener("click", cancelLibraryPicker);
 
   wireBackdropClose(root, "picker-backdrop", cancelLibraryPicker);
+
+  // A repaint re-emits every row unfiltered, so the standing search has to be re-applied or a
+  // render arriving mid-search would silently show the whole library again.
+  applyFilter(root);
 }

@@ -569,32 +569,29 @@ export function wireCatalog(page) {
     // picker owns only the lines that name a bible entry -- the rest are carried through untouched,
     // and deselecting a bible skill removes just that line.
 
-    // Read current textarea value and get names of each line
-    const skillsText = APP.catalog.draft?.skills || "";
-    const currentLines = parseLines(skillsText);
-    const currentNames = currentLines.map(line => {
-      const idx = line.indexOf("::");
-      return idx >= 0 ? line.substring(0, idx).trim() : line;
-    });
+    // A line's name is the part before `::` -- the authored form is `name :: meaning`.
+    const nameOf = line => {
+      const i = line.indexOf("::");
+      return (i >= 0 ? line.slice(0, i) : line).trim().toLowerCase();
+    };
+    const currentLines = parseLines(APP.catalog.draft?.skills || "");
 
-    // Open picker with current names as preselection
     openLibraryPicker({
       kind: "skills",
       title: "Skill Bible",
-      hint: "Select skills to add — type bespoke skills directly in the field",
-      preselect: currentNames,
-      done: entries => {
-        // Simplest correct approach: keep lines that are NOT in the chosen entries, then append
-        // chosen entries as name :: meaning. This preserves bespoke lines and dedupes.
-        const chosenNames = new Set(entries.map(e => e.name.toLowerCase()));
-        const kept = currentLines.filter(line => {
-          const name = line.indexOf("::") >= 0 ? line.substring(0, line.indexOf("::")).trim() : line;
-          return !chosenNames.has(name.toLowerCase());
-        });
-        const chosenLines = entries.map(e => `${e.name} :: ${e.meaning}`);
-        APP.catalog.draft.skills = kept.concat(chosenLines).join("\n");
-        // Picker's done path already called APP.render()
-      }
+      hint: "A skill the bible does not carry is still typed straight into the field.",
+      preselect: currentLines.map(nameOf),
+      done: (chosen, offered) => {
+        if (!APP.catalog.draft) return;      // the form went away while the overlay was open
+        // Split on what the bible OFFERED, not on what was chosen. A line the bible does not know
+        // is bespoke and survives untouched; a line it does know belongs to the picker, so
+        // deselecting one removes it instead of leaving it standing.
+        const known = new Set(offered.map(e => (e.name || "").trim().toLowerCase()));
+        const bespoke = currentLines.filter(line => !known.has(nameOf(line)));
+        const picked = chosen.map(e => `${e.name} :: ${e.meaning}`);
+        APP.catalog.draft.skills = bespoke.concat(picked).join("\n");
+        // The picker's done path renders.
+      },
     });
   });
 
