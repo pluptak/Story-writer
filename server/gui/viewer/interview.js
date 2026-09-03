@@ -455,6 +455,21 @@ function sidebarHtml(s) {
           <b>scene</b> — scene 1 in full; later ones as sketches.<br><br>
           Refinement stays within the open gate; only <b>approve</b> advances it.</p></div>`;
 
+  // A bespoke skill is the architect telling you this cast needed a capability the bible does not
+  // have. Promoting it is a write to the author's own catalog, so it is the author's click and not
+  // a side effect of accepting the story.
+  const candidates = s.bibleCandidates || [];
+  const bibleCard = !candidates.length ? "" : `
+    <div class="side-card card" data-tid="scaffold.bible-candidates">
+      <h3>new skills</h3>
+      <p class="side-copy">Invented for this cast, and not in your skill bible. Promote one and the
+        next story can reuse it by name instead of inventing it again.</p>
+      ${candidates.map(c => `<div class="stat"><span>${esc(c.name)}</span>
+          <strong>${esc(c.heldBy.join(", "))}</strong></div>
+        <p class="side-copy">${esc(c.meaning)}</p>
+        <div class="side-actions"><button class="btn" data-promote="${esc(c.name)}">promote to bible</button></div>`).join("")}
+    </div>`;
+
   return `<aside data-tid="scaffold.sidebar">
     <div class="side-card card" data-tid="scaffold.state-card">
       <h3>scaffold state</h3>
@@ -464,6 +479,7 @@ function sidebarHtml(s) {
       ${conceptEditor}
       <div class="side-actions">${actions.join("")}</div>
     </div>
+    ${bibleCard}
     ${helper}
   </aside>`;
 }
@@ -657,6 +673,9 @@ export function wireScaffold(page) {
     });
   const cast = page.querySelector("#f-cast-size");
   if (cast) cast.addEventListener("change", () => { draft.castSize = Number(cast.value) || 0; });
+
+  for (const b of page.querySelectorAll("[data-promote]"))
+    b.addEventListener("click", () => postScaffold("promote", { name: b.getAttribute("data-promote") }));
 
   // Enter sends; the idea box is a paragraph, so there the modifier sends and Enter is a newline.
   onKey("f-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendSay(); } });
