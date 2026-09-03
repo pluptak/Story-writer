@@ -110,9 +110,8 @@ export function failureKind(e: unknown): string {
 }
 
 async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>,
-                            call?: CallSite, firstIdleMs = 0): Promise<T> {
+                            call?: CallSite, firstIdleMs = 0, startedAt = Date.now()): Promise<T> {
   let last: unknown;
-  const startedAt = Date.now();
   for (let attempt = 0; ; attempt++) {
     if (RUN.stopped) throw new StoppedError();
     // Whether OUR idle deadline aborted the request (as opposed to the run's stop signal).
@@ -172,8 +171,13 @@ async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: (
       // Health gate before spending another model attempt. This is reachability, not model
       // state: any HTTP answer (even a 500) means the server is standing. The probe is metadata
       // only — no generation, no preemption — so it is asked directly, not through the queue.
+      // The budget also bounds the recovery loop: a server that stays down must not earn
+      // unlimited one-second chances inside a call that is already over budget.
       let down = 0;
       for (;;) {
+        if (Date.now() - startedAt > NET.maxCallMs)
+          throw new CallBudgetError(`${what}: gave up after ${Math.round((Date.now() - startedAt) / 1000)}s `
+            + `— the call's total budget is ${Math.round(NET.maxCallMs / 1000)}s`);
         if (await PROVIDER.health(NET.probeTimeoutMs)) {
           if (kind === "unreachable" || kind === "connection-dropped")
             warn(`   ${C.dim}${PROVIDER.displayName} is answering again — retrying${C.reset}`);
@@ -237,20 +241,26 @@ const notLoadedWarned = new Set<string>();
  *  just-in-time load can take minutes, so the caller gives the FIRST attempt a longer deadline
  *  (the grace only extends a deadline — the engine never loads a model itself; that is
  *  orchestration, and on a limited-VRAM box it is the operator's call). Metadata only, asked
- *  before the queue: it does no model work and never preempts anything. */
-async function waitReady(model: string): Promise<boolean> {
+ *  before the queue: it does no model work and never preempts anything. `startedAt` is the
+ *  call's true beginning — the total budget covers the wait, not just the attempts. */
+async function waitReady(model: string, startedAt: number): Promise<boolean> {
+  const deadline = startedAt + NET.maxCallMs;
+  const spent = () => `${model}: gave up after ${Math.round((Date.now() - startedAt) / 1000)}s `
+    + `— the call's total budget is ${Math.round(NET.maxCallMs / 1000)}s`;
   if (!PROVIDER.capabilities.modelRuntimeInspection) return false;
   const rt = await PROVIDER.inspectModels(NET.probeTimeoutMs);
+  if (Date.now() > deadline) throw new CallBudgetError(spent());
   if (!rt) return false;   // could not ask — grant no grace and raise no warning
   const m = rt.get(model);
   if (m?.state === "loaded" || m?.state === "unknown") return false;
   if (m?.state === "loading") {
     // The server is already bringing it up — wait it out.
-    const startedAt = Date.now();
+    const startedLoading = Date.now();
     try {
       for (;;) {
         if (RUN.stopped) throw new StoppedError();
-        if (Date.now() - startedAt > NET.loadWaitMs)
+        if (Date.now() > deadline) throw new CallBudgetError(spent());
+        if (Date.now() - startedLoading > NET.loadWaitMs)
           throw new ModelLoadTimeoutError(`${model} is still loading after ${Math.round(NET.loadWaitMs / 1000)}s `
             + `— load it in ${PROVIDER.displayName} first, or raise the wait`);
         await new Promise(r => setTimeout(r, 1000));
@@ -279,7 +289,8 @@ async function waitReady(model: string): Promise<boolean> {
 /** One non-streaming completion, with retry/backoff; throws StoppedError when the run is stopped. */
 export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low",
                                call?: CallSite): Promise<Completion> {
-  const cold = await waitReady(model);
+  const startedAt = Date.now();
+  const cold = await waitReady(model, startedAt);
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal, call);
     // Read the body as text first: a 200 whose body will not parse (a proxy error page, LM Studio
@@ -303,14 +314,15 @@ export async function complete(model: string, messages: Msg[], temperature: numb
     // An empty 200 is the other shape "never replied" takes; spend a retry rather than a caller call.
     if (!assembled.text) throw new LmError(`${model} returned an empty completion`, undefined, true);
     return { ...assembled, brokenOff: false, usage: parseUsage(data.usage) };
-  }, call, cold ? NET.loadWaitMs : 0);
+  }, call, cold ? NET.loadWaitMs : 0, startedAt);
 }
 
 /** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
 export async function completeStream(model: string, messages: Msg[], temperature: number,
                                      onDelta: (d: string) => void, think: ThinkLevel = "low",
                                      call?: CallSite): Promise<Completion> {
-  const cold = await waitReady(model);
+  const startedAt = Date.now();
+  const cold = await waitReady(model, startedAt);
   return withRetry(`${model} stream`, async (signal, heartbeat) => {
     const res = await postChat(requestBody(model, messages, temperature, true, think), signal, call);
     if (!res.body) throw new LmError(`${PROVIDER.displayName} returned no stream body`, undefined, true);
@@ -370,5 +382,5 @@ export async function completeStream(model: string, messages: Msg[], temperature
     const out = assembled();
     if (!out.text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
     return { ...out, brokenOff: false, usage };
-  }, call, cold ? NET.loadWaitMs : 0);
+  }, call, cold ? NET.loadWaitMs : 0, startedAt);
 }

@@ -6,8 +6,8 @@ import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { complete, NET, failureKind, ProviderDownError, CallBudgetError } from "../engine/llm-client.ts";
-import { TELEMETRY } from "../engine/req-queue.ts";
 import { PROVIDER } from "../engine/provider.ts";
+import { TELEMETRY } from "../engine/req-queue.ts";
 import { WARN } from "../engine/warnings.ts";
 import { armRun } from "../live.ts";
 
@@ -153,7 +153,7 @@ describe("the total call budget", () => {
         chat++;
         await new Promise((_, reject) => {
           opts.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")),
-                                        { once: true });
+                                          { once: true });
         });
         return chatReply();
       }) as any;
@@ -162,6 +162,48 @@ describe("the total call budget", () => {
         () => complete("m", MSGS, 0.5),
         (e: Error) => e instanceof CallBudgetError && /total budget/.test(e.message));
       assert.equal(chat, 1, "the budget ended the call before a second attempt");
+    } finally {
+      Object.assign(NET, saved);
+    }
+  });
+
+  it("starts its clock before readiness — a loading model cannot outspend the budget", async () => {
+    const saved = savedNet();
+    NET.loadWaitMs = 60_000; NET.maxCallMs = 60; NET.retries = 5;
+    const savedCap = PROVIDER.capabilities.modelRuntimeInspection;
+    const savedInspect = PROVIDER.inspectModels;
+    PROVIDER.capabilities.modelRuntimeInspection = true;
+    PROVIDER.inspectModels = async () => new Map([["m", { state: "loading", loadedContext: 0, maxContext: 0 }]]);
+    let chat = 0;
+    try {
+      globalThis.fetch = (async () => { chat++; return chatReply(); }) as any;
+      armRun();
+      await assert.rejects(
+        () => complete("m", MSGS, 0.5),
+        (e: Error) => e instanceof CallBudgetError && /total budget/.test(e.message));
+      assert.equal(chat, 0, "the budget ran out during the readiness wait, before any chat call");
+    } finally {
+      PROVIDER.capabilities.modelRuntimeInspection = savedCap;
+      PROVIDER.inspectModels = savedInspect;
+      Object.assign(NET, saved);
+    }
+  });
+
+  it("also bounds the recovery loop — a down server earns chances only within the budget", async () => {
+    const saved = savedNet();
+    NET.retries = 5; NET.backoffMs = 0; NET.recoveryProbes = 50; NET.maxCallMs = 40; NET.probeTimeoutMs = 50;
+    let chat = 0;
+    try {
+      globalThis.fetch = (async (url: any) => {
+        if (String(url).endsWith("/models")) throw new TypeError("fetch failed");
+        chat++;
+        throw new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED 127.0.0.1:1234") });
+      }) as any;
+      armRun();
+      await assert.rejects(
+        () => complete("m", MSGS, 0.5),
+        (e: Error) => e instanceof CallBudgetError && /total budget/.test(e.message));
+      assert.equal(chat, 1, "no attempt beyond the first was spent before the budget ended the wait");
     } finally {
       Object.assign(NET, saved);
     }
