@@ -2,7 +2,8 @@
 
 The manual pass for the parts of the GUI no automated test watches. `npm test` covers the engine and
 the route modules; **`npm run test:gui` covers the viewer's mechanical half** — boot, a scripted live
-run, deep links and modals, the editor's save path, discard, the catalog, and the handoff panel —
+run, deep links and modals, the editor's save path, discard, the catalog, the scaffold's concept
+fields, and the handoff panel —
 in Playwright, driving the real server in-process over a fixture ServerHost, with no LM Studio and
 nothing in `stories/` touched. What that suite cannot see — layout, theme, focus, feel, and every
 section it does not name — is verified by reading the code and by running this list. Run the suite
@@ -17,7 +18,8 @@ alters what a route serves.
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
 - [ ] `npm run test:gui` green. The Playwright suite (`tests/gui/`, `playwright.config.ts`) is the
-      automated floor for sections 4, 6, 9, 12 and 15 below — a new machine needs
+      automated floor for sections 4, 6, 9, 12 and 15 below, and for section 14's concept fields
+      (only those — the walk itself needs the architect) — a new machine needs
       `npx playwright install chromium` once. It is also the boot check the next bullet describes:
       a viewer module that fails to link fails the suite instead of shipping as the bare shell.
 - [ ] `npm run lint` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
@@ -460,6 +462,22 @@ a *new* story folder — so it can go anywhere in the pass.
       shell: the idea box, two "how it proposes" radio cards (**stage by stage** selected), the model
       select, and **propose →**. Escape or a backdrop click returns to the shelf. The card now reads
       **continue new story…** — clicking it comes back to the same session.
+- [ ] **The concept.** Between the radio cards and the model select sits *the concept* — the tag
+      picker (three facet rows, **Genre** / **Dramatic Mode** / **Tone**, filled from the tag
+      catalog) and an **opening cast** select. Chips toggle; a chosen chip and a chosen size both
+      survive switching to **the whole story at once** and back, because they live in the page's
+      draft rather than in the markup. Choosing the one-shot walk removes the whole block: it has
+      no story gate for tags to steer and no cast gate for a size to reach. With an empty tag
+      catalog the picker is replaced by a link to `#/catalog?kind=tags` — the vocabulary is the
+      catalog's alone, and nothing here authors a tag.
+- [ ] **What the concept does, and stops doing.** Once a staged session is open, the sidebar carries
+      *tags* and *opening cast* beside *tension*, and **revise concept** opens the same picker
+      inline. Each half is marked **· spent** once the stage that reads it has produced content —
+      tags at the story stage, cast size at the cast stage — and once both are spent the revise
+      button disappears rather than going quietly inert. A tag the catalog does not hold shows as
+      an advisory under the stats and is sent to the architect anyway. **The word "spent" is
+      load-bearing:** it is the difference between a control that steers a prompt ahead and one
+      that edits a string nobody will read again.
 - [ ] **Staged walk.** After **propose →**, the story stage lands (title, premise, tension, facts — no
       cast yet). Its proposal card immediately shows those fields, and the composer says *what should
       change?*, not *say more about it*. The checklist shows *story* open, the rest upcoming; the sidebar

@@ -2,6 +2,7 @@ import { $, esc, reasonOr, slugify, tid } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
+import { loadVocab } from "./catalog.js";
 
 // ---- the scaffold interview --------------------------------------------------
 // One page, three things always visible: the proposed story, the current round, and a state
@@ -32,6 +33,43 @@ const modeChoice = (value, title, blurb) => {
     <b>${title}</b><span>${blurb}</span></label>`;
 };
 
+const FACET_LABELS = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
+
+// The vocabulary is the tag catalog's, and only the catalog authors it: an off-vocabulary tag is
+// something the route tolerates, not something this picker offers. Curated is the point -- free
+// text here would be a second idea box.
+function tagChipsHtml() {
+  const vocab = APP.catalog.vocab || [];
+  if (!vocab.length)
+    return `<p class="hint">No tags in the catalog yet — <a href="#/catalog?kind=tags">add some</a> and they show up here.</p>`;
+  const rows = Object.entries(FACET_LABELS).map(([facet, label]) => {
+    const mine = vocab.filter(t => t.facet === facet);
+    if (!mine.length) return "";
+    const chips = mine.map(t =>
+      `<button class="cat-chip${draft.tags.includes(t.label) ? " on" : ""}" data-tag-label="${esc(t.label)}" type="button">${esc(t.label)}</button>`).join("");
+    return `<div class="cat-tags-group"><div class="cat-facet-heading">${label}</div>
+      <div class="cat-tags-row">${chips}</div></div>`;
+  }).join("");
+  return `<div class="cat-tags-picker">${rows}</div>`;
+}
+
+const castSizeFieldHtml = () =>
+  `<div class="field"><label for="f-cast-size">opening cast</label>
+    <select id="f-cast-size">
+      ${[[0, "let the architect decide"], [2, "2 characters"], [3, "3 characters"], [4, "4 characters"]]
+        .map(([n, label]) => `<option value="${n}"${draft.castSize === n ? " selected" : ""}>${label}</option>`).join("")}
+    </select></div>`;
+
+// The concept is staged-only: the one-shot walk has no story gate for tags to steer and no cast
+// gate for a size to reach, so offering either there would be a control that does nothing. Callers
+// make that call -- the modal by the chosen mode, the sidebar by whether either half still steers
+// a gate ahead.
+function conceptFieldsHtml() {
+  return `<label class="field-label">the concept <span class="hint">optional — it steers the first two gates</span></label>
+    ${tagChipsHtml()}
+    ${castSizeFieldHtml()}`;
+}
+
 function ideaModalHtml() {
   const err = APP.scaffoldError ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
   return `<div class="modal-backdrop" id="iv-backdrop" data-tid="scaffold.idea-modal" role="dialog" aria-modal="true" aria-label="new story">
@@ -47,6 +85,7 @@ function ideaModalHtml() {
         ${modeChoice("oneshot", "the whole story at once",
             "One complete proposal, then conversational refinement.")}
       </div>
+      ${draft.mode === "oneshot" ? "" : conceptFieldsHtml()}
       ${modelField()}
       ${err}
       <div class="btns"><button class="btn primary" id="iv-start">propose →</button>
@@ -335,10 +374,16 @@ function folderNoteHtml() {
 function sidebarHtml(s) {
   const walk = s.mode === "oneshot" ? "one-shot" : "staged";
   const stat = (k, v) => `<div class="stat"><span>${k}</span><strong>${esc(v)}</strong></div>`;
+  const c = s.concept || {};
+  // "spent" is the honest word for it: the stage that reads this half has produced its content, so
+  // nothing ahead will read it again. Revising it after that changes a string nobody looks at.
   const stats = [stat("walk", walk)];
   if (s.mode !== "oneshot") {
     stats.push(stat("open gate", s.pendingAsk ? `${s.gate} (asked)` : s.gate || "—"));
     if (s.tension) stats.push(stat("tension", "coined"));
+    if (c.tags && c.tags.length)
+      stats.push(stat("tags", c.tags.join(", ") + (c.tagsSteer ? "" : " · spent")));
+    if (c.castSize) stats.push(stat("opening cast", c.castSize + (c.castSizeSteers ? "" : " · spent")));
   }
   stats.push(stat("on disk", s.needsFolder ? "pending accept" : "nothing yet"));
 
@@ -357,6 +402,21 @@ function sidebarHtml(s) {
   actions.push(`<button class="btn danger${APP.abandonArmed ? " armed" : ""}" id="iv-abandon">${
     APP.abandonArmed ? "abandon — sure?" : "abandon"}</button>`);
 
+  const conceptWarning = c.unknownTags && c.unknownTags.length
+    ? `<div class="prob">not in the tag catalog: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway</div>`
+    : "";
+
+  // Revising is offered only while some half still reaches a prompt ahead. Once both are spent the
+  // control disappears rather than going quietly inert -- an editor that cannot change the run is
+  // worse than no editor, because it looks like it can.
+  const conceptLive = s.mode !== "oneshot" && (c.tagsSteer || c.castSizeSteers);
+  const conceptEditor = !conceptLive ? "" : APP.conceptOpen
+    ? `<div data-tid="scaffold.concept-editor">${conceptFieldsHtml()}
+        <div class="side-actions">
+          <button class="btn primary" id="iv-concept-save">save concept</button>
+          <button class="btn" id="iv-concept-cancel">cancel</button></div></div>`
+    : `<div class="side-actions"><button class="btn" id="iv-concept-edit">revise concept</button></div>`;
+
   const helper = s.mode === "oneshot"
     ? `<div class="side-card card"><h3>principle</h3>
         <p class="side-copy">The architect proposes; you accept. Nothing writes itself until you name a folder.</p></div>`
@@ -372,6 +432,8 @@ function sidebarHtml(s) {
     <div class="side-card card" data-tid="scaffold.state-card">
       <h3>scaffold state</h3>
       ${stats.join("")}
+      ${conceptWarning}
+      ${conceptEditor}
       <div class="side-actions">${actions.join("")}</div>
     </div>
     ${helper}
@@ -481,7 +543,8 @@ async function startInterview() {
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
                    mode, gate: mode === "staged" ? "story" : null };
   APP.render();
-  const j = await postScaffold("start", { idea, model: draft.model, mode });
+  const concept = mode === "oneshot" ? {} : { tags: draft.tags, castSize: draft.castSize };
+  const j = await postScaffold("start", { idea, model: draft.model, mode, ...concept });
   // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear -- fall
   // back to an inactive session so the idea modal comes back with the idea still in it.
   if (!j || j.active === undefined) { APP.scaffold = { active:false }; APP.render(); }
@@ -537,6 +600,20 @@ export function wireScaffold(page) {
   for (const r of page.querySelectorAll('input[name="mode"]'))
     r.addEventListener("change", () => { if (r.checked) { draft.mode = r.value; APP.render(); } });
 
+  // The vocabulary is the catalog's, fetched once. loadVocab() re-renders when it lands, so the
+  // picker fills itself in rather than staying empty on a cold first open.
+  if (page.querySelector(".cat-tags-picker") || page.querySelector("#iv-backdrop")) loadVocab();
+
+  for (const chip of page.querySelectorAll(".cat-chip[data-tag-label]"))
+    chip.addEventListener("click", () => {
+      const label = chip.getAttribute("data-tag-label");
+      const at = draft.tags.indexOf(label);
+      if (at >= 0) draft.tags.splice(at, 1); else draft.tags.push(label);
+      APP.render();
+    });
+  const cast = page.querySelector("#f-cast-size");
+  if (cast) cast.addEventListener("change", () => { draft.castSize = Number(cast.value) || 0; });
+
   // Enter sends; the idea box is a paragraph, so there the modifier sends and Enter is a newline.
   onKey("f-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendSay(); } });
   onKey("f-idea", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); startInterview(); } });
@@ -571,9 +648,25 @@ export function wireScaffold(page) {
     postScaffold("abandon", {}).then(() => {
       APP.scaffold = { active:false }; APP.scaffoldError = ""; APP.folderOpen = false;
       draft.idea = draft.say = draft.folder = "";
+      draft.tags = [];
+      draft.castSize = 0;
       go("shelf");
     });
   });
+  // Opening seeds the modal's draft from the session, not the other way round: the session is the
+  // truth, and after a reload the draft is empty while the concept is not.
+  on("iv-concept-edit", () => {
+    const c = APP.scaffold.concept || {};
+    draft.tags = [...(c.tags || [])];
+    draft.castSize = c.castSize || 0;
+    APP.conceptOpen = true; APP.render();
+  });
+  on("iv-concept-cancel", () => { APP.conceptOpen = false; APP.render(); });
+  on("iv-concept-save", async () => {
+    await postScaffold("concept", { tags: draft.tags, castSize: draft.castSize });
+    APP.conceptOpen = false; APP.render();
+  });
+
   on("iv-folder", acceptIntoFolder);
   on("iv-folder-back", () => {
     // Only the locally-opened step can be dismissed -- a needs_folder demand stays until answered.

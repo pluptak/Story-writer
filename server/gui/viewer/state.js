@@ -66,6 +66,8 @@ export const APP = {
                                 // the idea modal in the window between the two.
   folderOpen: false,           // the sidebar's accept opened the folder step locally — the server only
                                 // forces it open through needsFolder
+  conceptOpen: false,          // the sidebar's concept editor is expanded. Local to the page: the
+                                // concept itself lives on the session, and revising it is a POST
   ideaOpen: false,             // kept for compatibility; the scaffold page now owns the idea step
   ivHidden: false,             // kept for compatibility; the scaffold page is a route, not an overlay
   personasFull: false,
@@ -157,7 +159,7 @@ export const handoffForPage = () =>
 // here and are written back in; focus is read off the document as the render begins, rather than
 // tracked through focus/blur -- removing a focused node does not reliably fire blur, and a click
 // on any button would clear a tracked value before the re-render it triggered.
-export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"" };
+export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"", tags:[], castSize:0 };
 export const hdraft = { say:"" };
 
 export const FIELDS = /^[fh]-(idea|say|folder|model|mode|length)$|^r-say-\d+$/;
