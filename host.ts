@@ -6,7 +6,7 @@ import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { storyWriteBlocked } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { splitMeaning, bibleFrom } from "./engine/skills.ts";
+import { splitMeaning, bibleFrom, canonSkill } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
@@ -71,6 +71,18 @@ async function unknownTags(tags: string[]): Promise<string[]> {
 /** Ids in, tray entries out, in the order the author chose them. Only the portable half travels:
  *  goal and knows are story-positional and the library does not carry them, and the cast gate is
  *  where they get resolved. */
+/** Promotion writes through the same validated path the skill editor uses -- one way into the
+ *  catalog, one set of rules. The id is derived from the canonical name so promoting the same skill
+ *  twice is an update rather than a duplicate. */
+async function promoteSkill(name: string, meaning: string) {
+  const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning, tags: [] };
+  const result = await saveEntry("skills", entry, undefined, await skillBible());
+  if (!result.ok) {
+    return result;
+  }
+  return { ok: true as const, bible: bibleFrom(await skillBibleEntries()), problems: result.problems };
+}
+
 async function importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }> {
   const cat = await loadCatalog("characters");
   const byId = new Map<string, LibraryCharacter>((cat?.entries ?? []).map((e: LibraryCharacter) => [e.id, e]));
@@ -173,7 +185,7 @@ export const HOST: ServerHost = {
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters,
+  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters, promoteSkill,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   storyForEdit: async (dir) => {

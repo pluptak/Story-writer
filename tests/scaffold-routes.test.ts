@@ -171,6 +171,7 @@ describe("/scaffold routes", () => {
         // scaffoldState reads these fields directly, exactly as it does on a real early-session
         spec: { title: "", premise: "", characters: [], writerStyle: "", facts: [], scenes: [] },
         haveStory: () => true,
+        bibleCandidates: () => [],
         propose: async () => ({ kind: "edits", applied: [], ignored: [], flags: [], note: "" }),
         say: async () => ({ kind: "edits", applied: [], ignored: [], flags: [], note: "" }),
         approve: async () => ({ kind: "edits", applied: [], ignored: [], flags: [], note: "" }),
@@ -346,6 +347,50 @@ describe("/scaffold routes", () => {
       await post("/scaffold/abandon", {}, h);  // ensure no session is open
       const result = await post("/scaffold/import", { importIds: ["lib-ivet"] }, h);
       assert.equal(result.body.reason, "no interview is open");
+    });
+  });
+
+  describe("promoting a bespoke skill", () => {
+    it("a candidate can be promoted, and stops being one", async () => {
+      const CAST_WITH_SKILL = {
+        characters: [
+          { name: "A", persona: "Keeper.", knows: "", goal: "",
+            belief: "Lights matter.", impulse: "when doubtful, tends the lamp", voice: ["The lamp is all."],
+            skills: ["tidewalking :: reading the turn of a tide"], restrictions: [] },
+        ],
+      };
+      const SETTINGS_STAGE = { writer_style: "Plain prose." };
+      const h = {
+        ...host([STORY_STAGE, CAST_WITH_SKILL, SETTINGS_STAGE]),
+        promoteSkill: async (name: string, meaning: string) => {
+          // The fake returns a bible that knows the promoted skill, so it ceases being a candidate.
+          const newBible = { tidewalking: meaning };
+          return { ok: true as const, bible: (n: string) => newBible[n as keyof typeof newBible], problems: [] };
+        },
+      } as unknown as ServerHost;
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "..." }, h);
+      assert.equal(opened.body.gate, "story");
+
+      // Approve story gate to get to cast gate
+      const atCast = await post("/scaffold/approve", {}, h);
+      assert.equal(atCast.body.gate, "cast");
+      assert.equal(atCast.body.bibleCandidates.length, 1);
+      assert.equal(atCast.body.bibleCandidates[0].name, "tidewalking");
+
+      // Promote the skill
+      const promoted = await post("/scaffold/promote", { name: "tidewalking" }, h);
+      assert.equal(promoted.body.bibleCandidates.length, 0, "the skill stops being a candidate");
+    });
+
+    it("a skill the session is not offering cannot be promoted", async () => {
+      const h = host([STORY_STAGE, CAST_STAGE]);
+      LIVE.awaitingPick = true;
+      await post("/scaffold/start", { idea: "..." }, h);
+      const result = await post("/scaffold/promote", { name: "unknown-skill" }, h);
+      assert.equal(result.code, 400);
+      assert.equal(result.body.ok, false);
+      assert.match(result.body.reason, /not a promotion candidate/);
     });
   });
 });

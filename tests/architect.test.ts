@@ -15,7 +15,7 @@ import { normalizeSpec, applyEdits, renderStory } from "../engine/story-spec.ts"
 import { bibleFrom } from "../engine/skills.ts";
 import { architectNextChapter, architectVerify } from "../prompts.ts";
 import * as P from "../prompts.ts";
-import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits, consultCostNote, applyImportContract, type ImportedCharacter } from "../engine/architect.ts";
+import { ScaffoldSession, NextChapterSession, openNextChapter, buildArchitect, suggestEdits, consultCostNote, applyImportContract, bibleCandidates, type ImportedCharacter } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
 
@@ -970,6 +970,114 @@ describe("consultCostNote", () => {
     assert.equal(s.spec.config.maxSteps, 24, "24 steps, so six beats wide");
     assert.match(s.problems.join(" "), /4 characters against maxSteps 24/,
                  "the scene gate prices the roster the author asked for");
+  });
+});
+
+describe("bibleCandidates", () => {
+  it("a bespoke skill with a meaning is a candidate", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: ["tidewalking :: reading the turn of a tide"], restrictions: [] },
+      ],
+      facts: [],
+    }).spec;
+    const candidates = bibleCandidates(spec);
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].name, "tidewalking");
+    assert.equal(candidates[0].meaning, "reading the turn of a tide");
+    assert.deepEqual(candidates[0].heldBy, ["A"]);
+  });
+
+  it("a bare skill name with no meaning is not a candidate", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: ["tidewalking"], restrictions: [] },
+      ],
+      facts: [],
+    }).spec;
+    const candidates = bibleCandidates(spec);
+    assert.equal(candidates.length, 0);
+  });
+
+  it("a general skill with a meaning is not a candidate", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: ["sight :: seeing things"], restrictions: [] },
+      ],
+      facts: [],
+    }).spec;
+    const candidates = bibleCandidates(spec);
+    assert.equal(candidates.length, 0);
+  });
+
+  it("a skill already in the bible is not a candidate", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: ["lockpicking :: opening a lock"], restrictions: [] },
+      ],
+      facts: [],
+    }).spec;
+    const bible = bibleFrom({ lockpicking: "opening a mechanical lock without its key" });
+    const candidates = bibleCandidates(spec, bible);
+    assert.equal(candidates.length, 0);
+  });
+
+  it("two characters holding the same bespoke skill collapse to one candidate", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: ["tidewalking :: reading the turn of a tide"], restrictions: [] },
+        { name: "B", persona: "", knows: "", skills: ["Tidewalking :: reading ocean currents"], restrictions: [] },
+      ],
+      facts: [],
+    }).spec;
+    const candidates = bibleCandidates(spec);
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].name, "tidewalking", "first authored spelling is kept");
+    assert.equal(candidates[0].meaning, "reading the turn of a tide", "first meaning is kept");
+    assert.deepEqual(candidates[0].heldBy, ["A", "B"]);
+  });
+
+  // Name matching goes through canonSkill everywhere else, and a raw property test here would both
+  // let a differently-cased general skill through and swallow one called after an Object method.
+  it("a general skill is not a candidate however it is spelled", () => {
+    const spec = normalizeSpec({
+      title: "T", premise: "p", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [{ name: "A", persona: "", knows: "",
+                     skills: ["Sight :: seeing things at a distance"], restrictions: [] }],
+      facts: [],
+    }).spec;
+    assert.deepEqual(bibleCandidates(spec), []);
+  });
+
+  it("a skill named after an Object method is an ordinary candidate", () => {
+    const spec = normalizeSpec({
+      title: "T", premise: "p", tension: "", scene: { place: "", question: "", pov: "", length: 700 },
+      characters: [{ name: "A", persona: "", knows: "",
+                     skills: ["toString :: reading a maker's mark off cast metal"], restrictions: [] }],
+      facts: [],
+    }).spec;
+    assert.equal(bibleCandidates(spec).length, 1);
+    assert.equal(bibleCandidates(spec)[0].name, "toString");
+  });
+
+  it("reach is never a candidate", () => {
+    const spec = normalizeSpec({
+      title: "Test", premise: "A story", tension: "", scene: {
+        place: "", question: "", pov: "", length: 700,
+        reach: { A: ["tidewalking :: reading the turn of a tide"] },
+      },
+      characters: [
+        { name: "A", persona: "", knows: "", skills: [], restrictions: [] },
+      ],
+      facts: [],
+    }).spec;
+    const candidates = bibleCandidates(spec);
+    assert.equal(candidates.length, 0, "reach is not a candidate even with a meaning");
   });
 });
 

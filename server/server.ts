@@ -19,6 +19,7 @@ import type { ScaffoldSession, NextChapterSession, ImportedCharacter } from "../
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson } from "../engine/story-schema.ts";
+import type { BibleLookup } from "../engine/skills.ts";
 
 /** The author's concept, chosen before the architect runs and never written to story.json:
  *  `tags` steer the story stage, `castSize` is the opening cast's target size for the cast
@@ -129,6 +130,14 @@ export interface ServerHost {
   catalogSave(kind: string, entry: unknown): Promise<{ ok: true; entry: unknown; problems: string[] } | { ok: false; reason: string; status?: number; issues?: string[] }>;
   /** Remove one catalog entry by id. Fails if the id is not found. */
   catalogDelete(kind: string, id: string): Promise<{ ok: true } | { ok: false; reason: string; status?: number }>;
+  /** Put a bespoke skill into the author's bible and hand back a lookup over the NEW bible. The
+   *  caller assigns that to the open session, because the session validates against a bible it was
+   *  handed when it opened — without the swap the skill it just promoted would still read as
+   *  unknown for the rest of the conversation. */
+  promoteSkill(name: string, meaning: string): Promise<
+    { ok: true; bible: BibleLookup; problems: string[] } |
+    { ok: false; reason?: string; issues?: string[] }
+  >;
 }
 
 async function serveFile(res: ServerResponse, url: URL, contentType: string) {

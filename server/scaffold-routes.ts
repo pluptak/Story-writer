@@ -88,6 +88,9 @@ function scaffoldState(host: ServerHost) {
     haveStory: SCAFFOLD.haveStory(),
     pendingAsk: SCAFFOLD.pendingAsk,
     problems: SCAFFOLD.problems,
+    // Derived from the spec each time rather than stored: a candidate stops being one the moment it
+    // is promoted or the cast stops holding it, and a stored list would go stale in both directions.
+    bibleCandidates: SCAFFOLD.bibleCandidates(),
     last: scaffoldLast,
     needsFolder: scaffoldFolderAsk,
     model: SCAFFOLD.defaults.models.architect,
@@ -111,7 +114,7 @@ export async function handleScaffoldRoutes(
 
   const o = await readJsonBody(req);
   const what = path.slice("/scaffold/".length);
-  if (!["start", "say", "approve", "accept", "abandon", "set", "concept", "import"].includes(what)) {
+  if (!["start", "say", "approve", "accept", "abandon", "set", "concept", "import", "promote"].includes(what)) {
     json(res, 404, { ok: false, reason: `no such scaffold action: ${what}` });
 
   } else if (what === "abandon") {
@@ -189,6 +192,18 @@ export async function handleScaffoldRoutes(
     const resolved = await host.importCharacters(tray.ids);
     SCAFFOLD.imported = resolved.imported;
     scaffoldMissingImports = resolved.missing;
+    publishScaffold(host);
+    json(res, 200, scaffoldState(host));
+
+  } else if (what === "promote") {
+    // The owner's approval, and a gate distinct from accepting the story: a skill lands in the
+    // bible here or not at all, and accepting a story never writes one.
+    const name = String(o.name ?? "").trim();
+    const found = SCAFFOLD.bibleCandidates().find(c => c.name === name);
+    if (!found) { json(res, 400, { ok: false, reason: `"${name}" is not a promotion candidate` }); return true; }
+    const r = await host.promoteSkill(found.name, found.meaning);
+    if (!r.ok) { json(res, 400, r); return true; }
+    SCAFFOLD.bible = r.bible;
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 

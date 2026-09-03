@@ -8,7 +8,7 @@ import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify, nameKey } from "./config-util.ts";
-import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, type BibleLookup } from "./skills.ts";
+import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, splitMeaning, canonSkill, type BibleLookup } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
@@ -74,6 +74,41 @@ export function consultCostNote(spec: StorySpec): string {
   return `${roster} characters against maxSteps ${maxSteps}: every one of them may be consulted at `
     + `each beat, so the budget is about ${beats} beats wide — a roster this wide has run out of `
     + `steps before the scene resolved`;
+}
+
+/** A bespoke skill the architect invented, offered for promotion into the author's bible. */
+export type BibleCandidate = { name: string; meaning: string; heldBy: string[] };
+
+/** The bespoke skills in a cast, as promotion candidates: a skill carrying its own ":: meaning"
+ *  whose name is neither a general skill nor already in the bible. Writing one IS the proposal, so
+ *  this is derived from the spec rather than asked for in a reply — a skill nobody in the cast holds
+ *  cannot appear here, which a prompt field could not promise.
+ *
+ *  Reach is never a candidate (I4). A reach entry exists only while its scene is being written and
+ *  must not become an intrinsic skill, so only `character.skills` is read here — never `scene.reach`.
+ *  Duplicates collapse on the canonical name, keeping the first authored spelling and meaning. */
+export function bibleCandidates(spec: StorySpec, bible: BibleLookup = bibleMeaningOf): BibleCandidate[] {
+  // Every name comparison in this engine goes through canonSkill, and this one must too: a raw
+  // `text in SKILL_CATALOG` would let "Sight :: seeing" through as a candidate, and would silently
+  // swallow a skill called "toString" on the way past.
+  const general = new Set(Object.keys(SKILL_CATALOG).map(canonSkill));
+  const candidates = new Map<string, BibleCandidate>();
+
+  for (const character of spec.characters) {
+    for (const entry of character.skills) {
+      const { text, meaning } = splitMeaning(entry);
+      if (!meaning.trim()) continue;                  // a bare name is a reference, not a proposal
+      const key = canonSkill(text);
+      if (general.has(key)) continue;                 // everyone already has it
+      if (bible(text) !== undefined) continue;        // already promoted
+
+      if (!candidates.has(key)) candidates.set(key, { name: text, meaning: meaning.trim(), heldBy: [] });
+      const held = candidates.get(key)!.heldBy;
+      if (!held.includes(character.name)) held.push(character.name);
+    }
+  }
+
+  return [...candidates.values()];
 }
 
 /** The adaptation contract, applied rather than requested. The five fields that travel with a
@@ -354,6 +389,9 @@ export class ScaffoldSession {
               public castSize = 0) {}
 
   haveStory(): boolean { return this.spec.characters.length > 0; }
+
+  /** This session's promotion candidates, derived on demand from the spec it has built. */
+  bibleCandidates(): BibleCandidate[] { return bibleCandidates(this.spec, this.bible); }
 
   /** Replace the in-memory draft after a full GUI edit; nothing is written until accept(). */
   setSpec(raw: unknown): { applied: { field: string; before: unknown; after: unknown }[]; problems: string[] } {
