@@ -794,17 +794,21 @@ place that needs it instead of everywhere.
    automated coverage of the "review new story" screen at all — writing it surfaced a real
    pre-existing gap, `SCAFFOLD` (a module-level singleton in `scaffold-routes.ts`) leaking between
    Playwright tests in the same worker; both scaffold-session tests now abandon in `finally`.
-5. **Make `ServerHost` the only boundary the scaffold domain crosses.** After this block
-   `scaffold-routes.ts` should not know what a `ScaffoldSession` is — only HTTP, wire validation
-   (`MAX_TAGS` etc., already correctly at the route), SSE, the busy/abandon lifecycle, and
-   `ServerHost.scaffold*()` calls. `ServerHost` loses `newScaffoldSession`/`directEdit`/`specView` and
-   gains `scaffoldStart/Say/Approve/Concept/Import/Promote/Set/Accept/Abandon/State`, each taking
-   wire-shaped input and returning one plain state type declared in `server/server.ts` (beside the
-   existing `Concept`/`CatalogUsage`). The four `*Steer` predicates and every `SCAFFOLD.*` read/assign
-   move into [host.ts](host.ts); the session handle becomes private to it. Wire contract unchanged —
-   `GUI-SPEC.md` and the GUI stay untouched. Tighten `tests/boundaries.test.ts` to assert
-   `server/scaffold-routes.ts` never mentions `ScaffoldSession` or `SCAFFOLD`, and `server/` never
-   imports `engine/architect.ts` or `engine/story-spec.ts` even as a type.
+5. ~~**Make `ServerHost` the only boundary the scaffold domain crosses.**~~ **Done**, with two
+   corrections to how this entry described it. `ServerHost` keeps `specView` — `next-chapter-routes.ts`
+   (Block 6, below) still calls it, so it cannot go until the handoff route does too — and so
+   `tests/boundaries.test.ts`'s tightening is scoped to `scaffold-routes.ts` alone (`server/` overall
+   still imports `engine/story-spec.ts` for that one type, and `next-chapter-routes.ts` still imports
+   `engine/architect.ts`). Everything else landed as planned: `ServerHost` gained
+   `scaffoldState/Start/Say/Approve/Concept/Import/Promote/Set/Accept/Abandon`, each wire-shaped in
+   and returning a plain `ScaffoldActionResult`/`ScaffoldAcceptResult` (declared in
+   [server/server.ts](server/server.ts) beside `Concept`/`CatalogUsage`); `SCAFFOLD` and every sibling
+   — busy, the abandon generation counter, `scaffoldLast`/`Stage`/`FolderAsk`, the three catalog-lookup
+   caches — moved into [host.ts](host.ts), which now also does the route's SSE publishing internally.
+   The one new seam: `setScaffoldTestHooks` (host.ts), substituting the session factory and the
+   catalog lookups `scaffoldStart`/`Concept`/`Import`/`Promote` call, mirroring `ScaffoldSession`'s
+   own injectable `newJudge` — without it a test reaches a real model or the author's real catalog.
+   All 30 existing `scaffold-routes.test.ts` cases kept their bodies, now driving the real `HOST`.
 6. **Same for the handoff**, roughly a third the scope:
    [next-chapter-routes.ts](server/next-chapter-routes.ts) reads seven `HANDOFF.*` fields
    ([:29-38](server/next-chapter-routes.ts#L29)) and assigns none. Extend the boundary test to
