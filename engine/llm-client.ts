@@ -7,6 +7,7 @@ import { ENGINE, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
 import { topLevelObjects } from "./json-extract.ts";
 import { PROVIDER } from "./provider.ts";
+import { onceAdmitted, QueueGaveUpError } from "./req-queue.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 
 /** A deliberately pessimistic token estimate -- prose runs about 4 chars/token, the JSON the
@@ -82,42 +83,56 @@ class LmError extends Error {
 
 const retryableStatus = (s: number) => s === 408 || s === 409 || s === 425 || s === 429 || s >= 500;
 
-async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>): Promise<T> {
+async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>,
+                            call?: CallSite): Promise<T> {
   let last: unknown;
   for (let attempt = 0; ; attempt++) {
     if (RUN.stopped) throw new StoppedError();
-    const ac = new AbortController();
-    // An IDLE deadline, not a total-duration cap: `heartbeat()` pushes it back on each sign of
-    // progress, so a long-but-streaming generation is never aborted mid-reply -- only a stalled
-    // connection that goes NET.timeoutMs without a byte is.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const heartbeat = () => { clearTimeout(timer); timer = setTimeout(() => ac.abort(), NET.timeoutMs); };
-    heartbeat();
-    const onStop = () => ac.abort();
-    RUN.abort.signal.addEventListener("abort", onStop, { once: true });
+    // Whether OUR idle deadline aborted the request (as opposed to the run's stop signal).
+    let idleAborted = false;
     try {
-      return await fn(ac.signal, heartbeat);
+      // One transport attempt holds the queue slot; the backoff between attempts, and a retry's
+      // re-entry, happen off it — so a retry cannot monopolize a slot it is not using.
+      return await onceAdmitted(what, call, async () => {
+        const ac = new AbortController();
+        // An IDLE deadline, not a total-duration cap: `heartbeat()` pushes it back on each sign of
+        // progress, so a long-but-streaming generation is never aborted mid-reply -- only a stalled
+        // connection that goes NET.timeoutMs without a byte is.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const heartbeat = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => { idleAborted = true; ac.abort(); }, NET.timeoutMs);
+        };
+        heartbeat();
+        const onStop = () => ac.abort();
+        RUN.abort.signal.addEventListener("abort", onStop, { once: true });
+        try {
+          return await fn(ac.signal, heartbeat);
+        } finally {
+          clearTimeout(timer);
+          RUN.abort.signal.removeEventListener("abort", onStop);
+        }
+      });
     } catch (e) {
       if (RUN.stopped) throw new StoppedError();
       last = e;
+      // Waiting twice cannot help: the holder of the slot was stuck for the whole budget, and
+      // re-queueing would only wait again. Say what was holding it and let the caller see it.
+      if (e instanceof QueueGaveUpError) throw e;
       // Our own deadline, dropped connections, and any failure carrying no HTTP status (fetch
       // itself, a reply body that never parsed) are worth a retry; a 4xx we caused is not.
       // Body-parse failures arrive already wrapped as retryable LmErrors by complete(), so nothing
       // needs name-based special-casing here.
-      const aborted = ac.signal.aborted;
       const err = e as LmError;
-      const retryable = aborted || err.retryable
+      const retryable = idleAborted || err.retryable
         || (err.status === undefined && e instanceof Error);
-      if (aborted) last = new LmError(`${what}: no reply within ${NET.timeoutMs / 1000}s`, undefined, true);
+      if (idleAborted) last = new LmError(`${what}: no reply within ${NET.timeoutMs / 1000}s`, undefined, true);
       if (!retryable || attempt >= NET.retries) break;
       const wait = NET.backoffMs * 2 ** attempt + Math.floor(Math.random() * 250);
       progressDone();
       warn(`   ${C.yellow}⟳${C.reset} ${what} failed (${(last as Error).message}) — retry `
         + `${attempt + 1}/${NET.retries} in ${wait}ms`);
       await new Promise(r => setTimeout(r, wait));
-    } finally {
-      clearTimeout(timer);
-      RUN.abort.signal.removeEventListener("abort", onStop);
     }
   }
   throw last;
@@ -177,7 +192,7 @@ export async function complete(model: string, messages: Msg[], temperature: numb
     // An empty 200 is the other shape "never replied" takes; spend a retry rather than a caller call.
     if (!assembled.text) throw new LmError(`${model} returned an empty completion`, undefined, true);
     return { ...assembled, brokenOff: false, usage: parseUsage(data.usage) };
-  });
+  }, call);
 }
 
 /** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
@@ -243,5 +258,5 @@ export async function completeStream(model: string, messages: Msg[], temperature
     const out = assembled();
     if (!out.text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
     return { ...out, brokenOff: false, usage };
-  });
+  }, call);
 }

@@ -88,7 +88,9 @@ Requires a **local inference server** with the story's models loaded: **LM Studi
 `http://localhost:1234/v1`, with the **Ollama** and **llama.cpp** adapters also built in. Selection is
 environmental, never per story: `LLM_PROVIDER` (`lmstudio` | `ollama` | `llamacpp`), `LLM_BASE_URL`
 (the base ending in `/v1`; the old `LM_STUDIO_URL` full-chat-URL form still works), and `LLM_API_KEY`
-for servers that want one.
+for servers that want one. So is the process-wide request coordinator's shape: `LLM_MAX_IN_FLIGHT`
+(default 1 — one model request on the wire at a time) and `LLM_QUEUE_TIMEOUT_MS` (default ten
+minutes — how long a queued call waits before giving up).
 
 ## Architecture
 
@@ -130,6 +132,7 @@ way.**
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/catalog-schema.ts](engine/catalog-schema.ts) | the Zod schema for a catalog of reusable assets, one per `CATALOG_KINDS` entry — `LibraryCharacter` is the portable half of a character, with no `goal`/`knows` (story-positional) and no reach (I4); `TagEntry`, `LibraryStyle` and `LibrarySkill` (the persisted special-skill bible, whose `meaning` is required) are the others |
 | [engine/llm-client.ts](engine/llm-client.ts) | the provider-agnostic HTTP client: request shaping, retry/backoff, streaming, and `SITE_HEADER` — the call site's stable name (`writer.draft`), sent as a header so the model never sees it and a fake or a replay can tell callers apart without matching drifting prompt text |
+| [engine/req-queue.ts](engine/req-queue.ts) | the process-wide request coordinator: one transport attempt on the wire at a time (`LLM_MAX_IN_FLIGHT`), FIFO with a wait budget (`LLM_QUEUE_TIMEOUT_MS`), unwound by a run stop, and the `QUEUE` state the console and viewer read |
 | [engine/provider-util.ts](engine/provider-util.ts) | the provider boundary's leaf half: the `InferenceProvider` shape, `ModelRuntime`, capability flags, URL normalization (`LLM_BASE_URL`), and the shared model-list GET |
 | [engine/provider.ts](engine/provider.ts) + [engine/provider-lmstudio.ts](engine/provider-lmstudio.ts), [engine/provider-ollama.ts](engine/provider-ollama.ts), [engine/provider-llamacpp.ts](engine/provider-llamacpp.ts) | provider selection from the environment into the one `PROVIDER` the transport and the model checks go through, plus one adapter per server — chat URLs are OpenAI-compatible everywhere; the adapters differ in their native model-state API (LM Studio: `/api/v1` with a `/api/v0` fallback; Ollama: `/api/ps`; llama.cpp: none) and their capability flags. Nothing outside the adapters names a server |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |

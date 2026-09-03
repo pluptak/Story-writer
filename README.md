@@ -57,6 +57,10 @@ npm run preflight # story-card listing against LM Studio
   - `LLM_BASE_URL` — the server's base URL ending in `/v1` (default `http://localhost:1234/v1` for
     LM Studio; the old `LM_STUDIO_URL` full-chat-URL form still works)
   - `LLM_API_KEY` — only for servers that want one
+- Request coordination: `LLM_MAX_IN_FLIGHT` (default 1 — one model request on the wire at a time;
+  the engine holds the line itself because a local server may drop the in-flight prompt when a
+  second one arrives) and `LLM_QUEUE_TIMEOUT_MS` (default 600000 — how long a queued call waits
+  before giving up)
 - The default models in `defaults.json` are `gemma-4-12b-it-qat-uncensored-heretic`; override per-story in `story.json` → `models.default`
 
 ## Architecture
