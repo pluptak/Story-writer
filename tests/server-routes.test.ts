@@ -49,7 +49,7 @@ describe("/next-chapter routes", () => {
     selectableStory: async (dir: string) => (dir === "stories/doorway" ? "stories/doorway" : null),
     resolveStoryDir: (dir: string) => dir,
     runDirs: async () => [],
-    loadedModelIds: async () => null,
+    availableModelIds: async () => null,
     architectModel: async () => "none",
     newScaffoldSession: async () => { throw new Error("not in this test"); },
     newHandoffSession: async (dir: string) => { opened.push(dir); return open ? open() : session([]); },
@@ -284,7 +284,7 @@ describe("readJsonBody", () => {
 // -- SECTION ----
 describe("handleRunControl", () => {
   const host: ServerHost = {
-    loadedModelIds: async () => ["qwen-new", "qwen-test", "qwen-old"],
+    availableModelIds: async () => ["qwen-new", "qwen-test", "qwen-old"],
   } as unknown as ServerHost;
 
   describe("/stop", () => {

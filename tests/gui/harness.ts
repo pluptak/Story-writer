@@ -114,7 +114,7 @@ async function fixtureHost(): Promise<ServerHost> {
       ...(await Promise.all([...extraStories.values()].map(f => f()))),
     ],
     selectableStory: async dir => (dir === FIXTURE_DIR || extraStories.has(dir) ? dir : null),
-    loadedModelIds: async () => null,          // no LM Studio behind the harness — on purpose
+    availableModelIds: async () => null,          // no LM Studio behind the harness — on purpose
     runDirs: async () => [],
     runLlmLogs: async () => notScripted("runLlmLogs"),
     readLlmLog: async () => notScripted("readLlmLog"),

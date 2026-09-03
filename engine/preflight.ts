@@ -36,7 +36,7 @@ export interface PreflightResult {
 }
 
 let modelIdCache: { at: number; ids: Promise<string[] | null> } | null = null;
-export async function loadedModelIds(timeoutMs = 1500): Promise<string[] | null> {
+export async function availableModelIds(timeoutMs = 1500): Promise<string[] | null> {
   if (modelIdCache && Date.now() - modelIdCache.at < 5000) return modelIdCache.ids;
   const ids = PROVIDER.listModels(timeoutMs);
   modelIdCache = { at: Date.now(), ids };
@@ -114,7 +114,7 @@ export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): 
 
       const wanted = [...new Set([sc.models.default, sc.models.writer, sc.models.summary,
                                   ...sc.characters.map(c => c.model)])].filter(Boolean);
-      const loaded = await loadedModelIds();
+      const loaded = await availableModelIds();
       let modelCheck: "ok" | "missing" | "unreachable" = "ok";
       let missingModels: string[] = [];
       if (loaded === null) {
@@ -124,7 +124,7 @@ export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): 
         missingModels = wanted.filter(m => !loaded.includes(m));
         if (missingModels.length) {
           modelCheck = "missing";
-          warnings.push(`   (not loaded in ${PROVIDER.displayName}: ${missingModels.join(", ")} — every call using `
+          warnings.push(`   (not available in ${PROVIDER.displayName}: ${missingModels.join(", ")} — every call using `
             + `${missingModels.length > 1 ? "these" : "this"} will error)`);
         }
       }

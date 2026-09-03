@@ -49,7 +49,7 @@ export interface ServerHost {
   /** The chapter numbers already written for a story -- the chapter equivalent of `runDirs`. Takes
    *  a discovered story dir, not a resolved path. */
   writtenChapters(dir: string): Promise<number[]>;
-  loadedModelIds(): Promise<string[] | null>;
+  availableModelIds(): Promise<string[] | null>;
   /** The configured provider's display name ("LM Studio", "Ollama", …) — routes name the server
    *  in user-facing refusals without importing the engine that knows it. */
   providerName: string;
@@ -240,7 +240,7 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         r({ dir, chapter, replace });
 
       } else if (path === "/models" && req.method === "GET") {
-        const ids = await host.loadedModelIds();
+        const ids = await host.availableModelIds();
         json(res, 200, {
           ids: ids ?? [], reachable: ids !== null,
           current: LIVE.modelOverride, architect: await host.architectModel(),

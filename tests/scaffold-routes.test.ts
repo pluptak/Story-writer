@@ -43,7 +43,7 @@ describe("/scaffold routes", () => {
   ];
 
   const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ServerHost => ({
-    loadedModelIds: async () => null,
+    availableModelIds: async () => null,
     specView: (s: unknown) => s,
     unknownTags: async (tags: string[]) =>
       tags.filter(t => !knownTags.includes(t.trim().toLowerCase())),

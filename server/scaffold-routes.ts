@@ -135,9 +135,9 @@ export async function handleScaffoldRoutes(
     if (!idea) { json(res, 400, { ok: false, reason: "nothing to work with" }); return true; }
     const model = String(o.model ?? "").trim();
     if (model) {
-      const ids = await host.loadedModelIds();
+      const ids = await host.availableModelIds();
       if (ids !== null && !ids.includes(model)) {
-        json(res, 400, { ok: false, reason: `"${model}" is not loaded in ${host.providerName}` }); return true;
+        json(res, 400, { ok: false, reason: `"${model}" is not available in ${host.providerName}` }); return true;
       }
     }
     const c = readConcept(o);

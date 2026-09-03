@@ -13,7 +13,7 @@ import { PROVIDER } from "./engine/provider.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
 import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson } from "./engine/story-schema.ts";
-import { runDirs, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
+import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type NextChapterSession, type ImportedCharacter,
@@ -182,7 +182,7 @@ const validateCatalogKind = (kind: string): CatalogKind | null =>
   CATALOG_KINDS.includes(kind as CatalogKind) ? (kind as CatalogKind) : null;
 
 export const HOST: ServerHost = {
-  selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
+  selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, availableModelIds,
   providerName: PROVIDER.displayName,
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.

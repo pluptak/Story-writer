@@ -196,7 +196,7 @@ describe("pause/resume handshake", () => {
 
     // Call /resume — should call pauseResolve() to wake the loop
     const host = {
-      loadedModelIds: async () => ["test-model"],
+      availableModelIds: async () => ["test-model"],
     } as unknown as ServerHost;
     const r = await callRoute(handleRunControl, "/resume", {}, host);
     assert.equal(r.code, 200);
@@ -223,7 +223,7 @@ describe("pause/resume handshake", () => {
 
     // Call /stop — must release the paused loop or it will hang forever
     const host = {
-      loadedModelIds: async () => ["test-model"],
+      availableModelIds: async () => ["test-model"],
     } as unknown as ServerHost;
     const r = await callRoute(handleRunControl, "/stop", {}, host);
     assert.equal(r.code, 200);

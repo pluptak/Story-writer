@@ -74,7 +74,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
     runLlmLogs: async () => [],
     readLlmLog: async () => null,
     writtenChapters: async () => [],
-    loadedModelIds: async () => null,
+    availableModelIds: async () => null,
     architectModel: async () => "none",
     newScaffoldSession: async () => { throw new Error("unused"); },
     newHandoffSession: async () => { throw new Error("unused"); },
