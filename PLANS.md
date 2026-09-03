@@ -786,14 +786,14 @@ place that needs it instead of everywhere.
    is presentation logic a route can't cheaply hand over without introspecting the Zod schemas'
    shapes at runtime, which is more machinery than four kinds that essentially never change shape
    justify.
-4. **One faithful `StoryJson` shape for the editor.** The server offers `specView`
-   ([engine/story-spec.ts:773](engine/story-spec.ts#L773), exploded skills + `scene` alias) and strict
-   `StoryJson`, and makes the browser reconcile them via `scaffoldStory()`
-   ([story-edit.js:77-91](server/gui/viewer/story-edit.js#L77)), whose own comment records the bug
-   this already caused (`Unrecognized key: "scene"`, save button disabled on first edit). Keep
-   `specView` for the interview's read-only proposal card
-   ([interview.js:170-243](server/gui/viewer/interview.js#L170)) — that's presentation and it's
-   earning its keep. Make the scaffold's editor draft `StoryJson`-shaped and delete `scaffoldStory()`.
+4. ~~**One faithful `StoryJson` shape for the editor.**~~ **Done.** `storyJsonShape(spec, models)`
+   (extracted from `renderStory`) is exposed through `ServerHost.storyJsonShape`; `scaffoldState()`
+   sends it as `storyDraft` alongside the unchanged, specView-shaped `spec`. `story-edit.js`'s
+   `editNew` branch loads `storyDraft` directly; `scaffoldStory()` is deleted. `specView` stays for
+   the interview's own proposal card, untouched. `tests/gui/story-edit.spec.ts` gained the first
+   automated coverage of the "review new story" screen at all — writing it surfaced a real
+   pre-existing gap, `SCAFFOLD` (a module-level singleton in `scaffold-routes.ts`) leaking between
+   Playwright tests in the same worker; both scaffold-session tests now abandon in `finally`.
 5. **Make `ServerHost` the only boundary the scaffold domain crosses.** After this block
    `scaffold-routes.ts` should not know what a `ScaffoldSession` is — only HTTP, wire validation
    (`MAX_TAGS` etc., already correctly at the route), SSE, the busy/abandon lifecycle, and
