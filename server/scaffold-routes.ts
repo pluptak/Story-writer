@@ -20,6 +20,7 @@ let scaffoldFolderAsk = "";                // why accept() would not derive a fo
 let scaffoldStage: "" | "fillGaps" | "verify" = "";   // which automatic pass is running, if any
 let scaffoldUnknownTags: string[] = [];    // tags the catalog does not hold; allowed, but reported
 let scaffoldMissingImports: string[] = [];   // ids the catalog no longer holds
+let scaffoldMissingStyle = "";              // the style id that could not be resolved
 
 const ABANDONED = "the interview was abandoned";
 const ABANDONED_WHILE_ACCEPTING =
@@ -29,6 +30,7 @@ const MAX_TAGS = 8;
 const MAX_TAG_LEN = 40;
 const MAX_CAST = 4;      // the cast stage's own ceiling: "Four is the maximum"
 const MAX_IMPORTS = 4;   // the cast stage's ceiling, same as MAX_CAST
+const MAX_ID_LEN = 200;  // a catalog id is a slug; this only stops an unbounded string
 
 /** The concept goes verbatim into a prompt, so its size is bounded here rather than trusted. Returns
  *  the cleaned concept, or a reason it was refused. */
@@ -41,7 +43,9 @@ function readConcept(o: Record<string, unknown>): { ok: true; concept: Concept }
   const castSize = Number(o.castSize ?? 0);
   if (!Number.isInteger(castSize) || castSize < 0 || castSize > MAX_CAST)
     return { ok: false, reason: `castSize must be a whole number from 0 to ${MAX_CAST}` };
-  return { ok: true, concept: { tags, castSize } };
+  const styleId = String(o.styleId ?? "").trim();
+  if (styleId.length > MAX_ID_LEN) return { ok: false, reason: `styleId is longer than ${MAX_ID_LEN} characters` };
+  return { ok: true, concept: { tags, castSize, styleId } };
 }
 
 /** The import tray as ids. Resolving them needs the host, so this only checks the shape. */
@@ -50,6 +54,16 @@ function readImportIds(o: Record<string, unknown>): { ok: true; ids: string[] } 
   const ids = raw.map(x => String(x ?? "").trim()).filter(Boolean);
   if (ids.length > MAX_IMPORTS) return { ok: false, reason: `at most ${MAX_IMPORTS} imported characters` };
   return { ok: true, ids };
+}
+
+/** Resolve the author's style pick onto the session, and say so when the id names nothing. Returns
+ *  the id it could not find, or "". Assigned unconditionally by every caller for the same reason the
+ *  tray is: a pick that resolves must clear a previous session's report of one that did not. */
+async function applyStyle(session: ScaffoldSession, host: ServerHost, styleId: string): Promise<string> {
+  if (!styleId) { session.style = null; return ""; }
+  const found = await host.resolveStyle(styleId);
+  session.style = found;
+  return found ? "" : styleId;
 }
 
 function scaffoldState(host: ServerHost) {
@@ -74,6 +88,9 @@ function scaffoldState(host: ServerHost) {
       unknownTags: scaffoldUnknownTags,
       imported: SCAFFOLD.imported.map(i => ({ libraryId: i.libraryId, version: i.version, name: i.name })),
       missingImports: scaffoldMissingImports,
+      styleId: SCAFFOLD.style?.id ?? "",
+      styleName: SCAFFOLD.style?.name ?? "",
+      missingStyle: scaffoldMissingStyle,
       // Each half steers exactly one gate and is spent once that gate has produced its content.
       // Saying so is the point: a control that has stopped doing anything must not keep looking
       // live. Both are asked as "would the next build of that stage's prompt read this?" — which
@@ -83,6 +100,9 @@ function scaffoldState(host: ServerHost) {
       // An imported tray IS the cast size, so the number stops being an answer to anything.
       castSizeSteers: SCAFFOLD.mode !== "oneshot" && !SCAFFOLD.imported.length && SCAFFOLD.spec.characters.length === 0,
       importsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.spec.characters.length === 0,
+      // Spent once the settings gate has produced a voice — which, with a preset in hand, is the
+      // preset's own. Measured against the spec rather than the open gate, like the other two.
+      styleSteers: SCAFFOLD.mode !== "oneshot" && !SCAFFOLD.spec.writerStyle.trim(),
     },
     haveDraft,
     haveStory: SCAFFOLD.haveStory(),
@@ -121,7 +141,7 @@ export async function handleScaffoldRoutes(
     // The session dies here, but `scaffoldBusy` is left alone: if a round is in flight it must
     // keep the lock until its own finally clears it, so a second start cannot overlap it. The
     // round itself finds a stale `scaffoldGen` on return and drops everything it produced.
-    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = ""; scaffoldUnknownTags = []; scaffoldMissingImports = [];
+    SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = ""; scaffoldUnknownTags = []; scaffoldMissingImports = []; scaffoldMissingStyle = "";
     scaffoldGen++;
     publishScaffold(host);
     json(res, 200, { ok: true });
@@ -159,6 +179,8 @@ export async function handleScaffoldRoutes(
       if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
       SCAFFOLD.imported = resolved.imported;
       scaffoldMissingImports = resolved.missing;
+      scaffoldMissingStyle = await applyStyle(SCAFFOLD, host, c.concept.styleId);
+      if (gen !== scaffoldGen) { json(res, 409, { ok: false, reason: ABANDONED }); return true; }
       setWhere("building a new story", false);
       publishScaffold(host);
       const last = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(host); });
@@ -181,6 +203,7 @@ export async function handleScaffoldRoutes(
     SCAFFOLD.tags = c.concept.tags;
     SCAFFOLD.castSize = c.concept.castSize;
     scaffoldUnknownTags = c.concept.tags.length ? await host.unknownTags(c.concept.tags) : [];
+    scaffoldMissingStyle = await applyStyle(SCAFFOLD, host, c.concept.styleId);
     publishScaffold(host);
     json(res, 200, scaffoldState(host));
 

@@ -42,6 +42,11 @@ describe("/scaffold routes", () => {
       impulse: "i2", voice: [], skills: [], restrictions: [] },
   ];
 
+  const STYLES = [
+    { id: "style-spare", version: 1, name: "Spare", voice: "Short, terse, minimal dialogue.", tags: [], description: "" },
+    { id: "style-verbose", version: 1, name: "Verbose", voice: "Elaborate, descriptive, flowery prose.", tags: [], description: "" },
+  ];
+
   const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ServerHost => ({
     availableModelIds: async () => null,
     specView: (s: unknown) => s,
@@ -62,9 +67,18 @@ describe("/scaffold routes", () => {
       }
       return { imported, missing };
     },
+    resolveStyle: async (id: string) => {
+      const byId = new Map(STYLES.map(e => [e.id, e]));
+      const found = byId.get(id.trim());
+      return found ? { id: found.id, name: found.name, voice: found.voice } : null;
+    },
     newScaffoldSession: async (idea: string, _model?: string, mode?: "oneshot" | "staged", concept?: Concept) =>
+      // The scripted cast judge is not optional furniture: without it the cast gate builds a real
+      // one and reaches for the network, and whether a test that crosses that gate passes then
+      // depends on what a live model happens to say.
       new ScaffoldSession(new ScriptedAgent(script.map(s => JSON.stringify(s))),
-                          DEFAULTS, idea, undefined, mode ?? "staged", undefined,
+                          DEFAULTS, idea, undefined, mode ?? "staged",
+                          () => new ScriptedAgent([JSON.stringify({ ok: true })]),
                           concept?.tags ?? [], concept?.castSize ?? 0),
   }) as unknown as ServerHost;
 
@@ -262,9 +276,10 @@ describe("/scaffold routes", () => {
 
     it("a one-shot walk has no gate for the concept to steer", async () => {
       LIVE.awaitingPick = true;
-      const opened = await post("/scaffold/start", { idea: "...", mode: "oneshot", tags: ["bleak"], castSize: 3 }, host([{ ask: "?" }]));
+      const opened = await post("/scaffold/start", { idea: "...", mode: "oneshot", tags: ["bleak"], castSize: 3, styleId: "style-spare" }, host([{ ask: "?" }]));
       assert.equal(opened.body.concept.tagsSteer, false);
       assert.equal(opened.body.concept.castSizeSteers, false);
+      assert.equal(opened.body.concept.styleSteers, false);
     });
 
     it("revising the concept before an interview is open is refused", async () => {
@@ -347,6 +362,77 @@ describe("/scaffold routes", () => {
       await post("/scaffold/abandon", {}, h);  // ensure no session is open
       const result = await post("/scaffold/import", { importIds: ["lib-ivet"] }, h);
       assert.equal(result.body.reason, "no interview is open");
+    });
+
+    it("a chosen style preset is resolved onto the session at start", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", styleId: "style-spare" }, host([STORY_STAGE]));
+      assert.equal(opened.body.active, true);
+      assert.equal(opened.body.concept.styleId, "style-spare");
+      assert.equal(opened.body.concept.styleName, "Spare");
+      assert.equal(opened.body.concept.missingStyle, "");
+    });
+
+    it("a style id the catalog no longer holds is reported, not silently dropped", async () => {
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", styleId: "gone" }, host([STORY_STAGE]));
+      assert.equal(opened.body.active, true);
+      assert.equal(opened.body.concept.styleId, "");
+      assert.equal(opened.body.concept.styleName, "");
+      assert.equal(opened.body.concept.missingStyle, "gone");
+    });
+
+    it("revising the concept swaps the style preset", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([STORY_STAGE]);
+      const opened = await post("/scaffold/start", { idea: "...", styleId: "style-spare" }, h);
+      assert.equal(opened.body.concept.styleId, "style-spare");
+      assert.equal(opened.body.concept.styleName, "Spare");
+
+      const revised = await post("/scaffold/concept", { styleId: "style-verbose" }, h);
+      assert.equal(revised.body.active, true);
+      assert.equal(revised.body.concept.styleId, "style-verbose");
+      assert.equal(revised.body.concept.styleName, "Verbose");
+    });
+
+    it("an empty style id clears the preset and the missing-style report", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([STORY_STAGE]);
+      const opened = await post("/scaffold/start", { idea: "...", styleId: "style-spare" }, h);
+      assert.equal(opened.body.concept.styleId, "style-spare");
+
+      const cleared = await post("/scaffold/concept", { styleId: "" }, h);
+      assert.equal(cleared.body.concept.styleId, "");
+      assert.equal(cleared.body.concept.styleName, "");
+      assert.equal(cleared.body.concept.missingStyle, "");
+    });
+
+    it("a style id longer than the bound is refused", async () => {
+      LIVE.awaitingPick = true;
+      const h = host([]);
+      await post("/scaffold/start", { idea: "..." }, h);
+      const tooLong = "x".repeat(201);
+      const result = await post("/scaffold/concept", { styleId: tooLong }, h);
+      assert.equal(result.code, 400);
+      assert.equal(result.body.ok, false);
+      assert.match(result.body.reason, /styleId is longer than 200 characters/);
+    });
+
+    // The style pick is spent two gates further on than the other two, so it stays live across the
+    // story and cast rounds -- the prompt that reads it has not been built yet. The walk also proves
+    // the preset's voice reaches the spec through the route, which is this round's whole point.
+    it("the style pick stops steering once the settings gate has produced a voice", async () => {
+      const SETTINGS_STAGE = { writer_style_constraints: ["the prose knows only what Aster sees"] };
+      const h = host([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE]);
+      LIVE.awaitingPick = true;
+      const opened = await post("/scaffold/start", { idea: "...", styleId: "style-spare" }, h);
+      assert.equal(opened.body.concept.styleSteers, true, "the settings gate is two rounds ahead");
+      const cast = await post("/scaffold/approve", {}, h);
+      assert.equal(cast.body.concept.styleSteers, true, "the cast gate does not spend the style");
+      const settings = await post("/scaffold/approve", {}, h);
+      assert.equal(settings.body.concept.styleSteers, false, "the settings gate has produced a voice");
+      assert.equal(settings.body.spec.writerStyle, "Short, terse, minimal dialogue.",
+                   "the preset's voice, not one the architect wrote");
     });
   });
 

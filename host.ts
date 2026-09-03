@@ -16,7 +16,7 @@ import { StoryJson } from "./engine/story-schema.ts";
 import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
-  type NextChapterSession, type ImportedCharacter,
+  type NextChapterSession, type ImportedCharacter, type StylePreset,
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
@@ -99,6 +99,17 @@ async function importCharacters(ids: string[]): Promise<{ imported: ImportedChar
     });
   }
   return { imported, missing };
+}
+
+/** Only the two halves the settings gate needs travel: the name, so a revert can say which preset
+ *  stands, and the voice itself. The description and tags are the catalog's own furniture — they
+ *  rank presets in the picker and never reach a prompt. */
+async function resolveStyle(id: string): Promise<StylePreset | null> {
+  const wanted = id.trim();
+  if (!wanted) return null;
+  const cat = await loadCatalog("styles");
+  const found = (cat?.entries ?? []).find((e: { id?: unknown }) => String(e?.id ?? "") === wanted);
+  return found ? { id: found.id, name: found.name, voice: found.voice } : null;
 }
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
@@ -187,7 +198,7 @@ export const HOST: ServerHost = {
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters, promoteSkill,
+  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters, resolveStyle, promoteSkill,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   storyForEdit: async (dir) => {

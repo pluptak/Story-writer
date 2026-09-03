@@ -15,7 +15,7 @@ import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
 import { handleCatalogRoutes } from "./catalog-routes.ts";
-import type { ScaffoldSession, NextChapterSession, ImportedCharacter } from "../engine/architect.ts";
+import type { ScaffoldSession, NextChapterSession, ImportedCharacter, StylePreset } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson } from "../engine/story-schema.ts";
@@ -23,8 +23,9 @@ import type { BibleLookup } from "../engine/skills.ts";
 
 /** The author's concept, chosen before the architect runs and never written to story.json:
  *  `tags` steer the story stage, `castSize` is the opening cast's target size for the cast
- *  stage. Staged mode only — the one-shot walk has no gate for either to steer. */
-export type Concept = { tags: string[]; castSize: number };
+ *  stage, and `styleId` names the voice preset the settings stage is handed. Staged mode only —
+ *  the one-shot walk has no gate for any of them to steer. */
+export type Concept = { tags: string[]; castSize: number; styleId: string };
 
 /** What the reusable vocabulary is being used by, derived by scanning the other catalogs — the
  *  "18 uses" line, observed rather than authored. Tags are keyed by folded label (what entries
@@ -70,6 +71,9 @@ export interface ServerHost {
    *  have deleted an entry since choosing it, and a tray that silently shrank is worse than one that
    *  says what it lost. */
   importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }>;
+  /** One style preset from the author's catalog, by id. Null when the id names nothing — a preset
+   *  deleted between the pick and the round is news for the author, not an error. */
+  resolveStyle(id: string): Promise<StylePreset | null>;
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
   directEdit(spec: StorySpec, field: string, value: unknown):
