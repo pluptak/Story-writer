@@ -337,6 +337,54 @@ architect must not silently fix by rewriting character state; it surfaces the pr
 resolves it. Flags block nothing, and they are not `problems` — `problems` are validation warnings
 about the story that resulted, flags are observations about the prose that already exists.
 
+## The concept
+
+What the author settles before the architect runs: an **idea**, **tags**, and an **opening cast size**.
+Session state on the `tension` pattern — never a `story.json` field, discarded at accept — but the
+mirror of it, because the architect coins the tension and the author chooses the concept.
+
+Each half reaches exactly one gate, and nothing else:
+
+| | reaches | says |
+| --- | --- | --- |
+| `tags` | the **story** stage | what *kind* of story this is — the same idea as survival horror and as adventure are different stories |
+| `castSize` | the **cast** stage | the opening cast's target size, which the tension can still overrule |
+
+**Tags steer the story gate and then stop steering.** `idea + tags → story gate → tension + premise →
+every later stage`. Afterwards they persist as author intent — display, revisiting the concept,
+ranking presets in the UI — and that is all.
+
+> Tags may help the UI select a preset. They never become a second hidden instruction channel into
+> later architect prompts.
+
+Without that rule a later change that "helpfully" passes tags into the cast or scene prompt
+reintroduces an unarbitrated steering channel alongside the tension the whole checklist is built on.
+The cast size is bounded by the cast stage's own ceiling of four, and is a target rather than a quota:
+the prompt says to propose fewer and explain why when the tension only supports fewer.
+
+**An empty concept costs nothing.** Both prompts are byte-identical without it, which is what makes it
+safe to leave alone and what the tests guard.
+
+### Cast size is unpriced; roster size is the cost
+
+Offering a cast size means owing its price. Every character in the roster may be consulted at each
+beat, so a wide cast spends the step budget on breadth instead of depth — the `alarm-wing` runs hit
+the 24-step cap with a wide roster while a duo on the same budget did not. The **scene** gate
+therefore reports the roster against `config.maxSteps` as an advisory problem, and only there: the
+number is meaningless until there is a scene to spend the budget on. It stays quiet below three
+characters and while the budget is still at least eight beats wide, which are the shapes that had room.
+
+### Spent is a real state
+
+Revising the concept never re-runs a gate — it changes what the *next* build of a stage prompt says.
+Once the stage that reads a half has produced its content, nothing ahead reads it again, and the
+session says so (`tagsSteer`, `castSizeSteers` in [GUI-SPEC.md](GUI-SPEC.md)). The viewer stops
+offering to revise a spent half rather than letting it go quietly inert: an editor that looks like it
+steers the run, and does not, is worse than no editor.
+
+Cast size is measured against whether a cast exists rather than against the open gate, which means it
+is at its most live during the **story** gate — before the cast prompt has ever been built.
+
 ## Conversation rules
 
 ### Scaffold
@@ -514,7 +562,8 @@ Built as its own `#/scaffold` route in [`interview.js`](server/gui/viewer/interv
 the shelf's "start a new story" card — which relabels itself "continue new story…" while a session is
 open on the server. The idea step is a modal over an empty scaffold shell; once the first proposal
 lands the page keeps three things visible at all times: the proposed story (a card), the current round
-(a card), and a **scaffold-state sidebar** — walk, open gate, tension, "on disk: nothing yet" — that
+(a card), and a **scaffold-state sidebar** — walk, open gate, tension, the concept, "on disk: nothing
+yet" — that
 owns **accept** and **abandon**. The view drops the run-controls rail and breaks out of the page column
 the other screens sit in, so the wide proposal-and-sidebar layout has room.
 
@@ -528,6 +577,14 @@ Behaviour:
 - The idea field is shown only before the first proposal. Beside the model choice, the idea step offers
   **how it proposes** as two radio cards: "stage by stage" (the staged checklist) or "the whole story
   at once" (oneshot).
+- Between those cards and the model choice sits **the concept** — a tag picker built from the tag
+  catalog's vocabulary, and an **opening cast** select. The picker offers the catalog's tags and
+  nothing else; free text there would be a second idea box, and the vocabulary is the catalog's to
+  author. Choosing the one-shot walk removes the whole block, which has no gate to steer.
+- Once a session is open the concept moves to the sidebar beside the tension, each half labelled
+  **spent** when the stage that reads it has landed, with **revise concept** offering the same picker
+  inline until both are. Revising seeds from the session rather than the modal's draft: after a
+  reload the draft is empty while the concept is not.
 - A staged session renders the checklist — story / cast / settings / technical / scene / world chips with the
   open gate
   highlighted and passed gates ticked. A one-shot session has no checklist; the status bar and round
@@ -627,6 +684,13 @@ never imports engine modules directly. The old console walkthrough (`--new`, `--
   `stories/` is the user's own content and gitignored. A **handoff** architect no longer gets it —
   the handoff prompt names every edit field inline and resends the real story each round, so the
   example was the format said twice.
+- **The scaffold has no scripted session in the GUI harness**, so `tests/gui/` can cover the idea
+  modal (which needs no session) and nothing past it: `fixtureHost` refuses `newScaffoldSession`.
+  A `setScaffoldFactory` in the shape `setHandoffFactory` already has would open the sidebar, the
+  gate walk and the approve/refuse cards to the Playwright pass. Until then those stay in
+  [GUI-CHECKLIST.md](GUI-CHECKLIST.md)'s manual section 14. Note that `fixtureHost` spreads the real
+  `HOST`, so `unknownTags` would reach the author's own catalog at ROOT — it needs the same
+  temp-file override the catalog methods already have.
 
 ## Safety and product constraints
 

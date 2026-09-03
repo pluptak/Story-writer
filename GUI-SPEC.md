@@ -333,8 +333,11 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 
 ```
 GET  /scaffold
-  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, haveDraft, haveStory, pendingAsk,
-                          problems[], last: ScaffoldRound | null, needsFolder, model, spec }
+  → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, concept, haveDraft, haveStory,
+                          pendingAsk, problems[], last: ScaffoldRound | null, needsFolder, model, spec }
+
+concept =
+  { tags: string[], castSize: number, unknownTags: string[], tagsSteer: boolean, castSizeSteers: boolean }
 
 ScaffoldRound =
   | { kind:"proposal"; note; stage? }        — staged rounds carry the gate they belong to
@@ -343,7 +346,8 @@ ScaffoldRound =
   | { kind:"nothing"; why; stage? }
   | { kind:"failed"; error }
 
-POST /scaffold/start    { idea, model?, mode? } → only while picking; opens a session and runs the
+POST /scaffold/start    { idea, model?, mode?, tags?, castSize? }
+                                                → only while picking; opens a session and runs the
                                                   first proposal. `mode` picks the walk:
                                                   "staged" (the default) runs the gated checklist —
                                                    story → cast → settings → technical → scene → world,
@@ -359,6 +363,12 @@ POST /scaffold/approve                     → staged mode only: pass the open g
                                              stands, when the gate's content never landed
                                              (`kind:"nothing"`, "has not landed"), or past the last gate
                                              ("checklist is complete").
+POST /scaffold/concept  { tags?, castSize? } → revises the author's concept on the open session.
+                                             Same bounds as `start`, and `400` on either. Never
+                                             re-runs a gate: it changes what the NEXT build of a
+                                             stage prompt says, which for a stage already passed
+                                             is nothing — `tagsSteer` / `castSizeSteers` are what
+                                             say whether that is still any stage at all.
 POST /scaffold/set      { field, value }   → direct edit, bypassing the model — today `field` may only
                                              be `"scene.length"` (`DIRECT_FIELDS`); alternatively
                                              `{ story }` replaces the in-memory draft from the full
@@ -378,6 +388,21 @@ stage lands. Do not confuse it with `gate`, which is the checklist position and 
 a `story.json` field, so it reaches the GUI only through this state object — read-only, for display; the
 architect edits it by field name (see `/scaffold/say`) but it never lands on disk. Empty on a one-shot
 session and until the story stage names it.
+
+`concept` is the author's half of the same kind of state, and the mirror of `tension`: chosen before
+the architect runs rather than coined by it, session-only, discarded at accept. `tags` reach the story
+stage's prompt and `castSize` the cast stage's, and neither is read anywhere else — a one-shot session
+has no gate for either, so both `*Steer` flags are false there. `unknownTags` are the ones the tag
+catalog does not hold; they are sent to the architect anyway, because that catalog is a seed the author
+edits rather than a gate. **The bounds are enforced at the route, not trusted from the client** — at
+most 8 tags, 40 characters each, and a `castSize` of 0 (meaning "architect decides") through 4, which
+is the cast stage's own ceiling. This is the one place author text reaches a prompt without passing
+through the architect first.
+
+`tagsSteer` and `castSizeSteers` answer one question each: *would the next build of that stage's prompt
+read this?* Tags are live while the story gate is open; cast size is live until a cast exists — which
+means it is at its most live during the STORY gate, before the cast prompt has ever been built. Once
+false, revising that half changes a string nothing will read again, and the viewer stops offering to.
 
 `haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
 be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its
