@@ -53,7 +53,7 @@ export function newLmStudioProvider(baseUrl: string, auth: Record<string, string
     chatUrl: `${baseUrl}/chat/completions`,
     modelsUrl: `${baseUrl}/models`,
     capabilities: {
-      modelRuntimeInspection: true, modelPreparation: true,
+      modelRuntimeInspection: true, fullInventory: true, modelPreparation: true,
       reasoningEffort: true, explicitLoad: true, explicitUnload: true,
     },
     headers: () => ({ ...auth }),

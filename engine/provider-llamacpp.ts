@@ -12,7 +12,7 @@ export function newLlamacppProvider(baseUrl: string, auth: Record<string, string
     chatUrl: `${baseUrl}/chat/completions`,
     modelsUrl: `${baseUrl}/models`,
     capabilities: {
-      modelRuntimeInspection: false, modelPreparation: false,
+      modelRuntimeInspection: false, fullInventory: false, modelPreparation: false,
       reasoningEffort: false, explicitLoad: false, explicitUnload: false,
     },
     headers: () => ({ ...auth }),

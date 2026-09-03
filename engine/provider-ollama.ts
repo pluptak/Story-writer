@@ -28,7 +28,7 @@ export function newOllamaProvider(baseUrl: string, auth: Record<string, string>)
     chatUrl: `${baseUrl}/chat/completions`,
     modelsUrl: `${baseUrl}/models`,
     capabilities: {
-      modelRuntimeInspection: true, modelPreparation: false,
+      modelRuntimeInspection: true, fullInventory: false, modelPreparation: false,
       reasoningEffort: true, explicitLoad: false, explicitUnload: false,
     },
     headers: () => ({ ...auth }),

@@ -61,6 +61,9 @@ npm run preflight # story-card listing against LM Studio
   the engine holds the line itself because a local server may drop the in-flight prompt when a
   second one arrives) and `LLM_QUEUE_TIMEOUT_MS` (default 600000 — how long a queued call waits
   before giving up)
+- Before a chapter starts, the engine refuses when the server is unreachable or does not know one
+  of the story's models; a model that exists but is not loaded only draws a warning (the first
+  call waits out the just-in-time load)
 - The default models in `defaults.json` are `gemma-4-12b-it-qat-uncensored-heretic`; override per-story in `story.json` → `models.default`
 
 ## Architecture
