@@ -7,13 +7,13 @@
 // only of the prose. It holds its own APP.picker slice for the same reason: `APP.catalog` is the
 // catalog PAGE, and an overlay sharing it would wipe the half-filled form underneath.
 
-import { esc, tid, reasonOr, wireBackdropClose } from "./util.js";
+import { esc, tid, reasonOr, latest } from "./util.js";
 import { APP } from "./state.js";
-import { modal, closeButton, button, hint as hintLine } from "./ui.js";
+import { modal, closeButton, button, hint as hintLine, errorLine } from "./ui.js";
+import { on, wireModalClose } from "./wire.js";
 
 let onDone = null;            // the caller's resolver
 let preselectNames = [];      // matched against entry names once the fetch lands
-let gen = 0;                  // guard against stale responses
 
 /** One place that knows how each kind displays. Returns { id, name, blurb, meta }. */
 export function entryFace(kind, e) {
@@ -33,15 +33,14 @@ export async function openLibraryPicker({ kind, title, hint = "", preselect = []
   APP.picker = { open: true, kind, title, hint, loading: true, error: "", entries: [], search: "", chosen: [] };
   onDone = done;
   preselectNames = preselect;
-  gen++;
-  const currentGen = gen;
+  const g = latest();
   APP.render();
 
   try {
     const r = await fetch("/catalog?kind=" + encodeURIComponent(kind));
     const j = await r.json();
 
-    if (gen !== currentGen) return; // stale response
+    if (!g.current()) return; // stale response
 
     if (!j.ok) {
       APP.picker.error = reasonOr(j, "the library did not load");
@@ -63,7 +62,7 @@ export async function openLibraryPicker({ kind, title, hint = "", preselect = []
     APP.picker.loading = false;
     APP.render();
   } catch {
-    if (gen !== currentGen) return; // stale response
+    if (!g.current()) return; // stale response
     APP.picker.error = "the engine did not answer";
     APP.picker.loading = false;
     APP.render();
@@ -102,7 +101,7 @@ export function libraryPickerHtml() {
   if (loading) {
     contentHtml = hintLine(`reading the library…`);
   } else if (error) {
-    contentHtml = `<div class="said bad">${esc(error)}</div>`;
+    contentHtml = errorLine(esc(error));
   } else if (!entries.length) {
     contentHtml = hintLine(`this library has no entries yet — they are created on its own page`);
   } else {
@@ -181,13 +180,9 @@ export function wireLibraryPicker(root) {
     });
   }
 
-  // Cancel and close buttons
-  const cancelBtn = root.querySelector("#picker-cancel");
-  const closeBtn = root.querySelector("#picker-close");
-  if (cancelBtn) cancelBtn.addEventListener("click", cancelLibraryPicker);
-  if (closeBtn) closeBtn.addEventListener("click", cancelLibraryPicker);
-
-  wireBackdropClose(root, "picker-backdrop", cancelLibraryPicker);
+  // Cancel button and close (`×`) button, plus the backdrop -- all three dismiss.
+  on(root, "picker-cancel", cancelLibraryPicker);
+  wireModalClose(root, { backdropId: "picker-backdrop", closeId: "picker-close", onClose: cancelLibraryPicker });
 
   // A repaint re-emits every row unfiltered, so the standing search has to be re-applied or a
   // render arriving mid-search would silently show the whole library again.

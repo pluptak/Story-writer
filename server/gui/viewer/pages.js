@@ -19,7 +19,7 @@ import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
 import { go, generating, syncHash, tagFocus, clearFocus, parseHashParams } from "./nav.js";
 import { renderSession } from "./session.js";
-import { button, hint } from "./ui.js";
+import { button, hint, thinking } from "./ui.js";
 
 function restoreFocus(page, id) {
   if (id) {
@@ -243,7 +243,7 @@ function renderLive(page, blocks) {
       const name = storyName(APP.picked || LIVEV.meta?.story || "");
       html = `<div class="empty starting" data-tid="live.empty">
         <h2>Starting${name ? ` <em>${esc(name)}</em>` : ""}…</h2>
-        <p class="thinking"><i></i>waiting for the writer — a cold model can take a few seconds</p>
+        ${thinking("waiting for the writer — a cold model can take a few seconds", { tag: "p" })}
         ${hint(`use <b>stop</b> in the run controls to cancel, once they appear`)}
       </div>`;
     } else {

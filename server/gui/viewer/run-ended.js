@@ -1,6 +1,7 @@
-import { esc, wireBackdropClose, verdictText } from "./util.js";
+import { esc, verdictText } from "./util.js";
 import { APP } from "./state.js";
 import { modal, button } from "./ui.js";
+import { on, wireModalClose } from "./wire.js";
 
 // ---- the end-of-run modal ----------------------------------------------------
 // The engine parks back in awaitPick() the instant a run ends (story-writer.ts's for(;;) loop),
@@ -27,8 +28,7 @@ export function runEndedModalHtml() {
  *  is done. */
 export function wireRunEndedModal(root, goShelf) {
   const stay = () => { APP.runEnded = null; APP.render(); };
-  wireBackdropClose(root, "runended-backdrop", stay);
-  const on = (id, fn) => { const el = root.querySelector("#" + id); if (el) el.addEventListener("click", fn); };
-  on("runended-stay", stay);
-  on("runended-shelf", () => { APP.runEnded = null; goShelf(); });
+  wireModalClose(root, { backdropId: "runended-backdrop", onClose: stay });
+  on(root, "runended-stay", stay);
+  on(root, "runended-shelf", () => { APP.runEnded = null; goShelf(); });
 }

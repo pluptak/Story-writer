@@ -1,6 +1,6 @@
 import { esc, tid } from "./util.js";
 import { APP, READV } from "./state.js";
-import { hint } from "./ui.js";
+import { hint, errorLine, divider } from "./ui.js";
 
 /** Volumes are wildly lopsided -- one real chapter logged 57 writer calls and ~1.07M prompt
  *  characters against ~7 calls per character -- so counts are abbreviated, not shown raw. */
@@ -76,10 +76,10 @@ const openFile = state => {
 
 function transcriptHtml(state) {
   const t = state.transcript;
-  if (state.transcriptError) return `<div class="said bad">${esc(state.transcriptError)}</div>`;
+  if (state.transcriptError) return errorLine(esc(state.transcriptError));
   if (!t || openFile(state) !== t.file) return "";
   if (!t.calls.length) return hint(`that transcript is empty`);
-  return `<div class="divider"><span>${esc(t.file)}</span></div>
+  return divider(t.file) + `
     <div class="calls">${t.calls.map((c, i) => {
       const n = (Array.isArray(c.prompt) ? c.prompt : []).length;
       const open = state.callOpen === i;
@@ -94,7 +94,7 @@ function transcriptHtml(state) {
 export function agentsPanelHtml(store = READV, state = APP) {
   if (!store.dir || !store.id) return "";
   const body =
-    state.agentsError ? `<div class="said bad">${esc(state.agentsError)}</div>`
+    state.agentsError ? errorLine(esc(state.agentsError))
     : !state.agents || state.agents.dir !== store.dir || state.agents.id !== store.id ? hint(`reading…`)
     : !state.agents.logs.length ? hint(`this run logged no model calls`)
     : state.agents.logs.map(l => `<div ${tid("agents.row")} class="agentrow" data-file="${esc(l.file)}">

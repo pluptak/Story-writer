@@ -1,4 +1,4 @@
-import { esc, post, fmtRun, modelOptionsHtml, reasonOr, tid } from "./util.js";
+import { esc, post, fmtRun, latest, reasonOr, tid } from "./util.js";
 import { APP, READV, runningReason } from "./state.js";
 import { castChips } from "./shelf.js";
 import { loadRun, loadStories } from "./saved-runs.js";
@@ -6,15 +6,13 @@ import { loadReader } from "./reader.js";
 import { go } from "./nav.js";
 import { prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paras } from "./blocks.js";
-import { button, hint } from "./ui.js";
+import { button, hint, errorLine, warnLine, divider, modelSelect } from "./ui.js";
 
 // ---- the story page ----------------------------------------------------------
 // One story, a full page rather than a modal (`#/story?dir=...`, so a reload or bookmark lands back
 // on it) -- this grew out of the play confirmation, with room for what it was scaffolded to become:
 // a scene list (below) and a story editor. Reached only by clicking a shelf card; "back to shelf"
 // is the only way out, same as before.
-
-let chapterReq = 0;
 
 /** The story's scenes, numbered -- scene N is chapter N, written or not (`card.chapters` says which
  *  exist on disk). `scene` is the legacy singular the shelf still reads. */
@@ -29,10 +27,11 @@ function modelSelectHtml(s) {
   const def = s.defaultModel || "";
   const available = def && APP.modelIds.includes(def);
   const chosen = APP.storyModel || (available ? def : "");
-  return `<select id="story-model" ${tid("story.model-select")} class="btn" title="model to play this story with">
-    <option value=""${chosen ? "" : " selected"}>story default${def ? " · " + esc(def) : ""}</option>
-    ${modelOptionsHtml(APP.modelIds, chosen)}
-  </select>`;
+  return modelSelect({
+    id: "story-model", tidName: "story.model-select", title: "model to play this story with",
+    extraClass: "btn", defaultLabel: `story default${def ? " · " + esc(def) : ""}`,
+    selected: chosen, modelIds: APP.modelIds,
+  });
 }
 
 /** The chapter after the last one written -- 1 when nothing is written yet. Shared by the scene
@@ -61,7 +60,7 @@ function sceneRowHtml(scene, chapters, canWrite, why, discardable, beats) {
     ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
     ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
     ${open ? `<div class="prose" style="margin-top:12px">${paras(APP.chapter.text)}</div>` : ""}
-    ${open && APP.chapterError ? `<div class="said bad">${esc(APP.chapterError)}</div>` : ""}
+    ${open && APP.chapterError ? errorLine(esc(APP.chapterError)) : ""}
   </div></div>`;
 }
 
@@ -129,7 +128,7 @@ function handoffRowHtml(s) {
   const mine = APP.handoff.active && APP.handoff.dir === s.dir;
   const n = mine ? APP.handoff.chapter : nextChapterOf(s.chapters);
   const why = runningReason();
-  return `<div class="divider"><span>next chapter</span></div>
+  return `${divider("next chapter")}
     <div class="row">
       ${button({ label: `${mine ? "continue preparing" : "prepare"} chapter ${n}`, id: "story-handoff", tidName: "story.handoff-btn", disabled: !!why, title: why })}
       <span class="hint">the architect re-authors the cast from the chapters already written</span>
@@ -147,8 +146,8 @@ export function storyPageHtml() {
 
   if (!s.ok) return `<section class="picker story">
     <h2>${esc(s.name)}</h2>
-    <div class="said bad">does not load — ${esc(s.error || "unknown error")}</div>
-    ${(s.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
+    ${errorLine(`does not load — ${esc(s.error || "unknown error")}`)}
+    ${(s.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
     <div class="btns" style="margin-top:14px">${button({ label: "back to shelf", id: "story-back" })}</div>
   </section>`;
 
@@ -166,11 +165,11 @@ export function storyPageHtml() {
     ${s.writerStyle ? `<div class="row" style="margin-top:8px"><span class="hint">voice</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
 
     <div class="row" style="margin-top:12px"><span class="hint">model</span>${modelSelectHtml(s)}</div>
-    ${APP.storyError ? `<div class="said bad">${esc(APP.storyError)}</div>` : ""}
-    ${APP.runError ? `<div class="said bad">${esc(APP.runError)}</div>` : ""}
-    ${(s.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
+    ${APP.storyError ? errorLine(esc(APP.storyError)) : ""}
+    ${APP.runError ? errorLine(esc(APP.runError)) : ""}
+    ${(s.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
 
-    <div class="divider"><span>scenes</span></div>
+    ${divider("scenes")}
     <div class="cards">${scenesOf(s).map((sc, i, arr) =>
       sceneRowHtml(sc, s.chapters || [], canWrite, why,
         i === arr.length - 1 && arr.length > 1 && !(s.chapters || []).includes(sc.n),
@@ -178,7 +177,7 @@ export function storyPageHtml() {
 
     ${handoffRowHtml(s)}
 
-    <div class="divider"><span>previous runs</span></div>
+    ${divider("previous runs")}
     ${runsListHtml(s)}
 
     <div class="btns" style="margin-top:18px">
@@ -210,18 +209,18 @@ export function wireStoryPage(page) {
   for (const b of page.querySelectorAll(".chapterread"))
     b.addEventListener("click", async () => {
       const n = Number(b.dataset.chapter), dir = APP.storyDir;
-      const req = ++chapterReq;
+      const g = latest();
       if (APP.chapter?.dir === dir && APP.chapter.n === n) {
         APP.chapter = null; APP.chapterError = ""; APP.render(); return;
       }
       APP.chapterError = "";
       try {
         const r = await fetch(`/chapter?dir=${encodeURIComponent(dir)}&n=${n}`);
-        if (req !== chapterReq) return;
+        if (!g.current()) return;
         if (!r.ok) throw 0;
         APP.chapter = { dir, n, text: await r.text() };
       } catch {
-        if (req !== chapterReq) return;
+        if (!g.current()) return;
         APP.chapter = { dir, n, text: "" }; APP.chapterError = "that chapter would not load";
       }
       APP.render();

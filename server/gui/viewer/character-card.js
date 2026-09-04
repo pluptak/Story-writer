@@ -1,7 +1,8 @@
-import { esc, wireBackdropClose, tid } from "./util.js";
+import { esc, tid } from "./util.js";
 import { APP } from "./state.js";
 import { castCharacterSheet } from "./cast-sheet.js";
 import { modal, closeButton } from "./ui.js";
+import { wireModalClose } from "./wire.js";
 
 // ---- the character card -----------------------------------------------------
 // A pill (header cast, a shelf card, or the story page) opens this modal for the character it
@@ -50,9 +51,7 @@ export function characterCardModalHtml() {
 
 export function wireCharacterCard(root) {
   const close = () => { APP.charCard = null; APP.modalWant = ""; APP.render(); };
-  wireBackdropClose(root, "charcard-backdrop", close);
-  const btn = root.querySelector("#charcard-close");
-  if (btn) btn.addEventListener("click", close);
+  wireModalClose(root, { backdropId: "charcard-backdrop", closeId: "charcard-close", onClose: close });
 }
 
 // `dir` is carried but never shown -- on the read page it is the run's absolute path, which means

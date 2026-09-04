@@ -1,6 +1,6 @@
 import { esc, tid } from "./util.js";
 import { APP, CATALOG_KINDS } from "./state.js";
-import { button, hint } from "./ui.js";
+import { button, hint, errorLine, warnLine, thinking } from "./ui.js";
 
 /** Per-kind metadata: labels, empty-state text, and button wording.
  *  This is the single source of truth for kind-specific UI strings and form structures.
@@ -134,7 +134,7 @@ export function catalogPageHtml() {
   if (cat.loading) {
     return `<section class="picker story">
       <h2>${pageTitle}</h2>
-      <div class="thinking"><i></i>loading…</div>
+      ${thinking("loading…")}
     </section>`;
   }
 
@@ -142,7 +142,7 @@ export function catalogPageHtml() {
   if (cat.error) {
     return `<section class="picker story">
       <h2>${pageTitle}</h2>
-      <div class="said bad">${esc(cat.error)}</div>
+      ${errorLine(esc(cat.error))}
       <div class="btns">
         ${button({ label: "try again", id: "cat-retry", variant: "primary" })}
       </div>
@@ -263,7 +263,7 @@ export function catalogPageHtml() {
       body.push(`<div class="cat-block">`);
       body.push(`<div class="cat-block-label cat-bad">Issues</div>`);
       for (const issue of cat.issues) {
-        body.push(`<div class="said bad">${esc(issue)}</div>`);
+        body.push(errorLine(esc(issue)));
       }
       body.push(`</div>`);
     }
@@ -273,7 +273,7 @@ export function catalogPageHtml() {
       body.push(`<div class="cat-block">`);
       body.push(`<div class="cat-block-label cat-warn">Notices</div>`);
       for (const prob of cat.problems) {
-        body.push(`<div class="prob">${esc(prob)}</div>`);
+        body.push(warnLine(esc(prob)));
       }
       body.push(`</div>`);
     }

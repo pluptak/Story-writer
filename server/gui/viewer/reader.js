@@ -2,7 +2,7 @@ import { esc, basename, tid } from "./util.js";
 import { APP, READER, storyName } from "./state.js";
 import { go, syncHash } from "./nav.js";
 import { paras } from "./blocks.js";
-import { button } from "./ui.js";
+import { button, errorLine, thinking, divider } from "./ui.js";
 
 // ---- the story reader ----------------------------------------------------
 // A read-only view of a story's accepted prose, chapter by chapter. No SSE,
@@ -63,14 +63,14 @@ export function readerPageHtml() {
   if (READER.loading) {
     return `<section class="picker reader-view">
       <h2>${esc(name)}</h2>
-      <p class="thinking"><i></i>loading chapters…</p>
+      ${thinking("loading chapters…", { tag: "p" })}
       <div class="btns" style="margin-top:18px">${button({ label: "back", id: "reader-back" })}</div>
     </section>`;
   }
   if (READER.error) {
     return `<section class="picker reader-view">
       <h2>${esc(name)}</h2>
-      <div class="said bad">${esc(READER.error)}</div>
+      ${errorLine(esc(READER.error))}
       <div class="btns" style="margin-top:18px">${button({ label: "back", id: "reader-back" })}</div>
     </section>`;
   }
@@ -82,8 +82,8 @@ export function readerPageHtml() {
   <div id="reader-results">${resultsHtml()}</div>`);
   for (const ch of READER.chapters) {
     body.push(`<div class="reader-chapter" id="reader-ch-${ch.n}">
-      <div class="divider"><span>chapter ${ch.n}</span></div>
-      ${ch.error ? `<div class="said bad">${esc(ch.error)}</div>` : `<div class="prose">${paras(ch.text)}</div>`}
+      ${divider(`chapter ${ch.n}`)}
+      ${ch.error ? errorLine(esc(ch.error)) : `<div class="prose">${paras(ch.text)}</div>`}
     </div>`);
   }
   body.push(`<div class="btns" style="margin-top:18px">${button({ label: "back", id: "reader-back" })}</div>`);

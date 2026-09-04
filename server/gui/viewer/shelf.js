@@ -1,7 +1,7 @@
 import { esc, tid } from "./util.js";
 import { APP } from "./state.js";
 import { charChip } from "./character-card.js";
-import { hint } from "./ui.js";
+import { hint, divider } from "./ui.js";
 
 // ---- the shelf ------------------------------------------------------------
 // The hub: reachable any time an engine is attached, including mid-run -- browsing is always
@@ -39,8 +39,8 @@ export function pickerHtml() {
     <p class="q">reusable characters outside any story</p>
   </button>`;
 
-  const divider = cards
-    ? `<div class="divider"><span>or pick an existing one</span></div>`
+  const dividerLine = cards
+    ? divider("or pick an existing one")
     : hint(`no stories on the shelf yet — start one above`, { style: "text-align:center;margin:14px 0 0" });
 
   return `<section class="picker" data-tid="shelf.picker">
@@ -48,7 +48,7 @@ export function pickerHtml() {
     <p class="sub">${APP.picked ? "starting…" : "pick one to see what it's about"}</p>
     ${newCard}
     ${catalogCard}
-    ${divider}
+    ${dividerLine}
     <div class="cards">${cards}</div>
   </section>`;
 }

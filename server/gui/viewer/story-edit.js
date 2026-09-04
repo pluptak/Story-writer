@@ -4,10 +4,11 @@
  * /story/check, and saves through /story/save.
  */
 
-import { esc, post } from "./util.js";
+import { esc, post, latest, parseLines, parseCommaSeparated } from "./util.js";
 import { APP } from "./state.js";
 import { go } from "./nav.js";
-import { button, hint } from "./ui.js";
+import { button, hint, errorLine, warnLine, thinking } from "./ui.js";
+import { on, onInput } from "./wire.js";
 
 // Dirty-guard: warn before closing the tab / navigating away
 addEventListener("beforeunload", e => {
@@ -99,16 +100,15 @@ function deepEq(a, b) {
 /** Debounced check against the server. The token makes the newest request win: two checks in flight
  *  can answer out of order, and a stale failure would otherwise disable Save (or a stale success
  *  clear issues a newer check had flagged) until the next keystroke. */
-let checkReq = 0;
 function scheduleCheck() {
   if (APP.editCheckTimer) clearTimeout(APP.editCheckTimer);
   APP.editCheckTimer = setTimeout(doCheck, 400);
 }
 
 async function doCheck() {
-  const req = ++checkReq;
+  const g = latest();
   const j = await post("/story/check", { story: APP.editDraft }, false);
-  if (!j || req !== checkReq) return;
+  if (!j || !g.current()) return;
   if (j.ok === false) {
     APP.editIssues = j.issues || [];
   } else {
@@ -128,7 +128,7 @@ async function doCheck() {
 function issuesHtml(path) {
   const mine = APP.editIssues.filter(i => i.path === path || i.path.startsWith(path + "."));
   if (!mine.length) return "";
-  return mine.map(i => `<div class="prob">${esc(i.message)}</div>`).join("");
+  return mine.map(i => warnLine(esc(i.message))).join("");
 }
 
 /** Issues that no field claims. `issuesHtml` renders an issue beside the field its path names, so a
@@ -141,23 +141,23 @@ function orphanIssuesHtml() {
   const orphans = (APP.editIssues || []).filter(i =>
     !FORM_ROOTS.includes(String(i.path || "").split(".")[0]));
   if (!orphans.length) return "";
-  return `<div class="prob mt-xs">${orphans.map(i =>
-    esc(i.path && i.path !== "story" ? `${i.path}: ${i.message}` : i.message)).join("<br>")}</div>`;
+  return warnLine(orphans.map(i =>
+    esc(i.path && i.path !== "story" ? `${i.path}: ${i.message}` : i.message)).join("<br>"), "mt-xs");
 }
 
 function envWarningsHtml() {
   if (!APP.editWarnings?.length) return "";
-  return APP.editWarnings.map(w => `<div class="prob">${esc(w)}</div>`).join("");
+  return APP.editWarnings.map(w => warnLine(esc(w))).join("");
 }
 
 function errorBannerHtml() {
   if (!APP.editError) return "";
-  return `<div class="said bad mb-md">${esc(APP.editError)}</div>`;
+  return errorLine(esc(APP.editError), "mb-md");
 }
 
 function unsavedBannerHtml() {
   if (!APP.editDirty) return "";
-  return `<div class="prob mb-md">⚠ unsaved changes</div>`;
+  return warnLine("⚠ unsaved changes", "mb-md");
 }
 
 function sceneRowsHtml() {
@@ -262,13 +262,13 @@ function modelsHtml() {
 function suggestResultHtml() {
   if (!APP.editSuggestResult) return "";
   const r = APP.editSuggestResult;
-  if (!r.ok) return `<div class="said bad">${esc(r.error || "something went wrong")}</div>`;
+  if (!r.ok) return errorLine(esc(r.error || "something went wrong"));
   if (r.kind === "question") return `<div class="asked">The architect asks: <em>${esc(r.ask)}</em></div>`;
   if (r.kind === "edits") {
     const parts = [];
     if (r.applied.length) parts.push(`<div class="said good">Suggested changes: ${r.applied.map(a => `<strong>${esc(a.field)}</strong>`).join(", ")}</div>`);
-    if (r.ignored.length) parts.push(`<div class="said bad">Could not apply: ${r.ignored.map(i => esc(i)).join(", ")}</div>`);
-    if (r.problems.length) parts.push(`<div class="prob">${r.problems.map(p => esc(p)).join("; ")}</div>`);
+    if (r.ignored.length) parts.push(errorLine(`Could not apply: ${r.ignored.map(i => esc(i)).join(", ")}`));
+    if (r.problems.length) parts.push(warnLine(r.problems.map(p => esc(p)).join("; ")));
     if (r.note) parts.push(hint(esc(r.note)));
     parts.push(hint(`The changes are in the form now — review them, then save.`, { extraClass: "mt-xs" }));
     return parts.join("");
@@ -340,7 +340,7 @@ export function storyEditHtml() {
     return `<section class="picker story">
       <h2>Edit story</h2>
       ${errorBannerHtml()}
-      ${APP.editRaw ? `<div class="said bad mb-md">The file could not be parsed — here is the raw content:</div>
+      ${APP.editRaw ? errorLine("The file could not be parsed — here is the raw content:", "mb-md") + `
         <pre class="editor-raw">${esc(JSON.stringify(APP.editRaw, null, 2))}</pre>` : ""}
       <div class="btns mt-sm">${button({ label: "back to story", id: "edit-back" })}</div>
     </section>`;
@@ -365,7 +365,7 @@ export function storyEditHtml() {
     }
     const name = APP.editNew ? "New story" : APP.stories?.find(s => s.dir === APP.editDir)?.name || APP.editDir;
     return `<section class="picker story"><h2>Edit ${esc(name)}</h2>
-      <p class="thinking"><i></i>loading…</p></section>`;
+      ${thinking("loading…", { tag: "p" })}</section>`;
   }
 
   const s = APP.editDraft;
@@ -456,7 +456,7 @@ function applyField(id, value) {
     const idx = Number(sceneMatch[1]) - 1;
     const field = sceneMatch[2];
     if (field === "roster") {
-      APP.editDraft.scenes[idx].roster = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+      APP.editDraft.scenes[idx].roster = value ? parseCommaSeparated(value) : [];
     } else if (field === "reach") {
       APP.editDraft.scenes[idx].reach = parseReach(value);
     } else if (field === "length") {
@@ -477,11 +477,11 @@ function applyField(id, value) {
     const idx = Number(charMatch[1]);
     const field = charMatch[2];
     if (field === "skills") {
-      APP.editDraft.characters[idx].skills = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+      APP.editDraft.characters[idx].skills = value ? parseCommaSeparated(value) : [];
     } else if (field === "restrictions") {
-      APP.editDraft.characters[idx].restrictions = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+      APP.editDraft.characters[idx].restrictions = value ? parseCommaSeparated(value) : [];
     } else if (field === "voice") {
-      APP.editDraft.characters[idx].voice = value.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 3);
+      APP.editDraft.characters[idx].voice = parseLines(value).slice(0, 3);
     } else if (field === "maxRetries") {
       APP.editDraft.characters[idx].maxRetries = value === "" ? undefined : Number(value);
     } else {
@@ -511,7 +511,7 @@ function applyField(id, value) {
 
   // facts as text → array
   if (id === "edit-facts") {
-    APP.editDraft.facts = value.split("\n").map(s => s.trim()).filter(Boolean);
+    APP.editDraft.facts = parseLines(value);
     setDirty(); scheduleCheck();
   }
 }
@@ -521,12 +521,10 @@ export function wireStoryEditor(page) {
   // clearing editDirty here (as this used to) silently discarded unsaved changes in one click.
   // A scaffold draft ("edit in full") has no story on disk to go back to -- it returns to the
   // scaffold page, which still holds the in-memory session.
-  const back = page.querySelector("#edit-back");
-  if (back) back.addEventListener("click", () => go(APP.editNew ? "scaffold" : "story"));
+  on(page, "edit-back", () => go(APP.editNew ? "scaffold" : "story"));
   // The dead-end escape for a new-story draft with nothing behind it -- there is no "story" to go
   // back to, so it lands on the shelf.
-  const loadingBack = page.querySelector("#edit-loading-back");
-  if (loadingBack) loadingBack.addEventListener("click", () => go("shelf"));
+  on(page, "edit-loading-back", () => go("shelf"));
 
   // All inputs write to draft
   const inputs = page.querySelectorAll("input, textarea, select");
@@ -544,8 +542,7 @@ export function wireStoryEditor(page) {
   }
 
   // Save button
-  const save = page.querySelector("#edit-save");
-  if (save) save.addEventListener("click", async () => {
+  on(page, "edit-save", async () => {
     if (APP.editSaving) return;
     APP.editSaving = true;
     APP.render();
@@ -564,8 +561,7 @@ export function wireStoryEditor(page) {
     APP.render();
   });
 
-  const scaffoldAccept = page.querySelector("#edit-scaffold-accept");
-  if (scaffoldAccept) scaffoldAccept.addEventListener("click", async () => {
+  on(page, "edit-scaffold-accept", async () => {
     if (APP.editSaving || APP.editIssues.length) return;
     const folder = prompt("Folder name for this story", APP.editDraft.title || "");
     if (folder === null) return;
@@ -584,8 +580,7 @@ export function wireStoryEditor(page) {
   });
 
   // Revert button
-  const revert = page.querySelector("#edit-revert");
-  if (revert) revert.addEventListener("click", () => {
+  on(page, "edit-revert", () => {
     if (!confirm("Discard all unsaved changes?")) return;
     APP.editDraft = clone(APP.editStory);
     APP.editDirty = false;
@@ -596,10 +591,8 @@ export function wireStoryEditor(page) {
   });
 
   // Architect suggestion
-  const suggestBtn = page.querySelector("#edit-suggest-btn");
-  const suggestText = page.querySelector("#edit-suggest-text");
-  if (suggestText) suggestText.addEventListener("input", () => { APP.editSuggestText = suggestText.value; });
-  if (suggestBtn) suggestBtn.addEventListener("click", async () => {
+  onInput(page, "edit-suggest-text", el => { APP.editSuggestText = el.value; });
+  on(page, "edit-suggest-btn", async () => {
     const text = APP.editSuggestText || "";
     if (!text.trim()) return;
     APP.editSuggestBusy = true;

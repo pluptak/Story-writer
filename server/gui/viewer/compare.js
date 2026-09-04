@@ -1,6 +1,6 @@
 import { APP, COMPAREV, COMPARE_AGENTS } from "./state.js";
 import { esc, fmtRun, tid } from "./util.js";
-import { hint } from "./ui.js";
+import { hint, errorLine, thinking, divider } from "./ui.js";
 import { parseHashParams, syncHash } from "./nav.js";
 import { build } from "./events.js";
 import { renderBlock } from "./blocks.js";
@@ -120,9 +120,9 @@ export function comparisonPageHtml() {
     <p class="sub">${esc(story.name)} · choose two runs from the same chapter.</p>
     <div class="row"><label for="compare-a">first run</label><select class="btn" id="compare-a">${optionHtml(runs, APP.compareA)}</select></div>
     <div class="row"><label for="compare-b">second run</label><select class="btn" id="compare-b">${optionHtml(runs, APP.compareB)}</select></div>
-    ${error ? `<div class="said bad">${esc(error)}</div>` : hint(`${esc(fmtRun(a || {}))} versus ${esc(fmtRun(b || {}))}`)}
-    <div class="divider"><span>comparison</span></div>
-    ${COMPAREV.error ? `<div class="said bad">${esc(COMPAREV.error)}</div>` : COMPAREV.loading ? `<p class="thinking"><i></i>reading both runs…</p>`
+    ${error ? errorLine(esc(error)) : hint(`${esc(fmtRun(a || {}))} versus ${esc(fmtRun(b || {}))}`)}
+    ${divider("comparison")}
+    ${COMPAREV.error ? errorLine(esc(COMPAREV.error)) : COMPAREV.loading ? thinking('reading both runs…', { tag: "p" })
       : `<div class="prose-diff-card"><div class="label">accepted prose diff
            <span class="diff-legend"><span class="diff-added">only in second</span> <span class="diff-removed">only in first</span></span></div>${diffHtml(assembledProse(COMPAREV.a), assembledProse(COMPAREV.b))}</div>
          <div class="compare-panes">${paneHtml(COMPAREV.a, fmtRun(a || {}), "a")}${paneHtml(COMPAREV.b, fmtRun(b || {}), "b")}</div>`}

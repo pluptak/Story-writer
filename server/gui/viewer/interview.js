@@ -1,9 +1,10 @@
-import { $, esc, reasonOr, slugify, tid } from "./util.js";
+import { $, esc, reasonOr, slugify, tid, postJson, armConfirm } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
 import { loadVocab, loadLibrary, loadStyles } from "./catalog.js";
-import { modal, button, hint } from "./ui.js";
+import { modal, button, hint, errorLine, warnLine, thinking } from "./ui.js";
+import { on, onKey } from "./wire.js";
 
 // ---- the scaffold interview --------------------------------------------------
 // One page, four things always visible in the staged walk: the step they are on, the proposed
@@ -142,7 +143,7 @@ function conceptFieldsHtml() {
 }
 
 function ideaModalHtml() {
-  const err = APP.scaffoldError ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
+  const err = APP.scaffoldError ? errorLine(esc(APP.scaffoldError)) : "";
   return modal({
     id: "iv-backdrop", dataTid: "scaffold.idea-modal", ariaLabel: "new story",
     body: `<h2>Give the architect the rough idea</h2>
@@ -288,7 +289,7 @@ function proposalHtml(s) {
     ? [s.gate, ...GATES.filter(g => g !== s.gate)]
     : GATES;
   const bits = order.map(g => stageSection(g, content[g], g === s.gate)).filter(Boolean);
-  for (const p of (s.problems || [])) bits.push(`<div class="prob">⚠ ${esc(p)}</div>`);
+  for (const p of (s.problems || [])) bits.push(warnLine(`⚠ ${esc(p)}`));
   return `<section class="card" data-tid="scaffold.proposal-card">
     <div class="card-head">
       <div><span class="label">${esc(draftLabel(s))}</span><h3>${esc(spec.title || "(untitled)")}</h3></div>
@@ -317,13 +318,13 @@ function stepperHtml(s) {
 function lastHtml(last) {
   if (!last) return "";
   const at = last.stage ? `<span class="hint">[${esc(last.stage)}] </span>` : "";
-  if (last.kind === "failed")  return `<div class="said bad">${at}that round failed (${esc(last.error)}) — nothing changed</div>`;
+  if (last.kind === "failed")  return errorLine(`${at}that round failed (${esc(last.error)}) — nothing changed`);
   if (last.kind === "nothing") {
     if (/review the draft and accept/.test(last.why))
       return `<div class="said good">${at}checklist complete — review the draft, then accept</div>`;
     if (/has not landed/.test(last.why))
-      return `<div class="said bad">${at}this stage has nothing yet — ${esc(last.why)}</div>`;
-    return `<div class="said bad">${at}it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}</div>`;
+      return errorLine(`${at}this stage has nothing yet — ${esc(last.why)}`);
+    return errorLine(`${at}it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}`);
   }
   // A blocked gate is not a failure and not an empty round: the stage landed, and a judge says it
   // is not yet worth advancing past. It is the author's to overrule, so it reads as a judgement.
@@ -332,7 +333,7 @@ function lastHtml(last) {
       + hint(`refine the cast, or approve again to overrule this.`) + `</div>`;
   if (last.kind === "edits") {
     const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
-    const ig = last.ignored.map(x => `<div class="said bad">ignored ${esc(x)}</div>`).join("");
+    const ig = last.ignored.map(x => errorLine(`ignored ${esc(x)}`)).join("");
     const note = last.note ? `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>` : "";
     return `${note}<div class="said good">${at}${changed}</div>${ig}`;
   }
@@ -361,7 +362,7 @@ function roundHtml(s) {
   }
 
   const foot = [];
-  const busyDot = `<span class="thinking${busy ? " show" : ""}"><i></i>the architect is thinking…</span>`;
+  const busyDot = thinking("the architect is thinking…", { show: busy, tag: "span" });
   if (!busy) {
     foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
     foot.push(busyDot);
@@ -416,7 +417,7 @@ function folderHtml(s) {
       <div id="iv-folder-note">${folderNoteHtml()}</div>
       <div class="composer-foot">
         <span class="hint">nothing is written until this answers</span>
-        <span class="thinking${s.busy ? " show" : ""}"><i></i>writing &amp; preflighting…</span>
+        ${thinking("writing &amp; preflighting…", { show: s.busy, tag: "span" })}
         ${!s.needsFolder && APP.folderOpen ? button({ label: "← keep editing", id: "iv-folder-back" }) : ""}
         ${button({ label: "write story.json →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}
       </div>
@@ -435,8 +436,8 @@ function folderTaken() {
 function folderNoteHtml() {
   const slug = slugify(draft.folder);
   if (!draft.folder.trim()) return "";
-  if (!slug) return `<div class="prob">that gives no usable folder name.</div>`;
-  if (folderTaken()) return `<div class="prob">stories/${esc(slug)} already exists — pick another name.</div>`;
+  if (!slug) return warnLine("that gives no usable folder name.");
+  if (folderTaken()) return warnLine(`stories/${esc(slug)} already exists — pick another name.`);
   return slug !== draft.folder.trim() ? `<div class="hint">this lands in <b>stories/${esc(slug)}</b></div>` : "";
 }
 
@@ -479,15 +480,15 @@ function sidebarHtml(s) {
   }));
 
   const conceptWarning = c.unknownTags && c.unknownTags.length
-    ? `<div class="prob">not in the tag catalog: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway</div>`
+    ? warnLine(`not in the tag catalog: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway`)
     : "";
 
   const importsWarning = c.missingImports && c.missingImports.length
-    ? `<div class="prob">no longer in the catalog: ${esc(c.missingImports.join(", "))} — these were dropped from the cast</div>`
+    ? warnLine(`no longer in the catalog: ${esc(c.missingImports.join(", "))} — these were dropped from the cast`)
     : "";
 
   const styleWarning = c.missingStyle
-    ? `<div class="prob">the style "${esc(c.missingStyle)}" is no longer in the catalog — the architect writes the house style itself</div>`
+    ? warnLine(`the style "${esc(c.missingStyle)}" is no longer in the catalog — the architect writes the house style itself`)
     : "";
 
   // Revising is offered only while some half still reaches a prompt ahead. Once both are spent the
@@ -555,7 +556,7 @@ function activePageHtml(s) {
   const workspace = [];
   if (s.spec) workspace.push(proposalHtml(s));
   workspace.push(folderStep ? folderHtml(s) : roundHtml(s));
-  const err = APP.scaffoldError && !folderStep ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
+  const err = APP.scaffoldError && !folderStep ? errorLine(esc(APP.scaffoldError)) : "";
 
   const statusText = s.busy ? "the architect is working…"
     : s.pendingAsk ? "a question pins this gate until you answer it"
@@ -593,7 +594,7 @@ function scaffoldPageHtml() {
   const s = APP.scaffold;
   if (APP.scaffoldAccepting) {
     return `<div class="scpage"><div class="shell"><div class="workspace"><section class="card">
-      <div class="card-body"><p class="thinking show"><i></i>writing story.json and preflighting…</p></div>
+      <div class="card-body">${thinking("writing story.json and preflighting…", { tag: "p" })}</div>
     </section></div></div></div>`;
   }
   if (!s.active) {
@@ -613,17 +614,14 @@ export function scaffoldHtml() { return scaffoldPageHtml(); }
 // ── posting & wiring ──────────────────────────────────────────────────────────
 
 async function postScaffold(what, payload) {
-  let j = null;
-  try {
-    const r = await fetch(`/scaffold/${what}`, { method:"POST", headers:{ "Content-Type":"application/json" },
-                                                 body: JSON.stringify(payload || {}) });
-    j = await r.json();
-  } catch { APP.scaffoldError = "the engine did not answer"; APP.render(); return null; }
-  if (j && j.active !== undefined) { APP.scaffoldError = ""; APP.scaffold = j; APP.render(); return j; }
-  if (j && j.ok) { APP.scaffoldError = ""; APP.render(); return j; }        // abandon, and a clean accept
+  const j = await postJson(`/scaffold/${what}`, payload || {},
+    msg => { APP.scaffoldError = msg; APP.render(); });
+  if (!j) return null;
+  if (j.active !== undefined) { APP.scaffoldError = ""; APP.scaffold = j; APP.render(); return j; }
+  if (j.ok) { APP.scaffoldError = ""; APP.render(); return j; }        // abandon, and a clean accept
   APP.scaffoldError =
-    j && j.kind === "unloadable"     ? `it does not load, so nothing was kept — ${j.error}`
-    : j && j.kind === "needs_folder" ? ""                            // the folder step renders itself
+    j.kind === "unloadable"     ? `it does not load, so nothing was kept — ${j.error}`
+    : j.kind === "needs_folder" ? ""                            // the folder step renders itself
     : reasonOr(j, "that did not go through");
   APP.render();
   return j;
@@ -635,7 +633,7 @@ export const disarmAccept  = () => { clearTimeout(APP.acceptArmed);  APP.acceptA
 /** Also called from `sse.js`: any scaffold frame whose last round is no longer `blocked` means the
  *  gate moved on, so an armed override must not survive to overrule a later gate by accident. */
 export const disarmApprove = () => { clearTimeout(APP.approveArmed); APP.approveArmed = 0; };
-const disarmAbandon = () => { clearTimeout(APP.abandonArmed); APP.abandonArmed = 0; APP.render(); };
+
 
 /** A change, sent. The text stays in the draft until the round actually lands, so a 409 or dropped
  *  connection doesn't lose what you had written with nothing said about it. */
@@ -691,8 +689,6 @@ async function acceptIntoFolder() {
 }
 
 export function wireScaffold(page) {
-  const on = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("click", fn); };
-  const onKey = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("keydown", fn); };
   const plain = e => !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing;
 
   // Keep what is being typed across the re-renders SSE frames cause.
@@ -757,14 +753,14 @@ export function wireScaffold(page) {
     b.addEventListener("click", () => postScaffold("promote", { name: b.getAttribute("data-promote") }));
 
   // Enter sends; the idea box is a paragraph, so there the modifier sends and Enter is a newline.
-  onKey("f-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendSay(); } });
-  onKey("f-idea", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); startInterview(); } });
-  onKey("f-folder", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); acceptIntoFolder(); } });
+  onKey(page, "f-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendSay(); } });
+  onKey(page, "f-idea", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); startInterview(); } });
+  onKey(page, "f-folder", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); acceptIntoFolder(); } });
 
-  on("iv-back", () => go("shelf"));
-  on("iv-start", startInterview);
-  on("iv-say", sendSay);
-  on("iv-approve", async () => {
+  on(page, "iv-back", () => go("shelf"));
+  on(page, "iv-start", startInterview);
+  on(page, "iv-say", sendSay);
+  on(page, "iv-approve", async () => {
     // The gate's explicit pass: one click opens the next stage. A double-click must not POST twice.
     if (APP.scaffold.busy) return;
     // Unlike accept, the first click discovers the block -- so the override is armed by the reply,
@@ -777,29 +773,32 @@ export function wireScaffold(page) {
       APP.render();
     }
   });
-  on("iv-edit", () => {
+  on(page, "iv-edit", () => {
     // The optional full editor for the same in-memory draft -- it syncs back through /scaffold/set.
     APP.editNew = true; APP.editDir = "";
     go("edit");
   });
-  on("iv-abandon", () => {
+  on(page, "iv-abandon", () => {
     // Abandoning throws away the whole interview; nothing on the server keeps a copy, so it gets
-    // a confirming second click.
-    if (!APP.abandonArmed) { APP.abandonArmed = setTimeout(disarmAbandon, 4000); APP.render(); return; }
-    clearTimeout(APP.abandonArmed); APP.abandonArmed = 0;
-    postScaffold("abandon", {}).then(() => {
-      APP.scaffold = { active:false }; APP.scaffoldError = ""; APP.folderOpen = false;
-      draft.idea = draft.say = draft.folder = "";
-      draft.tags = [];
-      draft.castSize = 0;
-      draft.importIds = [];
-      draft.styleId = "";
-      go("shelf");
+    // a confirming second click (armConfirm).
+    armConfirm({
+      get: () => APP.abandonArmed,
+      set: v => { APP.abandonArmed = v; APP.render(); },
+      ms: 4000,
+      action: () => postScaffold("abandon", {}).then(() => {
+        APP.scaffold = { active:false }; APP.scaffoldError = ""; APP.folderOpen = false;
+        draft.idea = draft.say = draft.folder = "";
+        draft.tags = [];
+        draft.castSize = 0;
+        draft.importIds = [];
+        draft.styleId = "";
+        go("shelf");
+      }),
     });
   });
   // Opening seeds the modal's draft from the session, not the other way round: the session is the
   // truth, and after a reload the draft is empty while the concept is not.
-  on("iv-concept-edit", () => {
+  on(page, "iv-concept-edit", () => {
     const c = APP.scaffold.concept || {};
     draft.tags = [...(c.tags || [])];
     draft.castSize = c.castSize || 0;
@@ -807,17 +806,17 @@ export function wireScaffold(page) {
     draft.styleId = c.styleId || "";
     APP.conceptOpen = true; APP.render();
   });
-  on("iv-concept-cancel", () => { APP.conceptOpen = false; APP.render(); });
-  on("iv-concept-save", async () => {
+  on(page, "iv-concept-cancel", () => { APP.conceptOpen = false; APP.render(); });
+  on(page, "iv-concept-save", async () => {
     await postScaffold("concept", { tags: draft.tags, castSize: draft.castSize, styleId: draft.styleId });
     await postScaffold("import", { importIds: draft.importIds });
     APP.conceptOpen = false; APP.render();
   });
 
-  on("iv-folder", acceptIntoFolder);
-  on("iv-folder-back", () => {
+  on(page, "iv-folder", acceptIntoFolder);
+  on(page, "iv-folder-back", () => {
     // Only the locally-opened step can be dismissed -- a needs_folder demand stays until answered.
     APP.folderOpen = false; APP.render();
   });
-  on("iv-accept", acceptStory);
+  on(page, "iv-accept", acceptStory);
 }

@@ -1,23 +1,21 @@
-import { reasonOr } from "./util.js";
+import { reasonOr, postJson, armConfirm } from "./util.js";
 import { APP, hdraft, handoffForPage } from "./state.js";
 import { choose } from "./story-page.js";
 import { go } from "./nav.js";
 import { handoffPageHtml } from "./handoff-view.js";
+import { on, onKey } from "./wire.js";
 
 export { handoffPageHtml };
 
 async function postHandoff(what, payload) {
-  let j = null;
-  try {
-    const r = await fetch(`/next-chapter/${what}`, { method:"POST", headers:{ "Content-Type":"application/json" },
-                                                     body: JSON.stringify(payload || {}) });
-    j = await r.json();
-  } catch { APP.handoffError = "the engine did not answer"; APP.render(); return null; }
-  if (j && j.active !== undefined) { APP.handoffError = ""; APP.handoff = j; APP.render(); return j; }
-  if (j && j.ok) { APP.handoffError = ""; APP.render(); return j; }
+  const j = await postJson(`/next-chapter/${what}`, payload || {},
+    msg => { APP.handoffError = msg; APP.render(); });
+  if (!j) return null;
+  if (j.active !== undefined) { APP.handoffError = ""; APP.handoff = j; APP.render(); return j; }
+  if (j.ok) { APP.handoffError = ""; APP.render(); return j; }
   APP.handoffError =
-    j && j.kind === "unloadable" ? `the rewritten story.json does not load — ${j.error}; the previous one was put back`
-    : j && j.kind === "nothing"  ? "nothing has changed yet — ask for a change first"
+    j.kind === "unloadable" ? `the rewritten story.json does not load — ${j.error}; the previous one was put back`
+    : j.kind === "nothing"  ? "nothing has changed yet — ask for a change first"
     : reasonOr(j, "that did not go through");
   APP.render();
   return j;
@@ -53,12 +51,13 @@ async function loadHandoffChapters(dir, chapter, spec) {
 const disarm = key => { clearTimeout(APP[key]); APP[key] = 0; APP.render(); };
 
 /** First click arms a confirming second click within `ms`; the second click disarms and runs
- *  `action`. Shared by accept and abandon, which both rewrite or discard something undoable. */
-function armTwice(key, ms, action) {
-  if (!APP[key]) { APP[key] = setTimeout(() => disarm(key), ms); APP.render(); return; }
-  clearTimeout(APP[key]); APP[key] = 0;
-  action();
-}
+ *  `action` -- util.js's armConfirm with the flag on APP. Shared by accept and abandon, which both
+ *  rewrite or discard something undoable. */
+const armTwice = (key, ms, action) => armConfirm({
+  get: () => APP[key],
+  set: v => { APP[key] = v; APP.render(); },
+  ms, action,
+});
 
 /** The first round is a live model call reading every chapter written so far, so the page has to
  *  show it is busy before the POST rather than after it. */
@@ -129,26 +128,24 @@ export function wireHandoff(page) {
     loadHandoffChapters(APP.handoffDir, s.chapter, s.spec);
   }
 
-  const on = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("click", fn); };
-  const onKey = (id, fn) => { const el = page.querySelector("#" + id); if (el) el.addEventListener("keydown", fn); };
   const plain = e => !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing;
 
   const say = page.querySelector("#h-say");
   if (say) say.addEventListener("input", () => { hdraft.say = say.value; });
-  onKey("h-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendHSay(); } });
+  onKey(page, "h-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendHSay(); } });
 
   const model = page.querySelector("#h-model");
   if (model) model.addEventListener("change", () => { APP.handoffModel = model.value; });
 
-  on("h-start", startHandoff);
-  on("h-retry", retryHandoff);
-  on("h-send", sendHSay);
-  on("h-back", () => { APP.storyDir = APP.handoffDir; go("story"); });
-  on("h-write", writePrepared);
+  on(page, "h-start", startHandoff);
+  on(page, "h-retry", retryHandoff);
+  on(page, "h-send", sendHSay);
+  on(page, "h-back", () => { APP.storyDir = APP.handoffDir; go("story"); });
+  on(page, "h-write", writePrepared);
 
   // Accepting rewrites the story.json a working story is already running on. The engine puts the
   // old file back if the result does not load, but a result that DOES load is not undoable -- hence
   // the same confirming second click the interview's accept takes.
-  on("h-accept", () => armTwice("hAcceptArmed", 5000, acceptHandoff));
-  on("h-abandon", () => armTwice("hAbandonArmed", 4000, abandonHandoff));
+  on(page, "h-accept", () => armTwice("hAcceptArmed", 5000, acceptHandoff));
+  on(page, "h-abandon", () => armTwice("hAbandonArmed", 4000, abandonHandoff));
 }

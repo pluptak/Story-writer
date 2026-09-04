@@ -1,19 +1,11 @@
-import { reasonOr } from "./util.js";
+import { reasonOr, postJson, parseLines, parseCommaSeparated, armConfirm, slugify } from "./util.js";
 import { APP, CATALOG_KINDS } from "./state.js";
 import { syncHash } from "./nav.js";
 import { catalogPageHtml } from "./catalog-view.js";
 import { openLibraryPicker } from "./library-picker.js";
+import { on, onInput } from "./wire.js";
 
 export { catalogPageHtml };
-
-// Parse text fields into arrays: split on newlines/commas, trim, drop empties
-function parseLines(text) {
-  return (text || "").split("\n").map(s => s.trim()).filter(Boolean);
-}
-
-function parseCommaSeparated(text) {
-  return (text || "").split(",").map(s => s.trim()).filter(Boolean);
-}
 
 /** The server's entry -> the form's draft: every list becomes the text a textarea holds.
  *  APP.catalog holds different shapes per kind:
@@ -106,20 +98,8 @@ function fromDraft(draft, id, kind) {
 }
 
 async function postCatalog(what, payload) {
-  let j = null;
-  try {
-    const r = await fetch(`/catalog/${what}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload || {})
-    });
-    j = await r.json();
-  } catch {
-    APP.catalog.error = "the engine did not answer";
-    APP.render();
-    return null;
-  }
-  return j;
+  return postJson(`/catalog/${what}`, payload || {},
+    msg => { APP.catalog.error = msg; APP.render(); });
 }
 
 export async function loadCatalog(kind) {
@@ -181,118 +161,63 @@ export async function refreshUsage() {
 }
 
 // "Loaded" is tracked apart from "non-empty" because an EMPTY catalog is a real answer, and the
-// two loaders that keyed on `.length` re-fetched forever when they got one: every load ends in a
+// loaders that keyed on `.length` re-fetched forever when they got one: every load ends in a
 // render, every render re-runs the wiring that starts the load. A catalog nobody has authored yet
 // -- characters and styles both, on a new install -- span the page instead of settling.
-let vocabLoading = false, vocabLoaded = false;
-let libraryLoading = false, libraryLoaded = false;
-let stylesLoading = false, stylesLoaded = false;
+
+/** One lazy "load once on first need" fetcher, filling an APP.catalog slot from /catalog?kind=….
+ *  A load that failed marks itself loaded anyway -- it shows its error and waits to be
+ *  invalidated, rather than being retried by the very render it just caused. `.invalidate()`
+ *  drops the cache after a write to that kind, so pickers fed from it reflect the edit. */
+function makeLazyLoader({ path, slot, label }) {
+  let loading = false, loaded = false;
+  const load = async () => {
+    if (loaded || loading) return;   // already here, or already on its way
+
+    loading = true;
+    try {
+      const r = await fetch(path);
+      const j = await r.json();
+      if (j.ok) {
+        APP.catalog[slot] = j.entries || [];
+      } else {
+        APP.catalog.error = reasonOr(j, `could not load ${label}`);
+      }
+      APP.render();
+      syncHash();
+    } catch (err) {
+      APP.catalog.error = `${label} did not load: ` + (err.message || "network error");
+      APP.render();
+      syncHash();
+    } finally {
+      loading = false; loaded = true;
+    }
+  };
+  load.invalidate = () => { APP.catalog[slot] = []; loading = false; loaded = false; };
+  return load;
+}
+
+/** Load the tag vocabulary once, on first need */
+export const loadVocab = makeLazyLoader({ path: "/catalog?kind=tags", slot: "vocab", label: "tag vocabulary" });
+
+/** Load the style presets once, on first need */
+export const loadStyles = makeLazyLoader({ path: "/catalog?kind=styles", slot: "styles", label: "style presets" });
+
+/** Load the character library once, on first need */
+export const loadLibrary = makeLazyLoader({ path: "/catalog?kind=characters", slot: "library", label: "character library" });
 
 /** Drop the cached tag vocabulary after a write to it, so the character form's picker reflects the
  *  edit. Without this the picker keeps showing a deleted tag as an ordinary selected chip, and the
  *  off-vocabulary notice -- the whole point of that state -- never appears. */
-function invalidateVocab() {
-  APP.catalog.vocab = [];
-  vocabLoading = false; vocabLoaded = false;
-}
+const invalidateVocab = loadVocab.invalidate;
 
 /** Drop the cached character library after a write to it, so the scaffold's import picker reflects
  *  the edit. Without this a deleted character can still be selected in the tray. */
-function invalidateLibrary() {
-  APP.catalog.library = [];
-  libraryLoading = false; libraryLoaded = false;
-}
+const invalidateLibrary = loadLibrary.invalidate;
 
 /** Drop the cached style presets after a write to one, so the scaffold's voice picker reflects the
  *  edit -- and so a preset whose voice was rewritten is offered with the new one. */
-function invalidateStyles() {
-  APP.catalog.styles = [];
-  stylesLoading = false; stylesLoaded = false;
-}
-
-/** Load the tag vocabulary once, on first need */
-export async function loadVocab() {
-  if (vocabLoaded || vocabLoading) return;   // already here, or already on its way
-
-  vocabLoading = true;
-  try {
-    const r = await fetch("/catalog?kind=tags");
-    const j = await r.json();
-    if (j.ok) {
-      APP.catalog.vocab = j.entries || [];
-      APP.render();
-      syncHash();
-    } else {
-      APP.catalog.error = reasonOr(j, "could not load tag vocabulary");
-      APP.render();
-      syncHash();
-    }
-  } catch (err) {
-    APP.catalog.error = "tag vocabulary did not load: " + (err.message || "network error");
-    APP.render();
-    syncHash();
-  } finally {
-    // Marked loaded whatever happened: a load that failed shows its error and waits to be
-    // invalidated, rather than being retried by the very render it just caused.
-    vocabLoading = false; vocabLoaded = true;
-  }
-}
-
-/** Load the style presets once, on first need */
-export async function loadStyles() {
-  if (stylesLoaded || stylesLoading) return;   // already here, or already on its way
-
-  stylesLoading = true;
-  try {
-    const r = await fetch("/catalog?kind=styles");
-    const j = await r.json();
-    if (j.ok) {
-      APP.catalog.styles = j.entries || [];
-      APP.render();
-      syncHash();
-    } else {
-      APP.catalog.error = reasonOr(j, "could not load style presets");
-      APP.render();
-      syncHash();
-    }
-  } catch (err) {
-    APP.catalog.error = "style presets did not load: " + (err.message || "network error");
-    APP.render();
-    syncHash();
-  } finally {
-    // Marked loaded whatever happened: a load that failed shows its error and waits to be
-    // invalidated, rather than being retried by the very render it just caused.
-    stylesLoading = false; stylesLoaded = true;
-  }
-}
-
-/** Load the character library once, on first need */
-export async function loadLibrary() {
-  if (libraryLoaded || libraryLoading) return;   // already here, or already on its way
-
-  libraryLoading = true;
-  try {
-    const r = await fetch("/catalog?kind=characters");
-    const j = await r.json();
-    if (j.ok) {
-      APP.catalog.library = j.entries || [];
-      APP.render();
-      syncHash();
-    } else {
-      APP.catalog.error = reasonOr(j, "could not load character library");
-      APP.render();
-      syncHash();
-    }
-  } catch (err) {
-    APP.catalog.error = "character library did not load: " + (err.message || "network error");
-    APP.render();
-    syncHash();
-  } finally {
-    // Marked loaded whatever happened: a load that failed shows its error and waits to be
-    // invalidated, rather than being retried by the very render it just caused.
-    libraryLoading = false; libraryLoaded = true;
-  }
-}
+const invalidateStyles = loadStyles.invalidate;
 
 function clearDeleteTimer() {
   if (APP.catalog.deleteTimer) {
@@ -303,19 +228,13 @@ function clearDeleteTimer() {
 }
 
 function armDelete() {
-  if (!APP.catalog.armedDelete) {
-    APP.catalog.armedDelete = true;
-    APP.catalog.deleteTimer = setTimeout(() => {
-      clearDeleteTimer();
-      APP.render();
-    }, 8000);
-    APP.render();
-    return;
-  }
-
-  // Second click within 8 seconds — confirm and delete
-  clearDeleteTimer();
-  confirmDelete();
+  // The timer is armConfirm's flag; `armedDelete` rides along because the button's label reads it.
+  return armConfirm({
+    get: () => APP.catalog.deleteTimer,
+    set: v => { APP.catalog.deleteTimer = v; APP.catalog.armedDelete = !!v; APP.render(); },
+    ms: 8000,
+    action: confirmDelete,
+  });
 }
 
 async function confirmDelete() {
@@ -524,8 +443,7 @@ function generateId(facetOrText, labelOrNull, existingIds) {
     text = facetOrText;
   }
 
-  const base = String(text || "").toLowerCase().normalize("NFKD")
-    .replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  const base = slugify(text, Infinity);
   let id = base || "entry";
   let n = 1;
   const used = new Set(existingIds);
@@ -536,19 +454,9 @@ function generateId(facetOrText, labelOrNull, existingIds) {
 }
 
 export function wireCatalog(page) {
-  const on = (id, fn) => {
-    const el = page.querySelector("#" + id);
-    if (el) el.addEventListener("click", fn);
-  };
-
-  const onInput = (id, fn) => {
-    const el = page.querySelector("#" + id);
-    if (el) el.addEventListener("input", fn);
-  };
-
   // Kind switcher
   for (const kind of CATALOG_KINDS) {
-    on(`cat-kind-${kind}`, () => loadCatalog(kind));
+    on(page, `cat-kind-${kind}`, () => loadCatalog(kind));
   }
 
   // Entry selection
@@ -560,55 +468,23 @@ export function wireCatalog(page) {
     });
   }
 
-  // Character form field updates
-  onInput("cat-name", () => {
-    if (APP.catalog.draft) APP.catalog.draft.name = page.querySelector("#cat-name").value;
-  });
-  onInput("cat-tags-input", () => {
-    if (APP.catalog.draft) APP.catalog.draft.tags = page.querySelector("#cat-tags-input").value;
-  });
-  onInput("cat-persona", () => {
-    if (APP.catalog.draft) APP.catalog.draft.portablePersona = page.querySelector("#cat-persona").value;
-  });
-  onInput("cat-belief", () => {
-    if (APP.catalog.draft) APP.catalog.draft.belief = page.querySelector("#cat-belief").value;
-  });
-  onInput("cat-impulse", () => {
-    if (APP.catalog.draft) APP.catalog.draft.impulse = page.querySelector("#cat-impulse").value;
-  });
-  onInput("cat-voice", () => {
-    if (APP.catalog.draft) APP.catalog.draft.voice = page.querySelector("#cat-voice").value;
-  });
-  onInput("cat-skills", () => {
-    if (APP.catalog.draft) APP.catalog.draft.skills = page.querySelector("#cat-skills").value;
-  });
-  onInput("cat-restrictions", () => {
-    if (APP.catalog.draft) APP.catalog.draft.restrictions = page.querySelector("#cat-restrictions").value;
-  });
-
-  // Tag form field updates
-  onInput("cat-facet", () => {
-    if (APP.catalog.draft) APP.catalog.draft.facet = page.querySelector("#cat-facet").value;
-  });
-  onInput("cat-label", () => {
-    if (APP.catalog.draft) APP.catalog.draft.label = page.querySelector("#cat-label").value;
-  });
-
-  // Style form field updates
-  onInput("cat-desc", () => {
-    if (APP.catalog.draft) APP.catalog.draft.description = page.querySelector("#cat-desc").value;
-  });
-  onInput("cat-style-voice", () => {
-    if (APP.catalog.draft) APP.catalog.draft.voice = page.querySelector("#cat-style-voice").value;
-  });
-
-  // Skill form field updates
-  onInput("cat-meaning", () => {
-    if (APP.catalog.draft) APP.catalog.draft.meaning = page.querySelector("#cat-meaning").value;
-  });
+  // Form field updates -- each field writes its value straight into the draft
+  onInput(page, "cat-name", el => { if (APP.catalog.draft) APP.catalog.draft.name = el.value; });
+  onInput(page, "cat-tags-input", el => { if (APP.catalog.draft) APP.catalog.draft.tags = el.value; });
+  onInput(page, "cat-persona", el => { if (APP.catalog.draft) APP.catalog.draft.portablePersona = el.value; });
+  onInput(page, "cat-belief", el => { if (APP.catalog.draft) APP.catalog.draft.belief = el.value; });
+  onInput(page, "cat-impulse", el => { if (APP.catalog.draft) APP.catalog.draft.impulse = el.value; });
+  onInput(page, "cat-voice", el => { if (APP.catalog.draft) APP.catalog.draft.voice = el.value; });
+  onInput(page, "cat-skills", el => { if (APP.catalog.draft) APP.catalog.draft.skills = el.value; });
+  onInput(page, "cat-restrictions", el => { if (APP.catalog.draft) APP.catalog.draft.restrictions = el.value; });
+  onInput(page, "cat-facet", el => { if (APP.catalog.draft) APP.catalog.draft.facet = el.value; });
+  onInput(page, "cat-label", el => { if (APP.catalog.draft) APP.catalog.draft.label = el.value; });
+  onInput(page, "cat-desc", el => { if (APP.catalog.draft) APP.catalog.draft.description = el.value; });
+  onInput(page, "cat-style-voice", el => { if (APP.catalog.draft) APP.catalog.draft.voice = el.value; });
+  onInput(page, "cat-meaning", el => { if (APP.catalog.draft) APP.catalog.draft.meaning = el.value; });
 
   // Skills library picker (character form)
-  on("cat-skills-pick", () => {
+  on(page, "cat-skills-pick", () => {
     // The bible is the source of canonical skills; a bespoke one is still typed in the field. So the
     // picker owns only the lines that name a bible entry -- the rest are carried through untouched,
     // and deselecting a bible skill removes just that line.
@@ -659,8 +535,8 @@ export function wireCatalog(page) {
   }
 
   // Buttons
-  on("cat-save", saveDraft);
-  on("cat-delete", armDelete);
-  on("cat-new", createNew);
-  on("cat-retry", loadCatalog);
+  on(page, "cat-save", saveDraft);
+  on(page, "cat-delete", armDelete);
+  on(page, "cat-new", createNew);
+  on(page, "cat-retry", loadCatalog);
 }

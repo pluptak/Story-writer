@@ -10,9 +10,10 @@ export const tid = name => ` data-tid="${esc(name)}"`;
 export const basename = p => (p || "").replace(/^.*[\\/]/, "");
 // Mirrors engine/config-util.ts's slugify, which actually names the folder. Kept in step by hand:
 // drifting only costs a warning that fails to appear, since accept() still refuses a taken folder
-// server-side -- the viewer copy exists to say so *before* the click, not instead of it.
-export const slugify = s => String(s ?? "").toLowerCase().normalize("NFKD")
-  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
+// server-side -- the viewer copy exists to say so *before* the click, not instead of it. `max`
+// truncates the result (the folder cap is 40; catalog ids pass Infinity and never truncate).
+export const slugify = (s, max = 40) => String(s ?? "").toLowerCase().normalize("NFKD")
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max).replace(/-+$/, "");
 export const fmtRun = r => {
   const when = new Date(r.mtimeMs).toLocaleString(undefined,
     { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
@@ -56,12 +57,47 @@ export function notify(text, at = "notice") {
  *  `false` for nowhere (the caller handles it). Returns the parsed body, or null if it never
  *  answered. */
 export async function post(path, body, at = "notice") {
-  let j = null;
+  const j = await postJson(path, body, msg => notify(msg, at));
+  if (j) notify(j.ok === false ? reasonOr(j, "that did not go through") : "", at);
+  return j;
+}
+
+/** POST and parse the reply -- nothing else. The caller owns what a refusal means and where it is
+ *  said (`onError` receives "the engine did not answer" when the fetch or parse failed). Returns
+ *  the parsed body, or null if it never answered. */
+export async function postJson(path, body, onError = msg => notify(msg)) {
   try {
     const r = await fetch(path, body === undefined ? { method:"POST" }
       : { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
-    j = await r.json();
-  } catch { notify("the engine did not answer", at); return null; }
-  notify(j && j.ok === false ? reasonOr(j, "that did not go through") : "", at);
-  return j;
+    return await r.json();
+  } catch { onError("the engine did not answer"); return null; }
+}
+
+/** Split text into a list of lines: newlines, trimmed, empties dropped -- what a textarea holds
+ *  for a list-valued field. */
+export const parseLines = text => (text || "").split("\n").map(s => s.trim()).filter(Boolean);
+
+/** Split text into a comma-separated list: trimmed, empties dropped. */
+export const parseCommaSeparated = text => (text || "").split(",").map(s => s.trim()).filter(Boolean);
+
+let latestSeq = 0;
+/** A generation token for "newest wins" fetches: call `const g = latest()` before the first await,
+ *  and `if (!g.current()) return;` after each one -- a slow earlier call bows out to whatever
+ *  newer call has since begun, instead of overwriting its result. */
+export function latest() {
+  const mine = ++latestSeq;
+  return { current: () => mine === latestSeq };
+}
+
+/** First click arms a confirming second click within `ms`; the second click disarms and runs
+ *  `action`. The armed flag lives wherever the caller keeps it -- `get()`/`set(v)` -- so the same
+ *  primitive serves APP keys and state slices alike, and `set` is the place to render. */
+export function armConfirm({ get, set, ms, action }) {
+  if (!get()) {
+    set(setTimeout(() => set(0), ms));
+    return;
+  }
+  clearTimeout(get());
+  set(0);
+  return action();
 }

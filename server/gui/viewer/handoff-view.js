@@ -1,16 +1,17 @@
-import { esc, modelOptionsHtml, tid } from "./util.js";
+import { esc, tid } from "./util.js";
 import { APP, storyName, hdraft, runningReason, handoffForPage } from "./state.js";
 import { wordsPovHtml } from "./story-page.js";
-import { button, hint } from "./ui.js";
+import { button, hint, errorLine, warnLine, thinking, divider, modelSelect } from "./ui.js";
 
 // The architect default (defaults.json's models.architect) is repo-wide, not per-story, so it can
 // name a model this story never asked for and that may not even be loaded -- the dropdown lets a
 // round start with a model actually known to work instead.
 function handoffModelSelectHtml() {
-  return `<select id="h-model" class="btn" title="model to prepare this chapter with">
-    <option value=""${APP.handoffModel ? "" : " selected"}>architect default${APP.modelDefault ? " · " + esc(APP.modelDefault) : ""}</option>
-    ${modelOptionsHtml(APP.modelIds, APP.handoffModel)}
-  </select>`;
+  return modelSelect({
+    id: "h-model", title: "model to prepare this chapter with", extraClass: "btn",
+    defaultLabel: `architect default${APP.modelDefault ? " · " + esc(APP.modelDefault) : ""}`,
+    selected: APP.handoffModel, modelIds: APP.modelIds,
+  });
 }
 
 export function handoffPageHtml() {
@@ -30,7 +31,7 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">chapter ${APP.handoffDone.chapter} is prepared</p>
-      ${(APP.handoffDone.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
+      ${(APP.handoffDone.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
       <div class="btns" style="margin-top:18px">
         ${button({ label: `write chapter ${APP.handoffDone.chapter}`, id: "h-write", variant: "primary", disabled: !!why, title: why })}
         <span class="spacer"></span>
@@ -48,7 +49,7 @@ export function handoffPageHtml() {
   if (!s.active && APP.handoffAccepting) {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
-      <div class="thinking"><i></i>writing story.json…</div>
+      ${thinking("writing story.json…")}
     </section>`;
   }
   if (!s.active) {
@@ -58,7 +59,7 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">the architect reads the chapters already written and re-authors the cast for the next one</p>
-      ${APP.handoffError ? `<div class="said bad">${esc(APP.handoffError)}</div>` : ""}
+      ${APP.handoffError ? errorLine(esc(APP.handoffError)) : ""}
       <div class="btns" style="margin-top:18px">
         ${button({ label: "prepare the next chapter", id: "h-start", variant: "primary", disabled: !!busy, title: busy })}
         ${handoffModelSelectHtml()}
@@ -77,7 +78,7 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">the architect is reading the chapters already written</p>
-      <div class="thinking"><i></i>thinking about it…</div>
+      ${thinking("thinking about it…")}
       <div class="btns" style="margin-top:18px">
         ${button({ label: APP.hAbandonArmed ? "abandon — sure?" : "abandon", id: "h-abandon" })}
       </div>
@@ -93,13 +94,13 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">preparing chapter ${s.chapter}${s.model ? " · " + esc(s.model) : ""}</p>
-      <div class="said bad">that round failed (${esc(s.last.error)}) — nothing changed</div>
-      ${APP.handoffError ? `<div class="said bad">${esc(APP.handoffError)}</div>` : ""}
+      ${errorLine(`that round failed (${esc(s.last.error)}) — nothing changed`)}
+      ${APP.handoffError ? errorLine(esc(APP.handoffError)) : ""}
       <div class="hbar">
         <div class="field"><label for="h-say">or ask for a change instead</label>
           <textarea id="h-say" ${s.busy ? "disabled" : ""} rows="2"
             placeholder="a smaller request than the opening round">${esc(hdraft.say)}</textarea></div>
-        ${s.busy ? `<div class="thinking"><i></i>thinking about it…</div>` : ""}
+        ${s.busy ? `${thinking("thinking about it…")}` : ""}
         <div class="btns">
           ${button({ label: "try again", id: "h-retry", variant: "primary", disabled: s.busy })}
           ${button({ label: "send", id: "h-send", disabled: s.busy })}
@@ -120,13 +121,13 @@ export function handoffPageHtml() {
   const sc = s.spec?.scenes?.[s.chapter - 1];
   const roster = sc?.roster?.length ? " · " + esc(sc.roster.join(", ")) : "";
   if (sc) {
-    body.push(`<div class="divider"><span>proposed chapter ${s.chapter}</span></div>`);
+    body.push(divider(`proposed chapter ${s.chapter}`));
     body.push(`<div ${tid("handoff.proposed-chapter")} class="cardwrap"><div class="scenerow">
       <div class="sc-q">${esc(sc.question || "(no scene question)")}</div>
       <div class="sc-meta">${sc.place ? esc(sc.place) + " · " : ""}${wordsPovHtml(sc)}${roster}</div>
     </div></div>`);
   } else {
-    body.push(`<div class="divider"><span>proposed chapter ${s.chapter}</span></div>`);
+    body.push(divider(`proposed chapter ${s.chapter}`));
     body.push(hint(`the architect has not added it yet`));
   }
 
@@ -135,7 +136,7 @@ export function handoffPageHtml() {
   if (s.chapter > 1) {
     const hc = APP.handoffChapters;
     const ready = hc && hc.dir === APP.handoffDir && hc.chapter === s.chapter && !hc.loading;
-    body.push(`<div class="divider"><span>chapters written</span></div>`);
+    body.push(divider("chapters written"));
     if (ready) {
       const rows = hc.items.map(it => `
         <div ${tid("handoff.chapter-row")} class="hchap" data-n="${it.n}"><span class="n">✓ ch ${it.n}</span>
@@ -148,7 +149,7 @@ export function handoffPageHtml() {
           <span class="w">draft</span></div>`);
       body.push(`<div class="hchapters">${rows.join("")}</div>`);
     } else {
-      body.push(`<div class="thinking"><i></i>counting words…</div>`);
+      body.push(thinking("counting words…"));
     }
   }
 
@@ -168,7 +169,7 @@ export function handoffPageHtml() {
       }
       return String(value);
     };
-    body.push(`<div class="divider"><span>changes to review</span></div>`);
+    body.push(divider("changes to review"));
     if (s.last.applied.length) {
       body.push(`<div class="hchanges">` + s.last.applied.map(a => `
         <div ${tid("handoff.change-row")} class="hchange ok"><span class="hmark">✓</span>
@@ -180,12 +181,12 @@ export function handoffPageHtml() {
       body.push(hint(`nothing changed yet`));
     }
     if (s.last.ignored.length) {
-      body.push(`<div class="divider"><span>not applied</span></div>`);
+      body.push(divider("not applied"));
       body.push(`<div class="hchanges">` + s.last.ignored.map(x => `
         <div ${tid("handoff.change-row")} class="hchange no"><span class="hmark">✗</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
     }
     if ((s.last.flags || []).length) {
-      body.push(`<div class="divider"><span>continuity flags · advisory</span></div>`);
+      body.push(divider("continuity flags · advisory"));
       body.push(`<div class="hchanges">` + (s.last.flags || []).map(x => `
         <div ${tid("handoff.change-row")} class="hchange flag"><span class="hmark">⚑</span><div>${esc(x)}</div></div>`).join("") + `</div>`);
     }
@@ -196,15 +197,15 @@ export function handoffPageHtml() {
 
   // Problems
   for (const p of (s.problems || [])) {
-    body.push(`<div class="prob">⚠ ${esc(p)}</div>`);
+    body.push(warnLine(`⚠ ${esc(p)}`));
   }
 
   // Failed or nothing
   if (s.last?.kind === "failed") {
-    body.push(`<div class="said bad">that round failed (${esc(s.last.error)}) — nothing changed</div>`);
+    body.push(errorLine(`that round failed (${esc(s.last.error)}) — nothing changed`));
   }
   if (s.last?.kind === "nothing") {
-    body.push(`<div class="said bad">it didn't come back with changes — try saying what should be different</div>`);
+    body.push(errorLine("it didn't come back with changes — try saying what should be different"));
   }
 
   // Pending ask
@@ -213,7 +214,7 @@ export function handoffPageHtml() {
   }
 
   // Cast
-  body.push(`<div class="divider"><span>cast</span></div>`);
+  body.push(divider("cast"));
   if (s.spec?.characters?.length) {
     // Reach is per scene and labelled with the chapter that grants it, so it never reads as
     // intrinsic to the character.
@@ -244,12 +245,12 @@ export function handoffPageHtml() {
 
   // Thinking
   if (s.busy) {
-    body.push(`<div class="thinking"><i></i>thinking about it…</div>`);
+    body.push(`${thinking("thinking about it…")}`);
   }
 
   // Error
   if (APP.handoffError) {
-    body.push(`<div class="said bad">${esc(APP.handoffError)}</div>`);
+    body.push(errorLine(esc(APP.handoffError)));
   }
 
   // Buttons
