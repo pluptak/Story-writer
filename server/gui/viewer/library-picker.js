@@ -9,6 +9,7 @@
 
 import { esc, tid, reasonOr, wireBackdropClose } from "./util.js";
 import { APP } from "./state.js";
+import { modal, closeButton, button, hint as hintLine } from "./ui.js";
 
 let onDone = null;            // the caller's resolver
 let preselectNames = [];      // matched against entry names once the fetch lands
@@ -99,31 +100,30 @@ export function libraryPickerHtml() {
 
   let contentHtml;
   if (loading) {
-    contentHtml = `<p class="hint">reading the library…</p>`;
+    contentHtml = hintLine(`reading the library…`);
   } else if (error) {
     contentHtml = `<div class="said bad">${esc(error)}</div>`;
   } else if (!entries.length) {
-    contentHtml = `<p class="hint">this library has no entries yet — they are created on its own page</p>`;
+    contentHtml = hintLine(`this library has no entries yet — they are created on its own page`);
   } else {
     contentHtml = `<div class="pick-list" id="picker-list">${rowsHtml}</div>
-      <p class="hint" id="picker-none" hidden>nothing matches that search</p>`;
+      ${hintLine(`nothing matches that search`, { id: "picker-none", hidden: true })}`;
   }
 
-  return `<div class="modal-backdrop" id="picker-backdrop" data-tid="picker.modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-    <section class="picker iv libpick">
-      <div class="iv-head">
+  return modal({
+    id: "picker-backdrop", dataTid: "picker.modal", ariaLabel: title, extraClass: "libpick",
+    body: `<div class="iv-head">
         <div><h2>${esc(title)}</h2>${hint ? `<p class="sub">${esc(hint)}</p>` : ""}</div>
-        <button class="btn" id="picker-close" title="close" aria-label="close">×</button>
+        ${closeButton("picker-close")}
       </div>
       <input type="text" id="picker-search" placeholder="Search…" value="${esc(APP.picker.search)}">
       ${contentHtml}
       <div class="composer-foot">
         <span class="hint" id="picker-count">Selected: ${chosen.length}</span>
-        <button class="btn" id="picker-cancel">cancel</button>
-        <button class="btn primary" id="picker-done">use selected</button>
-      </div>
-    </section>
-  </div>`;
+        ${button({ label: "cancel", id: "picker-cancel" })}
+        ${button({ label: "use selected", id: "picker-done", variant: "primary" })}
+      </div>`,
+  });
 }
 
 /** The search, applied in place. Never renders: the page underneath repaints on every SSE frame,

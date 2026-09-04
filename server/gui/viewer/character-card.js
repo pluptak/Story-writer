@@ -1,6 +1,7 @@
 import { esc, wireBackdropClose, tid } from "./util.js";
 import { APP } from "./state.js";
 import { castCharacterSheet } from "./cast-sheet.js";
+import { modal, closeButton } from "./ui.js";
 
 // ---- the character card -----------------------------------------------------
 // A pill (header cast, a shelf card, or the story page) opens this modal for the character it
@@ -36,18 +37,15 @@ export function characterCardModalHtml() {
       ? `<p class="cast-note${sheet.bad ? " bad" : ""}">${esc(sheet.note)}</p>`
       : `<p class="charmd-placeholder">the authored sheet is a live-screen thing — this card only
           shows what its pill knew.</p>`;
-  return `<div class="modal-backdrop" id="charcard-backdrop" data-tid="charcard.modal" role="dialog" aria-modal="true"
-               aria-label="${esc(c.name)}">
-    <section class="picker iv charcard">
-      <div class="iv-head"><h2>${esc(c.name)}</h2>
-        <button class="btn" id="charcard-close" title="close" aria-label="close">×</button></div>
+  return modal({
+    id: "charcard-backdrop", dataTid: "charcard.modal", ariaLabel: c.name, extraClass: "charcard",
+    body: `<div class="iv-head"><h2>${esc(c.name)}</h2>${closeButton("charcard-close")}</div>
       ${(c.can.length || c.cannot.length || c.reach.length) ? `<div class="row">
         ${c.can.length ? `<span class="yes">can also ${esc(c.can.join(", "))}</span>` : ""}
         ${c.reach.length ? `<span class="reach" title="granted by the scene they are standing in, not intrinsic">reach ${esc(c.reach.join(", "))}</span>` : ""}
         ${c.cannot.length ? `<span class="no">cannot ${esc(c.cannot.join(", "))}</span>` : ""}</div>` : ""}
-      ${body}
-    </section>
-  </div>`;
+      ${body}`,
+  });
 }
 
 export function wireCharacterCard(root) {

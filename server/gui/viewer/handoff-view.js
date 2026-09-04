@@ -1,6 +1,7 @@
 import { esc, modelOptionsHtml, tid } from "./util.js";
 import { APP, storyName, hdraft, runningReason, handoffForPage } from "./state.js";
 import { wordsPovHtml } from "./story-page.js";
+import { button, hint } from "./ui.js";
 
 // The architect default (defaults.json's models.architect) is repo-wide, not per-story, so it can
 // name a model this story never asked for and that may not even be loaded -- the dropdown lets a
@@ -18,7 +19,7 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>nothing is being prepared</h2>
       <div class="btns" style="margin-top:18px">
-        <button class="btn" id="h-back">back to the story</button>
+        ${button({ label: "back to the story", id: "h-back" })}
       </div>
     </section>`;
   }
@@ -31,9 +32,9 @@ export function handoffPageHtml() {
       <p class="sub">chapter ${APP.handoffDone.chapter} is prepared</p>
       ${(APP.handoffDone.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
       <div class="btns" style="margin-top:18px">
-        <button class="btn primary" id="h-write"${why ? ` disabled title="${esc(why)}"` : ""}>write chapter ${APP.handoffDone.chapter}</button>
+        ${button({ label: `write chapter ${APP.handoffDone.chapter}`, id: "h-write", variant: "primary", disabled: !!why, title: why })}
         <span class="spacer"></span>
-        <button class="btn" id="h-back">back to the story</button>
+        ${button({ label: "back to the story", id: "h-back" })}
       </div>
     </section>`;
   }
@@ -59,10 +60,10 @@ export function handoffPageHtml() {
       <p class="sub">the architect reads the chapters already written and re-authors the cast for the next one</p>
       ${APP.handoffError ? `<div class="said bad">${esc(APP.handoffError)}</div>` : ""}
       <div class="btns" style="margin-top:18px">
-        <button class="btn primary" id="h-start"${busy ? ` disabled title="${esc(busy)}"` : ""}>prepare the next chapter</button>
+        ${button({ label: "prepare the next chapter", id: "h-start", variant: "primary", disabled: !!busy, title: busy })}
         ${handoffModelSelectHtml()}
         <span class="spacer"></span>
-        <button class="btn" id="h-back">back to the story</button>
+        ${button({ label: "back to the story", id: "h-back" })}
       </div>
     </section>`;
   }
@@ -78,7 +79,7 @@ export function handoffPageHtml() {
       <p class="sub">the architect is reading the chapters already written</p>
       <div class="thinking"><i></i>thinking about it…</div>
       <div class="btns" style="margin-top:18px">
-        <button class="btn" id="h-abandon">${APP.hAbandonArmed ? "abandon — sure?" : "abandon"}</button>
+        ${button({ label: APP.hAbandonArmed ? "abandon — sure?" : "abandon", id: "h-abandon" })}
       </div>
     </section>`;
   }
@@ -100,11 +101,11 @@ export function handoffPageHtml() {
             placeholder="a smaller request than the opening round">${esc(hdraft.say)}</textarea></div>
         ${s.busy ? `<div class="thinking"><i></i>thinking about it…</div>` : ""}
         <div class="btns">
-          <button class="btn primary" id="h-retry"${s.busy ? " disabled" : ""}>try again</button>
-          <button class="btn" id="h-send"${s.busy ? " disabled" : ""}>send</button>
-          <button class="btn" id="h-abandon">${APP.hAbandonArmed ? "abandon — sure?" : "abandon"}</button>
+          ${button({ label: "try again", id: "h-retry", variant: "primary", disabled: s.busy })}
+          ${button({ label: "send", id: "h-send", disabled: s.busy })}
+          ${button({ label: APP.hAbandonArmed ? "abandon — sure?" : "abandon", id: "h-abandon" })}
           <span class="spacer"></span>
-          <button class="btn" id="h-back">back to the story</button>
+          ${button({ label: "back to the story", id: "h-back" })}
         </div>
       </div>
     </section>`;
@@ -126,7 +127,7 @@ export function handoffPageHtml() {
     </div></div>`);
   } else {
     body.push(`<div class="divider"><span>proposed chapter ${s.chapter}</span></div>`);
-    body.push(`<p class="hint">the architect has not added it yet</p>`);
+    body.push(hint(`the architect has not added it yet`));
   }
 
   // Chapters already written, beside the one being prepared -- one /chapter fetch each for the
@@ -176,7 +177,7 @@ export function handoffPageHtml() {
           </div>
         </div>`).join("") + `</div>`);
     } else {
-      body.push(`<p class="hint">nothing changed yet</p>`);
+      body.push(hint(`nothing changed yet`));
     }
     if (s.last.ignored.length) {
       body.push(`<div class="divider"><span>not applied</span></div>`);
@@ -254,11 +255,18 @@ export function handoffPageHtml() {
   // Buttons
   const unsent = !!hdraft.say.trim();
   const btnRow = [];
-  btnRow.push(`<button class="btn${unsent && !s.busy ? " primary" : ""}" id="h-send"${s.busy ? " disabled" : ""}>send</button>`);
-  btnRow.push(`<button class="btn" id="h-accept"${(s.busy || !s.edited) ? " disabled" : ""}${APP.hAcceptArmed ? " armed" : ""} title="${s.busy ? "thinking" : !s.edited ? "ask for a change first" : ""}">${APP.hAcceptArmed ? "accept — sure?" : "accept"}</button>`);
-  btnRow.push(`<button class="btn" id="h-abandon"${APP.hAbandonArmed ? " armed" : ""}>abandon${APP.hAbandonArmed ? " — sure?" : ""}</button>`);
+  btnRow.push(button({ label: "send", id: "h-send", variant: unsent && !s.busy ? "primary" : "", disabled: s.busy }));
+  btnRow.push(button({
+    label: APP.hAcceptArmed ? "accept — sure?" : "accept", id: "h-accept",
+    disabled: s.busy || !s.edited, extraClass: APP.hAcceptArmed ? "armed" : "",
+    title: s.busy ? "thinking" : !s.edited ? "ask for a change first" : "",
+  }));
+  btnRow.push(button({
+    label: APP.hAbandonArmed ? "abandon — sure?" : "abandon", id: "h-abandon",
+    extraClass: APP.hAbandonArmed ? "armed" : "",
+  }));
   btnRow.push(`<span class="spacer"></span>`);
-  btnRow.push(`<button class="btn" id="h-back">back</button>`);
+  btnRow.push(button({ label: "back", id: "h-back" }));
   body.push(`<div class="btns">${btnRow.join("")}</div>`);
   body.push(`</div>`);
 

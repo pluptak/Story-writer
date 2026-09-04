@@ -6,6 +6,7 @@ import { loadReader } from "./reader.js";
 import { go } from "./nav.js";
 import { prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paras } from "./blocks.js";
+import { button, hint } from "./ui.js";
 
 // ---- the story page ----------------------------------------------------------
 // One story, a full page rather than a modal (`#/story?dir=...`, so a reload or bookmark lands back
@@ -101,7 +102,7 @@ function sceneDetailHtml(scene, beats) {
  *  its own group at the end. One group is no grouping, so a single-chapter story keeps the flat
  *  list it always had. */
 function runsListHtml(s) {
-  if (!s.runs?.length) return `<p class="hint">no retained runs yet</p>`;
+  if (!s.runs?.length) return hint(`no retained runs yet`);
   const btn = r => {
     const current = READV.dir === s.dir && READV.id === r.id;
     return `<button ${tid("story.run-btn")} class="btn runbtn${current ? " current" : ""}" data-run="${esc(r.id)}"
@@ -130,8 +131,7 @@ function handoffRowHtml(s) {
   const why = runningReason();
   return `<div class="divider"><span>next chapter</span></div>
     <div class="row">
-      <button ${tid("story.handoff-btn")} class="btn" id="story-handoff"${why ? ` disabled title="${esc(why)}"` : ""}
-        >${mine ? "continue preparing" : "prepare"} chapter ${n}</button>
+      ${button({ label: `${mine ? "continue preparing" : "prepare"} chapter ${n}`, id: "story-handoff", tidName: "story.handoff-btn", disabled: !!why, title: why })}
       <span class="hint">the architect re-authors the cast from the chapters already written</span>
     </div>`;
 }
@@ -142,14 +142,14 @@ export function storyPageHtml() {
   const s = (APP.stories || []).find(x => x.dir === APP.storyDir);
   if (!s) return `<section class="picker"><h2>Not found</h2>
     <p class="sub">this story is no longer on the shelf.</p>
-    <div class="btns" style="margin-top:14px"><button class="btn" id="story-back">back to shelf</button></div>
+    <div class="btns" style="margin-top:14px">${button({ label: "back to shelf", id: "story-back" })}</div>
   </section>`;
 
   if (!s.ok) return `<section class="picker story">
     <h2>${esc(s.name)}</h2>
     <div class="said bad">does not load — ${esc(s.error || "unknown error")}</div>
     ${(s.warnings || []).map(w => `<div class="prob">⚠ ${esc(w)}</div>`).join("")}
-    <div class="btns" style="margin-top:14px"><button class="btn" id="story-back">back to shelf</button></div>
+    <div class="btns" style="margin-top:14px">${button({ label: "back to shelf", id: "story-back" })}</div>
   </section>`;
 
   // The client-side mirror of what /select and /model would refuse anyway (server.ts, run-control-
@@ -182,11 +182,11 @@ export function storyPageHtml() {
     ${runsListHtml(s)}
 
     <div class="btns" style="margin-top:18px">
-      <button ${tid("story.edit-btn")} class="btn" id="story-edit">edit story</button>
-      ${(s.chapters?.length) ? `<button ${tid("story.read-story-btn")} class="btn" id="story-read-story">read story</button>` : ""}
-      ${(s.runs?.length >= 2) ? `<button ${tid("story.compare-btn")} class="btn" id="story-compare">compare runs</button>` : ""}
+      ${button({ label: "edit story", id: "story-edit", tidName: "story.edit-btn" })}
+      ${(s.chapters?.length) ? button({ label: "read story", id: "story-read-story", tidName: "story.read-story-btn" }) : ""}
+      ${(s.runs?.length >= 2) ? button({ label: "compare runs", id: "story-compare", tidName: "story.compare-btn" }) : ""}
       <span class="spacer"></span>
-      <button ${tid("story.back-btn")} class="btn" id="story-back">back to shelf</button>
+      ${button({ label: "back to shelf", id: "story-back", tidName: "story.back-btn" })}
     </div>
   </section>`;
 }

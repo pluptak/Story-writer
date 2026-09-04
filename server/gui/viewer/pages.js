@@ -19,6 +19,7 @@ import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
 import { go, generating, syncHash, tagFocus, clearFocus, parseHashParams } from "./nav.js";
 import { renderSession } from "./session.js";
+import { button, hint } from "./ui.js";
 
 function restoreFocus(page, id) {
   if (id) {
@@ -243,7 +244,7 @@ function renderLive(page, blocks) {
       html = `<div class="empty starting" data-tid="live.empty">
         <h2>Starting${name ? ` <em>${esc(name)}</em>` : ""}…</h2>
         <p class="thinking"><i></i>waiting for the writer — a cold model can take a few seconds</p>
-        <p class="hint">use <b>stop</b> in the run controls to cancel, once they appear</p>
+        ${hint(`use <b>stop</b> in the run controls to cancel, once they appear`)}
       </div>`;
     } else {
       const text = APP.live ? "The scene will appear here as soon as the engine starts writing."
@@ -251,7 +252,7 @@ function renderLive(page, blocks) {
       html = `<div class="empty" data-tid="live.empty"><h2>Nothing written yet</h2>
         <p>${text}</p>
         ${idle ? `<div class="btns" style="justify-content:center">
-          <button ${tid("live.go-shelf-btn")} class="btn" id="go-shelf">choose a story</button></div>` : ""}
+          ${button({ label: "choose a story", id: "go-shelf", tidName: "live.go-shelf-btn" })}</div>` : ""}
       </div>`;
     }
     page.innerHTML = html;

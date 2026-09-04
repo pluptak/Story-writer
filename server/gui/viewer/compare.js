@@ -1,5 +1,6 @@
 import { APP, COMPAREV, COMPARE_AGENTS } from "./state.js";
 import { esc, fmtRun, tid } from "./util.js";
+import { hint } from "./ui.js";
 import { parseHashParams, syncHash } from "./nav.js";
 import { build } from "./events.js";
 import { renderBlock } from "./blocks.js";
@@ -39,7 +40,7 @@ function wordDiff(left, right) {
 
 function diffHtml(left, right) {
   const ops = wordDiff(left, right);
-  if (!ops.length) return `<p class="hint">neither run contains accepted prose.</p>`;
+  if (!ops.length) return hint(`neither run contains accepted prose.`);
   return `<section ${tid("compare.diff")} class="prose-diff" aria-label="word-level prose diff">${ops.map(([kind, word]) =>
     kind === "same" ? esc(word) + " " : `<span class="diff-${kind}">${esc(word)}</span> `).join("")}</section>`;
 }
@@ -102,7 +103,7 @@ export async function loadComparisonRuns() {
 }
 
 function paneHtml(store, title, side) {
-  if (!store.events.length) return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3><p class="hint">${COMPAREV.loading ? "reading…" : "this run is empty"}</p></section>`;
+  if (!store.events.length) return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${hint(COMPAREV.loading ? "reading…" : "this run is empty")}</section>`;
   const blocks = build(store);
   return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${readChromeHtml(store, true, COMPARE_AGENTS[side], false)}<div class="prose">${blocks.map(b => renderBlock(b, false)).join("")}</div></section>`;
 }
@@ -119,7 +120,7 @@ export function comparisonPageHtml() {
     <p class="sub">${esc(story.name)} · choose two runs from the same chapter.</p>
     <div class="row"><label for="compare-a">first run</label><select class="btn" id="compare-a">${optionHtml(runs, APP.compareA)}</select></div>
     <div class="row"><label for="compare-b">second run</label><select class="btn" id="compare-b">${optionHtml(runs, APP.compareB)}</select></div>
-    ${error ? `<div class="said bad">${esc(error)}</div>` : `<p class="hint">${esc(fmtRun(a || {}))} versus ${esc(fmtRun(b || {}))}</p>`}
+    ${error ? `<div class="said bad">${esc(error)}</div>` : hint(`${esc(fmtRun(a || {}))} versus ${esc(fmtRun(b || {}))}`)}
     <div class="divider"><span>comparison</span></div>
     ${COMPAREV.error ? `<div class="said bad">${esc(COMPAREV.error)}</div>` : COMPAREV.loading ? `<p class="thinking"><i></i>reading both runs…</p>`
       : `<div class="prose-diff-card"><div class="label">accepted prose diff

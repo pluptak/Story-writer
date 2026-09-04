@@ -3,6 +3,7 @@ import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
 import { loadVocab, loadLibrary, loadStyles } from "./catalog.js";
+import { modal, button, hint } from "./ui.js";
 
 // ---- the scaffold interview --------------------------------------------------
 // One page, four things always visible in the staged walk: the step they are on, the proposed
@@ -64,7 +65,7 @@ const FACET_LABELS = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Ton
 function tagChipsHtml() {
   const vocab = APP.catalog.vocab || [];
   if (!vocab.length)
-    return `<p class="hint">No tags in the catalog yet — <a href="#/catalog?kind=tags">add some</a> and they show up here.</p>`;
+    return hint(`No tags in the catalog yet — <a href="#/catalog?kind=tags">add some</a> and they show up here.`);
   const rows = Object.entries(FACET_LABELS).map(([facet, label]) => {
     const mine = vocab.filter(t => t.facet === facet);
     if (!mine.length) return "";
@@ -91,7 +92,7 @@ const MAX_IMPORTS = 4;   // the cast stage's ceiling, mirrored from server/scaff
 function importPickerHtml() {
   const lib = APP.catalog.library || [];
   if (!lib.length)
-    return `<p class="hint">No characters in the catalog yet — <a href="#/catalog">add some</a> and you can cast them here.</p>`;
+    return hint(`No characters in the catalog yet — <a href="#/catalog">add some</a> and you can cast them here.`);
   const chips = lib.map(c => {
     const on = draft.importIds.includes(c.id);
     const full = !on && draft.importIds.length >= MAX_IMPORTS;
@@ -116,14 +117,14 @@ function rankedStyles() {
 function stylePickerHtml() {
   const styles = rankedStyles();
   if (!styles.length)
-    return `<p class="hint">No styles in the catalog yet — <a href="#/catalog?kind=styles">add some</a> and you can pick one here.</p>`;
+    return hint(`No styles in the catalog yet — <a href="#/catalog?kind=styles">add some</a> and you can pick one here.`);
   const chips = styles.map(e =>
     `<button class="cat-chip${draft.styleId === e.id ? " on" : ""}" data-style-id="${esc(e.id)}" type="button"` +
     ` title="${esc(e.description || e.voice)}">${esc(e.name)}</button>`).join("");
   const picked = styles.find(e => e.id === draft.styleId);
   return `<div class="cat-tags-row">${chips}</div>` + (picked
-    ? `<p class="hint">The architect is handed this voice and asked only what THIS cast and POV make impossible to narrate.</p>`
-    : `<p class="hint">Pick none and the architect writes the house style itself.</p>`);
+    ? hint(`The architect is handed this voice and asked only what THIS cast and POV make impossible to narrate.`)
+    : hint(`Pick none and the architect writes the house style itself.`));
 }
 
 // The concept is staged-only: the one-shot walk has no story gate for tags to steer, no cast gate
@@ -135,16 +136,16 @@ function conceptFieldsHtml() {
     ${tagChipsHtml()}
     <label class="field-label">cast from the library <span class="hint">optional</span></label>
     ${importPickerHtml()}
-    ${draft.importIds.length ? `<p class="hint">The imported cast is the opening cast, so its size is already chosen.</p>` : castSizeFieldHtml()}
+    ${draft.importIds.length ? hint(`The imported cast is the opening cast, so its size is already chosen.`) : castSizeFieldHtml()}
     <label class="field-label">the voice <span class="hint">optional — a preset from your style catalog</span></label>
     ${stylePickerHtml()}`;
 }
 
 function ideaModalHtml() {
   const err = APP.scaffoldError ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
-  return `<div class="modal-backdrop" id="iv-backdrop" data-tid="scaffold.idea-modal" role="dialog" aria-modal="true" aria-label="new story">
-    <section class="picker iv">
-      <h2>Give the architect the rough idea</h2>
+  return modal({
+    id: "iv-backdrop", dataTid: "scaffold.idea-modal", ariaLabel: "new story",
+    body: `<h2>Give the architect the rough idea</h2>
       <p class="sub">A situation, not a plot — it will find the pressure in it, and ask if it needs more.</p>
       <div class="field"><label for="f-idea">the idea</label>
         <textarea id="f-idea" rows="4" placeholder="${esc(IDEA_PLACEHOLDER)}">${esc(draft.idea)}</textarea></div>
@@ -158,11 +159,10 @@ function ideaModalHtml() {
       ${draft.mode === "oneshot" ? "" : conceptFieldsHtml()}
       ${modelField()}
       ${err}
-      <div class="btns"><button class="btn primary" id="iv-start">propose →</button>
-        <button class="btn" id="iv-back">back to the shelf</button>
-        <span class="hint">ctrl/⌘ + ↵</span></div>
-    </section>
-  </div>`;
+      <div class="btns">${button({ label: "propose →", id: "iv-start", variant: "primary" })}
+        ${button({ label: "back to the shelf", id: "iv-back" })}
+        <span class="hint">ctrl/⌘ + ↵</span></div>`,
+  });
 }
 
 // ── the proposal panel ────────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ function lastHtml(last) {
   // is not yet worth advancing past. It is the author's to overrule, so it reads as a judgement.
   if (last.kind === "blocked")
     return `<div class="round-note"><span class="label">the cast gate</span><p>${esc(last.why)}</p>`
-      + `<p class="hint">refine the cast, or approve again to overrule this.</p></div>`;
+      + hint(`refine the cast, or approve again to overrule this.`) + `</div>`;
   if (last.kind === "edits") {
     const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
     const ig = last.ignored.map(x => `<div class="said bad">ignored ${esc(x)}</div>`).join("");
@@ -366,17 +366,17 @@ function roundHtml(s) {
     foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
     foot.push(busyDot);
     if (answering) {
-      foot.push(`<button class="btn primary" id="iv-say">send answer →</button>`);
+      foot.push(button({ label: "send answer →", id: "iv-say", variant: "primary" }));
     } else {
       const unsent = !!draft.say.trim();
-      foot.push(`<button class="btn${unsent ? " primary" : ""}" id="iv-say">send</button>`);
+      foot.push(button({ label: "send", id: "iv-say", variant: unsent ? "primary" : "" }));
       // approve passes the open gate; hidden at the last gate and while a question stands. Once a
       // gate came back blocked, the same button overrules it and says so. The label names the gate
       // being passed -- "accept the cast" -- because "approve" stopped saying what the click does.
       if (s.gate && GATES.indexOf(s.gate) < GATES.length - 1)
         foot.push(APP.approveArmed
-          ? `<button class="btn danger" id="iv-approve">approve anyway →</button>`
-          : `<button class="btn${unsent ? "" : " primary"}" id="iv-approve">${APPROVE_LABELS[s.gate]} &amp; continue →</button>`);
+          ? button({ label: "approve anyway →", id: "iv-approve", variant: "danger" })
+          : button({ label: `${APPROVE_LABELS[s.gate]} & continue →`, id: "iv-approve", variant: unsent ? "" : "primary" }));
     }
   } else {
     foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
@@ -417,8 +417,8 @@ function folderHtml(s) {
       <div class="composer-foot">
         <span class="hint">nothing is written until this answers</span>
         <span class="thinking${s.busy ? " show" : ""}"><i></i>writing &amp; preflighting…</span>
-        ${!s.needsFolder && APP.folderOpen ? `<button class="btn" id="iv-folder-back">&larr; keep editing</button>` : ""}
-        <button class="btn primary" id="iv-folder"${folderTaken() ? " disabled" : ""}>write story.json →</button>
+        ${!s.needsFolder && APP.folderOpen ? button({ label: "← keep editing", id: "iv-folder-back" }) : ""}
+        ${button({ label: "write story.json →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}
       </div>
     </div>
   </section>`;
@@ -464,17 +464,19 @@ function sidebarHtml(s) {
   const actions = [];
   const acceptable = s.haveStory && !s.needsFolder && !APP.folderOpen && !s.busy;
   if (s.haveStory && !s.needsFolder)
-    actions.push(`<button class="btn" id="iv-edit">edit in full →</button>`);
+    actions.push(button({ label: "edit in full →", id: "iv-edit" }));
   if (acceptable) {
     const unsent = !!draft.say.trim();
     const flags = (s.problems || []).length;
-    const label = !APP.acceptArmed ? "accept &amp; choose folder"
+    const label = !APP.acceptArmed ? "accept & choose folder"
       : unsent ? "discard what you typed and write it"
       : `accept over ${flags} flag(s)`;
-    actions.push(`<button class="btn primary${APP.acceptArmed ? " armed" : ""}" id="iv-accept">${label}</button>`);
+    actions.push(button({ label, id: "iv-accept", variant: "primary", extraClass: APP.acceptArmed ? "armed" : "" }));
   }
-  actions.push(`<button class="btn danger${APP.abandonArmed ? " armed" : ""}" id="iv-abandon">${
-    APP.abandonArmed ? "abandon — sure?" : "abandon"}</button>`);
+  actions.push(button({
+    label: APP.abandonArmed ? "abandon — sure?" : "abandon", id: "iv-abandon",
+    variant: "danger", extraClass: APP.abandonArmed ? "armed" : "",
+  }));
 
   const conceptWarning = c.unknownTags && c.unknownTags.length
     ? `<div class="prob">not in the tag catalog: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway</div>`

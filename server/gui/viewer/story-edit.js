@@ -7,6 +7,7 @@
 import { esc, post } from "./util.js";
 import { APP } from "./state.js";
 import { go } from "./nav.js";
+import { button, hint } from "./ui.js";
 
 // Dirty-guard: warn before closing the tab / navigating away
 addEventListener("beforeunload", e => {
@@ -268,8 +269,8 @@ function suggestResultHtml() {
     if (r.applied.length) parts.push(`<div class="said good">Suggested changes: ${r.applied.map(a => `<strong>${esc(a.field)}</strong>`).join(", ")}</div>`);
     if (r.ignored.length) parts.push(`<div class="said bad">Could not apply: ${r.ignored.map(i => esc(i)).join(", ")}</div>`);
     if (r.problems.length) parts.push(`<div class="prob">${r.problems.map(p => esc(p)).join("; ")}</div>`);
-    if (r.note) parts.push(`<p class="hint">${esc(r.note)}</p>`);
-    parts.push(`<p class="hint mt-xs">The changes are in the form now — review them, then save.</p>`);
+    if (r.note) parts.push(hint(esc(r.note)));
+    parts.push(hint(`The changes are in the form now — review them, then save.`, { extraClass: "mt-xs" }));
     return parts.join("");
   }
   return "";
@@ -279,13 +280,13 @@ function editToolbarHtml() {
   const canSave = APP.editDirty && !APP.editIssues.length && !APP.editSaving;
   const saving = APP.editSaving ? "thinking" : "";
   const action = APP.editNew
-    ? `<button class="btn primary" id="edit-scaffold-accept"${(!APP.editIssues.length && !APP.editSaving) ? "" : " disabled"}>confirm and write</button>`
-    : `<button class="btn primary" id="edit-save"${canSave ? "" : " disabled"}${saving ? ` title="${saving}"` : ""}>${APP.editSaving ? "saving…" : "save"}</button>`;
+    ? button({ label: "confirm and write", id: "edit-scaffold-accept", variant: "primary", disabled: !(!APP.editIssues.length && !APP.editSaving) })
+    : button({ label: APP.editSaving ? "saving…" : "save", id: "edit-save", variant: "primary", disabled: !canSave, title: saving });
   return `${orphanIssuesHtml()}<div class="btns mt-md">
     ${action}
-    <button class="btn" id="edit-revert"${APP.editDirty ? "" : " disabled"}>revert</button>
+    ${button({ label: "revert", id: "edit-revert", disabled: !APP.editDirty })}
     <span class="spacer"></span>
-    <button class="btn" id="edit-back">${APP.editNew ? "back to interview" : "back to story"}</button>
+    ${button({ label: APP.editNew ? "back to interview" : "back to story", id: "edit-back" })}
   </div>`;
 }
 
@@ -341,14 +342,14 @@ export function storyEditHtml() {
       ${errorBannerHtml()}
       ${APP.editRaw ? `<div class="said bad mb-md">The file could not be parsed — here is the raw content:</div>
         <pre class="editor-raw">${esc(JSON.stringify(APP.editRaw, null, 2))}</pre>` : ""}
-      <div class="btns mt-sm"><button class="btn" id="edit-back">back to story</button></div>
+      <div class="btns mt-sm">${button({ label: "back to story", id: "edit-back" })}</div>
     </section>`;
   }
 
   if (!APP.editDir && !APP.editNew) {
     return `<section class="picker story"><h2>Edit story</h2>
-      <p class="hint">No story chosen — open one from the shelf and edit it from there.</p>
-      <div class="btns mt-sm"><button class="btn" id="edit-back">back to story</button></div>
+      ${hint(`No story chosen — open one from the shelf and edit it from there.`)}
+      <div class="btns mt-sm">${button({ label: "back to story", id: "edit-back" })}</div>
     </section>`;
   }
 
@@ -358,8 +359,8 @@ export function storyEditHtml() {
     // offer a way out, rather than a back-button-less "loading…" that hangs forever.
     if (APP.editNew && !APP.scaffold?.spec) {
       return `<section class="picker story"><h2>New story</h2>
-        <p class="hint">This draft is no longer available — start a new one from the shelf.</p>
-        <div class="btns mt-sm"><button class="btn" id="edit-loading-back">back to the shelf</button></div>
+        ${hint(`This draft is no longer available — start a new one from the shelf.`)}
+        <div class="btns mt-sm">${button({ label: "back to the shelf", id: "edit-loading-back" })}</div>
       </section>`;
     }
     const name = APP.editNew ? "New story" : APP.stories?.find(s => s.dir === APP.editDir)?.name || APP.editDir;
@@ -374,7 +375,7 @@ export function storyEditHtml() {
 
   return `<section class="picker story"><div class="editor">
     <h2 class="mb-xs">${APP.editNew ? "Review new story" : "Edit story"}</h2>
-    <p class="hint mb-lg">${title}</p>
+    ${hint(title, { extraClass: "mb-lg" })}
     ${unsavedBannerHtml()}
     ${errorBannerHtml()}
     ${envWarningsHtml()}
@@ -405,10 +406,10 @@ export function storyEditHtml() {
 
     <details class="editor-section" data-tid="edit.section"${APP.editSuggestOpen ? " open" : ""}><summary>Ask the architect</summary>
       <div id="edit-suggest-panel" class="${suggestOpen.trim()}">
-        <p class="hint mb-sm">Tell the architect what to change. It will propose edits that you can review and apply.</p>
+        ${hint(`Tell the architect what to change. It will propose edits that you can review and apply.`, { extraClass: "mb-sm" })}
         <div class="field"><textarea id="edit-suggest-text" rows="3" placeholder="e.g. Make Aster more reluctant to admit the truth…">${esc(APP.editSuggestText || "")}</textarea></div>
         <div class="btns mt-xs">
-          <button class="btn" id="edit-suggest-btn"${APP.editSuggestBusy ? " disabled" : ""}>${APP.editSuggestBusy ? "thinking…" : "suggest"}</button>
+          ${button({ label: APP.editSuggestBusy ? "thinking…" : "suggest", id: "edit-suggest-btn", disabled: APP.editSuggestBusy })}
         </div>
         ${suggestResultHtml()}
       </div>

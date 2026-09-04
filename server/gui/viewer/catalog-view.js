@@ -1,5 +1,6 @@
 import { esc, tid } from "./util.js";
 import { APP, CATALOG_KINDS } from "./state.js";
+import { button, hint } from "./ui.js";
 
 /** Per-kind metadata: labels, empty-state text, and button wording.
  *  This is the single source of truth for kind-specific UI strings and form structures.
@@ -143,7 +144,7 @@ export function catalogPageHtml() {
       <h2>${pageTitle}</h2>
       <div class="said bad">${esc(cat.error)}</div>
       <div class="btns">
-        <button class="btn primary" id="cat-retry">try again</button>
+        ${button({ label: "try again", id: "cat-retry", variant: "primary" })}
       </div>
     </section>`;
   }
@@ -156,7 +157,7 @@ export function catalogPageHtml() {
       <p class="sub">${pageSubtitle}</p>
       <p class="cat-empty-msg">${facts.emptyMsg}</p>
       <div class="btns">
-        <button class="btn primary" id="cat-new">${facts.createLabel}</button>
+        ${button({ label: facts.createLabel, id: "cat-new", variant: "primary" })}
       </div>
     </section>`;
   }
@@ -248,7 +249,7 @@ export function catalogPageHtml() {
     // State 4: List with entries but no draft (no form open)
     body.push(`<div class="iv cat-placeholder">
       <p>Select an entry to edit, or create a new one</p>
-      <button class="btn primary" id="cat-new">${facts.createLabel}</button>
+      ${button({ label: facts.createLabel, id: "cat-new", variant: "primary" })}
     </div>`);
   } else {
     // State 5: Editing an entry (or State 6: Delete armed)
@@ -312,7 +313,7 @@ export function catalogPageHtml() {
 
       body.push(`<div class="field">
         <label for="cat-skills">Skills (name :: meaning, one per line)</label>
-        <button class="btn pickopen" id="cat-skills-pick" ${tid("catalog.skills-pick")}>search skill bible…</button>
+        ${button({ label: "search skill bible…", id: "cat-skills-pick", tidName: "catalog.skills-pick", extraClass: "pickopen" })}
         <textarea id="cat-skills" placeholder="e.g. leadership :: can inspire others to act">${esc(d.skills || "")}</textarea>
       </div>`);
 
@@ -378,7 +379,7 @@ export function catalogPageHtml() {
       </div>`);
 
       body.push(`<div class="field"><label>Usage</label>${skillUsageHtml(d.name)
-        || `<p class="hint">no character carries it yet</p>`}</div>`);
+        || hint(`no character carries it yet`)}</div>`);
 
       // Tags picker for skills
       body.push(`<div class="field">
@@ -389,13 +390,16 @@ export function catalogPageHtml() {
 
     // Buttons
     body.push(`<div class="btns cat-btns">`);
-    body.push(`<button class="btn primary" id="cat-save">save</button>`);
+    body.push(button({ label: "save", id: "cat-save", variant: "primary" }));
     // Only show delete button for existing entries
     if (!isNew) {
-      body.push(`<button class="btn" id="cat-delete"${cat.armedDelete ? " armed" : ""}>${cat.armedDelete ? "delete — sure?" : "delete"}</button>`);
+      body.push(button({
+        label: cat.armedDelete ? "delete — sure?" : "delete", id: "cat-delete",
+        extraClass: cat.armedDelete ? "armed" : "",
+      }));
     }
     body.push(`<span class="spacer"></span>`);
-    body.push(`<button class="btn" id="cat-new">new ${facts.newLabel}</button>`);
+    body.push(button({ label: `new ${facts.newLabel}`, id: "cat-new" }));
     body.push(`</div>`);
     body.push(`</div>`);
   }

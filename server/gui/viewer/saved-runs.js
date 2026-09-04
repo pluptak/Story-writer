@@ -4,6 +4,7 @@ import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
 import { castChips } from "./shelf.js";
 import { loadAgentState, agentsPanelHtml, wireAgents } from "./agents.js";
+import { button } from "./ui.js";
 
 /** Fetch one retained run's log and load it into READV -- shared by a deep-linked reload (sse.js)
  *  and the story page's "read a previous run" rows (story-page.js). Returns false on failure, null
@@ -37,7 +38,7 @@ export function readChromeHtml(store = READV, includeAgents = store === READV, a
     <h2>Cast</h2>
     ${cast ? `<div class="row">${cast}</div>`
            : `<p class="sub">open a story on the shelf, then "read" a previous run — or open one from disk</p>`}
-    ${includeOpen ? `<div class="btns" style="margin-top:14px"><button ${tid("read.open-log-btn")} class="btn" id="open-log">open a saved log</button></div>` : ""}
+    ${includeOpen ? `<div class="btns" style="margin-top:14px">${button({ label: "open a saved log", id: "open-log", tidName: "read.open-log-btn" })}</div>` : ""}
   </section>` + (includeAgents ? agentsPanelHtml(store, agentState) : "");
 }
 
