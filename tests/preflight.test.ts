@@ -1,83 +1,10 @@
 /**
- * Preflight model info parsing and context fit checking.
+ * Context fit checking. The provider-side model parsers live in provider.test.ts now.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseModelInfo, contextShortfall, type ModelInfo } from "../engine/preflight.ts";
-
-// -- PARSE MODEL INFO -------------------------------------------------------
-describe("parseModelInfo", () => {
-  it("parses a realistic body with a loaded model and a not-loaded model", () => {
-    const body = {
-      data: [
-        {
-          id: "gemma-4-12b",
-          state: "loaded",
-          max_context_length: 262144,
-          loaded_context_length: 10000,
-        },
-        {
-          id: "other-model",
-          state: "not-loaded",
-          max_context_length: 262144,
-        },
-      ],
-    };
-    const result = parseModelInfo(body);
-    assert.equal(result.size, 2);
-    assert.deepEqual(result.get("gemma-4-12b"), {
-      loaded: true,
-      loadedContext: 10000,
-      maxContext: 262144,
-    });
-    assert.deepEqual(result.get("other-model"), {
-      loaded: false,
-      loadedContext: 0,
-      maxContext: 262144,
-    });
-  });
-
-  it("skips entries with no id", () => {
-    const body = {
-      data: [
-        { id: "good-model", state: "loaded", max_context_length: 100000, loaded_context_length: 5000 },
-        { state: "loaded", max_context_length: 100000 },
-        { id: "", state: "loaded", max_context_length: 100000 },
-      ],
-    };
-    const result = parseModelInfo(body);
-    assert.equal(result.size, 1);
-    assert.ok(result.has("good-model"));
-  });
-
-  it("returns an empty map for non-array data or missing data", () => {
-    assert.equal(parseModelInfo({}).size, 0);
-    assert.equal(parseModelInfo({ data: null }).size, 0);
-    assert.equal(parseModelInfo({ data: "not-an-array" }).size, 0);
-    assert.equal(parseModelInfo(null).size, 0);
-  });
-
-  it("coerces missing lengths to 0", () => {
-    const body = {
-      data: [
-        { id: "no-lengths" },
-        { id: "partial", max_context_length: 100000 },
-      ],
-    };
-    const result = parseModelInfo(body);
-    assert.deepEqual(result.get("no-lengths"), {
-      loaded: false,
-      loadedContext: 0,
-      maxContext: 0,
-    });
-    assert.deepEqual(result.get("partial"), {
-      loaded: false,
-      loadedContext: 0,
-      maxContext: 100000,
-    });
-  });
-});
+import { contextShortfall, type ModelInfo } from "../engine/preflight.ts";
 
 // -- CONTEXT SHORTFALL -------------------------------------------------------
 describe("contextShortfall", () => {

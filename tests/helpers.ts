@@ -244,6 +244,7 @@ export function sceneRun(sc: StoryConfig, over: Partial<SceneRun> & { scene: Sce
     agents: new Map(),
     premise: sc.premise,
     writerStyle: sc.writerStyle,
+    writerStyleConstraints: sc.writerStyleConstraints,
     writerModel: sc.models.writer,
     summaryModel: sc.models.summary,
     thinking: { writer: "low", summary: sc.thinking.summary },

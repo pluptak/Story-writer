@@ -1,20 +1,14 @@
-/** API — the LM Studio HTTP client: request shaping, retry/backoff, and streaming. */
+/** API — the provider-agnostic HTTP client: request shaping, retry/backoff, and streaming.
+ *  Where the requests go, which headers they carry, and whether optional fields like
+ *  `reasoning_effort` belong on the wire all come from the selected provider (provider.ts). */
 import { C } from "../ansi.ts";
 import { RUN, StoppedError } from "../live.ts";
-import { ENGINE, progressDone } from "./engine-state.ts";
+import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
 import { topLevelObjects } from "./json-extract.ts";
+import { PROVIDER } from "./provider.ts";
+import { onceAdmitted, QueueGaveUpError, TELEMETRY, announceProviderState } from "./req-queue.ts";
 import type { ThinkLevel } from "./story-schema.ts";
-
-export const LMSTUDIO_URL = process.env.LM_STUDIO_URL ?? "http://localhost:1234/v1/chat/completions";
-export const LMSTUDIO_MODELS_URL = LMSTUDIO_URL.replace(/\/chat\/completions\/?$/, "/models");
-/** LM Studio's own REST API, which unlike /v1/models reports load state and context length. */
-export const LMSTUDIO_REST_MODELS_URL = LMSTUDIO_URL.replace(/\/v1\/chat\/completions\/?$/, "/api/v0/models");
-
-/** Whether the two /models endpoints above can actually be derived from a chat-completions URL:
- *  both rewrite the trailing path, so an override without that suffix silently points the model
- *  checks at the chat route. The composition root warns once when an env override breaks this. */
-export const lmUrlsDerivable = (url: string) => /\/chat\/completions\/?$/.test(url.trim());
 
 /** A deliberately pessimistic token estimate -- prose runs about 4 chars/token, the JSON the
  *  architect trades in runs denser, and guessing high is the safe direction for a fit check. */
@@ -70,13 +64,20 @@ function parseUsage(u: any): CompletionUsage | null {
   return { promptTokens: pt, completionTokens: ct };
 }
 
-/** The retry/backoff knobs, settable per run from a story's config. */
-export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800 };
+/** The retry/backoff knobs, settable per run from a story's config. `loadWaitMs` doubles as the
+ *  first-attempt idle deadline for a COLD model (not loaded / not resident), since a just-in-time
+ *  load legitimately takes minutes; every later attempt uses `timeoutMs`. */
+export const NET = { retries: 2, timeoutMs: 120_000, backoffMs: 800,
+                     probeTimeoutMs: 1500, recoveryProbes: 2, maxCallMs: 600_000,
+                     loadWaitMs: 300_000 };
 
-function requestBody(model: string, messages: Msg[], temperature: number, stream: boolean, think: ThinkLevel) {
+/** The JSON body for one completion. Exported for the capability tests: whether
+ *  `reasoning_effort` goes on the wire is the provider's decision, not the caller's. */
+export function requestBody(model: string, messages: Msg[], temperature: number, stream: boolean, think: ThinkLevel) {
   const body: Record<string, unknown> = { model, messages, temperature, max_tokens: ENGINE.maxTokens, stream };
   if (stream) body.stream_options = { include_usage: true };
-  if (think !== "default") body.reasoning_effort = think === "off" ? "none" : think;
+  if (think !== "default" && PROVIDER.capabilities.reasoningEffort)
+    body.reasoning_effort = think === "off" ? "none" : think;
   return JSON.stringify(body);
 }
 
@@ -84,44 +85,116 @@ class LmError extends Error {
   constructor(message: string, public status?: number, public retryable = false) { super(message); }
 }
 
+/** Thrown when the provider stops answering the model list during recovery — retrying blind
+ *  would only wait. The message names the endpoint and what to do. */
+export class ProviderDownError extends Error { }
+/** Thrown when a logical call has spent its whole wall-clock budget across attempts. */
+export class CallBudgetError extends Error { }
+
 const retryableStatus = (s: number) => s === 408 || s === 409 || s === 425 || s === 429 || s >= 500;
 
-async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>): Promise<T> {
+/** What kind of failure an attempt ended with — the retry decision and every diagnostic word
+ *  hang off this. Exported for the failure tests. */
+export function failureKind(e: unknown): string {
+  if (e instanceof LmError) {
+    if (e.status !== undefined) return "http-error";
+    if (/non-JSON/.test(e.message)) return "invalid-response";
+    if (/empty/.test(e.message)) return "empty-response";
+    return "unknown";
+  }
+  const cause = String((e as { cause?: unknown })?.cause ?? "");
+  if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN/.test(cause)) return "unreachable";
+  if (/ECONNRESET|EPIPE|socket hang up|terminated|fetch failed/i.test(cause + String(e)))
+    return "connection-dropped";
+  return "unknown";
+}
+
+async function withRetry<T>(what: string, fn: (signal: AbortSignal, heartbeat: () => void) => Promise<T>,
+                            call?: CallSite, firstIdleMs = 0, startedAt = Date.now()): Promise<T> {
   let last: unknown;
   for (let attempt = 0; ; attempt++) {
     if (RUN.stopped) throw new StoppedError();
-    const ac = new AbortController();
-    // An IDLE deadline, not a total-duration cap: `heartbeat()` pushes it back on each sign of
-    // progress, so a long-but-streaming generation is never aborted mid-reply -- only a stalled
-    // connection that goes NET.timeoutMs without a byte is.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const heartbeat = () => { clearTimeout(timer); timer = setTimeout(() => ac.abort(), NET.timeoutMs); };
-    heartbeat();
-    const onStop = () => ac.abort();
-    RUN.abort.signal.addEventListener("abort", onStop, { once: true });
+    // Whether OUR idle deadline aborted the request (as opposed to the run's stop signal).
+    let idleAborted = false;
+    // A cold model's first attempt may be a just-in-time load — give that one attempt a longer
+    // idle deadline; once bytes flow, the heartbeat reverts to the ordinary one.
+    const idleFor = attempt === 0 && firstIdleMs > NET.timeoutMs ? firstIdleMs : NET.timeoutMs;
     try {
-      return await fn(ac.signal, heartbeat);
+      // One transport attempt holds the queue slot; the backoff between attempts, and a retry's
+      // re-entry, happen off it — so a retry cannot monopolize a slot it is not using.
+      return await onceAdmitted(what, call, async () => {
+        const ac = new AbortController();
+        // An IDLE deadline, not a total-duration cap: `heartbeat()` pushes it back on each sign of
+        // progress, so a long-but-streaming generation is never aborted mid-reply -- only a stalled
+        // connection that goes idleFor without a byte is.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const heartbeat = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => { idleAborted = true; ac.abort(); }, idleFor);
+        };
+        heartbeat();
+        const onStop = () => ac.abort();
+        RUN.abort.signal.addEventListener("abort", onStop, { once: true });
+        try {
+          return await fn(ac.signal, heartbeat);
+        } finally {
+          clearTimeout(timer);
+          RUN.abort.signal.removeEventListener("abort", onStop);
+        }
+      });
     } catch (e) {
       if (RUN.stopped) throw new StoppedError();
       last = e;
-      // Our own deadline, dropped connections, and any failure carrying no HTTP status (fetch
-      // itself, a reply body that never parsed) are worth a retry; a 4xx we caused is not.
-      // Body-parse failures arrive already wrapped as retryable LmErrors by complete(), so nothing
-      // needs name-based special-casing here.
-      const aborted = ac.signal.aborted;
+      // Waiting twice cannot help: the holder of the slot was stuck for the whole budget, and
+      // re-queueing would only wait again. Say what was holding it and let the caller see it.
+      if (e instanceof QueueGaveUpError) throw e;
+      if (e instanceof ProviderDownError || e instanceof CallBudgetError) throw e;
+      // The idle deadline aborts with an opaque AbortError — the one classification failureKind
+      // cannot see, and the one the reader of a failure most wants named.
+      const kind = idleAborted ? "idle-timeout" : failureKind(e);
+      TELEMETRY.last = { what, kind, message: (e as Error).message, site: call?.site, agent: call?.agent, at: Date.now() };
+      announceProviderState();
       const err = e as LmError;
-      const retryable = aborted || err.retryable
+      const retryable = idleAborted || err.retryable
         || (err.status === undefined && e instanceof Error);
-      if (aborted) last = new LmError(`${what}: no reply within ${NET.timeoutMs / 1000}s`, undefined, true);
+      if (idleAborted) last = new LmError(`${what}: no reply within ${idleFor / 1000}s`, undefined, true);
       if (!retryable || attempt >= NET.retries) break;
       const wait = NET.backoffMs * 2 ** attempt + Math.floor(Math.random() * 250);
+      if (Date.now() - startedAt + wait > NET.maxCallMs)
+        throw new CallBudgetError(`${what}: gave up after ${Math.round((Date.now() - startedAt) / 1000)}s `
+          + `across ${attempt + 1} attempt${attempt ? "s" : ""} — the call's total budget is `
+          + `${Math.round(NET.maxCallMs / 1000)}s`);
       progressDone();
       warn(`   ${C.yellow}⟳${C.reset} ${what} failed (${(last as Error).message}) — retry `
         + `${attempt + 1}/${NET.retries} in ${wait}ms`);
       await new Promise(r => setTimeout(r, wait));
-    } finally {
-      clearTimeout(timer);
-      RUN.abort.signal.removeEventListener("abort", onStop);
+      // Health gate before spending another model attempt. This is reachability, not model
+      // state: any HTTP answer (even a 500) means the server is standing. The probe is metadata
+      // only — no generation, no preemption — so it is asked directly, not through the queue.
+      // The budget also bounds the recovery loop: a server that stays down must not earn
+      // unlimited one-second chances inside a call that is already over budget.
+      let down = 0;
+      for (;;) {
+        if (Date.now() - startedAt > NET.maxCallMs)
+          throw new CallBudgetError(`${what}: gave up after ${Math.round((Date.now() - startedAt) / 1000)}s `
+            + `— the call's total budget is ${Math.round(NET.maxCallMs / 1000)}s`);
+        if (await PROVIDER.health(NET.probeTimeoutMs)) {
+          if (kind === "unreachable" || kind === "connection-dropped")
+            warn(`   ${C.dim}${PROVIDER.displayName} is answering again — retrying${C.reset}`);
+          else if (idleAborted)
+            warn(`   ${C.yellow}${PROVIDER.displayName} is alive but the model stopped replying — `
+              + `another client may be preempting it${C.reset}`);
+          break;
+        }
+        down++;
+        if (down > NET.recoveryProbes)
+          throw new ProviderDownError(`${PROVIDER.displayName} at ${PROVIDER.baseUrl} is not answering `
+            + `— is its server running?`);
+        progressDone();
+        warn(`   ${C.dim}${PROVIDER.displayName} is not answering — giving it ${down}/${NET.recoveryProbes} `
+          + `chances to come back before giving up${C.reset}`);
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
   }
   throw last;
@@ -144,20 +217,80 @@ export const AGENT_HEADER = "X-SW-Agent";
 export interface CallSite { site: string; agent?: string }
 
 async function postChat(body: string, signal: AbortSignal, call?: CallSite) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...PROVIDER.headers() };
   if (call?.site) headers[SITE_HEADER] = call.site;
   if (call?.agent) headers[AGENT_HEADER] = call.agent;
-  const res = await fetch(LMSTUDIO_URL, { method: "POST", headers, body, signal });
+  const res = await fetch(PROVIDER.chatUrl, { method: "POST", headers, body, signal });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new LmError(`LM Studio ${res.status}: ${detail.slice(0, 200)}`, res.status, retryableStatus(res.status));
+    throw new LmError(`${PROVIDER.displayName} ${res.status}: ${detail.slice(0, 200)}`, res.status, retryableStatus(res.status));
   }
   return res;
+}
+
+// -- MODEL READINESS --------------------------------------------------------
+/** Thrown when the server never finishes bringing a model up within the wait budget. */
+export class ModelLoadTimeoutError extends Error { }
+
+/** Models the not-loaded warning has already fired for — once per process, not once per call. */
+const notLoadedWarned = new Set<string>();
+
+/** Wait for the server to finish bringing `model` up before the first attempt, and report
+ *  whether the model looked COLD — an explicit not-loaded, or absent from a runtime-only view
+ *  where absence means "not resident, the server will load it on request". A cold model's
+ *  just-in-time load can take minutes, so the caller gives the FIRST attempt a longer deadline
+ *  (the grace only extends a deadline — the engine never loads a model itself; that is
+ *  orchestration, and on a limited-VRAM box it is the operator's call). Metadata only, asked
+ *  before the queue: it does no model work and never preempts anything. `startedAt` is the
+ *  call's true beginning — the total budget covers the wait, not just the attempts. */
+async function waitReady(model: string, startedAt: number): Promise<boolean> {
+  const deadline = startedAt + NET.maxCallMs;
+  const spent = () => `${model}: gave up after ${Math.round((Date.now() - startedAt) / 1000)}s `
+    + `— the call's total budget is ${Math.round(NET.maxCallMs / 1000)}s`;
+  if (!PROVIDER.capabilities.modelRuntimeInspection) return false;
+  const rt = await PROVIDER.inspectModels(NET.probeTimeoutMs);
+  if (Date.now() > deadline) throw new CallBudgetError(spent());
+  if (!rt) return false;   // could not ask — grant no grace and raise no warning
+  const m = rt.get(model);
+  if (m?.state === "loaded" || m?.state === "unknown") return false;
+  if (m?.state === "loading") {
+    // The server is already bringing it up — wait it out.
+    const startedLoading = Date.now();
+    try {
+      for (;;) {
+        if (RUN.stopped) throw new StoppedError();
+        if (Date.now() > deadline) throw new CallBudgetError(spent());
+        if (Date.now() - startedLoading > NET.loadWaitMs)
+          throw new ModelLoadTimeoutError(`${model} is still loading after ${Math.round(NET.loadWaitMs / 1000)}s `
+            + `— load it in ${PROVIDER.displayName} first, or raise the wait`);
+        await new Promise(r => setTimeout(r, 1000));
+        const state = (await PROVIDER.inspectModels(NET.probeTimeoutMs))?.get(model)?.state;
+        if (state !== "loading") return state !== "loaded";   // loaded → warm; gave up server-side → still cold
+        progress(`waiting for ${model} to load… ${Math.round((Date.now() - startedAt) / 1000)}s`);
+      }
+    } finally {
+      progressDone();
+    }
+  }
+  if (m?.state === "not-loaded") {
+    if (!notLoadedWarned.has(model)) {
+      notLoadedWarned.add(model);
+      warn(`   ${C.yellow}⚠${C.reset} ${model} is not loaded in ${PROVIDER.displayName} — the first call `
+        + `may wait on a just-in-time load, or fail fast if JIT loading is off`);
+    }
+    return true;
+  }
+  // Absent from the answer. A full inventory (LM Studio) lists downloads too, so absence there
+  // means unknown — no grace, the call fails fast and says so. A runtime-only view (Ollama's
+  // /api/ps) holds residents, so absence IS the cold verdict.
+  return !PROVIDER.capabilities.fullInventory;
 }
 
 /** One non-streaming completion, with retry/backoff; throws StoppedError when the run is stopped. */
 export async function complete(model: string, messages: Msg[], temperature: number, think: ThinkLevel = "low",
                                call?: CallSite): Promise<Completion> {
+  const startedAt = Date.now();
+  const cold = await waitReady(model, startedAt);
   return withRetry(`${model} completion`, async signal => {
     const res = await postChat(requestBody(model, messages, temperature, false, think), signal, call);
     // Read the body as text first: a 200 whose body will not parse (a proxy error page, LM Studio
@@ -181,16 +314,18 @@ export async function complete(model: string, messages: Msg[], temperature: numb
     // An empty 200 is the other shape "never replied" takes; spend a retry rather than a caller call.
     if (!assembled.text) throw new LmError(`${model} returned an empty completion`, undefined, true);
     return { ...assembled, brokenOff: false, usage: parseUsage(data.usage) };
-  });
+  }, call, cold ? NET.loadWaitMs : 0, startedAt);
 }
 
 /** A streaming completion. Returns the FULL text (the caller buffers -> parses -> checks); onDelta is preview only. */
 export async function completeStream(model: string, messages: Msg[], temperature: number,
                                      onDelta: (d: string) => void, think: ThinkLevel = "low",
                                      call?: CallSite): Promise<Completion> {
+  const startedAt = Date.now();
+  const cold = await waitReady(model, startedAt);
   return withRetry(`${model} stream`, async (signal, heartbeat) => {
     const res = await postChat(requestBody(model, messages, temperature, true, think), signal, call);
-    if (!res.body) throw new LmError(`LM Studio returned no stream body`, undefined, true);
+    if (!res.body) throw new LmError(`${PROVIDER.displayName} returned no stream body`, undefined, true);
     const reader = (res.body as any).getReader();
     const decoder = new TextDecoder();
     let buffer = "", contentBuf = "", reasonBuf = "", frameCount = 0;
@@ -247,5 +382,5 @@ export async function completeStream(model: string, messages: Msg[], temperature
     const out = assembled();
     if (!out.text) throw new LmError(`${model} streamed an empty completion`, undefined, true);
     return { ...out, brokenOff: false, usage };
-  });
+  }, call, cold ? NET.loadWaitMs : 0, startedAt);
 }

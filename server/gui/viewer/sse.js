@@ -1,7 +1,7 @@
 import { $, post } from "./util.js";
 import { APP, LIVEV } from "./state.js";
 import { build } from "./events.js";
-import { setSrc, renderRail } from "./hud.js";
+import { setSrc, renderRail, paintSrcbar } from "./hud.js";
 import { clearReaderDrafts } from "./blocks.js";
 import { go, parseHash, parseHashParams, syncHash } from "./nav.js";
 import { renderSession, disarm, loadModels } from "./session.js";
@@ -100,6 +100,13 @@ export function startSSE() {
       return;
     }
     if (f.t === "continue_prompt") { showPrompt(f); return; }
+    if (f.t === "provider_state") {
+      // The engine sends one whenever its request line or last failure changes. The chip is
+      // chrome, not page content — repaint the srcbar, never the page under the reader.
+      APP.provider = f;
+      paintSrcbar();
+      return;
+    }
     if (f.t === "run_state") {
       const wasPicking = APP.session.picking, wasRunning = APP.session.running;
       APP.session = sessionFrom(f);

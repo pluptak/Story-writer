@@ -1,34 +1,37 @@
 :root {
-    --bg:#eceff4; --panel:#fff; --panel-2:#f4f6fa; --ink:#161b22; --muted:#5b6675; --faint:#667180;
-    --line:#dbe1ea; --accent:#0d6f8b; --warn:#a2650c; --bad:#b03a30; --good:#2c7a4b;
+    /* Warm paper, ported from mockups/architect. The dark palette is authored to the same intent:
+       warm charcoal rather than blue-gray, the accent lightened until it holds on the darker ground. */
+    --bg:#f3f1ec; --panel:#fffdfa; --panel-2:#ebe7df; --ink:#22221f; --muted:#6f6b62; --faint:#8f8a80;
+    --line:#ddd8cf; --accent:#5d5a7d; --warn:#9b6b29; --bad:#9b4d4d; --good:#3f775f;
     --judge:#6d54c4; --batch-judge:#a84fb0; --narration-judge:#c2547e; --clarifier:#7d6d14;
-    --shadow:0 1px 2px rgba(20,32,52,.05),0 6px 20px rgba(20,32,52,.06);
-    --sans: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --scroll:#cfc9be;
+    --shadow:0 1px 2px rgba(42,35,25,.05),0 8px 24px rgba(42,35,25,.09);
+    --sans: Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     --serif: Georgia,"Iowan Old Style","Palatino Linotype",ui-serif,serif;
     --mono: ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
     /* type + radius scales — theme-independent, so they live only here. Half-pixel and one-off
        sizes were snapped to the nearest step; pick from these rather than adding a new value. */
     --fs-10:10px; --fs-11:11px; --fs-12:12px; --fs-13:13px; --fs-14:14px; --fs-15:15px;
     --fs-16:16px; --fs-18:18px; --fs-20:20px; --fs-21:21px; --fs-24:24px;
-    --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:13px; --r-pill:999px;
+    --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:16px; --r-pill:999px;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0d1117; --panel:#151b24; --panel-2:#11161e; --ink:#dfe6f0; --muted:#8b97a8; --faint:#808b9c;
-      --line:#242c38; --accent:#4fc3dd; --warn:#e0a84a; --bad:#ef7a6e; --good:#5fce87;
+    :root { --bg:#211e1a; --panel:#2a2723; --panel-2:#242119; --ink:#eae6dd; --muted:#a59e92; --faint:#8c867b;
+      --line:#3d382f; --accent:#a9a3d6; --warn:#d8a559; --bad:#dd8a7f; --good:#82bd9c;
       --judge:#b18cff; --batch-judge:#e08ae0; --narration-judge:#ef8ab0; --clarifier:#cbc04a;
-      --scroll:#303b4a;
-      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35); }
+      --scroll:#3d382f;
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.4); }
   }
-  :root[data-theme="dark"]{ --bg:#0d1117;--panel:#151b24;--panel-2:#11161e;--ink:#dfe6f0;--muted:#8b97a8;--faint:#808b9c;
-    --line:#242c38;--accent:#4fc3dd;--warn:#e0a84a;--bad:#ef7a6e;--good:#5fce87;
+  :root[data-theme="dark"]{ --bg:#211e1a;--panel:#2a2723;--panel-2:#242119;--ink:#eae6dd;--muted:#a59e92;--faint:#8c867b;
+    --line:#3d382f;--accent:#a9a3d6;--warn:#d8a559;--bad:#dd8a7f;--good:#82bd9c;
     --judge:#b18cff;--batch-judge:#e08ae0;--narration-judge:#ef8ab0;--clarifier:#cbc04a;
-    --scroll:#303b4a;
-    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35); }
-  :root[data-theme="light"]{ --bg:#eceff4;--panel:#fff;--panel-2:#f4f6fa;--ink:#161b22;--muted:#5b6675;--faint:#667180;
-    --line:#dbe1ea;--accent:#0d6f8b;--warn:#a2650c;--bad:#b03a30;--good:#2c7a4b;
+    --scroll:#3d382f;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.4); }
+  :root[data-theme="light"]{ --bg:#f3f1ec;--panel:#fffdfa;--panel-2:#ebe7df;--ink:#22221f;--muted:#6f6b62;--faint:#8f8a80;
+    --line:#ddd8cf;--accent:#5d5a7d;--warn:#9b6b29;--bad:#9b4d4d;--good:#3f775f;
     --judge:#6d54c4;--batch-judge:#a84fb0;--narration-judge:#c2547e;--clarifier:#7d6d14;
-    --scroll:#c3ccda;
-    --shadow:0 1px 2px rgba(20,32,52,.05),0 6px 20px rgba(20,32,52,.06); }
+    --scroll:#cfc9be;
+    --shadow:0 1px 2px rgba(42,35,25,.05),0 8px 24px rgba(42,35,25,.09); }
 
   * { box-sizing: border-box; }
   /* native form controls (checkboxes, number spinners, the select caret) pick up the theme accent */
@@ -52,7 +55,7 @@
   .brand .q { font-size:var(--fs-12); color:var(--muted); margin-top:1px; }
 
  .tabs { display:flex; gap:4px; }
-  .tab { font-family:var(--mono); font-size:var(--fs-11); text-transform:uppercase; letter-spacing:.06em;
+  .tab { font-family:var(--sans); font-size:var(--fs-12); font-weight:500;
          color:var(--muted); background:transparent; border:1px solid transparent; border-radius:var(--r-md);
          padding:6px 10px; cursor:pointer; }
   .tab:hover { color:var(--ink); }
@@ -67,7 +70,7 @@
   .tabasked[hidden] { display:none; }
 
   .cast { display:flex; gap:6px; flex-wrap:wrap; }
-  .chip { font-family:var(--mono); font-size:var(--fs-11); padding:3px 9px; border-radius:var(--r-pill);
+  .chip { font-family:var(--sans); font-size:var(--fs-12); padding:3px 10px; border-radius:var(--r-pill);
           border:1px solid var(--line); background:var(--panel-2); white-space:nowrap;
           color:inherit; cursor:pointer; }
   .chip:hover, .chip:focus-visible { border-color:var(--accent); }
@@ -76,9 +79,11 @@
   .chip .no { color:var(--bad); }
   .chip .reach { color:var(--accent); }
   .chip .yes { color:var(--good); }
-  .btn { font-family:var(--mono); font-size:var(--fs-11); text-transform:uppercase; letter-spacing:.06em;
+  /* Controls speak in the sentence-case sans voice; the uppercase mono voice is the LABELS' alone
+     (.label, .eyebrow, .rail h3, .field label), which is the split mockups/architect draws. */
+  .btn { font-family:var(--sans); font-size:var(--fs-12); font-weight:600;
          color:var(--muted); background:var(--panel-2); border:1px solid var(--line);
-         padding:6px 10px; border-radius:var(--r-md); cursor:pointer; }
+         padding:6px 11px; border-radius:var(--r-md); cursor:pointer; }
   .btn:hover { color:var(--ink); border-color:var(--accent); }
   .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .btn[disabled] { opacity:.4; cursor:not-allowed; }
@@ -91,10 +96,9 @@
      so it reads as amber rather than the alarm red `armed` uses. */
   .btn.off { color:var(--warn); border-color:var(--warn); }
   .btn.off:hover { color:var(--warn); border-color:var(--warn); }
-  /* a <select> wearing .btn keeps the button's box but drops its label voice -- tracked-out
-     uppercase around a native dropdown reads as broken */
-  select.btn { font-family:var(--sans); font-size:var(--fs-12); text-transform:none; letter-spacing:normal;
-               color:var(--ink); padding:5px 8px; }
+  /* a <select> wearing .btn keeps the button's box but drops its weight -- 600 around a native
+     dropdown caret reads as broken */
+  select.btn { font-weight:400; font-size:var(--fs-12); color:var(--ink); padding:5px 8px; }
   select.btn:hover { border-color:var(--accent); }
   select.btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
@@ -124,6 +128,8 @@
   .srcbar { display:flex; align-items:center; gap:8px; padding:6px 20px; border-bottom:1px solid var(--line);
             background:var(--panel-2); font-family:var(--mono); font-size:var(--fs-11); color:var(--muted); }
   .dot { width:7px; height:7px; border-radius:50%; background:var(--good); }
+  .provchip { margin-left:auto; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40%; }
+  .provchip.warn { color:var(--warn); }
   #src { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
   .crumb { color:var(--muted); }
   .crumb[data-view] { cursor:pointer; }
@@ -141,11 +147,39 @@
   .ribbon:not([hidden]) { display:flex; }
   body[data-view="read"] { background:color-mix(in srgb, var(--bg) 88%, var(--panel-2)); }
 
-  .layout { display:grid; grid-template-columns:minmax(0,1fr) 285px; align-items:start; }
+  .layout { display:grid; grid-template-columns:216px minmax(0,1fr) 285px; align-items:start; }
   /* The rail carries the run controls now, so it stacks on a narrow screen instead of vanishing --
      hiding it would take away the only way to stop a run. The `position` half of that has to come
      after the `.rail` rule below, not here, or equal specificity lets source order undo it. */
   @media (max-width: 900px) { .layout { grid-template-columns:1fr; } }
+
+  .sidenav { position:sticky; top:52px; padding:24px 14px; display:grid; gap:18px; align-content:start; min-width:0; }
+  .navgroup { display:grid; gap:2px; min-width:0; }
+  .navgroup[hidden] { display:none; }
+  .navgroup h3 { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.12em; text-transform:uppercase;
+                 color:var(--faint); margin:0 0 6px; font-weight:600; padding:0 8px; }
+  .navitem { display:flex; align-items:center; gap:5px; width:100%; text-align:left; font-family:var(--sans);
+             font-size:var(--fs-13); color:var(--muted); background:transparent; border:1px solid transparent;
+             border-radius:var(--r-md); padding:6px 8px; cursor:pointer; }
+  .navitem:hover { color:var(--ink); background:var(--panel-2); }
+  .navitem:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .navitem.current { color:var(--ink); background:var(--panel-2); border-color:var(--line); font-weight:600; }
+  .navitem[hidden] { display:none; }
+  /* Narrow: a horizontal strip, so the nav costs a line rather than a screen of height. Like the
+     `.rail` position rule above, this has to come AFTER the base rules -- equal specificity, so
+     source order is what decides, and stated first it would be silently undone. */
+  @media (max-width: 900px) {
+    /* flex, not grid columns: `grid-auto-flow:column` sizes the tracks evenly and the labels
+       collide with the group headings. Flex children size to their content, and `flex:none` keeps
+       the scroll container from shrinking them back. */
+    .sidenav { position:static; display:flex; align-items:center; gap:16px; overflow-x:auto;
+               padding:10px 16px; border-bottom:1px solid var(--line); }
+    .navgroup { display:flex; align-items:center; gap:4px; flex:none; }
+    .navgroup h3 { margin:0 2px 0 0; padding:0; white-space:nowrap; }
+    /* width:auto undoes the sidebar's width:100% -- as a flex item that would claim the whole
+       strip, and every label would sit on top of the next. */
+    .navitem { white-space:nowrap; flex:none; width:auto; }
+  }
 
   .page { padding:28px clamp(16px,4vw,40px) 140px; max-width:730px; margin:0 auto; width:100%; }
   .prose { font-family:var(--serif); font-size:var(--fs-18); line-height:1.66; }
@@ -347,6 +381,25 @@
   .iv .prob, .story .prob { color:var(--warn); font-size:var(--fs-13); margin-top:5px; }
   .iv .note { text-align:left; margin:10px 0 0; }
 
+  /* A field's "open the library" button hugs its own text -- `.field` is a column flex box, so
+     without this it stretches the full width and reads as the field's primary control. */
+  .field .pickopen { align-self:flex-start; }
+
+  .libpick .sub { margin:2px 0 0; color:var(--muted); font-size:var(--fs-12); }
+  .libpick #picker-search { display:block; width:100%; margin:14px 0 10px; padding:9px 11px;
+    font-family:var(--sans); font-size:var(--fs-14); color:var(--ink); background:var(--panel-2);
+    border:1px solid var(--line); border-radius:var(--r-md); }
+  .pick-list { display:grid; gap:5px; max-height:44vh; overflow-y:auto; padding:2px; }
+  .pick-row { display:grid; gap:2px; text-align:left; width:100%; padding:9px 11px; cursor:pointer;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-md); color:var(--ink); }
+  .pick-row:hover { border-color:var(--accent); }
+  .pick-row:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .pick-row.on { border-color:var(--accent); background:var(--accent-soft); }
+  .pick-row[hidden] { display:none; }
+  .pick-row b { font-family:var(--mono); font-size:var(--fs-12); }
+  .pick-row span { color:var(--muted); font-size:var(--fs-12); }
+  .pick-row .meta { font-family:var(--mono); font-size:var(--fs-10); color:var(--faint); }
+
   .proposal { padding:15px 17px; margin-top:14px; }
   .proposal h3 { font-family:var(--serif); font-weight:400; font-size:var(--fs-20); margin:0 0 2px; }
   .proposal .where { font-family:var(--mono); font-size:var(--fs-11); color:var(--faint); margin-bottom:10px; }
@@ -427,8 +480,11 @@
   
   .btns .spacer { flex:1 1 0; min-width:0; }
   .hint { font-family:var(--mono); font-size:var(--fs-10); color:var(--faint); letter-spacing:.04em; }
-  .btn.primary { color:var(--accent); border-color:var(--accent); }
-  .btn.primary[disabled] { color:var(--muted); border-color:var(--line); }
+  /* the mockup's primary is the solid one: ink fill, paper text -- the one dark button on a card,
+     visible before it is read */
+  .btn.primary { background:var(--ink); border-color:var(--ink); color:var(--bg); }
+  .btn.primary:hover { color:var(--bg); border-color:var(--ink); filter:brightness(1.15); }
+  .btn.primary[disabled] { background:var(--panel-2); border-color:var(--line); color:var(--muted); filter:none; }
   .thinking { font-family:var(--mono); font-size:var(--fs-11); color:var(--accent); margin-top:14px; }
   .thinking i { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--accent);
                 margin-right:6px; animation:pulse 1.2s ease-in-out infinite; }
@@ -507,6 +563,8 @@
   .catalog-entry.selected { border-color:var(--accent); background:var(--panel-2); }
   .cat-name { font-weight:600; color:var(--ink); }
   .cat-tags { font-size:var(--fs-11); color:var(--muted); margin-top:3px; }
+  .cat-usage { font-size:var(--fs-11); color:var(--faint); margin-top:3px; }
+  .cat-facet { font-weight:400; color:var(--faint); }
   .cat-version { font-size:var(--fs-10); color:var(--faint); margin-top:3px; }
   .cat-form-panel { display:flex; flex-direction:column; }
   .cat-placeholder { text-align:center; color:var(--muted); padding:40px 20px; }
@@ -664,13 +722,12 @@
   .btn.danger { color:var(--bad); }
   .btn.danger:hover { border-color:var(--bad); }
 
-  /* The scaffold view has no run controls, so it drops the rail and breaks out of the 730px page
-     column the other pages sit in -- the mockup's wide proposal+sidebar layout needs the room. */
-  body[data-view="scaffold"] .layout { grid-template-columns:1fr; }
+  /* The scaffold view has no run controls and no rail, so the nav and page split the width. */
+  body[data-view="scaffold"] .layout { grid-template-columns:216px minmax(0,1fr); }
   body[data-view="scaffold"] .rail { display:none; }
   body[data-view="scaffold"] .page { max-width:none; margin:0; padding:0; }
 
-  .scpage { max-width:1320px; margin:0 auto; padding:22px clamp(16px,4vw,40px) 90px; }
+  .scpage { max-width:1500px; margin:0 auto; padding:22px clamp(16px,4vw,40px) 90px; }
   .scpage .eyebrow { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.12em;
     text-transform:uppercase; color:var(--accent); margin:0 0 5px; }
   .scpage > .sc-head h2 { font-family:var(--serif); font-weight:400; font-size:clamp(23px,3.6vw,31px);
@@ -687,6 +744,10 @@
 
   /* the two-column shell: proposal+conversation, then the state sidebar */
   .scpage .shell { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; align-items:start; }
+  /* The staged walk's three panels -- steps, the work, the state; one-shot keeps two. The mockup's
+     270px rail, sticky so the position never scrolls away while the round below it is being read. */
+  .scpage .shell.gated { grid-template-columns:270px minmax(0,1fr) 300px; }
+  .scpage .stepper-rail { position:sticky; top:16px; align-self:start; min-width:0; }
   .scpage .workspace { min-width:0; display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
 
   .scpage .card { min-width:0; }
@@ -702,14 +763,22 @@
   .scpage .card-body > p { margin:0; color:var(--muted); font-size:var(--fs-13); }
 
   /* checklist chips (staged walk) */
-  .scpage .checklist { display:flex; gap:7px; margin:0 0 14px; overflow-x:auto; padding-bottom:2px; }
-  .scpage .gate { display:flex; align-items:center; gap:7px; min-width:max-content; padding:7px 11px;
-    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-pill); color:var(--muted);
-    font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.07em; text-transform:uppercase; }
-  .scpage .gate.done { color:var(--good); border-color:var(--good); background:var(--good-soft); }
+  /* The stepper: one row per gate, vertical, in the left rail. Done rows carry the tick, the open
+     row the accent border -- the old horizontal chips' semantics, given a column and the one-line
+     summary that used to live in a sidebar card. */
+  .scpage .checklist { display:grid; gap:6px; }
+  .scpage .gate { display:flex; align-items:flex-start; gap:9px; padding:8px 10px;
+    border:1px solid transparent; border-radius:var(--r-md); color:var(--muted); }
+  .scpage .gate i { flex:none; width:22px; height:22px; border-radius:50%; margin-top:1px;
+    border:1.5px solid currentColor; display:grid; place-items:center;
+    font-style:normal; font-size:var(--fs-11); font-weight:600; line-height:1; }
+  .scpage .gate-copy { display:grid; gap:1px; min-width:0; padding-top:1px; }
+  .scpage .gate-copy b { font-weight:600; font-size:var(--fs-13); color:inherit; }
+  .scpage .gate-copy small { display:block; color:var(--faint); font-size:var(--fs-11); line-height:1.4; }
+  .scpage .gate.done { color:var(--good); }
+  .scpage .gate.done i { background:var(--good); border-color:var(--good); color:var(--bg); }
   .scpage .gate.open { color:var(--ink); border-color:var(--accent); background:var(--accent-soft); }
-  .scpage .gate i { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
-  .scpage .gate.open i { animation:pulse 1.2s ease-in-out infinite; }
+  .scpage .gate.open i { border-color:var(--accent); background:var(--panel); color:var(--accent); }
 
   /* proposal panel: scene, question, facts, cast */
   .scpage .stage-section { margin-top:16px; padding-top:15px; border-top:1px solid var(--line); }
@@ -788,6 +857,32 @@
   .scpage .side-copy { margin:0; color:var(--muted); font-size:var(--fs-12); }
   .scpage .side-actions { display:grid; gap:8px; margin-top:14px; }
   .scpage .side-actions .btn { text-align:center; }
+  /* the tension as its text, under the stats it used to be a "coined" row of */
+  .scpage .side-tension { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+  .scpage .side-tension .label { display:block; margin-bottom:4px; }
+  .scpage .side-tension .side-copy { font-family:var(--serif); font-size:var(--fs-13); color:var(--ink); }
+
+  /* ---- the story map's scene detail ----
+     Roster, reach and the chapter's world beats, under the scene row they belong to. The mockup's
+     map fields: a small caps label column, chips, and the beat as a bordered extract. */
+  .map-extra { margin-top:11px; padding-top:11px; border-top:1px solid var(--line);
+               display:grid; gap:9px; }
+  .mapfield { display:grid; grid-template-columns:92px minmax(0,1fr); gap:9px; align-items:baseline; }
+  .mapfield > span { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+                     text-transform:uppercase; color:var(--faint); }
+  .mapchips { display:flex; flex-wrap:wrap; gap:5px; }
+  .mchip { display:inline-block; padding:2px 9px; border:1px solid var(--line); border-radius:var(--r-pill);
+           background:var(--panel-2); font-size:var(--fs-11); color:var(--muted); }
+  .mapbeats { display:grid; gap:8px; }
+  .mapbeat { border-left:2px solid var(--warn); padding-left:10px; display:grid; gap:2px; }
+  .mapbeat .when { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.07em;
+                   text-transform:uppercase; color:var(--warn); }
+  .mapbeat .hold { font-family:var(--serif); font-size:var(--fs-13); color:var(--ink); }
+  .mapbeat.voided { opacity:.55; }
+  .mapbeat.voided .hold { text-decoration:line-through; }
+  @media (max-width: 680px) {
+    .mapfield { grid-template-columns:minmax(0,1fr); gap:3px; }
+  }
   .scpage .notice { margin-top:12px; padding:10px 11px; color:var(--good); background:var(--good-soft);
     border-radius:var(--r-md); font-size:var(--fs-12); }
 
@@ -805,8 +900,10 @@
   @media (max-width: 900px) {
     /* mobile: proposal before conversation is already the DOM order; drop the sidebar under it.
        minmax(0,1fr) — a bare 1fr is minmax(auto,1fr), whose content-based minimum lets a wide card
-       push the track past the viewport. */
-    .scpage .shell { grid-template-columns:minmax(0,1fr); }
+       push the track past the viewport. The stepper rail goes with the columns: a narrow screen
+       reads the round card, and the status bar's `gate:` word still says where the walk stands. */
+    .scpage .shell, .scpage .shell.gated { grid-template-columns:minmax(0,1fr); }
+    .scpage .stepper-rail { display:none; }
     .scpage aside { position:static; order:2; }
     .iv .choice-grid { grid-template-columns:1fr; }
   }
@@ -835,9 +932,10 @@
       --bg:#fff; --panel:#fff; --panel-2:#fff; --ink:#111; --muted:#333; --faint:#555;
       --line:#c9c9c9; --shadow:none; }
     body { background:#fff; }
-    .topbar, .srcbar, .sessionbar, .timeline, .ribbon, .rail, .tabs, .tabdot, .drop, .prompt,
+    .topbar, .srcbar, .sessionbar, .timeline, .ribbon, .rail, .sidenav, .tabs, .tabdot, .drop, .prompt,
     .modal-backdrop, .reader-search, .btn, .btns { display:none !important; }
-    .layout, body[data-view="scaffold"] .layout { display:block; }
+    .layout { display:block; }
+    body[data-view="scaffold"] .layout { display:block; }
     .page, .scpage { max-width:none; margin:0; padding:0; }
     /* the closed <details> hides its body; reveal the direct children of any collapsed consult */
     details:not([open]) > *:not(summary) { display:block !important; }

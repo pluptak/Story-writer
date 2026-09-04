@@ -93,8 +93,11 @@ export function go(v) {
     APP.catalog.armedDelete = false;
   }
   APP.view = v;
-  if (v === "readstory" || v === "read" || (v === "compare" && !APP.stories) || v === "shelf" || v === "story" || v === "handoff" || v === "edit" || v === "catalog") loadStories();
+  // The URL is synced BEFORE the fetch, because loadStories() renders synchronously on its first
+  // line -- and a page that reads the URL on arrival (the catalog's kind) would otherwise be handed
+  // the address of the page we just left, and reset itself to what that one said.
   syncHash();
+  if (v === "readstory" || v === "read" || (v === "compare" && !APP.stories) || v === "shelf" || v === "story" || v === "handoff" || v === "edit" || v === "catalog") loadStories();
   APP.render();
   if (v === "live" && APP.wantReaderView) {
     APP.wantReaderView = false;
@@ -108,5 +111,18 @@ addEventListener("hashchange", () => {
   if (v && v !== APP.view) go(v);
 });
 
-for (const t of document.querySelectorAll(".tab"))
-  t.addEventListener("click", () => go(t.dataset.view));
+for (const t of document.querySelectorAll("#sidenav .navitem"))
+  t.addEventListener("click", () => {
+    const v = t.dataset.view, kind = t.dataset.kind;
+    // The Libraries group seeds the kind before navigating: hashFor() reads APP.catalog.kind to
+    // build the URL, and applyCatalogUrlKind's not-loaded branch is what actually fetches it.
+    if (v === "catalog" && kind) { APP.catalog.kind = kind; APP.catalog.loaded = false; }
+    // "Architect" is whichever session is open — the handoff re-authors a cast, the scaffold builds
+    // a new story, and only one of them is ever live.
+    if (t.id === "nav-architect" && APP.handoff.active) {
+      APP.handoffDir = APP.handoff.dir;
+      go("handoff");
+      return;
+    }
+    go(v);
+  });

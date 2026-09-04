@@ -43,9 +43,8 @@ The architect's system prompt carries two in-code catalogs from `engine/skills.t
   matches; an entry not in the bible stays **custom** and keeps its authored `name :: meaning`.
   Bespoke per-story skills are first-class — but one that is neither a bible skill nor carries a
   `:: meaning` is reported back to the author as a non-fatal problem rather than silently kept.
-  The in-code catalog is now the **seed** of an editable one (*Skill bible* below). A run resolves
-  against the author's bible; the architect's prompt still carries the in-code one, so a skill the
-  author promoted is one the architect cannot yet offer.
+  The in-code catalog is now the **seed** of an editable one (*Skill bible* below), and both a run
+  and the architect resolve against the author's bible — the prompt above is rendered from it.
 
 Restrictions are a plain list of names — a general skill, a bible skill, or one of that character's
 own skills. A restriction is a **source-independent prohibition**: it names a capability unavailable
@@ -97,13 +96,13 @@ own `:: meaning` — reach is never in the bible — and a grant keyed to a non-
 a problem. The loader additionally warns when a scene grants reach to someone not in its roster,
 since the grant would never reach a run.
 
-The bible the promotion would land in is built (*Skill bible* below); the **promotion** itself — the
-architect proposing an entry and the owner approving it — is planned work ([`PLANS.md`](PLANS.md)).
+A bespoke skill an accepted cast holds can be **promoted** into the bible the author keeps
+(*Skill bible* below); reach never can (I4).
 
 ## Character catalog
 
-**Status: the catalog and its screen are built; nothing reaches the architect yet.** The import path
-that would let a scaffold adapt a catalog entry is unbuilt and lives in [`PLANS.md`](PLANS.md).
+**Status: built, including the import path** — a scaffold can cast from this library and adapt what
+it finds (*Casting from the library* below).
 
 A reusable library of character templates, stored beside `defaults.json` rather than inside any
 story, so it is not scoped to one and survives every story it is used in. `engine/catalog-schema.ts`
@@ -175,8 +174,8 @@ than grow a second account of what a good field is.
 
 ## Skill bible
 
-**Status: the bible and its editor are built; nothing proposes into it yet.** The architect's
-propose → owner-approves gate is unbuilt and lives in [`PLANS.md`](PLANS.md).
+**Status: built, including promotion.** What is *not* built is making bespoke skills an error —
+the gate exists, but "prefer an existing skill" is still advice rather than a rule.
 
 The fourth catalog kind, beside characters, tags and styles, and stored the same way — a file next to
 `defaults.json`, global rather than scoped to a story. An entry is `id`, `version`, `name`, `meaning`
@@ -210,11 +209,46 @@ and the run it starts report the same skills. Nothing loads it inside the engine
 and `story-writer.ts` load it and pass it down, and every engine function defaults to the in-code
 catalog when they don't.
 
-**The architect is the one reader still on the in-code catalog.** Its prompt carries
-`SPECIAL_SKILL_CATALOG`, and `normalizeSpec` validates a proposed cast against it, so a skill the
-author promoted is one the architect will neither offer nor recognize — it will propose the same
-capability afresh as a `custom` skill with its own wording. That is the next stage, and the propose →
-approve gate comes after it.
+**The architect reads it too, on both sides.** Its system prompt is rendered from the author's
+bible, and every path that validates a proposed cast — `normalizeSpec`, `applyEdits`, the
+fillGaps/verify passes, the stateless suggestion — takes the same bible as a parameter. Each session
+carries the one it was handed when it opened. `applyEdits` is the easy one to miss and the one that
+matters most: it is what a refinement round and the whole handoff go through, so wiring only the
+stage rounds would leave the architect on the in-code catalog for most of a conversation.
+
+The bible reaches the architect as **name-and-meaning pairs**, because one of its two consumers
+renders it into a prompt string rather than looking names up in it; `bibleFrom` builds the lookup over
+that same map, so the two views cannot disagree about what is in it.
+
+One reader is still on the in-code catalog: `directEdit`, which re-normalizes the whole spec in order
+to change `scene.length` and so can report a bible problem against the wrong catalog. Fixing it means
+making `ServerHost.directEdit` async for an advisory-only effect, so it is recorded rather than done.
+
+### Promotion
+
+A bespoke skill in an accepted cast is the architect saying this story needed a capability the bible
+does not have. **Promotion is the author putting it there**, and the candidates are **derived from the
+spec rather than asked for in a reply**: writing `name :: meaning` on a character already *is* the
+proposal, and a `bible: [...]` field in the reply would be a second, unverifiable account of the same
+thing — one the model could fill with skills nobody holds. Deriving them means a candidate cannot name
+a skill the cast does not have, which no prompt field could promise.
+
+A candidate is a skill carrying its own `:: meaning` whose name is neither a general skill nor already
+in the bible. **Reach is never a candidate (I4)** — only `character.skills` is read. Candidates are
+re-derived on every read, because a stored list would go stale in both directions: a candidate stops
+being one the moment it is promoted, or the moment the cast stops holding it.
+
+`/scaffold/promote` is the gate, and it is **distinct from accepting the story**: a skill lands in the
+bible there or not at all, and accepting a story never writes one. Only a name the session is
+currently offering may be promoted, so the wire cannot name an arbitrary skill and have it written
+into the author's catalog. Promotion writes through the same validated path the skill editor uses —
+one way into the catalog, one set of rules — and hands the open session a lookup over the new bible,
+without which the skill just promoted would read as unknown for the rest of the conversation.
+
+**The system prompt is not re-rendered.** It is sent once per session, so a skill promoted mid-scaffold
+is accepted by validation from that moment but does not appear in the architect's own list until the
+next session. Re-rendering it would mean rebuilding the agent and losing the conversation, which costs
+more than it buys.
 
 ## Operating principle
 
@@ -337,6 +371,156 @@ architect must not silently fix by rewriting character state; it surfaces the pr
 resolves it. Flags block nothing, and they are not `problems` — `problems` are validation warnings
 about the story that resulted, flags are observations about the prose that already exists.
 
+## The concept
+
+What the author settles before the architect runs: an **idea**, **tags**, an **opening cast size**, an
+import **tray**, and a **voice**. Session state on the `tension` pattern — never a `story.json` field,
+discarded at accept — but the mirror of it, because the architect coins the tension and the author
+chooses the concept.
+
+Each half reaches exactly one gate, and nothing else:
+
+| | reaches | says |
+| --- | --- | --- |
+| `tags` | the **story** stage | what *kind* of story this is — the same idea as survival horror and as adventure are different stories |
+| `castSize` | the **cast** stage | the opening cast's target size, which the tension can still overrule |
+| `imported` | the **cast** stage | these people, placed rather than invented (*Casting from the library*) |
+| `styleId` | the **settings** stage | the voice this story is narrated in (*The voice*) |
+
+**Tags steer the story gate and then stop steering.** `idea + tags → story gate → tension + premise →
+every later stage`. Afterwards they persist as author intent — display, revisiting the concept,
+ranking presets in the UI — and that is all.
+
+> Tags may help the UI select a preset. They never become a second hidden instruction channel into
+> later architect prompts.
+
+Without that rule a later change that "helpfully" passes tags into the cast or scene prompt
+reintroduces an unarbitrated steering channel alongside the tension the whole checklist is built on.
+The cast size is bounded by the cast stage's own ceiling of four, and is a target rather than a quota:
+the prompt says to propose fewer and explain why when the tension only supports fewer.
+
+**An empty concept costs nothing.** The story and cast prompts are byte-identical without it, which is
+what makes it safe to leave alone and what the tests guard.
+
+### Cast size is unpriced; roster size is the cost
+
+Offering a cast size means owing its price. Every character in the roster may be consulted at each
+beat, so a wide cast spends the step budget on breadth instead of depth — the `alarm-wing` runs hit
+the 24-step cap with a wide roster while a duo on the same budget did not. The **scene** gate
+therefore reports the roster against `config.maxSteps` as an advisory problem, and only there: the
+number is meaningless until there is a scene to spend the budget on. It stays quiet below three
+characters and while the budget is still at least eight beats wide, which are the shapes that had room.
+
+### Spent is a real state
+
+Revising the concept never re-runs a gate — it changes what the *next* build of a stage prompt says.
+Once the stage that reads a half has produced its content, nothing ahead reads it again, and the
+session says so (`tagsSteer`, `castSizeSteers` in [GUI-SPEC.md](GUI-SPEC.md)). The viewer stops
+offering to revise a spent half rather than letting it go quietly inert: an editor that looks like it
+steers the run, and does not, is worse than no editor.
+
+Cast size is measured against whether a cast exists rather than against the open gate, which means it
+is at its most live during the **story** gate — before the cast prompt has ever been built. The voice
+is measured the same way, against the spec's `writerStyle`, so it stays live across the story and cast
+rounds: the prompt that reads it is two gates further on.
+
+## Casting from the library
+
+The author may fill an **import tray** from the character catalog instead of leaving the cast to the
+architect. A tray is session state like the rest of the concept, capped at the cast stage's four, and
+**it takes over from `castSize`** — the tray *is* the opening cast's size, so the number stops being
+an answer to anything and stops claiming to steer.
+
+A tray changes what the cast gate **does**, so it gets a stage prompt of its own rather than a
+decorated `architectCastStage`. That one is written to invent, propose and commit; this one must
+**understand → place → adapt → ask only what the import does not answer**, and it asks more readily,
+because the author has already made the choice the architect would otherwise have invented.
+
+### The adaptation contract
+
+Fixed by field, with no per-template declaration:
+
+| fields | contract |
+| --- | --- |
+| `belief`, `impulse`, `voice`, `skills`, `restrictions` | **preserve** — these travel with the person |
+| `knows`, `goal` | **resolve per story** — neither means anything outside the story it was written for, which is why the library does not carry them |
+| `persona` | **compose** — the portable half word for word, then this story's context after it |
+
+This is what makes import awareness inspectable rather than a behavioural hint: you can read a
+proposal and check which of the three happened to each field. A line telling the architect *the
+author chose this one, treat it specially* cannot be checked and is not written.
+
+**The preserve half is enforced, not requested.** `applyImportContract` restores the five travelling
+fields from the tray after the round and reports every correction, and an import the reply left out
+is added back unchanged — the author chose these people, so the architect may argue in `note` that
+one does not fit, but may not un-choose them by omission. The prompt therefore states the rule as a
+fact about what will happen rather than as an instruction that might be followed.
+
+**Adding someone is reported rather than reverted**, and the asymmetry is deliberate: preservation is
+where a model drifts invisibly, while an extra character is visible on the page, may well be what the
+author asked for mid-gate, and is cheap to delete.
+
+Because the tray is already a cast, `characters: []` becomes a real answer at this gate — *these are
+right as they are* — the way an empty ledger is at the world gate.
+
+**Adaptation and cast quality stay separate rules.** The contract says preserve, full stop; the cast
+gate still judges whether the preserved capabilities bite on this tension. Judging is not adapting,
+and blurring the two reads as licence to rewrite a restriction during import.
+
+### Provenance ends at accept
+
+The tray keeps `{libraryId, version}` for as long as the session lives and no longer. `StoryJson` is
+a `z.strictObject`, so there is nowhere on disk to put it even if it were wanted — and it is not:
+**the handoff must never know a character came from a template.** A character in an accepted story is
+a character, and re-authoring it between chapters is not a different job because of where it started.
+The tray is also marked **placed** rather than *spent* once the cast lands, because unlike the tags
+it was not discarded — it became the cast.
+
+## The voice
+
+The author may hand the settings gate a **style preset** from their catalog instead of leaving the
+house style to the architect. It is the third use of the same composition the fork already runs twice:
+
+```
+portable persona + story context         = persona      (casting from the library)
+preset voice     + derived story clauses = writerStyle  (the voice)
+```
+
+`writerStyle` is the half that **travels** — person, tense, what to do with dialogue, what to leave
+out — and `writerStyleConstraints` is the half read off *this* cast and *this* POV: what the narration
+may know. The writer sees them joined into one HOUSE STYLE block and cannot tell they were ever
+separate, which is the point. The split is an authoring distinction, and it earns its keep exactly
+once: when the voice is swapped and the story's own rules must not go with it. `styleProblems`
+(`engine/catalog.ts`) enforces the other direction — a preset whose voice names a perception rule is
+flagged, because a preset owning the whole string takes that rule away when it is replaced.
+
+**With a preset the gate narrows to one question.** The prompt is handed the voice and asked only for
+`writer_style_constraints`; an empty array is a real answer — *this story needs none* — the same shape
+the world gate uses for an empty ledger. **Without one it asks for both**, which is the first time
+anything has ever asked for the derived half: the field reached the schema, the spec, the story card
+and the writer's prompt before any prompt requested it.
+
+### The voice is preserved, not negotiated
+
+A `writer_style` sent back at that gate is dropped and the chosen voice stands, and the proposal
+carries a note saying so. This is the adaptation contract again, for the same reason: **preservation
+is where a model drifts where the author cannot see it.** The author picked this voice out of their
+own library; an architect that quietly "improves" it has taken a decision that was not offered.
+
+If the voice genuinely cannot serve the story — it narrates from a distance this POV cannot hold — the
+prompt says to name that in `note` and let the author change it, never to work around it in the
+constraints.
+
+### Tags rank; they do not steer
+
+The style picker orders presets by how many of the author's tags they carry, and **every preset stays
+on offer**. Ranking is the whole of it. Passing a tag into the settings prompt as well would give it a
+second, unarbitrated channel into the story alongside the tension — the rule the concept section
+already states, and the one place it would be easiest to break.
+
+**Which preset a story came from is not recorded.** The voice lands on `story.json`; the id does not.
+Provenance ends at accept here for the same reason it does for an imported character.
+
 ## Conversation rules
 
 ### Scaffold
@@ -422,7 +606,10 @@ question") are suppressed until their owning stage has run.
 
 The load-bearing **tension** sentence coined at the story stage is session state, not a story.json
 field: it steers the cast stage's prompt, sharpens the scene stage's, and change rounds may edit it
-by field name without it ever reaching the file.
+by field name without it ever reaching the file. The sidebar shows it **as its text** — the cast was
+authored against the sentence, so the author reads the sentence, not a "coined" flag saying one
+exists. What still has no view of it is the story editor, which loads the file the tension never
+reaches.
 
 **Oneshot** keeps the original single-round behaviour: one whole-story proposal followed immediately
 by the two automatic passes below, then conversational refinement. Chosen with `mode: "oneshot"`
@@ -514,7 +701,8 @@ Built as its own `#/scaffold` route in [`interview.js`](server/gui/viewer/interv
 the shelf's "start a new story" card — which relabels itself "continue new story…" while a session is
 open on the server. The idea step is a modal over an empty scaffold shell; once the first proposal
 lands the page keeps three things visible at all times: the proposed story (a card), the current round
-(a card), and a **scaffold-state sidebar** — walk, open gate, tension, "on disk: nothing yet" — that
+(a card), and a **scaffold-state sidebar** — walk, open gate, tension, the concept, "on disk: nothing
+yet" — that
 owns **accept** and **abandon**. The view drops the run-controls rail and breaks out of the page column
 the other screens sit in, so the wide proposal-and-sidebar layout has room.
 
@@ -528,16 +716,28 @@ Behaviour:
 - The idea field is shown only before the first proposal. Beside the model choice, the idea step offers
   **how it proposes** as two radio cards: "stage by stage" (the staged checklist) or "the whole story
   at once" (oneshot).
-- A staged session renders the checklist — story / cast / settings / technical / scene / world chips with the
-  open gate
-  highlighted and passed gates ticked. A one-shot session has no checklist; the status bar and round
-  narration carry its state.
+- Between those cards and the model choice sits **the concept** — a tag picker built from the tag
+  catalog's vocabulary, and an **opening cast** select. The picker offers the catalog's tags and
+  nothing else; free text there would be a second idea box, and the vocabulary is the catalog's to
+  author. Choosing the one-shot walk removes the whole block, which has no gate to steer.
+- Once a session is open the concept moves to the sidebar beside the tension, each half labelled
+  **spent** when the stage that reads it has landed, with **revise concept** offering the same picker
+  inline until both are. Revising seeds from the session rather than the modal's draft: after a
+  reload the draft is empty while the concept is not.
+- A staged session renders the **stepper** — a left rail, one row per gate (Concept / Cast / Voice /
+  Technical / Scenes / World) with the open gate highlighted, passed gates ticked, and each row
+  carrying the one-line summary of what its gate holds. It is the checklist's only statement: the
+  round card no longer repeats it as chips, the proposal head no longer recites passed gates, and
+  the sidebar's gate-summary card is gone, because a position that was stated three times had three
+  places to drift. A one-shot session has no steps; the status bar and round narration carry its
+  state.
 - While `/scaffold/start`, `/scaffold/say` or `/scaffold/approve` is running, the composer is replaced
   by `.thinking` and the status dot pulses.
 - A `question` round shows the architect's question distinctly, focuses and relabels the answer field
   ("your answer" / "send answer →"), and hides the approve button while it stands.
 - The **approve & continue** button, in the composer, passes the open gate and proposes the next
-  stage's content. It is hidden at the last gate and while a question stands. Refinement never advances
+  stage's content, **labelled by the gate it passes** ("accept the concept", "accept the cast"). It is
+  hidden at the last gate and while a question stands. Refinement never advances
   a gate: only this button does. When the cast gate comes back `blocked`, the verdict renders as a
   judgement (not a failure) and the same button becomes **approve anyway** for 8 seconds — the first
   click is what discovered the block, so unlike accept the confirmation is armed by the reply rather
@@ -627,6 +827,15 @@ never imports engine modules directly. The old console walkthrough (`--new`, `--
   `stories/` is the user's own content and gitignored. A **handoff** architect no longer gets it —
   the handoff prompt names every edit field inline and resends the real story each round, so the
   example was the format said twice.
+- **The scaffold has a scripted session in the GUI harness**: `setScaffoldFactory`, in the shape
+  `setHandoffFactory` already had, installs a `ScaffoldSession` whose architect replies from a
+  script, and [`scaffold.spec.ts`](tests/gui/scaffold.spec.ts) walks a staged session through
+  `/scaffold/start` and one approve — asserting the stepper tracks the published gate, the approve
+  button names the gate it passes, and the tension reaches the rail as its text. The deeper gates
+  (settings onward, and the blocked-gate override) stay in
+  [GUI-CHECKLIST.md](GUI-CHECKLIST.md)'s manual section 14. The concept's three catalog lookups
+  (`unknownTags`, `importCharacters`, `resolveStyle`) now read the harness's temp files rather than
+  the author's own catalog at ROOT, which the spread `HOST` would otherwise have reached.
 
 ## Safety and product constraints
 

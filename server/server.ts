@@ -15,10 +15,27 @@ import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
 import { handleCatalogRoutes } from "./catalog-routes.ts";
-import type { ScaffoldSession, NextChapterSession } from "../engine/architect.ts";
+import type { ScaffoldSession, NextChapterSession, ImportedCharacter, StylePreset } from "../engine/architect.ts";
 import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson } from "../engine/story-schema.ts";
+import type { BibleLookup } from "../engine/skills.ts";
+
+/** The author's concept, chosen before the architect runs and never written to story.json:
+ *  `tags` steer the story stage, `castSize` is the opening cast's target size for the cast
+ *  stage, and `styleId` names the voice preset the settings stage is handed. Staged mode only —
+ *  the one-shot walk has no gate for any of them to steer. */
+export type Concept = { tags: string[]; castSize: number; styleId: string };
+
+/** What the reusable vocabulary is being used by, derived by scanning the other catalogs — the
+ *  "18 uses" line, observed rather than authored. Tags are keyed by folded label (what entries
+ *  store); a style carries the STYLE NAMES whose tags include it, for the tag page's "commonly
+ *  associated" line. Skills are keyed by the name a character's `skills` line names, counted
+ *  with the engine's own case-insensitive identity match. */
+export interface CatalogUsage {
+  tags: Record<string, { characters: number; styles: string[]; skills: number }>;
+  skills: Record<string, number>;
+}
 
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
@@ -33,13 +50,30 @@ export interface ServerHost {
   /** The chapter numbers already written for a story -- the chapter equivalent of `runDirs`. Takes
    *  a discovered story dir, not a resolved path. */
   writtenChapters(dir: string): Promise<number[]>;
-  loadedModelIds(): Promise<string[] | null>;
+  availableModelIds(): Promise<string[] | null>;
+  /** The configured provider's display name ("LM Studio", "Ollama", …) — routes name the server
+   *  in user-facing refusals without importing the engine that knows it. */
+  providerName: string;
   /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
   architectModel(): Promise<string>;
   /** `mode` picks the scaffold's walk: "staged" runs the gated checklist
    *  (story → cast → settings → scene, an author approval between stages); "oneshot" is the
-   *  whole-story proposal. Omitted means staged. */
-  newScaffoldSession(idea: string, model?: string, mode?: "oneshot" | "staged"): Promise<ScaffoldSession>;
+   *  whole-story proposal. Omitted means staged. The optional `concept` carries the author's
+   *  pre-architect steering: tags and target cast size. */
+  newScaffoldSession(idea: string, model?: string, mode?: "oneshot" | "staged",
+                     concept?: Concept): Promise<ScaffoldSession>;
+  /** Which of these tags the tag catalog does not hold, in the order given. Off-vocabulary tags
+   *  are allowed — the catalog is a seed the author edits, not a gate — but they are reported so
+   *  a typo does not silently become a steering word. */
+  unknownTags(tags: string[]): Promise<string[]>;
+  /** Resolve character-catalog ids into the scaffold's import tray. A id the catalog no longer holds
+   *  comes back in `missing` rather than failing the call: the catalog is the author's and they may
+   *  have deleted an entry since choosing it, and a tray that silently shrank is worse than one that
+   *  says what it lost. */
+  importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }>;
+  /** One style preset from the author's catalog, by id. Null when the id names nothing — a preset
+   *  deleted between the pick and the round is news for the author, not an error. */
+  resolveStyle(id: string): Promise<StylePreset | null>;
   /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
   newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
   directEdit(spec: StorySpec, field: string, value: unknown):
@@ -113,6 +147,16 @@ export interface ServerHost {
   catalogSave(kind: string, entry: unknown): Promise<{ ok: true; entry: unknown; problems: string[] } | { ok: false; reason: string; status?: number; issues?: string[] }>;
   /** Remove one catalog entry by id. Fails if the id is not found. */
   catalogDelete(kind: string, id: string): Promise<{ ok: true } | { ok: false; reason: string; status?: number }>;
+  /** Which catalogs reference which entries — read-only derivation over the other kinds. */
+  catalogUsage(): Promise<CatalogUsage>;
+  /** Put a bespoke skill into the author's bible and hand back a lookup over the NEW bible. The
+   *  caller assigns that to the open session, because the session validates against a bible it was
+   *  handed when it opened — without the swap the skill it just promoted would still read as
+   *  unknown for the rest of the conversation. */
+  promoteSkill(name: string, meaning: string): Promise<
+    { ok: true; bible: BibleLookup; problems: string[] } |
+    { ok: false; reason?: string; issues?: string[] }
+  >;
 }
 
 async function serveFile(res: ServerResponse, url: URL, contentType: string) {
@@ -200,7 +244,7 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         r({ dir, chapter, replace });
 
       } else if (path === "/models" && req.method === "GET") {
-        const ids = await host.loadedModelIds();
+        const ids = await host.availableModelIds();
         json(res, 200, {
           ids: ids ?? [], reachable: ids !== null,
           current: LIVE.modelOverride, architect: await host.architectModel(),

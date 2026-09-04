@@ -29,7 +29,7 @@ const fld = (id, label, value, type) =>
   `<label for="${id}">${label}</label>` +
   (type === "model"
     ? `<input id="${id}" type="text" value="${esc(value ?? "")}" list="model-list"`
-      + ` placeholder="model id — the datalist suggests what LM Studio has loaded">`
+      + ` placeholder="model id — the datalist suggests what the configured server has loaded">`
     : type === "textarea" || (value != null && value.length > 80)
     ? `<textarea id="${id}" rows="${type === "small" ? 3 : 5}">${esc(value ?? "")}</textarea>`
     : type === "number"

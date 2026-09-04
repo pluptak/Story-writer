@@ -175,6 +175,17 @@ describe("StoryJson schema", () => {
       assert.equal(r.success, false, `expected rejection for ${JSON.stringify(beat)}`);
     }
   });
+
+  it("accepts writerStyleConstraints as an array and defaults it to empty", () => {
+    const withConstraints = StoryJson.parse({
+      characters: [{ name: "X" }],
+      writerStyleConstraints: ["no omniscience", "do not narrate what X cannot perceive"],
+    });
+    assert.deepEqual(withConstraints.writerStyleConstraints, ["no omniscience", "do not narrate what X cannot perceive"]);
+
+    const without = StoryJson.parse({ characters: [{ name: "X" }] });
+    assert.deepEqual(without.writerStyleConstraints, []);
+  });
 });
 
 // -- CONFIG VALIDATION -----------------------------------------------------

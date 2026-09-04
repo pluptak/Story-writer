@@ -28,6 +28,8 @@ export const APP = {
   session: { running:false, stopping:false, where:"", picking:false, loading:false, armed:false,
              paused:false, pausing:false, model:null, interactive:true },  // the process, not the story
   composing: null,             // ephemeral: {who, secs, chars} -- live only
+  provider: null,              // the last provider_state frame: who serves the models and how
+                               // busy the request line is; null until the engine says so
   armed: 0,                    // timer id: the stop button is waiting for its confirming second click
   stories: null,                // story cards from /stories -- feeds the shelf and the story page
   picked: "",                  // a choice already sent; keeps a double-click from being two picks
@@ -66,6 +68,8 @@ export const APP = {
                                 // the idea modal in the window between the two.
   folderOpen: false,           // the sidebar's accept opened the folder step locally — the server only
                                 // forces it open through needsFolder
+  conceptOpen: false,          // the sidebar's concept editor is expanded. Local to the page: the
+                                // concept itself lives on the session, and revising it is a POST
   ideaOpen: false,             // kept for compatibility; the scaffold page now owns the idea step
   ivHidden: false,             // kept for compatibility; the scaffold page is a route, not an overlay
   personasFull: false,
@@ -110,7 +114,7 @@ export const APP = {
   editSuggestText: "",         // draft text in the suggestion textarea
   editSuggestBusy: false,      // suggestion in flight
   editSuggestResult: null,     // {ok, kind, applied, ignored, problems, note} from /story/suggest
-  modelIds: [],                 // what LM Studio has loaded; fetched once, used by both dropdowns
+  modelIds: [],                 // what the configured provider reports loaded; fetched once, used by both dropdowns
   modelDefault: "",             // the model an interview would use if you chose nothing
   expandAll: false,
   wantReaderView: false,        // a reader consult just arrived: scroll to it once the run page is showing
@@ -124,15 +128,25 @@ export const APP = {
                                  // cast pill's character card, fetched from /cast for
                                  // LIVEV.meta.story on the live screen. dir-keyed so a new story's
                                  // run refetches instead of showing the last cast.
+  // The library picker's overlay state (library-picker.js). Separate from `catalog` on purpose:
+  // that is the catalog PAGE, and the picker opens OVER other pages -- sharing one slice would let
+  // the overlay wipe the form underneath it.
+  picker: { open:false, kind:"", title:"", hint:"", loading:false, error:"",
+            entries:[], search:"", chosen:[] },
   // `loaded` is what stops the URL and the kind switcher fighting: the page seeds its kind from
   // ?kind= only on arrival, and needs a way to tell "never fetched" from "fetched, empty".
   catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,
              issues:[], problems:[], armedDelete:false, deleteTimer:0,
              kind:"characters",   // which catalog is being browsed: one of CATALOG_KINDS above
-             vocab:[]             // the tag entries, loaded once, used by the character form's tag picker.
+             usage:null,          // what the other catalogs reference — the "used by" lines and the
+                                  // tag page's derived STORY/STYLE grouping (/catalog/usage)
+             vocab:[],            // the tag entries, loaded once, used by the character form's tag picker.
                                    // vocab is separate from entries because entries is whatever kind is on
                                    // screen, while vocab is always the tags — the character form needs the
                                    // vocabulary even while it is browsing characters
+             library:[],           // the character catalog's entries, cached for the scaffold's import picker,
+                                   // separate from entries for the same reason vocab is
+             styles:[]             // the style catalog's entries, cached for the scaffold's voice picker
            },  // the global character catalog, which unlike every other page is not scoped to a story
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };
@@ -157,7 +171,7 @@ export const handoffForPage = () =>
 // here and are written back in; focus is read off the document as the render begins, rather than
 // tracked through focus/blur -- removing a focused node does not reliably fire blur, and a click
 // on any button would clear a tracked value before the re-render it triggered.
-export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"" };
+export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"", tags:[], castSize:0, importIds:[], styleId:"" };
 export const hdraft = { say:"" };
 
 export const FIELDS = /^[fh]-(idea|say|folder|model|mode|length)$|^r-say-\d+$/;

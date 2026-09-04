@@ -55,7 +55,10 @@ describe("replaying a recorded chapter", () => {
   it("writes the same scene the recording was taken from", async () => {
     const { r, replay } = await replayedChapter();
 
-    assert.equal(r.prose.join("\n\n").trim(), readFileSync(`${FIXTURE}/scene.md`, "utf8").trim(),
+    // The fixture is stored LF but a Windows checkout hands it back CRLF (core.autocrlf), so the
+    // comparison reads the file as text, not as bytes — the prose the engine writes is LF.
+    const recorded = readFileSync(`${FIXTURE}/scene.md`, "utf8").replace(/\r\n/g, "\n");
+    assert.equal(r.prose.join("\n\n").trim(), recorded.trim(),
       "the replayed chapter is word-for-word the recorded one");
     assert.equal(r.done, SOURCE.outcome.done, "the recorded run finished, so the replay must too");
     assert.equal(r.steps, SOURCE.outcome.steps);

@@ -2,11 +2,13 @@ import { $, esc, reasonOr, slugify, tid } from "./util.js";
 import { APP, draft } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
+import { loadVocab, loadLibrary, loadStyles } from "./catalog.js";
 
 // ---- the scaffold interview --------------------------------------------------
-// One page, three things always visible: the proposed story, the current round, and a state
-// sidebar owning accept and abandon. The idea step is still a modal, shown over an empty scaffold
-// shell until the first proposal lands. Base styling ported from mockups/architect.
+// One page, four things always visible in the staged walk: the step they are on, the proposed
+// story, the current round, and a state sidebar owning accept and abandon. The idea step is still
+// a modal, shown over an empty scaffold shell until the first proposal lands. Base styling ported
+// from mockups/architect; the stepper is the mockup's left rail.
 
 const IDEA_PLACEHOLDER =
   "e.g. A locksmith is asked to open a door they installed years ago, for someone they don't recognise.";
@@ -14,6 +16,28 @@ const IDEA_PLACEHOLDER =
 // Must match ScaffoldSession.CHECKLIST. The gate the session is on drives the chip strip, the
 // draft label and which section renders as current, so a stage missing here loses all three.
 const GATES = ["story", "cast", "settings", "technical", "scene", "world"];
+
+// The stepper's display names, one-line descriptions, and approve labels. The engine's stage
+// strings never change -- CHECKLIST owns them -- so the author-facing vocabulary lives beside the
+// gate keys. The descriptions are the old sidebar helper card's prose, given to the step they
+// describe: the summary travels with the step instead of living in a card the step's reader has
+// already scrolled past.
+const GATE_LABELS = {
+  story: "Concept", cast: "Cast", settings: "Voice",
+  technical: "Technical", scene: "Scenes", world: "World",
+};
+const GATE_DESCS = {
+  story: "title, premise, tension, facts.",
+  cast: "who walks into scene 1.",
+  settings: "the house style.",
+  technical: "run settings and retry limits.",
+  scene: "scene 1 in full; later ones as sketches.",
+  world: "world events, and who remembers them.",
+};
+const APPROVE_LABELS = {
+  story: "accept the concept", cast: "accept the cast", settings: "accept the voice",
+  technical: "accept the run shape", scene: "accept the scene", world: "accept the world",
+};
 
 // ── the idea step (modal) ────────────────────────────────────────────────────
 
@@ -32,6 +56,90 @@ const modeChoice = (value, title, blurb) => {
     <b>${title}</b><span>${blurb}</span></label>`;
 };
 
+const FACET_LABELS = { genre: "Genre", dramaticMode: "Dramatic Mode", tone: "Tone" };
+
+// The vocabulary is the tag catalog's, and only the catalog authors it: an off-vocabulary tag is
+// something the route tolerates, not something this picker offers. Curated is the point -- free
+// text here would be a second idea box.
+function tagChipsHtml() {
+  const vocab = APP.catalog.vocab || [];
+  if (!vocab.length)
+    return `<p class="hint">No tags in the catalog yet — <a href="#/catalog?kind=tags">add some</a> and they show up here.</p>`;
+  const rows = Object.entries(FACET_LABELS).map(([facet, label]) => {
+    const mine = vocab.filter(t => t.facet === facet);
+    if (!mine.length) return "";
+    const chips = mine.map(t =>
+      `<button class="cat-chip${draft.tags.includes(t.label) ? " on" : ""}" data-tag-label="${esc(t.label)}" type="button">${esc(t.label)}</button>`).join("");
+    return `<div class="cat-tags-group"><div class="cat-facet-heading">${label}</div>
+      <div class="cat-tags-row">${chips}</div></div>`;
+  }).join("");
+  return `<div class="cat-tags-picker">${rows}</div>`;
+}
+
+const castSizeFieldHtml = () =>
+  `<div class="field"><label for="f-cast-size">opening cast</label>
+    <select id="f-cast-size">
+      ${[[0, "let the architect decide"], [2, "2 characters"], [3, "3 characters"], [4, "4 characters"]]
+        .map(([n, label]) => `<option value="${n}"${draft.castSize === n ? " selected" : ""}>${label}</option>`).join("")}
+    </select></div>`;
+
+const MAX_IMPORTS = 4;   // the cast stage's ceiling, mirrored from server/scaffold-routes.ts
+
+// The catalog's characters, offered as a set to pick from. Picking one is not the same as the
+// architect inventing one: the cast gate switches to a different prompt entirely, and the fields
+// that travel with a character stop being the architect's to change.
+function importPickerHtml() {
+  const lib = APP.catalog.library || [];
+  if (!lib.length)
+    return `<p class="hint">No characters in the catalog yet — <a href="#/catalog">add some</a> and you can cast them here.</p>`;
+  const chips = lib.map(c => {
+    const on = draft.importIds.includes(c.id);
+    const full = !on && draft.importIds.length >= MAX_IMPORTS;
+    return `<button class="cat-chip${on ? " on" : ""}" data-import-id="${esc(c.id)}" type="button"${
+      full ? " disabled" : ""} title="${esc(c.portablePersona || c.name)}">${esc(c.name)}</button>`;
+  }).join("");
+  return `<div class="cat-tags-row">${chips}</div>`;
+}
+
+// The presets the author's tags speak to, first. Ranking is ALL this does with them: a tag is a
+// steering word for the story gate and nothing else, and passing one into the settings prompt as
+// well would give it a second, unarbitrated channel into the story. Every preset stays on offer.
+function rankedStyles() {
+  const chosen = new Set(draft.tags.map(t => t.toLowerCase()));
+  const hits = e => (e.tags || []).filter(t => chosen.has(String(t).toLowerCase())).length;
+  return (APP.catalog.styles || []).map((e, i) => ({ e, i, n: hits(e) }))
+    .sort((a, b) => b.n - a.n || a.i - b.i).map(x => x.e);
+}
+
+// One voice, or none. Picking one narrows the settings gate to this story's own narration rules;
+// picking none leaves it writing the whole house style, which is what it has always done.
+function stylePickerHtml() {
+  const styles = rankedStyles();
+  if (!styles.length)
+    return `<p class="hint">No styles in the catalog yet — <a href="#/catalog?kind=styles">add some</a> and you can pick one here.</p>`;
+  const chips = styles.map(e =>
+    `<button class="cat-chip${draft.styleId === e.id ? " on" : ""}" data-style-id="${esc(e.id)}" type="button"` +
+    ` title="${esc(e.description || e.voice)}">${esc(e.name)}</button>`).join("");
+  const picked = styles.find(e => e.id === draft.styleId);
+  return `<div class="cat-tags-row">${chips}</div>` + (picked
+    ? `<p class="hint">The architect is handed this voice and asked only what THIS cast and POV make impossible to narrate.</p>`
+    : `<p class="hint">Pick none and the architect writes the house style itself.</p>`);
+}
+
+// The concept is staged-only: the one-shot walk has no story gate for tags to steer, no cast gate
+// for a size to reach and no settings gate to hand a voice, so offering any of them there would be
+// a control that does nothing. Callers make that call -- the modal by the chosen mode, the sidebar
+// by whether any half still steers a gate ahead.
+function conceptFieldsHtml() {
+  return `<label class="field-label">the concept <span class="hint">optional — it steers the gates ahead</span></label>
+    ${tagChipsHtml()}
+    <label class="field-label">cast from the library <span class="hint">optional</span></label>
+    ${importPickerHtml()}
+    ${draft.importIds.length ? `<p class="hint">The imported cast is the opening cast, so its size is already chosen.</p>` : castSizeFieldHtml()}
+    <label class="field-label">the voice <span class="hint">optional — a preset from your style catalog</span></label>
+    ${stylePickerHtml()}`;
+}
+
 function ideaModalHtml() {
   const err = APP.scaffoldError ? `<div class="said bad">${esc(APP.scaffoldError)}</div>` : "";
   return `<div class="modal-backdrop" id="iv-backdrop" data-tid="scaffold.idea-modal" role="dialog" aria-modal="true" aria-label="new story">
@@ -47,6 +155,7 @@ function ideaModalHtml() {
         ${modeChoice("oneshot", "the whole story at once",
             "One complete proposal, then conversational refinement.")}
       </div>
+      ${draft.mode === "oneshot" ? "" : conceptFieldsHtml()}
       ${modelField()}
       ${err}
       <div class="btns"><button class="btn primary" id="iv-start">propose →</button>
@@ -145,12 +254,10 @@ function stageSection(name, body, current) {
   </div>`;
 }
 
-/** The stage tag that labels what the draft is showing -- a passed gate leaves a tick, the open one
- *  is named in brackets. One-shot has no gate, so the label is just "draft so far". */
+/** The stage tag that labels what the draft is showing. The gate recital is gone -- the stepper in
+ *  the left rail owns the checklist position now, so the head keeps only the walk's name. */
 function draftLabel(s) {
-  if (!s.gate) return "draft so far";
-  const passed = GATES.slice(0, GATES.indexOf(s.gate)).map(g => `${g} ✓`).join(" · ");
-  return `draft so far · ${passed ? passed + " · " : ""}[${s.gate}]`;
+  return "draft so far";
 }
 
 function proposalHtml(s) {
@@ -191,13 +298,16 @@ function proposalHtml(s) {
   </section>`;
 }
 
-// ── the checklist (staged) ────────────────────────────────────────────────────
+// ── the stepper (staged) ──────────────────────────────────────────────────────
 
-function checklistHtml(s) {
+/** One row per gate, in the left rail -- done, open, or ahead. It is the checklist, the draft
+ *  label's gate recital, and the sidebar's gate summary collapsed into the one place that is
+ *  always visible, so the position question has one answer instead of three. */
+function stepperHtml(s) {
   if (!GATES.includes(s.gate)) return "";
   const cur = GATES.indexOf(s.gate);
   return `<div class="checklist" aria-label="checklist position" data-tid="scaffold.checklist">${GATES.map((g, i) =>
-    `<span${tid("scaffold.gate")} class="gate${i < cur ? " done" : i === cur ? " open" : ""}" data-gate="${g}"><i></i>${g}${i < cur ? " ✓" : ""}</span>`
+    `<span${tid("scaffold.gate")} class="gate${i < cur ? " done" : i === cur ? " open" : ""}" data-gate="${g}"><i>${i < cur ? "✓" : i + 1}</i><span class="gate-copy"><b>${GATE_LABELS[g]}</b><small>${GATE_DESCS[g]}</small></span></span>`
   ).join("")}</div>`;
 }
 
@@ -243,7 +353,6 @@ function roundHtml(s) {
   } else {
     parts.push(lastHtml(s.last));
   }
-  parts.push(checklistHtml(s));
 
   if (!busy) {
     const label = answering ? "your answer" : s.haveDraft ? "what should change?" : "say more about it";
@@ -262,11 +371,12 @@ function roundHtml(s) {
       const unsent = !!draft.say.trim();
       foot.push(`<button class="btn${unsent ? " primary" : ""}" id="iv-say">send</button>`);
       // approve passes the open gate; hidden at the last gate and while a question stands. Once a
-      // gate came back blocked, the same button overrules it and says so.
+      // gate came back blocked, the same button overrules it and says so. The label names the gate
+      // being passed -- "accept the cast" -- because "approve" stopped saying what the click does.
       if (s.gate && GATES.indexOf(s.gate) < GATES.length - 1)
         foot.push(APP.approveArmed
           ? `<button class="btn danger" id="iv-approve">approve anyway →</button>`
-          : `<button class="btn${unsent ? "" : " primary"}" id="iv-approve">approve &amp; continue →</button>`);
+          : `<button class="btn${unsent ? "" : " primary"}" id="iv-approve">${APPROVE_LABELS[s.gate]} &amp; continue →</button>`);
     }
   } else {
     foot.push(`<span class="hint">↵ send · ⇧↵ new line</span>`);
@@ -335,10 +445,19 @@ function folderNoteHtml() {
 function sidebarHtml(s) {
   const walk = s.mode === "oneshot" ? "one-shot" : "staged";
   const stat = (k, v) => `<div class="stat"><span>${k}</span><strong>${esc(v)}</strong></div>`;
+  const c = s.concept || {};
+  // "spent" is the honest word for it: the stage that reads this half has produced its content, so
+  // nothing ahead will read it again. Revising it after that changes a string nobody looks at.
   const stats = [stat("walk", walk)];
   if (s.mode !== "oneshot") {
     stats.push(stat("open gate", s.pendingAsk ? `${s.gate} (asked)` : s.gate || "—"));
-    if (s.tension) stats.push(stat("tension", "coined"));
+    if (c.tags && c.tags.length)
+      stats.push(stat("tags", c.tags.join(", ") + (c.tagsSteer ? "" : " · spent")));
+    if (c.castSize) stats.push(stat("opening cast", c.castSize + (c.castSizeSteers ? "" : " · spent")));
+    if (c.imported && c.imported.length)
+      stats.push(stat("cast from library", c.imported.map(i => i.name).join(", ")
+        + (c.importsSteer ? "" : " · placed")));
+    if (c.styleName) stats.push(stat("voice", c.styleName + (c.styleSteers ? "" : " · spent")));
   }
   stats.push(stat("on disk", s.needsFolder ? "pending accept" : "nothing yet"));
 
@@ -357,23 +476,72 @@ function sidebarHtml(s) {
   actions.push(`<button class="btn danger${APP.abandonArmed ? " armed" : ""}" id="iv-abandon">${
     APP.abandonArmed ? "abandon — sure?" : "abandon"}</button>`);
 
+  const conceptWarning = c.unknownTags && c.unknownTags.length
+    ? `<div class="prob">not in the tag catalog: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway</div>`
+    : "";
+
+  const importsWarning = c.missingImports && c.missingImports.length
+    ? `<div class="prob">no longer in the catalog: ${esc(c.missingImports.join(", "))} — these were dropped from the cast</div>`
+    : "";
+
+  const styleWarning = c.missingStyle
+    ? `<div class="prob">the style "${esc(c.missingStyle)}" is no longer in the catalog — the architect writes the house style itself</div>`
+    : "";
+
+  // Revising is offered only while some half still reaches a prompt ahead. Once both are spent the
+  // control disappears rather than going quietly inert -- an editor that cannot change the run is
+  // worse than no editor, because it looks like it can.
+  const conceptLive = s.mode !== "oneshot" && (c.tagsSteer || c.castSizeSteers || c.importsSteer || c.styleSteers);
+  const conceptEditor = !conceptLive ? "" : APP.conceptOpen
+    ? `<div data-tid="scaffold.concept-editor">${conceptFieldsHtml()}
+        <div class="side-actions">
+          <button class="btn primary" id="iv-concept-save">save concept</button>
+          <button class="btn" id="iv-concept-cancel">cancel</button></div></div>`
+    : `<div class="side-actions"><button class="btn" id="iv-concept-edit">revise concept</button></div>`;
+
+  // The tension is the sentence, not the fact of one: it is what the cast was authored against, and
+  // "coined" said it exists without letting the author read it. Shown as its text, here, it is also
+  // what the story editor still has no view of -- that half stays open.
+  const tensionShape = s.tension
+    ? `<div class="side-tension"><span class="label">load-bearing tension</span>
+        <p class="side-copy">${esc(s.tension)}</p></div>`
+    : "";
+
+  // The staged helper card is gone: every gate's summary is its stepper row's description now, read
+  // beside the step instead of listed in a card. The one-shot walk has no steps, so its principle
+  // stays.
   const helper = s.mode === "oneshot"
     ? `<div class="side-card card"><h3>principle</h3>
         <p class="side-copy">The architect proposes; you accept. Nothing writes itself until you name a folder.</p></div>`
-    : `<div class="side-card card"><h3>the gates</h3>
-        <p class="side-copy"><b>story</b> — title, premise, tension, facts.<br>
-          <b>cast</b> — characters as they walk into scene 1.<br>
-          <b>settings</b> — house style.<br>
-          <b>technical</b> — run settings and retry limits.<br>
-          <b>scene</b> — scene 1 in full; later ones as sketches.<br><br>
-          Refinement stays within the open gate; only <b>approve</b> advances it.</p></div>`;
+    : "";
+
+  // A bespoke skill is the architect telling you this cast needed a capability the bible does not
+  // have. Promoting it is a write to the author's own catalog, so it is the author's click and not
+  // a side effect of accepting the story.
+  const candidates = s.bibleCandidates || [];
+  const bibleCard = !candidates.length ? "" : `
+    <div class="side-card card" data-tid="scaffold.bible-candidates">
+      <h3>new skills</h3>
+      <p class="side-copy">Invented for this cast, and not in your skill bible. Promote one and the
+        next story can reuse it by name instead of inventing it again.</p>
+      ${candidates.map(c => `<div class="stat"><span>${esc(c.name)}</span>
+          <strong>${esc(c.heldBy.join(", "))}</strong></div>
+        <p class="side-copy">${esc(c.meaning)}</p>
+        <div class="side-actions"><button class="btn" data-promote="${esc(c.name)}">promote to bible</button></div>`).join("")}
+    </div>`;
 
   return `<aside data-tid="scaffold.sidebar">
     <div class="side-card card" data-tid="scaffold.state-card">
       <h3>scaffold state</h3>
       ${stats.join("")}
+      ${tensionShape}
+      ${conceptWarning}
+      ${importsWarning}
+      ${styleWarning}
+      ${conceptEditor}
       <div class="side-actions">${actions.join("")}</div>
     </div>
+    ${bibleCard}
     ${helper}
   </aside>`;
 }
@@ -395,6 +563,9 @@ function activePageHtml(s) {
     + (s.model ? ` · built by ${esc(s.model)}` : "");
   const headline = s.pendingAsk ? "The architect has a question"
     : s.haveDraft ? "Does this look right?" : "Your story is taking shape";
+  // The stepper rides along only when there are steps to show; a one-shot walk keeps the two-panel
+  // shell it always had.
+  const gated = s.mode !== "oneshot";
 
   return `
     <div class="sc-head">
@@ -407,7 +578,8 @@ function activePageHtml(s) {
       <span>${statusText}</span>
       <span class="spacer">${spacer}</span>
     </div>
-    <div class="shell">
+    <div class="shell${gated ? " gated" : ""}">
+      ${gated ? `<aside class="stepper-rail">${stepperHtml(s)}</aside>` : ""}
       <div class="workspace">${err}${workspace.join("")}</div>
       ${sidebarHtml(s)}
     </div>`;
@@ -481,7 +653,9 @@ async function startInterview() {
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
                    mode, gate: mode === "staged" ? "story" : null };
   APP.render();
-  const j = await postScaffold("start", { idea, model: draft.model, mode });
+  const concept = mode === "oneshot" ? {}
+    : { tags: draft.tags, castSize: draft.castSize, importIds: draft.importIds, styleId: draft.styleId };
+  const j = await postScaffold("start", { idea, model: draft.model, mode, ...concept });
   // A refusal leaves the page holding an optimistic "busy" that nothing will ever clear -- fall
   // back to an inactive session so the idea modal comes back with the idea still in it.
   if (!j || j.active === undefined) { APP.scaffold = { active:false }; APP.render(); }
@@ -537,6 +711,49 @@ export function wireScaffold(page) {
   for (const r of page.querySelectorAll('input[name="mode"]'))
     r.addEventListener("change", () => { if (r.checked) { draft.mode = r.value; APP.render(); } });
 
+  // Both pickers are fed from the catalog, fetched once each; each loader re-renders when it lands,
+  // so a picker fills itself in rather than staying empty on a cold first open. The trigger is the
+  // CONTAINER that always renders -- the modal, or the sidebar's concept editor -- never the picker
+  // markup itself, which only exists once the data it needs has already arrived.
+  if (page.querySelector("#iv-backdrop") || page.querySelector('[data-tid="scaffold.concept-editor"]')) {
+    loadVocab();
+    loadLibrary();
+    loadStyles();
+  }
+
+  // The character library is fetched once for the import picker.
+
+  for (const chip of page.querySelectorAll(".cat-chip[data-tag-label]"))
+    chip.addEventListener("click", () => {
+      const label = chip.getAttribute("data-tag-label");
+      const at = draft.tags.indexOf(label);
+      if (at >= 0) draft.tags.splice(at, 1); else draft.tags.push(label);
+      APP.render();
+    });
+
+  for (const chip of page.querySelectorAll(".cat-chip[data-import-id]"))
+    chip.addEventListener("click", () => {
+      const id = chip.getAttribute("data-import-id");
+      const at = draft.importIds.indexOf(id);
+      if (at >= 0) draft.importIds.splice(at, 1);
+      else if (draft.importIds.length < MAX_IMPORTS) draft.importIds.push(id);
+      APP.render();
+    });
+  // One at a time, and clicking the chosen one clears it: "no preset" is a real answer, not the
+  // absence of one, and it is what the settings gate did before this existed.
+  for (const chip of page.querySelectorAll(".cat-chip[data-style-id]"))
+    chip.addEventListener("click", () => {
+      const id = chip.getAttribute("data-style-id");
+      draft.styleId = draft.styleId === id ? "" : id;
+      APP.render();
+    });
+
+  const cast = page.querySelector("#f-cast-size");
+  if (cast) cast.addEventListener("change", () => { draft.castSize = Number(cast.value) || 0; });
+
+  for (const b of page.querySelectorAll("[data-promote]"))
+    b.addEventListener("click", () => postScaffold("promote", { name: b.getAttribute("data-promote") }));
+
   // Enter sends; the idea box is a paragraph, so there the modifier sends and Enter is a newline.
   onKey("f-say", e => { if (e.key === "Enter" && plain(e)) { e.preventDefault(); sendSay(); } });
   onKey("f-idea", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); startInterview(); } });
@@ -571,9 +788,30 @@ export function wireScaffold(page) {
     postScaffold("abandon", {}).then(() => {
       APP.scaffold = { active:false }; APP.scaffoldError = ""; APP.folderOpen = false;
       draft.idea = draft.say = draft.folder = "";
+      draft.tags = [];
+      draft.castSize = 0;
+      draft.importIds = [];
+      draft.styleId = "";
       go("shelf");
     });
   });
+  // Opening seeds the modal's draft from the session, not the other way round: the session is the
+  // truth, and after a reload the draft is empty while the concept is not.
+  on("iv-concept-edit", () => {
+    const c = APP.scaffold.concept || {};
+    draft.tags = [...(c.tags || [])];
+    draft.castSize = c.castSize || 0;
+    draft.importIds = (c.imported || []).map(i => i.libraryId);
+    draft.styleId = c.styleId || "";
+    APP.conceptOpen = true; APP.render();
+  });
+  on("iv-concept-cancel", () => { APP.conceptOpen = false; APP.render(); });
+  on("iv-concept-save", async () => {
+    await postScaffold("concept", { tags: draft.tags, castSize: draft.castSize, styleId: draft.styleId });
+    await postScaffold("import", { importIds: draft.importIds });
+    APP.conceptOpen = false; APP.render();
+  });
+
   on("iv-folder", acceptIntoFolder);
   on("iv-folder-back", () => {
     // Only the locally-opened step can be dismissed -- a needs_folder demand stays until answered.

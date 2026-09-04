@@ -6,20 +6,21 @@ import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { storyWriteBlocked } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { splitMeaning } from "./engine/skills.ts";
+import { splitMeaning, bibleFrom, canonSkill } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
+import { PROVIDER } from "./engine/provider.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
 import { directEdit, specView, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson } from "./engine/story-schema.ts";
-import { runDirs, loadedModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
+import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
-  type NextChapterSession,
+  type NextChapterSession, type ImportedCharacter, type StylePreset,
 } from "./engine/architect.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "./engine/catalog.ts";
-import { CATALOG_KINDS, type CatalogKind } from "./engine/catalog-schema.ts";
-import type { ServerHost } from "./server/server.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
+import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
+import type { ServerHost, Concept, CatalogUsage } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
 /** The architect's own knobs, which are the defaults' — not any one story's. */
@@ -48,13 +49,72 @@ async function withArchitectDefaults<T>(model: string, fn: (d: Defaults) => Prom
 }
 
 async function newScaffoldSession(idea: string, model = "",
-                                  mode: "oneshot" | "staged" = "oneshot"): Promise<ScaffoldSession> {
+                                  mode: "oneshot" | "staged" = "oneshot",
+                                  concept?: Concept): Promise<ScaffoldSession> {
   const d = await architectDefaults(model);
-  return new ScaffoldSession(await buildArchitect(d), d, idea, undefined, mode);
+  const entries = await skillBibleEntries();
+  const session = new ScaffoldSession(await buildArchitect(d, true, entries), d, idea, undefined, mode, undefined,
+                             concept?.tags ?? [], concept?.castSize ?? 0);
+  session.bible = bibleFrom(entries);
+  return session;
+}
+
+/** The tag catalog is the author's own file, so an unknown tag is news rather than an error: it is
+ *  still passed to the architect, and reported so a typo does not quietly become a steering word.
+ *  Matching is by trimmed lowercase label, the same key the catalog's own duplicate check uses. */
+async function unknownTags(tags: string[]): Promise<string[]> {
+  const cat = await loadCatalog("tags");
+  const known = new Set<string>((cat?.entries ?? []).map((e: { label?: unknown }) =>
+    String(e?.label ?? "").trim().toLowerCase()));
+  return tags.filter(t => !known.has(t.trim().toLowerCase()));
+}
+
+/** Ids in, tray entries out, in the order the author chose them. Only the portable half travels:
+ *  goal and knows are story-positional and the library does not carry them, and the cast gate is
+ *  where they get resolved. */
+/** Promotion writes through the same validated path the skill editor uses -- one way into the
+ *  catalog, one set of rules. The id is derived from the canonical name so promoting the same skill
+ *  twice is an update rather than a duplicate. */
+async function promoteSkill(name: string, meaning: string) {
+  const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning, tags: [] };
+  const result = await saveEntry("skills", entry, undefined, await skillBible());
+  if (!result.ok) {
+    return result;
+  }
+  return { ok: true as const, bible: bibleFrom(await skillBibleEntries()), problems: result.problems };
+}
+
+async function importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }> {
+  const cat = await loadCatalog("characters");
+  const byId = new Map<string, LibraryCharacter>((cat?.entries ?? []).map((e: LibraryCharacter) => [e.id, e]));
+  const imported: ImportedCharacter[] = [];
+  const missing: string[] = [];
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (!e) { missing.push(id); continue; }
+    imported.push({
+      libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
+      belief: e.belief, impulse: e.impulse,
+      voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions],
+    });
+  }
+  return { imported, missing };
+}
+
+/** Only the two halves the settings gate needs travel: the name, so a revert can say which preset
+ *  stands, and the voice itself. The description and tags are the catalog's own furniture — they
+ *  rank presets in the picker and never reach a prompt. */
+async function resolveStyle(id: string): Promise<StylePreset | null> {
+  const wanted = id.trim();
+  if (!wanted) return null;
+  const cat = await loadCatalog("styles");
+  const found = (cat?.entries ?? []).find((e: { id?: unknown }) => String(e?.id ?? "") === wanted);
+  return found ? { id: found.id, name: found.name, voice: found.voice } : null;
 }
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
-  return openNextChapter(await architectDefaults(model), dir);
+  const entries = await skillBibleEntries();
+  return openNextChapter(await architectDefaults(model), dir, entries);
 }
 
 /** Read and Zod-parse a story's story.json. Shared by storyForEdit and fullCast so there is exactly
@@ -133,11 +193,12 @@ const validateCatalogKind = (kind: string): CatalogKind | null =>
   CATALOG_KINDS.includes(kind as CatalogKind) ? (kind as CatalogKind) : null;
 
 export const HOST: ServerHost = {
-  selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, loadedModelIds,
+  selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, availableModelIds,
+  providerName: PROVIDER.displayName,
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newScaffoldSession, newHandoffSession, directEdit, specView,
+  newScaffoldSession, newHandoffSession, directEdit, specView, unknownTags, importCharacters, resolveStyle, promoteSkill,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   storyForEdit: async (dir) => {
@@ -211,8 +272,9 @@ export const HOST: ServerHost = {
   suggestEdits: async (spec, text) => {
     const specObj = spec as StorySpec;
     try {
+      const entries = await skillBibleEntries();
       return await withArchitectDefaults(flag("model") ?? "", async d => {
-        const r = await statelessSuggest(d, specObj, String(text ?? ""));
+        const r = await statelessSuggest(d, specObj, String(text ?? ""), entries);
         if (r.kind === "failed") return { ok: false as const, error: r.error };
         if (r.kind === "question") return { ok: true as const, kind: "question" as const, ask: r.ask };
         return { ok: true as const, kind: "edits" as const, spec: r.spec, applied: r.applied, ignored: r.ignored, problems: r.problems, note: r.note };
@@ -250,5 +312,30 @@ export const HOST: ServerHost = {
       return { ok: false, reason: result.reason, status: 404 };
     }
     return result;
+  },
+  catalogUsage: async () => {
+    const [characters, styles, skills] = await Promise.all(
+      (["characters", "styles", "skills"] as const).map(k => loadCatalog(k)));
+    const usage: CatalogUsage = { tags: {}, skills: {} };
+    const tagFor = (label: unknown) => {
+      const key = String(label ?? "").trim().toLowerCase();
+      if (!key) return null;
+      return usage.tags[key] ?? (usage.tags[key] = { characters: 0, styles: [], skills: 0 });
+    };
+    for (const c of characters.entries as { tags?: string[] }[])
+      for (const t of c.tags ?? []) { const u = tagFor(t); if (u) u.characters++; }
+    for (const s of styles.entries as { name?: string; tags?: string[] }[])
+      for (const t of s.tags ?? []) { const u = tagFor(t); if (u) u.styles.push(String(s.name || "")); }
+    for (const k of skills.entries as { tags?: string[] }[])
+      for (const t of k.tags ?? []) { const u = tagFor(t); if (u) u.skills++; }
+    // A skill is "used by" a character when resolution would find it: the name a character's
+    // `name :: meaning` line holds, matched the way every identity comparison is (sameName).
+    for (const c of characters.entries as { skills?: string[] }[])
+      for (const raw of c.skills ?? []) {
+        const name = splitMeaning(String(raw)).text;
+        const key = Object.keys(usage.skills).find(k => sameName(k, name)) ?? name;
+        usage.skills[key] = (usage.skills[key] ?? 0) + 1;
+      }
+    return usage;
   },
 };

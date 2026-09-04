@@ -13,6 +13,7 @@ import { ensureLiveCast } from "./cast-sheet.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
+import { libraryPickerHtml, wireLibraryPicker } from "./library-picker.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
@@ -37,18 +38,35 @@ function restoreFocus(page, id) {
 // ---- the three pages --------------------------------------------------------
 function renderNav() {
   document.body.dataset.view = APP.view;
-  const shelfTab = $("tab-shelf"), liveTab = $("tab-live"), readTab = $("tab-read");
-  // The shelf is the hub: reachable any time an engine is attached, mid-run included -- nothing
-  // here disables a tab any more. The story page has no tab of its own; it reads as "shelf".
-  shelfTab.hidden = !APP.live;
-  liveTab.hidden = !APP.live;
-  readTab.hidden = false;
-  const shown = APP.view === "story" || APP.view === "handoff" || APP.view === "compare" || APP.view === "scaffold" || APP.view === "catalog" ? "shelf" : APP.view === "readstory" ? "read" : APP.view;
-  for (const t of [shelfTab, liveTab, readTab]) {
-    const isCurrent = t.dataset.view === shown;
-    t.classList.toggle("current", isCurrent);
-    t.setAttribute("aria-current", isCurrent ? "page" : "false");
+  // Map views to their nav items: the story page reads as "shelf"; the handoff and scaffold read
+  // as their respective architect buttons; the edit page reads as "story".
+  const viewToNav = {
+    shelf: "nav-shelf",
+    story: "nav-story",
+    scaffold: "nav-architect",
+    handoff: "nav-architect",
+    edit: "nav-story",
+    live: "nav-live",
+    read: "nav-read",
+    readstory: "nav-readstory",
+    compare: "nav-read",
+    catalog: `nav-cat-${APP.catalog.kind || "characters"}`,
+  };
+  const currentNav = viewToNav[APP.view] || "nav-shelf";
+  // Reachability is go()'s rule, not a second list of it: with no engine attached go() rewrites
+  // everything but read/readstory/compare, so an item pointing anywhere else would land somewhere
+  // other than where it says. Hide those rather than let them lie.
+  const reachable = v => APP.live || v === "read" || v === "readstory" || v === "compare";
+  for (const item of document.querySelectorAll("#sidenav .navitem")) {
+    const isCurrent = item.id === currentNav;
+    item.classList.toggle("current", isCurrent);
+    item.setAttribute("aria-current", isCurrent ? "page" : "false");
+    item.hidden = !reachable(item.dataset.view);
   }
+  // A group whose every item is hidden would render as a bare heading, so it follows its children
+  // rather than being hidden by name -- one rule, and a new item cannot forget to be counted.
+  for (const g of document.querySelectorAll("#sidenav .navgroup"))
+    g.hidden = ![...g.querySelectorAll(".navitem")].some(i => !i.hidden);
   $("tabdot").hidden = !(generating() || APP.awaitingReader);
   $("tabdot").classList.toggle("asked", APP.awaitingReader);
   $("tabasked").hidden = !APP.awaitingReader;
@@ -331,15 +349,16 @@ function settleFocus(page) {
 
 /** Repainted every render(), regardless of view -- the header pill that opens the character card is
  *  visible on the live and read pages too, not just the shelf, so neither modal can live inside
- *  `#page` like the interview's does. Character card last: clicked while the run-ended modal is up,
- *  it stacks on top rather than being clicked through. Owned here rather than by either modal's own
- *  module, since painting "every overlay modal" isn't either one's job. */
+ *  `#page` like the interview's does. Modals stack in order of increasing z-index: run-ended,
+ *  character card, then picker as the topmost active task. Owned here rather than by the modals'
+ *  own modules, since painting "every overlay modal" isn't any one's job. */
 function paintModals(goShelf) {
   const root = $("modalroot");
-  if (!APP.runEnded && !APP.charCard) { if (root.innerHTML) root.innerHTML = ""; return; }
-  root.innerHTML = runEndedModalHtml() + characterCardModalHtml();
+  if (!APP.runEnded && !APP.charCard && !APP.picker.open) { if (root.innerHTML) root.innerHTML = ""; return; }
+  root.innerHTML = runEndedModalHtml() + characterCardModalHtml() + libraryPickerHtml();
   wireRunEndedModal(root, goShelf);
   wireCharacterCard(root);
+  wireLibraryPicker(root);
 }
 
 export function render() {

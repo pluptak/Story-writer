@@ -196,7 +196,7 @@ describe("pause/resume handshake", () => {
 
     // Call /resume — should call pauseResolve() to wake the loop
     const host = {
-      loadedModelIds: async () => ["test-model"],
+      availableModelIds: async () => ["test-model"],
     } as unknown as ServerHost;
     const r = await callRoute(handleRunControl, "/resume", {}, host);
     assert.equal(r.code, 200);
@@ -223,7 +223,7 @@ describe("pause/resume handshake", () => {
 
     // Call /stop — must release the paused loop or it will hang forever
     const host = {
-      loadedModelIds: async () => ["test-model"],
+      availableModelIds: async () => ["test-model"],
     } as unknown as ServerHost;
     const r = await callRoute(handleRunControl, "/stop", {}, host);
     assert.equal(r.code, 200);
@@ -472,7 +472,7 @@ describe("the world timeline in the loop", () => {
     try {
       const r = await writeScene({
         scene: sd, chapter: 1, characters: sc.characters, agents: agents,
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,
@@ -551,7 +551,7 @@ describe("the world timeline in the loop", () => {
     try {
       await writeScene({
         scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,
@@ -590,7 +590,7 @@ describe("the world timeline in the loop", () => {
     try {
       const r = await writeScene({
         scene: sd, chapter: 1, characters: sc.characters, agents: new Map(),
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,
@@ -869,7 +869,7 @@ describe("the repeat guard", () => {
     try {
       const r = await quiet(() => writeScene({
         scene: sc.scenes[0], chapter: 1, characters: sc.characters, agents: new Map(),
-        premise: sc.premise, writerStyle: sc.writerStyle,
+        premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
         writerModel: sc.models.writer, summaryModel: sc.models.summary,
         thinking: { writer: "low", summary: sc.thinking.summary },
         maxSteps: 10, maxProseWords: sc.maxProseWords,
