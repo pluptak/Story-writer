@@ -14,10 +14,12 @@ client that happens to consume it today.
 One Node process drives **at most one run at a time**. `--serve` starts an HTTP server
 ([server.ts:46](server/server.ts#L46)) alongside it; the server does not own the run, it watches and
 steers the one the CLI process is already running. There is no database and no per-request session —
-state lives in three module-level objects, [live.ts](live.ts)'s `LIVE`/`RUN`, a private `SCAFFOLD` in
-`scaffold-routes.ts` and a private `HANDOFF` in `next-chapter-routes.ts`, and a browser reconnecting
-just resubscribes to whichever run (if any) is already in flight. **No auth, no CORS headers, no CSRF token** — anything that can reach the port can steer the
-run or start a new story. That is an accepted property of a local single-user tool, not an oversight.
+state lives in three module-level objects, [live.ts](live.ts)'s `LIVE`/`RUN` and, private to
+[host.ts](host.ts), the open scaffold interview (`SCAFFOLD`) and the open handoff (`HANDOFF`) — no
+route module holds either directly, only `ServerHost.scaffold*()`/`handoff*()` methods reach them —
+and a browser reconnecting just resubscribes to whichever run (if any) is already in flight. **No
+auth, no CORS headers, no CSRF token** — anything that can reach the port can steer the run or start a
+new story. That is an accepted property of a local single-user tool, not an oversight.
 
 What keeps it accepted is that the port is **bound to `127.0.0.1`**, not to every interface —
 `startServer`'s `bindAddr` parameter, which nothing currently overrides. An unauthenticated surface
@@ -59,10 +61,14 @@ Two channels carry everything:
   a `POST` succeeded elsewhere (its own `fetch` replies too, but every other open tab or window
   finds out only through `/events`).
 
-Nothing under `server/*.ts` imports `engine/`. Every route reaches the engine only through the
-`ServerHost` interface built once in `story-writer.ts` ([server.ts:21](server/server.ts#L21)) — all of
-it read-only or side-effect-free except the two session openers, `newScaffoldSession` and
-`newHandoffSession`. A route that needs something new gets a host method, never an import (CLAUDE.md).
+Nothing under `server/*.ts` imports `engine/` — not even as a type, for `engine/architect.ts` or
+`engine/story-spec.ts` specifically ([tests/boundaries.test.ts](tests/boundaries.test.ts) checks
+both claims). Every route reaches the engine only through the `ServerHost` interface built once in
+`story-writer.ts` ([server.ts:21](server/server.ts#L21)). The scaffold and handoff domains are
+entirely behind it: no route module holds a `ScaffoldSession` or a `NextChapterSession`, only
+`ServerHost.scaffold*()`/`handoff*()` methods, each wire-shaped in and returning a plain result type
+declared in `server.ts`. A route that needs something new gets a host method, never an import
+(CLAUDE.md).
 
 ## Static routes
 

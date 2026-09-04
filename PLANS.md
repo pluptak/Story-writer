@@ -717,130 +717,6 @@ that was known. What replaces it:
 - **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
   question rather than at the planned path. Without this the entity is a rail.
 
-## Decoupling GUI / host / engine / provider
-
-A ports-and-adapters restructuring (`application/` `domain/` `ports/` `adapters/` `presentation/`,
-view models and presenters, commands everywhere) was proposed to cut coupling between `story.json`,
-the engine, the provider and the GUI. Evaluated against the repo and 228 commits of history: **most
-of it is already built under the existing names, most of the rest would cost more than it buys, and
-the largest real coupling in the codebase is one the proposal never named.**
-
-**Already true, no work needed:** zero runtime imports of `engine/` under `server/` (only the
-CLAUDE.md invariant needs policing — see Block 1); an application layer already split across
-[app.ts](app.ts) (run lifecycle) and [host.ts](host.ts) (everything the GUI drives); three
-representations of a story already exist (`StoryJson` persisted/wire, `StoryConfig` engine-flattened,
-`StorySpec` architect/editor); most routes are already commands (`/select`, `/story/discard`, all
-run-control, all nine scaffold actions) except the two form editors, which round-trip documents on
-purpose; presenters already exist under other names (`StoryCard`, `fullCast`); the provider port
-shipped in `a2344de` and no file outside `engine/provider-*.ts` branches on a provider.
-
-**Where the proposal is wrong:** its own success test — *split one `story.json` field into three
-persisted fields, the GUI should not need touching* — fails to find the actual pain. Of 12 commits
-touching `engine/story-schema.ts`, only 6 touched `server/gui/`, and in each the GUI change was
-the point (a new field needs an editor). The ripple that actually hurts is intra-engine on the same
-12 commits: `story-format.ts` 10 times, `scene-loop.ts` 10, `story-spec.ts` 9, `architect.ts` 7 —
-presenters and view models do nothing about that. And a DTO layer under the story editor
-([story-edit.js](server/gui/viewer/story-edit.js), a faithful round-trip form over `StoryJson`) is
-the worst possible place for one: any view model there must be information-preserving and isomorphic
-or a save silently drops fields — maximum ceremony, a new silent-data-loss mode, zero decoupling.
-
-**What it misses — the actual biggest coupling.** CLAUDE.md's "`server/` never imports `engine/`"
-invariant is syntactically true and semantically false for the two largest route modules.
-`ServerHost.newScaffoldSession()` hands the route a **live `ScaffoldSession` engine object**, and
-[server/scaffold-routes.ts](server/scaffold-routes.ts) reads ~20 of its fields including
-`SCAFFOLD.spec.*` internals ([:72-117](server/scaffold-routes.ts#L72)), **assigns six of them**
-directly (`.imported` [:180](server/scaffold-routes.ts#L180)/[:216](server/scaffold-routes.ts#L216),
-`.tags`/`.castSize` [:203-204](server/scaffold-routes.ts#L203), `.bible`
-[:229](server/scaffold-routes.ts#L229), `.spec`/`.problems`
-[:244](server/scaffold-routes.ts#L244), `session.style` [:63-65](server/scaffold-routes.ts#L63)),
-and **derives four domain predicates in the HTTP layer** — `tagsSteer`, `castSizeSteers`,
-`importsSteer`, `styleSteers` ([:99-105](server/scaffold-routes.ts#L99)), which is an architect rule
-("would the next build of that stage's prompt read this?") answered from the route module. That is
-486 lines — 38% of all route code — driving engine objects directly. This is the coupling worth
-spending on, and it is the proposal's own "evolve `ServerHost` into a façade" idea applied to the one
-place that needs it instead of everywhere.
-
-### Blocks
-
-1. ~~**One shared `ServerHost` fake, and a boundary test.**~~ **Done.** `tests/helpers.ts` exports
-   `makeHost(overrides)`; `server-routes`, `catalog-routes`, `story-edit-routes` and
-   `story-read-routes` all build on it (`tests/gui/harness.ts`'s `fixtureHost()` was left alone — it
-   spreads the real `HOST` for genuine engine behaviour, never was a hand-faked stub). Overrides are
-   deliberately untyped against `ServerHost` (`Record<string, any>`), matching the looseness every
-   fake's own trailing `as unknown as ServerHost` already had. `tests/boundaries.test.ts` checks all
-   eight `server/*.ts` files for a non-`import type` import of `engine/`; none found.
-2. ~~**Provider-work residue.**~~ **Done.** `preflight.ts` reads `PROVIDER.displayName`.
-   `explicitLoad`/`explicitUnload`/`modelPreparation` deleted from `ProviderCapabilities` and all
-   three adapters, along with the test that only checked their shape. `tests/world-timeline.test.ts`
-   is in `npm test` (was already green). `LM_STUDIO_URL` untouched.
-3. ~~**An editor-configuration contract.**~~ **Done, two commits.** `GET /story/edit-config` serves
-   `{defaults, thinkingLevels, caps}` (host.ts, derived from `StoryJson.parse({})` and
-   `THINK_LEVELS`/`VOICE_SAMPLE_CAP`); `story-edit.js` fetches it once at boot and every hand-copied
-   default is gone. Second commit did the same for the catalog: `GET /catalog/config` serves
-   `{tagFacets, caps}`, replacing `catalog-view.js`'s and `interview.js`'s own hardcoded facet
-   lists/`<select>` options (four call sites, two files) and merging their duplicate
-   `facetLabels`/`FACET_LABELS` maps into one export. `catalog-schema.ts`'s own independent voice-cap
-   literal now reuses `story-schema.ts`'s `VOICE_SAMPLE_CAP`. Left alone, and why: `CATALOG_KINDS` —
-   `pages.js`'s own comment already shows it single-sourced to `state.js`, so the duplication this
-   entry named was stale; `catalog.js`'s `toDraft`/`fromDraft` — the prose-vs-list knowledge per field
-   is presentation logic a route can't cheaply hand over without introspecting the Zod schemas'
-   shapes at runtime, which is more machinery than four kinds that essentially never change shape
-   justify.
-4. ~~**One faithful `StoryJson` shape for the editor.**~~ **Done.** `storyJsonShape(spec, models)`
-   (extracted from `renderStory`) is exposed through `ServerHost.storyJsonShape`; `scaffoldState()`
-   sends it as `storyDraft` alongside the unchanged, specView-shaped `spec`. `story-edit.js`'s
-   `editNew` branch loads `storyDraft` directly; `scaffoldStory()` is deleted. `specView` stays for
-   the interview's own proposal card, untouched. `tests/gui/story-edit.spec.ts` gained the first
-   automated coverage of the "review new story" screen at all — writing it surfaced a real
-   pre-existing gap, `SCAFFOLD` (a module-level singleton in `scaffold-routes.ts`) leaking between
-   Playwright tests in the same worker; both scaffold-session tests now abandon in `finally`.
-5. ~~**Make `ServerHost` the only boundary the scaffold domain crosses.**~~ **Done**, with two
-   corrections to how this entry described it. `ServerHost` keeps `specView` — `next-chapter-routes.ts`
-   (Block 6, below) still calls it, so it cannot go until the handoff route does too — and so
-   `tests/boundaries.test.ts`'s tightening is scoped to `scaffold-routes.ts` alone (`server/` overall
-   still imports `engine/story-spec.ts` for that one type, and `next-chapter-routes.ts` still imports
-   `engine/architect.ts`). Everything else landed as planned: `ServerHost` gained
-   `scaffoldState/Start/Say/Approve/Concept/Import/Promote/Set/Accept/Abandon`, each wire-shaped in
-   and returning a plain `ScaffoldActionResult`/`ScaffoldAcceptResult` (declared in
-   [server/server.ts](server/server.ts) beside `Concept`/`CatalogUsage`); `SCAFFOLD` and every sibling
-   — busy, the abandon generation counter, `scaffoldLast`/`Stage`/`FolderAsk`, the three catalog-lookup
-   caches — moved into [host.ts](host.ts), which now also does the route's SSE publishing internally.
-   The one new seam: `setScaffoldTestHooks` (host.ts), substituting the session factory and the
-   catalog lookups `scaffoldStart`/`Concept`/`Import`/`Promote` call, mirroring `ScaffoldSession`'s
-   own injectable `newJudge` — without it a test reaches a real model or the author's real catalog.
-   All 30 existing `scaffold-routes.test.ts` cases kept their bodies, now driving the real `HOST`.
-6. **Same for the handoff**, roughly a third the scope:
-   [next-chapter-routes.ts](server/next-chapter-routes.ts) reads seven `HANDOFF.*` fields
-   ([:29-38](server/next-chapter-routes.ts#L29)) and assigns none. Extend the boundary test to
-   `NextChapterSession`/`HANDOFF`; after this `server/` has no type-level dependency on
-   `engine/architect.ts` at all.
-
-Blocks 1–4 are small, uncontroversial, and make 5–6 cheaper; 5–6 are the actual work and can be
-deferred or dropped without stranding 1–4.
-
-### Explicitly not doing
-
-Generic `ports/`/`adapters/`/`application/`/`presentation/` folders — the dependency direction they'd
-enforce already holds and Block 5 makes it a test, and renaming `host`/`engine`/`app` to a familiar
-taxonomy would describe this system worse than the current names. View models for reads that already
-have them (`/cast`, `/stories`, `/run`, `/catalog/usage`). DTOs for the faithful round-trip editors —
-Block 3 removes the real harm without one. Injecting `PROVIDER` — it's a monkey-patched import-time
-singleton in tests ([tests/model-ready.test.ts:20](tests/model-ready.test.ts#L20),
-[tests/run-gate.test.ts:16](tests/run-gate.test.ts#L16)), correct for a single-user local tool.
-Multi-client/concurrency architecture — one process, one run, one GUI stays the constraint.
-
-### Done when
-
-Per block: `npx tsc --noEmit && npm test && npm run lint`. Blocks 1–2: `npm test` alone is decisive.
-Blocks 3–4: also `npm run test:gui` plus the story-editor/catalog sections of
-[GUI-CHECKLIST.md](GUI-CHECKLIST.md) — reload rather than hash-navigate. Blocks 5–6: three gates —
-`tests/boundaries.test.ts` tightened and green; `tests/scaffold-routes.test.ts` and the
-scaffold/handoff Playwright specs pass **unchanged** (an assertion needing to change means the wire
-contract moved, which this program doesn't authorize); `npx tsc --noEmit` after deleting the
-`import type` lines. No live model run needed anywhere in this program — nothing here touches
-`prompts/` or model behaviour. Afterwards: update the `server/`/`host.ts` rows in
-[CLAUDE.md](CLAUDE.md) and `GUI-SPEC.md`'s `ServerHost` claim, which Block 5 finally makes true.
-
 ## Polish and cost
 
 No defect and no decision owed: smaller quality work, prompt cost, and coverage.
@@ -883,6 +759,22 @@ No defect and no decision owed: smaller quality work, prompt cost, and coverage.
 Nothing here is work. Each entry exists to stop a future decision going wrong — a thing already tried
 that does not work, a cost not worth paying yet, or a constraint on whatever comes next.
 
+- **A full ports-and-adapters restructuring (`ports/`/`adapters/`/`application/`/`presentation/`
+  folders, view models, DTOs everywhere). Evaluated and rejected, not just deferred.** The
+  decoupling program (six blocks, shipped — behaviour now in CLAUDE.md's file table and its
+  `ServerHost`/`live.ts` invariants, and in GUI-SPEC.md's "shape of it") did the one piece of that
+  proposal that was real: `scaffold-routes.ts` and `next-chapter-routes.ts` held live engine
+  objects (`ScaffoldSession`/`NextChapterSession`) directly, 38% of all route code, and now don't.
+  The rest of the proposal does not apply here and should not be re-proposed: the dependency
+  direction it exists to enforce already holds and is a test (`tests/boundaries.test.ts`); renaming
+  `host`/`engine`/`app` to a generic taxonomy would describe this system worse than the current
+  names; view models for reads that already have presenters (`/cast`, `/stories`, `/run`,
+  `/catalog/usage` — `StoryCard`/`fullCast` under other names) buy nothing; a DTO layer under the
+  story editor ([story-edit.js](server/gui/viewer/story-edit.js), a faithful round-trip form) is
+  actively harmful — any view model there must be information-preserving and isomorphic or a save
+  silently drops fields; injecting `PROVIDER` is unnecessary ceremony for a monkey-patched
+  import-time singleton in a single-user local tool; multi-client/concurrency architecture has no
+  problem to solve — one process, one run, one GUI is the constraint, not a limitation.
 - **A `knows`/`goal`/`belief` name absent from `characters` — the hallucinated half only.** When the
   cast-sheet checks moved into `normalizeSpec` (the facts[] reframe, shipped), the original fifth check —
   "a name in `knows`/`goal`/`belief` absent from `characters`" — was split in two. The **rename** half
