@@ -86,6 +86,28 @@ describe("lintQuotations", () => {
     assert.equal(hit!.character, "Marcus");
   });
 
+  it("passes a line correctly attributed to the character it was granted to", () => {
+    const prose = '"The ledger stays with me tonight," Merritt says.';
+    const g = [{ character: "Merritt", speech: "The ledger stays with me tonight." },
+               { character: "Nkem", speech: "I never signed anything." }];
+    assert.equal(lintQuotations(prose, g, ["Merritt", "Nkem"]), null);
+  });
+
+  it("flags a line granted to one character but rendered as another's — the reassignment the old all-speeches match let through", () => {
+    const prose = '"The ledger stays with me tonight," Merritt says.';
+    const g = [{ character: "Nkem", speech: "The ledger stays with me tonight." }];
+    const hit = lintQuotations(prose, g, ["Merritt", "Nkem"]);
+    assert.ok(hit && !hit.ok, "a line granted to Nkem but spoken as Merritt must flag");
+    assert.equal(hit!.character, "Merritt");
+    assert.match(hit!.why, /granted to a different character/);
+  });
+
+  it("still matches against every grant when the quote cannot be attributed to anybody", () => {
+    const prose = '"The ledger stays with me tonight." Silence followed.';
+    const g = [{ character: "Nkem", speech: "The ledger stays with me tonight." }];
+    assert.equal(lintQuotations(prose, g, ["Merritt", "Nkem"]), null);
+  });
+
   it("does not let a substring of an unrelated word fake a match", () => {
     // "no" must not match inside the granted speech "know" — token match, not substring. The quote
     // is multi-word because a bare single word is read as a machine label and never checked.

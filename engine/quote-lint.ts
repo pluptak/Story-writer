@@ -159,31 +159,50 @@ const SOURCE_FRAME_RE = new RegExp(`\\b(?:${SOURCE_FRAMES.join("|")})\\b`, "i");
 const hasSourceFrame = (prose: string, index: number) =>
   SOURCE_FRAME_RE.test(prose.slice(Math.max(0, index - 120), index));
 
+const sameCharacter = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 /** The mechanical quotation check. Returns null when there is nothing to check (no quotes, only
  *  labels, only sourced furniture, or every quote matched a granted line) — the caller then runs
- *  the LLM lint for deeds/senses/situation. Returns a hit the moment one unmatched quote is found. */
+ *  the LLM lint for deeds/senses/situation. Returns a hit the moment one unmatched quote is found.
+ *
+ *  When the quote can be attributed, it is checked against THAT character's own grants first — a
+ *  line granted to one character rendered in another's mouth is a distinct failure ("granted to a
+ *  different character") from a line granted to nobody at all, and the earlier all-speeches match
+ *  could not tell them apart. An unattributed quote still matches against every grant, as before:
+ *  there is nobody to restrict the check to. */
 export function lintQuotations(
   prose: string,
   granted: ReadonlyArray<GrantedLine>,
   names: readonly string[] = [],
 ): QuoteLintHit | null {
-  const speeches = granted.map(g => g.speech).filter(Boolean);
   const quotes = extractQuotations(prose);
   if (!quotes.length) return null;
   for (const q of quotes) {
     if (isMachineLabel(q.text)) continue;
     if (hasSourceFrame(prose, q.index)) continue;
-    if (!matchQuote(q.text, speeches)) {
-      const character = attribute(prose, q, names);
-      return {
-        ok: false,
-        why: `unmatched quotation: "${q.text}"`
-          + (character !== "unknown" ? ` (near ${character})` : "")
-          + " — no character was granted that line",
-        quote: q.text,
-        character,
-      };
+
+    const character = attribute(prose, q, names);
+    if (character === "unknown") {
+      const speeches = granted.map(g => g.speech).filter(Boolean);
+      if (!matchQuote(q.text, speeches)) {
+        return { ok: false, quote: q.text, character,
+          why: `unmatched quotation: "${q.text}" — no character was granted that line` };
+      }
+      continue;
     }
+
+    const own = granted.filter(g => sameCharacter(g.character, character)).map(g => g.speech).filter(Boolean);
+    if (matchQuote(q.text, own)) continue;
+
+    const others = granted.filter(g => !sameCharacter(g.character, character)).map(g => g.speech).filter(Boolean);
+    const reassigned = matchQuote(q.text, others);
+    return {
+      ok: false,
+      quote: q.text,
+      character,
+      why: `unmatched quotation: "${q.text}" (near ${character})`
+        + (reassigned ? " — granted to a different character" : " — no character was granted that line"),
+    };
   }
   return null;
 }

@@ -149,18 +149,16 @@ it: a code defect falls to `npx tsc --noEmit` and `npm test`, a prompt defect ne
   Why it matters beyond tidiness: a POV exit ends the chapter, so an undeclared one silently costs
   the loop its ending. One `alarm-wing` run had HALE walk downstairs and the scene ran on to the cap.
 
-The next three are what remains of a four-item chain in dependency order. The first link — the
-attribution hint had to be worth trusting before the match could use it — is fixed: `attribute()`
-(`engine/quote-lint.ts`) now checks the name trailing the quote (the ordinary post-dialogue form,
-`"..." NAME says`) before falling back to the nearest preceding name, with tests for both orders
-(`tests/quote-lint.test.ts`).
+The next two are what remains of a four-item chain in dependency order. The first two links are
+fixed: `attribute()` (`engine/quote-lint.ts`) now checks the name trailing the quote (the ordinary
+post-dialogue form, `"..." NAME says`) before falling back to the nearest preceding name, and
+`lintQuotations` now matches an attributed quote against that character's own grants first, only
+falling back to every grant when the quote cannot be attributed to anybody — so a line granted to
+one character rendered in another's mouth flags as "granted to a different character" instead of
+passing silently. Tests for all four shapes (own line, reassigned line, unattributed line, both
+attribution orders) are in `tests/quote-lint.test.ts`. The per-character match's live-run risk is
+under Measurement owed.
 
-- **The mechanical quote match is attribution-blind.** `matchQuote` folds every granted speech into
-  one list and asks only "did anyone say this", while the flag's `why` says "no character was
-  granted that line" — implying a per-character check the code does not do. A line granted to one
-  character can be put in another's mouth with no flag; it is the check the retired LLM dialogue
-  pass used to make. Now unblocked: match against the attributed character's grants, since the hint
-  is worth trusting.
 - **The mechanical half and the LLM half disagree on rendered interiority.** `matchQuote` reads only
   `g.speech`, but the narration lint's own format and `narrationLintRequest` explicitly exempt a
   granted POV thought rendered in quotation marks — and the loop's two grant paths do not agree with
@@ -221,6 +219,15 @@ would settle it, and several gate work in the sections below.
 
 **In Next:** item 1.
 
+- **The quote-lint's per-character match trusts a heuristic attribution, and that trust is
+  unmeasured.** `lintQuotations` (`engine/quote-lint.ts`) now checks an attributed quote against only
+  that character's own grants, flagging a mismatch as "granted to a different character" — the fix
+  for the attribution-blind match logged under Defects. `attribute()` is still a best-effort guess,
+  so a quote correctly granted to its actual speaker but mis-attributed to someone else on the page
+  would now flag as a false reassignment where the old all-speeches match passed it silently. Nobody
+  has yet read a live run for that failure mode. **Done when** a run's quote flags are checked against
+  the page: every "granted to a different character" flag should be a real reassignment, not an
+  attribution miss on a correctly-spoken line.
 - **The question gates now guard only the judge's re-ask, and that path is unmeasured.** Since
   `14022cf` the writer's consult carries no `question` and no `wants`, so `normalizeConsult`'s
   `"directed"` branch — `DEGENERATE_QUESTIONS`, the word-bounded `or`, the `wants` floor — runs at
