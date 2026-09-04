@@ -62,9 +62,26 @@ describe("lintQuotations", () => {
     assert.equal(hit!.quote, "This is not my line to sign.");
   });
 
-  it("attributes an unmatched quote to the nearest name before it", () => {
+  it("attributes an unmatched quote to the nearest name before it when nothing follows", () => {
     const prose = 'Elias watched. Marcus said "This is not my line to sign."';
     const hit = lintQuotations(prose, [], ["Elias", "Marcus"]);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.character, "Marcus");
+  });
+
+  it("prefers the trailing name over a nearer-but-wrong preceding one — the ordinary post-quote form", () => {
+    // "Riven reaches for the door. "No, not tonight," Merritt says" — a backward-only scan would
+    // report RIVEN, the nearest preceding name, even though the quote is Merritt's in the engine's
+    // dominant post-dialogue style.
+    const prose = 'Riven reaches for the door. "No, not tonight," Merritt says.';
+    const hit = lintQuotations(prose, [], ["Riven", "Merritt"]);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.character, "Merritt");
+  });
+
+  it("falls back to the preceding name when the trailing clause names nobody", () => {
+    const prose = 'Marcus said "This is not my line to sign," and looked away.';
+    const hit = lintQuotations(prose, [], ["Marcus"]);
     assert.ok(hit && !hit.ok);
     assert.equal(hit!.character, "Marcus");
   });

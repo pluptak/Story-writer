@@ -1474,6 +1474,16 @@ describe("NextChapterSession", () => {
     assert.equal(s.spec.scenes[0].place, before.scenes[0].place);
   });
 
+  it("refuses to edit bracketed scene[0].place when chapter 1 is already written", async () => {
+    const s = handoff([{ edits: [{ field: "scene[0].place", value: "the rock" }] }]);
+    const before = structuredClone(s.spec);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.equal((r as { applied: unknown[] }).applied.length, 0);
+    assert.match((r as { ignored: string[] }).ignored.join(" "), /scene_1\.place . chapter 1 is already written/);
+    assert.equal(s.spec.scenes[0].place, before.scenes[0].place);
+  });
+
   it("accepts scene_2 field edits when preparing chapter 2 with an existing scene 2", async () => {
     const two = quietSync(() => applyEdits(spec, { edits: [{ field: "add_scene", value: { question: "And then?" } }] })).spec;
     const s = handoff([{ edits: [{ field: "scene_2.question", value: "What happens next?" }] }], two);

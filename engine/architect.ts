@@ -10,7 +10,7 @@ import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify, nameKey } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, splitMeaning, canonSkill, type BibleLookup } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats, type Defaults } from "./story-format.ts";
-import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, type StorySpec } from "./story-spec.ts";
+import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, canonicalField, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
 import { PROVIDER } from "./provider.ts";
@@ -860,7 +860,7 @@ export class NextChapterSession {
     const written = this.chapter - 1;
     const refused: string[] = [];
     const kept = edits.filter(e => {
-      const field = String(e?.field ?? "").trim();
+      const field = canonicalField(String(e?.field ?? "").trim());
       const n = Number(e?.value);
       if (field === "remove_scene" && Number.isInteger(n) && n >= 1 && n <= written) {
         refused.push(`remove_scene ${n} — chapter ${n} is already written`);

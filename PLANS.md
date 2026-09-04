@@ -149,39 +149,18 @@ it: a code defect falls to `npx tsc --noEmit` and `npm test`, a prompt defect ne
   Why it matters beyond tidiness: a POV exit ends the chapter, so an undeclared one silently costs
   the loop its ending. One `alarm-wing` run had HALE walk downstairs and the scene ran on to the cap.
 
-The next four are one chain, in dependency order — the attribution hint has to be worth trusting
-before the match can be made to use it.
+The next three are what remains of a four-item chain in dependency order. The first link — the
+attribution hint had to be worth trusting before the match could use it — is fixed: `attribute()`
+(`engine/quote-lint.ts`) now checks the name trailing the quote (the ordinary post-dialogue form,
+`"..." NAME says`) before falling back to the nearest preceding name, with tests for both orders
+(`tests/quote-lint.test.ts`).
 
-- **The quote lint attributes a speaker by looking backwards only.** `attribute()` scans the 120
-  characters *before* the quote and takes the nearest cast name, so `Riven reaches for the door.
-  "No," Merritt says` is reported as `(near RIVEN)`. Post-dialogue attribution — `"..." NAME says` —
-  is the ordinary form in the prose this engine asks for, so the hint is probably wrong more often
-  than right. Nothing about the flag itself depends on it: whether a quotation matched the granted
-  ledger is decided before any name is looked up, and the only live reader of the attribution is the
-  `(near X)` clause in the user-visible `why` — which is also the text the writer is handed for its
-  one redraft. Candidate: check for a trailing attribution first and
-  fall back to the preceding-name guess, with a test for both orders. Worth settling what "nearest"
-  should mean before writing it — a quote between two named characters has two defensible answers.
-
-  Evidence since, recorded as evidence and not as a conclusion: in both cooling-loop cases where a
-  redraft failed to remove a fabricated quotation, the hint the writer was given was wrong (`near
-  HALE`) or absent (`unknown`), and both surviving lines were in fact Nkem's, written in the ordinary
-  post-quote form `"...," Nkem says` that a backwards scan cannot see. That is consistent with a
-  wrong hint impairing the redraft. It does not establish it: n = 2, one story, one model. It does
-  make this worth fixing before any further quote-lint measurement, so that the next set of retry
-  failures is measured against a hint that is at least trying to be right.
-
-  The four alarm-run flags (2026-08-29) were all attributed `unknown`, and every one was in the
-  post-quote form (`"...," NAME says`) a backwards scan cannot see — including the one the writer's
-  redraft most needed the hint for. The rerun's two flags split the hint: one correct (`near
-  TIBBS`), one wrong (`near HALE` for a line the page gives to Tibbs) — both still in the post-quote
-  form, and the wrong hint sat on the one flag whose redraft fabricated again.
 - **The mechanical quote match is attribution-blind.** `matchQuote` folds every granted speech into
   one list and asks only "did anyone say this", while the flag's `why` says "no character was
   granted that line" — implying a per-character check the code does not do. A line granted to one
   character can be put in another's mouth with no flag; it is the check the retired LLM dialogue
-  pass used to make. Fixing it depends on the attribution entry above: match against the attributed
-  character's grants only once the hint is worth trusting.
+  pass used to make. Now unblocked: match against the attributed character's grants, since the hint
+  is worth trusting.
 - **The mechanical half and the LLM half disagree on rendered interiority.** `matchQuote` reads only
   `g.speech`, but the narration lint's own format and `narrationLintRequest` explicitly exempt a
   granted POV thought rendered in quotation marks — and the loop's two grant paths do not agree with
@@ -195,11 +174,6 @@ before the match can be made to use it.
   so a written chapter whose `reach` was hand-edited afterwards re-authors silently and the warning
   that exists to report exactly that kind of drift never fires. One comparison, once it is decided
   what a reach drift means for the chapter that already ran under the old grant.
-- **`refuse()` matches the raw field string, but `applyEdits` canonicalizes first.** Bracketed
-  spellings are canonicalized before edits apply, while the already-written guard tests the raw
-  string — so `scene[0].reach` (like the pre-existing `scene[0].place`) can edit a written chapter's
-  definition without tripping it. The fix is to run the guard against the canonical form
-  `applyEdits` will actually write, which for `place` has been wrong since before `reach` existed.
 - **The story.json lock does not cover the span it claims.** The lock runs "from the pick through
   the handoff" ([live.ts](live.ts)), with three holes. `/select` never consults `storyWriteBlocked`,
   and the shelf's play button is enabled during a handoff, so a run can start on the very story a

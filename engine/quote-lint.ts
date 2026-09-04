@@ -98,10 +98,22 @@ function matchQuote(q: string, speeches: string[]): boolean {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Best-effort attribution of an unmatched quote: the character name nearest it in the text just
- *  before. Returns "unknown" when none is found — the flag still carries the offending quote. */
-function attribute(prose: string, index: number, names: readonly string[]): string {
-  const before = prose.slice(Math.max(0, index - 120), index);
+/** Best-effort attribution of an unmatched quote. Post-dialogue attribution (`"..." NAME says`) is
+ *  the ordinary form in the prose this engine asks for, so the name immediately following the quote
+ *  is checked first; only when nothing follows is the nearest preceding name used. Returns "unknown"
+ *  when neither direction finds one — the flag still carries the offending quote. */
+function attribute(prose: string, quote: { index: number; text: string }, names: readonly string[]): string {
+  const end = quote.index + quote.text.length;
+  const after = prose.slice(end, Math.min(prose.length, end + 60));
+  let bestAfter = Infinity, afterName = "unknown";
+  for (const name of names) {
+    const m = new RegExp(`\\b${escapeRe(name)}\\b`, "i").exec(after);
+    // Keep the occurrence closest to the quote (smallest start offset within the window).
+    if (m && m.index < bestAfter) { bestAfter = m.index; afterName = name; }
+  }
+  if (afterName !== "unknown") return afterName;
+
+  const before = prose.slice(Math.max(0, quote.index - 120), quote.index);
   let best = -1, bestName = "unknown";
   for (const name of names) {
     const re = new RegExp(`\\b${escapeRe(name)}\\b`, "gi");
@@ -162,7 +174,7 @@ export function lintQuotations(
     if (isMachineLabel(q.text)) continue;
     if (hasSourceFrame(prose, q.index)) continue;
     if (!matchQuote(q.text, speeches)) {
-      const character = attribute(prose, q.index, names);
+      const character = attribute(prose, q, names);
       return {
         ok: false,
         why: `unmatched quotation: "${q.text}"`

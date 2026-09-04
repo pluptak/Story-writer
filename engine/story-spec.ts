@@ -278,7 +278,7 @@ export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { 
  *  `characters[VORA].goal` instead of `characters.VORA.goal`. Bring the common shapes home before
  *  matching — an edit refused over spelling the engine can read is an edit lost. Bracket numbers
  *  count from zero, as they do in JSON paths, so scene[0] is scene_1. */
-function canonicalField(field: string): string {
+export function canonicalField(field: string): string {
   return field
     .replace(/\[(\d+)\]/g, (_, n: string) => `_${Number(n) + 1}`)
     .replace(/\[([^\]\d][^\]]*)\]/g, ".$1");
