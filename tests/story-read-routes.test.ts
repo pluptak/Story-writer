@@ -8,12 +8,12 @@ import { join } from "node:path";
 import { LIVE, resetLive } from "../live.ts";
 import { handleStoryReadRoutes } from "../server/story-read-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { callGet } from "./helpers.ts";
+import { callGet, makeHost as baseHost } from "./helpers.ts";
 
 let castFails = false;
 
 function makeHost(overrides?: Partial<ServerHost>): ServerHost {
-  return {
+  return baseHost({
     selectableStory: async (d: string) => (d === "stories/doorway" || d === "doorway" ? "stories/doorway" : null),
     fullCast: async (dir: string) => {
       if (castFails) {
@@ -44,26 +44,8 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
         scenes: [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] } }],
       };
     },
-    // Unused by these routes
-    storyCards: async () => [],
-    storyForEdit: async () => ({ ok: false, error: "unused" }),
-    checkStory: () => ({ ok: true, warnings: [] }),
-    saveStory: async () => ({ ok: true, warnings: [] }),
-    suggestEdits: async () => ({ ok: false, error: "unused" }),
-    resolveStoryDir: (d: string) => d,
-    runDirs: async () => [],
-    runLlmLogs: async () => [],
-    readLlmLog: async () => null,
-    writtenChapters: async () => [],
-    availableModelIds: async () => null,
-    architectModel: async () => "none",
-    newScaffoldSession: async () => { throw new Error("unused"); },
-    newHandoffSession: async () => { throw new Error("unused"); },
-    directEdit: () => ({ ok: false, reason: "unused" }),
-    specView: (s: unknown) => s,
-    outDir: () => "",
     ...overrides,
-  } as unknown as ServerHost;
+  });
 }
 
 describe("/cast (GET)", () => {

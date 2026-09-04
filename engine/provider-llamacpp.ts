@@ -12,8 +12,7 @@ export function newLlamacppProvider(baseUrl: string, auth: Record<string, string
     chatUrl: `${baseUrl}/chat/completions`,
     modelsUrl: `${baseUrl}/models`,
     capabilities: {
-      modelRuntimeInspection: false, fullInventory: false, modelPreparation: false,
-      reasoningEffort: false, explicitLoad: false, explicitUnload: false,
+      modelRuntimeInspection: false, fullInventory: false, reasoningEffort: false,
     },
     headers: () => ({ ...auth }),
     listModels: (timeoutMs) => openAiListModels(baseUrl, timeoutMs, auth),

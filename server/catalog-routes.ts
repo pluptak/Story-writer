@@ -25,6 +25,11 @@ export async function handleCatalogRoutes(
     return true;
   }
 
+  if (path === "/catalog/config" && req.method === "GET") {
+    json(res, 200, host.catalogConfig());
+    return true;
+  }
+
   if (path === "/catalog/usage" && req.method === "GET") {
     json(res, 200, { ok: true, usage: await host.catalogUsage() });
     return true;

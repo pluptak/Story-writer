@@ -1,5 +1,6 @@
 /** ZOD SCHEMA for character catalog — reusable character templates and tag vocabularies. */
 import { z } from "zod";
+import { VOICE_SAMPLE_CAP } from "./story-schema.ts";
 
 export const CATALOG_KINDS = ["characters", "tags", "styles", "skills"] as const;
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
@@ -20,7 +21,7 @@ export const LibraryCharacter = z.strictObject({
   /** Up to three lines of dialogue in the character's own words; models imitate samples better than
    *  adjectives. Extras past three are dropped on load — matching `CharacterDef`'s truncate-and-keep
    *  — rather than rejecting the whole entry, so both load paths converge on the same cap. */
-  voice: z.array(z.string()).default([]).transform(v => v.slice(0, 3)),
+  voice: z.array(z.string()).default([]).transform(v => v.slice(0, VOICE_SAMPLE_CAP)),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
 });

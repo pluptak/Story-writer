@@ -67,7 +67,7 @@ export async function contextFit(model: string, msgs: Msg[]):
   if (!short) return null;
   return {
     message: `${model} is loaded with ${short.has} tokens of context and this call needs about `
-      + `${short.needs} — expect empty completions or truncation; raise its context length in LM Studio`,
+      + `${short.needs} — expect empty completions or truncation; raise its context length in ${PROVIDER.displayName}`,
     needs: short.needs,
     has: short.has,
   };

@@ -44,15 +44,16 @@ const fld = (id, label, value, type) =>
   `</div>`;
 
 const thinkSelect = (id, label, current) => {
-  const opts = ["off", "low", "medium", "high", "default"].map(v =>
+  const opts = APP.editorConfig.thinkingLevels.map(v =>
     `<option value="${v}"${v === current ? " selected" : ""}>${v}</option>`).join("");
   return `<div class="field"><label for="${id}">${label}</label><select id="${id}">${opts}</select></div>`;
 };
 
-/** Voice samples: one line of dialogue per line of the textarea; the schema caps them at three. */
+/** Voice samples: one line of dialogue per line of the textarea; the schema caps them (see caps.voiceSamples). */
 const voiceFld = (i, voice) => {
   const lines = Array.isArray(voice) ? voice.join("\n") : "";
-  return `<div class="field"><label for="char-${i}-voice">Voice (one sample per line, max 3)</label>` +
+  const cap = APP.editorConfig.caps.voiceSamples;
+  return `<div class="field"><label for="char-${i}-voice">Voice (one sample per line, max ${cap})</label>` +
     `<textarea id="char-${i}-voice" rows="3">${esc(lines)}</textarea></div>`;
 };
 
@@ -75,22 +76,6 @@ const parseReach = text => {
 
 /** Deep clone by serialising -- Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
-
-function scaffoldStory(spec) {
-  const story = clone(spec);
-  // specView carries `scene` as a convenience alias for scenes[0] -- the interview's proposal card
-  // reads it. StoryJson is strict, so leaving it on the draft makes every check fail with
-  // `Unrecognized key: "scene"`, disabling the write button on the first edit. The editor works
-  // from `scenes` throughout, so the alias is dropped here rather than removed from specView.
-  delete story.scene;
-  story.characters = (story.characters || []).map(c => ({
-    ...c,
-    skills: (c.skills || []).map(s => typeof s === "string" ? s : [s.text, s.meaning].filter(Boolean).join(" :: ")),
-  }));
-  story.config = story.config || {};
-  story.models = story.models || {};
-  return story;
-}
 
 /** Check whether two story objects differ structurally. */
 function deepEq(a, b) {
@@ -172,7 +157,7 @@ function sceneRowsHtml() {
       ${fld(`scene-${n}-question`, "Question", sc.question, "textarea")}
       <div class="editor-row">
         ${fld(`scene-${n}-pov`, "POV", sc.pov, "half")}
-        ${fld(`scene-${n}-length`, "Length (words)", sc.length ?? 700, "half")}
+        ${fld(`scene-${n}-length`, "Length (words)", sc.length ?? APP.editorConfig.defaults.sceneLength, "half")}
       </div>
       ${fld(`scene-${n}-roster`, "Roster (comma-separated)", roster)}
       ${fld(`scene-${n}-reach`, "Reach — one per line: NAME: thing :: meaning (granted by this scene only)",
@@ -220,26 +205,27 @@ function characterCardsHtml() {
 
 function configHtml() {
   const c = APP.editDraft?.config || {};
+  const d = APP.editorConfig.defaults;
   return `<details class="editor-section" data-tid="edit.section"><summary>Config</summary>
     <div class="editor-row">
-      ${fld("config-retries", "Retries", c.retries ?? 2, "third")}
-      ${fld("config-clarifications", "Clarifications", c.clarifications ?? 2, "third")}
-      ${fld("config-maxSteps", "Max steps", c.maxSteps ?? 24, "third")}
+      ${fld("config-retries", "Retries", c.retries ?? d.retries, "third")}
+      ${fld("config-clarifications", "Clarifications", c.clarifications ?? d.clarifications, "third")}
+      ${fld("config-maxSteps", "Max steps", c.maxSteps ?? d.maxSteps, "third")}
     </div>
     <div class="editor-row">
-      ${fld("config-maxProseWords", "Max prose words", c.maxProseWords ?? 140, "third")}
-      ${fld("config-requestTimeout", "Request timeout (s)", c.requestTimeout ?? 120, "third")}
-      ${fld("config-attempts", "Attempts", c.attempts ?? 3, "third")}
+      ${fld("config-maxProseWords", "Max prose words", c.maxProseWords ?? d.maxProseWords, "third")}
+      ${fld("config-requestTimeout", "Request timeout (s)", c.requestTimeout ?? d.requestTimeout, "third")}
+      ${fld("config-attempts", "Attempts", c.attempts ?? d.attempts, "third")}
     </div>
     <div class="editor-row">
-      ${fld("config-maxTokens", "Max tokens", c.maxTokens ?? 2000, "third")}
+      ${fld("config-maxTokens", "Max tokens", c.maxTokens ?? d.maxTokens, "third")}
       ${fld("config-maxCharacterRetries", "Max character retries", c.maxCharacterRetries ?? "", "third")}
-      ${fld("config-stream", "Stream", c.stream ?? true, "checkbox")}
-      ${fld("config-debug", "Debug", c.debug ?? false, "checkbox")}
+      ${fld("config-stream", "Stream", c.stream ?? d.stream, "checkbox")}
+      ${fld("config-debug", "Debug", c.debug ?? d.debug, "checkbox")}
     </div>
-    ${thinkSelect("config-thinking-writer", "Writer thinking", c.thinking?.writer ?? "low")}
-    ${thinkSelect("config-thinking-character", "Character thinking", c.thinking?.character ?? "low")}
-    ${thinkSelect("config-thinking-summary", "Summary thinking", c.thinking?.summary ?? "low")}
+    ${thinkSelect("config-thinking-writer", "Writer thinking", c.thinking?.writer ?? d.thinking.writer)}
+    ${thinkSelect("config-thinking-character", "Character thinking", c.thinking?.character ?? d.thinking.character)}
+    ${thinkSelect("config-thinking-summary", "Summary thinking", c.thinking?.summary ?? d.thinking.summary)}
     ${issuesHtml("config")}
   </details>`;
 }
@@ -460,7 +446,7 @@ function applyField(id, value) {
     } else if (field === "reach") {
       APP.editDraft.scenes[idx].reach = parseReach(value);
     } else if (field === "length") {
-      APP.editDraft.scenes[idx].length = value === "" ? 700 : Math.max(1, Number(value));
+      APP.editDraft.scenes[idx].length = value === "" ? APP.editorConfig.defaults.sceneLength : Math.max(1, Number(value));
     } else if (field === "writerModel") {
       APP.editDraft.scenes[idx].writerModel = value || undefined;
     } else if (field === "writerThink") {
@@ -481,7 +467,7 @@ function applyField(id, value) {
     } else if (field === "restrictions") {
       APP.editDraft.characters[idx].restrictions = value ? parseCommaSeparated(value) : [];
     } else if (field === "voice") {
-      APP.editDraft.characters[idx].voice = parseLines(value).slice(0, 3);
+      APP.editDraft.characters[idx].voice = parseLines(value).slice(0, APP.editorConfig.caps.voiceSamples);
     } else if (field === "maxRetries") {
       APP.editDraft.characters[idx].maxRetries = value === "" ? undefined : Number(value);
     } else {
@@ -617,11 +603,10 @@ export function wireStoryEditor(page) {
   // Keyed by editFor, not editStory: a draft left over from another story must trigger a fresh load
   // here, never render as if it were this story's. No editError clause: a refusal belonging to
   // another story must not block this one -- loadEditor clears it.
-  if (APP.editNew && APP.scaffold?.spec && APP.editFor !== "__scaffold__") {
-    const loaded = scaffoldStory(APP.scaffold.spec);
+  if (APP.editNew && APP.scaffold?.storyDraft && APP.editFor !== "__scaffold__") {
     APP.editFor = "__scaffold__";
-    APP.editStory = clone(loaded);
-    APP.editDraft = clone(loaded);
+    APP.editStory = clone(APP.scaffold.storyDraft);
+    APP.editDraft = clone(APP.scaffold.storyDraft);
     APP.editWarnings = APP.scaffold.problems || [];
     APP.editIssues = [];
     clearSuggest();

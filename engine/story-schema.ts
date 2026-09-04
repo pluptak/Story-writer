@@ -7,6 +7,10 @@ export type ThinkLevel = (typeof THINK_LEVELS)[number];
 
 const thinkLevel = z.enum(THINK_LEVELS);
 
+/** How many voice samples a character keeps — the editor's own cap notice reads this rather than
+ *  restating it. */
+export const VOICE_SAMPLE_CAP = 3;
+
 /** One scene's definition: where it is, the question it answers, whose perception, length, roster,
  *  what each character can reach only here, and optional per-scene overrides. */
 export const SceneDef = z.strictObject({
@@ -42,7 +46,7 @@ export const CharacterDef = z.strictObject({
   /** Up to three lines of dialogue in the character's own words; models imitate samples better than
    *  adjectives. Extras past three are dropped on load — matching `normalizeSpec`'s truncate-and-keep
    *  — rather than rejecting the whole story, so both load paths converge on the same cap. */
-  voice: z.array(z.string()).default([]).transform(v => v.slice(0, 3)),
+  voice: z.array(z.string()).default([]).transform(v => v.slice(0, VOICE_SAMPLE_CAP)),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
   /** This character's chapter-wide retry ceiling; unset falls back to `config.maxCharacterRetries`. */

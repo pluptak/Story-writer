@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { LIVE, resetLive, armRun } from "../live.ts";
 import { handleStoryEditRoutes } from "../server/story-edit-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { callRoute, callGet } from "./helpers.ts";
+import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 
 const DOORWAY = {
   title: "The Fog Signal",
@@ -29,7 +29,7 @@ const DOORWAY = {
 let suggestCalls = 0;
 
 function makeHost(overrides?: Partial<ServerHost>): ServerHost {
-  return {
+  return baseHost({
     selectableStory: async (d: string) => (d === "stories/doorway" || d === "doorway" ? "stories/doorway" : null),
     storyForEdit: async (dir: string) => {
       if (dir !== "stories/doorway") return { ok: false, error: "not found" };
@@ -67,22 +67,8 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
         note: "",
       };
     },
-    // Unused by these routes
-    storyCards: async () => [],
-    resolveStoryDir: (d: string) => d,
-    runDirs: async () => [],
-    runLlmLogs: async () => [],
-    readLlmLog: async () => null,
-    writtenChapters: async () => [],
-    availableModelIds: async () => null,
-    architectModel: async () => "none",
-    newScaffoldSession: async () => { throw new Error("unused"); },
-    newHandoffSession: async () => { throw new Error("unused"); },
-    directEdit: () => ({ ok: false, reason: "unused" }),
-    specView: (s: unknown) => s,
-    outDir: () => "",
     ...overrides,
-  } as unknown as ServerHost;
+  });
 }
 
 // -- SECTION ----
@@ -161,6 +147,38 @@ describe("/story/edit (GET)", () => {
     assert.equal(body.ok, false);
     assert.equal(body.error, "could not read");
     assert.deepEqual(body.raw, { title: "broken" });
+  });
+});
+
+describe("/story/edit-config (GET)", () => {
+  it("returns the host's editor-config projection verbatim", async () => {
+    const config = {
+      defaults: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140,
+                  requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: true, debug: false,
+                  thinking: { writer: "low" as const, character: "low" as const, summary: "low" as const }, sceneLength: 700 },
+      thinkingLevels: ["off", "low", "medium", "high", "default"] as const,
+      caps: { voiceSamples: 3 },
+    };
+    const host = makeHost({ editorConfig: () => config });
+    const r = await callGet(handleStoryEditRoutes, "/story/edit-config", host);
+    assert.equal(r.code, 200);
+    assert.deepEqual(r.json(), config);
+  });
+
+  it("is not blocked by the story-write lock — it names no story", async () => {
+    armRun();
+    try {
+      const config = {
+        defaults: { retries: 0, clarifications: 0, maxSteps: 1, maxProseWords: 1,
+                    requestTimeout: 1, attempts: 1, maxTokens: 1, stream: false, debug: false,
+                    thinking: { writer: "off" as const, character: "off" as const, summary: "off" as const }, sceneLength: 1 },
+        thinkingLevels: ["off", "low", "medium", "high", "default"] as const,
+        caps: { voiceSamples: 0 },
+      };
+      const host = makeHost({ editorConfig: () => config });
+      const r = await callGet(handleStoryEditRoutes, "/story/edit-config", host);
+      assert.equal(r.code, 200);
+    } finally { resetLive(); }
   });
 });
 

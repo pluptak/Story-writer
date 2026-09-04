@@ -34,6 +34,11 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
+  if (path === "/story/edit-config" && req.method === "GET") {
+    json(res, 200, host.editorConfig());
+    return true;
+  }
+
   if (path === "/story/check" && req.method === "POST") {
     const o = await readJsonBody(req);
     const r = host.checkStory(o.story);

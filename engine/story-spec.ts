@@ -723,10 +723,11 @@ export function timelineDrift(before: TimelineDef[], after: TimelineDef[]): stri
   return diff;
 }
 
-/** Render a spec to the story files on disk (currently just story.json), ready to write into a story folder. */
-export function renderStory(spec: StorySpec, models: { default: string }): Record<string, string> {
-  const files: Record<string, string> = {};
-
+/** The spec rendered to a plain StoryJson-shaped object — no `scene` alias, no exploded skills,
+ *  exactly what StoryJson.safeParse expects. Shared by `renderStory` (which stringifies it to disk)
+ *  and the scaffold route's live editor draft, so the browser is handed this shape directly instead
+ *  of reconciling `specView`'s GUI-facing shape into it itself. */
+export function storyJsonShape(spec: StorySpec, models: { default: string }) {
   const charDefs = spec.characters.map(c => ({
     name: c.name,
     model: c.model,
@@ -747,7 +748,7 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     ...(spec.models.summary ? { summary: spec.models.summary } : {}),
   };
 
-  const story = {
+  return {
     title: spec.title,
     premise: spec.premise,
     scenes: spec.scenes,
@@ -763,9 +764,12 @@ export function renderStory(spec: StorySpec, models: { default: string }): Recor
     config: spec.config,
     models: renderedModels,
   };
+}
 
-  files["story.json"] = JSON.stringify(story, null, 2) + "\n";
-
+/** Render a spec to the story files on disk (currently just story.json), ready to write into a story folder. */
+export function renderStory(spec: StorySpec, models: { default: string }): Record<string, string> {
+  const files: Record<string, string> = {};
+  files["story.json"] = JSON.stringify(storyJsonShape(spec, models), null, 2) + "\n";
   return files;
 }
 

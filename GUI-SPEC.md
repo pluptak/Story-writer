@@ -14,10 +14,12 @@ client that happens to consume it today.
 One Node process drives **at most one run at a time**. `--serve` starts an HTTP server
 ([server.ts:46](server/server.ts#L46)) alongside it; the server does not own the run, it watches and
 steers the one the CLI process is already running. There is no database and no per-request session —
-state lives in three module-level objects, [live.ts](live.ts)'s `LIVE`/`RUN`, a private `SCAFFOLD` in
-`scaffold-routes.ts` and a private `HANDOFF` in `next-chapter-routes.ts`, and a browser reconnecting
-just resubscribes to whichever run (if any) is already in flight. **No auth, no CORS headers, no CSRF token** — anything that can reach the port can steer the
-run or start a new story. That is an accepted property of a local single-user tool, not an oversight.
+state lives in three module-level objects, [live.ts](live.ts)'s `LIVE`/`RUN` and, private to
+[host.ts](host.ts), the open scaffold interview (`SCAFFOLD`) and the open handoff (`HANDOFF`) — no
+route module holds either directly, only `ServerHost.scaffold*()`/`handoff*()` methods reach them —
+and a browser reconnecting just resubscribes to whichever run (if any) is already in flight. **No
+auth, no CORS headers, no CSRF token** — anything that can reach the port can steer the run or start a
+new story. That is an accepted property of a local single-user tool, not an oversight.
 
 What keeps it accepted is that the port is **bound to `127.0.0.1`**, not to every interface —
 `startServer`'s `bindAddr` parameter, which nothing currently overrides. An unauthenticated surface
@@ -59,10 +61,14 @@ Two channels carry everything:
   a `POST` succeeded elsewhere (its own `fetch` replies too, but every other open tab or window
   finds out only through `/events`).
 
-Nothing under `server/*.ts` imports `engine/`. Every route reaches the engine only through the
-`ServerHost` interface built once in `story-writer.ts` ([server.ts:21](server/server.ts#L21)) — all of
-it read-only or side-effect-free except the two session openers, `newScaffoldSession` and
-`newHandoffSession`. A route that needs something new gets a host method, never an import (CLAUDE.md).
+Nothing under `server/*.ts` imports `engine/` — not even as a type, for `engine/architect.ts` or
+`engine/story-spec.ts` specifically ([tests/boundaries.test.ts](tests/boundaries.test.ts) checks
+both claims). Every route reaches the engine only through the `ServerHost` interface built once in
+`story-writer.ts` ([server.ts:21](server/server.ts#L21)). The scaffold and handoff domains are
+entirely behind it: no route module holds a `ScaffoldSession` or a `NextChapterSession`, only
+`ServerHost.scaffold*()`/`handoff*()` methods, each wire-shaped in and returning a plain result type
+declared in `server.ts`. A route that needs something new gets a host method, never an import
+(CLAUDE.md).
 
 ## Static routes
 
@@ -213,6 +219,7 @@ silent overwrite.
 ```
 GET  /story/edit?dir=...     → { ok:true, story: StoryJson, warnings[] }
                                | { ok:false, error, raw? }
+GET  /story/edit-config      → { defaults, thinkingLevels, caps }
 POST /story/check  { story } → { ok:true, warnings[] }
                                | { ok:false, error, issues[] }
 POST /story/save   { dir, story } → { ok:true, warnings[] }
@@ -228,6 +235,11 @@ POST /story/suggest { spec, text } → { ok:true, kind:"edits",
 `/story/edit` loads the full Zod-parsed `StoryJson` from disk for editing, plus engine-level
 warnings. Returns `{ ok: false, raw }` when the file is on disk but will not parse, so the editor
 can show the error and the raw content.
+
+`/story/edit-config` is story-independent: schema-derived run-config defaults, the five thinking
+levels, and the voice-sample cap, for the editor and the new-story form to render without
+hand-copying `story-schema.ts`'s own defaults. Never blocked by the story-write lock — it names
+nothing about any one story.
 
 Every mutating action here (`edit`, `save`, `discard`, `suggest`) refuses with `409` while
 something else is reading or writing `story.json`: a run in flight, the loading window after a
@@ -264,6 +276,7 @@ the editor.
 ```
 GET  /catalog?kind=characters        → { ok:true, entries[] }
                                        | { ok:false, reason }
+GET  /catalog/config                 → { tagFacets, caps }
 GET  /catalog/usage                  → { ok:true, usage }   (read-only derivation, below)
 GET  /catalog/entry?kind=&id=        → { ok:true, entry }
                                        | { ok:false, reason }        (400 no id · 404 no such entry)
@@ -277,7 +290,9 @@ POST /catalog/delete { kind?, id }   → { ok:true }
 
 A catalog is **global**: it lives beside `defaults.json`, not inside a story. So unlike the story
 editor these routes take no `dir`, and none of them consults the story-write lock — a run reading one
-story's `story.json` has no bearing on a shelf of reusable characters. `kind` selects which catalog —
+story's `story.json` has no bearing on a shelf of reusable characters. `/catalog/config` is the
+catalog's own schema-derived shape — the tag facet enum and the character voice-sample cap — for the
+catalog editor to render without hand-copying `catalog-schema.ts`. `kind` selects which catalog —
 `characters`, `tags`, `styles` or `skills` — and decides the filename; an unknown kind is `400`,
 validated in the host because it arrives from a query string. Every route above is
 kind-parameterised, so a new kind is a registry entry in `engine/catalog.ts` and never a new route.
@@ -373,7 +388,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 GET  /scaffold
   → { active:false } | { active:true, idea, mode, busy, stage, gate, tension, concept, haveDraft, haveStory,
                           pendingAsk, problems[], bibleCandidates[], last: ScaffoldRound | null,
-                          needsFolder, model, spec }
+                          needsFolder, model, spec, storyDraft }
 
 bibleCandidates = { name: string, meaning: string, heldBy: string[] }[]
 
@@ -496,6 +511,12 @@ never writes a bible entry.
 `haveDraft` becomes true as soon as any authored story field lands, so the first staged story gate can
 be reviewed before a cast exists. `spec` is present whenever `haveDraft` is true. `haveStory` keeps its
 stricter meaning: a cast exists and the draft is eligible for the edit and accept flows.
+
+`storyDraft` is present under the same `haveDraft` condition as `spec`, but StoryJson-shaped rather
+than specView's GUI-facing shape (no `scene` alias, skills not exploded into `{text, meaning}`) — it
+is what the "review new story" screen loads as its editor draft directly, the same shape
+`/story/edit` hands the ordinary story editor. `spec` stays specView-shaped for the interview's own
+read-only proposal card, which wants the exploded skills and the `scene` alias.
 
 One session at a time (`scaffoldBusy` is a module-level lock — a second `POST` while a round is in
 flight gets `409`). `accept` only resolves the parked story pick on `kind: "written"`; every other

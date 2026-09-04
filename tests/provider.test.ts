@@ -213,12 +213,6 @@ describe("the ollama adapter", () => {
     const p = makeProvider("ollama", "http://localhost:11434/v1", {});
     assert.equal(await p.inspectModels(500), null);
   });
-
-  it("cannot load or unload", () => {
-    const p = makeProvider("ollama", "http://localhost:11434/v1", {});
-    assert.equal(p.capabilities.modelPreparation, false);
-    assert.equal(p.capabilities.explicitLoad, false);
-  });
 });
 
 describe("parsePsModels", () => {

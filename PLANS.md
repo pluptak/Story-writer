@@ -759,6 +759,22 @@ No defect and no decision owed: smaller quality work, prompt cost, and coverage.
 Nothing here is work. Each entry exists to stop a future decision going wrong — a thing already tried
 that does not work, a cost not worth paying yet, or a constraint on whatever comes next.
 
+- **A full ports-and-adapters restructuring (`ports/`/`adapters/`/`application/`/`presentation/`
+  folders, view models, DTOs everywhere). Evaluated and rejected, not just deferred.** The
+  decoupling program (six blocks, shipped — behaviour now in CLAUDE.md's file table and its
+  `ServerHost`/`live.ts` invariants, and in GUI-SPEC.md's "shape of it") did the one piece of that
+  proposal that was real: `scaffold-routes.ts` and `next-chapter-routes.ts` held live engine
+  objects (`ScaffoldSession`/`NextChapterSession`) directly, 38% of all route code, and now don't.
+  The rest of the proposal does not apply here and should not be re-proposed: the dependency
+  direction it exists to enforce already holds and is a test (`tests/boundaries.test.ts`); renaming
+  `host`/`engine`/`app` to a generic taxonomy would describe this system worse than the current
+  names; view models for reads that already have presenters (`/cast`, `/stories`, `/run`,
+  `/catalog/usage` — `StoryCard`/`fullCast` under other names) buy nothing; a DTO layer under the
+  story editor ([story-edit.js](server/gui/viewer/story-edit.js), a faithful round-trip form) is
+  actively harmful — any view model there must be information-preserving and isomorphic or a save
+  silently drops fields; injecting `PROVIDER` is unnecessary ceremony for a monkey-patched
+  import-time singleton in a single-user local tool; multi-client/concurrency architecture has no
+  problem to solve — one process, one run, one GUI is the constraint, not a limitation.
 - **A `knows`/`goal`/`belief` name absent from `characters` — the hallucinated half only.** When the
   cast-sheet checks moved into `normalizeSpec` (the facts[] reframe, shipped), the original fifth check —
   "a name in `knows`/`goal`/`belief` absent from `characters`" — was split in two. The **rename** half

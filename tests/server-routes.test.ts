@@ -1,5 +1,5 @@
 /** Routes for the HTTP server: next-chapter handoff and run control. */
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
@@ -17,7 +17,8 @@ import { handleRunControl } from "../server/run-control-routes.ts";
 import { handleRunLogRoutes } from "../server/run-log-routes.ts";
 import { HttpError, readJsonBody } from "../server/http-util.ts";
 import type { ServerHost } from "../server/server.ts";
-import { callRoute, callGet, fakeRequest, fakeRawRequest, quiet, ScriptedAgent } from "./helpers.ts";
+import { HOST, setHandoffTestHooks, resetHandoffForTests } from "../host.ts";
+import { callRoute, callGet, fakeRequest, fakeRawRequest, quiet, ScriptedAgent, makeHost } from "./helpers.ts";
 
 // Constants needed by tests
 const SCAFFOLD_DEFAULTS: Defaults = {
@@ -41,26 +42,32 @@ const STORY = {
 
 // -- SECTION ----
 describe("/next-chapter routes", () => {
+  afterEach(() => resetHandoffForTests());
   const spec = normalizeSpec(STORY).spec;
   const opened: string[] = [];
-
-  const host = (open?: () => Promise<NextChapterSession>): ServerHost => ({
-    storyCards: async () => [],
-    selectableStory: async (dir: string) => (dir === "stories/doorway" ? "stories/doorway" : null),
-    resolveStoryDir: (dir: string) => dir,
-    runDirs: async () => [],
-    availableModelIds: async () => null,
-    architectModel: async () => "none",
-    newScaffoldSession: async () => { throw new Error("not in this test"); },
-    newHandoffSession: async (dir: string) => { opened.push(dir); return open ? open() : session([]); },
-    directEdit: () => ({ ok: false, reason: "not in this test" }),
-    specView: (s: unknown) => s,
-    outDir: () => "",
-  }) as unknown as ServerHost;
 
   const session = (script: unknown[]) =>
     new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))), SCAFFOLD_DEFAULTS,
                            "stories/doorway", spec, [{ n: 1, text: "It happened." }]);
+
+  // Drives the real HOST handoff methods (host.ts) through setHandoffTestHooks, mirroring
+  // scaffold-routes.test.ts -- newHandoffSession is no longer part of ServerHost (Block 6,
+  // PLANS.md), so the story-discovery-adjacent fields are the only ones still faked here.
+  const host = (open?: () => Promise<NextChapterSession>): ServerHost => {
+    setHandoffTestHooks({
+      session: async (dir) => { opened.push(dir); return open ? open() : session([]); },
+    });
+    return {
+      ...HOST,
+      storyCards: async () => [],
+      selectableStory: async (dir: string) => (dir === "stories/doorway" ? "stories/doorway" : null),
+      resolveStoryDir: (dir: string) => dir,
+      runDirs: async () => [],
+      availableModelIds: async () => null,
+      architectModel: async () => "none",
+      outDir: () => "",
+    };
+  };
 
   it("leaves a path that is not one of its own to the rest of the server", async () => {
     assert.equal((await callRoute(handleNextChapterRoutes, "/scaffold/say", {}, host())).handled, false);
@@ -201,10 +208,10 @@ describe("/next-chapter routes", () => {
   it("an open handoff blocks the story editor's save until it ends", async () => {
     const h = host(async () => session([{ edits: [{ field: "characters.ASTER.goal", value: "Leave." }] }]));
     const { handleStoryEditRoutes } = await import("../server/story-edit-routes.ts");
-    const editHost = {
+    const editHost = makeHost({
       selectableStory: h.selectableStory,
       saveStory: async () => ({ ok: true, warnings: [] }),
-    } as unknown as ServerHost;
+    });
     try {
       await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
       assert.ok(LIVE.storyLock);
@@ -283,9 +290,9 @@ describe("readJsonBody", () => {
 
 // -- SECTION ----
 describe("handleRunControl", () => {
-  const host: ServerHost = {
+  const host: ServerHost = makeHost({
     availableModelIds: async () => ["qwen-new", "qwen-test", "qwen-old"],
-  } as unknown as ServerHost;
+  });
 
   describe("/stop", () => {
     it("refuses when no run is in progress", async () => {
@@ -562,13 +569,13 @@ describe("handleRunControl", () => {
 
 // -- SECTION ----
 describe("/runs/llm routes", () => {
-  const host: ServerHost = {
+  const host: ServerHost = makeHost({
     selectableStory: async (d: string) => d.startsWith("stories/") ? d : null,
     resolveStoryDir: (d: string) => "/resolved/" + d,
     runDirs: async () => ["run-1"],
     runLlmLogs: async () => [{ file: "writer.jsonl", agent: "WRITER", role: "writer", models: ["m1"], calls: 3, promptChars: 100, responseChars: 20 }],
     readLlmLog: async (_dir: string, _id: string, file: string) => file === "writer.jsonl" ? '{"ts":"t1"}\n{"ts":"t2"}' : null,
-  } as unknown as ServerHost;
+  });
 
   it("is not one of its routes", async () => {
     const r = await callGet(handleRunLogRoutes, "/nope?dir=stories/x&id=run-1", host);
@@ -613,20 +620,20 @@ describe("/runs/llm routes", () => {
 
 // -- SECTION ----
 describe("/runs/log", () => {
-  const makeHost = (base: string): ServerHost => ({
+  const hostAt = (base: string): ServerHost => makeHost({
     selectableStory: async (d: string) => d.startsWith("stories/") ? d : null,
     resolveStoryDir: () => base,
     runDirs: async () => ["run-1"],
-  } as unknown as ServerHost);
+  });
 
   it("refuses a story it did not discover", async () => {
-    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=../elsewhere&id=run-1", makeHost("/nowhere"));
+    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=../elsewhere&id=run-1", hostAt("/nowhere"));
     assert.equal(r.code, 400);
     assert.match(r.json().reason, /no such story/);
   });
 
   it("refuses a run the story does not have", async () => {
-    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=nope", makeHost("/nowhere"));
+    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=nope", hostAt("/nowhere"));
     assert.equal(r.code, 404);
     assert.match(r.json().reason, /no such run/);
   });
@@ -636,7 +643,7 @@ describe("/runs/log", () => {
     try {
       await mkdir(join(base, "out", "run-1"), { recursive: true });
       await writeFile(join(base, "out", "run-1", "writing-log.jsonl"), '{"a":1}\n{"a":2}', "utf8");
-      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", makeHost(base));
+      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", hostAt(base));
       assert.equal(r.code, 200);
       assert.equal(r.headers["Content-Type"], "application/x-ndjson");
       assert.equal(r.text.split("\n").filter((l: string) => l).length, 2);
@@ -649,7 +656,7 @@ describe("/runs/log", () => {
     const base = await mkdtemp(join(tmpdir(), "runslog-"));
     try {
       await mkdir(join(base, "out", "run-1"), { recursive: true });
-      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", makeHost(base));
+      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", hostAt(base));
       assert.equal(r.code, 404);
       assert.match(r.json().reason, /no writing log/);
     } finally {
@@ -661,7 +668,7 @@ describe("/runs/log", () => {
 // -- SECTION ----
 describe("/log.jsonl", () => {
   it("404s before a run has an output folder", async () => {
-    const host = { outDir: () => "" } as unknown as ServerHost;
+    const host = makeHost({ outDir: () => "" });
     const r = await callGet(handleRunLogRoutes, "/log.jsonl", host);
     assert.equal(r.code, 404);
     assert.match(r.json().reason, /no run yet/);
@@ -671,7 +678,7 @@ describe("/log.jsonl", () => {
     const out = await mkdtemp(join(tmpdir(), "logjsonl-"));
     try {
       await writeFile(join(out, "writing-log.jsonl"), '{"a":1}\n{"a":2}\n{"a":3}', "utf8");
-      const host = { outDir: () => out } as unknown as ServerHost;
+      const host = makeHost({ outDir: () => out });
       const r = await callGet(handleRunLogRoutes, "/log.jsonl", host);
       assert.equal(r.code, 200);
       assert.equal(r.headers["Content-Type"], "application/x-ndjson");

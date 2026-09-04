@@ -28,8 +28,7 @@ export function newOllamaProvider(baseUrl: string, auth: Record<string, string>)
     chatUrl: `${baseUrl}/chat/completions`,
     modelsUrl: `${baseUrl}/models`,
     capabilities: {
-      modelRuntimeInspection: true, fullInventory: false, modelPreparation: false,
-      reasoningEffort: true, explicitLoad: false, explicitUnload: false,
+      modelRuntimeInspection: true, fullInventory: false, reasoningEffort: true,
     },
     headers: () => ({ ...auth }),
     listModels: (timeoutMs) => openAiListModels(baseUrl, timeoutMs, auth),
