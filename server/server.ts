@@ -15,8 +15,6 @@ import { handleRunLogRoutes } from "./run-log-routes.ts";
 import { handleStoryEditRoutes } from "./story-edit-routes.ts";
 import { handleStoryReadRoutes } from "./story-read-routes.ts";
 import { handleCatalogRoutes } from "./catalog-routes.ts";
-import type { NextChapterSession } from "../engine/architect.ts";
-import type { StorySpec } from "../engine/story-spec.ts";
 import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
 import type { StoryJson, ThinkLevel } from "../engine/story-schema.ts";
 import type { TagFacet } from "../engine/catalog-schema.ts";
@@ -107,6 +105,42 @@ export type ScaffoldAcceptResult =
   | { ok: false; kind: "no_story"; status: 400 }
   | { ok: false; reason: string; status: number };
 
+/** One open handoff's full snapshot — what GET /next-chapter and every /next-chapter/* action
+ *  returns. The handoff's own version of ScaffoldState: no `concept`/`gate`/`mode`/`haveDraft` (the
+ *  handoff is never staged and never asks whether a draft exists — it always has one, the story
+ *  already on disk), but `dir`/`chapter`/`edited` in their place. */
+export type HandoffState =
+  | { active: false }
+  | {
+      active: true;
+      dir: string;
+      chapter: number;
+      busy: boolean;
+      stage: "" | "fillGaps" | "verify";
+      edited: boolean;
+      pendingAsk: string;
+      problems: string[];
+      last: unknown;
+      model: string;
+      spec: unknown;
+    };
+
+/** One handoff action's outcome — the handoff's version of ScaffoldActionResult, returning
+ *  HandoffState rather than ScaffoldState. */
+export type HandoffActionResult =
+  | { ok: true; state: HandoffState }
+  | { ok: false; reason: string; status?: number };
+
+/** accept()'s outcome — the handoff's version of ScaffoldAcceptResult. Distinct shape: the handoff's
+ *  "unloadable" carries only `dir`/`error` (no `files`/`warnings`, unlike the scaffold's), there is
+ *  no "needs_folder" (the handoff never asks for one — the directory already exists), and "nothing"
+ *  takes "no_story"'s 400 instead. */
+export type HandoffAcceptResult =
+  | { ok: true; kind: "written"; chapter: number; dir: string; files: string[]; warnings: string[]; status: 200 }
+  | { ok: false; kind: "unloadable"; dir: string; error: string; status: 200 }
+  | { ok: false; kind: "nothing"; status: 400 }
+  | { ok: false; reason: string; status: number };
+
 /** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
 export interface ServerHost {
   storyCards(): Promise<StoryCard[]>;
@@ -126,12 +160,6 @@ export interface ServerHost {
   providerName: string;
   /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
   architectModel(): Promise<string>;
-  /** Open the handoff that prepares the chapter after the last one written; throws if there is none. */
-  newHandoffSession(dir: string, model?: string): Promise<NextChapterSession>;
-  specView(spec: StorySpec): unknown;
-  /** The spec as a plain StoryJson-shaped object (no `scene` alias, no exploded skills) — what the
-   *  scaffold's editor draft loads directly instead of reconciling specView's shape into it. */
-  storyJsonShape(spec: StorySpec, models: { default: string }): unknown;
   /** The open interview's current snapshot, or `{active:false}`. Never mutates or publishes. */
   scaffoldState(): ScaffoldState;
   /** Opens a new interview: `mode` picks the walk ("staged" runs the gated checklist, "oneshot" is
@@ -159,6 +187,20 @@ export interface ServerHost {
   /** Drops the open interview unconditionally — a round in flight discovers this and discards
    *  whatever it was about to commit rather than being resurrected. */
   scaffoldAbandon(): void;
+  /** The open handoff's current snapshot, or `{active:false}`. Never mutates or publishes. */
+  handoffState(): HandoffState;
+  /** Opens the handoff on a discovered story and runs the first round. Refuses (409) while a run is
+   *  in flight, a picked story is still loading, or another writer holds the story-write lock; 400
+   *  if the story has no chapter written yet for the handoff to read. */
+  handoffStart(dir: string, model: string): Promise<HandoffActionResult>;
+  /** A follow-up from the author, in the same edits-only format. */
+  handoffSay(text: string): Promise<HandoffActionResult>;
+  /** Writes the re-authored story over the one on disk; on failure puts back exactly what was there
+   *  and answers `kind:"unloadable"`, leaving the session open to keep refining. */
+  handoffAccept(): Promise<HandoffAcceptResult>;
+  /** Drops the open handoff unconditionally — a round in flight discovers this and discards whatever
+   *  it was about to commit, releasing the story-write lock on its way out. */
+  handoffAbandon(): void;
   /** The current run's output folder, or "" before a run has committed one. */
   outDir(): string;
   /** Schema-derived defaults, thinking levels and caps for the story editor and the new-story form —

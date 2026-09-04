@@ -32,36 +32,43 @@ describe("server/ never imports engine/ at runtime", () => {
   }
 });
 
-// Block 5 (PLANS.md, the decoupling program): the scaffold domain is fully behind ServerHost now —
-// scaffold-routes.ts should not know what a ScaffoldSession is, not even as a type. This is scoped
-// to scaffold-routes.ts alone, not the whole `server/ never imports engine/ at runtime` check above:
-// next-chapter-routes.ts still legitimately imports engine/architect.ts (Block 6 is what retires
-// that), and server.ts still imports engine/story-spec.ts's StorySpec type for specView/
-// storyJsonShape, which the handoff still calls through ServerHost.
-describe("server/scaffold-routes.ts never reaches into the scaffold domain directly", () => {
-  const SCAFFOLD_ROUTES = join(SERVER_DIR, "scaffold-routes.ts");
-
-  it("does not import engine/architect.ts or engine/story-spec.ts, even as a type", () => {
-    const lines = readFileSync(SCAFFOLD_ROUTES, "utf8").split("\n");
-    lines.forEach((line, i) => {
-      const m = line.match(IMPORT_LINE);
-      if (!m) return;
-      const [, , spec] = m;
-      assert.ok(!spec.includes("/engine/architect.ts") && !spec.includes("/engine/story-spec.ts"),
-        `scaffold-routes.ts:${i + 1} imports "${spec}" — the scaffold domain is supposed to be `
-        + `entirely behind ServerHost.scaffold*() now (PLANS.md, Block 5)`);
+// Blocks 5-6 (PLANS.md, the decoupling program): the scaffold AND handoff domains are fully behind
+// ServerHost now — no route module knows what a ScaffoldSession or a NextChapterSession is, not
+// even as a type, and neither engine/architect.ts nor engine/story-spec.ts (the last of it retired
+// once host.ts's own snapshot builders stopped needing specView/storyJsonShape as ServerHost
+// methods) is imported anywhere under server/ at all.
+describe("server/ has no dependency on engine/architect.ts or engine/story-spec.ts, even as a type", () => {
+  for (const file of serverFiles()) {
+    it(`${file} does not import either module`, () => {
+      const lines = readFileSync(join(SERVER_DIR, file), "utf8").split("\n");
+      lines.forEach((line, i) => {
+        const m = line.match(IMPORT_LINE);
+        if (!m) return;
+        const [, , spec] = m;
+        assert.ok(!spec.includes("/engine/architect.ts") && !spec.includes("/engine/story-spec.ts"),
+          `server/${file}:${i + 1} imports "${spec}" — the scaffold and handoff domains are `
+          + `supposed to be entirely behind ServerHost now (PLANS.md, Blocks 5-6)`);
+      });
     });
-  });
+  }
+});
 
-  it("never mentions ScaffoldSession or the SCAFFOLD session variable", () => {
-    // "SCAFFOLD ROUTES" is the file's own header, matching every other route module's naming
-    // convention (CATALOG ROUTES, STORY EDIT ROUTES, ...) — allowed. Actual use of the module-level
-    // session variable always appears as SCAFFOLD followed by a property access, assignment, or
-    // call, never followed by "ROUTES".
-    const text = readFileSync(SCAFFOLD_ROUTES, "utf8");
-    assert.ok(!/\bScaffoldSession\b/.test(text),
-      "scaffold-routes.ts names ScaffoldSession — that type is private to host.ts now");
-    assert.ok(!/\bSCAFFOLD\b(?!\s+ROUTES)/.test(text),
-      "scaffold-routes.ts names SCAFFOLD — the session and its bookkeeping are private to host.ts now");
-  });
+describe("scaffold-routes.ts and next-chapter-routes.ts never name their session objects", () => {
+  // "SCAFFOLD ROUTES" / "NEXT-CHAPTER ROUTES" are the files' own headers, matching every other
+  // route module's naming convention (CATALOG ROUTES, STORY EDIT ROUTES, ...) — allowed. Actual use
+  // of a module-level session variable always appears as SCAFFOLD/HANDOFF followed by a property
+  // access, assignment, or call, never followed by "ROUTES".
+  const cases: { file: string; type: string; varName: string; varException: RegExp }[] = [
+    { file: "scaffold-routes.ts", type: "ScaffoldSession", varName: "SCAFFOLD", varException: /\bSCAFFOLD\b(?!\s+ROUTES)/ },
+    { file: "next-chapter-routes.ts", type: "NextChapterSession", varName: "HANDOFF", varException: /\bHANDOFF\b(?!\s+ROUTES)/ },
+  ];
+  for (const { file, type, varName, varException } of cases) {
+    it(`${file} never mentions ${type} or the ${varName} session variable`, () => {
+      const text = readFileSync(join(SERVER_DIR, file), "utf8");
+      assert.ok(!new RegExp(`\\b${type}\\b`).test(text),
+        `${file} names ${type} — that type is private to host.ts now`);
+      assert.ok(!varException.test(text),
+        `${file} names ${varName} — the session and its bookkeeping are private to host.ts now`);
+    });
+  }
 });

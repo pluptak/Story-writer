@@ -4,7 +4,7 @@
  *  engine/ — routes receive behaviour through this object. */
 import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { storyWriteBlocked, sseWrite, setWhere } from "./live.ts";
+import { LIVE, storyWriteBlocked, sseWrite, setWhere } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { splitMeaning, bibleFrom, canonSkill } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
@@ -17,13 +17,14 @@ import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
   type NextChapterSession, type ImportedCharacter, type StylePreset,
-  type ScaffoldRound, type ScaffoldAccept,
+  type ScaffoldRound, type ScaffoldAccept, type HandoffAccept,
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import type {
   ServerHost, Concept, CatalogUsage, EditorConfig, CatalogConfig,
   ScaffoldState, ScaffoldActionResult, ScaffoldAcceptResult,
+  HandoffState, HandoffActionResult, HandoffAcceptResult,
 } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
@@ -410,6 +411,165 @@ async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSe
   return openNextChapter(await architectDefaults(model), dir, entries);
 }
 
+// -- HANDOFF (the between-chapters interview) --------------------------------------------------
+// HANDOFF and its bookkeeping are private to this module, mirroring SCAFFOLD above. The
+// story-write lock (LIVE.storyLock) is tied 1:1 to HANDOFF's own lifecycle -- set the moment a
+// session opens, cleared on every exit (abandon, a session-open failure, a round discovering it
+// was abandoned, or a successful accept) -- so it lives here too, not at the route.
+let HANDOFF: NextChapterSession | null = null;
+let handoffBusy = false;
+let handoffGen = 0;
+let handoffLast: ScaffoldRound | null = null;
+let handoffStage: "" | "fillGaps" | "verify" = "";
+
+const HANDOFF_ABANDONED = "the handoff was abandoned";
+const HANDOFF_ABANDONED_WHILE_ACCEPTING =
+  "the handoff was abandoned while accepting — story.json may have been rewritten";
+
+function handoffSnapshot(): HandoffState {
+  if (!HANDOFF) return { active: false };
+  return {
+    active: true,
+    dir: HANDOFF.dir,
+    chapter: HANDOFF.chapter,
+    busy: handoffBusy,
+    stage: handoffStage,
+    edited: HANDOFF.edited,
+    pendingAsk: HANDOFF.pendingAsk,
+    problems: HANDOFF.problems,
+    last: handoffLast,
+    model: HANDOFF.defaults.models.architect,
+    spec: specView(HANDOFF.spec),
+  };
+}
+
+function publishHandoffState(): void {
+  sseWrite({ t: "handoff", state: handoffSnapshot() });
+}
+
+/** The one exit for a round that finds itself abandoned after an await. Always releases the
+ *  story-write lock: `handoffAbandon()` deliberately leaves it alone while a round is in flight (an
+ *  `accept` already rewriting story.json keeps its guard until that write, and its restore-on-
+ *  failure, is finished), so releasing it is the abandoned round's own job on its way out. */
+function handoffAbandonedResult(reason: string): { ok: false; reason: string; status: 409 } {
+  LIVE.storyLock = null;
+  publishHandoffState();
+  return { ok: false, reason, status: 409 };
+}
+
+/** Test-only substitution for what handoffStart calls internally: a real model and the real story
+ *  file (openNextChapter reads story.json and the skill bible). Mirrors scaffoldTestHooks, for the
+ *  same reason: without it, a test reaches a real model or the author's real files. Pass null to
+ *  restore the real implementation. */
+let handoffTestHooks: { session?: typeof newHandoffSession } | null = null;
+export function setHandoffTestHooks(hooks: typeof handoffTestHooks): void {
+  handoffTestHooks = hooks;
+}
+
+export function handoffState(): HandoffState { return handoffSnapshot(); }
+
+export async function handoffStart(dir: string, model: string): Promise<HandoffActionResult> {
+  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  const blocked = storyWriteBlocked(LIVE.storyLock);
+  if (blocked) return { ok: false, reason: blocked, status: 409 };
+  const gen = handoffGen;
+  handoffBusy = true; handoffLast = null;
+  try {
+    const session = await (handoffTestHooks?.session ?? newHandoffSession)(dir, model);
+    // Abandoned while the session was being built: it must not resurrect itself.
+    if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
+    HANDOFF = session;
+    // The session now holds a snapshot it will write back on accept: hold the story-write lock
+    // until the handoff ends (accept, abandon, or failure), so an editor save cannot interleave.
+    LIVE.storyLock = `a chapter handoff is open for ${dir}`;
+    setWhere(`preparing chapter ${HANDOFF.chapter} of ${dir}`, false);
+    publishHandoffState();
+    const last = await HANDOFF.propose(stage => { handoffStage = stage; publishHandoffState(); });
+    if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
+    handoffLast = last;
+  } catch (e) {
+    HANDOFF = null;
+    LIVE.storyLock = null;
+    handoffBusy = false; handoffStage = "";
+    publishHandoffState();
+    return { ok: false, reason: (e as Error).message, status: 400 };
+  } finally { handoffBusy = false; handoffStage = ""; }
+  publishHandoffState();
+  return { ok: true, state: handoffSnapshot() };
+}
+
+export async function handoffSay(text: string): Promise<HandoffActionResult> {
+  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  const blocked = storyWriteBlocked(LIVE.storyLock);
+  if (blocked) return { ok: false, reason: blocked, status: 409 };
+  if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
+  const gen = handoffGen;
+  const session = HANDOFF;
+  handoffBusy = true; publishHandoffState();
+  try {
+    const r = await session.say(text);
+    if (gen === handoffGen) handoffLast = r;
+  } catch (e) {
+    if (gen === handoffGen) handoffLast = { kind: "failed", error: (e as Error).message };
+  } finally { handoffBusy = false; }
+  if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
+  publishHandoffState();
+  return { ok: true, state: handoffSnapshot() };
+}
+
+export async function handoffAccept(): Promise<HandoffAcceptResult> {
+  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  const blocked = storyWriteBlocked(LIVE.storyLock);
+  if (blocked) return { ok: false, reason: blocked, status: 409 };
+  if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
+  const gen = handoffGen;
+  const session = HANDOFF;
+  handoffBusy = true; publishHandoffState();
+  let r: HandoffAccept;
+  try { r = await session.accept(); }
+  catch (e) {
+    handoffBusy = false;
+    // A throwing accept that was also abandoned owns the lock abandon left behind.
+    if (gen !== handoffGen) LIVE.storyLock = null;
+    publishHandoffState();
+    return { ok: false, reason: (e as Error).message, status: 500 };
+  }
+  handoffBusy = false;
+  // Abandoned while the write was in flight. story.json may or may not have been rewritten, but
+  // this call commits nothing further -- not even its success -- and releases the story lock
+  // abandon held open for the duration of that write.
+  if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED_WHILE_ACCEPTING);
+  if (r.kind !== "written") {
+    publishHandoffState();
+    return r.kind === "nothing"
+      ? { ok: false, kind: "nothing", status: 400 }
+      : { ok: false, kind: "unloadable", dir: r.dir, error: r.error, status: 200 };
+  }
+  const chapter = session.chapter;
+  HANDOFF = null; handoffLast = null; LIVE.storyLock = null;
+  setWhere("idle", false);
+  publishHandoffState();
+  return { ok: true, kind: "written", chapter, dir: r.dir, files: r.files, warnings: r.warnings, status: 200 };
+}
+
+export function handoffAbandon(): void {
+  // The session dies here, but `handoffBusy` is left alone: if a round is in flight it must keep
+  // the lock until its own finally clears it. The round itself finds a stale `handoffGen` on
+  // return and drops everything it produced. `LIVE.storyLock` goes the same way and for the same
+  // reason -- an `accept` mid-write still needs the guard that keeps an editor save from
+  // interleaving with it -- so an in-flight round releases it instead, via handoffAbandonedResult().
+  HANDOFF = null; handoffLast = null;
+  if (!handoffBusy) LIVE.storyLock = null;
+  handoffGen++;
+  publishHandoffState();
+}
+
+/** Test-only reset for the handoff's private module state, mirroring resetScaffoldForTests(). */
+export function resetHandoffForTests(): void {
+  HANDOFF = null; handoffBusy = false; handoffGen++;
+  handoffLast = null; handoffStage = ""; LIVE.storyLock = null;
+}
+
 /** Read and Zod-parse a story's story.json. Shared by storyForEdit and fullCast so there is exactly
  *  one place that reads the file. On parse failure returns the raw object for the editor to show. */
 async function loadStoryJson(dir: string): Promise<
@@ -491,10 +651,10 @@ export const HOST: ServerHost = {
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await skillBible()),
-  newHandoffSession, specView, storyJsonShape,
   scaffoldState: scaffoldSnapshot,
   scaffoldStart, scaffoldSay, scaffoldApprove, scaffoldConcept, scaffoldImport, scaffoldPromote,
   scaffoldSet, scaffoldAccept, scaffoldAbandon,
+  handoffState, handoffStart, handoffSay, handoffAccept, handoffAbandon,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   editorConfig: (): EditorConfig => {

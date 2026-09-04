@@ -1,5 +1,5 @@
 /** Routes for the HTTP server: next-chapter handoff and run control. */
-import { describe, it } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
@@ -17,6 +17,7 @@ import { handleRunControl } from "../server/run-control-routes.ts";
 import { handleRunLogRoutes } from "../server/run-log-routes.ts";
 import { HttpError, readJsonBody } from "../server/http-util.ts";
 import type { ServerHost } from "../server/server.ts";
+import { HOST, setHandoffTestHooks, resetHandoffForTests } from "../host.ts";
 import { callRoute, callGet, fakeRequest, fakeRawRequest, quiet, ScriptedAgent, makeHost } from "./helpers.ts";
 
 // Constants needed by tests
@@ -41,26 +42,32 @@ const STORY = {
 
 // -- SECTION ----
 describe("/next-chapter routes", () => {
+  afterEach(() => resetHandoffForTests());
   const spec = normalizeSpec(STORY).spec;
   const opened: string[] = [];
-
-  const host = (open?: () => Promise<NextChapterSession>): ServerHost => makeHost({
-    storyCards: async () => [],
-    selectableStory: async (dir: string) => (dir === "stories/doorway" ? "stories/doorway" : null),
-    resolveStoryDir: (dir: string) => dir,
-    runDirs: async () => [],
-    availableModelIds: async () => null,
-    architectModel: async () => "none",
-    newScaffoldSession: async () => { throw new Error("not in this test"); },
-    newHandoffSession: async (dir: string) => { opened.push(dir); return open ? open() : session([]); },
-    directEdit: () => ({ ok: false, reason: "not in this test" }),
-    specView: (s: unknown) => s,
-    outDir: () => "",
-  });
 
   const session = (script: unknown[]) =>
     new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))), SCAFFOLD_DEFAULTS,
                            "stories/doorway", spec, [{ n: 1, text: "It happened." }]);
+
+  // Drives the real HOST handoff methods (host.ts) through setHandoffTestHooks, mirroring
+  // scaffold-routes.test.ts -- newHandoffSession is no longer part of ServerHost (Block 6,
+  // PLANS.md), so the story-discovery-adjacent fields are the only ones still faked here.
+  const host = (open?: () => Promise<NextChapterSession>): ServerHost => {
+    setHandoffTestHooks({
+      session: async (dir) => { opened.push(dir); return open ? open() : session([]); },
+    });
+    return {
+      ...HOST,
+      storyCards: async () => [],
+      selectableStory: async (dir: string) => (dir === "stories/doorway" ? "stories/doorway" : null),
+      resolveStoryDir: (dir: string) => dir,
+      runDirs: async () => [],
+      availableModelIds: async () => null,
+      architectModel: async () => "none",
+      outDir: () => "",
+    };
+  };
 
   it("leaves a path that is not one of its own to the rest of the server", async () => {
     assert.equal((await callRoute(handleNextChapterRoutes, "/scaffold/say", {}, host())).handled, false);

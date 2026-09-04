@@ -20,7 +20,7 @@ import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "../
 import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
          type TagEntry } from "../../engine/catalog-schema.ts";
 import { canonSkill } from "../../engine/skills.ts";
-import { HOST, setScaffoldTestHooks } from "../../host.ts";
+import { HOST, setScaffoldTestHooks, setHandoffTestHooks } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
 import type { ImportedCharacter, NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
 
@@ -88,8 +88,18 @@ export function registerStory(dir: string, getCard: () => Promise<StoryCard> | S
 }
 
 let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
-/** Install the scripted handoff session a handoff test drives; null restores the refusal. */
-export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSession>) | null) { handoffFactory = f; }
+/** Install the scripted handoff session a handoff test drives; null restores the refusal. Wires
+ *  host.ts's handoff test hooks (setHandoffTestHooks) — newHandoffSession is no longer part of
+ *  ServerHost (Block 6, PLANS.md), so overriding the returned host object can no longer reach it. */
+export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSession>) | null) {
+  handoffFactory = f;
+  setHandoffTestHooks(f ? {
+    session: (dir) => {
+      if (!handoffFactory) throw new Error("no handoff scripted for this test");
+      return handoffFactory(dir);
+    },
+  } : null);
+}
 
 type ScaffoldArgs = { idea: string; model: string; mode: "oneshot" | "staged"; tags: string[]; castSize: number; styleId: string };
 let scaffoldFactory: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null = null;
@@ -172,10 +182,6 @@ async function fixtureHost(): Promise<ServerHost> {
     runDirs: async () => [],
     runLlmLogs: async () => notScripted("runLlmLogs"),
     readLlmLog: async () => notScripted("readLlmLog"),
-    newHandoffSession: async (dir) => {
-      if (!handoffFactory) throw new Error("no handoff scripted for this test");
-      return handoffFactory(dir);
-    },
     outDir: () => "",
     catalogEntries: async (kind) => {
       const v = withKind(kind);
