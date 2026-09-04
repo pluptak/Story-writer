@@ -81,10 +81,16 @@ export async function copyFixtureStory(): Promise<string> {
  *  re-reads the file on every /stories, so a card built from a snapshot would go stale the moment
  *  a test writes to the story. Providers keep the page and the disk in step. */
 const extraStories = new Map<string, () => Promise<StoryCard> | StoryCard>();
+const extraRunDirs = new Map<string, string[]>();
 /** Put a temp story on the fixture host's shelf, so /stories, the editor, and the handoff's start
  *  can name it — every route that guards a dir consults the same registry. Cleared per test. */
 export function registerStory(dir: string, getCard: () => Promise<StoryCard> | StoryCard) {
   extraStories.set(dir, getCard);
+}
+
+/** Register temporary retained-run directories for the real /runs/log route. */
+export function registerRunDirs(dir: string, ids: string[]) {
+  extraRunDirs.set(dir, ids);
 }
 
 let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
@@ -179,9 +185,10 @@ async function fixtureHost(): Promise<ServerHost> {
     ],
     selectableStory: async dir => (dir === FIXTURE_DIR || extraStories.has(dir) ? dir : null),
     availableModelIds: async () => null,          // no LM Studio behind the harness — on purpose
-    runDirs: async () => [],
-    runLlmLogs: async () => notScripted("runLlmLogs"),
-    readLlmLog: async () => notScripted("readLlmLog"),
+    runDirs: async dir => extraRunDirs.get(dir) ?? [],
+    // Saved-run GUI tests do not need transcript fixtures; an empty listing is a valid response.
+    runLlmLogs: async () => [],
+    readLlmLog: async () => null,
     outDir: () => "",
     catalogEntries: async (kind) => {
       const v = withKind(kind);
@@ -230,6 +237,7 @@ export const test = base.extend<{ served: number }>({
   served: [async ({ page }: { page: Page }, use: (port: number) => Promise<void>) => {
     resetLive();
     extraStories.clear();
+    extraRunDirs.clear();
     handoffFactory = null;
     scaffoldFactory = null;
     const handle: ServerHandle = startServer(0, await fixtureHost());
