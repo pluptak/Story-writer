@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>story-writer as it is · captured screens</title>
+<style>
+  :root { color-scheme: light; --bg:#f3f1ec; --panel:#fffdfa; --ink:#22221f; --muted:#6f6b62;
+          --line:#ddd8cf; --accent:#5d5a7d; }
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark; --bg:#211e1a; --panel:#2a2723; --ink:#eae6dd; --muted:#a59e92;
+            --line:#3d382f; --accent:#a9a3d6; }
+  }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif; }
+  .wrap { max-width:1080px; margin:0 auto; padding:48px 24px 96px; }
+  h1 { font-size:28px; margin:0 0 6px; letter-spacing:-.01em; }
+  .lede { color:var(--muted); max-width:62ch; margin:0 0 8px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted);
+       border-bottom:1px solid var(--line); padding-bottom:8px; margin:44px 0 18px; font-weight:600; }
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); }
+  .shot { display:block; padding:16px 18px; background:var(--panel); border:1px solid var(--line);
+          border-radius:10px; text-decoration:none; color:inherit; }
+  .shot:hover { border-color:var(--accent); }
+  .shot b { display:block; font-size:16px; margin-bottom:4px; }
+  .shot p { margin:0 0 10px; color:var(--muted); font-size:13.5px; }
+  .file { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--accent); }
+  .file em { font-style:normal; opacity:.75; }
+  code { font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--panel);
+         border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+</style>
+<div class="wrap">
+  <h1>story-writer, as it is</h1>
+  <p class="lede">Every screen below is the running viewer, frozen: the app's own DOM with
+    <code>viewer.css</code> inlined and the scripts dropped. Nothing is redrawn by hand, so what you
+    see is what the app renders today — the baseline a redesign argues against. Interactions are
+    dead; a few screens ship a <em>-dark.html</em> twin.</p>
+  <p class="lede">Retake them all with <code>npm run capture</code>.</p>
+
+      <section>
+        <h2>1 · Browse</h2>
+        <div class="grid">
+        <a class="shot" href="shelf.html">
+          <b>The shelf</b>
+          <p>Where every session starts: one card per story on disk, each carrying its scene question, its cast, and whatever runs and chapters it already has.</p>
+          <span class="file">shelf.html · <em>shelf-dark.html</em></span>
+        </a>
+        <a class="shot" href="story-map.html">
+          <b>The story map</b>
+          <p>One story: its scenes in order, which are written, the retained runs grouped by the chapter they wrote, and chapter 1 opened inline.</p>
+          <span class="file">story-map.html</span>
+        </a>
+        <a class="shot" href="manuscript.html">
+          <b>The manuscript</b>
+          <p>The accepted prose end to end, with the in-browser search open on a hit — the reading surface, as opposed to the writing one.</p>
+          <span class="file">manuscript.html</span>
+        </a>
+        <a class="shot" href="saved-run.html">
+          <b>A saved run, read back</b>
+          <p>A retained writing log replayed read-only: the same prose-and-consult column as the live screen, with the run controls gone and the consult opened.</p>
+          <span class="file">saved-run.html</span>
+        </a>
+        <a class="shot" href="compare.html">
+          <b>Two runs compared</b>
+          <p>The same scene written twice, side by side, with the word-level diff of the accepted prose above the two panes.</p>
+          <span class="file">compare.html</span>
+        </a>
+        </div>
+      </section>
+      <section>
+        <h2>2 · Writing</h2>
+        <div class="grid">
+        <a class="shot" href="live-writing.html">
+          <b>A scene being written</b>
+          <p>The live screen mid-run: drafted prose in the column, the consult that produced it collapsed between the pieces, the agent rail counting model calls, and the writer composing.</p>
+          <span class="file">live-writing.html · <em>live-writing-dark.html</em></span>
+        </a>
+        <a class="shot" href="live-consult.html">
+          <b>A consult, opened</b>
+          <p>The asymmetry made visible: what the character was told, the fact it asked back for, the answer the judge refused, and the fresh instance that never learned it was refused.</p>
+          <span class="file">live-consult.html</span>
+        </a>
+        <a class="shot" href="live-reaction.html">
+          <b>A group reaction</b>
+          <p>One beat put to everyone present at once, in isolation: each reactor's thought and line, with the single deed the writer promoted marked and the rest left as impulses.</p>
+          <span class="file">live-reaction.html</span>
+        </a>
+        <a class="shot" href="live-reader-seat.html">
+          <b>The reader's seat</b>
+          <p>Interactive mode: the writer stops and puts the choice to the author, either as one of its options or as anything they care to type.</p>
+          <span class="file">live-reader-seat.html</span>
+        </a>
+        <a class="shot" href="live-budget.html">
+          <b>The step budget is spent</b>
+          <p>The run stops and asks for more rope: the scene is unfinished, the budget is gone, and nothing else moves until the author answers.</p>
+          <span class="file">live-budget.html</span>
+        </a>
+        <a class="shot" href="run-ended.html">
+          <b>The run ends</b>
+          <p>A finished scene does not evaporate into the shelf — the completed page stays put and the modal asks what to do with it.</p>
+          <span class="file">run-ended.html</span>
+        </a>
+        <a class="shot" href="character-card.html">
+          <b>A character card</b>
+          <p>What one agent actually holds — persona, what it knows, its goal, its voice, its skills and the restriction the judge enforces. Reached from a cast chip, or from a pasted URL.</p>
+          <span class="file">character-card.html</span>
+        </a>
+        </div>
+      </section>
+      <section>
+        <h2>3 · Authoring</h2>
+        <div class="grid">
+        <a class="shot" href="story-editor.html">
+          <b>The story editor</b>
+          <p>story.json as a form: premise and style up top, the scene list, and one card per character holding the three psychology fields, the voice lines, skills and restrictions.</p>
+          <span class="file">story-editor.html · <em>story-editor-dark.html</em></span>
+        </a>
+        <a class="shot" href="story-editor-refused.html">
+          <b>A save the engine refuses</b>
+          <p>The same editor after saving an empty premise: the refusal is the engine's own, reported where the edit was made, and nothing reached the file.</p>
+          <span class="file">story-editor-refused.html</span>
+        </a>
+        <a class="shot" href="scaffold-idea.html">
+          <b>The architect's idea step</b>
+          <p>Starting a story from nothing: the rough idea, the tag vocabulary the catalog owns, a cast size, and the choice between a staged walk and the whole story at once.</p>
+          <span class="file">scaffold-idea.html</span>
+        </a>
+        <a class="shot" href="scaffold-story-gate.html">
+          <b>The architect proposes</b>
+          <p>The staged walk at its first gate: the checklist on the left, the round in the middle, and what has actually been settled — title, premise, tension, facts — on the right.</p>
+          <span class="file">scaffold-story-gate.html</span>
+        </a>
+        <a class="shot" href="scaffold-cast-gate.html">
+          <b>A gate passed, the cast open</b>
+          <p>One gate later: the story gate reads done and the cast gate is open, with the characters proposed as the three psychology fields the engine actually consults.</p>
+          <span class="file">scaffold-cast-gate.html</span>
+        </a>
+        <a class="shot" href="handoff-round.html">
+          <b>Between chapters</b>
+          <p>The architect re-reads what was written and re-authors the cast for the next chapter: each edit as before → after, with the story it will rewrite locked while the panel is open.</p>
+          <span class="file">handoff-round.html</span>
+        </a>
+        <a class="shot" href="handoff-accepted.html">
+          <b>The next chapter is prepared</b>
+          <p>Accept is a two-click confirm, and only then does story.json change on disk. The panel reports what it wrote and hands the story back.</p>
+          <span class="file">handoff-accepted.html</span>
+        </a>
+        </div>
+      </section>
+      <section>
+        <h2>4 · Libraries</h2>
+        <div class="grid">
+        <a class="shot" href="catalog-characters.html">
+          <b>The character library</b>
+          <p>Characters that outlive the story they were written for: the portable half only — no goal, no knows, no reach, because those belong to a position in a particular scene.</p>
+          <span class="file">catalog-characters.html · <em>catalog-characters-dark.html</em></span>
+        </a>
+        <a class="shot" href="catalog-changes.html">
+          <b>An edit, under review</b>
+          <p>Editing a saved entry is a reviewable change, not a silent overwrite: every touched field shows before and after, and any one of them can be reverted on its own.</p>
+          <span class="file">catalog-changes.html</span>
+        </a>
+        <a class="shot" href="catalog-tags.html">
+          <b>The tag vocabulary</b>
+          <p>The faceted vocabulary the architect's idea step offers — genre, dramatic mode, tone — seeded by the engine and extended by the author.</p>
+          <span class="file">catalog-tags.html</span>
+        </a>
+        <a class="shot" href="catalog-skills.html">
+          <b>The skill bible</b>
+          <p>What a named skill is allowed to mean, written once and resolved everywhere — the half of a capability the engine will not let a story redefine per character.</p>
+          <span class="file">catalog-skills.html</span>
+        </a>
+        <a class="shot" href="catalog-styles.html">
+          <b>The style library</b>
+          <p>Reusable writer voices: the prose instruction a new story starts from, kept apart from any one story so it can be picked at the idea step.</p>
+          <span class="file">catalog-styles.html</span>
+        </a>
+        </div>
+      </section>
+</div>
+</html>

@@ -10,7 +10,8 @@
     "typecheck": "npx tsc",
     "lint": "eslint .",
     "test:gui": "playwright test",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "capture": "playwright test -c mockups/capture/capture.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

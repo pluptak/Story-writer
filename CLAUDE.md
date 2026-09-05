@@ -76,6 +76,7 @@ npm test          # engine + route modules (node:test)
 npm run test:gui  # the viewer's mechanical pass (Playwright; npx playwright install chromium on a new machine)
 npm run lint      # eslint, including the viewer's browser modules
 npm run preflight # story-card listing against LM Studio
+npm run capture   # refresh mockups/current/ — the viewer's screens frozen as standalone HTML
 ```
 
 `npm run check` runs the three environment-free checks (`npx tsc`, `npm test`, `eslint .`) together,
