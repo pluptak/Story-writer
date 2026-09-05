@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Story Writer — Style Library</title>
+<style>
+:root{--bg:#151513;--panel:#1c1b18;--panel2:#22211d;--line:#38362f;--muted:#9b988d;--text:#eeeae1;--soft:#c9c4b8;--accent:#9a6cff;--accent2:#b18cff;--green:#73d49b;--danger:#ef6c6c}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 72% -10%,#2a2140 0,#181713 32%,var(--bg) 62%);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}
+.app{min-height:100vh;display:grid;grid-template-columns:72px 220px minmax(500px,1fr) 430px}
+.rail{border-right:1px solid var(--line);padding:18px 12px;background:#11110f}.brand{font-weight:800;font-size:17px;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.4px;margin:5px auto 30px}.rail-icon{width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:#1c1b18;color:#bcb6aa;display:grid;place-items:center;margin:12px auto}.rail-icon.active{color:#fff;border-color:#7651cc;background:#29203c}
+.side{border-right:1px solid var(--line);padding:28px 14px;background:#181714;display:flex;flex-direction:column}.side h4{font-size:11px;letter-spacing:.16em;color:#817d73;margin:0 12px 12px}.nav{padding:9px 12px;border-radius:9px;color:#b4afa4;margin:2px 0}.nav:hover{background:#24221e;color:#eee}.nav.active{background:#2b2540;color:#fff;border-left:2px solid var(--accent)}.spacer{height:28px}.collapse{margin-top:auto;color:#8f8b80;padding:12px}
+.main{padding:34px 36px;min-width:0}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}h1{font:600 27px Georgia,serif;margin:0 0 4px}.subtitle{color:var(--muted);margin-bottom:22px}.actions{display:flex;gap:9px}
+.btn{border:1px solid var(--line);background:#201f1b;color:#ddd8cf;border-radius:9px;padding:10px 14px}.btn:hover{border-color:#5d584d;background:#282620}.btn.primary{background:linear-gradient(135deg,#8c5ce9,#a06bff);border-color:#a67cff;color:white;box-shadow:0 6px 20px #7040c533}.btn.danger{color:#ff9a9a;border-color:#713c3c}.btn.small{padding:7px 10px;font-size:12px}
+.toolbar{display:grid;grid-template-columns:1.5fr .8fr .9fr;gap:9px;margin-bottom:16px}.input,.select{width:100%;background:#201f1b;border:1px solid #403d35;border-radius:9px;color:#ddd8cf;padding:11px 13px;outline:none}.input:focus,.select:focus,textarea:focus{border-color:#8060bb;box-shadow:0 0 0 3px #8060bb22}
+.style{display:grid;grid-template-columns:1fr auto 34px;gap:18px;align-items:center;border:1px solid #35332d;background:linear-gradient(90deg,#1e1d1a,#1b1a18);padding:16px 13px;border-radius:11px;margin:9px 0;transition:.15s}.style:hover{border-color:#5a554b;transform:translateY(-1px)}.style.selected{border-color:#9469e9;box-shadow:0 0 0 1px #9469e933 inset}.sname{font-weight:700;font-size:16px}.desc{color:#aaa49a;margin:3px 0 8px;max-width:650px}.meta{font-size:11px;color:#77736b}.status{font-size:12px;color:#8f8b80;white-space:nowrap}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px}.more{width:32px;height:32px;border:1px solid #3d3a33;background:transparent;color:#aaa49a;border-radius:7px}
+.footer{display:flex;justify-content:space-between;color:#858178;font-size:12px;margin-top:18px}.pages{display:flex;gap:5px}.page{border:1px solid var(--line);background:#201f1b;color:#aaa;border-radius:6px;padding:6px 9px}.page.active{color:#fff;border-color:#8d66dc}
+.editor{border-left:1px solid var(--line);background:linear-gradient(180deg,#1c1b19,#171613);padding:30px 22px;overflow:auto}.editor-head{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start}.close{border:0;background:transparent;color:#aaa;font-size:24px}.id{font-size:11px;color:#77736a;margin-top:5px}.eyebrow{font-size:11px;letter-spacing:.14em;color:#8c887e;text-transform:uppercase}.tabs{display:flex;gap:25px;border-bottom:1px solid var(--line);margin:24px -22px 20px;padding:0 22px}.tab{padding:0 2px 12px;color:#aaa49a;border:0;background:none}.tab.active{color:#b98fff;border-bottom:2px solid #a174f7}.section-title{font-weight:700;font-size:15px;margin:20px 0 4px}.hint{color:#858178;font-size:12px;margin-bottom:12px}label{display:block;color:#c4beb3;font-size:12px;margin:13px 0 7px}textarea{width:100%;min-height:86px;resize:vertical;background:#211f1a;border:1px solid #403d35;border-radius:9px;color:#e3ded5;padding:11px 12px;outline:none}.counter{text-align:right;color:#77736b;font-size:11px;margin-top:-20px;padding-right:9px;position:relative}
+.guides{display:grid;grid-template-columns:1fr 1fr;gap:8px}.guide{background:#211f1a;border:1px solid #403d35;border-radius:9px;padding:10px;color:#c5bfb4}.guide strong{display:block;color:#eeeae1;font-size:12px;margin-bottom:4px}.guide span{font-size:11px;color:#88847a}
+.assistant{background:#211d2d;border:1px solid #4b3b68;border-radius:12px;padding:14px;margin-top:18px}.assistant-head{display:flex;justify-content:space-between;align-items:center}.badge{color:#d0b7ff;font-size:11px;border:1px solid #624b86;border-radius:999px;padding:3px 7px}
+.editor-actions{display:flex;gap:8px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line);position:sticky;bottom:0;background:#171613}.save{margin-left:auto}
+.modal-wrap{display:none;position:fixed;inset:0;background:#0009;z-index:20;align-items:center;justify-content:center;padding:20px}.modal{width:min(700px,100%);background:#201f1b;border:1px solid #49453c;border-radius:15px;padding:22px;box-shadow:0 18px 60px #0008}.modal h2{font:600 22px Georgia,serif;margin:0}.proposal{background:#171613;border:1px solid #3c3931;border-radius:10px;padding:12px;margin:14px 0}.change{padding:10px 0;border-bottom:1px solid #302e28}.change:last-child{border:0}.before{color:#807b71}.after{color:#dfd0ff}.modal-actions{display:flex;justify-content:flex-end;gap:8px}.toast{display:none;position:fixed;right:25px;bottom:25px;background:#2c2a25;border:1px solid #555047;border-radius:10px;padding:11px 15px}
+@media(max-width:1100px){.app{grid-template-columns:62px 180px 1fr}.editor{grid-column:3;border-left:0;border-top:1px solid var(--line)}}@media(max-width:760px){.app{display:block}.rail,.side{display:none}.main{padding:22px 16px}.editor{padding:22px 16px}.toolbar{grid-template-columns:1fr}.style{grid-template-columns:1fr 30px}.status{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="rail"><div class="brand">story-writer</div><div class="rail-icon active">✦</div><div class="rail-icon">♙</div><div class="rail-icon">◇</div></aside>
+<aside class="side">
+<h4>STORIES</h4><div class="nav">My stories</div><div class="nav">＋ New story</div><div class="spacer"></div>
+<h4>WORKSPACE</h4><div class="nav">Architect</div><div class="nav">Story map</div><div class="nav">Write</div><div class="nav">Manuscript</div><div class="nav">Saved runs</div><div class="spacer"></div>
+<h4>LIBRARY</h4><div class="nav">♙ &nbsp;Characters</div><div class="nav active">✦ &nbsp;Styles</div><div class="nav">◇ &nbsp;Skills</div><div class="collapse">‹‹ &nbsp; Collapse</div>
+</aside>
+<main class="main">
+<div class="top"><div><h1>Style Library <span style="font:14px sans-serif;color:#9b9489">ⓘ</span></h1><div class="subtitle">Reusable writing styles you can apply to any story.</div></div><div class="actions"><button class="btn" id="hiddenBtn" onclick="toggleHidden()">◉ &nbsp; Show hidden</button><button class="btn primary" onclick="newStyle()">＋ New style ▾</button></div></div>
+<div class="toolbar"><input class="input" id="search" placeholder="⌕  Search styles…" oninput="render()"><select class="select" id="filter" onchange="render()"><option value="all">All styles</option><option value="visible">Visible only</option><option value="hidden">Hidden only</option></select><select class="select"><option>Recently updated</option><option>Name A–Z</option></select></div>
+<div id="list"></div><div class="footer"><span id="count"></span><span class="pages"><button class="page">‹</button><button class="page active">1</button><button class="page">2</button><button class="page">3</button><button class="page">›</button></span></div>
+</main>
+<section class="editor" id="editor"></section>
+</div>
+
+<div class="modal-wrap" id="modal"><div class="modal">
+<h2>AI style assistant</h2><p style="color:#aaa49a">Describe a change. The assistant proposes edits without changing the saved style.</p>
+<label>Instruction</label><textarea id="instruction" placeholder="e.g. Make the prose more restrained and concrete, but preserve the short-sentence rhythm."></textarea>
+<div class="proposal"><b>Proposed changes</b>
+<div class="change"><strong>Description</strong><div class="before">Before: Flat diction, concrete nouns, nothing announced that the scene can show.</div><div class="after">After: Flat diction and concrete nouns. Reveal only what the scene can show.</div></div>
+<div class="change"><strong>Guidelines</strong><div class="before">Before: Short declarative sentences. Concrete nouns…</div><div class="after">After: Short declarative sentences. Prefer concrete nouns and observable action.</div></div>
+</div>
+<div class="modal-actions"><button class="btn" onclick="closeAI()">Cancel</button><button class="btn primary" onclick="applyAI()">Apply proposal</button></div>
+</div></div><div class="toast" id="toast"></div>
+
+<script>
+let styles=[
+{id:"sty_01J2X8Y4Q9K7Z3T6N2",name:"Close and plain",desc:"Flat diction, concrete nouns, nothing announced that the scene can show.",version:1,visible:true,guidelines:"Third person, past tense. Short declarative sentences. Concrete nouns; adjectives only where a plain noun will not do. Dialogue unadorned — “said”, or no tag at all when the speaker is obvious. No adverbs on speech tags. No similes. Never name an emotion. Write the thing.",notes:"Use when clarity and restraint should keep attention on action.",rules:["Concrete over abstract","Show before explaining","Keep dialogue unadorned","Avoid decorative metaphor"]},
+{id:"sty_02",name:"Pressed close",desc:"Present tense and sensory; sentences run when things speed up and snap when they land.",version:1,visible:true,guidelines:"Present tense. Close sensory detail. Vary sentence length with pressure.",notes:"Useful for pursuit, danger, and compressed scenes.",rules:["Sensory immediacy","Variable rhythm","Stay close to perception"]},
+{id:"sty_03",name:"Lean and cinematic",desc:"Short sentences, visual ordering, whitespace as rhythm.",version:1,visible:true,guidelines:"Visual first. Short paragraphs. Let physical action carry meaning.",notes:"Use for visual, fast-moving scenes.",rules:["Visual ordering","Sparse exposition","Strong paragraph rhythm"]},
+{id:"sty_04",name:"Wry and dry",desc:"Wit under control; humor that never breaks the scene.",version:1,visible:true,guidelines:"Dry observations. Humor remains inside the character's worldview.",notes:"Best for characters whose voice carries understated humor.",rules:["Understatement","Character-grounded wit","Never undercut stakes"]},
+{id:"sty_05",name:"Lyrical and sparse",desc:"Poetic compression; images over explanation.",version:1,visible:false,guidelines:"Precise imagery. Remove explanations that an image can carry.",notes:"Use sparingly for reflective or atmospheric passages.",rules:["Image over explanation","Compressed prose","Controlled metaphor"]}
+];
+let selected=0,editing=null,showHidden=false;
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function render(){let q=document.getElementById("search").value.toLowerCase(),f=document.getElementById("filter").value;
+let a=styles.filter(s=>(showHidden||s.visible)&&(!q||(s.name+s.desc).toLowerCase().includes(q))&&(f==="all"||(f==="visible"&&s.visible)||(f==="hidden"&&!s.visible)));
+document.getElementById("count").textContent=`Showing ${Math.min(5,a.length)} of ${a.length} styles`;
+document.getElementById("list").innerHTML=a.map(s=>{let i=styles.indexOf(s);return `<div class="style ${i===selected?"selected":""}" onclick="select(${i})"><div><div class="sname">${esc(s.name)}</div><div class="desc">${esc(s.desc)}</div><div class="meta">v${s.version}</div></div><div class="status">${s.visible?'<span class="dot"></span>Visible':'◉ &nbsp;Hidden'}</div><button class="more" onclick="event.stopPropagation();select(${i})">•••</button></div>`}).join("")}
+function select(i){selected=i;editing=JSON.parse(JSON.stringify(styles[i]));render();editor()}
+function editor(){let s=editing;document.getElementById("editor").innerHTML=`
+<div class="editor-head"><div><div style="font-weight:700;font-size:19px">${esc(s.name)}</div><div style="color:#8bdaaa;font-size:12px;margin-top:3px">${s.visible?"● Visible":"◉ Hidden"}</div><div class="id">ID: ${esc(s.id)} &nbsp; ⧉</div></div><button class="close" onclick="closeEditor()">×</button></div>
+<div style="display:flex;gap:8px;margin-top:16px"><button class="btn small" onclick="duplicate()">▣ Duplicate</button><button class="btn small" onclick="toggleSelected()">${s.visible?"◉ Hide":"● Restore"}</button><button class="btn small danger" onclick="del()">Delete</button></div>
+<div class="tabs"><button class="tab active">Overview</button><button class="tab" onclick="openAI()">AI Assistant</button><button class="tab">Revisions</button></div>
+<div class="section-title">Style identity</div><div class="hint">Define a reusable writing approach. Keep story-specific instructions outside the library style.</div>
+<label>Name</label><input class="input" id="name" value="${esc(s.name)}">
+<label>Description</label><textarea id="desc">${esc(s.desc)}</textarea>
+<label>Version</label><div style="color:#aaa49a;padding:5px 0">v${s.version}</div>
+<label>Style guidelines</label><textarea id="guidelines" style="min-height:150px">${esc(s.guidelines)}</textarea>
+<div class="section-title">Principles</div><div class="hint">Quickly visible rules that describe the style's behavior.</div>
+<div class="guides">${s.rules.map((r,i)=>`<div class="guide"><strong>${esc(r)}</strong><span>Reusable style principle</span></div>`).join("")}</div>
+<label>Usage notes <span style="color:#777">(optional)</span></label><textarea id="notes" placeholder="When or how you prefer to use this style…">${esc(s.notes)}</textarea>
+<div class="assistant"><div class="assistant-head"><b>✦ Style assistant</b><span class="badge">PROPOSAL ONLY</span></div><div class="hint" style="margin:7px 0 10px">Ask for a tonal, structural, or guideline revision. The assistant preserves fields you don't ask it to change.</div><button class="btn small" onclick="openAI()">Open AI assistant →</button></div>
+<div class="editor-actions"><button class="btn" onclick="cancel()">Cancel</button><button class="btn primary save" onclick="save()">Save changes</button></div>`}
+function save(){editing.name=document.getElementById("name").value.trim()||"Untitled style";editing.desc=document.getElementById("desc").value;editing.guidelines=document.getElementById("guidelines").value;editing.notes=document.getElementById("notes").value;styles[selected]=editing;toast("Style saved");render();editor()}
+function cancel(){editing=JSON.parse(JSON.stringify(styles[selected]));editor();toast("Changes discarded")}
+function newStyle(){let s={id:"sty_"+Math.random().toString(36).slice(2,12).toUpperCase(),name:"New style",desc:"Describe the writing approach in one sentence.",version:1,visible:true,guidelines:"",notes:"",rules:[]};styles.unshift(s);selected=0;editing=JSON.parse(JSON.stringify(s));render();editor();toast("Draft style created — review before saving")}
+function duplicate(){let s=JSON.parse(JSON.stringify(styles[selected]));s.id="sty_"+Math.random().toString(36).slice(2,12).toUpperCase();s.name+=" Copy";styles.splice(selected+1,0,s);selected++;editing=JSON.parse(JSON.stringify(s));render();editor();toast("Independent copy created")}
+function toggleSelected(){styles[selected].visible=!styles[selected].visible;editing.visible=styles[selected].visible;render();editor();toast(styles[selected].visible?"Style restored":"Style hidden")}
+function toggleHidden(){showHidden=!showHidden;document.getElementById("hiddenBtn").innerHTML=showHidden?"◉ &nbsp; Hide hidden":"◉ &nbsp; Show hidden";render()}
+function del(){if(confirm("Permanently delete this style? This cannot be undone.\\n\\nUse Hide for normal cleanup.")){styles.splice(selected,1);selected=Math.max(0,selected-1);editing=styles[selected]?JSON.parse(JSON.stringify(styles[selected])):null;render();if(editing)editor();toast("Style permanently deleted")}}
+function openAI(){document.getElementById("modal").style.display="flex"}function closeAI(){document.getElementById("modal").style.display="none"}
+function applyAI(){if(!document.getElementById("instruction").value.trim()){toast("Add an instruction first");return}editing.desc="Flat diction and concrete nouns. Reveal only what the scene can show.";editing.guidelines="Short declarative sentences. Prefer concrete nouns and observable action. Dialogue unadorned — “said”, or no tag when obvious. No adverbs on speech tags. No similes. Never name an emotion.";closeAI();editor();toast("Proposal applied to unsaved draft — review and save")}
+function closeEditor(){document.getElementById("editor").innerHTML="<div style='color:#777;text-align:center;padding-top:100px'>Select a style to edit.</div>"}
+function toast(t){let x=document.getElementById("toast");x.textContent=t;x.style.display="block";setTimeout(()=>x.style.display="none",2200)}
+render();select(0);
+</script>
+</body>
+</html>

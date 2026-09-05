@@ -21,8 +21,8 @@ import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
 
 // -- SCAFFOLD SUPPORT -------------------------------------------------------
 const SCAFFOLD_DEFAULTS: Defaults = {
-  models: { default: "none", architect: "none" },
-  thinking: { architect: "low" },
+  models: { default: "none", architect: "none", assistant: "none" },
+  thinking: { architect: "low", assistant: "low" },
   requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: false, debug: false,
 };
 

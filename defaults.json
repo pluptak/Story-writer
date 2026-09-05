@@ -1,7 +1,8 @@
 {
   "models": {
     "default": "gemma-4-12b-it-qat-uncensored-heretic",
-    "architect": "gemma-4-12b-it-qat-uncensored-heretic"
+    "architect": "gemma-4-12b-it-qat-uncensored-heretic",
+    "assistant": "gemma-4-12b-it-qat-uncensored-heretic"
   },
   "config": {
     "thinking": "low",

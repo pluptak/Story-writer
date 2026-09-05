@@ -24,6 +24,13 @@ export const LibraryCharacter = z.strictObject({
   voice: z.array(z.string()).default([]).transform(v => v.slice(0, VOICE_SAMPLE_CAP)),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
+  /** Hidden entries stay in the catalog and keep working for stories that already reference them,
+   *  but are excluded from every new-story selection path. Hide/restore never touches `version` —
+   *  it is not a content revision. */
+  hidden: z.boolean().default(false),
+  /** Epoch ms of the last content save. Defaults to 0 so a legacy entry (saved before this field
+   *  existed) sorts as "never updated" rather than fabricating a save time it never had. */
+  updatedAt: z.number().int().nonnegative().default(0),
 });
 
 export type LibraryCharacter = z.infer<typeof LibraryCharacter>;

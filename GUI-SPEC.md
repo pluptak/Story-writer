@@ -274,9 +274,9 @@ the editor.
 ## Character catalog
 
 ```
-GET  /catalog?kind=characters        → { ok:true, entries[] }
+GET  /catalog?kind=characters&includeHidden=  → { ok:true, entries[] }
                                        | { ok:false, reason }
-GET  /catalog/config                 → { tagFacets, caps }
+GET  /catalog/config                 → { tagFacets, caps, assistFields[] }
 GET  /catalog/usage                  → { ok:true, usage }   (read-only derivation, below)
 GET  /catalog/entry?kind=&id=        → { ok:true, entry }
                                        | { ok:false, reason }        (400 no id · 404 no such entry)
@@ -286,6 +286,14 @@ POST /catalog/save   { kind?, entry }→ { ok:true, entry, problems[] }
                                        | { ok:false, reason, issues? }
 POST /catalog/delete { kind?, id }   → { ok:true }
                                        | { ok:false, reason }        (400 no id/kind · 404 no such entry)
+POST /catalog/visibility { kind?, id, hidden } → { ok:true, entry }
+                                       | { ok:false, reason }        (400 no id/bad hidden/no visibility on kind · 404 no such entry)
+POST /catalog/assist { kind?, mode, fields[], instruction, character }
+                                      → { ok:true, proposal:{draft, changes[], warnings[]} }
+                                       | { ok:false, reason }        (400: bad kind/mode/fields/instruction/character)
+                                       | { ok:false, kind, reason, issues? }  (200: model_unavailable ·
+                                         provider_error · malformed_reply · invalid_draft — expected
+                                         failures, not a client error)
 ```
 
 A catalog is **global**: it lives beside `defaults.json`, not inside a story. So unlike the story
@@ -298,14 +306,42 @@ validated in the host because it arrives from a query string. Every route above 
 kind-parameterised, so a new kind is a registry entry in `engine/catalog.ts` and never a new route.
 
 A **character** entry is the **portable half** of a character: `id`, `version`, `name`, `tags[]`,
-`portablePersona`, `belief`, `impulse`, `voice[]`, `skills[]`, `restrictions[]`. There is
-deliberately no `goal` and no `knows` — those are story-positional — and no `model` or `maxRetries`,
-which are run configuration. What a catalog entry is and how it composes into a `CharacterDef` is
-[Architect.MD](Architect.MD)'s *Character catalog*. The other three: a **tag** is `id`, `version`,
-`facet`, `label`; a **style** is `id`, `version`, `name`, `tags[]`, `description`, `voice`; a
-**skill** is `id`, `version`, `name`, `meaning`, `tags[]`, and its `meaning` is the one prose field
-in any kind the schema refuses rather than reports missing ([Architect.MD](Architect.MD)'s *Skill
-bible* says why).
+`portablePersona`, `belief`, `impulse`, `voice[]`, `skills[]`, `restrictions[]`, `hidden`,
+`updatedAt`. There is deliberately no `goal` and no `knows` — those are story-positional — and no
+`model` or `maxRetries`, which are run configuration. What a catalog entry is and how it composes
+into a `CharacterDef` is [Architect.MD](Architect.MD)'s *Character catalog*. The other three: a
+**tag** is `id`, `version`, `facet`, `label`; a **style** is `id`, `version`, `name`, `tags[]`,
+`description`, `voice`; a **skill** is `id`, `version`, `name`, `meaning`, `tags[]`, and its
+`meaning` is the one prose field in any kind the schema refuses rather than reports missing
+([Architect.MD](Architect.MD)'s *Skill bible* says why).
+
+**`hidden`/`updatedAt` exist only on a character entry today** — every other kind's schema omits
+them, and `/catalog/visibility` refuses a kind whose schema has no `hidden` field to set. A hidden
+character stays in the catalog and keeps working for any story that already imported it; it is
+excluded from `GET /catalog` unless `includeHidden=1` is passed (the character catalog editor is the
+one caller that passes it — every selectable-characters surface, including the new-story cast
+picker's `loadLibrary()` cache and the library picker, wants the default exclusion, and does not rely
+on the browser to apply it) and from the scaffold's server-side character import regardless of the
+id list it is asked for. `/catalog/visibility` never touches `version` or content — hiding is not a
+revision. `updatedAt` is stamped by `/catalog/save` on every content save (epoch ms); a legacy entry
+saved before this field existed loads with `updatedAt: 0` via the schema's own default, not a
+migration.
+
+**`/catalog/assist`, today, is characters-only** (`kind` other than `"characters"` is `400`) and
+proposes a change to a subset of one character's portable fields — `mode` is `create`, `revise` or
+`review`; `fields` names which of `name`, `portablePersona`, `belief`, `impulse`, `voice`, `skills`,
+`restrictions` the author selected (`GET /catalog/config`'s `assistFields` is the same list, so the
+GUI never hand-copies it); `character` is the draft as the editor holds it. It never writes to the
+catalog — the caller applies `proposal.draft` to its own local draft and still has to `POST
+/catalog/save` to persist anything. **The proposal is server-constrained, not model-trusted**: a
+field outside `fields` is copied from the input character exactly regardless of what the model's
+reply said about it, and `proposal.changes` is the engine's own before/after diff over the
+constrained result — never the model's own claim about what it changed. `review` may return
+`changes: []` with only `warnings` (its findings) when it has no concrete correction to propose;
+that is a complete, successful outcome, not a failure. The assistant runs on `defaults.json`'s
+`models.assistant`, a model slot that — unlike `models.architect` — does **not** fall back to
+`models.default`: an unconfigured assistant model is `{ok:false, kind:"model_unavailable"}`, not a
+silent run on the story's own model ([defaults.md](defaults.md) says why).
 
 `tags` and `skills` **seed** — a `GET` against a catalog whose file does not exist yet answers with
 the engine's starting vocabulary rather than an empty list, and the first save writes that whole seed

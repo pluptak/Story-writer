@@ -280,7 +280,14 @@ export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, 
 
   const existingIndex = catalog.entries.findIndex((e: any) => e.id === entry.id);
   const entryToSave = { ...entry };
+  // Only kinds whose schema carries `updatedAt` (characters, for now) get a save timestamp — a
+  // content save is what the field means, not every catalog kind's own version bump.
+  if ("updatedAt" in entryToSave) entryToSave.updatedAt = Date.now();
   if (existingIndex >= 0) {
+    // A content save is not a visibility change: an entry-shaped payload that omits `hidden`
+    // (every caller but the dedicated visibility path) must not silently un-hide it via the
+    // schema's own default.
+    if ("hidden" in entryToSave) entryToSave.hidden = catalog.entries[existingIndex].hidden;
     entryToSave.version = catalog.entries[existingIndex].version + 1;
     catalog.entries[existingIndex] = entryToSave;
   } else {
@@ -301,6 +308,48 @@ export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, 
   }
 
   return { ok: true, entry: entryToSave, problems };
+}
+
+/** Whether a catalog kind's schema carries a `hidden` field at all — currently characters only.
+ *  Read off the entry schema's own shape rather than hardcoded, so a kind that gains the field
+ *  later picks this up without a second place to update. */
+export function supportsVisibility(kind: CatalogKind): boolean {
+  const reg = REGISTRY[kind];
+  if (!reg) return false;
+  return "hidden" in (reg.entry as z.ZodObject<any>).shape;
+}
+
+/** Flip one entry's `hidden` flag without touching content or bumping `version` — hide/restore is
+ *  never a content revision. Refuses kinds whose schema does not carry `hidden` at all, since
+ *  stamping the field on an entry a strict schema does not declare would make the whole catalog
+ *  fail to parse on the next load. */
+export async function setVisibility(kind: CatalogKind, id: string, hidden: boolean, path?: string):
+  Promise<{ ok: true; entry: any } | { ok: false; reason: string; missing?: true }> {
+  if (!supportsVisibility(kind)) {
+    return { ok: false, reason: `catalog kind "${kind}" has no visibility to set` };
+  }
+
+  const catalog = await loadCatalog(kind, path);
+  const existingIndex = catalog.entries.findIndex((e: any) => e.id === id);
+  if (existingIndex === -1) {
+    return { ok: false, reason: `entry "${id}" not found`, missing: true };
+  }
+
+  catalog.entries[existingIndex] = { ...catalog.entries[existingIndex], hidden };
+
+  const persistResult = await persist(kind, catalog, path);
+  if (!persistResult.ok) {
+    return persistResult;
+  }
+
+  // Verify the visibility actually took.
+  const reloaded = await loadCatalog(kind, path);
+  const saved = reloaded.entries.find((e: any) => e.id === id);
+  if (!saved || saved.hidden !== hidden) {
+    return { ok: false, reason: "saved but does not load: entry not found or visibility mismatch" };
+  }
+
+  return { ok: true, entry: saved };
 }
 
 /** Remove one entry by id, then persist. Removing an id that is not there is `ok: false` with `missing: true`. */

@@ -121,6 +121,30 @@ describe("/catalog (GET)", () => {
     assert.equal(r.json().ok, false);
     assert.match(r.json().reason, /unknown kind/);
   });
+
+  it("passes includeHidden:false to the host when the query param is absent", async () => {
+    let captured: { includeHidden?: boolean } | undefined;
+    const h = makeHost({
+      catalogEntries: async (_kind: string, opts?: { includeHidden?: boolean }) => {
+        captured = opts;
+        return { ok: true as const, entries: [] };
+      },
+    });
+    await callGet(handleCatalogRoutes, "/catalog", h);
+    assert.equal(captured?.includeHidden, false);
+  });
+
+  it("passes includeHidden:true to the host when includeHidden=1", async () => {
+    let captured: { includeHidden?: boolean } | undefined;
+    const h = makeHost({
+      catalogEntries: async (_kind: string, opts?: { includeHidden?: boolean }) => {
+        captured = opts;
+        return { ok: true as const, entries: [] };
+      },
+    });
+    await callGet(handleCatalogRoutes, "/catalog?includeHidden=1", h);
+    assert.equal(captured?.includeHidden, true);
+  });
 });
 
 // -- SECTION ----
@@ -402,9 +426,192 @@ describe("/catalog/delete (POST)", () => {
 });
 
 // -- SECTION ----
+describe("/catalog/visibility (POST)", () => {
+  it("hides an entry", async () => {
+    const h = makeHost({
+      catalogSetVisibility: async (kind: string, id: string, hidden: boolean) =>
+        ({ ok: true as const, entry: { ...CHAR_ONE, hidden } }),
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { id: "char-one", hidden: true }, h);
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+    assert.equal(r.body.entry.hidden, true);
+  });
+
+  it("restores an entry", async () => {
+    const h = makeHost({
+      catalogSetVisibility: async (kind: string, id: string, hidden: boolean) =>
+        ({ ok: true as const, entry: { ...CHAR_ONE, hidden } }),
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { id: "char-one", hidden: false }, h);
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+    assert.equal(r.body.entry.hidden, false);
+  });
+
+  it("is 400 when no id is provided", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { hidden: true }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /no id/);
+  });
+
+  it("is 400 when hidden is not a boolean", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { id: "char-one", hidden: "yes" }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /boolean/);
+  });
+
+  it("is 404 when the entry does not exist", async () => {
+    const h = makeHost({
+      catalogSetVisibility: async () => ({ ok: false as const, reason: "entry \"nonexistent\" not found", status: 404 }),
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { id: "nonexistent", hidden: true }, h);
+    assert.equal(r.code, 404);
+    assert.equal(r.body.ok, false);
+    assert.match(r.body.reason, /not found/);
+  });
+
+  it("is 400 when the kind has no visibility to set", async () => {
+    const h = makeHost({
+      catalogSetVisibility: async () => ({ ok: false as const, reason: "catalog kind \"tags\" has no visibility to set" }),
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { kind: "tags", id: "genre-scifi", hidden: true }, h);
+    assert.equal(r.code, 400);
+    assert.equal(r.body.ok, false);
+    assert.match(r.body.reason, /no visibility to set/);
+  });
+
+  it("passes kind to the host when provided", async () => {
+    let capturedKind = "";
+    const h = makeHost({
+      catalogSetVisibility: async (kind: string) => {
+        capturedKind = kind;
+        return { ok: true as const, entry: CHAR_ONE };
+      },
+    });
+    await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { kind: "companions", id: "char-one", hidden: true }, h);
+    assert.equal(capturedKind, "companions");
+  });
+
+  it("defaults kind to 'characters' when not provided", async () => {
+    let capturedKind = "";
+    const h = makeHost({
+      catalogSetVisibility: async (kind: string) => {
+        capturedKind = kind;
+        return { ok: true as const, entry: CHAR_ONE };
+      },
+    });
+    await callRoute(handleCatalogRoutes, "/catalog/visibility",
+      { id: "char-one", hidden: true }, h);
+    assert.equal(capturedKind, "characters");
+  });
+});
+
+// -- SECTION ----
+// The route only ever validates request SHAPE here; what the model actually does is
+// engine/catalog-assist.ts's own suite (tests/catalog-assist.test.ts). `host.catalogAssist` is
+// stubbed directly, the same way `/story/suggest`'s route tests stub `host.suggestEdits`.
+describe("/catalog/assist (POST)", () => {
+  const VALID_BODY = {
+    mode: "revise", fields: ["belief"], instruction: "sharpen it", character: CHAR_ONE,
+  };
+
+  it("dispatches a valid request and returns the proposal", async () => {
+    const h = makeHost({
+      catalogAssist: async (mode: string, fields: string[], instruction: string, character: unknown) => ({
+        ok: true as const,
+        proposal: {
+          draft: { ...(character as object), belief: "A sharper belief." },
+          changes: [{ field: "belief", before: "Curiosity is virtue", after: "A sharper belief." }],
+          warnings: [],
+        },
+      }),
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", VALID_BODY, h);
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+    assert.equal(r.body.proposal.changes[0].field, "belief");
+  });
+
+  it("is 400 when kind is not characters", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", { ...VALID_BODY, kind: "styles" }, makeHost());
+    assert.equal(r.code, 400);
+    assert.equal(r.body.ok, false);
+    assert.match(r.body.reason, /does not support "styles"/);
+  });
+
+  it("is 400 for an unsupported mode", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", { ...VALID_BODY, mode: "rewrite" }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /mode must be one of/);
+  });
+
+  it("is 400 when no fields are selected", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", { ...VALID_BODY, fields: [] }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /no fields selected/);
+  });
+
+  it("is 400 for a field outside the host's assistFields allowlist", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", { ...VALID_BODY, fields: ["goal"] }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /unsupported field "goal"/);
+  });
+
+  it("is 400 for an empty instruction", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", { ...VALID_BODY, instruction: "  " }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /no instruction/);
+  });
+
+  it("is 400 when character is missing", async () => {
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", { ...VALID_BODY, character: undefined }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /no character/);
+  });
+
+  it("passes an expected host failure through as 200 with its kind, not a 4xx", async () => {
+    const h = makeHost({
+      catalogAssist: async () => ({ ok: false as const, kind: "model_unavailable", reason: "no assistant model is configured" }),
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", VALID_BODY, h);
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, false);
+    assert.equal(r.body.kind, "model_unavailable");
+  });
+
+  it("passes issues through for an invalid_draft failure", async () => {
+    const h = makeHost({
+      catalogAssist: async () => ({ ok: false as const, kind: "invalid_draft", reason: "the proposal did not pass validation", issues: ["name: too short"] }),
+    });
+    const r = await callRoute(handleCatalogRoutes, "/catalog/assist", VALID_BODY, h);
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, false);
+    assert.deepEqual(r.body.issues, ["name: too short"]);
+  });
+
+  it("defaults kind to 'characters' when the body omits it", async () => {
+    let sawIt = false;
+    const h = makeHost({
+      catalogAssist: async () => { sawIt = true; return { ok: true as const, proposal: { draft: {}, changes: [], warnings: [] } }; },
+    });
+    const { kind: _kind, ...withoutKind } = VALID_BODY as Record<string, unknown>;
+    await callRoute(handleCatalogRoutes, "/catalog/assist", withoutKind, h);
+    assert.equal(sawIt, true);
+  });
+});
+
+// -- SECTION ----
 describe("/catalog/config (GET)", () => {
   it("returns the host's catalog-config projection verbatim", async () => {
-    const config = { tagFacets: ["genre", "dramaticMode", "tone"] as const, caps: { voiceSamples: 3 } };
+    const config = { tagFacets: ["genre", "dramaticMode", "tone"] as const, caps: { voiceSamples: 3 }, assistFields: [] as string[] };
     const host = makeHost({ catalogConfig: () => config });
     const r = await callGet(handleCatalogRoutes, "/catalog/config", host);
     assert.equal(r.code, 200);
@@ -441,6 +648,16 @@ describe("route dispatch edge cases", () => {
 
   it("returns false for /catalog/delete GET (not POST)", async () => {
     const r = await callGet(handleCatalogRoutes, "/catalog/delete", makeHost());
+    assert.equal(r.handled, false);
+  });
+
+  it("returns false for /catalog/visibility GET (not POST)", async () => {
+    const r = await callGet(handleCatalogRoutes, "/catalog/visibility", makeHost());
+    assert.equal(r.handled, false);
+  });
+
+  it("returns false for /catalog/assist GET (not POST)", async () => {
+    const r = await callGet(handleCatalogRoutes, "/catalog/assist", makeHost());
     assert.equal(r.handled, false);
   });
 });

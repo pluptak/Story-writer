@@ -471,6 +471,118 @@ below: **The world timeline**.
   the one place an author could correct a clause does not display it; and the shelf's
   **"Draft · architect" badge** under Open design questions below.
 
+- **The dedicated character library needs its backend contract.** The GUI now has the character
+  workspace from `mockups/architect/character-editor.html`: a full-width list, right-side inspector,
+  local editing draft, safe lifecycle controls and a proposal-only assistant. It deliberately uses the
+  existing `/catalog?kind=characters` and `/catalog/save` routes where they already work, and mocks the
+  rest so the interaction can be reviewed before the persistence design lands. The mock boundary is
+  temporary and must not become a second, browser-only character store.
+
+  **The reusable model.** `LibraryCharacter` remains the portable half only:
+
+  ```text
+  id, version, name, hidden, updatedAt,
+  portablePersona, belief, impulse, voice[], skills[], restrictions[]
+  ```
+
+  `tags` do not belong in this model or in any character-library request. `goal`, `knows`, `model` and
+  retry settings remain story-specific and are not accepted by the character library. `voice` is capped
+  at `VOICE_SAMPLE_CAP` (currently three) in the same way as the story character schema.
+
+  **Endpoint contract to implement.** Keep the existing catalog routes as a compatibility bridge while
+  the dedicated routes are added. Once the dedicated routes exist, move the GUI client to them and remove
+  the optional/fallback calls in `server/gui/viewer/character-library.js`.
+
+  | route | request | response | behaviour |
+  | --- | --- | --- | --- |
+  | `GET /characters?includeHidden=0\|1` | optional `search`, `sort` | `{ ok: true, entries: LibraryCharacter[] }` | default excludes hidden entries; `includeHidden=1` is explicit recovery/browse mode |
+  | `POST /characters` | `{ entry: LibraryCharacterDraft }` | `{ ok: true, entry, problems[] }` | create a new id, set `version: 1`, set `hidden: false`, set `updatedAt` |
+  | `PUT /characters/:id` | `{ entry: LibraryCharacterDraft }` | `{ ok: true, entry, problems[] }` | validate identity and capabilities, bump version and `updatedAt` |
+  | `POST /characters/:id/duplicate` | empty body | `{ ok: true, entry }` | copy every reusable field, allocate a new id, reset lifecycle metadata, append ` Copy` to the name only as a starting value |
+  | `POST /characters/:id/hide` | empty body | `{ ok: true, entry }` | persist `hidden: true`; hidden is the normal removal action |
+  | `POST /characters/:id/restore` | empty body | `{ ok: true, entry }` | persist `hidden: false` |
+  | `DELETE /characters/:id` | empty body | `{ ok: true }` | permanent removal; return `404` for an unknown id. The GUI already deletes for real against `/catalog/delete` — this route only moves it onto the dedicated surface |
+  | `POST /characters/:id/import` | `{ storyDir }` or the active story context | `{ ok: true, character }` | return only the reusable fields needed by the story/scaffold import path; never write `goal` or `knows` here |
+  | `POST /characters/assist` | `{ mode: \"create\"\|\"revise\", instruction, character }` | proposal response below | validate and return a proposal; never persist the character |
+
+  The existing `/catalog/check` validation should be reused or extracted rather than copied. A character
+  save must reject an empty name, normalize list fields, cap voice samples and retain advisory warnings
+  for missing belief, impulse, voice, portable persona or unresolved capabilities. Warnings do not block
+  a save unless the existing catalog policy changes deliberately.
+
+  **Migration.** Change `engine/catalog-schema.ts` so `LibraryCharacter` has `hidden` and `updatedAt`
+  defaults and no `tags`. When loading an old `catalog-characters.json`, drop the obsolete `tags` key,
+  default old entries to visible, and derive a stable initial `updatedAt` from the file migration time or
+  entry version. Do not silently drop unknown non-tag fields without a warning. Persist atomically using
+  the existing temp-file/rename path. The story import path in `host.ts` must filter hidden entries by
+  default and continue returning only `portablePersona`, `belief`, `impulse`, `voice`, `skills` and
+  `restrictions`.
+
+  **Tags leave the character model entirely, not just its editor.** A tag is the architect's during
+  story creation and the style editor's; a character was never one of its subjects. So dropping the
+  field is not enough — two readers still take a character's tags as an input and have to go with it,
+  or they will keep deriving counts from a field nothing writes:
+
+  - `host.ts`'s `/catalog/usage` derivation counts a tag's `characters` by folding every character's
+    `tags[]`. That whole loop goes, and `CatalogUsage.tags` loses its `characters` member — a tag is
+    used by styles and skills, and by nothing else.
+  - `catalog-view.js`'s `tagUsageHtml()` renders the `used by N characters` half of that line, and the
+    generic character row renders a `cat-tags` string. Both go with the count behind them.
+
+  Until they do, every save from the character library silently zeroes that character's contribution
+  to a number the tag page still displays. Doing this in the same block as the schema change is what
+  keeps the window shut.
+
+  **Assistant proposal shape.** The assistant receives only the character draft and the instruction;
+  it must not receive a complete `StorySpec` or story transcript. It returns:
+
+  ```json
+  {
+    "ok": true,
+    "proposal": {
+      "draft": { "name": "...", "portablePersona": "...", "belief": "...", "impulse": "...", "voice": [], "skills": [], "restrictions": [] },
+      "changes": [
+        { "field": "portablePersona", "before": "...", "after": "..." }
+      ],
+      "unchanged": ["belief", "voice", "skills", "restrictions"],
+      "note": "..."
+    }
+  }
+  ```
+
+  `mode: "create"` may fill an empty draft; `mode: "revise"` must preserve fields not justified by the
+  instruction. The server must validate the proposed draft with the character schema before returning it.
+  Invalid model output is `{ ok: false, error, issues? }`, not a partial proposal. Applying a proposal in
+  the GUI only replaces the unsaved inspector draft; the user still has to press Save changes. The server
+  must never save from `/characters/assist`.
+
+  **Replace the current mocks in this order.**
+
+  1. Add `hidden` and `updatedAt` to the schema, loader migration and catalog tests, and take `tags` out
+     of `LibraryCharacter` together with its two readers above.
+  2. Add character-specific host methods and routes, initially delegating validation and atomic writes to
+     the existing catalog implementation.
+  3. Change the GUI load, hide, restore and duplicate actions from optimistic/local behaviour to
+     response-driven updates. A failed lifecycle request must restore the previous row and show the
+     server reason. Delete already works this way against `/catalog/delete`; it only needs repointing
+     once the dedicated route exists.
+  4. Add the import route or return the existing scaffold import shape from the character endpoint. The
+     normal picker must exclude hidden characters; a deliberate show-hidden control may expose them.
+  5. Add `characterAssist` to the architect/agent boundary with a dedicated prompt and JSON parser. Do
+     not reuse whole-story `suggestEdits` by passing a partial object through it: that prompt can edit
+     story fields and has the wrong preservation contract.
+  6. Replace the deterministic browser fallback with the real proposal response and render the server's
+     exact `changes` list. Keep Apply proposal and Save changes as two separate actions.
+  7. Add route, schema, migration, import and GUI tests for duplicate independence, hidden filtering,
+     permanent-delete confirmation, proposal non-persistence and unchanged-field preservation.
+
+  **Done when.** A character can be created, edited, duplicated, hidden, restored, permanently deleted
+  after strong confirmation and imported without story-specific fields. A failed request cannot lose a
+  saved character or leave the list claiming an operation succeeded. An assistant proposal visibly names
+  every changed field, does not persist by itself, validates through the same character rules as manual
+  editing and leaves unrelated fields byte-for-byte unchanged. No character request or persisted entry
+  contains `tags`.
+
 ## The world timeline
 
 **Partly shipped — everything but the repair entity is in.** The ledger, the zero-inference firing

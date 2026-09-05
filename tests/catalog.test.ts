@@ -7,7 +7,7 @@ import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "../engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, supportsVisibility, skillBible } from "../engine/catalog.ts";
 import { WARN } from "../engine/warnings.ts";
 import { SPECIAL_SKILL_CATALOG } from "../engine/skills.ts";
 
@@ -130,6 +130,100 @@ describe("saveEntry and loadCatalog", () => {
       assert.equal(loaded.entries.length, 1);
       assert.equal(loaded.entries[0].version, 2);
       assert.equal(loaded.entries[0].portablePersona, "A master painter");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a new character save gets version 1 and a nonzero updatedAt", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "catalog-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const before = Date.now();
+      const save = await saveEntry("characters", {
+        id: "carol", name: "Carol", portablePersona: "A pilot",
+        belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+      }, path);
+      assert.equal(save.ok, true);
+      if (save.ok) {
+        assert.equal(save.entry.version, 1);
+        assert.ok(save.entry.updatedAt >= before, "updatedAt should be set to the save time");
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a content replacement bumps version and updates updatedAt", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "catalog-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const save1 = await saveEntry("characters", {
+        id: "dana", name: "Dana", portablePersona: "A scout",
+        belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+      }, path);
+      assert.equal(save1.ok, true);
+      const firstUpdatedAt = save1.ok ? save1.entry.updatedAt : 0;
+
+      await new Promise(r => setTimeout(r, 2));
+      const save2 = await saveEntry("characters", {
+        id: "dana", name: "Dana", portablePersona: "A seasoned scout",
+        belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+      }, path);
+      assert.equal(save2.ok, true);
+      if (save2.ok) {
+        assert.equal(save2.entry.version, 2);
+        assert.ok(save2.entry.updatedAt >= firstUpdatedAt, "updatedAt should advance on a content save");
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a legacy character with no hidden/updatedAt on disk loads as visible with updatedAt 0", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "catalog-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const legacy = {
+        entries: [{
+          id: "eve", version: 1, name: "Eve", tags: [], portablePersona: "A hacker",
+          belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+        }],
+      };
+      await writeFile(path, JSON.stringify(legacy, null, 2) + "\n", "utf8");
+
+      const loaded = await loadCatalog("characters", path);
+      assert.equal(loaded.entries[0].hidden, false);
+      assert.equal(loaded.entries[0].updatedAt, 0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a content save does not un-hide an already-hidden character", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "catalog-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const hidden = {
+        entries: [{
+          id: "finn", version: 1, name: "Finn", tags: [], portablePersona: "A smuggler",
+          belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+          hidden: true, updatedAt: 1,
+        }],
+      };
+      await writeFile(path, JSON.stringify(hidden, null, 2) + "\n", "utf8");
+
+      // The editor's save payload never carries `hidden` — it must not be resurrected as visible
+      // by the schema's own default just because the request omitted it.
+      const save = await saveEntry("characters", {
+        id: "finn", name: "Finn", portablePersona: "A retired smuggler",
+        belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+      }, path);
+      assert.equal(save.ok, true);
+      if (save.ok) {
+        assert.equal(save.entry.hidden, true, "content save must preserve hidden state");
+        assert.equal(save.entry.version, 2, "content save still bumps version");
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -278,6 +372,100 @@ describe("saveEntry validation", () => {
       const loaded = await loadCatalog("characters", path);
       assert.equal(loaded.entries.length, 1);
       assert.equal(loaded.entries[0].id, "original");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("supportsVisibility", () => {
+  it("is true for characters", () => {
+    assert.equal(supportsVisibility("characters"), true);
+  });
+
+  it("is false for kinds whose schema has no hidden field", () => {
+    assert.equal(supportsVisibility("tags"), false);
+    assert.equal(supportsVisibility("styles"), false);
+    assert.equal(supportsVisibility("skills"), false);
+  });
+});
+
+describe("setVisibility", () => {
+  it("hides an entry without bumping version or touching content", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "visibility-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const save = await saveEntry("characters", {
+        id: "hank", name: "Hank", portablePersona: "A ranger",
+        belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+      }, path);
+      assert.equal(save.ok, true);
+
+      const hide = await setVisibility("characters", "hank", true, path);
+      assert.equal(hide.ok, true);
+      if (hide.ok) {
+        assert.equal(hide.entry.hidden, true);
+        assert.equal(hide.entry.version, 1, "hiding is not a content revision");
+        assert.equal(hide.entry.portablePersona, "A ranger", "content is untouched");
+      }
+
+      const loaded = await loadCatalog("characters", path);
+      assert.equal(loaded.entries[0].hidden, true);
+      assert.equal(loaded.entries[0].version, 1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("restores a hidden entry", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "visibility-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      await saveEntry("characters", {
+        id: "ivy", name: "Ivy", portablePersona: "A medic",
+        belief: "X", impulse: "Y", voice: ["Z"], skills: [], restrictions: [],
+      }, path);
+      await setVisibility("characters", "ivy", true, path);
+
+      const restore = await setVisibility("characters", "ivy", false, path);
+      assert.equal(restore.ok, true);
+      if (restore.ok) assert.equal(restore.entry.hidden, false);
+
+      const loaded = await loadCatalog("characters", path);
+      assert.equal(loaded.entries[0].hidden, false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails with missing:true for an id that does not exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "visibility-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const result = await setVisibility("characters", "nonexistent", true, path);
+      assert.equal(result.ok, false);
+      if (!result.ok) {
+        assert.equal(result.missing, true);
+        assert.match(result.reason, /not found/);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a kind whose schema has no hidden field, without touching the file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "visibility-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      await saveEntry("tags", { id: "genre-scifi", facet: "genre", label: "science-fiction" }, path);
+
+      const result = await setVisibility("tags", "genre-scifi", true, path);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.match(result.reason, /no visibility to set/);
+
+      const loaded = await loadCatalog("tags", path);
+      const entry = loaded.entries.find((e: any) => e.id === "genre-scifi");
+      assert.equal((entry as any).hidden, undefined, "tags never gain a hidden field");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

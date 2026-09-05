@@ -19,8 +19,9 @@ import {
   type NextChapterSession, type ImportedCharacter, type StylePreset,
   type ScaffoldRound, type ScaffoldAccept, type HandoffAccept,
 } from "./engine/architect.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible, skillBibleEntries } from "./engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
+import { assistCharacter, ASSIST_FIELDS, type AssistField, type AssistMode } from "./engine/catalog-assist.ts";
 import type {
   ServerHost, Concept, CatalogUsage, EditorConfig, CatalogConfig,
   ScaffoldState, ScaffoldActionResult, ScaffoldAcceptResult,
@@ -28,8 +29,10 @@ import type {
 } from "./server/server.ts";
 import { flag } from "./cli-flags.ts";
 
-/** The architect's own knobs, which are the defaults' — not any one story's. */
-async function architectDefaults(model = ""): Promise<Defaults> {
+/** The defaults.json knobs every stateless or session-opening author-side call runs under — the
+ *  architect's (scaffold, handoff, suggest) and the catalog assistant's alike — never any one
+ *  story's. */
+async function loadHostDefaults(model = ""): Promise<Defaults> {
   const d = await loadDefaults(model || flag("model") || "");
   ENGINE.stream = d.stream; ENGINE.debug = d.debug;
   NET.timeoutMs = d.requestTimeout * 1000;
@@ -38,15 +41,16 @@ async function architectDefaults(model = ""): Promise<Defaults> {
   return d;
 }
 
-/** Apply the architect's knobs for the length of `fn`, then restore the engine knobs it touched.
- *  Keeps a stateless suggestion from leaving the architect's token cap/timeouts behind — unlike a
- *  scaffold or handoff session, which owns the console until it hands off to a run that re-applies
- *  the story's own config. `architectModel` is pure for the same reason; so is this. */
-async function withArchitectDefaults<T>(model: string, fn: (d: Defaults) => Promise<T>): Promise<T> {
+/** Apply the defaults' knobs for the length of `fn`, then restore the engine knobs it touched.
+ *  Keeps a stateless call (a suggestion, a catalog-assist proposal) from leaving its token
+ *  cap/timeouts behind — unlike a scaffold or handoff session, which owns the console until it
+ *  hands off to a run that re-applies the story's own config. `architectModel` is pure for the same
+ *  reason; so is this. */
+async function withHostDefaults<T>(model: string, fn: (d: Defaults) => Promise<T>): Promise<T> {
   const saved = { stream: ENGINE.stream, debug: ENGINE.debug, maxTokens: ENGINE.maxTokens,
                   timeoutMs: NET.timeoutMs, retries: NET.retries };
   try {
-    return await fn(await architectDefaults(model));
+    return await fn(await loadHostDefaults(model));
   } finally {
     ENGINE.stream = saved.stream; ENGINE.debug = saved.debug; ENGINE.maxTokens = saved.maxTokens;
     NET.timeoutMs = saved.timeoutMs; NET.retries = saved.retries;
@@ -56,7 +60,7 @@ async function withArchitectDefaults<T>(model: string, fn: (d: Defaults) => Prom
 async function newScaffoldSession(idea: string, model = "",
                                   mode: "oneshot" | "staged" = "oneshot",
                                   concept?: Concept): Promise<ScaffoldSession> {
-  const d = await architectDefaults(model);
+  const d = await loadHostDefaults(model);
   const entries = await skillBibleEntries();
   const session = new ScaffoldSession(await buildArchitect(d, true, entries), d, idea, undefined, mode, undefined,
                              concept?.tags ?? [], concept?.castSize ?? 0);
@@ -89,14 +93,18 @@ async function promoteSkill(name: string, meaning: string) {
   return { ok: true as const, bible: bibleFrom(await skillBibleEntries()), problems: result.problems };
 }
 
-async function importCharacters(ids: string[]): Promise<{ imported: ImportedCharacter[]; missing: string[] }> {
-  const cat = await loadCatalog("characters");
+/** `path` is test-only injection, mirroring the same parameter on `loadCatalog`/`saveEntry` — the
+ *  real scaffold flow never passes it, so it resolves to the author's own catalog file. */
+export async function importCharacters(ids: string[], path?: string): Promise<{ imported: ImportedCharacter[]; missing: string[] }> {
+  const cat = await loadCatalog("characters", path);
   const byId = new Map<string, LibraryCharacter>((cat?.entries ?? []).map((e: LibraryCharacter) => [e.id, e]));
   const imported: ImportedCharacter[] = [];
   const missing: string[] = [];
   for (const id of ids) {
     const e = byId.get(id);
-    if (!e) { missing.push(id); continue; }
+    // A hidden character is treated exactly like one that no longer exists: it must never enter
+    // a new story through this path, even if the id was chosen before it was hidden.
+    if (!e || e.hidden) { missing.push(id); continue; }
     imported.push({
       libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
       belief: e.belief, impulse: e.impulse,
@@ -408,7 +416,7 @@ export function resetScaffoldForTests(): void {
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
   const entries = await skillBibleEntries();
-  return openNextChapter(await architectDefaults(model), dir, entries);
+  return openNextChapter(await loadHostDefaults(model), dir, entries);
 }
 
 // -- HANDOFF (the between-chapters interview) --------------------------------------------------
@@ -743,7 +751,7 @@ export const HOST: ServerHost = {
     const specObj = spec as StorySpec;
     try {
       const entries = await skillBibleEntries();
-      return await withArchitectDefaults(flag("model") ?? "", async d => {
+      return await withHostDefaults(flag("model") ?? "", async d => {
         const r = await statelessSuggest(d, specObj, String(text ?? ""), entries);
         if (r.kind === "failed") return { ok: false as const, error: r.error };
         if (r.kind === "question") return { ok: true as const, kind: "question" as const, ask: r.ask };
@@ -756,12 +764,14 @@ export const HOST: ServerHost = {
   catalogConfig: (): CatalogConfig => ({
     tagFacets: TAG_FACETS,
     caps: { voiceSamples: VOICE_SAMPLE_CAP },
+    assistFields: ASSIST_FIELDS,
   }),
-  catalogEntries: async (kind) => {
+  catalogEntries: async (kind, opts) => {
     const validated = validateCatalogKind(kind);
     if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
     const catalog = await loadCatalog(validated);
-    return { ok: true, entries: catalog.entries };
+    const entries = opts?.includeHidden ? catalog.entries : catalog.entries.filter((e: { hidden?: boolean }) => !e.hidden);
+    return { ok: true, entries };
   },
   catalogCheck: async (kind, entry) => {
     const validated = validateCatalogKind(kind);
@@ -781,6 +791,16 @@ export const HOST: ServerHost = {
     const validated = validateCatalogKind(kind);
     if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
     const result = await deleteEntry(validated, id);
+    // Engine says *what happened* (missing: true); host says *what that means over HTTP* (404).
+    if (!result.ok && result.missing) {
+      return { ok: false, reason: result.reason, status: 404 };
+    }
+    return result;
+  },
+  catalogSetVisibility: async (kind, id, hidden) => {
+    const validated = validateCatalogKind(kind);
+    if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
+    const result = await setVisibility(validated, id, hidden);
     // Engine says *what happened* (missing: true); host says *what that means over HTTP* (404).
     if (!result.ok && result.missing) {
       return { ok: false, reason: result.reason, status: 404 };
@@ -811,5 +831,21 @@ export const HOST: ServerHost = {
         usage.skills[key] = (usage.skills[key] ?? 0) + 1;
       }
     return usage;
+  },
+  catalogAssist: async (mode, fields, instruction, character) => {
+    try {
+      const bible = await skillBible();
+      return await withHostDefaults(flag("model") ?? "", async d => {
+        const r = await assistCharacter(d, {
+          mode: mode as AssistMode, fields: fields as AssistField[], instruction,
+          character: character as { id: string; name: string; portablePersona: string; belief: string;
+                                     impulse: string; voice: string[]; skills: string[]; restrictions: string[] },
+        }, bible);
+        if (!r.ok) return { ok: false as const, kind: r.kind, reason: r.reason, issues: r.issues };
+        return { ok: true as const, proposal: { draft: r.draft, changes: r.changes, warnings: r.warnings } };
+      });
+    } catch (e) {
+      return { ok: false as const, kind: "provider_error" as const, reason: (e as Error).message };
+    }
   },
 };

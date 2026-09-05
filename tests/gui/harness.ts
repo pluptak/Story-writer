@@ -16,7 +16,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
 import { LIVE, resetLive } from "../../live.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, skillBible } from "../../engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible } from "../../engine/catalog.ts";
 import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
          type TagEntry } from "../../engine/catalog-schema.ts";
 import { canonSkill } from "../../engine/skills.ts";
@@ -91,6 +91,20 @@ export function registerStory(dir: string, getCard: () => Promise<StoryCard> | S
 /** Register temporary retained-run directories for the real /runs/log route. */
 export function registerRunDirs(dir: string, ids: string[]) {
   extraRunDirs.set(dir, ids);
+}
+
+// A test that needs to exercise a race (switch character while a write is in flight, an assistant
+// request still loading, etc.) has to put a real request in flight and keep it there on demand --
+// the harness's catalog operations otherwise resolve on the next microtask, too fast for any UI
+// action to land in between. Held is module-scope, not per-request, because only one test runs
+// against a given server at a time and every operation below checks it, so a test enables it,
+// drives the client into "request sent, not yet answered", performs the racing action, then
+// releases it.
+let held: Promise<void> | null = null;
+export function holdCatalogWrites(): () => void {
+  let release!: () => void;
+  held = new Promise<void>(r => { release = r; });
+  return () => { release(); held = null; };
 }
 
 let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
@@ -190,10 +204,11 @@ async function fixtureHost(): Promise<ServerHost> {
     runLlmLogs: async () => [],
     readLlmLog: async () => null,
     outDir: () => "",
-    catalogEntries: async (kind) => {
+    catalogEntries: async (kind, opts) => {
       const v = withKind(kind);
       const c = await loadCatalog(v, catalogFile(v));
-      return { ok: true, entries: c.entries };
+      const entries = opts?.includeHidden ? c.entries : c.entries.filter((e: { hidden?: boolean }) => !e.hidden);
+      return { ok: true, entries };
     },
     catalogCheck: async (kind, entry) => {
       const v = withKind(kind);
@@ -204,6 +219,7 @@ async function fixtureHost(): Promise<ServerHost> {
       return r.ok ? { ok: true, problems: r.problems } : { ok: false, issues: r.issues };
     },
     catalogSave: async (kind, entry) => {
+      if (held) await held;
       const v = withKind(kind);
       // The harness must never read the user's real catalog at ROOT, which is why it passes its
       // own temp-scoped skills bible instead.
@@ -211,10 +227,37 @@ async function fixtureHost(): Promise<ServerHost> {
       return saveEntry(v, entry, catalogFile(v), bible);
     },
     catalogDelete: async (kind, id) => {
+      if (held) await held;
       const r = await deleteEntry(withKind(kind), id, catalogFile(withKind(kind)));
       return !r.ok && (r as { missing?: boolean }).missing
         ? { ok: false, reason: r.reason, status: 404 }
         : r;
+    },
+    catalogSetVisibility: async (kind, id, hidden) => {
+      if (held) await held;
+      const v = withKind(kind);
+      const r = await setVisibility(v, id, hidden, catalogFile(v));
+      return !r.ok && (r as { missing?: boolean }).missing
+        ? { ok: false, reason: r.reason, status: 404 }
+        : r;
+    },
+    // Deterministic stand-in for the real model call: never touches ROOT's defaults.json or a real
+    // provider. `review` reports a finding and proposes nothing; `create`/`revise` append the
+    // instruction onto each selected field so a GUI test can assert on an exact before/after.
+    catalogAssist: async (mode, fields, instruction, character) => {
+      if (held) await held;
+      const orig = character as Record<string, unknown>;
+      if (mode === "review") {
+        return { ok: true, proposal: { draft: orig, changes: [], warnings: [`review: ${instruction}`] } };
+      }
+      const draft: Record<string, unknown> = { ...orig };
+      const changes = fields.map(field => {
+        const before = orig[field];
+        const after = Array.isArray(before) ? [...before, instruction] : `${before} (${instruction})`;
+        draft[field] = after;
+        return { field, before, after };
+      });
+      return { ok: true, proposal: { draft, changes, warnings: [] } };
     },
     // Usage is derived from the temp catalogs, which start empty — never from the author's real
     // files at ROOT, which the spread HOST would read.
@@ -240,6 +283,7 @@ export const test = base.extend<{ served: number }>({
     extraRunDirs.clear();
     handoffFactory = null;
     scaffoldFactory = null;
+    held = null;
     const handle: ServerHandle = startServer(0, await fixtureHost());
     const port = await handle.bound;
     await page.goto(`http://127.0.0.1:${port}/`);

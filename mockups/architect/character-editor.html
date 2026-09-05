@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Story Writer — Character Library Mockup</title>
+<style>
+  :root{
+    --bg:#151513; --panel:#1c1b18; --panel2:#22211d; --line:#38362f;
+    --muted:#9b988d; --text:#eeeae1; --soft:#c9c4b8; --accent:#9a6cff;
+    --accent2:#b18cff; --green:#73d49b; --danger:#ef6c6c; --shadow:0 18px 60px #0008;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 72% -10%,#2a2140 0,#181713 32%,var(--bg) 62%);
+       color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  button,input,textarea,select{font:inherit}
+  button{cursor:pointer}
+  .app{min-height:100vh;display:grid;grid-template-columns:72px 220px minmax(500px,1fr) 430px}
+  .rail{border-right:1px solid var(--line);padding:18px 12px;background:#11110f}
+  .brand{font-weight:800;font-size:17px;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.4px;margin:5px auto 30px}
+  .rail-icon{width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:#1c1b18;color:#bcb6aa;display:grid;place-items:center;margin:12px auto}
+  .rail-icon.active{color:#fff;border-color:#7651cc;background:#29203c}
+  .side{border-right:1px solid var(--line);padding:28px 14px;background:#181714;display:flex;flex-direction:column}
+  .side h4{font-size:11px;letter-spacing:.16em;color:#817d73;margin:0 12px 12px}
+  .nav{padding:9px 12px;border-radius:9px;color:#b4afa4;margin:2px 0}
+  .nav:hover{background:#24221e;color:#eee}
+  .nav.active{background:#2b2540;color:#fff;border-left:2px solid var(--accent)}
+  .side .spacer{height:28px}
+  .collapse{margin-top:auto;color:#8f8b80;padding:12px}
+  .main{padding:34px 36px;min-width:0}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+  h1{font:600 27px Georgia,serif;margin:0 0 4px}
+  .subtitle{color:var(--muted);margin-bottom:22px}
+  .actions{display:flex;gap:9px}
+  .btn{border:1px solid var(--line);background:#201f1b;color:#ddd8cf;border-radius:9px;padding:10px 14px}
+  .btn:hover{border-color:#5d584d;background:#282620}
+  .btn.primary{background:linear-gradient(135deg,#8c5ce9,#a06bff);border-color:#a67cff;color:white;box-shadow:0 6px 20px #7040c533}
+  .btn.danger{color:#ff9a9a;border-color:#713c3c}
+  .btn.small{padding:7px 10px;font-size:12px}
+  .toolbar{display:grid;grid-template-columns:1.4fr .7fr .9fr;gap:9px;margin-bottom:16px}
+  .input,.select{width:100%;background:#201f1b;border:1px solid #403d35;border-radius:9px;color:#ddd8cf;padding:11px 13px;outline:none}
+  .input:focus,.select:focus,textarea:focus{border-color:#8060bb;box-shadow:0 0 0 3px #8060bb22}
+  .character{display:grid;grid-template-columns:52px 1fr auto 34px;gap:14px;align-items:center;border:1px solid #35332d;
+             background:linear-gradient(90deg,#1e1d1a,#1b1a18);padding:13px 12px;border-radius:11px;margin:9px 0;transition:.15s}
+  .character:hover{border-color:#5a554b;transform:translateY(-1px)}
+  .character.selected{border-color:#9469e9;box-shadow:0 0 0 1px #9469e933 inset}
+  .avatar{width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,#80634c,#2d2730);display:grid;place-items:center;font-weight:700;font-size:18px}
+  .cname{font-weight:700;font-size:16px}.desc{color:#a8a397;margin:2px 0 7px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}.chip{font-size:11px;color:#bcb5a8;border:1px solid #3f3c34;padding:3px 7px;border-radius:999px}
+  .status{font-size:12px;color:#8f8b80;white-space:nowrap}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px}
+  .more{width:32px;height:32px;border:1px solid #3d3a33;background:transparent;color:#aaa49a;border-radius:7px}
+  .footer-row{display:flex;justify-content:space-between;color:#858178;font-size:12px;margin-top:18px}
+  .pages{display:flex;gap:5px}.page{border:1px solid var(--line);background:#201f1b;color:#aaa;border-radius:6px;padding:6px 9px}.page.active{color:#fff;border-color:#8d66dc}
+  .editor{border-left:1px solid var(--line);background:linear-gradient(180deg,#1c1b19,#171613);padding:30px 22px;overflow:auto}
+  .editor-head{display:grid;grid-template-columns:58px 1fr auto;gap:13px;align-items:center}
+  .editor .avatar{width:58px;height:58px}.close{border:0;background:transparent;color:#aaa;font-size:24px}
+  .eyebrow{font-size:11px;letter-spacing:.14em;color:#8c887e;text-transform:uppercase}
+  .id{font-size:11px;color:#77736a;margin-top:4px}
+  .tabs{display:flex;gap:25px;border-bottom:1px solid var(--line);margin:24px -22px 20px;padding:0 22px}
+  .tab{padding:0 2px 12px;color:#aaa49a;border:0;background:none}.tab.active{color:#b98fff;border-bottom:2px solid #a174f7}
+  .section-title{font-weight:700;font-size:15px;margin:20px 0 4px}.hint{color:#858178;font-size:12px;margin-bottom:12px}
+  label{display:block;color:#c4beb3;font-size:12px;margin:13px 0 7px}
+  textarea{width:100%;min-height:76px;resize:vertical;background:#211f1a;border:1px solid #403d35;border-radius:9px;color:#e3ded5;padding:11px 12px;outline:none}
+  .field-foot{display:flex;justify-content:space-between;color:#77736b;font-size:11px;margin-top:-20px;padding-right:10px;position:relative}
+  .skill-row{display:grid;grid-template-columns:1fr 1.1fr;gap:8px;margin:7px 0}.skill-row input{min-width:0}
+  .remove{border:1px solid #403d35;background:#211f1a;color:#999;border-radius:7px}
+  .editor-actions{display:flex;gap:8px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line);position:sticky;bottom:0;background:#171613}
+  .editor-actions .save{margin-left:auto}
+  .assistant{background:#211d2d;border:1px solid #4b3b68;border-radius:12px;padding:14px;margin-top:18px}
+  .assistant-title{display:flex;justify-content:space-between;align-items:center}.ai-badge{color:#d0b7ff;font-size:11px;border:1px solid #624b86;border-radius:999px;padding:3px 7px}
+  .modal-wrap{display:none;position:fixed;inset:0;background:#0009;z-index:20;align-items:center;justify-content:center;padding:20px}
+  .modal{width:min(720px,100%);background:#201f1b;border:1px solid #49453c;border-radius:15px;box-shadow:var(--shadow);padding:22px}
+  .modal h2{margin:0 0 5px;font:600 22px Georgia,serif}.modal p{color:#aaa49a}
+  .proposal{background:#171613;border:1px solid #3c3931;border-radius:10px;padding:12px;margin:12px 0}
+  .change{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:9px 0;border-bottom:1px solid #302e28}.change:last-child{border-bottom:0}
+  .before{color:#807b71}.after{color:#e3d8ff}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px}
+  .toast{position:fixed;right:25px;bottom:25px;background:#2c2a25;border:1px solid #555047;border-radius:10px;padding:11px 15px;display:none;box-shadow:var(--shadow)}
+  @media(max-width:1100px){.app{grid-template-columns:62px 180px 1fr}.editor{grid-column:3;border-left:0;border-top:1px solid var(--line)}}
+  @media(max-width:760px){.app{display:block}.rail{display:none}.side{display:none}.main{padding:22px 16px}.editor{padding:22px 16px}.toolbar{grid-template-columns:1fr}.character{grid-template-columns:48px 1fr 30px}.status{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">story-writer</div>
+    <div class="rail-icon active">♙</div><div class="rail-icon">✦</div><div class="rail-icon">▤</div>
+  </aside>
+  <aside class="side">
+    <h4>STORIES</h4><div class="nav">My stories</div><div class="nav">＋ New story</div>
+    <div class="spacer"></div>
+    <h4>WORKSPACE</h4><div class="nav">Architect</div><div class="nav">Story map</div><div class="nav">Write</div><div class="nav">Manuscript</div><div class="nav">Saved runs</div>
+    <div class="spacer"></div>
+    <h4>LIBRARY</h4><div class="nav active">♙ &nbsp;Characters</div><div class="nav">◇ &nbsp;Skills</div><div class="nav">▣ &nbsp;Styles</div>
+    <div class="collapse">‹‹ &nbsp; Collapse</div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div><h1>Character Library <span style="font:14px sans-serif;color:#9b9489">ⓘ</span></h1>
+        <div class="subtitle">Reusable characters you can import into any story.</div></div>
+      <div class="actions">
+        <button class="btn" id="hiddenBtn" onclick="toggleHidden()">◉ &nbsp; Show hidden</button>
+        <button class="btn primary" onclick="newCharacter()">＋ New character ▾</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input class="input" id="search" placeholder="⌕  Search characters…" oninput="renderList()">
+      <select class="select" id="filter" onchange="renderList()"><option value="all">All characters</option><option value="visible">Visible only</option><option value="hidden">Hidden only</option></select>
+      <select class="select" id="sort"><option>Recently updated</option><option>Name A–Z</option></select>
+    </div>
+    <div id="list"></div>
+    <div class="footer-row"><span id="count"></span><span class="pages"><button class="page">‹</button><button class="page active">1</button><button class="page">2</button><button class="page">›</button></span></div>
+  </main>
+
+  <section class="editor" id="editor"></section>
+</div>
+
+<div class="modal-wrap" id="aiModal">
+  <div class="modal">
+    <h2>AI character assistant</h2>
+    <p>Describe what you want changed. The assistant proposes a draft; nothing is saved until you apply it.</p>
+    <label>Instruction</label>
+    <textarea id="aiInstruction" placeholder="e.g. Make her more guarded, but keep her hopeful tone and existing skills."></textarea>
+    <div class="proposal">
+      <div style="font-weight:700;margin-bottom:6px">Proposed changes</div>
+      <div class="change"><b>Portable persona</b><div><div class="before">Before: Brilliant cartographer with a dangerous past.</div><div class="after">After: Brilliant cartographer who trusts maps more easily than people.</div></div></div>
+      <div class="change"><b>Impulse</b><div><div class="before">Before: Uncover lost truths the world wants to keep buried.</div><div class="after">After: Uncover lost truths, but never expose someone else's secret lightly.</div></div></div>
+      <div class="change"><b>Skills</b><div><div class="before">No change</div><div class="after">No change — preserved because the instruction didn't request it.</div></div></div>
+    </div>
+    <div class="modal-actions"><button class="btn" onclick="closeAI()">Cancel</button><button class="btn primary" onclick="applyAI()">Apply proposal</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+let chars=[
+ {id:"chr_01J2X6Y4Q9K7Z3T6N2",name:"Elara Voss",desc:"Brilliant cartographer with a dangerous past.",chips:["adventure","survival","mystery"],visible:true,persona:"Brilliant cartographer with a dangerous past.",belief:"Maps reveal the truth, but people decide what it means.",impulse:"Uncover lost truths the world wants to keep buried.",voice:"We don’t need a map to find what’s been lost.\\nFacts are stubborn things. So am I.\\nSome truths are best left buried.",skills:"Cartography :: can read and create maps others cannot\\nNegotiation :: can turn suspicion into reluctant cooperation",restrictions:"cannot knowingly betray an ally\\ncannot destroy a map that contains a life-saving route"},
+ {id:"chr_02",name:"Darian Holt",desc:"Retired captain seeking redemption.",chips:["redemption","survival"],visible:true,persona:"Retired captain seeking redemption after a disastrous command.",belief:"A leader owns the consequences of every order.",impulse:"Make amends before the people he failed stop believing he can.",voice:"I gave the order. I carry the weight.\\nYou don't need to forgive me.",skills:"Leadership :: can rally frightened people under pressure\\nTactics :: can assess a battlefield quickly",restrictions:"cannot abandon civilians\\ncannot blame subordinates for his decisions"},
+ {id:"chr_03",name:"Professor Lian",desc:"Brilliant mind, questionable ethics.",chips:["science-fiction","procedural"],visible:false,persona:"A brilliant researcher who treats ethics as a variable.",belief:"Knowledge is wasted if fear determines what may be discovered.",impulse:"Prove a theory everyone else is too cautious to test.",voice:"The question isn't whether we should.\\nThe question is whether we can.",skills:"Research :: can connect obscure evidence into a theory",restrictions:"cannot knowingly falsify data"},
+ {id:"chr_04",name:"Kael Marrow",desc:"Street-smart survivor with a code.",chips:["thriller","revenge"],visible:true,persona:"Street-smart survivor who keeps promises even when they hurt.",belief:"A promise is worth more than a reputation.",impulse:"Expose the person who destroyed his old life.",voice:"You want the truth? Fine. But you won't like the price.",skills:"Streetcraft :: can navigate dangerous urban networks",restrictions:"cannot break a promise once given"},
+ {id:"chr_05",name:"Sister Arwen",desc:"Faithful healer in a broken world.",chips:["historical","western"],visible:true,persona:"A compassionate healer whose faith is tested by violence.",belief:"Mercy matters most when it costs something.",impulse:"Keep people alive long enough to choose a better path.",voice:"Sit down. You're bleeding. We can argue after.",skills:"Medicine :: can stabilize injuries with scarce supplies",restrictions:"cannot refuse aid to someone in immediate danger"}
+];
+let selected=0, showHidden=false, editing=null;
+
+function initials(n){return n.split(" ").map(x=>x[0]).join("").slice(0,2)}
+function renderList(){
+ const q=document.getElementById("search").value.toLowerCase(), f=document.getElementById("filter").value;
+ let arr=chars.filter(c=>(showHidden||c.visible)&&(!q||(c.name+c.desc).toLowerCase().includes(q))&&(f==="all"||(f==="visible"&&c.visible)||(f==="hidden"&&!c.visible)));
+ document.getElementById("count").textContent=`Showing ${Math.min(arr.length,5)} of ${arr.length} characters`;
+ document.getElementById("list").innerHTML=arr.map(c=>{
+   const i=chars.indexOf(c);
+   return `<div class="character ${i===selected?'selected':''}" onclick="selectChar(${i})">
+     <div class="avatar">${initials(c.name)}</div><div><div class="cname">${c.name}</div><div class="desc">${c.desc}</div><div class="chips">${c.chips.map(x=>`<span class="chip">${x}</span>`).join("")}</div></div>
+     <div class="status">${c.visible?'<span class="dot"></span>Visible':'◉ &nbsp;Hidden'}</div><button class="more" onclick="event.stopPropagation();quickMenu(${i})">•••</button>
+   </div>`
+ }).join("");
+}
+function selectChar(i){selected=i;editing=JSON.parse(JSON.stringify(chars[i]));renderList();renderEditor()}
+function renderEditor(){
+ const c=editing;
+ document.getElementById("editor").innerHTML=`<div class="editor-head">
+   <div class="avatar">${initials(c.name)}</div><div><div style="font-weight:700;font-size:17px">${c.name}</div><div style="color:#8bdaaa;font-size:12px">${c.visible?'● Visible':'◉ Hidden'}</div><div class="id">ID: ${c.id} &nbsp; ⧉</div></div>
+   <button class="close" onclick="closeEditor()">×</button>
+ </div>
+ <div style="display:flex;gap:8px;margin-top:16px"><button class="btn small" onclick="duplicateChar()">▣ Duplicate</button><button class="btn small" onclick="toggleSelected()">${c.visible?'◉ Hide':'● Restore'}</button><button class="btn small danger" onclick="permanentDelete()">Delete</button></div>
+ <div class="tabs"><button class="tab active">Overview</button><button class="tab" onclick="openAI()">AI Assistant</button><button class="tab">Revisions</button></div>
+ <div class="section-title">Essence</div><div class="hint">Reusable character identity. Keep story-specific goals and knowledge out of the library.</div>
+ <label>Name</label><input class="input" id="e_name" value="${esc(c.name)}">
+ <label>Portable persona <span style="color:#777">(brief description)</span></label><textarea id="e_persona">${esc(c.persona)}</textarea>
+ <label>Belief</label><textarea id="e_belief">${esc(c.belief)}</textarea>
+ <label>Impulse <span style="color:#777">(what this character wants to do)</span></label><textarea id="e_impulse">${esc(c.impulse)}</textarea>
+ <label>Voice samples <span style="color:#777">(one per line, max 3)</span></label><textarea id="e_voice">${esc(c.voice)}</textarea>
+ <div class="section-title">Skills</div><div class="hint">Reusable capabilities; one per line as name :: meaning.</div><textarea id="e_skills">${esc(c.skills)}</textarea>
+ <label>Restrictions <span style="color:#777">(one per line)</span></label><textarea id="e_restrict">${esc(c.restrictions)}</textarea>
+ <div class="assistant"><div class="assistant-title"><b>✦ Character assistant</b><span class="ai-badge">PROPOSAL ONLY</span></div><div class="hint" style="margin:7px 0 10px">Create or revise this character from a natural-language instruction. Unchanged fields stay untouched.</div><button class="btn small" onclick="openAI()">Open AI assistant →</button></div>
+ <div class="editor-actions"><button class="btn" onclick="cancelEdit()">Cancel</button><button class="btn primary save" onclick="saveEdit()">Save changes</button></div>`;
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function saveEdit(){
+ editing.name=document.getElementById("e_name").value.trim()||"Untitled character";
+ editing.persona=document.getElementById("e_persona").value; editing.belief=document.getElementById("e_belief").value;
+ editing.impulse=document.getElementById("e_impulse").value; editing.voice=document.getElementById("e_voice").value;
+ editing.skills=document.getElementById("e_skills").value; editing.restrictions=document.getElementById("e_restrict").value;
+ editing.desc=editing.persona.slice(0,78)+(editing.persona.length>78?"…":"");
+ chars[selected]=editing; toast("Character saved"); renderList(); renderEditor();
+}
+function cancelEdit(){editing=JSON.parse(JSON.stringify(chars[selected]));renderEditor();toast("Changes discarded")}
+function newCharacter(){
+ const c={id:"chr_"+Math.random().toString(36).slice(2,12).toUpperCase(),name:"New character",desc:"Start with a short, portable persona.",chips:[],visible:true,persona:"",belief:"",impulse:"",voice:"",skills:"",restrictions:""};
+ chars.unshift(c);selected=0;editing=JSON.parse(JSON.stringify(c));renderList();renderEditor();toast("Draft character created — review before saving");
+}
+function duplicateChar(){
+ const base=chars[selected], c=JSON.parse(JSON.stringify(base));c.id="chr_"+Math.random().toString(36).slice(2,12).toUpperCase();c.name=base.name+" Copy";c.desc=base.desc;chars.splice(selected+1,0,c);selected++;editing=JSON.parse(JSON.stringify(c));renderList();renderEditor();toast("Independent copy created");
+}
+function toggleSelected(){chars[selected].visible=!chars[selected].visible;editing.visible=chars[selected].visible;renderList();renderEditor();toast(chars[selected].visible?"Character restored":"Character hidden")}
+function toggleHidden(){showHidden=!showHidden;document.getElementById("hiddenBtn").innerHTML=showHidden?"◉ &nbsp; Hide hidden":"◉ &nbsp; Show hidden";renderList()}
+function permanentDelete(){
+ if(confirm("Permanently delete this character? This cannot be undone.\\n\\nFor normal cleanup, use Hide instead.")){chars.splice(selected,1);selected=Math.max(0,selected-1);editing=chars[selected]?JSON.parse(JSON.stringify(chars[selected])):null;renderList();if(editing)renderEditor();else document.getElementById("editor").innerHTML="<div style='color:#888;padding-top:80px;text-align:center'>No character selected.</div>";toast("Character permanently deleted")}
+}
+function quickMenu(i){selected=i;editing=JSON.parse(JSON.stringify(chars[i]));renderEditor();toast("Character actions opened")}
+function openAI(){document.getElementById("aiModal").style.display="flex"}
+function closeAI(){document.getElementById("aiModal").style.display="none"}
+function applyAI(){
+ const inst=document.getElementById("aiInstruction").value.trim();
+ if(!inst){toast("Add an instruction first");return}
+ editing.persona="Brilliant cartographer who trusts maps more easily than people.";
+ editing.impulse="Uncover lost truths, but never expose someone else's secret lightly.";
+ closeAI();renderEditor();toast("Proposal applied to the unsaved draft — review and save when ready")
+}
+function closeEditor(){document.getElementById("editor").innerHTML="<div style='color:#777;text-align:center;padding-top:100px'>Select a character to edit.</div>"}
+function toast(t){const x=document.getElementById("toast");x.textContent=t;x.style.display="block";setTimeout(()=>x.style.display="none",2200)}
+renderList();selectChar(0);
+</script>
+</body>
+</html>

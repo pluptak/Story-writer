@@ -104,14 +104,14 @@ test("with an empty character catalog the import picker says where characters co
 test("a character in the catalog can be cast, and the tray takes over the cast size", async ({ page, served }) => {
   // Create a character in the catalog.
   await arrive(page, served, "#/catalog");
-  await page.locator("#cat-new").click();
-  await page.locator("#cat-name").fill("IVET");
-  await page.locator("#cat-persona").fill("Ex-locksmith, keeps every key on a labelled ring.");
-  await page.locator("#cat-belief").fill("Every lock has a polite way in.");
-  await page.locator("#cat-impulse").fill("When watched, slow down and narrate the work.");
-  await page.locator("#cat-voice").fill('"Hold the door? I\'d rather hold the lock."');
-  await page.locator("#cat-skills").fill("lockpicking :: opening a mechanical lock without its key");
-  await page.locator("#cat-save").click();
+  await page.locator("#charlib-new").click();
+  await page.locator("#charlib-name").fill("IVET");
+  await page.locator("#charlib-persona").fill("Ex-locksmith, keeps every key on a labelled ring.");
+  await page.locator("#charlib-belief").fill("Every lock has a polite way in.");
+  await page.locator("#charlib-impulse").fill("When watched, slow down and narrate the work.");
+  await page.locator("#charlib-voice").fill('"Hold the door? I\'d rather hold the lock."');
+  await page.locator("#charlib-skills").fill("lockpicking :: opening a mechanical lock without its key");
+  await page.locator("#charlib-save").click();
 
   // Go to the scaffold and wait for the IVET chip to appear.
   await arrive(page, served, "#/scaffold");
@@ -140,12 +140,10 @@ test("a character in the catalog can be cast, and the tray takes over the cast s
 
   // Clean up: delete the IVET character from the catalog so the next test sees it empty.
   await arrive(page, served, "#/catalog");
-  await page.getByTestId("catalog.entry-row").first().click();
-  const del = page.locator("#cat-delete");
-  await del.click();
-  await expect(del).toHaveText(/delete — sure\?/);
-  await del.click();
-  await expect(page.getByTestId("catalog.entry-row")).toHaveCount(0);
+  await page.locator(".lib-row").first().click();
+  await page.on("dialog", dialog => dialog.accept());
+  await page.locator("#charlib-delete").click();
+  await expect(page.locator(".lib-row")).toHaveCount(0);
 });
 
 // -- THE VOICE ---------------------------------------------------------------

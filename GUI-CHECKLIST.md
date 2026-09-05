@@ -578,9 +578,29 @@ a *new* story folder — so it can go anywhere in the pass.
 
 ## 15. Character catalog
 
-**Automated:** character create/list/delete behind the armed confirm, the seeded tag catalog, the
-seeded skill bible and a skill created through the real save path, and the kind riding the URL
-(`tests/gui/catalog.spec.ts`). The forms' field-level behaviour below stays manual.
+**Automated:** character create/list/delete behind the armed confirm, hide/restore (row badge, the
+visibility filter's three states, persistence across reload, and exclusion from the scaffold's
+new-story import picker), the temporary pre-save change review (a field surfacing as a change, two
+independent changes, reverting one leaving the other intact, cancel and a successful save both
+clearing the review, the discard confirm on switching characters mid-edit, and hide/restore never
+appearing as a content change), client-side search/sort/pagination (every searchable field, all four
+sort modes, page navigation, page-size changes, page reset on a filter/sort change, last-page
+clamping after a delete, and the editor staying open on a character paged off the visible list), the
+field-scoped assistant against a scripted (non-LLM) `/catalog/assist` — field selection gating,
+preparing a proposal, its diff, applying it (draft-only, no save), cancel discarding it, and review
+mode's findings-without-a-draft outcome — the seeded tag catalog, the seeded skill bible and a skill
+created through the real save path, and the kind riding the URL (`tests/gui/catalog.spec.ts`). The
+assistant's server-side field enforcement, model resolution, and malformed-reply handling are
+engine-level (`tests/catalog-assist.test.ts`), not this suite's concern. Race handling against a
+held-open request (`holdCatalogWrites()` in the harness): a save, a hide/restore, and a delete that
+each land after the user has switched to a different character update only the list row rather than
+whatever editor is now open, a hide/restore pending for one character never disables another's own
+toggle button, and the assistant's mode tabs, field chips, and × close all lock while a proposal is
+loading. And one full lifecycle end to end — create, edit, review, revert, save, hide, confirm
+excluded from new-story selection, restore, confirm selectable again, assist on two fields, apply
+without saving, reload to confirm it wasn't persisted, then save and confirm it was — plus a sweep
+for introduced horizontal overflow at 1280/1024/768/600px, including with the review-changes and
+assistant modals open. The forms' field-level behaviour below stays manual.
 
 The global character library, accessible from the shelf and reloadable by direct navigation to
 `#/catalog`. Unlike every other page, the catalog is not scoped to a story.
@@ -649,6 +669,58 @@ The global character library, accessible from the shelf and reloadable by direct
       not silently lost. The author owns their data, and losing it silently is the failure being guarded against.
 - [ ] **Reloading on `#/catalog?kind=tags` lands back on tags.** Reload the page while browsing tags
       at `#/catalog?kind=tags`. The page comes back with tags loaded, not silently switched to characters.
+- [ ] **Hiding does not disturb an unsaved draft.** Open a character, edit a field without saving,
+      then click **Hide character**. The visibility flips (badge appears, button relabels to
+      **Restore character**) and the unsaved edit is still in the form afterward — hide/restore is a
+      metadata write, not a content one.
+- [ ] **A failed visibility request keeps the draft and the old state.** With the server unreachable
+      (stop the engine, or throttle the network), click **Hide character**. An error line appears, the
+      button does not relabel, and the draft is untouched.
+- [ ] **The toggle button disables itself mid-flight.** Click **Hide character** and, before the
+      response lands (slow network), confirm the button is disabled rather than clickable a second
+      time — a double-click must not race two visibility writes. (The switch-character variants of
+      this — a save, hide/restore, or delete landing after you've moved to a different character,
+      and the assistant's controls locking while it loads — are automated; see above.)
+- [ ] **Hide/restore is absent for kinds without it.** Tags and skills show no hide/restore control
+      anywhere in their editors — their schema carries no `hidden` field, and the plan is to add
+      style/tag/skill visibility later, not to fake it now.
+- [ ] **The review panel has no backdrop or Escape close.** Click outside it, and press Escape while
+      it is open — neither closes it (matching the assistant modal beside it, which has the same
+      gap); only the × and **Close** buttons do. If this is surprising in practice, it is a real gap
+      to fix, not a regression to chase.
+- [ ] **A revert repaints the field live.** With the review panel open over an edited textarea,
+      click **Revert field** for that field. The textarea's value changes immediately, without
+      needing to close the panel first, and the panel's own remaining entries update to match.
+- [ ] **The review count stays live while typing.** With the panel closed, type in a field: the
+      **Review changes (N)** button's count updates on every keystroke without the whole page
+      re-rendering (the caret must not jump, same concern as the search box in the test above).
+      Opening the panel after several edits shows all of them, not just the most recent one.
+- [ ] **A brand-new, never-saved character can still be reviewed.** Create a character, edit two
+      fields without saving, and open **Review changes** before ever pressing Save — it shows the
+      edits against the character's own initial (empty) draft, not an error or an empty panel.
+- [ ] **The assistant against a real model.** Needs `defaults.json`'s `models.assistant` set and
+      that model loaded in LM Studio. Open a character, pick a field, write an instruction, and
+      **Prepare proposal**. Confirm: only the picked field changed in the diff; a field NOT picked
+      never appears even if you can tell from the model's phrasing that it tried to touch one; a
+      **Review** with no correction to offer shows `changes: []` and its findings, not an error.
+- [ ] **No `models.assistant` configured.** Comment out or remove `models.assistant` in
+      `defaults.json` (restart the server) and try the assistant. Expect a clear "no assistant model
+      is configured" message, not a silent run on the story-writing model and not a crash.
+- [ ] **The assistant model is down.** Point `models.assistant` at a model LM Studio does not have
+      loaded, or stop LM Studio, and try the assistant. Expect a provider-failure message, distinct
+      from the "not configured" one above.
+- [ ] **A malformed model reply.** Hard to force without editing the model's own output, but if you
+      have a small/uncooperative local model handy, try `create` mode with a vague instruction and
+      confirm a reply with no usable `draft`/`findings` surfaces as a clear error rather than an
+      empty or broken proposal panel.
+- [ ] **The pager and page-size selector read cleanly together.** With more than one page of
+      characters, "Showing 11-20 of 42 characters", the Prev/Next pair, and the page-size select all
+      sit in one footer row without visually colliding. With everything on one page, the Prev/Next
+      pair and page indicator disappear entirely (not just disabled) while the page-size selector
+      stays.
+- [ ] **Typing in search does not fight the caret while a pager is showing.** With more than 10
+      characters, type a multi-character search term. The caret must not jump mid-word (same
+      concern as the existing search-caret test, now with a pager present too).
 
 ### Styles, the third kind
 

@@ -71,11 +71,18 @@ npx tsx story-writer.ts stories/doorway --chapter=1
 ```
 
 ```bash
+npm run check     # typecheck + test + lint in one pass, one summary (the pre-hand-off gate)
 npm test          # engine + route modules (node:test)
 npm run test:gui  # the viewer's mechanical pass (Playwright; npx playwright install chromium on a new machine)
 npm run lint      # eslint, including the viewer's browser modules
 npm run preflight # story-card listing against LM Studio
 ```
+
+`npm run check` runs the three environment-free checks (`npx tsc`, `npm test`, `eslint .`) together,
+keeps going past a failure so one run reports every problem, and exits non-zero if any failed. It sets
+aside the GUI-spec type diagnostics (they belong to `npm run test:gui`) so a missing `@playwright/test`
+does not mask a real type error. It does **not** cover `test:gui` (needs a browser) or `preflight`
+(needs a live inference server) — run those separately.
 
 One run writes **one chapter**. Between chapters, the viewer's handoff panel (started with `--serve`)
 re-authors the cast for the next one ([Architect.MD](Architect.MD)). The new-story interview and the
@@ -99,7 +106,8 @@ split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `warni
 `quote-lint.ts`, `repeat-lint.ts`, `skills.ts`, `story-schema.ts` and
 `catalog-schema.ts` have no engine dependencies; `llm-client.ts`, `agent.ts`, `sense-lint.ts`,
 `story-format.ts` and `story-spec.ts` build on those; `preflight.ts`, `consult.ts`, `architect.ts`, `catalog.ts` and `scene-loop.ts`
-build on those in turn;
+build on those in turn; `catalog-assist.ts` builds on `catalog.ts` (one tier further up, since it
+depends on it directly);
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
 the `HOST` object, and [app.ts](app.ts) (root) is the application layer above both — run setup, the
 story pick, and the pick → run → pick loop. Separately, `app.ts` → [server/server.ts](server/server.ts) →
@@ -137,7 +145,8 @@ way.**
 | [engine/provider.ts](engine/provider.ts) + [engine/provider-lmstudio.ts](engine/provider-lmstudio.ts), [engine/provider-ollama.ts](engine/provider-ollama.ts), [engine/provider-llamacpp.ts](engine/provider-llamacpp.ts) | provider selection from the environment into the one `PROVIDER` the transport and the model checks go through, plus one adapter per server — chat URLs are OpenAI-compatible everywhere; the adapters differ in their native model-state API (LM Studio: `/api/v1` with a `/api/v0` fallback; Ollama: `/api/ps`; llama.cpp: none) and their capability flags. Nothing outside the adapters names a server |
 | [engine/agent.ts](engine/agent.ts) | the `Agent` class — windowed history, generation, its LLM interaction log |
 | [engine/story-format.ts](engine/story-format.ts) | loading and validating `story.json` (against `story-schema.ts`), building a `StoryConfig`, discovering stories on disk. `loadStory` takes the skill bible the cast resolves against and the `StoryConfig` carries it, so the per-scene reach layer resolves the same names |
-| [engine/catalog.ts](engine/catalog.ts) | the catalog beside `defaults.json`: load, check, upsert and delete, keyed by asset kind. Advisory problems reuse `characterPsychologyWarnings` and `capabilityProblems` rather than restating them, and `skillBible()` turns the persisted skill kind into the lookup the second of those takes |
+| [engine/catalog.ts](engine/catalog.ts) | the catalog beside `defaults.json`: load, check, upsert, delete and (for kinds whose schema carries it) hide/restore, keyed by asset kind. Advisory problems reuse `characterPsychologyWarnings` and `capabilityProblems` rather than restating them, and `skillBible()` turns the persisted skill kind into the lookup the second of those takes |
+| [engine/catalog-assist.ts](engine/catalog-assist.ts) | the character catalog's field-scoped assistant: a stateless one-shot `Agent` call on its own configured model (`Defaults.models.assistant`, which never falls back to the story model), constrained to the author-selected fields after the reply comes back — an unselected field is copied from the input regardless of what the model said, and the returned diff is recomputed from the constrained result, never trusted from the model |
 | [engine/story-spec.ts](engine/story-spec.ts) | the architect's proposed `StorySpec` — normalizing, editing, and rendering it to `story.json` |
 | [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
 | [engine/run-gate.ts](engine/run-gate.ts) | the startup gate between a picked story and its run: refuse when the provider is unreachable, its catalog is empty, or a wanted model is unknown to it, warn when a model exists but is not loaded, start anyway when the provider stands but its list cannot be read |
@@ -147,7 +156,7 @@ way.**
 | [engine/narration-lint.ts](engine/narration-lint.ts) | the three checks on a drafted piece run alongside each other — quotation, restricted sense, and the narration judge's read |
 | [engine/architect.ts](engine/architect.ts) | building the architect agent, the interactive story-building conversation, and the between-chapters handoff that re-authors the cast |
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
-| [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, architect, consult, writer, judge, clarify), which match one engine caller each |
+| [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, architect, consult, writer, judge, clarify, catalog-assist), which match one engine caller each |
 | [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: static files (from `server/gui/`), SSE, and dispatch to the route modules |
 | [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side: wire validation and dispatch to `ServerHost.scaffold*()`, nothing else — it never touches a `ScaffoldSession` |
@@ -155,7 +164,7 @@ way.**
 | [server/run-log-routes.ts](server/run-log-routes.ts) | `/runs/llm`, `/runs/llm/file`, `/runs/log`, `/log.jsonl` — a run's logs (per-agent LLM transcripts, the retained and the in-progress writing logs), read-only by construction |
 | [server/story-read-routes.ts](server/story-read-routes.ts) | `/stories`, `/cast` (GET), `/chapter` (GET) — read-only story views: the shelf's story-card listing, the live screen's full cast (models omitted), and an accepted chapter's markdown; all available while a run is in flight |
 | [server/story-edit-routes.ts](server/story-edit-routes.ts) | `/story/edit` (GET), `/story/check`, `/story/save`, `/story/discard`, `/story/suggest` (POST) — the `story.json` form editor; load, validate, save, discard the last unwritten scene, and a stateless architect suggestion call. Refuses with `409` while something holds `story.json`: a run, the post-pick loading window, or an open handoff |
-| [server/catalog-routes.ts](server/catalog-routes.ts) | `/catalog` (GET), `/catalog/entry` (GET), `/catalog/check`, `/catalog/save`, `/catalog/delete` (POST) — the global character catalog. Takes no story dir and never consults the story-write lock: a catalog is not scoped to a story |
+| [server/catalog-routes.ts](server/catalog-routes.ts) | `/catalog` (GET), `/catalog/entry` (GET), `/catalog/check`, `/catalog/save`, `/catalog/delete`, `/catalog/visibility`, `/catalog/assist` (POST) — the global character catalog. Takes no story dir and never consults the story-write lock: a catalog is not scoped to a story |
 | [server/http-util.ts](server/http-util.ts) | the `json()` response helper, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
 | [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel, the character catalog) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus, the stop signal, and the loop's human-interaction port (`SceneIo`/`LIVE_IO`: step budget, pause, reader seat) |

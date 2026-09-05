@@ -1,5 +1,11 @@
 node_modules/
-stories/*
+stories/
 catalog-*.json
-architect-debug.log
+*.log
 test-results/
+.mcp.json
+.vscode/
+.claude/
+.codegraph/
+AGENTS.md
+opencode.jsonc

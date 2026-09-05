@@ -154,21 +154,50 @@ export const APP = {
   // the overlay wipe the form underneath it.
   picker: { open:false, kind:"", title:"", hint:"", loading:false, error:"",
             entries:[], search:"", chosen:[] },
-  // `loaded` is what stops the URL and the kind switcher fighting: the page seeds its kind from
-  // ?kind= only on arrival, and needs a way to tell "never fetched" from "fetched, empty".
-  catalog: { loading:false, loaded:false, error:"", entries:[], selected:null, draft:null,
-             issues:[], problems:[], armedDelete:false, deleteTimer:0,
-             kind:"characters",   // which catalog is being browsed: one of CATALOG_KINDS above
+  // Every catalog kind now has its own dedicated library page (below); what's left here is the
+  // state those pages themselves share rather than own: which kind the sidenav last pointed at,
+  // the cross-catalog "used by" usage, and the lazy-loaded picker caches.
+  catalog: { kind:"characters",   // which catalog is being browsed: one of CATALOG_KINDS above
              usage:null,          // what the other catalogs reference — the "used by" lines and the
                                   // tag page's derived STORY/STYLE grouping (/catalog/usage)
-             vocab:[],            // the tag entries, loaded once, used by the character form's tag picker.
+             vocab:[],            // the tag entries, loaded once, used by the character/skill tag pickers.
                                    // vocab is separate from entries because entries is whatever kind is on
                                    // screen, while vocab is always the tags — the character form needs the
                                    // vocabulary even while it is browsing characters
              library:[],           // the character catalog's entries, cached for the scaffold's import picker,
                                    // separate from entries for the same reason vocab is
              styles:[]             // the style catalog's entries, cached for the scaffold's voice picker
-           },  // the global character catalog, which unlike every other page is not scoped to a story
+            },  // the global character catalog, which unlike every other page is not scoped to a story
+  characterLibrary: {
+    loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false, menuId:"",
+    search:"", visibility:"all", sort:"updated", page:1, pageSize:10,
+    // *Id fields name which character an in-flight save/hide-restore/delete belongs to -- a
+    // response is only applied to the draft/selection/error if that character is still the one
+    // open, so switching characters mid-request can never clobber the one now on screen. saving
+    // has no id counterpart: only the open character can ever be mid-save (the button that starts
+    // one is only reachable from its own editor).
+    saving:false, togglingHiddenId:"", deletingId:"",
+    // baseline is the immutable persisted snapshot the draft is diffed against; changes is that
+    // diff, recomputed on every edit; changesOpen toggles the review panel. None of the three is
+    // ever written to the catalog file -- they exist only for the in-editor review before Save.
+    baseline:null, changes:[], changesOpen:false,
+    assistant:{ open:false, mode:"revise", fields:[], instruction:"", loading:false, proposal:null, error:"" },
+  },
+  styleLibrary: {
+    loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false,
+    search:"", visibility:"all", sort:"updated", showHidden:false,
+    assistant:{ open:false, instruction:"", loading:false, proposal:null, error:"" },
+  },
+  // Tags and skills have no hidden/visibility concept in their schema, so their libraries carry no
+  // showHidden/assistant slice -- there is nothing there for either to act on.
+  tagLibrary: {
+    loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false,
+    search:"", sort:"updated",
+  },
+  skillLibrary: {
+    loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false,
+    search:"", sort:"updated",
+  },
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };
 
@@ -195,9 +224,13 @@ export const handoffForPage = () =>
 export const draft = { idea:"", say:"", folder:"", model:"", mode:"", length:"", tags:[], castSize:0, importIds:[], styleId:"" };
 export const hdraft = { say:"" };
 
-export const FIELDS = /^[fh]-(idea|say|folder|model|mode|length)$|^r-say-\d+$/;
+export const FIELDS = /^[fh]-(idea|say|folder|model|mode|length)$|^r-say-\d+$|^charlib-|^stylib-|^taglib-|^skilllib-/;
 // r-say-N is the live reader consult's own-answer box (blocks.js) -- it holds half-typed text too,
 // and the SSE frames arriving while the run waits on you re-render just as eagerly.
+// charlib-*/stylib-*/taglib-*/skilllib-* are the four library pages: their search boxes re-render
+// the page on every keystroke, and their editor fields are re-rendered under the author by any SSE
+// frame arriving during a run. The prefix rather than a list of ids -- every control on any of the
+// four pages is one the caret can sit in.
 
 /** Which consults are expanded, by seq — shared across pages on purpose: it is a reading
  *  preference ("I like things opened up"), not a fact tied to one particular run. */

@@ -49,12 +49,15 @@ export interface EditorConfig {
   caps: { voiceSamples: number };
 }
 
-/** The catalog's own schema-derived shape: the tag facet enum, and the character voice-sample cap
- *  (the same VOICE_SAMPLE_CAP EditorConfig's caps.voiceSamples reads, since both schemas share it).
- *  Same reasoning as EditorConfig: a small, explicit projection, never the schema itself. */
+/** The catalog's own schema-derived shape: the tag facet enum, the character voice-sample cap
+ *  (the same VOICE_SAMPLE_CAP EditorConfig's caps.voiceSamples reads, since both schemas share it),
+ *  and the field names the character assistant may be asked to touch. Same reasoning as
+ *  EditorConfig: a small, explicit projection, never the schema itself — and the one place a route
+ *  may learn `assistFields` from, since routes never import engine/. */
 export interface CatalogConfig {
   tagFacets: readonly TagFacet[];
   caps: { voiceSamples: number };
+  assistFields: readonly string[];
 }
 
 /** One in-progress interview's full snapshot — what GET /scaffold and every /scaffold/* action
@@ -262,8 +265,11 @@ export interface ServerHost {
   /** The catalog's schema-derived shape (tag facets, voice-sample cap) for the catalog editor —
    *  never the schema itself, so the GUI stops hand-copying it. */
   catalogConfig(): CatalogConfig;
-  /** All entries in a catalog. `kind` is validated here because it arrives from the wire. */
-  catalogEntries(kind: string): Promise<{ ok: true; entries: unknown[] } | { ok: false; reason: string }>;
+  /** All entries in a catalog. `kind` is validated here because it arrives from the wire.
+   *  Hidden entries are excluded unless `includeHidden` is set — every selectable-characters
+   *  surface (the new-story cast picker, the library picker) wants the default; only the
+   *  character catalog editor itself needs to see and manage a hidden entry. */
+  catalogEntries(kind: string, opts?: { includeHidden?: boolean }): Promise<{ ok: true; entries: unknown[] } | { ok: false; reason: string }>;
   /** Validate one catalog entry without saving. `kind` is validated here because it arrives from
    *  the wire; an unknown kind returns `reason`, not `issues`. Schema validation failure returns
    *  `issues`; both schema and kind validation answers are 200 (validation is ordinary reply). */
@@ -276,8 +282,20 @@ export interface ServerHost {
   catalogSave(kind: string, entry: unknown): Promise<{ ok: true; entry: unknown; problems: string[] } | { ok: false; reason: string; status?: number; issues?: string[] }>;
   /** Remove one catalog entry by id. Fails if the id is not found. */
   catalogDelete(kind: string, id: string): Promise<{ ok: true } | { ok: false; reason: string; status?: number }>;
+  /** Hide or restore one catalog entry. Never a content revision: does not touch `version`.
+   *  Fails with `status: 404` if the id is not found, or a plain reason if the kind's schema has
+   *  no `hidden` field to set. */
+  catalogSetVisibility(kind: string, id: string, hidden: boolean): Promise<{ ok: true; entry: unknown } | { ok: false; reason: string; status?: number }>;
   /** Which catalogs reference which entries — read-only derivation over the other kinds. */
   catalogUsage(): Promise<CatalogUsage>;
+  /** Propose a change to a subset of one character's fields on a separate, explicitly configured
+   *  model — never saves. `mode`/`fields`/`instruction`/`character` are validated here because they
+   *  arrive from the wire; the host's own failure kinds (`model_unavailable`, `provider_error`,
+   *  `malformed_reply`, `invalid_draft`) are expected-failure answers at 200, not a 4xx. */
+  catalogAssist(mode: "create" | "revise" | "review", fields: string[], instruction: string, character: unknown): Promise<
+    | { ok: true; proposal: { draft: unknown; changes: { field: string; before: unknown; after: unknown }[]; warnings: string[] } }
+    | { ok: false; kind?: string; reason: string; issues?: string[] }
+  >;
 }
 
 async function serveFile(res: ServerResponse, url: URL, contentType: string) {

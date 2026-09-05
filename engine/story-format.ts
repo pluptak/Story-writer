@@ -230,10 +230,15 @@ export async function selectableStory(dir: string): Promise<string | null> {
 }
 
 const BUILTIN_MODEL = "qwen3.6-35b-a3b";
-/** The scaffold interview's knobs: models, architect thinking, and the request retry settings. */
+/** The scaffold interview's knobs: models, architect thinking, and the request retry settings.
+ *  `models.assistant` is deliberately unlike `architect` — it does NOT fall back to `default` when
+ *  unset. The catalog assistant is a field-scoped, author-triggered tool a user may never open, and
+ *  silently running it on the story-writing model would mean an untested model shapes a permanent
+ *  catalog entry. An empty string means "not configured"; the caller is the one that turns that into
+ *  a refusal rather than a silent substitution. */
 export interface Defaults {
-  models: { default: string; architect: string };
-  thinking: { architect: ThinkLevel };
+  models: { default: string; architect: string; assistant: string };
+  thinking: { architect: ThinkLevel; assistant: ThinkLevel };
   requestTimeout: number; attempts: number; maxTokens: number; stream: boolean; debug: boolean;
 }
 /** Read defaults.json, falling back to built-ins; `override` (e.g. --model) beats everything in it.
@@ -249,8 +254,14 @@ export async function loadDefaults(override = "", path = joinPath(ROOT, "default
   }
   const def = override || parsed.models?.default || BUILTIN_MODEL;
   return {
-    models: { default: def, architect: override || parsed.models?.architect || def },
-    thinking: { architect: (parsed.config?.thinking_architect ?? parsed.config?.thinking ?? "low") as ThinkLevel },
+    models: {
+      default: def, architect: override || parsed.models?.architect || def,
+      assistant: override || parsed.models?.assistant || "",
+    },
+    thinking: {
+      architect: (parsed.config?.thinking_architect ?? parsed.config?.thinking ?? "low") as ThinkLevel,
+      assistant: (parsed.config?.thinking_assistant ?? parsed.config?.thinking ?? "low") as ThinkLevel,
+    },
     requestTimeout: parsed.config?.request_timeout ?? 120,
     attempts: parsed.config?.attempts ?? 3,
     maxTokens: parsed.config?.max_tokens ?? 2000,

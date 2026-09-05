@@ -1,5 +1,5 @@
 import { $, esc, basename, wireBackdropClose, tid } from "./util.js";
-import { APP, LIVEV, READV, READER, FIELDS, open, storyName, CATALOG_KINDS } from "./state.js";
+import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
 import { renderBlocks, wireReader } from "./blocks.js";
 import { pickerHtml, wirePicker, castChips } from "./shelf.js";
@@ -7,7 +7,10 @@ import { storyPageHtml, wireStoryPage } from "./story-page.js";
 import { storyEditHtml, wireStoryEditor } from "./story-edit.js";
 import { handoffPageHtml, wireHandoff } from "./handoff.js";
 import { readChromeHtml, wireSavedRuns } from "./saved-runs.js";
-import { catalogPageHtml, wireCatalog, loadCatalog } from "./catalog.js";
+import { characterLibraryHtml, wireCharacterLibrary, loadCharacterLibrary } from "./character-library.js";
+import { styleLibraryHtml, wireStyleLibrary, loadStyleLibrary } from "./style-library.js";
+import { tagLibraryHtml, wireTagLibrary, loadTagLibrary } from "./tag-library.js";
+import { skillLibraryHtml, wireSkillLibrary, loadSkillLibrary } from "./skill-library.js";
 import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
 import { ensureLiveCast } from "./cast-sheet.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
@@ -17,7 +20,7 @@ import { libraryPickerHtml, wireLibraryPicker } from "./library-picker.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
-import { go, generating, syncHash, tagFocus, clearFocus, parseHashParams } from "./nav.js";
+import { go, generating, syncHash, tagFocus, clearFocus } from "./nav.js";
 import { renderSession } from "./session.js";
 import { button, hint, thinking } from "./ui.js";
 
@@ -139,31 +142,40 @@ function renderHandoff(page, keepFocus) {
   setFoldable(false);
 }
 
-function renderCatalog(page, keepFocus) {
-  page.innerHTML = catalogPageHtml();
+function renderCharacterLibrary(page, keepFocus) {
+  page.innerHTML = characterLibraryHtml();
   $("railstats").innerHTML = "";
-  wireCatalog(page);
+  wireCharacterLibrary(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
-
-  applyCatalogUrlKind();
+  loadCharacterLibrary();
 }
 
-// The URL seeds the catalog's kind on ARRIVAL and on a hash change -- never on every render.
-// Inside the page the state is authoritative: a render triggered by the kind switcher reads a URL
-// syncHash has not caught up with yet, and letting that win resets the kind and races a second
-// load -- which is how tag entries came to be drawn through the character branch.
-let catalogUrlKind = null;
-function applyCatalogUrlKind() {
-  const urlKind = parseHashParams().get("kind") || "characters";
-  // The known kinds are defined in state.js's CATALOG_KINDS, not here, so adding a kind is one
-  // edit rather than three. The browser cannot import engine/catalog-schema.ts, so the viewer
-  // lists them by hand.
-  const kind = CATALOG_KINDS.includes(urlKind) ? urlKind : "characters";
-  const urlChanged = urlKind !== catalogUrlKind;
-  catalogUrlKind = urlKind;
-  if (APP.catalog.loading) return;
-  if ((urlChanged && kind !== APP.catalog.kind) || !APP.catalog.loaded) loadCatalog(kind);
+function renderStyleLibrary(page, keepFocus) {
+  page.innerHTML = styleLibraryHtml();
+  $("railstats").innerHTML = "";
+  wireStyleLibrary(page);
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+  loadStyleLibrary();
+}
+
+function renderTagLibrary(page, keepFocus) {
+  page.innerHTML = tagLibraryHtml();
+  $("railstats").innerHTML = "";
+  wireTagLibrary(page);
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+  loadTagLibrary();
+}
+
+function renderSkillLibrary(page, keepFocus) {
+  page.innerHTML = skillLibraryHtml();
+  $("railstats").innerHTML = "";
+  wireSkillLibrary(page);
+  restoreFocus(page, keepFocus);
+  setFoldable(false);
+  loadSkillLibrary();
 }
 
 function renderReader(page) {
@@ -381,7 +393,10 @@ export function render() {
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
-  else if (APP.view === "catalog") renderCatalog(page, keepFocus);
+   else if (APP.view === "catalog" && APP.catalog.kind === "characters") renderCharacterLibrary(page, keepFocus);
+   else if (APP.view === "catalog" && APP.catalog.kind === "styles") renderStyleLibrary(page, keepFocus);
+   else if (APP.view === "catalog" && APP.catalog.kind === "skills") renderSkillLibrary(page, keepFocus);
+  else if (APP.view === "catalog") renderTagLibrary(page, keepFocus);
   else if (APP.view === "compare") renderComparison(page);
   else if (APP.view === "edit") renderEdit(page);
   else if (APP.view === "scaffold") renderScaffold(page, keepFocus);

@@ -40,6 +40,29 @@ describe("LibraryCharacter schema", () => {
     assert.equal(char.portablePersona, "");
     assert.equal(char.belief, "");
     assert.equal(char.impulse, "");
+    assert.equal(char.hidden, false);
+    assert.equal(char.updatedAt, 0);
+  });
+
+  it("loads a legacy entry (no hidden/updatedAt on disk) as visible with updatedAt 0", () => {
+    const char = LibraryCharacter.parse({
+      id: "char-legacy",
+      version: 3,
+      name: "Legacy",
+    });
+    assert.equal(char.hidden, false);
+    assert.equal(char.updatedAt, 0);
+  });
+
+  it("round-trips an explicit hidden/updatedAt", () => {
+    const char = LibraryCharacter.parse({
+      id: "char-hidden",
+      name: "Hidden One",
+      hidden: true,
+      updatedAt: 1700000000000,
+    });
+    assert.equal(char.hidden, true);
+    assert.equal(char.updatedAt, 1700000000000);
   });
 
   it("truncates voice to 3 samples on load", () => {

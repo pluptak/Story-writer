@@ -274,6 +274,7 @@ export function makeHost(overrides?: Record<string, any>): ServerHost {
     catalogConfig: () => ({
       tagFacets: ["genre", "dramaticMode", "tone"],
       caps: { voiceSamples: 3 },
+      assistFields: ["name", "portablePersona", "belief", "impulse", "voice", "skills", "restrictions"],
     }),
     storyForEdit: async () => ({ ok: false, error: "unused" }),
     fullCast: async () => ({ ok: false, error: "unused" }),
@@ -285,7 +286,9 @@ export function makeHost(overrides?: Record<string, any>): ServerHost {
     catalogCheck: async () => ({ ok: false, reason: "unused" }),
     catalogSave: async () => ({ ok: false, reason: "unused" }),
     catalogDelete: async () => ({ ok: false, reason: "unused" }),
+    catalogSetVisibility: async () => ({ ok: false, reason: "unused" }),
     catalogUsage: async () => ({ tags: {}, skills: {} }),
+    catalogAssist: async () => ({ ok: false, reason: "unused" }),
     promoteSkill: async () => ({ ok: false, reason: "unused" }),
     ...overrides,
   } as unknown as ServerHost;

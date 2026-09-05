@@ -85,13 +85,6 @@ export function go(v) {
     APP.editDir = ""; APP.editNew = false; APP.editFor = ""; APP.editStory = null; APP.editDraft = null;
     APP.editDirty = false; APP.editError = ""; APP.editIssues = []; APP.editRaw = null;
   }
-  // Leaving the catalog clears its armed delete timer -- an armed destructive action must not
-  // survive navigation.
-  if (APP.view === "catalog" && v !== "catalog") {
-    if (APP.catalog.deleteTimer) clearTimeout(APP.catalog.deleteTimer);
-    APP.catalog.deleteTimer = 0;
-    APP.catalog.armedDelete = false;
-  }
   APP.view = v;
   // The URL is synced BEFORE the fetch, because loadStories() renders synchronously on its first
   // line -- and a page that reads the URL on arrival (the catalog's kind) would otherwise be handed
@@ -115,8 +108,15 @@ for (const t of document.querySelectorAll("#sidenav .navitem"))
   t.addEventListener("click", () => {
     const v = t.dataset.view, kind = t.dataset.kind;
     // The Libraries group seeds the kind before navigating: hashFor() reads APP.catalog.kind to
-    // build the URL, and applyCatalogUrlKind's not-loaded branch is what actually fetches it.
-    if (v === "catalog" && kind) { APP.catalog.kind = kind; APP.catalog.loaded = false; }
+    // build the URL, and each dedicated library page's own render function is what fetches it,
+    // once its `loaded` flag below says it hasn't already.
+    if (v === "catalog" && kind) {
+      APP.catalog.kind = kind;
+      if (kind === "characters") APP.characterLibrary.loaded = false;
+      if (kind === "styles") APP.styleLibrary.loaded = false;
+      if (kind === "tags") APP.tagLibrary.loaded = false;
+      if (kind === "skills") APP.skillLibrary.loaded = false;
+    }
     // "Architect" is whichever session is open — the handoff re-authors a cast, the scaffold builds
     // a new story, and only one of them is ever live.
     if (t.id === "nav-architect" && APP.handoff.active) {
