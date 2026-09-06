@@ -1,6 +1,6 @@
 # Plans — Playwright against the manual checklist
 
-A single-topic annex to [`PLANS.md`](PLANS.md): what of [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) the
+A single-topic annex to [`PLANS.md`](docs/PLANS.md): what of [`GUI-CHECKLIST.md`](docs/GUI-CHECKLIST.md) the
 Playwright suite could take over, in blocks. It follows the same rule as everything in `PLANS.md` —
 nothing here is committed work, and when a block ships **the block is deleted from this file**. When
 the last block is gone, so is this file.

@@ -7,5 +7,6 @@ test-results/
 .vscode/
 .claude/
 .codegraph/
+.continue/
 AGENTS.md
 opencode.jsonc

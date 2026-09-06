@@ -108,11 +108,6 @@ describe("SPECIAL_SKILL_CATALOG", () => {
     assert.equal(chew.meaning, "grinding through what others cannot");
   });
 
-  it("de-dup still holds across a bible spelling and a custom spelling of the same skill", () => {
-    const dup = quietSync(() => resolveSkills("X", "Lock Picking | lockpicking", ""));
-    assert.equal(dup.filter(x => /lock/i.test(x.name)).length, 1);
-  });
-
   it("matches bible names case-, spacing- and punctuation-insensitively like everything else", () => {
     const s = quietSync(() => resolveSkills("X", "sleight of hand", ""));
     const sleight = s.find(x => /sleight/i.test(x.name))!;

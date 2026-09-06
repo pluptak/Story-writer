@@ -30,14 +30,14 @@ afterwards.
 
 | doc | read it when |
 | --- | --- |
-| [GUI-SPEC.md](GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
-| [Writer.MD](Writer.MD) | the writer's role, the reader seat, and the live-run screen |
-| [Architect.MD](Architect.MD) | the architect — both modes, the handoff's behaviour and edit surface, and its two GUI screens |
-| [Character.MD](Character.MD) | the character agent — what it holds and never sees, and the consult from its side |
-| [Clarifier.MD](Clarifier.MD) | the clarifier — the author's mid-scene fact answers, their bounds, and the rewind |
-| [Judge.MD](Judge.MD) | any judge variant — the per-answer gate, the narration lint, the batch judge, the cast judge |
-| [GUI-CHECKLIST.md](GUI-CHECKLIST.md) | you changed anything under `server/gui/` — `npm run test:gui` for the mechanical pass (Playwright, `tests/gui/`), the checklist for what it cannot see |
-| [PLANS.md](PLANS.md) | anything not built yet — every proposal, follow-up and known weak spot |
+| [GUI-SPEC.md](docs/GUI-SPEC.md) | a route, an SSE event, or what a run control does to the run |
+| [Writer.MD](docs/Writer.MD) | the writer's role, the reader seat, and the live-run screen |
+| [Architect.MD](docs/Architect.MD) | the architect — both modes, the handoff's behaviour and edit surface, and its two GUI screens |
+| [Character.MD](docs/Character.MD) | the character agent — what it holds and never sees, and the consult from its side |
+| [Clarifier.MD](docs/Clarifier.MD) | the clarifier — the author's mid-scene fact answers, their bounds, and the rewind |
+| [Judge.MD](docs/Judge.MD) | any judge variant — the per-answer gate, the narration lint, the batch judge, the cast judge |
+| [GUI-CHECKLIST.md](docs/GUI-CHECKLIST.md) | you changed anything under `server/gui/` — `npm run test:gui` for the mechanical pass (Playwright, `tests/gui/`), the checklist for what it cannot see |
+| [PLANS.md](docs/PLANS.md) | anything not built yet — every proposal, follow-up and known weak spot |
 | [defaults.md](defaults.md) | what `defaults.json` settles before a story exists |
 
 The repository has no separate protocol, story-format, run-record, or scaffold specifications — the
@@ -86,7 +86,7 @@ does not mask a real type error. It does **not** cover `test:gui` (needs a brows
 (needs a live inference server) — run those separately.
 
 One run writes **one chapter**. Between chapters, the viewer's handoff panel (started with `--serve`)
-re-authors the cast for the next one ([Architect.MD](Architect.MD)). The new-story interview and the
+re-authors the cast for the next one ([Architect.MD](docs/Architect.MD)). The new-story interview and the
 handoff are browser-only; passing their old console flags (`--new`, `--oneshot`, `--idea`,
 `--next-chapter`) is rejected with a pointer at `--serve`. `--headless` starts the server alone — no
 story argument, no console picker, no one-shot — with the browser driving from the shelf and Ctrl-C

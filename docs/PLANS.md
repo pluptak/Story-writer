@@ -1,13 +1,13 @@
 # Plans
 
 **Every unbuilt plan lives here.** Built behaviour belongs to the document that owns its surface —
-[`GUI-SPEC.md`](GUI-SPEC.md) for routes and SSE, [`Architect.MD`](Architect.MD) for the architect and
-the handoff, [`Writer.MD`](Writer.MD) for the writer and the live screen. When something here ships,
+[`GUI-SPEC.md`](docs/GUI-SPEC.md) for routes and SSE, [`Architect.MD`](docs/Architect.MD) for the architect and
+the handoff, [`Writer.MD`](docs/Writer.MD) for the writer and the live screen. When something here ships,
 its behaviour moves into one of those and **the entry is deleted rather than annotated**; git history
 is where implementation notes belong.
 
 One annex, kept separate at the owner's request and under the same delete-on-ship rule:
-[`PLANS-playwright.md`](PLANS-playwright.md) — which of `GUI-CHECKLIST.md`'s manual checks the
+[`PLANS-playwright.md`](docs/PLANS-playwright.md) — which of `GUI-CHECKLIST.md`'s manual checks the
 Playwright suite could take over, in blocks. It goes away with its last block.
 
 Nothing below is committed work. **Sections are kinds of work, not subsystems** — a defect with a
@@ -18,7 +18,7 @@ deliberately mixed-kind, and an entry promoted into it is not repeated in the se
 
 **Verification, once, for all of it:** `npx tsc --noEmit` and `npm test` are the cheap checks. Anything
 touching `server/gui/` also needs `npm run test:gui` and then the matching section of
-[`GUI-CHECKLIST.md`](GUI-CHECKLIST.md), for what that suite cannot see. Anything touching `prompts.ts`
+[`GUI-CHECKLIST.md`](docs/GUI-CHECKLIST.md), for what that suite cannot see. Anything touching `prompts.ts`
 or model behaviour needs a live run, which is the owner's to make, batched.
 
 ---
@@ -107,7 +107,7 @@ budget grants are spent against word count and step count, neither of which know
 for. Whatever the budget policy becomes, that absence is the thing it answers.
 
 **Half of that absence is now filled, as a measurement.** The done judge
-([`Judge.MD`](Judge.MD)) reads the page back against the scene's question when the writer declares
+([`Judge.MD`](docs/Judge.MD)) reads the page back against the scene's question when the writer declares
 it over and logs `done_flagged` when it is not settled there. **Unmeasured, and now worth watching:
 whether it is too lenient.** It has twice passed an `alarm-corridor` ending that reads as undecided
 — the most recent closes with Hale reaching for the ledger and Oduya shielding it — without
@@ -420,7 +420,7 @@ below: **The world timeline**.
 - **"Prefer an existing skill" is still advice, not a rule.** Promotion is built — the architect
   reads the author's bible on both sides, a bespoke `name :: meaning` in a landed cast is derived as
   a promotion candidate, and `/scaffold/promote` is the owner's gate
-  ([`Architect.MD`](Architect.MD), *Skill bible → Promotion*). What the gate has not yet bought is
+  ([`Architect.MD`](docs/Architect.MD), *Skill bible → Promotion*). What the gate has not yet bought is
   the constraint it was supposed to enable: a bespoke skill is still accepted everywhere, so an
   author who never promotes anything gets the same behaviour as before, and one who promotes
   diligently still sees the architect coin a fresh synonym whenever it does not recognise a name.
@@ -441,7 +441,7 @@ below: **The world timeline**.
   effect.
 - **Casting from the library, past the opening cast.** The import path itself is built — the tray,
   the cast gate's own stage prompt, and the adaptation contract the engine enforces rather than
-  requests ([`Architect.MD`](Architect.MD), *Casting from the library*). What is unbuilt is
+  requests ([`Architect.MD`](docs/Architect.MD), *Casting from the library*). What is unbuilt is
   everything that follows from a cast the author picked rather than the architect invented:
 
   - **The contract has never met a real model.** Preservation is enforced, so it cannot fail
@@ -457,7 +457,7 @@ below: **The world timeline**.
     the deferred-introduction fork below, and the tray is where it would live.
 
 - **The catalog's advisory reviewer.** Deferred deliberately until real entries exist to test it
-  against, and specified where it will live ([`Architect.MD`](Architect.MD)): architect-shaped rather
+  against, and specified where it will live ([`Architect.MD`](docs/Architect.MD)): architect-shaped rather
   than judge-shaped, non-blocking, with mechanical validation still running after it. It exists
   because a catalog amplifies the cast-sheet defects already logged above — one bad character, every
   story after it.
@@ -466,7 +466,7 @@ below: **The world timeline**.
   gate-labelled approve and the tension as its text, the story map's scene detail (roster, reach,
   hold-only beats), the catalog's derived usage lines, and the concept's **voice picker** — a style
   preset reaches the settings gate, whose voice becomes `writerStyle` while the clauses it derives
-  become `writerStyleConstraints` ([Architect.MD](Architect.MD), *The voice*). What the mockups
+  become `writerStyleConstraints` ([Architect.MD](docs/Architect.MD), *The voice*). What the mockups
   proposed and nothing carries yet: the **conversation transcript** as the architect's primary UI —
   needs a host method publishing the session's turns, and the owner has chosen to keep the plain
   last-round narration until they ask for the history; the tag editor's **description** and
@@ -609,7 +609,7 @@ decoration. That is the parent project's failure and it is not this one, because
 the one category no character decides**.
 
 That category already exists here and currently has no author but the writer's improvisation.
-[`Writer.MD`](Writer.MD) permits the writer setting, atmosphere, time passing and established facts,
+[`Writer.MD`](docs/Writer.MD) permits the writer setting, atmosphere, time passing and established facts,
 and says outright that a world-caused removal — a trapdoor, the floor giving way — is the writer's to
 narrate *while the choice that carried them into it still had to be asked for first*. The timeline
 takes ownership of that lane and touches nothing else. No invariant bends: characters still own every
@@ -744,7 +744,7 @@ own lesson about handing over run commands with holes in them.
   writer wrote it*; it never meant *it changed a decision*, and those came apart in every run. The
   *wrote it* half looked mechanical and is not — see block 1 below for the measurements that killed
   the bigram check. The *changed a decision* half no mechanical check can reach at all; the
-  `done_flagged` verdict from the done judge ([`Judge.MD`](Judge.MD)) is the closest instrument the
+  `done_flagged` verdict from the done judge ([`Judge.MD`](docs/Judge.MD)) is the closest instrument the
   engine has, but it reads the scene's question, not the beat.
 - **History or none**, for the repair entity. Unchanged: judge-shaped (fresh, `0.3`) or
   clarifier-shaped (one per scene, remembers). Now a smaller question, since the entity only handles
@@ -758,9 +758,9 @@ own lesson about handing over run commands with holes in them.
 ### Blocks
 
 Only the repair entity is left. Everything else in this feature has shipped and its behaviour has
-moved to the document that owns it: the ledger and the schema to [`Architect.MD`](Architect.MD), what
-the writer receives to [`Writer.MD`](Writer.MD), what a memory is to
-[`Character.MD`](Character.MD), and the events to [`GUI-SPEC.md`](GUI-SPEC.md). What ships without it
+moved to the document that owns it: the ledger and the schema to [`Architect.MD`](docs/Architect.MD), what
+the writer receives to [`Writer.MD`](docs/Writer.MD), what a memory is to
+[`Character.MD`](docs/Character.MD), and the events to [`GUI-SPEC.md`](docs/GUI-SPEC.md). What ships without it
 is a held-then-fired beat carrying stakes on a fixed trigger, authored by the architect's world gate
 and re-aimed by the handoff when a chapter never reaches it.
 
@@ -810,7 +810,7 @@ that was known. What replaces it:
   mattered, and it is the only one that distinguishes this feature from scenery with a volume knob.
   One instance of each so far, in the same run: ODUYA's memory visibly redirected their reasoning
   for two replies before their authored `impulse` reasserted; HALE's did not land at all. Both
-  readings, and the constraints drawn from them, are in [`Architect.MD`](Architect.MD).
+  readings, and the constraints drawn from them, are in [`Architect.MD`](docs/Architect.MD).
 - **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
   question rather than at the planned path. Without this the entity is a rail.
 
@@ -838,7 +838,7 @@ No defect and no decision owed: smaller quality work, prompt cost, and coverage.
 - **Keep current-run rendering scoped to one chapter.** No defect has been observed; this is a
   constraint on whatever aggregate display comes next. Story-level totals are aggregated only when
   the UI is explicitly showing more than one run, and the grouping section of
-  [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) is what checks it.
+  [`GUI-CHECKLIST.md`](docs/GUI-CHECKLIST.md) is what checks it.
 - **`run-and-save.ts`'s write-failure paths have no coverage.** The module exists; the branches are
   not reachable from a test until `runChapter` is injectable or the artifact writer is split out of
   `runAndSave`.

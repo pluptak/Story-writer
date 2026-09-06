@@ -3,7 +3,7 @@
 **Status: built.** The clarifier is the author-side agent that answers a character's mid-scene
 question about a fact of its situation. This document owns it: what it holds, the bounds it answers
 under, and its history across a scene. The ask that reaches it is described from the character's
-side in [`Character.MD`](Character.MD) and from the writer's in [`Writer.MD`](Writer.MD).
+side in [`Character.MD`](docs/Character.MD) and from the writer's in [`Writer.MD`](docs/Writer.MD).
 
 ## Role
 
@@ -92,6 +92,6 @@ history*, applied to the part of an answer that arrives before it.
 
 ## Known weak spots
 
-Unbuilt improvements and observed failure modes are tracked in [`PLANS.md`](PLANS.md), including
+Unbuilt improvements and observed failure modes are tracked in [`PLANS.md`](docs/PLANS.md), including
 the one live observation that the clarifier can answer a different question than the one asked —
 there is no check that a clarification addresses its question.

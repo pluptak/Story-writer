@@ -36,5 +36,5 @@ explicitly — to the same model as `models.default` if that is genuinely what y
 assistant on.
 
 The checked-in values are intentionally suitable for the local LM Studio setup. Edit
-[`defaults.json`](defaults.json) when changing them; this file documents their meaning rather than
+[`defaults.json`](docs/defaults.json) when changing them; this file documents their meaning rather than
 duplicating the values.

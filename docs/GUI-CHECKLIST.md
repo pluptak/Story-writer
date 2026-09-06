@@ -647,7 +647,7 @@ half, the clauses a story derives from its POV and its cast's restrictions, is d
 ### Skills, the fourth kind
 
 The persisted special-skill bible. A skill takes a name, a meaning and tags; it takes no voice, no
-persona and no restrictions ([`Architect.MD`](Architect.MD)'s *Skill bible* says why restrictions get
+persona and no restrictions ([`Architect.MD`](docs/Architect.MD)'s *Skill bible* says why restrictions get
 no catalog of their own).
 
 - [ ] **The seed is there before anything is saved.** A first run on `#/catalog?kind=skills` lists the

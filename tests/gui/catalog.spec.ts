@@ -614,11 +614,11 @@ test("the skill library seeds from the engine and new entries can be created", a
   await arrive(page, served, "#/catalog?kind=skills");
 
   await expect(page.locator(".lib-skills")).toBeVisible();
-  // The engine's seed: 3 special skills (lockpicking, climbing, sleight-of-hand) and 2 origins
-  // (human, ai) — both kinds live in this one catalog.
+  // The engine's seed: 8 general skills, 3 special ones (lockpicking, climbing, sleight-of-hand)
+  // and 2 origins (human, ai) — all three kinds live in this one catalog.
   const rows = page.locator(".lib-row");
   await expect(rows.first()).toBeVisible();
-  await expect.poll(async () => rows.count()).toBe(5);
+  await expect.poll(async () => rows.count()).toBe(13);
   await expect(page).toHaveURL(/kind=skills/);
 
   await page.locator("#skilllib-new").click();
@@ -628,30 +628,33 @@ test("the skill library seeds from the engine and new entries can be created", a
   await page.locator("#skilllib-save").click();
 
   // The saved entry is on the list, backed by the real save path.
-  await expect.poll(async () => rows.count()).toBe(6);
+  await expect.poll(async () => rows.count()).toBe(14);
   await expect(page.locator(".lib-row").filter({ hasText: "Telekinesis" })).toHaveCount(1);
 
   // Persisted for real, not just added to the in-memory list.
   await arrive(page, served, "#/catalog?kind=skills");
-  await expect.poll(async () => page.locator(".lib-row").count()).toBe(6);
+  await expect.poll(async () => page.locator(".lib-row").count()).toBe(14);
 });
 
 test("the skill library lists origins apart from the special skills", async ({ page, served }) => {
   await arrive(page, served, "#/catalog?kind=skills");
 
-  // Two sections under their own headings: special skills first, then origins.
+  // Three sections under their own headings, in the order the kinds build on each other.
   const sections = page.locator(".lib-list .lib-facet-heading");
-  await expect(sections).toHaveText(["Special skills", "Origins"]);
+  await expect(sections).toHaveText(["General skills", "Special skills", "Origins"]);
 
-  // Origins carry the kind badge and say what they grant; special skills do neither.
+  // An origin says what it starts a character with, and carries the badge; a general skill carries
+  // its own badge; a special skill carries neither, because it is the ordinary case.
   const ai = page.locator(".lib-row").filter({ hasText: "ai" });
   await expect(ai).toContainText("Origin");
-  await expect(ai).toContainText("grants speech, recall");
+  await expect(ai).toContainText("starts with speech, recall");
   const human = page.locator(".lib-row").filter({ hasText: "human" });
-  await expect(human).toContainText("Origin");
-  await expect(human).toContainText("grants movement");
+  await expect(human).toContainText("starts with movement");
+  const sight = page.locator(".lib-row").filter({ hasText: "sight" }).first();
+  await expect(sight).toContainText("General");
   const lockpicking = page.locator(".lib-row").filter({ hasText: "lockpicking" });
   await expect(lockpicking).not.toContainText("Origin");
+  await expect(lockpicking).not.toContainText("General");
 });
 
 test("an origin can be created and saved with its general skills", async ({ page, served }) => {
@@ -669,7 +672,7 @@ test("an origin can be created and saved with its general skills", async ({ page
   await page.locator("#skilllib-save").click();
 
   // The row says what the origin grants, and the editor still shows the two chips picked.
-  await expect(page.locator(".lib-row").filter({ hasText: "Bird" })).toContainText("grants movement, sight");
+  await expect(page.locator(".lib-row").filter({ hasText: "Bird" })).toContainText("starts with movement, sight");
 
   // Persisted for real: a fresh load still has the origin with its coverage.
   await arrive(page, served, "#/catalog?kind=skills");
@@ -684,10 +687,11 @@ test("searching by a granted skill finds the origin that grants it", async ({ pa
   await arrive(page, served, "#/catalog?kind=skills");
 
   await page.locator("#skilllib-search").fill("sight");
-  // "sight" appears in no special skill's name or meaning, and in no origin's own text — only in
-  // the human origin's general list. A covered skill's name must surface the origin that carries it.
-  await expect(page.locator(".lib-row")).toHaveCount(1);
-  await expect(page.locator(".lib-row")).toContainText("human");
+  // "sight" is a general skill in its own right, and the human origin's list carries it — a covered
+  // skill's name must surface the origin that grants it, not just the skill itself.
+  const hits = page.locator(".lib-row");
+  await expect(hits.filter({ hasText: "human" })).toHaveCount(1);
+  await expect(hits.filter({ hasText: "lockpicking" })).toHaveCount(0);
 });
 
 test("switching an origin back to a special skill drops the general list on save", async ({ page, served }) => {
@@ -699,20 +703,82 @@ test("switching an origin back to a special skill drops the general list on save
   await page.locator("#skilllib-meaning").fill("a bodiless presence");
   await page.locator('[data-general-skill="speech"]').click();
   await page.locator("#skilllib-save").click();
-  await expect(page.locator(".lib-row").filter({ hasText: "Ghost" })).toContainText("grants speech");
+  await expect(page.locator(".lib-row").filter({ hasText: "Ghost" })).toContainText("starts with speech");
 
   // Switch the saved origin to a special skill; the general list has nowhere to live.
   await page.locator('[data-skill-kind="special"]').click();
   await expect(page.locator("#skilllib-general-section")).toHaveCount(0);
   await page.locator("#skilllib-save").click();
   const ghost = page.locator(".lib-row").filter({ hasText: "Ghost" });
-  await expect(ghost).not.toContainText("grants speech");
+  await expect(ghost).not.toContainText("starts with speech");
   await expect(ghost).toContainText("a bodiless presence");
 
   await arrive(page, served, "#/catalog?kind=skills");
   await page.locator(".lib-row").filter({ hasText: "Ghost" }).click();
   await expect(page.locator('[data-skill-kind="special"]')).toHaveClass(/on/);
   await expect(page.locator("#skilllib-general-section")).toHaveCount(0);
+});
+
+test("the list runs full width until a skill is selected", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // Nothing selected: no inspector in the DOM at all, rather than a panel saying "select a skill".
+  await expect(page.locator(".lib-skills.no-inspector")).toHaveCount(1);
+  await expect(page.locator(".lib-inspector")).toHaveCount(0);
+
+  await page.locator(".lib-row").filter({ hasText: "lockpicking" }).click();
+  await expect(page.locator(".lib-inspector")).toHaveCount(1);
+  await expect(page.locator(".lib-skills.no-inspector")).toHaveCount(0);
+
+  await page.locator("#skilllib-close").click();
+  await expect(page.locator(".lib-inspector")).toHaveCount(0);
+});
+
+test("a general skill can be created, and its kind is fixed once saved", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  await page.locator("#skilllib-new").click();
+  // All three kinds are offered while the entry has never been saved.
+  await expect(page.locator('[data-skill-kind="general"]')).toHaveCount(1);
+  await page.locator('[data-skill-kind="general"]').click();
+  await page.locator("#skilllib-name").fill("Balance");
+  await page.locator("#skilllib-meaning").fill("keeping your feet under you on an unsteady footing");
+  // A general skill is name and meaning only — no general-skill picker of its own.
+  await expect(page.locator("#skilllib-general-section")).toHaveCount(0);
+  await page.locator("#skilllib-save").click();
+
+  const balance = page.locator(".lib-row").filter({ hasText: "Balance" });
+  await expect(balance).toContainText("General");
+
+  // Saved: the kind is now fixed, and the picker is replaced by the reason why.
+  await arrive(page, served, "#/catalog?kind=skills");
+  await page.locator(".lib-row").filter({ hasText: "Balance" }).click();
+  await expect(page.locator('[data-tid="skill-library.kind-fixed"]')).toBeVisible();
+  await expect(page.locator('[data-skill-kind="origin"]')).toHaveCount(0);
+});
+
+test("the skill editor refuses to delete a general skill an origin grants, and says which", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // "sight" is granted by the human origin in the seed, so it cannot go.
+  await page.locator(".lib-row").filter({ hasText: "sight" }).first().click();
+  await expect(page.locator('[data-tid="skill-library.granted-by"]')).toContainText("human");
+  page.on("dialog", dialog => dialog.accept());
+  await page.locator("#skilllib-delete").click();
+  // The refusal's own wording, not the Usage line's — that already says "granted by origin human",
+  // so asserting on it would pass whether or not the delete was actually refused.
+  await expect(page.locator(".lib-inspector")).toContainText("remove it from it first");
+  // Refused before the round trip: still on the list, and still on the list after a reload.
+  await arrive(page, served, "#/catalog?kind=skills");
+  await expect(page.locator(".lib-row").filter({ hasText: "sight" }).first()).toBeVisible();
+});
+
+test("the skill editor carries no tags block", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+  await page.locator(".lib-row").filter({ hasText: "lockpicking" }).click();
+  await expect(page.locator(".lib-inspector")).toBeVisible();
+  await expect(page.locator(".lib-inspector")).not.toContainText("Tags");
+  await expect(page.locator(".lib-pick[data-tag-label]")).toHaveCount(0);
 });
 
 test("the skill library's search keeps the caret while it filters", async ({ page, served }) => {
@@ -728,6 +794,7 @@ test("the skill library's search keeps the caret while it filters", async ({ pag
   await page.keyboard.type("telekin");
   await expect(page.locator("#skilllib-search")).toHaveValue("telekin");
   await expect(page.locator(".lib-row")).toHaveCount(1);
+  await expect(page.locator(".lib-row")).toContainText("Telekinesis");
 });
 
 test("the style library edits a style through the dedicated inspector", async ({ page, served }) => {

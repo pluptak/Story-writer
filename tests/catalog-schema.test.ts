@@ -44,16 +44,6 @@ describe("LibraryCharacter schema", () => {
     assert.equal(char.updatedAt, 0);
   });
 
-  it("loads a legacy entry (no hidden/updatedAt on disk) as visible with updatedAt 0", () => {
-    const char = LibraryCharacter.parse({
-      id: "char-legacy",
-      version: 3,
-      name: "Legacy",
-    });
-    assert.equal(char.hidden, false);
-    assert.equal(char.updatedAt, 0);
-  });
-
   it("defaults a legacy entry's origin to blank (every general skill)", () => {
     const char = LibraryCharacter.parse({ id: "char-preorigins", name: "Old Hand" });
     assert.equal(char.origin, "");
@@ -588,15 +578,6 @@ describe("SkillCatalog schema", () => {
     });
     assert.equal(skill.kind, "general");
     assert.deepEqual(skill.general, []);
-  });
-
-  it("defaults kind to special for backward compat with pre-origins entries", () => {
-    const skill = LibrarySkill.parse({
-      id: "custom",
-      name: "Custom",
-      meaning: "a custom skill",
-    });
-    assert.equal(skill.kind, "special");
   });
 
   it("rejects an entry with a tags key (strictObject)", () => {

@@ -266,7 +266,7 @@ travel with it) and re-validates; nothing reaches disk until a save — the engi
 suggestion.
 
 The story editor renders each scene's `reach` — the scene-scoped capability grants
-([Architect.MD](Architect.MD), I1) — as one textarea per scene, one
+([Architect.MD](docs/Architect.MD), I1) — as one textarea per scene, one
 `NAME: thing :: meaning` per line. Reach round-trips through `/story/check` and `/story/save`
 inside `StoryJson`'s scenes; it is character-in-place data and never appears on a character card in
 the editor.
@@ -314,13 +314,13 @@ A **character** entry is the **portable half** of a character: `id`, `version`, 
 `model` or `maxRetries`, which are run configuration. `origin` names a kind of being whose
 general-skill group the character starts from, or is blank for every general skill; it resolves
 against the skills catalog when a story loads, exactly like a story-authored character's origin. What
-a catalog entry is and how it composes into a `CharacterDef` is [Architect.MD](Architect.MD)'s
+a catalog entry is and how it composes into a `CharacterDef` is [Architect.MD](docs/Architect.MD)'s
 *Character catalog*. The other three: a **tag** is `id`, `version`, `facet`, `label`; a **style** is
 `id`, `version`, `name`, `tags[]`, `description`, `voice`; a **skill** is `id`, `version`, `name`,
 `meaning`, `tags[]`, `kind` (`"special"` — given to a character by name — or `"origin"`, a named
 group of general skills a kind of being starts with), and on an origin the `general[]` list of
 general-skill names it grants (always empty on a special skill). Its `meaning` is the one prose field
-in any kind the schema refuses rather than reports missing ([Architect.MD](Architect.MD)'s *Skill
+in any kind the schema refuses rather than reports missing ([Architect.MD](docs/Architect.MD)'s *Skill
 bible* says why).
 
 **`hidden`/`updatedAt` exist only on a character entry today** — every other kind's schema omits
@@ -349,7 +349,7 @@ constrained result — never the model's own claim about what it changed. `revie
 that is a complete, successful outcome, not a failure. The assistant runs on `defaults.json`'s
 `models.assistant`, a model slot that — unlike `models.architect` — does **not** fall back to
 `models.default`: an unconfigured assistant model is `{ok:false, kind:"model_unavailable"}`, not a
-silent run on the story's own model ([defaults.md](defaults.md) says why).
+silent run on the story's own model ([defaults.md](docs/defaults.md) says why).
 
 `tags` and `skills` **seed** — a `GET` against a catalog whose file does not exist yet answers with
 the engine's starting vocabulary rather than an empty list, and the first save writes that whole seed
@@ -388,7 +388,7 @@ Available while a run is in flight (the live rail needs it exactly then). Each c
 `name`, `persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `skills` (as `{text, meaning}`),
 and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants as
 `{ n: number, reach: { NAME: ["thing :: what they can do through it"] } }`. **Reach never merges into
-a character's `skills`** ([Architect.MD](Architect.MD) I4): the GUI labels each grant with its scene,
+a character's `skills`** ([Architect.MD](docs/Architect.MD) I4): the GUI labels each grant with its scene,
 so it can never read as intrinsic.
 
 ## Run control
@@ -531,7 +531,7 @@ will read again, and the viewer stops offering to.
 `imported` is the tray: the characters the author cast out of the catalog, carried as provenance and
 name only, because that is all a page needs. A non-empty tray forces `castSizeSteers` false — the tray
 IS the opening cast's size — and switches the cast gate to a different stage prompt with an enforced
-adaptation contract ([Architect.MD](Architect.MD), *Casting from the library*). It is session state
+adaptation contract ([Architect.MD](docs/Architect.MD), *Casting from the library*). It is session state
 that ends at accept: no part of it reaches `story.json`, and the handoff never learns a character came
 from a template. `missingImports` are ids the catalog no longer holds; they are reported rather than
 fatal, because the catalog is the author's and a tray that silently shrank is worse than one that says
@@ -619,7 +619,7 @@ that reply is the chapter now prepared — write it with `POST /select { dir, ch
 Every handoff route republishes a `{ t: "handoff", state }` SSE frame (`state` is exactly the
 `GET /next-chapter` body). The viewer's handoff page consumes it
 ([handoff.js](server/gui/viewer/handoff.js)); the screen itself is designed in
-[Architect.MD](Architect.MD).
+[Architect.MD](docs/Architect.MD).
 
 ## `/events` — the SSE stream
 
@@ -762,7 +762,7 @@ ruled on: nothing but an explicit `ok` counts as a verdict.
 half of that same signal: the call didn't come back wrong-shaped, it didn't come back at all — LM
 Studio unreachable, timed out, or the model errored outright. Each names exactly where an
 author-side helper's silent fail-open default was taken, so a run can be told apart from one where
-every judgement actually happened; see [Writer.MD](Writer.MD).
+every judgement actually happened; see [Writer.MD](docs/Writer.MD).
 
 ## Replacing the GUI
 
@@ -803,7 +803,7 @@ GUI trick) rather than being derivable client-side: editing a story's files fiel
 reading a story's full cast — `knows`, `goal`, `belief`, `impulse`, `voice` and `persona` — for a story that is not in a scaffold or
 handoff session, starting a run without going through the picker/scaffold handshake, or anything about
 a run that already fell out of `MAX_RUNS` retention. The first two are proposed in
-[PLANS.md](PLANS.md) (plans 1 and 2C), which is also where the routes they would add are drafted.
+[PLANS.md](docs/PLANS.md) (plans 1 and 2C), which is also where the routes they would add are drafted.
 
 If "replace" means **serve the new frontend from somewhere other than this process** (a separate dev
 server, a static host): the JSON/SSE routes have no CORS headers today, so a different-origin client

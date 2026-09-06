@@ -5,8 +5,8 @@
 
 This document owns the architect: its role, the between-chapters handoff behaviour, and the two
 screens that drive it (the scaffold interview and the handoff panel). The route contract stays in
-[`GUI-SPEC.md`](GUI-SPEC.md), which is the single source of truth for request bodies, replies and SSE
-state. The proposed `story.json` form editor ([`GUI-SPEC.md`](GUI-SPEC.md) §Story editor) is a different
+[`GUI-SPEC.md`](docs/GUI-SPEC.md), which is the single source of truth for request bodies, replies and SSE
+state. The proposed `story.json` form editor ([`GUI-SPEC.md`](docs/GUI-SPEC.md) §Story editor) is a different
 screen — its architect panel edits an in-memory draft and is not the handoff.
 
 ## Role
@@ -107,7 +107,7 @@ it finds (*Casting from the library* below).
 A reusable library of character templates, stored beside `defaults.json` rather than inside any
 story, so it is not scoped to one and survives every story it is used in. `engine/catalog-schema.ts`
 is its format's own definition, the way `story-schema.ts` is `story.json`'s; the routes are
-[`GUI-SPEC.md`](GUI-SPEC.md)'s *Character catalog*.
+[`GUI-SPEC.md`](docs/GUI-SPEC.md)'s *Character catalog*.
 
 **A library character is not a `CharacterDef`.** It carries only what travels between stories:
 
@@ -415,7 +415,8 @@ characters and while the budget is still at least eight beats wide, which are th
 
 Revising the concept never re-runs a gate — it changes what the *next* build of a stage prompt says.
 Once the stage that reads a half has produced its content, nothing ahead reads it again, and the
-session says so (`tagsSteer`, `castSizeSteers` in [GUI-SPEC.md](GUI-SPEC.md)). The viewer stops
+session says so (`tagsSteer`, `castSizeSteers` in [GUI-SPEC.md](docs/
+GUI-SPEC.md)). The viewer stops
 offering to revise a spent half rather than letting it go quietly inert: an editor that looks like it
 steers the run, and does not, is worse than no editor.
 
@@ -571,7 +572,7 @@ model-in-the-loop check in this engine accepts on failure and an outage must not
 mid-checklist. `normalizeSpec`'s "nobody has any restrictions" problem is unchanged and still
 advisory — it is the only asymmetry signal on the surfaces that have no gate at all (the story
 editor, one-shot mode, the handoff). The judge agent itself — its contract, its verdict shapes, and
-the family it belongs to — is specified in [`Judge.MD`](Judge.MD).
+the family it belongs to — is specified in [`Judge.MD`]docs/(Judge.MD).
 
 **What the world gate is told about a beat**, in `TIMELINE_FIELDS` — one const shared with the
 whole-story format, so the two modes cannot drift. A world event is the one category nobody in the
@@ -591,7 +592,7 @@ open an action rather than closing one (a memory that makes a character's plan p
 nowhere to go and their goal simply wins); and give it to whoever the scene's question turns on. Only
 characters in that chapter's roster — `timelineBeatProblems` warns for anyone else, because the loop
 resolves memory names against the scene roster and a memory for an absent character silently never
-implants. What a memory *is* from the character's side is [`Character.MD`](Character.MD)'s.
+implants. What a memory *is* from the character's side is [`Character.MD`]docs/(Character.MD)'s.
 
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.
@@ -645,7 +646,7 @@ the next run. The GUI must offer the prepared chapter as a separate action.
 ## Round shapes
 
 Which rounds each mode can produce — the bodies and the state each route publishes are
-[`GUI-SPEC.md`](GUI-SPEC.md)'s *Scaffold* and *The handoff* sections:
+[`GUI-SPEC.md`]docs/(GUI-SPEC.md)'s *Scaffold* and *The handoff* sections:
 
 | mode | `last.kind` |
 | --- | --- |
@@ -677,7 +678,7 @@ handoff:  start → edits    → say/refine → accept → select prepared chapt
 
 ## The screens
 
-The visual prototype is the [`mockups/architect`](mockups/architect) set — interactive static pages
+The visual prototype is the [`mockups/architect`]docs/(mockups/architect) set — interactive static pages
 covering both modes, question and edit rounds, the accept flow, the theme toggle and the responsive
 layout, without calling the API. **It is the picture; this section is the rules.**
 
@@ -815,7 +816,7 @@ npx tsx story-writer.ts stories/example --chapter=2
 Both conversations are viewer-only: the new-story interview is driven from the shelf through
 `GET /scaffold`, `POST /scaffold/{start,say,approve,set,accept,abandon}`, and the handoff from
 `#/handoff?dir=` through `GET /next-chapter` and `POST /next-chapter/{start,say,accept,abandon}`,
-specified in [`GUI-SPEC.md`](GUI-SPEC.md). The server reaches the engine through `ServerHost` and
+specified in [`GUI-SPEC.md`]docs/(GUI-SPEC.md). The server reaches the engine through `ServerHost` and
 never imports engine modules directly. The old console walkthrough (`--new`, `--oneshot`,
 `--next-chapter`) was removed; those flags are rejected with a pointer at `--serve`.
 
@@ -833,7 +834,7 @@ never imports engine modules directly. The old console walkthrough (`--new`, `--
   `/scaffold/start` and one approve — asserting the stepper tracks the published gate, the approve
   button names the gate it passes, and the tension reaches the rail as its text. The deeper gates
   (settings onward, and the blocked-gate override) stay in
-  [GUI-CHECKLIST.md](GUI-CHECKLIST.md)'s manual section 14. The concept's three catalog lookups
+  [GUI-CHECKLIST.md]docs/(GUI-CHECKLIST.md)'s manual section 14. The concept's three catalog lookups
   (`unknownTags`, `importCharacters`, `resolveStyle`) now read the harness's temp files rather than
   the author's own catalog at ROOT, which the spread `HOST` would otherwise have reached.
 
