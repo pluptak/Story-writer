@@ -533,4 +533,40 @@ describe("SkillCatalog schema", () => {
     assert.equal(catalog.entries[0].name, "Lockpicking");
     assert.equal(catalog.entries[1].name, "Climbing");
   });
+
+  it("applies defaults for kind and general on a pre-origins entry", () => {
+    const skill = LibrarySkill.parse({
+      id: "lockpicking",
+      name: "Lockpicking",
+      meaning: "opening locks",
+    });
+    assert.equal(skill.kind, "special");
+    assert.deepEqual(skill.general, []);
+  });
+
+  it("parses an origin entry with kind and general", () => {
+    const skill = LibrarySkill.parse({
+      id: "human",
+      name: "human",
+      meaning: "a person",
+      kind: "origin",
+      general: ["speech", "recall", "movement"],
+    });
+    assert.equal(skill.kind, "origin");
+    assert.deepEqual(skill.general, ["speech", "recall", "movement"]);
+  });
+
+  it("round-trips an origin entry", () => {
+    const original = {
+      id: "ai",
+      version: 1,
+      name: "ai",
+      meaning: "a program",
+      tags: [],
+      kind: "origin" as const,
+      general: ["speech", "recall"],
+    };
+    const skill = LibrarySkill.parse(original);
+    assert.deepEqual(skill, original);
+  });
 });

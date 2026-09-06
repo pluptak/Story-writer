@@ -19,7 +19,7 @@ import {
   type NextChapterSession, type ImportedCharacter, type StylePreset,
   type ScaffoldRound, type ScaffoldAccept, type HandoffAccept,
 } from "./engine/architect.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries } from "./engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries, skillOrigins } from "./engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import { assistCharacter, ASSIST_FIELDS, type AssistField, type AssistMode } from "./engine/catalog-assist.ts";
 import type {
@@ -615,7 +615,7 @@ async function persistStoryJson(dir: string, parsed: StoryJson): Promise<{ ok: t
   }
   // Re-load to confirm (catches silently-corrupt writes on constrained filesystems), under the same
   // bible a run would use — a story that saves clean should load clean where it will be written.
-  try { await loadStory(dir, undefined, await skillBible()); }
+  try { await loadStory(dir, undefined, await skillBible(), await skillOrigins()); }
   catch (e) { return { ok: false, reason: `saved but does not load: ${(e as Error).message}` }; }
   return { ok: true };
 }
@@ -658,7 +658,7 @@ export const HOST: ServerHost = {
   providerName: PROVIDER.displayName,
   // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
   // starts report the same skills.
-  storyCards: async () => storyCards(await skillBible()),
+  storyCards: async () => storyCards(await skillBible(), await skillOrigins()),
   scaffoldState: scaffoldSnapshot,
   scaffoldStart, scaffoldSay, scaffoldApprove, scaffoldConcept, scaffoldImport, scaffoldPromote,
   scaffoldSet, scaffoldAccept, scaffoldAbandon,

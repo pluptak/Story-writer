@@ -15,7 +15,7 @@ import { loadStory, chooseStory, writtenChapters, type StoryConfig } from "./eng
 import { startupRefusal } from "./engine/run-gate.ts";
 import { warn } from "./engine/warnings.ts";
 import { runAndSave } from "./run-and-save.ts";
-import { skillBible } from "./engine/catalog.ts";
+import { skillBible, skillOrigins } from "./engine/catalog.ts";
 import { HOST } from "./host.ts";
 
 /** What one process invocation passes down from the command line: the run's knobs and the console
@@ -66,9 +66,9 @@ export async function chapterStartRefusal(dir: string, chapter: number, replace:
 export async function startChapterRun(dir: string, chapter = 1, cli: CliConfig,
                                       opts: { replace?: boolean } = {}) {
   try {
-    // The run resolves against the author's own bible, so a skill they promoted into it means in a
-    // scene what it means in the editor.
-    const sc = await loadStory(dir, LIVE.modelOverride ?? undefined, await skillBible());
+    // The run resolves against the author's own bible and origins, so a skill they promoted
+    // and an origin they configured mean in a scene what they mean in the editor.
+    const sc = await loadStory(dir, LIVE.modelOverride ?? undefined, await skillBible(), await skillOrigins());
     ENGINE.stream = sc.stream; ENGINE.debug = sc.debug;
     NET.timeoutMs = sc.requestTimeout * 1000;
     NET.retries = sc.attempts - 1;

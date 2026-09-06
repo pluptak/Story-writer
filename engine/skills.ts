@@ -99,18 +99,25 @@ export const bibleFrom = (entries: Readonly<Record<string, string>>): BibleLooku
   return name => m.get(canonSkill(name));
 };
 
+/** One origin as the in-code catalog holds it: what kind of being it is, and which general skills
+ *  it starts with. The `meaning` is what the author reads and what seeds the persisted catalog; only
+ *  `skills` reaches resolution. */
+export interface OriginGroup { meaning: string; skills: readonly string[] }
+
 /** A character's origin: which general skills a kind of being starts with. No origin means all of
  *  SKILL_CATALOG — the human default, and what every story written before origins existed gets. */
-export const ORIGIN_SKILL_GROUPS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  human: Object.freeze(Object.keys(SKILL_CATALOG)),
-  ai:    Object.freeze(["speech", "recall"]),
+export const ORIGIN_SKILL_GROUPS: Readonly<Record<string, OriginGroup>> = Object.freeze({
+  human: { meaning: "a person: a body in the room, and every ordinary sense",
+           skills: Object.freeze(Object.keys(SKILL_CATALOG)) },
+  ai:    { meaning: "a program: it speaks through whatever it is wired to and remembers, and has no body at all",
+           skills: Object.freeze(["speech", "recall"]) },
 });
 
 /** An origin lookup: the general skills an origin name grants, or undefined if it names none. */
 export type OriginLookup = (name: string) => readonly string[] | undefined;
 
 const CANON_ORIGINS: ReadonlyMap<string, readonly string[]> =
-  new Map(Object.entries(ORIGIN_SKILL_GROUPS).map(([k, v]) => [canonSkill(k), v] as const));
+  new Map(Object.entries(ORIGIN_SKILL_GROUPS).map(([k, v]) => [canonSkill(k), v.skills] as const));
 /** The in-code group for an origin name, whatever spelling it was written in. */
 export const originSkillsOf: OriginLookup = name => CANON_ORIGINS.get(canonSkill(name));
 

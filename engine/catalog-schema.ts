@@ -91,18 +91,29 @@ export type StyleCatalog = z.infer<typeof StyleCatalog>;
 
 // -- SPECIAL SKILLS ----------------------------------------------------------
 
+export const SKILL_KINDS = ["special", "origin"] as const;
+export type SkillKind = (typeof SKILL_KINDS)[number];
+
 /** One special skill as a bible entry: canonical name and its meaning. The `meaning` field is
  *  deliberately REQUIRED (not defaulted to "") because a bible entry exists to give a skill its
  *  canonical meaning. An entry without one would be looked up successfully and hand a character a
  *  skill with no meaning — worse than not being in the bible at all. What it must NOT hold: reach.
  *  A reach grant lives only inside the scene that grants it and carries its own `:: meaning`; it is
- *  never a library entry (invariant I4, see `engine/skills.ts`'s module docstring). */
+ *  never a library entry (invariant I4, see `engine/skills.ts`'s module docstring). The catalog
+ *  holds both kinds of skill entries — special skills a character can be given, and origins, the
+ *  named groups of general skills a kind of being starts with. The `kind` field tells them apart. */
 export const LibrarySkill = z.strictObject({
   id: z.string().min(1),
   version: z.number().int().min(1).default(1),
   name: z.string().min(1),
   meaning: z.string().min(1),
   tags: z.array(z.string()).default([]),
+  /** What this entry is: a special skill a character can be given, or an origin — the named group of
+   *  general skills a kind of being starts with. Defaults to "special", so an entry written before
+   *  origins existed still parses as what it was. */
+  kind: z.enum(SKILL_KINDS).default("special"),
+  /** An origin's general skills, by name. Empty on a special skill, where it means nothing. */
+  general: z.array(z.string()).default([]),
 });
 
 export type LibrarySkill = z.infer<typeof LibrarySkill>;
