@@ -28,10 +28,11 @@ export type Concept = { tags: string[]; castSize: number; styleId: string };
 /** What the reusable vocabulary is being used by, derived by scanning the other catalogs — the
  *  "18 uses" line, observed rather than authored. Tags are keyed by folded label (what entries
  *  store); a style carries the STYLE NAMES whose tags include it, for the tag page's "commonly
- *  associated" line. Skills are keyed by the name a character's `skills` line names, counted
- *  with the engine's own case-insensitive identity match. */
+ *  associated" line. Skills carry no tags, so nothing counts them here; `skills` is the other
+ *  direction — keyed by the name a character's `skills` line names, counted with the engine's own
+ *  case-insensitive identity match. */
 export interface CatalogUsage {
-  tags: Record<string, { characters: number; styles: string[]; skills: number }>;
+  tags: Record<string, { characters: number; styles: string[] }>;
   skills: Record<string, number>;
 }
 

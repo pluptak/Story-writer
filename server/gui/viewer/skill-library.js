@@ -1,17 +1,19 @@
-import { APP, FACET_LABELS } from "./state.js";
-import { esc, tid, postJson, reasonOr, parseCommaSeparated } from "./util.js";
+import { APP } from "./state.js";
+import { esc, tid, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
 
-// An origin is a named GROUP of general skills a kind of being starts with; a special skill is one
-// a character can be given by name. Both live in this one catalog (kind: "special" | "origin"),
-// so the editor carries both shapes: kind, and the origin's general list (always sent empty for a
-// special skill, which is what the catalog's own validation demands).
-const emptyDraft = () => ({ id:"", name:"", meaning:"", tags:"", kind:"special", general:[] });
-const draftOf = k => ({ id:k?.id || "", name:k?.name || "", meaning:k?.meaning || "", tags:(k?.tags || []).join(", "),
-                        kind:k?.kind === "origin" ? "origin" : "special", general:[...(k?.general || [])] });
-const entryOf = d => ({ id:d.id, name:d.name.trim(), meaning:d.meaning.trim(), tags:parseCommaSeparated(d.tags),
-                        kind:d.kind === "origin" ? "origin" : "special",
+// Three kinds share this one catalog. A GENERAL skill is one every character starts with; a
+// SPECIAL skill is one a story gives a character by name; an ORIGIN is a named group of general
+// skills a kind of being starts with. So the editor carries both shapes: kind, and the origin's
+// general list (sent empty for the other two, which is what the catalog's own validation demands).
+const KINDS = ["general", "special", "origin"];
+const kindOf = k => (KINDS.includes(k?.kind) ? k.kind : "special");
+const emptyDraft = () => ({ id:"", name:"", meaning:"", kind:"special", general:[] });
+const draftOf = k => ({ id:k?.id || "", name:k?.name || "", meaning:k?.meaning || "",
+                        kind:kindOf(k), general:[...(k?.general || [])] });
+const entryOf = d => ({ id:d.id, name:d.name.trim(), meaning:d.meaning.trim(),
+                        kind:kindOf(d),
                         general:d.kind === "origin"
                           ? [...new Set((d.general || []).map(g => String(g).trim()).filter(Boolean))]
                           : [] });
@@ -24,9 +26,27 @@ function usageLine(name) {
   return n ? `<i>used by ${n} character${n === 1 ? "" : "s"}</i>` : "";
 }
 
+/** Both directions a skill can be in use: carried by a library character, and — for a general skill
+ *  — granted by an origin, which is what makes it undeletable. */
+function usageHtml(d) {
+  const carried = usageLine(d.name);
+  const granting = d.kind === "general" ? originsGranting(d.name) : [];
+  const granted = granting.length
+    ? `<i ${tid("skill-library.granted-by")}>granted by origin ${granting.map(esc).join(", ")}</i>` : "";
+  const both = [carried, granted].filter(Boolean).join(" ");
+  return both || hint(d.kind === "origin" ? "no character is of this kind yet" : "nothing carries it yet");
+}
+
 /** The general skills an origin grants, as one display line. Names only — the meanings live in the
  *  picker's tooltips, and a coverage line that spelled them all out would outgrow the row. */
 const coverageLine = k => (k.general || []).length ? (k.general || []).join(", ") : "";
+
+/** Which origins grant a general skill, by name. Read off the loaded entries rather than asked for:
+ *  the list is already here, and the server refuses the delete anyway — this is so the author is
+ *  told before they try, not instead of the check. */
+const originsGranting = name => APP.skillLibrary.entries
+  .filter(k => kindOf(k) === "origin" && (k.general || []).some(g => folded(g) === folded(name)))
+  .map(k => k.name);
 
 function visibleEntries() {
   const s = APP.skillLibrary;
@@ -49,33 +69,6 @@ function dirtyFromDraft() {
 // (the draft is derived from the object it's diffed against) but has never been persisted either.
 const needsSave = s => s.dirty || (!!s.selected && !s.selected.version);
 
-/** The tag chip picker, shared shape with the old generic catalog form: vocabulary grouped by
- *  facet, plus an off-vocabulary group for a tag this skill already carries that the vocabulary
- *  does not know. */
-function tagPickerHtml(d) {
-  const vocab = APP.catalog.vocab || [];
-  const byFacet = Object.fromEntries(APP.catalogConfig.tagFacets.map(f => [f, []]));
-  for (const t of vocab) if (Object.prototype.hasOwnProperty.call(byFacet, t.facet)) byFacet[t.facet].push(t);
-  const current = new Set(parseCommaSeparated(d.tags));
-
-  let html = `<div class="lib-tags-picker">`;
-  for (const [facet, tags] of Object.entries(byFacet)) {
-    if (!tags.length) continue;
-    html += `<div class="lib-tags-group"><div class="lib-facet-heading">${esc(FACET_LABELS[facet] ?? facet)}</div><div class="lib-tags-row">`;
-    for (const t of tags) html += `<button class="lib-pick${current.has(t.label) ? " on" : ""}" data-tag-label="${esc(t.label)}" type="button">${esc(t.label)}</button>`;
-    html += `</div></div>`;
-  }
-  const vocabLabels = new Set(vocab.map(t => t.label));
-  const offVocab = [...current].filter(t => !vocabLabels.has(t));
-  if (offVocab.length) {
-    html += `<div class="lib-tags-group"><div class="lib-facet-heading">Off-vocabulary</div><div class="lib-tags-row">`;
-    for (const label of offVocab) html += `<button class="lib-pick on off-vocab" data-tag-label="${esc(label)}" type="button" title="This tag is not in the vocabulary">${esc(label)}</button>`;
-    html += `</div><p class="lib-tags-notice">Kept when you save, though the vocabulary does not carry it.</p></div>`;
-  }
-  html += `</div>`;
-  return html;
-}
-
 // The list is two sections, special skills then origins, each sorted the way the toolbar asks.
 // With a search on, a section with no matches drops out rather than showing an empty heading.
 function listHtml() {
@@ -89,33 +82,55 @@ function listHtml() {
   }
   const row = k => {
     const selected = s.selected?.id === k.id;
-    const origin = k.kind === "origin";
-    const coverage = origin ? coverageLine(k) : "";
-    return `<div class="lib-row${selected ? " selected" : ""}" data-skill-id="${esc(k.id)}" role="button" tabindex="0" ${tid("skill-library.row")}>
-      <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(origin ? (coverage ? `grants ${coverage}` : "grants no general skills yet") : (k.meaning || "Describe what this skill lets a character do."))}</span></span>
-      ${origin ? `<i class="lib-kind-badge" ${tid("skill-library.kind-badge")}>Origin</i>` : ""}
+    const kind = kindOf(k);
+    const coverage = coverageLine(k);
+    const line = kind === "origin"
+      ? (coverage ? `starts with ${coverage}` : "starts with no general skills yet")
+      : (k.meaning || "Describe what this skill lets a character do.");
+    return `<div class="lib-row lib-row-${kind}${selected ? " selected" : ""}" data-skill-id="${esc(k.id)}" role="button" tabindex="0" ${tid("skill-library.row")}>
+      <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(line)}</span></span>
+      ${kind === "special" ? "" : `<i class="lib-kind-badge lib-kind-${kind}" ${tid("skill-library.kind-badge")}>${kind === "origin" ? "Origin" : "General"}</i>`}
       <button class="lib-more" data-skill-select-id="${esc(k.id)}" aria-label="Open ${esc(k.name)} in editor">•••</button>
     </div>`;
   };
-  const section = (title, kind) => {
-    const group = entries.filter(k => (k.kind === "origin" ? "origin" : "special") === kind);
+  // Three sections, each saying what its kind is for -- the three are easy to confuse, and the
+  // difference decides what a character starts with. A section with no matches drops out under a
+  // search rather than showing an empty heading.
+  const section = (title, kind, copy) => {
+    const group = entries.filter(k => kindOf(k) === kind);
     if (!group.length) return "";
-    return `<div class="lib-tags-group"><div class="lib-facet-heading">${esc(title)}</div>${group.map(row).join("")}</div>`;
+    return `<div class="lib-tags-group" ${tid(`skill-library.section-${kind}`)}>
+      <div class="lib-facet-heading">${esc(title)}</div>
+      <p class="lib-section-copy">${esc(copy)}</p>
+      ${group.map(row).join("")}</div>`;
   };
-  return section("Special skills", "special")
-       + section("Origins", "origin");
+  return section("General skills", "general",
+                 "What every character starts with, unless their origin narrows it or a restriction takes it away.")
+       + section("Special skills", "special",
+                 "Named skills a story gives a character one at a time.")
+       + section("Origins", "origin",
+                 "Groups of general skills a kind of being starts with: human, dwarf, elf, robot…");
 }
 
-// The kind toggle: two pills acting as one radio group. Switching never destroys the draft's
-// general list — it is only *sent* for an origin (entryOf) — so a special→origin→special round
-// trip on an unsaved draft loses nothing and still shows as dirty the moment it would save
-// differently.
-function kindPickerHtml(d) {
-  const pill = (value, label, testid) =>
-    `<button class="lib-chip${(d.kind === "origin") === (value === "origin") ? " on" : ""}"
-       data-skill-kind="${value}" type="button" ${tid(testid)} role="radio"
-       aria-checked="${d.kind === value}">${esc(label)}</button>`;
-  return `<div class="lib-chips" role="radiogroup" aria-label="Skill kind">${pill("special", "Special skill", "skill-library.kind-special")}${pill("origin", "Origin", "skill-library.kind-origin")}</div>`;
+// The kind toggle: pills acting as one radio group. Switching never destroys the draft's general
+// list — it is only *sent* for an origin (entryOf) — so a special→origin→special round trip on an
+// unsaved draft loses nothing and still shows as dirty the moment it would save differently.
+//
+// `general` is offered only while the entry has never been persisted. Turning a saved special skill
+// into a general one would hand it to every character in every story at once, and turning a general
+// one into a special skill would take it away from all of them — neither is an edit, it is a
+// different entry. So the kind of a saved general is fixed, and the other two convert as before.
+function kindPickerHtml(d, selected) {
+  const saved = !!selected?.version;
+  if (saved && d.kind === "general")
+    return `<p class="hint" ${tid("skill-library.kind-fixed")}>Every character starts with this one, so it cannot become a special skill or an origin. Delete it instead.</p>`;
+  const labels = { general:"General skill", special:"Special skill", origin:"Origin" };
+  const offered = saved ? ["special", "origin"] : KINDS;
+  const pill = value =>
+    `<button class="lib-chip${d.kind === value ? " on" : ""}"
+       data-skill-kind="${value}" type="button" ${tid(`skill-library.kind-${value}`)} role="radio"
+       aria-checked="${d.kind === value}">${esc(labels[value])}</button>`;
+  return `<div class="lib-chips" role="radiogroup" aria-label="Skill kind">${offered.map(pill).join("")}</div>`;
 }
 
 // The general-skill universe an origin grants from — every SKILL_CATALOG entry, name → meaning,
@@ -166,14 +181,15 @@ function editorHtml() {
   <div class="lib-section"><h3>Skill identity</h3>
     <p>${origin
       ? "An origin is a kind of being: the general skills below are what a character of this kind starts with."
+      : d.kind === "general"
+      ? "A general skill every character starts with, unless their origin narrows it or a restriction takes it away."
       : "The canonical name and meaning a story writes when it grants this skill."}</p>
-    ${kindPickerHtml(d)}
+    ${kindPickerHtml(d, c)}
     <label class="lib-field"><span>Name</span><input class="lib-input" id="skilllib-name" value="${esc(d.name)}" placeholder="The canonical spelling a story writes"></label>
     <label class="lib-field"><span>Meaning</span><textarea class="lib-input lib-textarea" id="skilllib-meaning" rows="3" placeholder="${origin ? "What kind of being this is" : "What the skill lets a character do"}">${esc(d.meaning)}</textarea></label>
   </div>
   ${origin ? `<div class="lib-section" id="skilllib-general-section"><h3>General skills</h3><p>What a character of this kind starts with. A story can still add or take away per character.</p>${coverage}${generalPickerHtml(d)}</div>` : ""}
-  <div class="lib-section"><h3>Tags</h3><p>Reusable descriptors, drawn from the tag vocabulary.</p>${tagPickerHtml(d)}</div>
-  ${c ? `<div class="lib-section"><h3>Usage</h3><p>What actually carries this ${origin ? "origin" : "skill"} today.</p>${usageLine(d.name) || hint("no character carries it yet")}</div>` : ""}
+  ${c ? `<div class="lib-section"><h3>Usage</h3><p>What actually carries this ${origin ? "origin" : "skill"} today.</p>${usageHtml(d)}</div>` : ""}
   <div class="lib-editor-footer">${button({label:"Cancel", id:"skilllib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"skilllib-save", variant:"primary", disabled:!needsSave(s)})}</div>`;
 }
 
@@ -181,11 +197,13 @@ export function skillLibraryHtml() {
   const s = APP.skillLibrary;
   if (s.loading) return `<section class="lib-page lib-skills"><div class="lib-loading">${thinking("loading skill bible…")}</div></section>`;
   if (s.error && !s.entries.length) return `<section class="lib-page lib-skills"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again", id:"skilllib-retry", variant:"primary"})}</div></section>`;
-  return `<section class="lib-page lib-skills" ${tid("skill-library.page")}><div class="lib-main">
+  // The inspector is not rendered at all until something is selected, so the list gets the whole
+  // width rather than sitting beside a panel saying nothing.
+  return `<section class="lib-page lib-skills${s.draft ? "" : " no-inspector"}" ${tid("skill-library.page")}><div class="lib-main">
     <header class="lib-top"><div><h1>Skill Bible <span class="lib-info">i</span></h1><p>The special skills a story can draw on by name, and the origins that group general skills.</p></div><div class="lib-top-actions">${button({label:"＋ New skill", id:"skilllib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="skilllib-search" placeholder="⌕  Search skills and origins…" value="${esc(s.search)}"><select class="lib-input" id="skilllib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>
     <div class="lib-list">${listHtml()}</div><footer class="lib-list-footer">Showing ${visibleEntries().length} of ${s.entries.length} skills and origins</footer>
-  </div><aside class="lib-inspector">${editorHtml()}</aside></section>`;
+  </div>${s.draft ? `<aside class="lib-inspector">${editorHtml()}</aside>` : ""}</section>`;
 }
 
 async function load() {
@@ -206,7 +224,7 @@ async function load() {
 function setSelected(k) { const s = APP.skillLibrary; s.selected = k; s.draft = draftOf(k); s.dirty = false; s.error = ""; APP.render(); }
 function createNew() { const s = APP.skillLibrary; const k = { ...entryOf({...emptyDraft(), id:newId(), name:"New skill"}), version:0, updatedAt:Date.now() }; s.entries.unshift(k); setSelected(k); }
 function duplicate() { const s = APP.skillLibrary; if (!s.selected) return; const k = { ...clone(s.selected), id:newId(), name:`${s.selected.name} Copy`, version:0, updatedAt:Date.now() }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, k); setSelected(k); }
-function collectDraft() { const s = APP.skillLibrary; if (!s.draft) return; for (const key of ["name","meaning","tags"]) { const el = document.getElementById(`skilllib-${key}`); if (el) s.draft[key] = el.value; } dirtyFromDraft(); }
+function collectDraft() { const s = APP.skillLibrary; if (!s.draft) return; for (const key of ["name","meaning"]) { const el = document.getElementById(`skilllib-${key}`); if (el) s.draft[key] = el.value; } dirtyFromDraft(); }
 
 async function save() {
   const s = APP.skillLibrary; collectDraft(); if (!s.draft || !needsSave(s)) return;
@@ -223,8 +241,18 @@ async function save() {
 
 async function remove() {
   const s = APP.skillLibrary; if (!s.selected) return;
-  if (!confirm("Permanently delete this skill? This cannot be undone.")) return;
-  const id = s.selected.id;
+  const k = s.selected;
+  // The server refuses this too; catching it here means the author reads why before a round trip,
+  // and never sees a confirm for something that was never going to happen.
+  const granting = kindOf(k) === "general" ? originsGranting(k.name) : [];
+  if (granting.length) {
+    s.error = `"${k.name}" is granted by origin ${granting.join(", ")} — remove it from ${granting.length > 1 ? "them" : "it"} first.`;
+    APP.render(); return;
+  }
+  const used = APP.catalog.usage?.skills?.[folded(k.name)] ?? 0;
+  const carried = used ? ` ${used} character${used === 1 ? "" : "s"} in your library carr${used === 1 ? "ies" : "y"} it.` : "";
+  if (!confirm(`Permanently delete "${k.name}"?${carried} This cannot be undone.`)) return;
+  const id = k.id;
   const j = await postJson("/catalog/delete", { kind:"skills", id }, msg => { s.error = msg; APP.render(); });
   if (!j?.ok) { s.error = reasonOr(j, "could not delete skill"); APP.render(); return; }
   s.entries = s.entries.filter(k => k.id !== id); s.selected = null; s.draft = null; s.dirty = false; s.error = "";
@@ -262,14 +290,6 @@ export function wireSkillLibrary(page) {
     const idx = general.indexOf(name);
     if (idx >= 0) general.splice(idx, 1); else general.push(name);
     dirtyFromDraft(); APP.render();
-  }));
-  page.querySelectorAll(".lib-pick[data-tag-label]").forEach(chip => chip.addEventListener("click", () => {
-    if (!s.draft) return;
-    const label = chip.getAttribute("data-tag-label"); if (!label) return;
-    const tags = parseCommaSeparated(s.draft.tags);
-    const idx = tags.findIndex(t => t === label);
-    if (idx >= 0) tags.splice(idx, 1); else tags.push(label);
-    s.draft.tags = tags.join(", "); dirtyFromDraft(); APP.render();
   }));
   page.querySelector("#skilllib-close")?.addEventListener("click", () => { if (!s.dirty || confirm("Discard unsaved changes?")) { s.selected = null; s.draft = null; s.dirty = false; APP.render(); } });
   page.querySelector("#skilllib-save")?.addEventListener("click", save);

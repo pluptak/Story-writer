@@ -24,7 +24,6 @@ function usageLine(label) {
   const parts = [];
   if (u.characters) parts.push(`${u.characters} character${u.characters === 1 ? "" : "s"}`);
   if (u.styles.length) parts.push(`${u.styles.length} style${u.styles.length === 1 ? "" : "s"}`);
-  if (u.skills) parts.push(`${u.skills} skill${u.skills === 1 ? "" : "s"}`);
   return parts.length ? `<i>used by ${parts.join(" · ")}</i>` : "";
 }
 

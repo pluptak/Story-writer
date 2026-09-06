@@ -86,7 +86,7 @@ async function unknownTags(tags: string[]): Promise<string[]> {
  *  catalog, one set of rules. The id is derived from the canonical name so promoting the same skill
  *  twice is an update rather than a duplicate. */
 async function promoteSkill(name: string, meaning: string) {
-  const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning, tags: [] };
+  const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning };
   const catalogs = await persistedCatalogs();
   const result = await saveEntry("skills", entry, undefined, catalogs);
   if (!result.ok) {
@@ -819,14 +819,12 @@ export const HOST: ServerHost = {
     const tagFor = (label: unknown) => {
       const key = String(label ?? "").trim().toLowerCase();
       if (!key) return null;
-      return usage.tags[key] ?? (usage.tags[key] = { characters: 0, styles: [], skills: 0 });
+      return usage.tags[key] ?? (usage.tags[key] = { characters: 0, styles: [] });
     };
     for (const c of characters.entries as { tags?: string[] }[])
       for (const t of c.tags ?? []) { const u = tagFor(t); if (u) u.characters++; }
     for (const s of styles.entries as { name?: string; tags?: string[] }[])
       for (const t of s.tags ?? []) { const u = tagFor(t); if (u) u.styles.push(String(s.name || "")); }
-    for (const k of skills.entries as { tags?: string[] }[])
-      for (const t of k.tags ?? []) { const u = tagFor(t); if (u) u.skills++; }
     // A skill is "used by" a character when resolution would find it: the name a character's
     // `name :: meaning` line holds, matched the way every identity comparison is (sameName).
     for (const c of characters.entries as { skills?: string[] }[])

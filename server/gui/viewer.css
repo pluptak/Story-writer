@@ -737,6 +737,11 @@
   .lib-tags .lib-row { grid-template-columns:minmax(0,1fr) auto 32px; }
   /* the skill page's rows carry a kind badge for origins, same shape as the tag page's extra column */
   .lib-skills .lib-row { grid-template-columns:minmax(0,1fr) auto 32px; }
+  /* Nothing selected: no inspector is rendered, so the list takes the whole width rather than
+     sitting beside an empty panel. The two-column rule above is the base; this overrides it. */
+  .lib-skills.no-inspector { grid-template-columns:minmax(0,1fr); }
+  .lib-section-copy { color:var(--muted); font-size:var(--fs-12); margin:0 0 10px; }
+  .lib-kind-general { color:var(--faint); border-color:var(--line); }
   .lib-kind-badge { font:var(--fs-10) var(--mono); color:var(--accent); border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line)); border-radius:var(--r-pill); padding:2px 7px; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }
   .lib-avatar { width:44px; height:44px; display:grid; place-items:center; border-radius:var(--r-lg); background:linear-gradient(135deg,#6c7a99,#2d2f3a); color:#fff; font-weight:700; font-size:var(--fs-16); }
   .lib-row-copy { min-width:0; display:flex; flex-direction:column; gap:3px; }
