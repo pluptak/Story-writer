@@ -110,13 +110,15 @@ function skillProblems(entry: LibrarySkill): string[] {
         `${entry.name} is a general skill every character already has — a bible entry by that name adds nothing`
       );
     }
+  }
 
-    if (entry.general.length > 0) {
-      problems.push(
-        `${entry.name} — only an origin lists general skills; a special skill must not carry a general list`
-      );
-    }
-  } else if (entry.kind === "origin") {
+  if (entry.kind !== "origin" && entry.general.length > 0) {
+    problems.push(
+      `${entry.name} — only an origin lists general skills; ${entry.kind} must not carry a general list`
+    );
+  }
+
+  if (entry.kind === "origin") {
     const unknown = entry.general.filter(s => !Object.prototype.hasOwnProperty.call(SKILL_CATALOG, canonSkill(s)));
     if (unknown.length) {
       problems.push(
@@ -171,12 +173,14 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
     catalog: SkillCatalog,
     entry: LibrarySkill,
     problems: skillProblems,
-    // The in-code catalogs are the seed: special skills and origins, both kinds.
+    // The in-code catalogs are the seed: general skills, special skills, and origins.
     seed: () => [
+      ...Object.entries(SKILL_CATALOG).map(([name, meaning]) =>
+        ({ id: name, version: 1, name, meaning, kind: "general" as const, general: [] })),
       ...Object.entries(SPECIAL_SKILL_CATALOG).map(([name, meaning]) =>
-        ({ id: name, version: 1, name, meaning, tags: [], kind: "special" as const, general: [] })),
+        ({ id: name, version: 1, name, meaning, kind: "special" as const, general: [] })),
       ...Object.entries(ORIGIN_SKILL_GROUPS).map(([name, group]) =>
-        ({ id: name, version: 1, name, meaning: group.meaning, tags: [], kind: "origin" as const, general: [...group.skills] })),
+        ({ id: name, version: 1, name, meaning: group.meaning, kind: "origin" as const, general: [...group.skills] })),
     ],
   },
 };
@@ -259,6 +263,16 @@ export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any
     return { entries: [] };
   }
 
+  // Strip tags from skill entries — legacy field, and strictObject would reject the whole file over
+  // it. Shape-guarded so a malformed file still reaches safeParse and degrades to an empty catalog.
+  if (kind === "skills" && raw && typeof raw === "object" && Array.isArray(raw.entries)) {
+    raw = {
+      ...raw,
+      entries: raw.entries.map((e: any) =>
+        e && typeof e === "object" ? (({ tags: _tags, ...rest }) => rest)(e) : e),
+    };
+  }
+
   const result = reg.catalog.safeParse(raw);
   if (!result.success) {
     warn(`${kind} catalog could not be parsed — using empty catalog`);
@@ -275,7 +289,14 @@ export function checkEntry(kind: CatalogKind, raw: unknown, bible: BibleLookup =
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
 
-  const result = reg.entry.safeParse(raw);
+  // Strip tags from skill entries — the viewer's editor still sends it, strictObject would reject the save.
+  let toValidate = raw;
+  if (kind === "skills" && raw && typeof raw === "object" && "tags" in raw) {
+    const { tags: _, ...rest } = raw as any;
+    toValidate = rest;
+  }
+
+  const result = reg.entry.safeParse(toValidate);
   if (!result.success) {
     const issues = result.error.issues.map(i => `${i.path.join(".") || "entry"}: ${i.message}`);
     return { ok: false, issues };

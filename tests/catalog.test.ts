@@ -1051,7 +1051,7 @@ describe("separate catalogs per kind", () => {
       assert.equal(charData.entries.length, 1, "character catalog should have 1 entry");
       assert.equal(tagData.entries.length, 25, "tag catalog should have seed (24) + new tag (1)");
       assert.equal(styleData.entries.length, 1, "style catalog should have 1 entry (no seed)");
-      assert.equal(skillData.entries.length, 6, "skill catalog should have seed (3 special + 2 origins) + new skill (1)");
+      assert.equal(skillData.entries.length, 14, "skill catalog should have seed (8 general + 3 special + 2 origins) + new skill (1)");
 
       // Verify each entry is the correct one
       assert.equal(charData.entries[0].id, "char-1");
@@ -1073,17 +1073,21 @@ describe("separate catalogs per kind", () => {
 });
 
 describe("origins seeding and functions", () => {
-  it("loadCatalog('skills') on a missing path returns seed with both special skills and origins", async () => {
+  it("loadCatalog('skills') on a missing path returns seed with general, special skills and origins", async () => {
     const dir = await mkdtemp(join(tmpdir(), "skills-seed-with-origins-test-"));
     const path = join(dir, "nonexistent-skills.json");
     try {
       const result = await loadCatalog("skills", path);
 
-      assert.equal(result.entries.length, 5, "should have special skills and origins from seed");
+      assert.equal(result.entries.length, 13, "should have general (8) + special (3) + origins (2) from seed");
 
       const lockpicking = result.entries.find((e: any) => e.id === "lockpicking");
       assert.ok(lockpicking, "lockpicking should be in seed");
       assert.equal(lockpicking.kind, "special");
+
+      const movement = result.entries.find((e: any) => e.id === "movement");
+      assert.ok(movement, "movement should be in seed");
+      assert.equal(movement.kind, "general");
 
       const human = result.entries.find((e: any) => e.id === "human");
       assert.ok(human, "human origin should be in seed");
@@ -1270,7 +1274,7 @@ describe("styles catalog (no seed)", () => {
 });
 
 describe("skills seeding", () => {
-  it("loadCatalog('skills') on a missing path returns the seed with lockpicking and its meaning", async () => {
+  it("loadCatalog('skills') on a missing path returns the seed with all three kinds of skills and lockpicking", async () => {
     const dir = await mkdtemp(join(tmpdir(), "skills-seed-test-"));
     const path = join(dir, "nonexistent-skills.json");
     try {
@@ -1284,15 +1288,26 @@ describe("skills seeding", () => {
         WARN.sink = orig;
       }
 
-      // Should have entries from the seed
-      assert.ok(result.entries.length > 0, "missing skills file should return seed");
-      // Check that lockpicking is in the seed
+      // Should have entries from the seed (8 general + 3 special + 2 origins = 13)
+      assert.equal(result.entries.length, 13, "seed should have 8 general + 3 special + 2 origins");
+      // Check that lockpicking (special) is in the seed
       const lockpicking = result.entries.find((e: any) => e.id === "lockpicking");
       assert.ok(lockpicking, "seed should include lockpicking");
+      assert.equal(lockpicking.kind, "special", "lockpicking should be a special skill");
       assert.equal(lockpicking.name, "lockpicking", "lockpicking name should match id");
       assert.ok(lockpicking.meaning.includes("lock"), "lockpicking meaning should mention lock");
+      // Check that a general skill is in the seed
+      const movement = result.entries.find((e: any) => e.id === "movement");
+      assert.ok(movement, "seed should include movement");
+      assert.equal(movement.kind, "general", "movement should be a general skill");
+      // Check that an origin is in the seed
+      const human = result.entries.find((e: any) => e.id === "human");
+      assert.ok(human, "seed should include human origin");
+      assert.equal(human.kind, "origin", "human should be an origin");
       // Should not warn
       assert.equal(warns.length, 0, "missing file should not warn");
+      // No entry should have a tags key
+      assert.ok(result.entries.every((e: any) => !("tags" in e)), "no entry should carry a tags key");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -1343,7 +1358,7 @@ describe("skills save/load boundary (seed materialization)", () => {
 
       // Load should return all seed entries with the edited one included
       const loaded = await loadCatalog("skills", path);
-      assert.equal(loaded.entries.length, 5, "the whole seed is materialized by the first save (3 special + 2 origins)");
+      assert.equal(loaded.entries.length, 13, "the whole seed is materialized by the first save (8 general + 3 special + 2 origins)");
 
       // The edited skill should be in the loaded catalog
       const found = loaded.entries.find((e: any) => e.id === "lockpicking");
@@ -1361,7 +1376,7 @@ describe("skills save/load boundary (seed materialization)", () => {
       // Load fresh (gets seed)
       const fresh = await loadCatalog("skills", path);
       const seedCount = fresh.entries.length;
-      assert.equal(seedCount, 5, "the seed is the in-code catalog (3 special + 2 origins)");
+      assert.equal(seedCount, 13, "the seed is the in-code catalog (8 general + 3 special + 2 origins)");
 
       // Delete a seed skill
       const del = await deleteEntry("skills", "lockpicking", path);
@@ -1537,6 +1552,95 @@ describe("skill advisory problems", () => {
       const loaded = await loadCatalog("skills", path);
       const found = loaded.entries.find((e: any) => e.id === "sight");
       assert.ok(found, "skill should be saved despite problems");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("checkEntry('skills', …) reports when a general entry carries a general list", async () => {
+    const result = checkEntry("skills", {
+      id: "movement",
+      name: "Movement",
+      meaning: "moving your own body",
+      kind: "general",
+      general: ["speech"],
+    });
+
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      const hasProblem = result.problems.some(p => p.includes("only an origin lists general skills"));
+      assert.ok(hasProblem, "should report general entry carrying general list");
+    }
+  });
+});
+
+describe("legacy tags support in skills", () => {
+  it("loadCatalog('skills') on a file with tags on each entry loads correctly and strips them", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "skills-legacy-tags-test-"));
+    const path = join(dir, "skills.json");
+    try {
+      // Write a catalog with legacy tags on entries
+      const withTags = {
+        entries: [
+          {
+            id: "custom-skill",
+            version: 1,
+            name: "Custom Skill",
+            meaning: "a custom skill",
+            tags: ["custom", "legacy"],
+            kind: "special",
+            general: [],
+          },
+          {
+            id: "human",
+            version: 1,
+            name: "human",
+            meaning: "a person",
+            tags: ["origin"],
+            kind: "origin",
+            general: ["speech", "recall", "movement"],
+          },
+        ],
+      };
+      await writeFile(path, JSON.stringify(withTags, null, 2) + "\n", "utf8");
+
+      // Load should strip tags and return entries intact
+      const loaded = await loadCatalog("skills", path);
+      assert.equal(loaded.entries.length, 2, "both entries should load");
+      assert.ok(loaded.entries.every((e: any) => !("tags" in e)), "no entry should carry a tags key");
+
+      // Verify a specific entry's content
+      const custom = loaded.entries.find((e: any) => e.id === "custom-skill");
+      assert.ok(custom, "custom-skill should be loaded");
+      assert.equal(custom.name, "Custom Skill", "content should be intact");
+      assert.equal(custom.kind, "special", "kind should be preserved");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("saveEntry('skills', …) accepts tags in the payload and does not persist them", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "skills-save-tags-test-"));
+    const path = join(dir, "skills.json");
+    try {
+      const payloadWithTags = {
+        id: "test-skill",
+        name: "Test Skill",
+        meaning: "a test skill",
+        tags: ["test", "example"],
+        kind: "special",
+        general: [],
+      };
+
+      const save = await saveEntry("skills", payloadWithTags, path);
+      assert.equal(save.ok, true, "save with tags should succeed");
+
+      // Reload and verify tags are not there
+      const loaded = await loadCatalog("skills", path);
+      const found = loaded.entries.find((e: any) => e.id === "test-skill");
+      assert.ok(found, "entry should be saved");
+      assert.equal(!("tags" in found), true, "persisted entry should not have tags");
+      assert.equal(found.meaning, "a test skill", "other fields should be intact");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -2005,5 +2109,22 @@ describe("the shipped catalog-skills.json", () => {
     assert.deepEqual(origins["ai"], [...ORIGIN_SKILL_GROUPS.ai.skills]);
     assert.deepEqual(origins["human"], [...ORIGIN_SKILL_GROUPS.human.skills]);
     assert.equal(origins["lockpicking"], undefined, "a special skill is not an origin");
+  });
+});
+
+describe("a malformed skills catalog", () => {
+  it("degrades to an empty catalog rather than throwing out of the legacy-tags strip", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "skills-malformed-test-"));
+    const path = join(dir, "catalog-skills.json");
+    try {
+      await writeFile(path, JSON.stringify({ entries: "not an array" }), "utf8");
+      const warns: string[] = [];
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      let result;
+      try { result = await loadCatalog("skills", path); } finally { WARN.sink = orig; }
+      assert.deepEqual(result.entries, []);
+      assert.match(warns.join(" "), /could not be parsed/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

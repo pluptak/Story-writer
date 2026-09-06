@@ -446,12 +446,10 @@ describe("LibrarySkill schema", () => {
       version: 1,
       name: "Lockpicking",
       meaning: "opening a mechanical lock without its key",
-      tags: ["security", "theft"],
     });
     assert.equal(skill.id, "lockpicking");
     assert.equal(skill.name, "Lockpicking");
     assert.equal(skill.meaning, "opening a mechanical lock without its key");
-    assert.deepEqual(skill.tags, ["security", "theft"]);
   });
 
   it("applies defaults for missing optional fields", () => {
@@ -461,7 +459,6 @@ describe("LibrarySkill schema", () => {
       meaning: "ascending a sheer surface",
     });
     assert.equal(skill.version, 1);
-    assert.deepEqual(skill.tags, []);
   });
 
   it("rejects an entry with empty meaning", () => {
@@ -574,11 +571,41 @@ describe("SkillCatalog schema", () => {
       version: 1,
       name: "ai",
       meaning: "a program",
-      tags: [],
       kind: "origin" as const,
       general: ["speech", "recall"],
     };
     const skill = LibrarySkill.parse(original);
     assert.deepEqual(skill, original);
+  });
+
+  it("parses a general-kind entry", () => {
+    const skill = LibrarySkill.parse({
+      id: "movement",
+      name: "Movement",
+      meaning: "moving your own body through the space you are in",
+      kind: "general",
+      general: [],
+    });
+    assert.equal(skill.kind, "general");
+    assert.deepEqual(skill.general, []);
+  });
+
+  it("defaults kind to special for backward compat with pre-origins entries", () => {
+    const skill = LibrarySkill.parse({
+      id: "custom",
+      name: "Custom",
+      meaning: "a custom skill",
+    });
+    assert.equal(skill.kind, "special");
+  });
+
+  it("rejects an entry with a tags key (strictObject)", () => {
+    const result = LibrarySkill.safeParse({
+      id: "lockpicking",
+      name: "Lockpicking",
+      meaning: "opening locks",
+      tags: [],
+    });
+    assert.equal(result.success, false);
   });
 });
