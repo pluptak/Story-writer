@@ -243,7 +243,11 @@ export async function skillOrigins(path?: string): Promise<OriginLookup> {
  *  SKILL_CATALOG instead of an empty map. A catalog file written before general skills existed must
  *  not silently strip all eight general skills from every character — that would be a data loss bug
  *  surfacing only when first saved. An empty map means "this file predates general skills", never
- *  "this author has no general skills". */
+ *  "this author has no general skills".
+ *
+ *  The corner that buys: an author who deletes every general entry gets the in-code eight back,
+ *  because nothing on disk distinguishes that from a catalog written before they existed. Deleting
+ *  most of them works; deleting the last one does not stick. */
 export async function generalSkillEntries(path?: string): Promise<Record<string, string>> {
   const catalog = await loadCatalog("skills", path);
   const entries: Record<string, string> = {};
@@ -465,6 +469,20 @@ export async function deleteEntry(kind: CatalogKind, id: string, path?: string):
   const existingIndex = catalog.entries.findIndex((e: any) => e.id === id);
   if (existingIndex === -1) {
     return { ok: false, reason: `entry "${id}" not found`, missing: true };
+  }
+
+  // A general skill an origin still grants cannot go: the origin would name something that no
+  // longer exists, and every character of that kind would quietly start without it. Refused rather
+  // than cascaded — which general skills a kind of being has is the author's call, not a
+  // consequence of tidying the list.
+  const doomed = catalog.entries[existingIndex];
+  if (kind === "skills" && doomed.kind === "general") {
+    const granting = (catalog.entries as LibrarySkill[])
+      .filter(e => e.kind === "origin" && e.general.some(g => canonSkill(g) === canonSkill(doomed.name)))
+      .map(e => `"${e.name}"`);
+    if (granting.length)
+      return { ok: false, reason: `"${doomed.name}" is granted by ${granting.length > 1 ? "origins" : "origin"} `
+        + `${granting.join(", ")} — remove it from ${granting.length > 1 ? "them" : "it"} first` };
   }
 
   catalog.entries.splice(existingIndex, 1);

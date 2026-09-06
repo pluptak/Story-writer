@@ -2180,3 +2180,55 @@ describe("generalSkillEntries", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
+
+describe("deleting a general skill an origin grants", () => {
+  const catalogWith = async (entries: unknown[]) => {
+    const dir = await mkdtemp(join(tmpdir(), "general-delete-test-"));
+    const path = join(dir, "catalog-skills.json");
+    await writeFile(path, JSON.stringify({ entries }), "utf8");
+    return { dir, path };
+  };
+  const general = (name: string) =>
+    ({ id: name, version: 1, name, meaning: `the ${name} of it`, kind: "general", general: [] });
+  const origin = (name: string, grants: string[]) =>
+    ({ id: name, version: 1, name, meaning: `a ${name}`, kind: "origin", general: grants });
+
+  it("refuses, naming the origin, and leaves the entry in place", async () => {
+    const { dir, path } = await catalogWith([general("sight"), origin("human", ["sight"])]);
+    try {
+      const r = await deleteEntry("skills", "sight", path);
+      assert.equal(r.ok, false);
+      if (!r.ok) assert.match(r.reason, /"sight" is granted by origin "human" — remove it from it first/);
+      const after = await loadCatalog("skills", path);
+      assert.ok(after.entries.some((e: any) => e.id === "sight"), "the entry must survive a refusal");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("names every origin that grants it", async () => {
+    const { dir, path } = await catalogWith([
+      general("sight"), origin("human", ["sight"]), origin("hawk", ["Sight"]),
+    ]);
+    try {
+      const r = await deleteEntry("skills", "sight", path);
+      assert.equal(r.ok, false);
+      if (!r.ok) {
+        assert.match(r.reason, /origins "human", "hawk"/, "matched by canon name, so Sight counts");
+        assert.match(r.reason, /remove it from them first/);
+      }
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("allows a general no origin grants, and never blocks a special or an origin", async () => {
+    const { dir, path } = await catalogWith([
+      general("sight"), general("smell"), origin("human", ["sight"]),
+      { id: "lockpicking", version: 1, name: "lockpicking", meaning: "opening a lock", kind: "special", general: [] },
+    ]);
+    try {
+      assert.equal((await deleteEntry("skills", "smell", path)).ok, true);
+      assert.equal((await deleteEntry("skills", "lockpicking", path)).ok, true);
+      assert.equal((await deleteEntry("skills", "human", path)).ok, true);
+      // and with the origin gone, the general it used to grant can go too
+      assert.equal((await deleteEntry("skills", "sight", path)).ok, true);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
