@@ -24,6 +24,10 @@ export const LibraryCharacter = z.strictObject({
   voice: z.array(z.string()).default([]).transform(v => v.slice(0, VOICE_SAMPLE_CAP)),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
+  /** The origin whose general-skill group this kind of character starts from. Blank means every
+   *  general skill — the pre-origins default. Resolved against the skills catalog when a story
+   *  loads, not stored here, so a renamed origin in the catalog applies to existing entries. */
+  origin: z.string().default(""),
   /** Hidden entries stay in the catalog and keep working for stories that already reference them,
    *  but are excluded from every new-story selection path. Hide/restore never touches `version` —
    *  it is not a content revision. */

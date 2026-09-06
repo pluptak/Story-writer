@@ -6,7 +6,7 @@ import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { LIVE, storyWriteBlocked, sseWrite, setWhere } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { splitMeaning, bibleFrom, canonSkill } from "./engine/skills.ts";
+import { splitMeaning, bibleFrom, canonSkill, SKILL_CATALOG } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { PROVIDER } from "./engine/provider.ts";
@@ -19,7 +19,7 @@ import {
   type NextChapterSession, type ImportedCharacter, type StylePreset,
   type ScaffoldRound, type ScaffoldAccept, type HandoffAccept,
 } from "./engine/architect.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries, skillOrigins } from "./engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries, skillOrigins, originSkillGroups } from "./engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import { assistCharacter, ASSIST_FIELDS, type AssistField, type AssistMode } from "./engine/catalog-assist.ts";
 import type {
@@ -109,6 +109,7 @@ export async function importCharacters(ids: string[], path?: string): Promise<{ 
       libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
       belief: e.belief, impulse: e.impulse,
       voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions],
+      origin: e.origin,
     });
   }
   return { imported, missing };
@@ -761,10 +762,12 @@ export const HOST: ServerHost = {
       return { ok: false, error: (e as Error).message };
     }
   },
-  catalogConfig: (): CatalogConfig => ({
+  catalogConfig: async (): Promise<CatalogConfig> => ({
     tagFacets: TAG_FACETS,
     caps: { voiceSamples: VOICE_SAMPLE_CAP },
     assistFields: ASSIST_FIELDS,
+    originSkills: await originSkillGroups(),
+    generalSkills: { ...SKILL_CATALOG },
   }),
   catalogEntries: async (kind, opts) => {
     const validated = validateCatalogKind(kind);
@@ -839,7 +842,8 @@ export const HOST: ServerHost = {
         const r = await assistCharacter(d, {
           mode: mode as AssistMode, fields: fields as AssistField[], instruction,
           character: character as { id: string; name: string; portablePersona: string; belief: string;
-                                     impulse: string; voice: string[]; skills: string[]; restrictions: string[] },
+                                     impulse: string; voice: string[]; origin: string; skills: string[];
+                                     restrictions: string[] },
         }, bible);
         if (!r.ok) return { ok: false as const, kind: r.kind, reason: r.reason, issues: r.issues };
         return { ok: true as const, proposal: { draft: r.draft, changes: r.changes, warnings: r.warnings } };

@@ -20,7 +20,8 @@ const NO_ASSISTANT: Defaults = { ...DEFAULTS, models: { ...DEFAULTS.models, assi
 
 const character = () => ({
   id: "ivet", name: "IVET", portablePersona: "An ex-locksmith.", belief: "Every lock has a way in.",
-  impulse: "When watched, slow down.", voice: ["Hold the door?"], skills: ["lockpicking"], restrictions: [],
+  impulse: "When watched, slow down.", voice: ["Hold the door?"], origin: "",
+  skills: ["lockpicking"], restrictions: [],
 });
 
 const req = (over: Partial<AssistRequest> = {}): AssistRequest => ({

@@ -16,10 +16,12 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
 import { LIVE, resetLive } from "../../live.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible } from "../../engine/catalog.ts";
-import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, originSkillGroups } from "../../engine/catalog.ts";
+import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
          type TagEntry } from "../../engine/catalog-schema.ts";
-import { canonSkill } from "../../engine/skills.ts";
+import { SKILL_CATALOG, canonSkill } from "../../engine/skills.ts";
+import { ASSIST_FIELDS } from "../../engine/catalog-assist.ts";
+import { VOICE_SAMPLE_CAP } from "../../engine/story-schema.ts";
 import { HOST, setScaffoldTestHooks, setHandoffTestHooks } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
 import type { ImportedCharacter, NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
@@ -175,7 +177,7 @@ export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldS
         const e = byId.get(id);
         if (!e) { missing.push(id); continue; }
         imported.push({ libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
-                        belief: e.belief, impulse: e.impulse,
+                        belief: e.belief, impulse: e.impulse, origin: e.origin,
                         voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions] });
       }
       return { imported, missing };
@@ -276,6 +278,15 @@ async function fixtureHost(): Promise<ServerHost> {
       });
       return { ok: true, proposal: { draft, changes, warnings: [] } };
     },
+    // Same reason as catalogCheck/catalogSave above: catalogConfig reads the persisted skills
+    // catalog for its origin/general projections, so it is temp-scoped here too.
+    catalogConfig: async () => ({
+      tagFacets: TAG_FACETS,
+      caps: { voiceSamples: VOICE_SAMPLE_CAP },
+      assistFields: ASSIST_FIELDS,
+      originSkills: await originSkillGroups(catalogFile("skills")),
+      generalSkills: { ...SKILL_CATALOG },
+    }),
     // Usage is derived from the temp catalogs, which start empty — never from the author's real
     // files at ROOT, which the spread HOST would read.
     catalogUsage: async () => ({ tags: {}, skills: {} }),

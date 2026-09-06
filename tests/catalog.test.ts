@@ -6,9 +6,10 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { loadStory } from "../engine/story-format.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, supportsVisibility, skillBible, skillOrigins, originSkillGroups } from "../engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, supportsVisibility, skillBible, skillBibleEntries, skillOrigins, originSkillGroups } from "../engine/catalog.ts";
 import { WARN } from "../engine/warnings.ts";
 import { quiet } from "./helpers.ts";
 import { SPECIAL_SKILL_CATALOG, ORIGIN_SKILL_GROUPS } from "../engine/skills.ts";
@@ -1984,5 +1985,25 @@ describe("a persisted origin reaching a story", () => {
       assert.deepEqual(pip.skills.map(s => s.name), ["movement", "hearing", "sight"]);
       assert.deepEqual(pip.limits, ["speech", "touch", "taste", "smell", "recall"]);
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("the shipped catalog-skills.json", () => {
+  // The author's own file is gitignored user data, so what ships is whatever sits at the repo root.
+  // This pins it to the engine's in-code seed: a fresh install and a first save must agree on what
+  // special skills and origins exist.
+  const shipped = join(fileURLToPath(new URL("../..", import.meta.url)), "catalog-skills.json");
+
+  it("carries both the special skills and the origins", async () => {
+    const bible = await skillBibleEntries(shipped);
+    for (const [name, meaning] of Object.entries(SPECIAL_SKILL_CATALOG)) {
+      assert.equal(bible[name], meaning, `shipped special skill "${name}"`);
+    }
+    assert.equal(bible.human, undefined, "an origin must never resolve as a special skill");
+
+    const origins = await originSkillGroups(shipped);
+    assert.deepEqual(origins["ai"], [...ORIGIN_SKILL_GROUPS.ai.skills]);
+    assert.deepEqual(origins["human"], [...ORIGIN_SKILL_GROUPS.human.skills]);
+    assert.equal(origins["lockpicking"], undefined, "a special skill is not an origin");
   });
 });

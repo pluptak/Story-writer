@@ -8,19 +8,19 @@ import { loadLibrary } from "./catalog.js";
 const invalidateLibrary = loadLibrary.invalidate;
 
 const emptyDraft = () => ({
-  id:"", name:"", portablePersona:"", belief:"", impulse:"", voice:"", skills:"", restrictions:"",
+  id:"", name:"", portablePersona:"", belief:"", impulse:"", voice:"", origin:"", skills:"", restrictions:"",
 });
 
 const draftOf = c => ({
   id:c?.id || "", name:c?.name || "", portablePersona:c?.portablePersona || "",
   belief:c?.belief || "", impulse:c?.impulse || "", voice:(c?.voice || []).join("\n"),
-  skills:(c?.skills || []).join("\n"), restrictions:(c?.restrictions || []).join("\n"),
+  origin:c?.origin || "", skills:(c?.skills || []).join("\n"), restrictions:(c?.restrictions || []).join("\n"),
 });
 
 const entryOf = d => ({
   id:d.id, name:d.name.trim(), portablePersona:d.portablePersona.trim(), belief:d.belief.trim(),
-  impulse:d.impulse.trim(), voice:parseLines(d.voice).slice(0, 3), skills:parseLines(d.skills),
-  restrictions:parseLines(d.restrictions),
+  impulse:d.impulse.trim(), voice:parseLines(d.voice).slice(0, 3), origin:d.origin.trim(),
+  skills:parseLines(d.skills), restrictions:parseLines(d.restrictions),
 });
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -31,10 +31,10 @@ const newId = () => `chr_${Date.now().toString(36)}_${Math.random().toString(36)
 // The fields a temporary revision can name -- content only, never id/version/hidden/updatedAt.
 // The assistant's own diff (below) shares this list and these labels, so the two look like one
 // mechanism to the reader even though only this one is a real change history.
-const DIFF_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "skills", "restrictions"];
+const DIFF_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "origin", "skills", "restrictions"];
 const FIELD_LABELS = {
   name:"Name", portablePersona:"Portable persona", belief:"Belief", impulse:"Impulse",
-  voice:"Voice samples", skills:"Skills", restrictions:"Restrictions",
+  voice:"Voice samples", origin:"Origin", skills:"Skills", restrictions:"Restrictions",
 };
 // A field's DOM id suffix, where it differs from its own key -- portablePersona's control is
 // #charlib-persona (predates this file's other ids). Every reader of a #charlib-<field> id goes
@@ -68,7 +68,7 @@ const byVisibility = (entries, visibility) => visibility === "visible" ? entries
 // Every field the plan lists as searchable, normalized the same way regardless of shape: arrays
 // join into the same lowercase blob a plain string field contributes to.
 const searchBlob = c => [c.name, c.portablePersona, c.belief, c.impulse, ...(c.voice || []),
-  ...(c.skills || []), ...(c.restrictions || [])].join(" \n ").toLowerCase();
+  c.origin, ...(c.skills || []), ...(c.restrictions || [])].join(" \n ").toLowerCase();
 
 const bySearch = (entries, query) => {
   const q = query.trim().toLowerCase();
@@ -139,6 +139,19 @@ function field(id, label, value, type = "textarea", hintText = "") {
   return `<label class="lib-field"><span>${label}</span>${control}${hintText ? `<small>${hintText}</small>` : ""}</label>`;
 }
 
+// The origin input suggests the catalog's own origins (from /catalog/config) but accepts anything —
+// an unknown name still reaches the story, where the engine warns and falls back to all general
+// skills, so the editor must not silently rewrite what the author typed.
+function originField(d) {
+  const known = Object.keys(APP.catalogConfig.originSkills || {});
+  const options = known.map(o => `<option value="${esc(o)}"></option>`).join("");
+  return `<label class="lib-field"><span>Origin</span>
+    <input class="lib-input" id="charlib-origin" list="charlib-origin-options" value="${esc(d.origin)}" placeholder="blank = every general skill">
+    <datalist id="charlib-origin-options">${options}</datalist>
+    <small>Blank means every general skill. A known origin starts the character from that kind's own group.</small>
+  </label>`;
+}
+
 function listHtml(pageEntries) {
   const s = APP.characterLibrary;
   if (!pageEntries.length) {
@@ -152,7 +165,7 @@ function listHtml(pageEntries) {
     return `<div class="lib-row${selected ? " selected" : ""}${c.hidden ? " hidden-row" : ""}" data-char-id="${esc(c.id)}" role="button" tabindex="0" ${tid("character-library.row")}>
       <span class="lib-avatar">${esc(initials(c.name))}</span>
       <span class="lib-row-copy"><strong>${esc(c.name || "Untitled character")}</strong><span>${esc(excerpt(c.portablePersona))}</span>
-        <span class="lib-chips">${c.hidden ? `<i class="lib-hidden-badge" ${tid("character-library.hidden-badge")}>Hidden</i>` : ""}<i>${skillCount} skill${skillCount === 1 ? "" : "s"}</i><i>${voiceCount} voice sample${voiceCount === 1 ? "" : "s"}</i></span></span>
+        <span class="lib-chips">${c.hidden ? `<i class="lib-hidden-badge" ${tid("character-library.hidden-badge")}>Hidden</i>` : ""}${c.origin ? `<i ${tid("character-library.origin-badge")}>${esc(c.origin)}</i>` : ""}<i>${skillCount} skill${skillCount === 1 ? "" : "s"}</i><i>${voiceCount} voice sample${voiceCount === 1 ? "" : "s"}</i></span></span>
       <button class="lib-more" data-char-select-id="${esc(c.id)}" aria-label="Open ${esc(c.name)} in editor">•••</button>
     </div>`;
   }).join("");
@@ -184,6 +197,7 @@ function editorHtml() {
     ${field("charlib-voice", "Voice samples", d.voice, "textarea", "One line per sample, maximum 3.")}
   </div>
   <div class="lib-section"><h3>Capabilities</h3><p>Reusable capabilities, one per line. Skills may use <code>name :: meaning</code>.</p>
+    ${originField(d)}
     ${field("charlib-skills", "Skills", d.skills)}${field("charlib-restrictions", "Restrictions", d.restrictions, "textarea", "One restriction per line.")}
   </div>
   <div class="lib-assistant"><div><strong>✦ Character assistant</strong></div><p>Create, revise, or review a subset of this character's fields from a plain-language instruction, on its own model.</p>${button({label:"Open AI assistant →", id:"charlib-ai-open", extraClass:"small"})}</div>

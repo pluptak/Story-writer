@@ -54,6 +54,18 @@ describe("LibraryCharacter schema", () => {
     assert.equal(char.updatedAt, 0);
   });
 
+  it("defaults a legacy entry's origin to blank (every general skill)", () => {
+    const char = LibraryCharacter.parse({ id: "char-preorigins", name: "Old Hand" });
+    assert.equal(char.origin, "");
+  });
+
+  it("round-trips an explicit origin", () => {
+    const char = LibraryCharacter.parse({ id: "char-bird", name: "Pip", origin: "bird" });
+    assert.equal(char.origin, "bird");
+    // Blank stays blank: that is a real answer ("every general skill"), never coerced to a name.
+    assert.equal(LibraryCharacter.parse({ id: "char-x", name: "X", origin: "" }).origin, "");
+  });
+
   it("round-trips an explicit hidden/updatedAt", () => {
     const char = LibraryCharacter.parse({
       id: "char-hidden",

@@ -17,14 +17,14 @@ import type { Defaults } from "./story-format.ts";
 
 export type { AssistMode };
 
-export const ASSIST_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "skills", "restrictions"] as const;
+export const ASSIST_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "origin", "skills", "restrictions"] as const;
 export type AssistField = typeof ASSIST_FIELDS[number];
 
 /** The wire shape of a character draft as the editor sends it: every portable field, always
  *  present (a brand-new draft has them as empty strings/arrays, never missing keys). */
 export type CharacterDraftLike = {
   id: string; name: string; portablePersona: string; belief: string; impulse: string;
-  voice: string[]; skills: string[]; restrictions: string[];
+  voice: string[]; origin: string; skills: string[]; restrictions: string[];
 };
 
 export type AssistRequest = {

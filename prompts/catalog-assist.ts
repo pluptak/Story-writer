@@ -12,13 +12,14 @@ export type AssistMode = "create" | "revise" | "review";
 export function catalogAssistSystem(): string {
   return `You help an author write ONE reusable character for a character library shared across many
 stories. A library character holds only its PORTABLE half: name, portablePersona, belief, impulse,
-voice (up to 3 lines of their own dialogue, in their own words), skills, restrictions. It never
-holds a goal or what they know walking in -- those exist only inside a particular story and are
-authored there, never here.
+voice (up to 3 lines of their own dialogue, in their own words), origin, skills, restrictions. It
+never holds a goal or what they know walking in -- those exist only inside a particular story and are
+authored there, never here. "origin" names a kind of being whose general-skill group the character
+starts from, or "" for every general skill; keep it to a single bare word or short name.
 
 Reply with a single JSON object and nothing else:
 {"draft": {"name":"...", "portablePersona":"...", "belief":"...", "impulse":"...",
-           "voice":["..."], "skills":["..."], "restrictions":["..."]},
+           "voice":["..."], "origin":"...", "skills":["..."], "restrictions":["..."]},
  "findings": ["..."],
  "note": "..."}
 

@@ -3,9 +3,18 @@ import { esc, tid, postJson, reasonOr, parseCommaSeparated } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
 
-const emptyDraft = () => ({ id:"", name:"", meaning:"", tags:"" });
-const draftOf = k => ({ id:k?.id || "", name:k?.name || "", meaning:k?.meaning || "", tags:(k?.tags || []).join(", ") });
-const entryOf = d => ({ id:d.id, name:d.name.trim(), meaning:d.meaning.trim(), tags:parseCommaSeparated(d.tags) });
+// An origin is a named GROUP of general skills a kind of being starts with; a special skill is one
+// a character can be given by name. Both live in this one catalog (kind: "special" | "origin"),
+// so the editor carries both shapes: kind, and the origin's general list (always sent empty for a
+// special skill, which is what the catalog's own validation demands).
+const emptyDraft = () => ({ id:"", name:"", meaning:"", tags:"", kind:"special", general:[] });
+const draftOf = k => ({ id:k?.id || "", name:k?.name || "", meaning:k?.meaning || "", tags:(k?.tags || []).join(", "),
+                        kind:k?.kind === "origin" ? "origin" : "special", general:[...(k?.general || [])] });
+const entryOf = d => ({ id:d.id, name:d.name.trim(), meaning:d.meaning.trim(), tags:parseCommaSeparated(d.tags),
+                        kind:d.kind === "origin" ? "origin" : "special",
+                        general:d.kind === "origin"
+                          ? [...new Set((d.general || []).map(g => String(g).trim()).filter(Boolean))]
+                          : [] });
 const clone = value => JSON.parse(JSON.stringify(value));
 const newId = () => `skl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -15,10 +24,17 @@ function usageLine(name) {
   return n ? `<i>used by ${n} character${n === 1 ? "" : "s"}</i>` : "";
 }
 
+/** The general skills an origin grants, as one display line. Names only — the meanings live in the
+ *  picker's tooltips, and a coverage line that spelled them all out would outgrow the row. */
+const coverageLine = k => (k.general || []).length ? (k.general || []).join(", ") : "";
+
 function visibleEntries() {
   const s = APP.skillLibrary;
   const q = s.search.trim().toLowerCase();
-  const filtered = s.entries.filter(k => !q || `${k.name} ${k.meaning}`.toLowerCase().includes(q));
+  // Origins are findable by what they grant: a covered skill's name should surface the origin
+  // that carries it, not just its own name and meaning.
+  const filtered = s.entries.filter(k =>
+    !q || `${k.name} ${k.meaning} ${(k.general || []).join(" ")}`.toLowerCase().includes(q));
   return filtered.sort((a, b) => s.sort === "name"
     ? String(a.name).localeCompare(String(b.name))
     : (Number(b.updatedAt || b.version || 0) - Number(a.updatedAt || a.version || 0)));
@@ -60,17 +76,72 @@ function tagPickerHtml(d) {
   return html;
 }
 
+// The list is two sections, special skills then origins, each sorted the way the toolbar asks.
+// With a search on, a section with no matches drops out rather than showing an empty heading.
 function listHtml() {
   const s = APP.skillLibrary;
   const entries = visibleEntries();
-  if (!entries.length) return `<div class="lib-empty"><div class="lib-empty-mark">◇</div><h3>${s.search ? "No skills match" : "Your skill bible is empty"}</h3><p>${s.search ? "Try a different search." : "Define the special skills a story can draw on by name."}</p>${button({label:"New skill", id:"skilllib-empty-new", variant:"primary"})}</div>`;
-  return entries.map(k => {
+  if (!s.entries.length) {
+    return `<div class="lib-empty"><div class="lib-empty-mark">◇</div><h3>Your skill catalog is empty</h3><p>Define the special skills a story can draw on by name, and the origins that group general skills.</p>${button({label:"New skill", id:"skilllib-empty-new", variant:"primary"})}</div>`;
+  }
+  if (!entries.length) {
+    return `<div class="lib-empty"><div class="lib-empty-mark">◇</div><h3>No skills match</h3><p>Try a different search.</p></div>`;
+  }
+  const row = k => {
     const selected = s.selected?.id === k.id;
+    const origin = k.kind === "origin";
+    const coverage = origin ? coverageLine(k) : "";
     return `<div class="lib-row${selected ? " selected" : ""}" data-skill-id="${esc(k.id)}" role="button" tabindex="0" ${tid("skill-library.row")}>
-      <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(k.meaning || "Describe what this skill lets a character do.")}</span></span>
+      <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(origin ? (coverage ? `grants ${coverage}` : "grants no general skills yet") : (k.meaning || "Describe what this skill lets a character do."))}</span></span>
+      ${origin ? `<i class="lib-kind-badge" ${tid("skill-library.kind-badge")}>Origin</i>` : ""}
       <button class="lib-more" data-skill-select-id="${esc(k.id)}" aria-label="Open ${esc(k.name)} in editor">•••</button>
     </div>`;
-  }).join("");
+  };
+  const section = (title, kind) => {
+    const group = entries.filter(k => (k.kind === "origin" ? "origin" : "special") === kind);
+    if (!group.length) return "";
+    return `<div class="lib-tags-group"><div class="lib-facet-heading">${esc(title)}</div>${group.map(row).join("")}</div>`;
+  };
+  return section("Special skills", "special")
+       + section("Origins", "origin");
+}
+
+// The kind toggle: two pills acting as one radio group. Switching never destroys the draft's
+// general list — it is only *sent* for an origin (entryOf) — so a special→origin→special round
+// trip on an unsaved draft loses nothing and still shows as dirty the moment it would save
+// differently.
+function kindPickerHtml(d) {
+  const pill = (value, label, testid) =>
+    `<button class="lib-chip${(d.kind === "origin") === (value === "origin") ? " on" : ""}"
+       data-skill-kind="${value}" type="button" ${tid(testid)} role="radio"
+       aria-checked="${d.kind === value}">${esc(label)}</button>`;
+  return `<div class="lib-chips" role="radiogroup" aria-label="Skill kind">${pill("special", "Special skill", "skill-library.kind-special")}${pill("origin", "Origin", "skill-library.kind-origin")}</div>`;
+}
+
+// The general-skill universe an origin grants from — every SKILL_CATALOG entry, name → meaning,
+// from /catalog/config. A chosen name the vocabulary does not know (an externally-authored catalog,
+// a spelling variant) is shown as off-list but kept, exactly like the tag picker's off-vocabulary
+// group, because silently dropping a persisted grant would change what characters of that kind
+// start with.
+function generalPickerHtml(d) {
+  const skills = APP.catalogConfig.generalSkills || {};
+  const names = Object.keys(skills);
+  const chosen = new Set(d.general || []);
+  if (!names.length) return `<p class="hint">The general-skill catalog has not loaded yet — reopen this skill in a moment.</p>`;
+  let html = `<div class="lib-tags-picker">`;
+  html += `<div class="lib-tags-group"><div class="lib-facet-heading">General skills</div><div class="lib-tags-row">`;
+  for (const name of names) {
+    html += `<button class="lib-pick${chosen.has(name) ? " on" : ""}" data-general-skill="${esc(name)}" type="button" title="${esc(skills[name] || "")}">${esc(name)}</button>`;
+  }
+  html += `</div></div>`;
+  const offList = [...chosen].filter(n => !Object.prototype.hasOwnProperty.call(skills, n));
+  if (offList.length) {
+    html += `<div class="lib-tags-group"><div class="lib-facet-heading">Off-list</div><div class="lib-tags-row">`;
+    for (const name of offList) html += `<button class="lib-pick on off-vocab" data-general-skill="${esc(name)}" type="button" title="This skill is not in the general catalog">${esc(name)}</button>`;
+    html += `</div><p class="lib-tags-notice">Kept when you save, though the general catalog does not carry it.</p></div>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 function editorHtml() {
@@ -78,6 +149,11 @@ function editorHtml() {
   const d = s.draft;
   if (!d) return `<div class="lib-inspector-empty"><span>Select a skill to edit</span><small>Or define a new one.</small></div>`;
   const c = s.selected;
+  const origin = d.kind === "origin";
+  const total = Object.keys(APP.catalogConfig.generalSkills || {}).length;
+  const coverage = origin
+    ? `<p class="hint">Grants ${d.general.length} of ${total} general skill${total === 1 ? "" : "s"} — a character of this kind starts with exactly these.</p>`
+    : "";
   return `<div class="lib-editor-head">
     <span class="lib-avatar">${esc((d.name || "?").slice(0, 2).toUpperCase())}</span><div><strong>${esc(d.name || "Untitled skill")}</strong><small>ID: ${esc(d.id || "not saved")}</small></div>
     <button class="lib-close" id="skilllib-close" aria-label="Close skill editor">×</button>
@@ -87,12 +163,17 @@ function editorHtml() {
     ${button({label:"Delete", id:"skilllib-delete", variant:"danger", extraClass:"small"})}
   </div>
   ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
-  <div class="lib-section"><h3>Skill identity</h3><p>The canonical name and meaning a story writes when it grants this skill.</p>
+  <div class="lib-section"><h3>Skill identity</h3>
+    <p>${origin
+      ? "An origin is a kind of being: the general skills below are what a character of this kind starts with."
+      : "The canonical name and meaning a story writes when it grants this skill."}</p>
+    ${kindPickerHtml(d)}
     <label class="lib-field"><span>Name</span><input class="lib-input" id="skilllib-name" value="${esc(d.name)}" placeholder="The canonical spelling a story writes"></label>
-    <label class="lib-field"><span>Meaning</span><textarea class="lib-input lib-textarea" id="skilllib-meaning" rows="3" placeholder="What the skill lets a character do">${esc(d.meaning)}</textarea></label>
+    <label class="lib-field"><span>Meaning</span><textarea class="lib-input lib-textarea" id="skilllib-meaning" rows="3" placeholder="${origin ? "What kind of being this is" : "What the skill lets a character do"}">${esc(d.meaning)}</textarea></label>
   </div>
+  ${origin ? `<div class="lib-section" id="skilllib-general-section"><h3>General skills</h3><p>What a character of this kind starts with. A story can still add or take away per character.</p>${coverage}${generalPickerHtml(d)}</div>` : ""}
   <div class="lib-section"><h3>Tags</h3><p>Reusable descriptors, drawn from the tag vocabulary.</p>${tagPickerHtml(d)}</div>
-  ${c ? `<div class="lib-section"><h3>Usage</h3><p>What actually carries this skill today.</p>${usageLine(d.name) || hint("no character carries it yet")}</div>` : ""}
+  ${c ? `<div class="lib-section"><h3>Usage</h3><p>What actually carries this ${origin ? "origin" : "skill"} today.</p>${usageLine(d.name) || hint("no character carries it yet")}</div>` : ""}
   <div class="lib-editor-footer">${button({label:"Cancel", id:"skilllib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"skilllib-save", variant:"primary", disabled:!needsSave(s)})}</div>`;
 }
 
@@ -101,9 +182,9 @@ export function skillLibraryHtml() {
   if (s.loading) return `<section class="lib-page lib-skills"><div class="lib-loading">${thinking("loading skill bible…")}</div></section>`;
   if (s.error && !s.entries.length) return `<section class="lib-page lib-skills"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again", id:"skilllib-retry", variant:"primary"})}</div></section>`;
   return `<section class="lib-page lib-skills" ${tid("skill-library.page")}><div class="lib-main">
-    <header class="lib-top"><div><h1>Skill Bible <span class="lib-info">i</span></h1><p>The special skills a story can draw on by name.</p></div><div class="lib-top-actions">${button({label:"＋ New skill", id:"skilllib-new", variant:"primary"})}</div></header>
-    <div class="lib-toolbar"><input class="lib-input" id="skilllib-search" placeholder="⌕  Search skills…" value="${esc(s.search)}"><select class="lib-input" id="skilllib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>
-    <div class="lib-list">${listHtml()}</div><footer class="lib-list-footer">Showing ${visibleEntries().length} of ${s.entries.length} skills</footer>
+    <header class="lib-top"><div><h1>Skill Bible <span class="lib-info">i</span></h1><p>The special skills a story can draw on by name, and the origins that group general skills.</p></div><div class="lib-top-actions">${button({label:"＋ New skill", id:"skilllib-new", variant:"primary"})}</div></header>
+    <div class="lib-toolbar"><input class="lib-input" id="skilllib-search" placeholder="⌕  Search skills and origins…" value="${esc(s.search)}"><select class="lib-input" id="skilllib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>
+    <div class="lib-list">${listHtml()}</div><footer class="lib-list-footer">Showing ${visibleEntries().length} of ${s.entries.length} skills and origins</footer>
   </div><aside class="lib-inspector">${editorHtml()}</aside></section>`;
 }
 
@@ -166,6 +247,22 @@ export function wireSkillLibrary(page) {
     setSelected(s.entries.find(k => k.id === action.dataset.skillSelectId));
   }));
   for (const key of ["name","meaning"]) page.querySelector(`#skilllib-${key}`)?.addEventListener("input", () => { s.draft[key] = document.getElementById(`skilllib-${key}`).value; dirtyFromDraft(); page.querySelector("#skilllib-save").disabled = !needsSave(s); page.querySelector("#skilllib-cancel").disabled = !s.dirty; });
+  // Kind pills and general-skill chips mutate the draft and re-render (like the tag chips), so the
+  // save/cancel buttons and the coverage line recompute from the same draft the render drew from.
+  page.querySelectorAll("[data-skill-kind]").forEach(pill => pill.addEventListener("click", () => {
+    if (!s.draft) return;
+    const kind = pill.getAttribute("data-skill-kind");
+    if (!kind || s.draft.kind === kind) return;
+    s.draft.kind = kind; dirtyFromDraft(); APP.render();
+  }));
+  page.querySelectorAll("[data-general-skill]").forEach(chip => chip.addEventListener("click", () => {
+    if (!s.draft) return;
+    const name = chip.getAttribute("data-general-skill"); if (!name) return;
+    const general = s.draft.general || (s.draft.general = []);
+    const idx = general.indexOf(name);
+    if (idx >= 0) general.splice(idx, 1); else general.push(name);
+    dirtyFromDraft(); APP.render();
+  }));
   page.querySelectorAll(".lib-pick[data-tag-label]").forEach(chip => chip.addEventListener("click", () => {
     if (!s.draft) return;
     const label = chip.getAttribute("data-tag-label"); if (!label) return;

@@ -276,7 +276,8 @@ the editor.
 ```
 GET  /catalog?kind=characters&includeHidden=  → { ok:true, entries[] }
                                        | { ok:false, reason }
-GET  /catalog/config                 → { tagFacets, caps, assistFields[] }
+GET  /catalog/config                 → { tagFacets, caps, assistFields[],
+                                         originSkills, generalSkills }
 GET  /catalog/usage                  → { ok:true, usage }   (read-only derivation, below)
 GET  /catalog/entry?kind=&id=        → { ok:true, entry }
                                        | { ok:false, reason }        (400 no id · 404 no such entry)
@@ -299,21 +300,28 @@ POST /catalog/assist { kind?, mode, fields[], instruction, character }
 A catalog is **global**: it lives beside `defaults.json`, not inside a story. So unlike the story
 editor these routes take no `dir`, and none of them consults the story-write lock — a run reading one
 story's `story.json` has no bearing on a shelf of reusable characters. `/catalog/config` is the
-catalog's own schema-derived shape — the tag facet enum and the character voice-sample cap — for the
-catalog editor to render without hand-copying `catalog-schema.ts`. `kind` selects which catalog —
-`characters`, `tags`, `styles` or `skills` — and decides the filename; an unknown kind is `400`,
-validated in the host because it arrives from a query string. Every route above is
+catalog's own schema-derived shape — the tag facet enum, the character voice-sample cap, and the
+skills catalog's two projections: `originSkills` (persisted origin name → the general skills it
+grants) and `generalSkills` (the whole general catalog, name → meaning, the universe an origin grants
+from) — for the catalog editor to render without hand-copying `catalog-schema.ts`. `kind` selects
+which catalog — `characters`, `tags`, `styles` or `skills` — and decides the filename; an unknown kind
+is `400`, validated in the host because it arrives from a query string. Every route above is
 kind-parameterised, so a new kind is a registry entry in `engine/catalog.ts` and never a new route.
 
 A **character** entry is the **portable half** of a character: `id`, `version`, `name`, `tags[]`,
-`portablePersona`, `belief`, `impulse`, `voice[]`, `skills[]`, `restrictions[]`, `hidden`,
+`portablePersona`, `belief`, `impulse`, `voice[]`, `origin`, `skills[]`, `restrictions[]`, `hidden`,
 `updatedAt`. There is deliberately no `goal` and no `knows` — those are story-positional — and no
-`model` or `maxRetries`, which are run configuration. What a catalog entry is and how it composes
-into a `CharacterDef` is [Architect.MD](Architect.MD)'s *Character catalog*. The other three: a
-**tag** is `id`, `version`, `facet`, `label`; a **style** is `id`, `version`, `name`, `tags[]`,
-`description`, `voice`; a **skill** is `id`, `version`, `name`, `meaning`, `tags[]`, and its
-`meaning` is the one prose field in any kind the schema refuses rather than reports missing
-([Architect.MD](Architect.MD)'s *Skill bible* says why).
+`model` or `maxRetries`, which are run configuration. `origin` names a kind of being whose
+general-skill group the character starts from, or is blank for every general skill; it resolves
+against the skills catalog when a story loads, exactly like a story-authored character's origin. What
+a catalog entry is and how it composes into a `CharacterDef` is [Architect.MD](Architect.MD)'s
+*Character catalog*. The other three: a **tag** is `id`, `version`, `facet`, `label`; a **style** is
+`id`, `version`, `name`, `tags[]`, `description`, `voice`; a **skill** is `id`, `version`, `name`,
+`meaning`, `tags[]`, `kind` (`"special"` — given to a character by name — or `"origin"`, a named
+group of general skills a kind of being starts with), and on an origin the `general[]` list of
+general-skill names it grants (always empty on a special skill). Its `meaning` is the one prose field
+in any kind the schema refuses rather than reports missing ([Architect.MD](Architect.MD)'s *Skill
+bible* says why).
 
 **`hidden`/`updatedAt` exist only on a character entry today** — every other kind's schema omits
 them, and `/catalog/visibility` refuses a kind whose schema has no `hidden` field to set. A hidden
@@ -329,11 +337,11 @@ migration.
 
 **`/catalog/assist`, today, is characters-only** (`kind` other than `"characters"` is `400`) and
 proposes a change to a subset of one character's portable fields — `mode` is `create`, `revise` or
-`review`; `fields` names which of `name`, `portablePersona`, `belief`, `impulse`, `voice`, `skills`,
-`restrictions` the author selected (`GET /catalog/config`'s `assistFields` is the same list, so the
-GUI never hand-copies it); `character` is the draft as the editor holds it. It never writes to the
-catalog — the caller applies `proposal.draft` to its own local draft and still has to `POST
-/catalog/save` to persist anything. **The proposal is server-constrained, not model-trusted**: a
+`review`; `fields` names which of `name`, `portablePersona`, `belief`, `impulse`, `voice`, `origin`,
+`skills`, `restrictions` the author selected (`GET /catalog/config`'s `assistFields` is the same
+list, so the GUI never hand-copies it); `character` is the draft as the editor holds it. It never
+writes to the catalog — the caller applies `proposal.draft` to its own local draft and still has to
+`POST /catalog/save` to persist anything. **The proposal is server-constrained, not model-trusted**: a
 field outside `fields` is copied from the input character exactly regardless of what the model's
 reply said about it, and `proposal.changes` is the engine's own before/after diff over the
 constrained result — never the model's own claim about what it changed. `review` may return

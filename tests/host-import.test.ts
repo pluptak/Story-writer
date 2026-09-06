@@ -82,4 +82,21 @@ describe("importCharacters", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("carries the character's origin through the import, blank staying blank", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "host-import-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      await saveEntry("characters", { ...baseChar("pip", "Pip"), origin: "bird" }, path);
+      await saveEntry("characters", baseChar("fred", "Fred"), path);
+
+      const { imported } = await importCharacters(["pip", "fred"], path);
+      const pip = imported.find(i => i.libraryId === "pip");
+      const fred = imported.find(i => i.libraryId === "fred");
+      assert.equal(pip?.origin, "bird", "a library origin travels into the new story");
+      assert.equal(fred?.origin, "", "blank origin stays the every-general-skill default");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

@@ -58,6 +58,12 @@ export interface CatalogConfig {
   tagFacets: readonly TagFacet[];
   caps: { voiceSamples: number };
   assistFields: readonly string[];
+  /** The persisted origin groups: origin name → the general skills it grants. Feeds the skill
+   *  editor's origin view and the character library's origin picker; empty when no origins exist. */
+  originSkills: Readonly<Record<string, readonly string[]>>;
+  /** The general-skill catalog, name → meaning. The selectable universe for an origin's `general`
+   *  list — derived only from origins would hide a general skill no origin happens to grant yet. */
+  generalSkills: Readonly<Record<string, string>>;
 }
 
 /** One in-progress interview's full snapshot — what GET /scaffold and every /scaffold/* action
@@ -263,8 +269,9 @@ export interface ServerHost {
     ok: false; error: string
   }>;
   /** The catalog's schema-derived shape (tag facets, voice-sample cap) for the catalog editor —
-   *  never the schema itself, so the GUI stops hand-copying it. */
-  catalogConfig(): CatalogConfig;
+   *  never the schema itself, so the GUI stops hand-copying it. The origin/general projections read
+   *  the persisted skills catalog, so this may be asynchronous; the route awaits it. */
+  catalogConfig(): CatalogConfig | Promise<CatalogConfig>;
   /** All entries in a catalog. `kind` is validated here because it arrives from the wire.
    *  Hidden entries are excluded unless `includeHidden` is set — every selectable-characters
    *  surface (the new-story cast picker, the library picker) wants the default; only the

@@ -735,6 +735,9 @@
   .lib-row.hidden-row.selected { opacity:.85; }
   .lib-characters .lib-row { grid-template-columns:44px minmax(0,1fr) 32px; }
   .lib-tags .lib-row { grid-template-columns:minmax(0,1fr) auto 32px; }
+  /* the skill page's rows carry a kind badge for origins, same shape as the tag page's extra column */
+  .lib-skills .lib-row { grid-template-columns:minmax(0,1fr) auto 32px; }
+  .lib-kind-badge { font:var(--fs-10) var(--mono); color:var(--accent); border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line)); border-radius:var(--r-pill); padding:2px 7px; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }
   .lib-avatar { width:44px; height:44px; display:grid; place-items:center; border-radius:var(--r-lg); background:linear-gradient(135deg,#6c7a99,#2d2f3a); color:#fff; font-weight:700; font-size:var(--fs-16); }
   .lib-row-copy { min-width:0; display:flex; flex-direction:column; gap:3px; }
   .lib-row-copy strong { font-size:var(--fs-16); }
@@ -838,7 +841,7 @@
      the third child lands in the 32px more-button column instead of wrapping to its own row, and
      everything downstream of it renders squeezed into a sliver and overflows. .lib-cut already
      covered the tag case; .lib-avatar here is the character case. */
-  @media(max-width:760px) { .lib-main { padding:22px 16px; } .lib-inspector { padding:22px 16px; } .lib-top { display:block; } .lib-top-actions { margin-bottom:18px; } .lib-toolbar { grid-template-columns:1fr; } .lib-row,.lib-characters .lib-row,.lib-tags .lib-row { grid-template-columns:minmax(0,1fr) 32px; } .lib-cut { display:none; } .lib-characters .lib-row .lib-avatar { display:none; } .lib-editor-footer { flex-wrap:wrap; } }
+  @media(max-width:760px) { .lib-main { padding:22px 16px; } .lib-inspector { padding:22px 16px; } .lib-top { display:block; } .lib-top-actions { margin-bottom:18px; } .lib-toolbar { grid-template-columns:1fr; } .lib-row,.lib-characters .lib-row,.lib-tags .lib-row,.lib-skills .lib-row { grid-template-columns:minmax(0,1fr) 32px; } .lib-cut { display:none; } .lib-characters .lib-row .lib-avatar { display:none; } .lib-editor-footer { flex-wrap:wrap; } }
   /* narrowest window: the before/after diff (review panel and assistant proposal alike) stops
      trying to hold a fixed 120px label column beside its content and stacks both instead */
   @media(max-width:600px) { .lib-change { grid-template-columns:1fr; } .lib-change-label { flex-direction:row; align-items:center; justify-content:space-between; } .lib-modal { padding:18px 16px; } .lib-modal-head { flex-wrap:wrap; } }

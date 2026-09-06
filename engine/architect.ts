@@ -124,7 +124,7 @@ export function bibleCandidates(spec: StorySpec, bible: BibleLookup = bibleMeani
 export function applyImportContract(
   proposed: readonly unknown[], imported: readonly ImportedCharacter[],
 ): { characters: Record<string, unknown>[]; notes: string[] } {
-  const TRAVELS = ["belief", "impulse", "voice", "skills", "restrictions"] as const;
+  const TRAVELS = ["belief", "impulse", "voice", "skills", "restrictions", "origin"] as const;
   // Compared as text so "changed" means what a reader would call changed: whitespace and element
   // order are the only things this normalizes away.
   const flat = (v: unknown) =>
@@ -157,14 +157,16 @@ export function applyImportContract(
     }
     characters.push({ ...c,
       belief: from.belief, impulse: from.impulse,
-      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions) });
+      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions),
+      origin: from.origin });
   }
 
   for (const from of imported) {
     if (matched.has(nameKey(from.name))) continue;
     characters.push({ name: from.name, persona: from.portablePersona, knows: "", goal: "",
       belief: from.belief, impulse: from.impulse,
-      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions) });
+      voice: copy(from.voice), skills: copy(from.skills), restrictions: copy(from.restrictions),
+      origin: from.origin });
     notes.push(`${from.name} was left out of the proposal — added back unchanged, because the `
       + `author chose this character`);
   }
@@ -190,6 +192,7 @@ export type ImportedCharacter = {
   voice: string[];
   skills: string[];
   restrictions: string[];
+  origin: string;
 };
 
 /** The style preset the author picked from their catalog. Session-only: the `voice` becomes the

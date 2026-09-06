@@ -449,6 +449,7 @@ describe("ScaffoldSession, staged", () => {
         voice: ["Hold the door? I'd rather hold the lock."],
         skills: ["lockpicking :: opening a mechanical lock without its key"],
         restrictions: ["sight"],
+        origin: "",
       };
 
       const s = new ScaffoldSession(
@@ -669,6 +670,7 @@ describe("ScaffoldSession, staged", () => {
         voice: ["Hold the door? I'd rather hold the lock."],
         skills: ["lockpicking :: opening a mechanical lock without its key"],
         restrictions: ["sight"],
+        origin: "",
       };
 
       const text = P.architectCastImportStage("p", "t", "{}", [IVET]);
@@ -690,6 +692,7 @@ describe("ScaffoldSession, staged", () => {
         voice: ["Hold the door? I'd rather hold the lock."],
         skills: ["lockpicking :: opening a mechanical lock without its key"],
         restrictions: ["sight"],
+        origin: "",
       };
 
       const regular = P.architectCastStage("p", "t", "{}");
@@ -1090,9 +1093,10 @@ describe("applyImportContract", () => {
     voice: ["Hold the door? I'd rather hold the lock."],
     skills: ["lockpicking :: opening a mechanical lock without its key"],
     restrictions: ["sight"],
+    origin: "human",
   };
 
-  it("reverts the five fields that travel with the character, and says which", () => {
+  it("reverts the six fields that travel with the character, and says which", () => {
     const proposed = [{
       name: "IVET",
       persona: "A professional safe-breaker.",
@@ -1103,6 +1107,7 @@ describe("applyImportContract", () => {
       voice: ["Why pick a lock when you can learn its maker?"],
       skills: IVET.skills,
       restrictions: ["hearing"],
+      origin: "ai",
     }];
 
     const result = applyImportContract(proposed, [IVET]);
@@ -1113,15 +1118,37 @@ describe("applyImportContract", () => {
     assert.deepEqual(character.restrictions, IVET.restrictions);
     assert.equal(character.impulse, IVET.impulse);
     assert.deepEqual(character.skills, IVET.skills);
+    assert.equal(character.origin, IVET.origin);
     assert.equal(character.persona, "A professional safe-breaker.");
     assert.equal(character.knows, "The vault is empty.");
     assert.equal(character.goal, "Get the key.");
 
-    assert.equal(result.notes.length, 3);
+    assert.equal(result.notes.length, 4);
     assert.match(result.notes.join(" "), /the architect changed belief/);
     assert.match(result.notes.join(" "), /the architect changed voice/);
     assert.match(result.notes.join(" "), /the architect changed restrictions/);
+    assert.match(result.notes.join(" "), /the architect changed origin/);
     assert.match(result.notes.join(" "), /reverted to the library's/);
+  });
+
+  it("restores a library origin the proposal left out, without calling it a change", () => {
+    const proposed = [{
+      name: "IVET",
+      persona: "A professional safe-breaker.",
+      knows: "The vault is empty.",
+      goal: "Get the key.",
+      belief: IVET.belief,
+      impulse: IVET.impulse,
+      voice: IVET.voice,
+      skills: IVET.skills,
+      restrictions: IVET.restrictions,
+      // no origin named at all — the reply being brief about a field it was told it did not own
+    }];
+
+    const result = applyImportContract(proposed, [IVET]);
+
+    assert.equal(result.characters[0].origin, IVET.origin, "the library's origin travels");
+    assert.equal(result.notes.length, 0);
   });
 
   it("does not count a field the proposal left empty as a change", () => {
