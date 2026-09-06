@@ -18,7 +18,7 @@ alters what a route serves.
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
 - [ ] `npm run test:gui` green. The Playwright suite (`tests/gui/`, `playwright.config.ts`) is the
-      automated floor for sections 4, 6, 9, 12 and 15 below, and for section 14's concept fields
+      automated floor for sections 4, 6, 9, 12 and 15 below, the whole of section 7, and for section 14's concept fields
       (only those — the walk itself needs the architect) — a new machine needs
       `npx playwright install chromium` once. It is also the boot check the next bullet describes:
       a viewer module that fails to link fails the suite instead of shipping as the bare shell.
@@ -286,30 +286,20 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 
 ## 7. Consult timeline strip
 
-The strip lives outside `#page`, above the layout, so most of what can go wrong with it is about
-which view it is showing and whether it clears itself.
+**Automated in full — nothing here needs a person** (`tests/gui/timeline.spec.ts`). The strip lives
+outside `#page`, above the layout, so what can go wrong with it is which store it is showing and
+whether it clears itself; none of that needs a model, and the run logs it reads are built by
+`tests/gui/run-log.ts` rather than spent on.
 
-Cheapest check first — it follows the read view, so no run is needed:
+The suite holds: a marker per consult named for the character asked; a click that scrolls to **and
+opens** that consult's own block, not the marker's (both carry the same `data-seq`, which is how the
+wrong one gets found) and writes `&block=` so the jump is addressable; the strip emptying when the
+view changes and repopulating from the next run read rather than joining it; a retried consult and a
+capped one differing from a plain one in **class, `title` and computed colour**; and markers arriving
+mid-run over SSE and still jumping.
 
-- [ ] Story page → *previous runs* → read any run that has consults in it. A **consults** strip
-      appears above the page with one marker per consult, named for the character.
-- [ ] Click a marker. The page scrolls to that consult block **and expands it**. If it scrolls
-      nowhere, the marker is finding itself instead of its block — both carry the same `data-seq`.
-- [ ] Go back to the shelf. **The strip disappears.** A strip that survives the view change is
-      showing you a run you are no longer looking at.
-- [ ] Read a different run. The markers change to that run's consults, not the previous one's.
-- [ ] A consult that was retried is coloured differently from one that was not, and its tooltip reads
-      "N retries".
-
-Then during a live run (section 2 leaves you well placed):
-
-- [ ] Markers appear as consults happen, and clicking one still jumps to its block mid-run.
-
-Capped markers need a story that can hit the ceiling — nothing on disk sets one:
-
-- [ ] Add `"maxCharacterRetries": 1` to a scratch story's `config`, run a chapter, and confirm a
-      character that gets retried once comes back marked capped (the `.capped` colour) with "capped"
-      in its tooltip. *Skip and note as unchecked if you would rather not spend a run on it.*
+The capped case used to say *"skip and note as unchecked if you would rather not spend a run on it"* —
+it is a `retry_capped` line in a fixture now, and costs nothing.
 
 ## 8. Per-agent model-call panel
 

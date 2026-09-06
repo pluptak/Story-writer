@@ -42,7 +42,7 @@ method rather than a measurement — "automatable today" means *no new harness c
 | 4 the handoff | 7 | 2 | 3 | 1 | 1 |
 | 5 drift warning | 5 | — | 4 | — | 1 |
 | 6 story editor | 23 | 4 | 15 | 1 | 3 |
-| 7 consult timeline strip | 7 | 0 | 7 | — | — |
+| 7 consult timeline strip | 7 | **7** | — | — | — |
 | 8 per-agent model-call panel | 8 | 0 | — | 8 | — |
 | 9 live writer screen | 8 | 3 | 4 | — | 1 |
 | 10 the story reader | 9 | 3 | 6 | — | — |
@@ -52,7 +52,7 @@ method rather than a measurement — "automatable today" means *no new harness c
 | 14 the scaffold interview | 20 | 4 | 12 | — | 4 |
 | 15 character catalog | 45 | ~11 | ~28 | 3 | ~3 |
 | locators, shell, without an engine | 14 | — | 12 | — | 2 |
-| **total** | **188** | **~40** | **~113** | **~16** | **~19** |
+| **total** | **188** | **~47** | **~106** | **~16** | **~19** |
 
 ---
 
@@ -84,21 +84,6 @@ transcripts, §12's boundary check and §6's suggest panel — about 16 checkbox
 
 **Done when** a test can hand the fixture host an LLM-log listing and a transcript, and the override
 is gone by the next test without that test knowing it existed.
-
-### Block 3 — §7, the consult timeline strip (7 checks, no coverage, needs nothing)
-
-The strip renders entirely off a saved run log, and `timeline.marker` is already a locator. A
-hand-written `writing-log.jsonl` with several consults, one retried and one `retry_capped`, covers the
-whole section: markers appear named for their character; clicking one scrolls to **and opens** its
-block (marker and block share `data-seq` — the bug the checklist warns about is exactly what a naive
-implementation reintroduces); the strip disappears on navigating to the shelf; reading a second run
-replaces the markers rather than appending; a retried consult is coloured differently and its tooltip
-reads "N retries"; a capped one reads capped.
-
-The capped case is the one the checklist calls *"skip and note as unchecked if you would rather not
-spend a run on it"* — as a fixture it costs nothing.
-
-**Done when** `tests/gui/timeline.spec.ts` covers all seven and §7 loses its manual entries.
 
 ### Block 4 — §8, the per-agent model-call panel (8 checks)
 
@@ -248,7 +233,10 @@ Every block above is deterministic and model-free, so the suite stays a static c
 running in well under a minute and stay out of `npm run check` for the reason that is already
 documented — it needs a browser.
 
-The thing to watch is not runtime but the fixture surface. Blocks 3, 4 and 8 each want a small
-hand-written artefact (a writing log, an LLM log, a chapter snapshot). Those belong beside
-`tests/fixtures/doorway/` under names that say what they are for, not as literals inside spec files,
+The thing to watch is not runtime but the fixture surface. Blocks 4 and 8 each still want a small
+artefact (an LLM log, a chapter snapshot). The shipped block settled where those go: **a builder
+beside the specs, not a file under `tests/fixtures/`** — `tests/gui/run-log.ts` turns a description of
+a run into the `writing-log.jsonl` it would have written, because the runs these tests want differ by
+a field or two each and three near-identical logs on disk would hide the one line that matters in
+each. The rule the fixture directory was protecting still holds: not as literals inside a spec file,
 or the next person reads a spec to find out what a run looks like.
