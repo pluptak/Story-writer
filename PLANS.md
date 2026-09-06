@@ -6,6 +6,10 @@ the handoff, [`Writer.MD`](Writer.MD) for the writer and the live screen. When s
 its behaviour moves into one of those and **the entry is deleted rather than annotated**; git history
 is where implementation notes belong.
 
+One annex, kept separate at the owner's request and under the same delete-on-ship rule:
+[`PLANS-playwright.md`](PLANS-playwright.md) — which of `GUI-CHECKLIST.md`'s manual checks the
+Playwright suite could take over, in blocks. It goes away with its last block.
+
 Nothing below is committed work. **Sections are kinds of work, not subsystems** — a defect with a
 known fix, a run owed before a decision, a decision owed before code, a direction, a cost, and a note
 that exists only to stop something being re-proposed. Within a section the order is a preference, not
@@ -13,9 +17,9 @@ a schedule. The one exception is **Next**, which is the short list of what to pi
 deliberately mixed-kind, and an entry promoted into it is not repeated in the section it came from.
 
 **Verification, once, for all of it:** `npx tsc --noEmit` and `npm test` are the cheap checks. Anything
-touching `server/gui/` also needs the matching section of [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md), since
-the viewer has no automated coverage. Anything touching `prompts.ts` or model behaviour needs a live
-run, which is the owner's to make, batched.
+touching `server/gui/` also needs `npm run test:gui` and then the matching section of
+[`GUI-CHECKLIST.md`](GUI-CHECKLIST.md), for what that suite cannot see. Anything touching `prompts.ts`
+or model behaviour needs a live run, which is the owner's to make, batched.
 
 ---
 
