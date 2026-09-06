@@ -3,7 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { removedCapabilities, resolveOrigin, resolveSkills,
+import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills,
          type Catalogs, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
@@ -321,6 +321,22 @@ export async function readChapterSpec(storyDir: string, n: number): Promise<unkn
   try {
     const text = await readFile(joinPath(base, "chapters", `${n}.json`), "utf8");
     return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/** The catalogs a chapter resolved against, or null for one written before catalog snapshots existed
+ *  (or one whose snapshot will not parse). A caller with null has no choice but today's catalogs —
+ *  what a name meant then is simply not recorded — so it must fall back quietly. */
+export async function readChapterCatalogs(storyDir: string, n: number): Promise<Catalogs | null> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const raw = JSON.parse(await readFile(joinPath(base, "chapters", `${n}.catalogs.json`), "utf8"));
+    if (!raw || typeof raw !== "object") return null;
+    return catalogsFrom({
+      bible: raw.bible ?? {}, generals: raw.generals ?? {}, origins: raw.origins ?? {},
+    });
   } catch {
     return null;
   }

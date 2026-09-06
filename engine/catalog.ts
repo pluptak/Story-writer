@@ -4,7 +4,8 @@ import { join as joinPath } from "node:path";
 import { z } from "zod";
 import { warn } from "./warnings.ts";
 import { characterPsychologyWarnings } from "./story-spec.ts";
-import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, bibleFrom, ORIGIN_SKILL_GROUPS, originsFrom, type BibleLookup, type OriginLookup, type Catalogs } from "./skills.ts";
+import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, bibleFrom, ORIGIN_SKILL_GROUPS, originsFrom, catalogsFrom, type BibleLookup, type OriginLookup, type Catalogs,
+         type CatalogData } from "./skills.ts";
 import { ROOT } from "./story-format.ts";
 import {
   CharacterCatalog,
@@ -258,10 +259,17 @@ export async function generalSkillEntries(path?: string): Promise<Record<string,
  *  persisted in the same file. This is what callers pass around; it exists so no caller can load
  *  two of the three. */
 export async function persistedCatalogs(path?: string): Promise<Catalogs> {
+  return catalogsFrom(await persistedCatalogData(path));
+}
+
+/** The same three as plain data, for the snapshot written beside a finished chapter. Taken whole
+ *  rather than only what the story names: a later chapter may reach for an entry this one never
+ *  used, and the snapshot is a few kilobytes either way. */
+export async function persistedCatalogData(path?: string): Promise<CatalogData> {
   return {
-    bible: await skillBible(path),
+    bible: await skillBibleEntries(path),
     generals: await generalSkillEntries(path),
-    origins: await skillOrigins(path),
+    origins: await originSkillGroups(path),
   };
 }
 

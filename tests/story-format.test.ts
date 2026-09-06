@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
+  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, readChapterCatalogs, ROOT,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
@@ -747,6 +747,74 @@ describe("loadStory with an injected bible", () => {
       const fallback = await quiet(() => loadStory(dir));
       assert.equal(fallback.catalogs.bible?.("lockpicking"), undefined,
                    "an unset bag stays unset; the in-code default is applied at each resolution, not baked in here");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("readChapterCatalogs", () => {
+  const storyWithSnapshot = async (catalogs: unknown | null) => {
+    const dir = await mkdtemp(join(tmpdir(), "chapter-catalogs-test-"));
+    await writeFile(join(dir, "story.json"), JSON.stringify({
+      title: "T", premise: "A premise.",
+      scenes: [{ place: "The strand", question: "Does she read it?" }],
+      characters: [{ name: "MAEVE", persona: "A pilot.", skills: ["tidewalking"] }],
+    }), "utf8");
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    await writeFile(join(dir, "chapters", "1.md"), "Chapter 1 prose.", "utf8");
+    if (catalogs !== null)
+      await writeFile(join(dir, "chapters", "1.catalogs.json"), JSON.stringify(catalogs), "utf8");
+    return dir;
+  };
+
+  it("returns null for a chapter written before catalog snapshots existed", async () => {
+    const dir = await storyWithSnapshot(null);
+    try {
+      assert.equal(await readChapterCatalogs(dir, 1), null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns null for a snapshot that will not parse, rather than throwing", async () => {
+    const dir = await storyWithSnapshot(null);
+    try {
+      await writeFile(join(dir, "chapters", "1.catalogs.json"), "{ not json", "utf8");
+      assert.equal(await readChapterCatalogs(dir, 1), null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("rebuilds all three lookups from the snapshot", async () => {
+    const dir = await storyWithSnapshot({
+      bible: { tidewalking: "reading the turn of a tide by standing in it" },
+      generals: { hearing: "perceiving sound" },
+      origins: { selkie: ["hearing"] },
+    });
+    try {
+      const c = (await readChapterCatalogs(dir, 1))!;
+      assert.equal(c.bible?.("tidewalking"), "reading the turn of a tide by standing in it");
+      assert.deepEqual(c.generals, { hearing: "perceiving sound" });
+      assert.deepEqual(c.origins?.("selkie"), ["hearing"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("keeps what a name meant in a written chapter, whatever the bible says now", async () => {
+    // The guarantee: MAEVE's `skills: ["tidewalking"]` is a bare name, so its meaning comes from a
+    // catalog. Deleting the bible entry afterwards must not reach back into a written chapter.
+    const dir = await storyWithSnapshot({
+      bible: { tidewalking: "reading the turn of a tide by standing in it" },
+      generals: {}, origins: {},
+    });
+    try {
+      const written = await readChapterCatalogs(dir, 1) ?? {};
+      const asWritten = await quiet(() => loadStory(dir, undefined, written));
+      const then = asWritten.characters[0].skills.find(s => s.name === "tidewalking")!;
+      assert.equal(then.meaning, "reading the turn of a tide by standing in it");
+      assert.equal(then.source, "bible");
+
+      // The same story loaded against a catalog that no longer has the entry: the name survives,
+      // its meaning does not. This is what the snapshot exists to prevent.
+      const asNow = await quiet(() => loadStory(dir, undefined, { bible: () => undefined }));
+      const now = asNow.characters[0].skills.find(s => s.name === "tidewalking")!;
+      assert.equal(now.meaning, "");
+      assert.equal(now.source, "custom");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

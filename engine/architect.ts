@@ -9,7 +9,7 @@ import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify, nameKey } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, splitMeaning, canonSkill, type BibleLookup, type Catalogs } from "./skills.ts";
-import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readUnfiredBeats, type Defaults } from "./story-format.ts";
+import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readChapterCatalogs, readUnfiredBeats, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, canonicalField, type StorySpec } from "./story-spec.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
@@ -978,7 +978,9 @@ export async function openNextChapter(d: Defaults, dir: string, bible: Readonly<
     try {
       const snapshot = await readChapterSpec(dir, c.n);
       if (!snapshot) continue;
-      const written = normalizeSpec(snapshot, catalogs);
+      // Read the chapter through the catalogs it was written against, not today's: a bible entry
+      // edited since would otherwise read as scene drift the author never made.
+      const written = normalizeSpec(snapshot, await readChapterCatalogs(dir, c.n) ?? catalogs);
       const drifted = sceneDrift(written.spec.scenes[c.n - 1], s.spec.scenes[c.n - 1]);
       if (drifted.length)
         s.problems.push(`chapter ${c.n}'s prose was written from a different scene definition `

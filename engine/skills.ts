@@ -62,6 +62,22 @@ export interface Catalogs {
   origins?: OriginLookup;
 }
 
+/** The same three catalogs as plain data rather than lookups — the form that can be written to disk.
+ *  A chapter is snapshotted with the catalogs it resolved against, so a later bible edit cannot
+ *  change what a name meant in a chapter already written. */
+export interface CatalogData {
+  bible: Record<string, string>;
+  generals: Record<string, string>;
+  origins: Record<string, string[]>;
+}
+
+/** Serialized catalogs back into the lookups a resolution takes. */
+export const catalogsFrom = (d: CatalogData): Catalogs => ({
+  bible: bibleFrom(d.bible),
+  generals: d.generals,
+  origins: originsFrom(d.origins),
+});
+
 /** The general skill list: every character has all of these unless a story's `restrictions` removes them. */
 export const SKILL_CATALOG: Readonly<Record<string, string>> = Object.freeze({
   movement: "moving your own body through the space you are in",
