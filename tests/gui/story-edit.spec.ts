@@ -5,9 +5,10 @@
 import { basename } from "node:path";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { arrive, cardFromStory, copyFixtureStory, expect, registerStory, setHostOverrides, setScaffoldFactory, test } from "./harness.ts";
+import { arrive, cardFromStory, copyFixtureStory, expect, registerStory, setHandoffFactory, setHostOverrides, setScaffoldFactory, test } from "./harness.ts";
 import type { FixtureStory } from "./harness.ts";
-import { ScaffoldSession } from "../../engine/architect.ts";
+import { NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
+import { normalizeSpec } from "../../engine/story-spec.ts";
 import { ScriptedAgent } from "../helpers.ts";
 import { LIVE } from "../../live.ts";
 import type { Defaults } from "../../engine/story-format.ts";
@@ -192,3 +193,189 @@ test("an architect suggestion lands in the form as an unsaved change", async ({ 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// -- THE WRITE LOCKS -----------------------------------------------------------
+// Three refusals, one mechanism (`storyWriteBlocked` in live.ts): a run is reading story.json, a
+// picked story is still loading, or a handoff holds it. By hand each is a multi-tab dance around a
+// live run; the flags they turn on are writable from here, so the refusal is what gets tested
+// rather than the choreography needed to provoke it.
+
+/** Arrive at the editor for `dir` and find the refusal instead of a form. */
+const expectRefused = async (page, served: number, dir: string, reason: string) => {
+  await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+  await expect(page.locator(".said.bad").first()).toContainText(reason);
+  // The refusal is the whole page, not a banner over a working form: a form here would be one whose
+  // every save the route is going to reject anyway.
+  await expect(page.locator("#edit-premise")).toHaveCount(0);
+};
+
+test("the editor refuses to load while a run is in flight, and loads once it ends",
+  async ({ page, served }) => {
+    const dir = await copyFixtureStory();
+    registerLive(dir);
+    try {
+      LIVE.running = true;
+      await expectRefused(page, served, dir, "cannot edit while a run is in flight");
+
+      LIVE.running = false;
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await expect(page.locator("#edit-premise")).toHaveValue(/restaurant that closed at one/);
+    } finally {
+      LIVE.running = false;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+test("the editor refuses to load in the window after a story is picked", async ({ page, served }) => {
+  const dir = await copyFixtureStory();
+  registerLive(dir);
+  try {
+    // The gap between /select and the scene starting: story.json is being read, so it must not move.
+    LIVE.loading = true;
+    await expectRefused(page, served, dir, "cannot edit while a story is loading");
+
+    LIVE.loading = false;
+    await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+    await expect(page.locator("#edit-premise")).toHaveValue(/restaurant that closed at one/);
+  } finally {
+    LIVE.loading = false;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an open handoff blocks the editor's save, and abandoning it lets the save through",
+  async ({ page, served }) => {
+    const dir = await copyFixtureStory();
+    registerLive(dir);
+    const NEW_TITLE = "Doorway, revised";
+    try {
+      // The lock is taken by the handoff itself rather than set by hand: host.handoffStart() claims
+      // LIVE.storyLock the moment a round opens, and that claim is the thing under test.
+      setHandoffFactory(async d => new NextChapterSession(
+        new ScriptedAgent([JSON.stringify({ edits: [] })]),
+        SCAFFOLD_DEFAULTS, d,
+        normalizeSpec(JSON.parse(await readFile(join(d, "story.json"), "utf8"))).spec,
+        [{ n: 1, text: "Merritt logged a quiet night." }]));
+
+      // The editor opens FIRST: the lock refuses `/story/edit` as well as `/story/save`, so a tab
+      // arriving after the handoff started never gets a form to try saving from. The case worth
+      // testing is the one that actually happens — an editor already open when a handoff opens
+      // behind it, holding a draft the route will no longer take.
+      const editor = await page.context().newPage();
+      try {
+        await arrive(editor, served, "#/edit?dir=" + encodeURIComponent(dir));
+        await editor.locator("#edit-title").fill(NEW_TITLE);
+
+        await arrive(page, served, "#/handoff?dir=" + encodeURIComponent(dir));
+        await page.locator("#h-start").click();
+        await expect(page.locator("#h-accept")).toBeEnabled();
+        await editor.locator("#edit-save").click();
+        await expect(editor.locator(".said.bad").first()).toContainText("a chapter handoff is open");
+        // The refusal is the file's, not just the page's.
+        expect((await readStory(dir)).title).not.toBe(NEW_TITLE);
+
+        await editor.request.post(`http://127.0.0.1:${served}/next-chapter/abandon`);
+        await editor.locator("#edit-save").click();
+        await expect.poll(async () => (await readStory(dir)).title).toBe(NEW_TITLE);
+      } finally { await editor.close(); }
+    } finally {
+      setHandoffFactory(null);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+// -- A FILE THE EDITOR CANNOT USE ----------------------------------------------
+
+test("a story.json that will not parse loads as an error, and a mis-shaped one shows its raw content",
+  async ({ page, served }) => {
+    const dir = await copyFixtureStory();
+    registerLive(dir);
+    try {
+      // Two failures the checklist ran as one. A SYNTAX error never becomes an object, so there is
+      // nothing raw to show and `loadStoryJson` returns the message alone.
+      await writeFile(join(dir, "story.json"), "{ not json");
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await expect(page.locator(".said.bad").first()).toContainText("could not read story.json");
+      await expect(page.locator("pre.editor-raw")).toHaveCount(0);
+
+      // A file that parses but fails the schema does have a raw object, and showing it is what makes
+      // the message actionable — you can see the field it is talking about.
+      await writeFile(join(dir, "story.json"), JSON.stringify({ title: "Doorway", scenes: "not a list" }));
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await expect(page.locator(".said.bad").first()).toBeVisible();
+      await expect(page.locator("pre.editor-raw")).toContainText("not a list");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+test("a second tab keeps the story it loaded until it is reloaded", async ({ page, served }) => {
+  const dir = await copyFixtureStory();
+  registerLive(dir);
+  const NEW_PREMISE = "A courier, a locked door, and a porter who hears everything.";
+  try {
+    await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+    const stale = await page.context().newPage();
+    try {
+      await arrive(stale, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await expect(stale.locator("#edit-premise")).toHaveValue(/restaurant that closed at one/);
+
+      await page.locator("#edit-premise").fill(NEW_PREMISE);
+      await page.locator("#edit-save").click();
+      await expect.poll(async () => (await readStory(dir)).premise).toBe(NEW_PREMISE);
+
+      // No push, by design: the other tab is holding a draft of its own, and replacing it under the
+      // author would lose whatever they had typed. It goes stale, and a reload is the fix.
+      await expect(stale.locator("#edit-premise")).toHaveValue(/restaurant that closed at one/);
+      await stale.reload();
+      await expect(stale.locator("#edit-premise")).toHaveValue(NEW_PREMISE);
+    } finally { await stale.close(); }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("closing a tab with unsaved changes is guarded", async ({ page, served }) => {
+  const dir = await copyFixtureStory();
+  registerLive(dir);
+  try {
+    // Never the fixture page: closing that one takes the harness's own teardown with it.
+    const doomed = await page.context().newPage();
+    await arrive(doomed, served, "#/edit?dir=" + encodeURIComponent(dir));
+    // A real click first: Chromium raises a beforeunload dialog only on a document that has had
+    // sticky user activation, and fill() alone does not grant it.
+    await doomed.locator("#edit-title").click();
+    await doomed.locator("#edit-title").fill("Doorway, half-edited");
+    await expect(doomed.locator("#edit-save")).toBeEnabled();   // dirty, which is the guard's gate
+
+    // close() only asks; the dialog arrives as its own event, so wait for that rather than for the
+    // close to resolve — the dialog IS the guard firing.
+    const asked = doomed.waitForEvent("dialog", { timeout: 10_000 });
+    const closing = doomed.close({ runBeforeUnload: true });
+    await (await asked).dismiss();
+    await closing;
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a reach grant round-trips through save, and a line with no colon is dropped",
+  async ({ page, served }) => {
+    const dir = await copyFixtureStory();
+    registerLive(dir);
+    const GRANT = "cameras :: perceiving through the lobby cameras";
+    try {
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      // RIVEN, not an invented name: a name matching no character warns at load, which is a
+      // different check and would stand in the way of this one.
+      await page.locator("#scene-1-reach").fill(`RIVEN: ${GRANT}\nthis line has no colon`);
+      await page.locator("#edit-save").click();
+
+      // Reach is scene-scoped (I1): it lands under the scene and never on the character.
+      await expect.poll(async () => (await readStory(dir)).scenes[0].reach).toEqual({ RIVEN: [GRANT] });
+      expect(JSON.stringify(await readStory(dir))).not.toContain("no colon");
+
+      // It comes back as the same text it was typed as.
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await expect(page.locator("#scene-1-reach")).toHaveValue(`RIVEN: ${GRANT}`);
+
+      // And clearing it takes the grant off the scene rather than leaving the name behind empty.
+      await page.locator("#scene-1-reach").fill("");
+      await page.locator("#edit-save").click();
+      await expect.poll(async () => (await readStory(dir)).scenes[0].reach?.RIVEN).toBeUndefined();
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });

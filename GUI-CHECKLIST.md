@@ -252,12 +252,7 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Revert.** Click **revert**. Confirm the dialog. The title goes back to what it was. The "unsaved changes" banner disappears.
 - [ ] **Save.** Change the premise, click **save**. The save button briefly shows "saving…" then returns to "save". The "unsaved changes" banner disappears. Reload the page to confirm the edit persisted.
 - [ ] **Dirty guard.** With unsaved changes, click **back to story**. A `confirm()` dialog warns about unsaved changes. Cancel stays on the editor; confirm navigates away.
-- [ ] **Dirty guard — browser close.** With unsaved changes, close the tab. The browser fires `beforeunload` with a confirmation. (Hard to automate; verify once.)
 - [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
-- [ ] **Reach editor.** In a scene's "Reach" textarea, add one line per grant, `NAME: thing :: meaning`
-      (e.g. `AURA: cameras :: perceiving through the lobby cameras`). Save, reopen the editor, confirm
-      the line survived. Delete the line and save — it is gone. A line with no colon is silently
-      dropped from the draft; a name that matches no character warns at load, not here.
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
       still there, labelled by scene everywhere it shows.
@@ -272,11 +267,6 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Models editor.** Expand the models section. Change `default` model, save, reload.
 - [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
 - [ ] **Architect suggestion, against a real architect.** Expand "Ask the architect". Type a change request, click **suggest**. What the suite cannot judge is whether what comes back is a sensible reading of the request; that the reply's applied fields are listed and land in the form as unsaved changes is automated. *(Requires LM Studio with the architect model loaded.)*
-- [ ] **Run-in-flight guard.** Start a run. While it runs, navigate to the editor. Expect: the editor refuses to load with "cannot edit while a run is in flight". Alternately, open a story, start its run, then in another tab open the editor — verify the 409 response.
-- [ ] **Loading-window guard.** Pick a story and immediately open the editor in another tab, before the scene starts. Expect a "cannot … while a story is loading" 409, and normal behaviour again once the run is on screen.
-- [ ] **Handoff lock.** Open the handoff panel for a story and leave it open. In another tab, try to save from the editor — expect "cannot … while a chapter handoff is open …". Abandon the handoff; the save goes through afterwards.
-- [ ] **Malformed story.** Directly open a story directory that has an unparseable `story.json` (modify one manually to be invalid JSON). The editor loads showing the error and the raw content (or `{ ok: false, error, raw }`).
-- [ ] **No concurrent edit loss.** Open the editor in two tabs. Edit in tab A, save. Tab B still shows stale data. Reload tab B — it gets the saved version.
 
 ## 7. Live writer screen
 

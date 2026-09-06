@@ -40,14 +40,14 @@ because the fixture host is built before the test body runs — an override merg
 could never come from the test that needs it. Use it only where the real method must not run:
 `suggestEdits` calls a model. Anything that is a pure function of files on disk — run logs,
 transcripts, chapters, snapshots — gets real files in a temp story dir instead, so the test exercises
-the engine's own reading of them. That distinction is why §8 turned out not to need the seam at all:
+the engine's own reading of them. That distinction is why the model-call panel needed no seam at all:
 the stubs that had been standing in for `runLlmLogs`/`readLlmLog` were removed rather than made
 configurable.
 
 ## The count
 
-169 checkboxes, down from 188: two sections and four boxes left the checklist when the suite came to
-hold the whole of what they claimed. Every box below is still work for a person today — the file
+162 checkboxes, down from 188: two sections and eleven boxes left the checklist when the suite came
+to hold the whole of what they claimed. Every box below is still work for a person today — the file
 carries nothing else — so the split here is about where each one *could* end up, not where it is.
 
 **Mechanizable** means the whole of that box is reachable without a model and without a second
@@ -62,7 +62,7 @@ measurement.
 | 3 reading accepted prose | 1 | 1 | — |
 | 4 the handoff | 7 | 6 | 1 |
 | 5 drift warning | 5 | 4 | 1 |
-| 6 story editor | 23 | 20 | 3 |
+| 6 story editor | 16 | 13 | 3 |
 | 7 live writer screen | 8 | 7 | 1 |
 | 8 the story reader | 9 | 9 | — |
 | 9 story-wide search | 6 | 6 | — |
@@ -71,7 +71,7 @@ measurement.
 | 12 the scaffold interview | 20 | 16 | 4 |
 | 13 character catalog | 45 | 42 | 3 |
 | locators, shell, without an engine | 14 | 12 | 2 |
-| **total** | **169** | **~150** | **~19** |
+| **total** | **162** | **~143** | **~19** |
 
 ---
 
@@ -79,20 +79,7 @@ measurement.
 
 In dependency order. Each is independently pausable and worth shipping on its own.
 
-### Block 5 — the lock guards and the editor's failure paths (§6, ~8 checks)
-
-`LIVE.running`, `LIVE.loading` and `LIVE.storyLock` are writable from the test process, which turns
-§6's three multi-tab manual dances into three assertions with no run and no timing: the run-in-flight
-409, the loading-window 409, and the handoff lock refusing a save until the handoff is abandoned.
-Beside them, from the same file: a malformed `story.json` in a temp dir loading as error-plus-raw
-rather than a blank editor; two pages in one context proving a stale tab stays stale until reloaded;
-`page.close({ runBeforeUnload: true })` for the `beforeunload` guard the checklist marks *"hard to
-automate; verify once"*; and the reach editor's round trip (`NAME: thing :: meaning` survives save and
-reopen, a line with no colon is dropped) asserted against the file.
-
-**Done when** §6's remaining manual entries are the three that need the architect model.
-
-### Block 6 — failure states, as a class (~10 checks across §10, §12, §13, §15)
+### Block 6 — failure states, as a class (~10 checks across §8, §10, §11, §13)
 
 Everywhere the checklist says *"unload the model"*, *"stop the engine"* or *"throttle the network"*, it
 is testing how the page handles a failed fetch. `page.route` covers the lot: `/cast` unavailable (the
@@ -103,7 +90,7 @@ fetch in compare showing an error rather than stale content from the previous se
 
 **Done when** none of those five say "stop the engine".
 
-### Block 7 — §14's scripted gates (~8 checks)
+### Block 7 — §12's scripted gates (~8 checks)
 
 These read as *"needs the architect model"* and do not — `ScaffoldSession` takes a `ScriptedAgent` and
 a judge factory, which `tests/gui/scaffold.spec.ts` already proves. A reply that asks instead of
@@ -119,7 +106,7 @@ I4 invariant worth a test.
 The folder step needs no agent at all: *stories/&lt;slug&gt; already exists* disabling the button as
 you type, and `Bay 4 — Hatches!` previewing `stories/bay-4-hatches`.
 
-**Done when** §14's manual entries are only the four that read a real round's content.
+**Done when** §12's manual entries are only the four that read a real round's content.
 
 ### Block 8 — §5, the drift warning (4 checks)
 
@@ -128,9 +115,9 @@ the current one; no model produces the warning. A temp story with a `chapters/1.
 differs, plus a scripted handoff session, asserts the warning names the chapter and the field, that a
 chapter with no snapshot draws none, and that the warning does not block accept.
 
-**Done when** §5 is an **Automated:** preamble with "put the question back" gone as an instruction.
+**Done when** §5 is gone from the checklist — "put the question back" included.
 
-### Block 9 — §15's remainder (~28 checks)
+### Block 9 — §13's remainder (~28 checks)
 
 The largest section, and mostly mechanism: issues and problems as two labelled blocks that are never
 merged; a rejected save keeping the drafted text on screen; the delete arm/disarm window (`page.clock`
@@ -146,7 +133,7 @@ most likely to regress"* — a promoted `telepathy` stopping the character form 
 
 Worth splitting in two when picked up: the character form, then styles/skills.
 
-**Done when** §15's manual entries are the three that need a live assistant model.
+**Done when** §13's manual entries are the three that need a live assistant model.
 
 ### Block 10 — locator mode (~4 checks, no coverage)
 
@@ -162,12 +149,12 @@ or an `id`. That is the rule *Rules for new work* states and nothing enforces.
 
 ### Block 11 — the width sweep (~6 checks)
 
-Scattered through §9, §10, §13, §14 and the shell, all the same shape: at `<900px` the rail stacks
+Scattered through §7, §8, §11, §12 and the shell, all the same shape: at `<900px` the rail stacks
 below the prose **and stays visible** (if it vanishes, the only way to stop a run goes with it); the
 compare panes stack; the scaffold sidebar stacks and the stepper rail disappears; the nav becomes a
 horizontal strip and hides below 680px; at 375px there is no horizontal scrollbar. `setViewportSize`
 plus a `document.documentElement.scrollWidth` assertion covers the last one across every route at
-once. §15's automated overflow sweep already does this for the catalog — this generalises it.
+once. §13's automated overflow sweep already does this for the catalog — this generalises it.
 
 The nav's *both themes* check is a `data-theme` attribute swap in the same file.
 
