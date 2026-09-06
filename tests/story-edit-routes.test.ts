@@ -17,8 +17,8 @@ const DOORWAY = {
   facts: [] as string[],
   timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
   characters: [
-    { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: [] },
-    { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: ["hearing"] },
+    { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: [] },
+    { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: ["hearing"] },
   ],
   config: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140, stream: true, debug: false,
             requestTimeout: 120, attempts: 3, maxTokens: 2000,

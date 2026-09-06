@@ -500,7 +500,7 @@ describe("prompt construction", () => {
 describe("reach boundaries", () => {
   const AURA: import("../engine/story-format.ts").CharacterDef = {
     name: "AURA", model: "", persona: "The building's AI.", knows: "", goal: "", belief: "",
-    impulse: "", voice: [],
+    impulse: "", voice: [], origin: "",
     skills: [{ name: "speech", meaning: "saying things aloud over the intercom", source: "general" }],
     limits: [],
   };

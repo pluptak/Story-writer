@@ -28,6 +28,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
             persona: "Keeps the log.",
             knows: "The signal did not fire.",
             goal: "",
+            origin: "ai",
             skills: [{ text: "lockpicking", meaning: "" }],
             restrictions: [],
           },
@@ -36,6 +37,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
             persona: "Came up from the boats.",
             knows: "",
             goal: "",
+            origin: "",
             skills: [],
             restrictions: ["hearing"],
           },
@@ -67,6 +69,13 @@ describe("/cast (GET)", () => {
     assert.equal(r.json().characters.length, 2);
     assert.equal(r.json().characters[0].name, "ASTER");
     assert.equal(r.json().characters[0].knows, "The signal did not fire.");
+  });
+
+  it("includes each character's origin", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.equal(r.json().ok, true);
+    assert.equal(r.json().characters[0].origin, "ai");
+    assert.equal(r.json().characters[1].origin, "");
   });
 
   it("omits each character's model", async () => {

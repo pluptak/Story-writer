@@ -224,6 +224,7 @@ export function handoffPageHtml() {
       const reach = grants[c.name] || [];
       body.push(`<div ${tid("handoff.cast-row")} class="who" data-name="${esc(c.name)}">
         <div class="nm">${esc(c.name)}</div>
+        ${c.origin ? `<div class="line"><span class="k">origin</span>${esc(c.origin)}</div>` : ""}
         ${c.goal ? `<div class="line"><span class="k">goal</span>${esc(c.goal)}</div>` : ""}
         ${c.knows ? `<div class="line"><span class="k">knows</span>${esc(c.knows)}</div>` : ""}
         ${c.belief ? `<div class="line"><span class="k">believes</span>${esc(c.belief)}</div>` : ""}

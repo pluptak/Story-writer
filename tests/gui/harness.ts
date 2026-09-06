@@ -31,7 +31,7 @@ export type FixtureStory = {
   title: string; premise: string; writerStyle: string;
   scenes: { place: string; question: string; pov: string; length: number; roster: string[]; reach?: Record<string, string[]> }[];
   characters: { name: string; persona: string; knows: string; goal: string; belief: string;
-                impulse: string; voice: string[]; skills: string[]; restrictions: string[] }[];
+                impulse: string; voice: string[]; origin?: string; skills: string[]; restrictions: string[] }[];
   config: { maxSteps: number };
 };
 

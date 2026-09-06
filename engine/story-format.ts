@@ -3,7 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { bibleMeaningOf, removedCapabilities, resolveSkills, type BibleLookup, type Skill } from "./skills.ts";
+import { bibleMeaningOf, originSkillsOf, removedCapabilities, resolveOrigin, resolveSkills,
+         type BibleLookup, type OriginLookup, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
@@ -13,7 +14,8 @@ export type { SceneDef } from "./story-schema.ts";
 
 /** A loaded character: everything the agents need, with skills already resolved to the final list,
  *  and `limits` carrying what the authored restrictions took away as explicit negative facts —
- *  general AND special skills, so a removed lockpicking is nameable, not merely absent. */
+ *  general AND special skills, so a removed lockpicking is nameable, not merely absent. `origin` is
+ *  kept for display and round-trip; `skills` and `limits` are already resolved against it. */
 export interface CharacterDef {
   name: string;
   model: string;
@@ -23,6 +25,7 @@ export interface CharacterDef {
   belief: string;
   impulse: string;
   voice: string[];
+  origin: string;
   skills: Skill[];
   limits: string[];
   maxRetries?: number;
@@ -66,9 +69,11 @@ export const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolve
 
 /** Validate and load a story into a StoryConfig; a model override beats the story's own default.
  *  `bible` is the special-skill bible the cast's capabilities resolve against — the in-code catalog
- *  by default, the author's persisted one when the caller loads it. */
+ *  by default, the author's persisted one when the caller loads it. `origins` is the same thing for
+ *  the origin groups a character's general skills come from. */
 export async function loadStory(dir: string, modelOverride?: string,
-                                bible: BibleLookup = bibleMeaningOf): Promise<StoryConfig> {
+                                bible: BibleLookup = bibleMeaningOf,
+                                origins: OriginLookup = originSkillsOf): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
   const storyPath = joinPath(base, "story.json");
   const raw = JSON.parse(await readFile(storyPath, "utf8"));
@@ -98,6 +103,7 @@ export async function loadStory(dir: string, modelOverride?: string,
     if (!name) { warn("a character has no name — skipped"); continue; }
     if (seen.has(nameKey(name))) { warn(`Duplicate character "${name}" — skipped`); continue; }
     seen.add(nameKey(name));
+    const origin = resolveOrigin(name, c.origin, origins);
     const skillsRaw = c.skills.join(" | "), restrictionsRaw = c.restrictions.join(" | ");
     characters.push({
       name,
@@ -108,9 +114,10 @@ export async function loadStory(dir: string, modelOverride?: string,
       belief: c.belief,
       impulse: c.impulse,
       voice: c.voice,
+      origin: c.origin.trim(),
       // Reach empty on both (I4): a character-level view never sees a scene's grant.
-      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", bible),
-      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", bible),
+      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", bible, origin),
+      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", bible, origin),
       maxRetries: c.maxRetries,
     });
   }

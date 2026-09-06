@@ -51,6 +51,30 @@ test("the editor loads a story, saves an edit through the real path, and refuses
   }
 });
 
+test("the editor saves an origin field edit and it persists to the story file", async ({ page, served }) => {
+  const dir = await copyFixtureStory();
+  registerLive(dir);
+  try {
+    await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+
+    await expect(page.locator('[data-tid="edit.char-card"][data-char="0"]')).toContainText("RIVEN");
+
+    const origin = page.locator("#char-0-origin");
+    await origin.fill("ai");
+    await expect(page.locator("#edit-save")).toBeEnabled();
+    await page.locator("#edit-save").click();
+    await expect.poll(async () => (await readStory(dir)).characters[0].origin)
+      .toBe("ai");
+
+    await origin.fill("");   // and back to no origin at all
+    await page.locator("#edit-save").click();
+    await expect.poll(async () => (await readStory(dir)).characters[0].origin)
+      .toBe("");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("the story page discards the last unwritten chapter's scene — and only that one", async ({ page, served }) => {
   const dir = await copyFixtureStory();
   registerLive(dir);

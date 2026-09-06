@@ -691,7 +691,7 @@ export const HOST: ServerHost = {
       ok: true,
       characters: loaded.story.characters.map(c => ({
         name: c.name, persona: c.persona, knows: c.knows, goal: c.goal,
-        belief: c.belief, impulse: c.impulse, voice: c.voice,
+        belief: c.belief, impulse: c.impulse, voice: c.voice, origin: c.origin,
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
       })),

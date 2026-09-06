@@ -249,7 +249,7 @@ describe("pause/resume handshake", () => {
 describe("sceneReach", () => {
   const reachDef = (limits: string[]): CharacterDef => ({
     name: "MERRITT", model: "", persona: "", knows: "", goal: "", belief: "", impulse: "",
-    voice: [], skills: [], limits,
+    voice: [], origin: "", skills: [], limits,
   });
   const grant = ["cameras :: reading the fire panel's fault codes"];
 

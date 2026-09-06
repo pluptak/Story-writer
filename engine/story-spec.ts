@@ -20,7 +20,7 @@ export interface StorySpec {
   models: { default: string; writer: string; summary: string };
   characters: Array<{
     name: string; model: string; persona: string; knows: string; goal: string;
-    belief: string; impulse: string; voice: string[];
+    belief: string; impulse: string; voice: string[]; origin: string;
     skills: string[]; restrictions: string[]; maxRetries?: number;
   }>;
 }
@@ -149,6 +149,7 @@ export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { 
       knows: [knows, learned].filter(Boolean).join(" "),
       goal: String(c?.goal ?? "").trim(),
       belief, impulse, voice,
+      origin: String(c?.origin ?? "").trim(),
       skills, restrictions,
       ...(Number.isInteger(c?.maxRetries) && c.maxRetries >= 0 ? { maxRetries: c.maxRetries } : {}),
     });
@@ -441,7 +442,7 @@ export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bible
       continue;
     }
 
-    const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|belief|impulse|voice|skills|restrictions|lacks|name)$/);
+    const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|belief|impulse|voice|origin|skills|restrictions|lacks|name)$/);
     if (cm) {
       // Models copy the <NAME> placeholder literally sometimes; unwrap it rather than refuse.
       const who = cm[1].replace(/^<+/, "").replace(/>+$/, "").trim() || cm[1];
@@ -737,6 +738,7 @@ export function storyJsonShape(spec: StorySpec, models: { default: string }) {
     belief: c.belief,
     impulse: c.impulse,
     voice: c.voice,
+    origin: c.origin,
     skills: c.skills,
     restrictions: c.restrictions,
     ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),
@@ -781,7 +783,7 @@ export function specView(spec: StorySpec) {
     facts: spec.facts, timeline: spec.timeline, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
       name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,
-      belief: c.belief, impulse: c.impulse, voice: c.voice,
+      belief: c.belief, impulse: c.impulse, voice: c.voice, origin: c.origin,
       skills: c.skills.map(s => splitMeaning(s)),
       restrictions: c.restrictions,
       ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),

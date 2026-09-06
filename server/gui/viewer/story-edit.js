@@ -193,6 +193,7 @@ function characterCardsHtml() {
         ${fld(`char-${i}-impulse`, 'Impulse ("when X → Y")', c.impulse ?? "", "half")}
       </div>
       ${voiceFld(i, c.voice)}
+      ${fld(`char-${i}-origin`, "Origin (blank = every general skill)", c.origin ?? "", "half")}
       <div class="editor-row">
         ${fld(`char-${i}-skills`, "Skills (comma-separated)", skills, "half")}
         ${fld(`char-${i}-restrictions`, "Restrictions (comma-separated)", restrictions, "half")}

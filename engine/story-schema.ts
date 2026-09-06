@@ -47,6 +47,9 @@ export const CharacterDef = z.strictObject({
    *  adjectives. Extras past three are dropped on load — matching `normalizeSpec`'s truncate-and-keep
    *  — rather than rejecting the whole story, so both load paths converge on the same cap. */
   voice: z.array(z.string()).default([]).transform(v => v.slice(0, VOICE_SAMPLE_CAP)),
+  /** Which kind of being this character is: the named general-skill group they start with. Empty
+   *  means all of them. */
+  origin: z.string().default(""),
   skills: z.array(z.string()).default([]),
   restrictions: z.array(z.string()).default([]),
   /** This character's chapter-wide retry ceiling; unset falls back to `config.maxCharacterRetries`. */
