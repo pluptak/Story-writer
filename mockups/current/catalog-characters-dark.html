@@ -1143,7 +1143,7 @@
   </nav>
   <main class="page" id="page"><section class="lib-page lib-characters" data-tid="character-library.page"><div class="lib-main">
     <header class="lib-top"><div><h1>Character Library <span class="lib-info">i</span></h1><p>Reusable characters you can import into any story.</p></div><div class="lib-top-actions"><button class="btn primary" id="charlib-new">＋ New character</button></div></header>
-    <div class="lib-toolbar"><input class="lib-input" id="charlib-search" placeholder="⌕  Search characters…" value="">
+    <div class="lib-toolbar"><input class="lib-input" id="charlib-search" placeholder="⌕  Search characters…" value="" style="">
       <select class="lib-input" id="charlib-visibility"><option value="all" selected="">All characters</option><option value="visible">Visible only</option><option value="hidden">Hidden only</option></select>
       <select class="lib-input" id="charlib-sort">
         <option value="updated" selected="">Recently updated</option>
@@ -1151,16 +1151,16 @@
         <option value="name-desc">Name Z–A</option>
         <option value="version">Version</option>
       </select></div>
-    <div class="lib-list"><div class="lib-row" data-char-id="chr_mtoyfa7d_a5fyy" role="button" tabindex="0" data-tid="character-library.row">
+    <div class="lib-list"><div class="lib-row" data-char-id="chr_mtoyyh5d_k14aj" role="button" tabindex="0" data-tid="character-library.row">
       <span class="lib-avatar">T</span>
       <span class="lib-row-copy"><strong>TOBIAS</strong><span>A dispatch clerk who has read every manifest that came through this building for eleven years.</span>
         <span class="lib-chips"><i>1 skill</i><i>1 voice sample</i></span></span>
-      <button class="lib-more" data-char-select-id="chr_mtoyfa7d_a5fyy" aria-label="Open TOBIAS in editor">•••</button>
-    </div><div class="lib-row selected" data-char-id="chr_mtoyfa1v_ji5vq" role="button" tabindex="0" data-tid="character-library.row">
+      <button class="lib-more" data-char-select-id="chr_mtoyyh5d_k14aj" aria-label="Open TOBIAS in editor">•••</button>
+    </div><div class="lib-row selected" data-char-id="chr_mtoyyh0d_wfgbv" role="button" tabindex="0" data-tid="character-library.row">
       <span class="lib-avatar">I</span>
       <span class="lib-row-copy"><strong>IVET</strong><span>Ex-locksmith, sixty, keeps every key she ever cut on a labelled ring she will not let anyone else ca</span>
         <span class="lib-chips"><i>1 skill</i><i>1 voice sample</i></span></span>
-      <button class="lib-more" data-char-select-id="chr_mtoyfa1v_ji5vq" aria-label="Open IVET in editor">•••</button>
+      <button class="lib-more" data-char-select-id="chr_mtoyyh0d_wfgbv" aria-label="Open IVET in editor">•••</button>
     </div></div>
     <footer class="lib-list-footer">
       <span>Showing 1-2 of 2 characters</span>
@@ -1172,7 +1172,7 @@
       </select>
     </footer>
   </div><aside class="lib-inspector"><div class="lib-editor-head">
-    <span class="lib-avatar">I</span><div><strong>IVET</strong><small>ID: chr_mtoyfa1v_ji5vq</small></div>
+    <span class="lib-avatar">I</span><div><strong>IVET</strong><small>ID: chr_mtoyyh0d_wfgbv</small></div>
     <button class="lib-close" id="charlib-close" aria-label="Close character editor">×</button>
   </div>
   <div class="lib-actions">
@@ -1184,14 +1184,14 @@
   <div class="lib-tabs"><button class="lib-tab active">Overview</button><button class="lib-tab" id="charlib-ai-tab">AI Assistant</button><button class="lib-tab" disabled="">Revisions</button></div>
   
   <div class="lib-section"><h3>Essence</h3><p>Reusable character identity. Keep story-specific goals and knowledge out of the library.</p>
-    <label class="lib-field"><span>Name</span><input class="lib-input" id="charlib-name" value="IVET"></label>
-    <label class="lib-field"><span>Portable persona</span><textarea class="lib-input lib-textarea" id="charlib-persona" rows="3">Ex-locksmith, sixty, keeps every key she ever cut on a labelled ring she will not let anyone else carry.</textarea><small>The identity that travels between stories.</small></label>
-    <label class="lib-field"><span>Belief</span><textarea class="lib-input lib-textarea" id="charlib-belief" rows="3">Every lock has a polite way in, and the polite way is always slower.</textarea></label>
-    <label class="lib-field"><span>Impulse</span><textarea class="lib-input lib-textarea" id="charlib-impulse" rows="3">When watched, slow down and narrate the work.</textarea><small>What this character tends to do under pressure.</small></label>
-    <label class="lib-field"><span>Voice samples</span><textarea class="lib-input lib-textarea" id="charlib-voice" rows="4">"Hold the door? I'd rather hold the lock."</textarea><small>One line per sample, maximum 3.</small></label>
+    <label class="lib-field"><span>Name</span><input class="lib-input" id="charlib-name" value="IVET" style=""></label>
+    <label class="lib-field"><span>Portable persona</span><textarea class="lib-input lib-textarea" id="charlib-persona" rows="3" style="">Ex-locksmith, sixty, keeps every key she ever cut on a labelled ring she will not let anyone else carry.</textarea><small>The identity that travels between stories.</small></label>
+    <label class="lib-field"><span>Belief</span><textarea class="lib-input lib-textarea" id="charlib-belief" rows="3" style="">Every lock has a polite way in, and the polite way is always slower.</textarea></label>
+    <label class="lib-field"><span>Impulse</span><textarea class="lib-input lib-textarea" id="charlib-impulse" rows="3" style="">When watched, slow down and narrate the work.</textarea><small>What this character tends to do under pressure.</small></label>
+    <label class="lib-field"><span>Voice samples</span><textarea class="lib-input lib-textarea" id="charlib-voice" rows="4" style="">"Hold the door? I'd rather hold the lock."</textarea><small>One line per sample, maximum 3.</small></label>
   </div>
   <div class="lib-section"><h3>Capabilities</h3><p>Reusable capabilities, one per line. Skills may use <code>name :: meaning</code>.</p>
-    <label class="lib-field"><span>Skills</span><textarea class="lib-input lib-textarea" id="charlib-skills" rows="3">lockpicking :: opening a mechanical lock without its key, given time and quiet</textarea></label><label class="lib-field"><span>Restrictions</span><textarea class="lib-input lib-textarea" id="charlib-restrictions" rows="3"></textarea><small>One restriction per line.</small></label>
+    <label class="lib-field"><span>Skills</span><textarea class="lib-input lib-textarea" id="charlib-skills" rows="3" style="">lockpicking :: opening a mechanical lock without its key, given time and quiet</textarea></label><label class="lib-field"><span>Restrictions</span><textarea class="lib-input lib-textarea" id="charlib-restrictions" rows="3" style=""></textarea><small>One restriction per line.</small></label>
   </div>
   <div class="lib-assistant"><div><strong>✦ Character assistant</strong></div><p>Create, revise, or review a subset of this character's fields from a plain-language instruction, on its own model.</p><button class="btn small" id="charlib-ai-open">Open AI assistant →</button></div>
   <div class="lib-editor-footer"><button class="btn" id="charlib-cancel" disabled="">Cancel</button><button class="btn primary" id="charlib-save" disabled="">Save changes</button></div>
@@ -1220,11 +1220,11 @@
 <div class="drop" id="drop">drop a writing-log.jsonl</div>
 <div class="prompt" id="prompt" data-tid="chrome.budget-prompt">
   <span id="promptText">The step budget is spent.</span>
-  <input id="promptN" type="number" min="0" value="8" aria-label="how many more steps to allow">
+  <input id="promptN" type="number" min="0" value="8" aria-label="how many more steps to allow" style="">
   <button class="btn" id="promptGo">give steps</button>
   <button class="btn" id="promptStop">stop</button>
 </div>
-<input type="file" id="file" accept=".jsonl,.json,.txt" style="display:none" value="">
+<input type="file" id="file" accept=".jsonl,.json,.txt" style="display: none;" value="">
 
 
 

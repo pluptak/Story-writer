@@ -21,10 +21,14 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     testIdAttribute: "data-tid",
-    // Wider than the test default: the viewer is a three-column layout, and a capture is meant to
-    // show the rail and the sidenav next to the page, not wrapped under it.
-    viewport: { width: 1440, height: 960 },
     colorScheme: "light",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // The viewport goes AFTER the device spread, not in the top-level `use`: a project's own `use`
+  // wins, and Desktop Chrome's 1280×720 would otherwise silently take back the wider frame. The
+  // viewer is a three-column layout and a capture is meant to show the rail and the sidenav beside
+  // the page, not wrapped under it.
+  projects: [{
+    name: "chromium",
+    use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 960 } },
+  }],
 });

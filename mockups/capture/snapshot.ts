@@ -15,6 +15,8 @@ import type { Page } from "@playwright/test";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export const OUT_DIR = join(ROOT, "mockups", "current");
+/** The same screens as flat images, for anywhere HTML will not go — a doc, a message, a diff. */
+export const PNG_DIR = join(OUT_DIR, "png");
 
 let cssCache: string | null = null;
 const viewerCss = async () =>
@@ -57,10 +59,14 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export async function snapshot(page: Page, shot: Shot) {
   const css = await viewerCss();
   await mkdir(OUT_DIR, { recursive: true });
+  await mkdir(PNG_DIR, { recursive: true });
   taken.push(shot);
 
   const write = async (theme: "light" | "dark", file: string) => {
     const dom = await page.evaluate(freeze, theme);
+    // The image comes from the same live page as the markup, under the theme just pinned, so the
+    // PNG and the HTML beside it can never drift apart.
+    await page.screenshot({ path: join(PNG_DIR, file.replace(/\.html$/, ".png")), fullPage: true });
     const html = dom
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
       .replace(/<link\b[^>]*viewer\.css[^>]*>/i, `<style>\n${css}\n</style>`)
@@ -79,9 +85,12 @@ export async function writeIndex() {
   const groups = [...new Set(taken.map(s => s.group))];
   const card = (s: Shot) => `
         <a class="shot" href="${s.name}.html">
-          <b>${esc(s.title)}</b>
-          <p>${esc(s.blurb)}</p>
-          <span class="file">${s.name}.html${s.dark ? ` · <em>${s.name}-dark.html</em>` : ""}</span>
+          <img class="thumb" src="png/${s.name}.png" alt="${esc(s.title)}" loading="lazy">
+          <div class="meta">
+            <b>${esc(s.title)}</b>
+            <p>${esc(s.blurb)}</p>
+            <span class="file">${s.name}.html${s.dark ? ` · <em>${s.name}-dark.html</em>` : ""}</span>
+          </div>
         </a>`;
   const section = (g: string) => `
       <section>
@@ -108,10 +117,15 @@ export async function writeIndex() {
   .lede { color:var(--muted); max-width:62ch; margin:0 0 8px; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted);
        border-bottom:1px solid var(--line); padding-bottom:8px; margin:44px 0 18px; font-weight:600; }
-  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); }
-  .shot { display:block; padding:16px 18px; background:var(--panel); border:1px solid var(--line);
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); }
+  .shot { display:block; background:var(--panel); border:1px solid var(--line); overflow:hidden;
           border-radius:10px; text-decoration:none; color:inherit; }
   .shot:hover { border-color:var(--accent); }
+  /* Cropped to the top of the screen: every capture puts its subject there, and a whole 1440×960
+     page shrunk to a card is unreadable. */
+  .thumb { display:block; width:100%; aspect-ratio:16/10; object-fit:cover; object-position:top left;
+           border-bottom:1px solid var(--line); background:var(--bg); }
+  .meta { padding:14px 18px 16px; }
   .shot b { display:block; font-size:16px; margin-bottom:4px; }
   .shot p { margin:0 0 10px; color:var(--muted); font-size:13.5px; }
   .file { font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--accent); }
@@ -124,7 +138,8 @@ export async function writeIndex() {
   <p class="lede">Every screen below is the running viewer, frozen: the app's own DOM with
     <code>viewer.css</code> inlined and the scripts dropped. Nothing is redrawn by hand, so what you
     see is what the app renders today — the baseline a redesign argues against. Interactions are
-    dead; a few screens ship a <em>-dark.html</em> twin.</p>
+    dead; a few screens ship a <em>-dark.html</em> twin. Every screen is also a flat image in
+    <code>png/</code>, same name, for anywhere HTML will not go.</p>
   <p class="lede">Retake them all with <code>npm run capture</code>.</p>
 ${groups.map(section).join("")}
 </div>
