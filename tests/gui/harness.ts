@@ -107,6 +107,22 @@ export function holdCatalogWrites(): () => void {
   return () => { release(); held = null; };
 }
 
+// -- HOST ANSWERS A TEST SUPPLIES ITSELF --------------------------------------
+// The fixture host is built once, by the `served` fixture, BEFORE the test body runs -- so an
+// override merged into that object at build time could never come from the test that needs it.
+// These are read at CALL time instead, through a proxy on the host the server holds, which is what
+// lets a test install one after the server is already listening.
+//
+// Reach for this only where the real host method cannot be allowed to run: `suggestEdits` calls a
+// model. Anything that is a pure function of files on disk -- run logs, transcripts, chapters --
+// should be given real files in a temp story dir rather than an override, so the test exercises the
+// engine's own reading of them.
+let hostOverrides: Partial<ServerHost> = {};
+/** Install host answers for this test; null (or the `served` fixture) clears them. */
+export function setHostOverrides(overrides: Partial<ServerHost> | null) {
+  hostOverrides = overrides ?? {};
+}
+
 let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
 /** Install the scripted handoff session a handoff test drives; null restores the refusal. Wires
  *  host.ts's handoff test hooks (setHandoffTestHooks) — newHandoffSession is no longer part of
@@ -189,7 +205,7 @@ async function fixtureHost(): Promise<ServerHost> {
     if (!CATALOG_KINDS.includes(kind as CatalogKind)) throw new Error(`no such catalog "${kind}"`);
     return kind as CatalogKind;
   };
-  return {
+  const fixture = {
     // The real host: every path that reads or writes story.json or validates a draft runs the
     // engine's own code — the editor and the handoff's accept are not lookalikes.
     ...HOST,
@@ -200,9 +216,10 @@ async function fixtureHost(): Promise<ServerHost> {
     selectableStory: async dir => (dir === FIXTURE_DIR || extraStories.has(dir) ? dir : null),
     availableModelIds: async () => null,          // no LM Studio behind the harness — on purpose
     runDirs: async dir => extraRunDirs.get(dir) ?? [],
-    // Saved-run GUI tests do not need transcript fixtures; an empty listing is a valid response.
-    runLlmLogs: async () => [],
-    readLlmLog: async () => null,
+    // runLlmLogs/readLlmLog are NOT overridden: they are pure functions of
+    // <storyDir>/out/<id>/llm/*.jsonl, and a temp story dir is a real directory, so the engine's
+    // own implementations read exactly what a test wrote there. A story with no llm/ folder still
+    // lists nothing, which is what every test that does not care about transcripts sees.
     outDir: () => "",
     catalogEntries: async (kind, opts) => {
       const v = withKind(kind);
@@ -263,6 +280,14 @@ async function fixtureHost(): Promise<ServerHost> {
     // files at ROOT, which the spread HOST would read.
     catalogUsage: async () => ({ tags: {}, skills: {} }),
   } as ServerHost;
+
+  // Every property the server reads goes through here, so `setHostOverrides` applies to a host
+  // that was built before the test that overrides it existed.
+  const read = (o: object, key: string) => (o as Record<string, unknown>)[key];
+  return new Proxy(fixture, {
+    get: (target, key) =>
+      typeof key === "string" && key in hostOverrides ? read(hostOverrides, key) : read(target, key as string),
+  }) as ServerHost;
 }
 
 /** Deep-link arrival. A hash-only goto is a same-document navigation whose hashchange makes the
@@ -284,6 +309,7 @@ export const test = base.extend<{ served: number }>({
     handoffFactory = null;
     scaffoldFactory = null;
     held = null;
+    hostOverrides = {};
     const handle: ServerHandle = startServer(0, await fixtureHost());
     const port = await handle.bound;
     await page.goto(`http://127.0.0.1:${port}/`);

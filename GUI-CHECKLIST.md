@@ -18,7 +18,7 @@ alters what a route serves.
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
 - [ ] `npm run test:gui` green. The Playwright suite (`tests/gui/`, `playwright.config.ts`) is the
-      automated floor for sections 4, 6, 9, 12 and 15 below, the whole of section 7, and for section 14's concept fields
+      automated floor for sections 4, 6, 9, 12 and 15 below, the whole of sections 7 and 8, and for section 14's concept fields
       (only those — the walk itself needs the architect) — a new machine needs
       `npx playwright install chromium` once. It is also the boot check the next bullet describes:
       a viewer module that fails to link fails the suite instead of shipping as the bare shell.
@@ -246,8 +246,10 @@ existed stays quiet forever — check `ls stories/<THE SERIAL>/chapters/` and us
 ## 6. Story editor
 
 **Automated:** load, an edit saved through the real persist path (asserted on the file), the
-empty-premise refusal, and discard of the last unwritten scene from the story page
-(`tests/gui/story-edit.spec.ts`). Section collapse states and the suggest panel stay manual.
+empty-premise refusal, discard of the last unwritten scene from the story page, and an architect
+suggestion reaching the form as an unsaved change against a scripted (non-LLM) `/story/suggest`
+(`tests/gui/story-edit.spec.ts`). Section collapse states stay manual, and so does what a *real*
+architect proposes — what the suite holds is that an answer lands in the form and not in the file.
 
 Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click **edit story**).
 
@@ -277,7 +279,7 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
 - [ ] **Models editor.** Expand the models section. Change `default` model, save, reload.
 - [ ] **Story facts.** Add a fact, save, reload, confirm it appears.
-- [ ] **Architect suggestion.** Expand "Ask the architect". Type a change request, click **suggest**. The button shows "thinking…" then returns results showing applied fields and any problems, and applied edits land in the form as unsaved changes (Save enabled). *(Requires LM Studio with the architect model loaded.)*
+- [ ] **Architect suggestion, against a real architect.** Expand "Ask the architect". Type a change request, click **suggest**. What the suite cannot judge is whether what comes back is a sensible reading of the request; that the reply's applied fields are listed and land in the form as unsaved changes is automated. *(Requires LM Studio with the architect model loaded.)*
 - [ ] **Run-in-flight guard.** Start a run. While it runs, navigate to the editor. Expect: the editor refuses to load with "cannot edit while a run is in flight". Alternately, open a story, start its run, then in another tab open the editor — verify the 409 response.
 - [ ] **Loading-window guard.** Pick a story and immediately open the editor in another tab, before the scene starts. Expect a "cannot … while a story is loading" 409, and normal behaviour again once the run is on screen.
 - [ ] **Handoff lock.** Open the handoff panel for a story and leave it open. In another tab, try to save from the editor — expect "cannot … while a chapter handoff is open …". Abandon the handoff; the save goes through afterwards.
@@ -303,25 +305,22 @@ it is a `retry_capped` line in a fixture now, and costs nothing.
 
 ## 8. Per-agent model-call panel
 
-Also Saved-runs only, so no run is needed. Ground truth, to check the numbers against:
+**Automated in full — nothing here needs a person** (`tests/gui/agents.spec.ts`). Every claim was
+about files the engine wrote and how the panel reads them, so the fixture is real transcripts in a
+temp story's `out/<id>/llm/`, built by `tests/gui/run-log.ts` from the engine's own `llmLogEntry` —
+the harness deliberately leaves `runLlmLogs`/`readLlmLog` unstubbed so the suite exercises the
+engine's reading of them and not a stand-in.
 
-```bash
-for f in stories/*/out/*/llm/*.jsonl; do echo "$f  $(wc -l < "$f") calls"; done
-```
+The suite holds: a row per agent tagged `writer`/`character`, whose call counts are the lines the
+transcript actually holds (what the old `wc -l` command read off disk); a transcript opening to one
+numbered button per call; a call expanding to its prompt messages and response, each labelled by
+role, and collapsing on a second click; reading a different run replacing the panel with **no
+transcript left open** from the previous one; and a run with an empty `llm/` folder saying so rather
+than erroring or spinning.
 
-- [ ] Read any run that has an `llm/` folder. A **Model calls** panel appears below the cast, one row
-      per agent, each tagged `writer` or `character`.
-- [ ] The agents listed, and their call counts, match what the command printed for that run.
-- [ ] Open a *character's* transcript. A list of calls appears, one button per call, numbered.
-- [ ] Click a call. Its prompt messages and the response appear below, each labelled by role.
-- [ ] Click the same call again — it collapses.
-- [ ] Now open the **writer's** transcript. This is the volume check: expect tens of calls, and the
-      page must stay responsive. Expanding one writer call renders a genuinely large prompt; if the
-      tab hangs, the panel is inlining more than one call's worth.
-- [ ] Read a *different* run. The panel changes to that run's agents and **no transcript stays open**
-      from the previous one.
-- [ ] Read a run with an empty `llm/` folder — a run killed before its first generation, if you have
-      one. Expect "this run logged no model calls", not an error and not a spinner.
+The volume check did not transfer as written — a person cannot assert "the tab must stay responsive".
+What it was really claiming is asserted instead: with 24 writer calls, opening one puts **that call's
+body on the page and no other's**. A panel inlining more than one call's worth fails that.
 
 ## 9. Live writer screen
 

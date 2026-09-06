@@ -9,6 +9,8 @@
  *  GUI test wants differ by a field or two each, and three near-identical logs on disk would hide
  *  the one line that matters in each. */
 
+import { llmLogEntry } from "../../engine/agent.ts";
+
 /** One consult block: who was asked, how many times, and whether it hit the chapter-wide ceiling. */
 export type ConsultRun = { who: string; attempts: number; capped?: boolean };
 
@@ -71,5 +73,27 @@ export function writingLog(shape: RunShape): string {
   }
 
   put({ t: "scene_end", steps: step, words, done: true, stopped: false, chapter, retries: {} });
+  return lines.join("\n") + "\n";
+}
+
+/** One agent's `llm/<agent>.jsonl` transcript. The records come from the engine's own
+ *  `llmLogEntry`, so a fixture cannot drift from the shape `runLlmLogs` reads and the panel
+ *  renders — if that record changes, these tests change with it rather than quietly testing a
+ *  format nothing writes any more.
+ *
+ *  Every call's prompt and response name their own number, which is what lets a test assert that
+ *  opening call 5 renders call 5 and *only* call 5. */
+export function llmLog(agent: string, model: string, calls: number): string {
+  const lines: string[] = [];
+  for (let n = 1; n <= calls; n++) {
+    lines.push(JSON.stringify(llmLogEntry(
+      { name: agent, model },
+      new Date(Date.UTC(2026, 8, 5, 3, 40 + n, 0)).toISOString(),
+      [{ role: "system", content: `${agent} system prompt, call ${n}` },
+       { role: "user", content: `${agent} was asked this on call ${n}` }],
+      `${agent} answered this on call ${n}`,
+      1_500 + n, null, {}, agent === "WRITER" ? "writer.draft" : "character.consult",
+    )));
+  }
   return lines.join("\n") + "\n";
 }

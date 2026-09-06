@@ -29,30 +29,40 @@ sections read as *"unload the model in LM Studio"* or *"stop the engine"* where 
 tested is how the page handles a failed fetch, which `page.route(…, r => r.abort())` produces in a
 line.
 
+**The seam, and when not to reach for it.** `setHostOverrides()` (`tests/gui/harness.ts`) answers a
+host method for one test. It is read at *call* time, through a proxy on the host the server holds,
+because the fixture host is built before the test body runs — an override merged in at build time
+could never come from the test that needs it. Use it only where the real method must not run:
+`suggestEdits` calls a model. Anything that is a pure function of files on disk — run logs,
+transcripts, chapters, snapshots — gets real files in a temp story dir instead, so the test exercises
+the engine's own reading of them. That distinction is why §8 turned out not to need the seam at all:
+the stubs that had been standing in for `runLlmLogs`/`readLlmLog` were removed rather than made
+configurable.
+
 ## The count
 
 188 checkboxes. This is a per-line judgement, so treat the numbers as an estimate with a stated
 method rather than a measurement — "automatable today" means *no new harness capability, no model*.
 
-| § | boxes | automated | automatable today | needs the seam (Block 2) | stays manual |
-| --- | --- | --- | --- | --- | --- |
-| 1 runs grouped by chapter | 7 | 2 | 5 | — | — |
-| 2 writing the chapter you asked for | 6 | — | 2 | — | 4 |
-| 3 reading accepted prose | 3 | 2 | 1 | — | — |
-| 4 the handoff | 7 | 2 | 3 | 1 | 1 |
-| 5 drift warning | 5 | — | 4 | — | 1 |
-| 6 story editor | 23 | 4 | 15 | 1 | 3 |
-| 7 consult timeline strip | 7 | **7** | — | — | — |
-| 8 per-agent model-call panel | 8 | 0 | — | 8 | — |
-| 9 live writer screen | 8 | 3 | 4 | — | 1 |
-| 10 the story reader | 9 | 3 | 6 | — | — |
-| 11 story-wide search | 7 | 2 | 5 | — | — |
-| 12 the character card | 9 | 3 | 5 | 1 | — |
-| 13 saved-run comparison | 10 | 4 | 4 | 2 | — |
-| 14 the scaffold interview | 20 | 4 | 12 | — | 4 |
-| 15 character catalog | 45 | ~11 | ~28 | 3 | ~3 |
-| locators, shell, without an engine | 14 | — | 12 | — | 2 |
-| **total** | **188** | **~47** | **~106** | **~16** | **~19** |
+| § | boxes | automated | automatable today | stays manual |
+| --- | --- | --- | --- | --- |
+| 1 runs grouped by chapter | 7 | 2 | 5 | — |
+| 2 writing the chapter you asked for | 6 | — | 2 | 4 |
+| 3 reading accepted prose | 3 | 2 | 1 | — |
+| 4 the handoff | 7 | 2 | 4 | 1 |
+| 5 drift warning | 5 | — | 4 | 1 |
+| 6 story editor | 23 | 5 | 15 | 3 |
+| 7 consult timeline strip | 7 | **7** | — | — |
+| 8 per-agent model-call panel | 8 | **8** | — | — |
+| 9 live writer screen | 8 | 3 | 4 | 1 |
+| 10 the story reader | 9 | 3 | 6 | — |
+| 11 story-wide search | 7 | 2 | 5 | — |
+| 12 the character card | 9 | 3 | 6 | — |
+| 13 saved-run comparison | 10 | 4 | 6 | — |
+| 14 the scaffold interview | 20 | 4 | 12 | 4 |
+| 15 character catalog | 45 | ~11 | ~31 | ~3 |
+| locators, shell, without an engine | 14 | — | 12 | 2 |
+| **total** | **188** | **~56** | **~113** | **~19** |
 
 ---
 
@@ -70,32 +80,6 @@ Someone running the list today re-checks by hand things the suite already fails 
 
 **Done when** every section with coverage carries an **Automated:** preamble naming its spec file, and
 the *Before you start* bullet lists the same set.
-
-### Block 2 — the harness seam: per-test host overrides
-
-`fixtureHost()` hard-codes `runLlmLogs: async () => []`, `readLlmLog: async () => null` and inherits
-`suggestEdits` from the real `HOST`, and a test has no way to change any of them: the object is built
-inside the `served` fixture. Add `setHostOverrides(partial)` beside the existing
-`setScaffoldFactory`/`setHandoffFactory` — same shape, same lifetime, cleared in the fixture — so a
-test can supply the few host answers it needs and nothing else.
-
-This is the only new harness capability anything below asks for, and it unlocks §8 whole, §13's
-transcripts, §12's boundary check and §6's suggest panel — about 16 checkboxes.
-
-**Done when** a test can hand the fixture host an LLM-log listing and a transcript, and the override
-is gone by the next test without that test knowing it existed.
-
-### Block 4 — §8, the per-agent model-call panel (8 checks)
-
-Needs Block 2. With a scripted LLM-log listing and one transcript: the panel lists one row per agent
-tagged `writer`/`character` with matching call counts; a call expands to its prompt messages and
-response and collapses on a second click; reading a different run swaps the panel **and closes any
-open transcript**; a run with an empty `llm/` folder says so rather than spinning.
-
-The volume check ("expect tens of calls, the tab must stay responsive") does not transfer as written —
-a fixture of 60 calls proves the panel does not inline them all, which is the actual claim.
-
-**Done when** §8 is an **Automated:** preamble.
 
 ### Block 5 — the lock guards and the editor's failure paths (§6, ~8 checks)
 
@@ -233,10 +217,11 @@ Every block above is deterministic and model-free, so the suite stays a static c
 running in well under a minute and stay out of `npm run check` for the reason that is already
 documented — it needs a browser.
 
-The thing to watch is not runtime but the fixture surface. Blocks 4 and 8 each still want a small
-artefact (an LLM log, a chapter snapshot). The shipped block settled where those go: **a builder
-beside the specs, not a file under `tests/fixtures/`** — `tests/gui/run-log.ts` turns a description of
-a run into the `writing-log.jsonl` it would have written, because the runs these tests want differ by
-a field or two each and three near-identical logs on disk would hide the one line that matters in
-each. The rule the fixture directory was protecting still holds: not as literals inside a spec file,
+The thing to watch is not runtime but the fixture surface. Block 8 still wants a small artefact (a
+chapter snapshot). The shipped blocks settled where those go: **a builder beside the specs, not a
+file under `tests/fixtures/`** — `tests/gui/run-log.ts` turns a description of a run into the
+`writing-log.jsonl` and the `llm/*.jsonl` transcripts it would have written, the latter through the
+engine's own `llmLogEntry` so the fixture cannot drift from the record the panel reads. The runs
+these tests want differ by a field or two each, and near-identical logs on disk would hide the one
+line that matters in each. The rule the fixture directory was protecting still holds: not as literals inside a spec file,
 or the next person reads a spec to find out what a run looks like.

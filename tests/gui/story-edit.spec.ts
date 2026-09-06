@@ -5,7 +5,7 @@
 import { basename } from "node:path";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { arrive, cardFromStory, copyFixtureStory, expect, registerStory, setScaffoldFactory, test } from "./harness.ts";
+import { arrive, cardFromStory, copyFixtureStory, expect, registerStory, setHostOverrides, setScaffoldFactory, test } from "./harness.ts";
 import type { FixtureStory } from "./harness.ts";
 import { ScaffoldSession } from "../../engine/architect.ts";
 import { ScriptedAgent } from "../helpers.ts";
@@ -152,5 +152,43 @@ test("the review-new-story screen loads the scaffold's StoryJson-shaped draft", 
     await page.request.post(`http://127.0.0.1:${served}/scaffold/abandon`).catch(() => {});
     setScaffoldFactory(null);
     LIVE.awaitingPick = false;
+  }
+});
+
+/** The one editor path that cannot be allowed to run for real: `/story/suggest` calls a model.
+ *  `setHostOverrides` answers it instead — installed after the server is already listening, which
+ *  is the whole point of the seam. */
+test("an architect suggestion lands in the form as an unsaved change", async ({ page, served }) => {
+  const dir = await copyFixtureStory();
+  registerLive(dir);
+  const NEW_GOAL = "Get the package inside and be gone before 5am, whatever the porter decides.";
+  try {
+    setHostOverrides({
+      suggestEdits: async (spec, text) => {
+        const draft = JSON.parse(JSON.stringify(spec)) as { characters: { goal: string }[] };
+        draft.characters[0].goal = NEW_GOAL;
+        return {
+          ok: true, kind: "edits", spec: draft,
+          applied: [{ field: "characters.RIVEN.goal", before: "", after: NEW_GOAL }],
+          ignored: [], problems: [], note: `asked: ${text}`,
+        };
+      },
+    });
+
+    await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+    await page.getByText("Ask the architect").click();
+    await page.locator("#edit-suggest-text").fill("make Riven readier to force the door");
+    await page.locator("#edit-suggest-btn").click();
+
+    // The panel reports which fields it touched, and the edit is in the form, not just in the report.
+    await expect(page.locator(".said.good")).toContainText("characters.RIVEN.goal");
+    await expect(page.locator("#char-0-goal")).toHaveValue(NEW_GOAL);
+    await expect(page.locator("#edit-save")).toBeEnabled();
+
+    // "Unsaved" is the contract: a suggestion is a proposal, and nothing reaches the file until save.
+    expect((await readStory(dir)).characters[0].goal).not.toBe(NEW_GOAL);
+  } finally {
+    setHostOverrides(null);
+    await rm(dir, { recursive: true, force: true });
   }
 });
