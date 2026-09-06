@@ -1,14 +1,20 @@
 # GUI-CHECKLIST
 
-The manual pass for the parts of the GUI no automated test watches. `npm test` covers the engine and
-the route modules; **`npm run test:gui` covers the viewer's mechanical half** — boot, a scripted live
-run, deep links and modals, the editor's save path, discard, the catalog, the scaffold's concept
-fields, and the handoff panel —
-in Playwright, driving the real server in-process over a fixture ServerHost, with no LM Studio and
-nothing in `stories/` touched. What that suite cannot see — layout, theme, focus, feel, and every
-section it does not name — is verified by reading the code and by running this list. Run the suite
-and the relevant sections after any change under `server/gui/`, and after any engine change that
-alters what a route serves.
+**Everything in this file is work for a person.** `npm test` covers the engine and the route modules
+and `npm run test:gui` covers the viewer's mechanical half — Playwright driving the real server
+in-process over a fixture ServerHost, no LM Studio, nothing in `stories/` touched. What is left here
+is what neither can reach: a real model's behaviour, a truth that is not on the page, a second
+client, and layout, theme, focus and feel.
+
+**A check leaves this file the moment a test asserts the whole of it** — the section goes with it
+when nothing manual is left, which is what happened to the consult timeline strip and the per-agent
+model-call panel. A check that is *partly* covered stays, whole: the suite's half is `tests/gui/`'s
+business to describe, not this list's, and a box trimmed to "the bit the suite misses" is a box
+nobody can run. So do not read a check here as proof that nothing automated touches it — read it as
+work still owed.
+
+Run the suite first, then the relevant sections, after any change under `server/gui/` and after any
+engine change that alters what a route serves.
 
 ## Before you start
 
@@ -18,10 +24,10 @@ alters what a route serves.
       gone from the handoff prompt.
 - [ ] `npx tsc --noEmit` clean, `npm test` green.
 - [ ] `npm run test:gui` green. The Playwright suite (`tests/gui/`, `playwright.config.ts`) is the
-      automated floor for sections 4, 6, 9, 12 and 15 below, the whole of sections 7 and 8, and for section 14's concept fields
-      (only those — the walk itself needs the architect) — a new machine needs
-      `npx playwright install chromium` once. It is also the boot check the next bullet describes:
-      a viewer module that fails to link fails the suite instead of shipping as the bare shell.
+      automated floor under everything below — a new machine needs `npx playwright install chromium`
+      once. It is also the boot check the next bullet describes: a viewer module that fails to link
+      fails the suite instead of shipping as the bare shell. Run it first: a red suite makes this
+      whole list unreadable, because you cannot tell a bug you are hunting from one already caught.
 - [ ] `npm run lint` clean. Neither of the above touches `server/gui/viewer/*.js` — it's
       browser-loaded, not part of the TS build — so what breaks there ships silently otherwise: a
       plain syntax error (an `await` outside `async` broke every screen on 2026-08-21, `6dc7047`)
@@ -103,11 +109,11 @@ refer to stories by the role they have to play. Find today's cast first:
 for d in stories/*/; do n=$(basename "$d"); echo "$n | scenes=$(node -p "JSON.parse(require('fs').readFileSync('$d/story.json','utf8')).scenes?.length??1") | chapters=[$(ls "$d/chapters" 2>/dev/null | grep -c json)] | runs=$(ls -d "$d"/out/*/ 2>/dev/null | wc -l)"; done
 ```
 
-- **THE SERIAL** — two or more scenes and at least one written chapter. Sections 2, 4, 5, 9 and 10
+- **THE SERIAL** — two or more scenes and at least one written chapter. Sections 2, 4, 5, 7 and 8
   run on it. **A story with two or more *written* chapters is what sections 1 and 5 want**; if none
   exists, section 2 creates one by writing the next chapter, so run section 2 before them.
 - **THE SINGLETON** — one scene, two or more retained runs. Section 1's flat-list check needs it.
-- **THE BLANK** — no written chapters, for section 10's empty-reader check. If every story on disk
+- **THE BLANK** — no written chapters, for section 8's empty-reader check. If every story on disk
   has one, make a throwaway: copy any `story.json` into `stories/scratch/` and leave it unrun.
 
 Where a check needs more than the role gives it, it says so and offers the skip.
@@ -125,8 +131,6 @@ for r in stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o '"ch
 - [ ] Every run that command prints appears on the page, under a label matching the chapter it printed.
 - [ ] Groups are labelled in a left-hand column and ordered by chapter number ascending, matching the
       scene list above them. A run the command shows no chapter for belongs under **unattributed**, last.
-- [ ] Clicking any of them still opens the Saved runs view with that run loaded — the grouping nests the
-      buttons one level deeper, so this is what proves the wiring survived it.
 - [ ] Now open **THE SINGLETON**. **No labels, flat list, exactly as before.** One group is not a
       grouping. A SERIAL whose runs all sit in one chapter reads the same way, so if the grouped
       check above had nothing to group, this one proves nothing either — write a second chapter
@@ -190,17 +194,11 @@ curl -s http://localhost:8080/run
 
 Still on **THE SERIAL**, on a written chapter's row.
 
-- [ ] **read** opens the prose inline and the button becomes **close**.
-- [ ] **close** collapses it again.
 - [ ] Open chapter 1's prose, go back to the shelf, open another story: its chapter rows must not be
       showing chapter 1's text. *Needs a second story with a written chapter; if only one story on
       disk has one, write one first or record this as unchecked.*
 
 ## 4. The handoff
-
-**Automated:** the round panel and the two-click accept against a scripted architect
-(`tests/gui/handoff.spec.ts`), with no model. The conversation itself, the refusal numbers, and the
-drift warning below stay manual.
 
 **THE SERIAL**'s story page → **prepare chapter P**, where `P` is the one after `U`, the chapter
 section 2 wrote. (`P` has to be a scene the story does not have yet — that is what the handoff is for.)
@@ -245,12 +243,6 @@ existed stays quiet forever — check `ls stories/<THE SERIAL>/chapters/` and us
 
 ## 6. Story editor
 
-**Automated:** load, an edit saved through the real persist path (asserted on the file), the
-empty-premise refusal, discard of the last unwritten scene from the story page, and an architect
-suggestion reaching the form as an unsaved change against a scripted (non-LLM) `/story/suggest`
-(`tests/gui/story-edit.spec.ts`). Section collapse states stay manual, and so does what a *real*
-architect proposes — what the suite holds is that an answer lands in the form and not in the file.
-
 Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click **edit story**).
 
 - [ ] **Load.** The editor shows metadata, scenes, characters, facts, config and models sections.
@@ -269,7 +261,7 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
       still there, labelled by scene everywhere it shows.
-- [ ] **Reach never reads as intrinsic.** Open a cast pill's character card on the live screen (§12)
+- [ ] **Reach never reads as intrinsic.** Open a cast pill's character card on the live screen (§10)
       for a story whose
       scenes carry reach: each grant appears as its own accent-coloured tag naming its scene
       (`⇢ cameras · scene N`), separate from skills (`+…`) and restrictions (`no …`), and never as a
@@ -286,48 +278,7 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Malformed story.** Directly open a story directory that has an unparseable `story.json` (modify one manually to be invalid JSON). The editor loads showing the error and the raw content (or `{ ok: false, error, raw }`).
 - [ ] **No concurrent edit loss.** Open the editor in two tabs. Edit in tab A, save. Tab B still shows stale data. Reload tab B — it gets the saved version.
 
-## 7. Consult timeline strip
-
-**Automated in full — nothing here needs a person** (`tests/gui/timeline.spec.ts`). The strip lives
-outside `#page`, above the layout, so what can go wrong with it is which store it is showing and
-whether it clears itself; none of that needs a model, and the run logs it reads are built by
-`tests/gui/run-log.ts` rather than spent on.
-
-The suite holds: a marker per consult named for the character asked; a click that scrolls to **and
-opens** that consult's own block, not the marker's (both carry the same `data-seq`, which is how the
-wrong one gets found) and writes `&block=` so the jump is addressable; the strip emptying when the
-view changes and repopulating from the next run read rather than joining it; a retried consult and a
-capped one differing from a plain one in **class, `title` and computed colour**; and markers arriving
-mid-run over SSE and still jumping.
-
-The capped case used to say *"skip and note as unchecked if you would rather not spend a run on it"* —
-it is a `retry_capped` line in a fixture now, and costs nothing.
-
-## 8. Per-agent model-call panel
-
-**Automated in full — nothing here needs a person** (`tests/gui/agents.spec.ts`). Every claim was
-about files the engine wrote and how the panel reads them, so the fixture is real transcripts in a
-temp story's `out/<id>/llm/`, built by `tests/gui/run-log.ts` from the engine's own `llmLogEntry` —
-the harness deliberately leaves `runLlmLogs`/`readLlmLog` unstubbed so the suite exercises the
-engine's reading of them and not a stand-in.
-
-The suite holds: a row per agent tagged `writer`/`character`, whose call counts are the lines the
-transcript actually holds (what the old `wc -l` command read off disk); a transcript opening to one
-numbered button per call; a call expanding to its prompt messages and response, each labelled by
-role, and collapsing on a second click; reading a different run replacing the panel with **no
-transcript left open** from the previous one; and a run with an empty `llm/` folder saying so rather
-than erroring or spinning.
-
-The volume check did not transfer as written — a person cannot assert "the tab must stay responsive".
-What it was really claiming is asserted instead: with 24 writer calls, opening one puts **that call's
-body on the page and no other's**. A panel inlining more than one call's worth fails that.
-
-## 9. Live writer screen
-
-**Automated:** a scripted run — prose pieces, consult blocks with attempt and verdict, note pills,
-the end marker, the agent rail, the session bar, header cast chips, and the run-start edge that
-pulls the viewer onto the live screen (`tests/gui/live-run.spec.ts`). What needs a real model's
-behaviour stays manual.
+## 7. Live writer screen
 
 Needs a run, so pair it with section 2. What the redesign changed:
 
@@ -349,7 +300,7 @@ Needs a run, so pair it with section 2. What the redesign changed:
 - [ ] **Narrow the window below 900px.** The rail stacks below the prose and stays visible. If it
       vanishes, the only way to stop a run has gone with it.
 
-## 10. The story reader
+## 8. The story reader
 
 No run needed, and nothing here destroys one, so this can go anywhere in the pass. **THE SERIAL**'s
 story page → **read story**. The button only appears once a story has a written chapter.
@@ -375,9 +326,9 @@ story page → **read story**. The button only appears once a story has a writte
       a second story with a written chapter — see the note in section 3.*
 - [ ] **Narrow the window below 900px.** The prose column reflows and stays readable.
 
-## 11. Story-wide search
+## 9. Story-wide search
 
-In the reader (section 10), using the search box above the prose.
+In the reader (section 8), using the search box above the prose.
 
 - [ ] **Empty box shows nothing.** No results panel, no "no matches" — just the chapters below.
 - [ ] **A word you know is there.** Type it. A match count appears and a hit per matching line, each
@@ -385,19 +336,13 @@ In the reader (section 10), using the search box above the prose.
 - [ ] **Case-insensitive.** The same word in a different case finds the same lines.
 - [ ] **Jump.** Click a hit. The page scrolls to that chapter's heading, and the heading is not hidden
       under the sticky topbar.
-- [ ] **No results.** Type something not in the story. *no matches for "…"* — not a blank panel.
 - [ ] **Typing does not refetch.** With the network tab open, type several characters. No `/chapter`
       or `/stories` requests fire — search is over prose already loaded. Focus stays in the box.
 - [ ] **Switching stories clears it.** Search for something, go back, open the reader on another
       story: the box is empty and no prior hits remain. *(Needs a second story with a written
       chapter — same note as section 3.)*
 
-## 12. The character card behind a cast pill
-
-**Automated:** the `&modal=` deep link reopening the card with the authored sheet, all three close
-paths (×, Escape, backdrop) dropping the param, and the URL sync around them
-(`tests/gui/deep-links.spec.ts`). Reach-labelling, the live-only fallback, and unavailability below
-stay manual.
+## 10. The character card behind a cast pill
 
 Needs a run, so pair it with section 2. The live header's cast pills open a modal; on the live
 screen the modal carries the authored sheet, and the rail holds no cast panel of its own.
@@ -426,10 +371,10 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
 - [ ] **No duplicate cast panels.** The rail holds run controls and the model-calls panel and
       nothing else — there is no second "cast" section beside the header's "cast in scene".
 - [ ] **The boundary holds.** This data is shown to you only. It must never appear in any agent's
-      transcript on the per-agent panel (section 8) — the card is a GUI read of already-authored
+      transcript on the model-calls panel — the card is a GUI read of already-authored
       data, not anything the writer or a character is ever told.
 
-## 13. Saved-run comparison
+## 11. Saved-run comparison
 
 Needs two retained runs from the same chapter. Use a story with two completed runs, or create them
 before starting this section. The comparison is opened from the story page's **compare runs** action.
@@ -453,7 +398,7 @@ before starting this section. The comparison is opened from the story page's **c
 - [ ] **Single-run regression.** Open a retained run through the ordinary **read** action. It still has
       its original one-pane view and its original shared agent transcript behavior.
 
-## 14. The scaffold interview — the new-story page
+## 12. The scaffold interview — the new-story page
 
 The `#/scaffold` route. Most of the layout and state machine can be driven engine-free (see the next
 section); the rounds themselves need the architect model. Nothing here destroys a run — accept creates
@@ -565,31 +510,7 @@ a *new* story folder — so it can go anywhere in the pass.
       disappears** — the status bar's `gate:` word still says where the walk stands; at 375px there is
       **no horizontal scrollbar**.
 
-## 15. Character catalog
-
-**Automated:** character create/list/delete behind the armed confirm, hide/restore (row badge, the
-visibility filter's three states, persistence across reload, and exclusion from the scaffold's
-new-story import picker), the temporary pre-save change review (a field surfacing as a change, two
-independent changes, reverting one leaving the other intact, cancel and a successful save both
-clearing the review, the discard confirm on switching characters mid-edit, and hide/restore never
-appearing as a content change), client-side search/sort/pagination (every searchable field, all four
-sort modes, page navigation, page-size changes, page reset on a filter/sort change, last-page
-clamping after a delete, and the editor staying open on a character paged off the visible list), the
-field-scoped assistant against a scripted (non-LLM) `/catalog/assist` — field selection gating,
-preparing a proposal, its diff, applying it (draft-only, no save), cancel discarding it, and review
-mode's findings-without-a-draft outcome — the seeded tag catalog, the seeded skill bible and a skill
-created through the real save path, and the kind riding the URL (`tests/gui/catalog.spec.ts`). The
-assistant's server-side field enforcement, model resolution, and malformed-reply handling are
-engine-level (`tests/catalog-assist.test.ts`), not this suite's concern. Race handling against a
-held-open request (`holdCatalogWrites()` in the harness): a save, a hide/restore, and a delete that
-each land after the user has switched to a different character update only the list row rather than
-whatever editor is now open, a hide/restore pending for one character never disables another's own
-toggle button, and the assistant's mode tabs, field chips, and × close all lock while a proposal is
-loading. And one full lifecycle end to end — create, edit, review, revert, save, hide, confirm
-excluded from new-story selection, restore, confirm selectable again, assist on two fields, apply
-without saving, reload to confirm it wasn't persisted, then save and confirm it was — plus a sweep
-for introduced horizontal overflow at 1280/1024/768/600px, including with the review-changes and
-assistant modals open. The forms' field-level behaviour below stays manual.
+## 13. Character catalog
 
 The global character library, accessible from the shelf and reloadable by direct navigation to
 `#/catalog`. Unlike every other page, the catalog is not scoped to a story.
@@ -779,7 +700,7 @@ APP.view = "live"; APP.live = true; APP.render();
 ```
 
 That renders any state you like — every phase, an empty run, a stopped one — without spending a run to
-reach it. It is how sections 6-8 were built, and it is the only way to see a state that needs the
+reach it. It is how several of the sections above were built, and it is the only way to see a state that needs the
 engine to be in a particular mood. It does not replace a live pass: it cannot tell you that SSE
 delivers those events, only that the screen draws them correctly once it has them. `tests/gui/` is
 this trick made durable: the harness publishes the same event shapes through the real SSE bus, so

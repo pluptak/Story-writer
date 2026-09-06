@@ -1,6 +1,6 @@
-/** The consult timeline strip (GUI-CHECKLIST §7). It lives outside `#page`, above the layout, so
- *  what can go wrong with it is which store it is showing and whether it clears itself — neither of
- *  which needs a model. Every run below is a `writing-log.jsonl` fixture served through the real
+/** The consult timeline strip. It lives outside `#page`, above the layout, so what can go wrong
+ *  with it is which store it is showing and whether it clears itself — neither of which needs a
+ *  model. Every run below is a `writing-log.jsonl` fixture served through the real
  *  /runs/log route, except the last, which is the same strip built from live SSE frames. */
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";

@@ -1,6 +1,6 @@
-/** The per-agent model-call panel (GUI-CHECKLIST §8). Every claim in that section is about files
- *  the engine wrote and how the panel reads them, so the fixture is real transcripts in a temp
- *  story's `out/<id>/llm/` — the harness leaves `runLlmLogs`/`readLlmLog` alone precisely so this
+/** The per-agent model-call panel. Every claim the manual checklist used to make about it was about
+ *  files the engine wrote and how the panel reads them, so the fixture is real transcripts in a
+ *  temp story's `out/<id>/llm/` — the harness leaves `runLlmLogs`/`readLlmLog` alone precisely so this
  *  exercises the engine's own reading of them rather than a stand-in.
  *
  *  The load-bearing claim is the last one: the panel exists to tell you which agent is worth

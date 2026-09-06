@@ -2,9 +2,14 @@
 
 A single-topic annex to [`PLANS.md`](PLANS.md): what of [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) the
 Playwright suite could take over, in blocks. It follows the same rule as everything in `PLANS.md` —
-nothing here is committed work, and when a block ships, its coverage claim moves into
-`GUI-CHECKLIST.md`'s own **Automated:** preamble and **the block is deleted from this file**. When
+nothing here is committed work, and when a block ships **the block is deleted from this file**. When
 the last block is gone, so is this file.
+
+Shipping a block also takes its checks *out* of `GUI-CHECKLIST.md`: that file holds only work for a
+person, so a check the suite now asserts in full is deleted there rather than annotated, and a
+section with nothing manual left goes with it. What the suite covers is `tests/gui/`'s business to
+say — the checklist does not keep a second copy of that list, which is the mistake its per-section
+**Automated:** preambles were making.
 
 **Verification for every block below:** `npm run check`, then `npm run test:gui`. No block here needs
 LM Studio or a live run — that is the point of the list.
@@ -41,45 +46,38 @@ configurable.
 
 ## The count
 
-188 checkboxes. This is a per-line judgement, so treat the numbers as an estimate with a stated
-method rather than a measurement — "automatable today" means *no new harness capability, no model*.
+169 checkboxes, down from 188: two sections and four boxes left the checklist when the suite came to
+hold the whole of what they claimed. Every box below is still work for a person today — the file
+carries nothing else — so the split here is about where each one *could* end up, not where it is.
 
-| § | boxes | automated | automatable today | stays manual |
-| --- | --- | --- | --- | --- |
-| 1 runs grouped by chapter | 7 | 2 | 5 | — |
-| 2 writing the chapter you asked for | 6 | — | 2 | 4 |
-| 3 reading accepted prose | 3 | 2 | 1 | — |
-| 4 the handoff | 7 | 2 | 4 | 1 |
-| 5 drift warning | 5 | — | 4 | 1 |
-| 6 story editor | 23 | 5 | 15 | 3 |
-| 7 consult timeline strip | 7 | **7** | — | — |
-| 8 per-agent model-call panel | 8 | **8** | — | — |
-| 9 live writer screen | 8 | 3 | 4 | 1 |
-| 10 the story reader | 9 | 3 | 6 | — |
-| 11 story-wide search | 7 | 2 | 5 | — |
-| 12 the character card | 9 | 3 | 6 | — |
-| 13 saved-run comparison | 10 | 4 | 6 | — |
-| 14 the scaffold interview | 20 | 4 | 12 | 4 |
-| 15 character catalog | 45 | ~11 | ~31 | ~3 |
-| locators, shell, without an engine | 14 | — | 12 | 2 |
-| **total** | **188** | **~56** | **~113** | **~19** |
+**Mechanizable** means the whole of that box is reachable without a model and without a second
+client. A box that is already half-covered counts as mechanizable, because finishing it is what
+retires it from the list. This is a per-line judgement: an estimate with a stated method, not a
+measurement.
+
+| § | boxes left | mechanizable | stays manual |
+| --- | --- | --- | --- |
+| 1 runs grouped by chapter | 6 | 6 | — |
+| 2 writing the chapter you asked for | 6 | 2 | 4 |
+| 3 reading accepted prose | 1 | 1 | — |
+| 4 the handoff | 7 | 6 | 1 |
+| 5 drift warning | 5 | 4 | 1 |
+| 6 story editor | 23 | 20 | 3 |
+| 7 live writer screen | 8 | 7 | 1 |
+| 8 the story reader | 9 | 9 | — |
+| 9 story-wide search | 6 | 6 | — |
+| 10 the character card | 9 | 9 | — |
+| 11 saved-run comparison | 10 | 10 | — |
+| 12 the scaffold interview | 20 | 16 | 4 |
+| 13 character catalog | 45 | 42 | 3 |
+| locators, shell, without an engine | 14 | 12 | 2 |
+| **total** | **169** | **~150** | **~19** |
 
 ---
 
 ## Blocks
 
 In dependency order. Each is independently pausable and worth shipping on its own.
-
-### Block 1 — say what is already covered (docs only)
-
-`GUI-CHECKLIST.md`'s *Before you start* names the suite as the automated floor for "sections 4, 6, 9,
-12 and 15, and section 14's concept fields". It is also the floor for parts of **§1 and §3**
-(`story-page.spec.ts`), **§10 and §11** (`reader.spec.ts`), **§13** (`compare.spec.ts`) and the
-run-ended modal in **§9** (`run-ended.spec.ts`) — none of which carries an **Automated:** preamble.
-Someone running the list today re-checks by hand things the suite already fails on.
-
-**Done when** every section with coverage carries an **Automated:** preamble naming its spec file, and
-the *Before you start* bullet lists the same set.
 
 ### Block 5 — the lock guards and the editor's failure paths (§6, ~8 checks)
 

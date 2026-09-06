@@ -2,7 +2,7 @@ import { APP } from "./state.js";
 
 // The tone/label each engine note renders with. `critical` notes stay as full-text footnotes
 // (something the run record must not let you miss); the rest collapse into hover-tooltip pills so
-// the serif prose keeps flowing (GUI-CHECKLIST §9, the consult/note rhythm).
+// the serif prose keeps flowing (GUI-CHECKLIST §7, the consult/note rhythm).
 const NOTE_META = {
   prose_reply:        { tone:"info", label:"prose reply",  critical:false },
   context_risk:       { tone:"warn", label:"context risk", critical:false },
