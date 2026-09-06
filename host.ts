@@ -6,7 +6,7 @@ import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { LIVE, storyWriteBlocked, sseWrite, setWhere } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { splitMeaning, bibleFrom, canonSkill, SKILL_CATALOG } from "./engine/skills.ts";
+import { splitMeaning, bibleFrom, canonSkill, SKILL_CATALOG, type Catalogs } from "./engine/skills.ts";
 import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { PROVIDER } from "./engine/provider.ts";
@@ -19,7 +19,7 @@ import {
   type NextChapterSession, type ImportedCharacter, type StylePreset,
   type ScaffoldRound, type ScaffoldAccept, type HandoffAccept,
 } from "./engine/architect.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries, skillOrigins, originSkillGroups } from "./engine/catalog.ts";
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries, skillOrigins, originSkillGroups, persistedCatalogs, generalSkillEntries } from "./engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import { assistCharacter, ASSIST_FIELDS, type AssistField, type AssistMode } from "./engine/catalog-assist.ts";
 import type {
@@ -62,9 +62,10 @@ async function newScaffoldSession(idea: string, model = "",
                                   concept?: Concept): Promise<ScaffoldSession> {
   const d = await loadHostDefaults(model);
   const entries = await skillBibleEntries();
-  const session = new ScaffoldSession(await buildArchitect(d, true, entries), d, idea, undefined, mode, undefined,
+  const generals = await generalSkillEntries();
+  const session = new ScaffoldSession(await buildArchitect(d, true, entries, generals), d, idea, undefined, mode, undefined,
                              concept?.tags ?? [], concept?.castSize ?? 0);
-  session.bible = bibleFrom(entries);
+  session.catalogs = { bible: bibleFrom(entries), generals };
   return session;
 }
 
@@ -86,7 +87,8 @@ async function unknownTags(tags: string[]): Promise<string[]> {
  *  twice is an update rather than a duplicate. */
 async function promoteSkill(name: string, meaning: string) {
   const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning, tags: [] };
-  const result = await saveEntry("skills", entry, undefined, await skillBible());
+  const catalogs = await persistedCatalogs();
+  const result = await saveEntry("skills", entry, undefined, catalogs);
   if (!result.ok) {
     return result;
   }
@@ -341,7 +343,7 @@ export async function scaffoldPromote(name: string): Promise<ScaffoldActionResul
   if (!found) return { ok: false, reason: `"${name}" is not a promotion candidate`, status: 400 };
   const r = await (scaffoldTestHooks?.promote ?? promoteSkill)(found.name, found.meaning);
   if (!r.ok) return { ok: false, reason: r.reason ?? "", status: 400, issues: r.issues };
-  SCAFFOLD.bible = r.bible;
+  SCAFFOLD.catalogs = { ...SCAFFOLD.catalogs, bible: r.bible };
   publishScaffold();
   return { ok: true, state: scaffoldSnapshot() };
 }
@@ -417,7 +419,7 @@ export function resetScaffoldForTests(): void {
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
   const entries = await skillBibleEntries();
-  return openNextChapter(await loadHostDefaults(model), dir, entries);
+  return openNextChapter(await loadHostDefaults(model), dir, entries, await generalSkillEntries());
 }
 
 // -- HANDOFF (the between-chapters interview) --------------------------------------------------
@@ -615,8 +617,8 @@ async function persistStoryJson(dir: string, parsed: StoryJson): Promise<{ ok: t
     return { ok: false, reason: `write failed: ${(e as Error).message}` };
   }
   // Re-load to confirm (catches silently-corrupt writes on constrained filesystems), under the same
-  // bible a run would use — a story that saves clean should load clean where it will be written.
-  try { await loadStory(dir, undefined, await skillBible(), await skillOrigins()); }
+  // catalogs a run would use — a story that saves clean should load clean where it will be written.
+  try { await loadStory(dir, undefined, await persistedCatalogs()); }
   catch (e) { return { ok: false, reason: `saved but does not load: ${(e as Error).message}` }; }
   return { ok: true };
 }
@@ -657,9 +659,9 @@ const validateCatalogKind = (kind: string): CatalogKind | null =>
 export const HOST: ServerHost = {
   selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, availableModelIds,
   providerName: PROVIDER.displayName,
-  // The shelf's cards resolve capabilities against the author's own bible, so a card and the run it
+  // The shelf's cards resolve capabilities against the author's own catalogs, so a card and the run it
   // starts report the same skills.
-  storyCards: async () => storyCards(await skillBible(), await skillOrigins()),
+  storyCards: async () => storyCards(await persistedCatalogs()),
   scaffoldState: scaffoldSnapshot,
   scaffoldStart, scaffoldSay, scaffoldApprove, scaffoldConcept, scaffoldImport, scaffoldPromote,
   scaffoldSet, scaffoldAccept, scaffoldAbandon,
@@ -767,7 +769,7 @@ export const HOST: ServerHost = {
     caps: { voiceSamples: VOICE_SAMPLE_CAP },
     assistFields: ASSIST_FIELDS,
     originSkills: await originSkillGroups(),
-    generalSkills: { ...SKILL_CATALOG },
+    generalSkills: await generalSkillEntries(),
   }),
   catalogEntries: async (kind, opts) => {
     const validated = validateCatalogKind(kind);
@@ -779,16 +781,16 @@ export const HOST: ServerHost = {
   catalogCheck: async (kind, entry) => {
     const validated = validateCatalogKind(kind);
     if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
-    const bible = await skillBible();
-    const result = checkEntry(validated, entry, bible);
+    const catalogs = await persistedCatalogs();
+    const result = checkEntry(validated, entry, catalogs);
     if (!result.ok) return { ok: false, issues: result.issues };
     return { ok: true, problems: result.problems };
   },
   catalogSave: async (kind, entry) => {
     const validated = validateCatalogKind(kind);
     if (!validated) return { ok: false, reason: `no such catalog "${kind}"` };
-    const bible = await skillBible();
-    return await saveEntry(validated, entry, undefined, bible);
+    const catalogs = await persistedCatalogs();
+    return await saveEntry(validated, entry, undefined, catalogs);
   },
   catalogDelete: async (kind, id) => {
     const validated = validateCatalogKind(kind);
@@ -837,14 +839,14 @@ export const HOST: ServerHost = {
   },
   catalogAssist: async (mode, fields, instruction, character) => {
     try {
-      const bible = await skillBible();
+      const catalogs = await persistedCatalogs();
       return await withHostDefaults(flag("model") ?? "", async d => {
         const r = await assistCharacter(d, {
           mode: mode as AssistMode, fields: fields as AssistField[], instruction,
           character: character as { id: string; name: string; portablePersona: string; belief: string;
                                      impulse: string; voice: string[]; origin: string; skills: string[];
                                      restrictions: string[] },
-        }, bible);
+        }, catalogs);
         if (!r.ok) return { ok: false as const, kind: r.kind, reason: r.reason, issues: r.issues };
         return { ok: true as const, proposal: { draft: r.draft, changes: r.changes, warnings: r.warnings } };
       });

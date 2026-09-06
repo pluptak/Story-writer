@@ -3,8 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { bibleMeaningOf, originSkillsOf, removedCapabilities, resolveOrigin, resolveSkills,
-         type BibleLookup, type OriginLookup, type Skill } from "./skills.ts";
+import { removedCapabilities, resolveOrigin, resolveSkills,
+         type Catalogs, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
@@ -54,11 +54,11 @@ export interface StoryConfig {
   maxTokens: number;
   models: { default: string; writer: string; summary: string };
   characters: CharacterDef[];
-  /** The bible this story's capabilities were resolved against, carried so the per-scene reach layer
-   *  resolves the same names. I2 and I3 both depend on the two layers agreeing on which capabilities
-   *  exist, so resolving them against different bibles would be a bug that only surfaces on a
-   *  restriction — the expensive kind. */
-  bible: BibleLookup;
+  /** The catalogs this story's capabilities were resolved against, carried so the per-scene reach
+   *  layer resolves the same names. I2 and I3 both depend on the two layers agreeing on which
+   *  capabilities exist, so resolving them against different catalogs would be a bug that only
+   *  surfaces on a restriction — the expensive kind. */
+  catalogs: Catalogs;
   maxCharacterRetries?: number;
 }
 
@@ -68,12 +68,10 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolvePath(ROOT, dir));
 
 /** Validate and load a story into a StoryConfig; a model override beats the story's own default.
- *  `bible` is the special-skill bible the cast's capabilities resolve against — the in-code catalog
- *  by default, the author's persisted one when the caller loads it. `origins` is the same thing for
- *  the origin groups a character's general skills come from. */
-export async function loadStory(dir: string, modelOverride?: string,
-                                bible: BibleLookup = bibleMeaningOf,
-                                origins: OriginLookup = originSkillsOf): Promise<StoryConfig> {
+ *  `catalogs` bundles the special-skill bible, the general skills, and the origin groups — all three
+ *  are injected as a bag because every caller that can load one can load all three. Defaults to the
+ *  in-code catalogs when unset. */
+export async function loadStory(dir: string, modelOverride?: string, catalogs?: Catalogs): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
   const storyPath = joinPath(base, "story.json");
   const raw = JSON.parse(await readFile(storyPath, "utf8"));
@@ -86,6 +84,8 @@ export async function loadStory(dir: string, modelOverride?: string,
 
   if (!parsed.premise.trim())
     throw new Error(`Premise is empty in ${base}/story.json — there is nothing to write.`);
+
+  const resolvedCatalogs: Catalogs = catalogs ?? {};
 
   const warn = (msg: string) => emitWarn(`  (${msg})`);
 
@@ -103,7 +103,7 @@ export async function loadStory(dir: string, modelOverride?: string,
     if (!name) { warn("a character has no name — skipped"); continue; }
     if (seen.has(nameKey(name))) { warn(`Duplicate character "${name}" — skipped`); continue; }
     seen.add(nameKey(name));
-    const origin = resolveOrigin(name, c.origin, origins);
+    const origin = resolveOrigin(name, c.origin, resolvedCatalogs);
     const skillsRaw = c.skills.join(" | "), restrictionsRaw = c.restrictions.join(" | ");
     characters.push({
       name,
@@ -116,8 +116,8 @@ export async function loadStory(dir: string, modelOverride?: string,
       voice: c.voice,
       origin: c.origin.trim(),
       // Reach empty on both (I4): a character-level view never sees a scene's grant.
-      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", bible, origin),
-      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", bible, origin),
+      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
+      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       maxRetries: c.maxRetries,
     });
   }
@@ -182,7 +182,7 @@ export async function loadStory(dir: string, modelOverride?: string,
     maxTokens: config.maxTokens,
     models,
     characters,
-    bible,
+    catalogs: resolvedCatalogs,
     maxCharacterRetries: config.maxCharacterRetries,
   };
 }

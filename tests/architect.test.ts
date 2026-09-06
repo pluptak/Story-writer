@@ -1025,7 +1025,7 @@ describe("bibleCandidates", () => {
       facts: [],
     }).spec;
     const bible = bibleFrom({ lockpicking: "opening a mechanical lock without its key" });
-    const candidates = bibleCandidates(spec, bible);
+    const candidates = bibleCandidates(spec, { bible });
     assert.equal(candidates.length, 0);
   });
 
@@ -1313,7 +1313,7 @@ describe("the architect validates against the author's bible", () => {
       facts: [], config: { maxSteps: 24 },
     };
     const authorBible = bibleFrom({ tidewalking: "reading the turn of a tide by standing in it" });
-    const result = normalizeSpec(spec, authorBible);
+    const result = normalizeSpec(spec, { bible: authorBible });
     assert.ok(!result.problems.some(p => /not a bible skill/.test(p)),
               `expected no "not a bible skill" problem, got: ${JSON.stringify(result.problems)}`);
     assert.ok(result.spec.characters[0].skills.includes("tidewalking"),
@@ -1338,7 +1338,7 @@ describe("the architect validates against the author's bible", () => {
 
     // With author's bible, restriction is recognized
     const authorBible = bibleFrom({ tidewalking: "reading the turn of a tide by standing in it" });
-    const resultAuthor = normalizeSpec(spec, authorBible);
+    const resultAuthor = normalizeSpec(spec, { bible: authorBible });
     assert.ok(!resultAuthor.problems.some(p => /would remove nothing/.test(p)),
               `expected no "would remove nothing" problem with author's bible, got: ${JSON.stringify(resultAuthor.problems)}`);
     assert.ok(resultAuthor.spec.characters[0].restrictions.includes("tidewalking"),
@@ -1386,7 +1386,7 @@ describe("the architect validates against the author's bible", () => {
       "staged",
       passingJudge
     );
-    s.bible = authorBible;
+    s.catalogs = { bible: authorBible };
 
     await s.propose();
     for (let i = 0; i < 4; i++) await s.approve();  // walk through story, cast, settings, scene

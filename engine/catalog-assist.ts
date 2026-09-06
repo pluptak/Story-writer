@@ -11,7 +11,7 @@ import type { AssistMode } from "../prompts/catalog-assist.ts";
 import { Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { checkEntry } from "./catalog.ts";
-import { bibleMeaningOf, type BibleLookup } from "./skills.ts";
+import { type Catalogs } from "./skills.ts";
 import { VOICE_SAMPLE_CAP } from "./story-schema.ts";
 import type { Defaults } from "./story-format.ts";
 
@@ -74,7 +74,7 @@ function normalizeField(field: AssistField, value: unknown): string | string[] {
  *  catalog — it never saves; the caller still applies the returned draft through the ordinary
  *  catalog save path, same as an assistant proposal in the editor is Apply-then-Save, never either
  *  alone. */
-export async function assistCharacter(d: Defaults, req: AssistRequest, bible: BibleLookup = bibleMeaningOf): Promise<AssistResult> {
+export async function assistCharacter(d: Defaults, req: AssistRequest, catalogs?: Catalogs): Promise<AssistResult> {
   if (!d.models.assistant) {
     return { ok: false, kind: "model_unavailable", reason: "no assistant model is configured — set models.assistant in defaults.json" };
   }
@@ -106,7 +106,7 @@ export async function assistCharacter(d: Defaults, req: AssistRequest, bible: Bi
     }
   }
 
-  const checked = checkEntry("characters", merged, bible);
+  const checked = checkEntry("characters", merged, catalogs);
   if (!checked.ok) {
     return { ok: false, kind: "invalid_draft", reason: "the proposal did not pass validation", issues: checked.issues };
   }

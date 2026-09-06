@@ -197,13 +197,13 @@ describe("capabilityProblems", () => {
 
   it("honors an injected bible parameter", () => {
     const stubBible = (name: string) => name === "custom-skill" ? "a custom ability" : undefined;
-    const result = capabilityProblems("Henry", ["custom-skill"], [], stubBible);
+    const result = capabilityProblems("Henry", ["custom-skill"], [], undefined, { bible: stubBible });
     assert.deepEqual(result.problems, []);
   });
 
   it("uses the injected bible for restrictions too", () => {
     const stubBible = (name: string) => name === "custom-ability" ? "custom meaning" : undefined;
-    const result = capabilityProblems("Iris", [], ["custom-ability"], stubBible);
+    const result = capabilityProblems("Iris", [], ["custom-ability"], undefined, { bible: stubBible });
     assert.deepEqual(result.restrictions, ["custom-ability"]);
     assert.deepEqual(result.problems, []);
   });

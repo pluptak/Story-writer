@@ -696,7 +696,7 @@ describe("loadStory with an injected bible", () => {
   it("gives a bare skill the bible's meaning, and tags it bible rather than custom", async () => {
     const dir = await storyWith({ name: "SEER", skills: ["telepathy"] });
     try {
-      const sc = await loadStory(dir, undefined, bible);
+      const sc = await loadStory(dir, undefined, { bible });
       const skill = sc.characters[0].skills.find(s => s.name === "telepathy");
       assert.ok(skill, "the skill must survive the load");
       assert.equal(skill.meaning, TELEPATHY);
@@ -722,7 +722,7 @@ describe("loadStory with an injected bible", () => {
       const keep = WARN.sink;
       WARN.sink = (...a: unknown[]) => { kept.push(a.map(String).join(" ")); };
       let withBible;
-      try { withBible = await loadStory(dir, undefined, bible); } finally { WARN.sink = keep; }
+      try { withBible = await loadStory(dir, undefined, { bible }); } finally { WARN.sink = keep; }
       assert.deepEqual(withBible.characters[0].limits, ["telepathy"],
                        "a bible skill the author removed is nameable, not merely absent");
       assert.ok(!kept.some(w => w.includes("telepathy")),
@@ -739,14 +739,14 @@ describe("loadStory with an injected bible", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
-  it("carries the bible it resolved against on the config, for the per-scene reach layer", async () => {
+  it("carries the catalogs it resolved against on the config, for the per-scene reach layer", async () => {
     const dir = await storyWith({ name: "SEER", skills: ["telepathy"] });
     try {
-      const sc = await loadStory(dir, undefined, bible);
-      assert.equal(sc.bible, bible, "the reach layer must resolve the same names the cast did");
+      const sc = await loadStory(dir, undefined, { bible });
+      assert.equal(sc.catalogs.bible, bible, "the reach layer must resolve the same names the cast did");
       const fallback = await quiet(() => loadStory(dir));
-      assert.equal(fallback.bible("lockpicking") !== undefined, true,
-                   "the default is the in-code catalog, not an empty bible");
+      assert.equal(fallback.catalogs.bible?.("lockpicking"), undefined,
+                   "an unset bag stays unset; the in-code default is applied at each resolution, not baked in here");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

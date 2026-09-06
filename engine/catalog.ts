@@ -4,7 +4,7 @@ import { join as joinPath } from "node:path";
 import { z } from "zod";
 import { warn } from "./warnings.ts";
 import { characterPsychologyWarnings } from "./story-spec.ts";
-import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, bibleFrom, ORIGIN_SKILL_GROUPS, originsFrom, type BibleLookup, type OriginLookup } from "./skills.ts";
+import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, bibleFrom, ORIGIN_SKILL_GROUPS, originsFrom, type BibleLookup, type OriginLookup, type Catalogs } from "./skills.ts";
 import { ROOT } from "./story-format.ts";
 import {
   CharacterCatalog,
@@ -23,17 +23,17 @@ type CatalogRegistry = {
   filename: string;
   catalog: z.ZodType<any>;
   entry: z.ZodType<any>;
-  problems: (entry: any, bible?: BibleLookup) => string[];
+  problems: (entry: any, catalogs?: Catalogs) => string[];
   seed?: () => any[];
 };
 
 /** Character-specific problems: psychology, capabilities, and portable-persona checks. */
-function characterProblems(entry: LibraryCharacter, bible: BibleLookup = bibleMeaningOf): string[] {
+function characterProblems(entry: LibraryCharacter, catalogs?: Catalogs): string[] {
   const problems: string[] = [];
 
   problems.push(...characterPsychologyWarnings(entry.name, entry.belief, entry.impulse, entry.voice));
 
-  const capProblems = capabilityProblems(entry.name, entry.skills, entry.restrictions, bible);
+  const capProblems = capabilityProblems(entry.name, entry.skills, entry.restrictions, undefined, catalogs);
   problems.push(...capProblems.problems);
 
   if (!entry.portablePersona.trim()) {
@@ -95,7 +95,8 @@ function styleProblems(entry: LibraryStyle): string[] {
 }
 
 /** Skill-specific problems: advisory only. */
-function skillProblems(entry: LibrarySkill): string[] {
+function skillProblems(entry: LibrarySkill, catalogs?: Catalogs): string[] {
+  const generals = catalogs?.generals ?? SKILL_CATALOG;
   const problems: string[] = [];
 
   if (!entry.meaning.trim()) {
@@ -105,7 +106,7 @@ function skillProblems(entry: LibrarySkill): string[] {
   }
 
   if (entry.kind === "special") {
-    if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === canonSkill(entry.name))) {
+    if (Object.keys(generals).some(g => canonSkill(g) === canonSkill(entry.name))) {
       problems.push(
         `${entry.name} is a general skill every character already has — a bible entry by that name adds nothing`
       );
@@ -119,7 +120,7 @@ function skillProblems(entry: LibrarySkill): string[] {
   }
 
   if (entry.kind === "origin") {
-    const unknown = entry.general.filter(s => !Object.prototype.hasOwnProperty.call(SKILL_CATALOG, canonSkill(s)));
+    const unknown = entry.general.filter(s => !Object.prototype.hasOwnProperty.call(generals, canonSkill(s)));
     if (unknown.length) {
       problems.push(
         `${entry.name} names "${unknown.join('", "')}" — not a general skill, so a character of this kind would start without it`
@@ -148,7 +149,7 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
     filename: "catalog-characters.json",
     catalog: CharacterCatalog,
     entry: LibraryCharacter,
-    problems: characterProblems,
+    problems: (entry, catalogs) => characterProblems(entry, catalogs),
   },
   tags: {
     filename: "catalog-tags.json",
@@ -172,7 +173,7 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
     filename: "catalog-skills.json",
     catalog: SkillCatalog,
     entry: LibrarySkill,
-    problems: skillProblems,
+    problems: (entry, catalogs) => skillProblems(entry, catalogs),
     // The in-code catalogs are the seed: general skills, special skills, and origins.
     seed: () => [
       ...Object.entries(SKILL_CATALOG).map(([name, meaning]) =>
@@ -236,6 +237,34 @@ export async function skillOrigins(path?: string): Promise<OriginLookup> {
   return originsFrom(await originSkillGroups(path));
 }
 
+/** The persisted general skills as name → meaning pairs. Entries with `kind !== "general"` are
+ *  skipped. CRITICAL: if the loaded catalog contains NO general entries at all, returns the in-code
+ *  SKILL_CATALOG instead of an empty map. A catalog file written before general skills existed must
+ *  not silently strip all eight general skills from every character — that would be a data loss bug
+ *  surfacing only when first saved. An empty map means "this file predates general skills", never
+ *  "this author has no general skills". */
+export async function generalSkillEntries(path?: string): Promise<Record<string, string>> {
+  const catalog = await loadCatalog("skills", path);
+  const entries: Record<string, string> = {};
+  for (const entry of catalog.entries) {
+    if (entry.kind !== "general") continue;
+    entries[entry.name] = entry.meaning;
+  }
+  if (!Object.keys(entries).length) return { ...SKILL_CATALOG };
+  return entries;
+}
+
+/** All three catalogs bundled: the special-skill bible, the general skills, and the origins, all
+ *  persisted in the same file. This is what callers pass around; it exists so no caller can load
+ *  two of the three. */
+export async function persistedCatalogs(path?: string): Promise<Catalogs> {
+  return {
+    bible: await skillBible(path),
+    generals: await generalSkillEntries(path),
+    origins: await skillOrigins(path),
+  };
+}
+
 /** Every entry in one catalog. Missing file returns the seed (if one exists) or an empty catalog, silently.
  *  When the file EXISTS, it wins entirely — the seed is not merged in. We don't merge because that
  *  would resurrect a seed tag the author deliberately deleted, which is worse than a new engine
@@ -283,9 +312,9 @@ export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any
 }
 
 /** Validate one entry without saving it: schema issues first, then advisory problems.
- *  Synchronous and catalog-free — the bible arrives as a parameter for exactly that reason:
- *  the caller that can load one passes it, and the default is the in-code one. */
-export function checkEntry(kind: CatalogKind, raw: unknown, bible: BibleLookup = bibleMeaningOf): { ok: false; issues: string[] } | { ok: true; entry: any; problems: string[] } {
+ *  Synchronous and catalog-free — the catalogs arrive as a parameter for exactly that reason:
+ *  the caller that can load one passes it, and the defaults are the in-code ones. */
+export function checkEntry(kind: CatalogKind, raw: unknown, catalogs?: Catalogs): { ok: false; issues: string[] } | { ok: true; entry: any; problems: string[] } {
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
 
@@ -303,7 +332,7 @@ export function checkEntry(kind: CatalogKind, raw: unknown, bible: BibleLookup =
   }
 
   const entry = result.data;
-  const problems = reg.problems(entry, bible);
+  const problems = reg.problems(entry, catalogs);
 
   return { ok: true, entry, problems };
 }
@@ -312,9 +341,9 @@ export function checkEntry(kind: CatalogKind, raw: unknown, bible: BibleLookup =
  *  Kinds with an identity of their own beyond the id report a collision as an advisory problem —
  *  a duplicate facet+label for tags, a duplicate canonical name for skills. Neither blocks the save,
  *  since the catalog is an editing surface. */
-export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, bible: BibleLookup = bibleMeaningOf):
+export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, catalogs?: Catalogs):
   Promise<{ ok: true; entry: any; problems: string[] } | { ok: false; reason: string; issues?: string[] }> {
-  const check = checkEntry(kind, raw, bible);
+  const check = checkEntry(kind, raw, catalogs);
   if (!check.ok) {
     return { ok: false, reason: "entry validation failed", issues: check.issues };
   }

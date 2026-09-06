@@ -190,7 +190,7 @@ export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldS
     promote: async (name, meaning) => {
       const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning, tags: [] };
       const bible = await skillBible(catalogFile("skills"));
-      const result = await saveEntry("skills", entry, catalogFile("skills"), bible);
+      const result = await saveEntry("skills", entry, catalogFile("skills"), { bible });
       if (!result.ok) return result;
       return { ok: true as const, bible: await skillBible(catalogFile("skills")), problems: result.problems };
     },
@@ -234,7 +234,7 @@ async function fixtureHost(): Promise<ServerHost> {
       // The harness must never read the user's real catalog at ROOT, which is why it passes its
       // own temp-scoped skills bible instead.
       const bible = await skillBible(catalogFile("skills"));
-      const r = checkEntry(v, entry, bible);
+      const r = checkEntry(v, entry, { bible });
       return r.ok ? { ok: true, problems: r.problems } : { ok: false, issues: r.issues };
     },
     catalogSave: async (kind, entry) => {
@@ -243,7 +243,7 @@ async function fixtureHost(): Promise<ServerHost> {
       // The harness must never read the user's real catalog at ROOT, which is why it passes its
       // own temp-scoped skills bible instead.
       const bible = await skillBible(catalogFile("skills"));
-      return saveEntry(v, entry, catalogFile(v), bible);
+      return saveEntry(v, entry, catalogFile(v), { bible });
     },
     catalogDelete: async (kind, id) => {
       if (held) await held;

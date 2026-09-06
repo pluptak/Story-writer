@@ -9,10 +9,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadStory } from "../engine/story-format.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, supportsVisibility, skillBible, skillBibleEntries, skillOrigins, originSkillGroups } from "../engine/catalog.ts";
+import { generalSkillEntries, persistedCatalogs, loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, supportsVisibility, skillBible, skillBibleEntries, skillOrigins, originSkillGroups } from "../engine/catalog.ts";
 import { WARN } from "../engine/warnings.ts";
 import { quiet } from "./helpers.ts";
-import { SPECIAL_SKILL_CATALOG, ORIGIN_SKILL_GROUPS } from "../engine/skills.ts";
+import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, ORIGIN_SKILL_GROUPS } from "../engine/skills.ts";
 
 describe("loadCatalog", () => {
   it("returns empty catalog and emits no warning on a missing path", async () => {
@@ -1818,7 +1818,7 @@ describe("skillBible", () => {
       restrictions: [],
     };
 
-    const result = checkEntry("characters", entry, customBible);
+    const result = checkEntry("characters", entry, { bible: customBible });
     assert.equal(result.ok, true);
     if (result.ok) {
       const hasProblem = result.problems.some(p => p.includes("not a bible skill"));
@@ -2084,7 +2084,7 @@ describe("a persisted origin reaching a story", () => {
       }), "utf8");
 
       const origins = await skillOrigins(catalog);
-      const sc = await quiet(() => loadStory(dir, undefined, undefined, origins));
+      const sc = await quiet(() => loadStory(dir, undefined, { origins }));
       const pip = sc.characters[0];
       assert.deepEqual(pip.skills.map(s => s.name), ["movement", "hearing", "sight"]);
       assert.deepEqual(pip.limits, ["speech", "touch", "taste", "smell", "recall"]);
@@ -2125,6 +2125,58 @@ describe("a malformed skills catalog", () => {
       try { result = await loadCatalog("skills", path); } finally { WARN.sink = orig; }
       assert.deepEqual(result.entries, []);
       assert.match(warns.join(" "), /could not be parsed/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("generalSkillEntries", () => {
+  const write = async (entries: unknown[]) => {
+    const dir = await mkdtemp(join(tmpdir(), "generals-test-"));
+    const path = join(dir, "catalog-skills.json");
+    await writeFile(path, JSON.stringify({ entries }), "utf8");
+    return { dir, path };
+  };
+
+  it("returns the seeded eight when no file exists", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "generals-seed-test-"));
+    try {
+      assert.deepEqual(await generalSkillEntries(join(dir, "absent.json")), { ...SKILL_CATALOG });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns exactly the persisted general entries, ignoring the other kinds", async () => {
+    const { dir, path } = await write([
+      { id: "hearing", version: 1, name: "hearing", meaning: "perceiving sound", kind: "general", general: [] },
+      { id: "lockpicking", version: 1, name: "lockpicking", meaning: "opening a lock", kind: "special", general: [] },
+      { id: "bird", version: 1, name: "bird", meaning: "a small bird", kind: "origin", general: ["hearing"] },
+    ]);
+    try {
+      assert.deepEqual(await generalSkillEntries(path), { hearing: "perceiving sound" });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("falls back to the in-code eight for a catalog that predates general skills", async () => {
+    // The destructive case: this file wins entirely over the seed, so reading {} off it would
+    // strip every general skill from every character in every story.
+    const { dir, path } = await write([
+      { id: "lockpicking", version: 1, name: "lockpicking", meaning: "opening a lock", kind: "special", general: [] },
+    ]);
+    try {
+      assert.deepEqual(await generalSkillEntries(path), { ...SKILL_CATALOG });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("persistedCatalogs wires all three lookups to the same file", async () => {
+    const { dir, path } = await write([
+      { id: "hearing", version: 1, name: "hearing", meaning: "perceiving sound", kind: "general", general: [] },
+      { id: "echolocation", version: 1, name: "echolocation", meaning: "seeing by sound", kind: "special", general: [] },
+      { id: "bat", version: 1, name: "bat", meaning: "a bat", kind: "origin", general: ["hearing"] },
+    ]);
+    try {
+      const c = await persistedCatalogs(path);
+      assert.deepEqual(c.generals, { hearing: "perceiving sound" });
+      assert.equal(c.bible?.("echolocation"), "seeing by sound");
+      assert.deepEqual(c.origins?.("bat"), ["hearing"]);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

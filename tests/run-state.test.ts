@@ -292,7 +292,7 @@ describe("sceneReach", () => {
     const testBible = (name: string) => name.toLowerCase() === "cameras" ? "a camera" : undefined;
 
     const withoutBible = sceneReach(sd, def);
-    const withBible = sceneReach(sd, def, testBible);
+    const withBible = sceneReach(sd, def, { bible: testBible });
 
     assert.deepEqual(
       withoutBible.map(s => s.name),
@@ -319,7 +319,7 @@ describe("sceneReach", () => {
     const warningsWith: string[] = [];
     WARN.sink = (m: string) => { warningsWith.push(m); };
     try {
-      sceneReach(sd, defWithBibleRestriction, testBible);
+      sceneReach(sd, defWithBibleRestriction, { bible: testBible });
     } finally { WARN.sink = prevSink; }
 
     assert.ok(warningsWithout.some(w => w.includes("telepathy")),
