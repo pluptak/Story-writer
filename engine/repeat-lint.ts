@@ -1,29 +1,22 @@
 /** REPEAT-LINT — the mechanical guard against a piece re-emitting what is already on the page.
  *
- *  The doorway run's draft #2 re-emitted draft #1 verbatim — 386 identical characters, the whole
- *  opening paragraph — and appended one new sentence; both were accepted and both were appended,
- *  so the scene opened with the same paragraph twice. Nothing between an accepted draft and the
- *  append compared the new piece against the tail of the page. This is that comparison: the
- *  piece's leading sentences are matched against the page's tail, and a repeated prefix is
+ *  The piece's leading sentences are matched against the page's tail, and a repeated prefix is
  *  stripped so only the genuinely new text is appended. The writer restating is model behaviour;
  *  the page corruption is not.
  *
  *  Scope, deliberately narrow:
- *  - Leading sentences only. A phrase repeated mid-piece (the same run's draft #3 re-saying
- *    Riven's one line) is out of scope: stripping mid-prose would mangle what it touches, and
- *    the cheap failure direction here is under-stripping, never mangling.
+ *  - Leading sentences only. A phrase repeated mid-piece is out of scope: stripping mid-prose
+ *    would mangle what it touches, and the cheap failure here is under-stripping, never mangling.
  *  - The page's tail only. A callback to an older beat is legitimate prose; re-emitting what the
  *    page just ended with is the defect. The caller bounds the tail (the last piece or two).
  *  - Whole sentences only, cut at raw sentence boundaries. An ambiguous or partial match
  *    declines the strip entirely rather than guessing where the repeat ended.
  *
- *  Calibration, from the two reference points the plan names: the doorway 386-character case (a
- *  multi-sentence paragraph, ~55+ words — must fire) and quote-lint.ts:94's near-verbatim bar
- *  (Dice >= 0.8, kept identical so the engine has one answer to "how close is verbatim").
- *  MIN_REPEAT_WORDS sits just under the smallest repeat observed in a live run (54 characters,
- *  ~9-10 words) and far above the coincidental short opening ("He nods." — 2 words, never
- *  stripped). The strip is reported as an event by the caller, so a wrong call is visible in the
- *  run record and cheap to tighten later.
+ *  Calibration: a multi-sentence paragraph (~55+ words — must fire) and quote-lint.ts:94's
+ *  near-verbatim bar (Dice >= 0.8, kept identical so the engine has one answer to "how close is
+ *  verbatim"). MIN_REPEAT_WORDS sits just under the smallest repeat observed live (~9-10 words)
+ *  and far above coincidental short openings ("He nods." — never stripped). The strip is reported
+ *  as an event by the caller, so a wrong call is visible in the run record.
  *
  *  This file imports nothing from the engine: pure text matching, so it stays a leaf. */
 

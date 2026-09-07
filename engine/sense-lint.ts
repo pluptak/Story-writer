@@ -1,9 +1,7 @@
 /** SENSE-LINT — the mechanical restricted-sense half of the narration lint.
  *
- * A CANNOT is absolute and governs narration as much as answers, but the LLM half of the lint has
- * never enforced it: across five live runs it returned {"ok": true} on every piece, including
- * "Marsh watches them from his corner" for a character with `restrictions: ["sight"]` — the
- * narration prompt's own worked example. Restricted senses are mechanically tractable in a way
+ * A CANNOT is absolute and governs narration as much as answers, but the LLM half
+ * never enforced it. Restricted senses are mechanically tractable in a way
  * deeds are not: a CANNOT list is a closed set of names, and the verbs that break a sense are
  * enumerable.
  *
@@ -14,44 +12,35 @@
  *    it ("Marsh watches"); a pronoun subject ("she watches") is left to the LLM half. Missing a
  *    violation is the cheap failure; inventing one is not.
  *  - **Literal verbs only.** `see` and `saw` carry most figurative sight ("see what he meant") and
- *    are left out entirely — a measured trade-off, settled after the doorway runs of 2026-08-27
- *    put both sides on the page (the figurative "waiting to see if he moves away" passed, the
- *    literal "wide enough for Merritt to see them" leaked). What is listed is what the prompt
- *    itself names: watching, glancing, gazing, and their siblings. The `observ*` family joined
- *    `sight` deliberately — a live run sent a blind character six situations phrased around sight,
- *    one carrying "observing their hands at the lock"; growing the family beat accepting that as a
- *    known miss, and the table is shared, so the prose lint flags the same words. The `look` family
- *    joined the same way, gated: "look up", "look down", "looks at" are as literal as "watches",
- *    but bare `look` is as often copular as perceiving ("looks tired", "looks like", "looks to"),
- *    so it counts only with a directional particle (GATED_LOOK; the "look up to" idiom is refused
- *    by the same gate). Two noun-uses survive the gate and are exculpated: the determiner guard
- *    catches "his look at the door", and NOUN_TAIL catches "gave her a long look at".
+ *    are left out entirely. What is listed is what the prompt itself names: watching, glancing,
+ *    gazing, and their siblings, including the `observ*` and gated `look` families (the table is
+ *    shared, so the prose lint flags the same words). Bare `look` is as often copular as perceiving
+ *    ("looks tired", "looks like", "looks to"), so it counts only with a directional particle
+ *    (GATED_LOOK; the "look up to" idiom is refused by the same gate). Two noun-uses survive
+ *    the gate and are exculpated: the determiner guard catches "his look at the door", and
+ *    NOUN_TAIL catches "gave her a long look at".
  *  - **The possessive noun is read, not just skipped.** The determiner guard exculpates every
  *    possessive before a verb spelling — right for "returned her glance", wrong for "Merritt's
- *    gaze travels down the line of keys", where the noun is the subject of an action and the
- *    sentence is the act. So the prose check adds a pass keyed to the name-possessive form
- *    (NOUN_PREDICATES below): noun first, action predicate after, nothing between but an -ly
- *    adverb or "then". Name-possessive only — a bare pronoun possessive ("his gaze remains fixed")
- *    is as unresolved as a pronoun subject and stays with the LLM half — and prose only: in a
- *    situation the second-person possessive is already the incriminating form, and this pass must
- *    not change what that check does with `your`.
+ *    gaze travels down the line of keys", where the noun subjects an action. So the prose check
+ *    adds a pass keyed to the name-possessive form (NOUN_PREDICATES below): noun first, action
+ *    predicate after, nothing between but an -ly adverb or "then". Name-possessive only — a bare
+ *    pronoun possessive stays with the LLM half — and prose only: in a situation the second-person
+ *    possessive is already incriminating, and this pass leaves `your` alone.
  *
  * Scope is the five perception senses. `speech` and `movement` are restrictable too but are not
  * here: dialogue is already the quote lint's, and a movement verb list would catch every metaphor
  * that walks or steps.
  *
  * The situation sibling, `lintRestrictedSituation`, points the same tables at a consult's
- * situation, where the addressee is known and only their own limits apply. Both rules flip there:
- * the anchor is second person (`you`, `your`) rather than the character's name, and the determiner
- * rule inverts — "under your gaze" is precisely the incriminating form, where in prose `your`
- * before a verb spelling exculpates. The conservative direction is unchanged: a miss is the cheap
- * failure, because a refusal costs the writer a step.
+ * situation, where the addressee is known and only their own limits apply. The anchor is second
+ * person (`you`, `your`) and the determiner rule inverts — "under your gaze" is incriminating
+ * where in prose `your` exculpates. The conservative direction is unchanged: a miss is cheap,
+ * because a refusal costs the writer a step.
  *
- * One rule does not carry across, and INCAPACITY_TAIL is where: a situation saying the sense is
- * gone ("you cannot look at them, but you can hear their voice clearly") is the writer rendering
- * the character through what they DO have — what it was asked for. On the page that same sentence
- * is still a flag: narrating the sense at all is the defect there. Ordinary negation is untouched
- * on both sides.
+ * One rule does not carry across: a situation saying the sense is gone ("you cannot look at them,
+ * but you can hear their voice clearly") renders the character through what they DO have, as asked.
+ * On the page that same sentence is still a flag: narrating the sense at all is the defect there.
+ * Ordinary negation is untouched on both sides.
  */
 import { canonSkill } from "./skills.ts";
 

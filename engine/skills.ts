@@ -6,45 +6,38 @@
  *
  * **I1 — A skill is intrinsic; reach is granted.**
  * A skill travels with the character between scenes. A reach entry exists only while the scene that
- * granted it is being written. The default is no reach; a scene must grant it. This is the whole
- * reason reach is not a skill: put `camera-access` on a character and every later scene has to
- * explicitly negate it.
+ * granted it is being written (default: no reach). This is why reach is not a skill: put
+ * `camera-access` on a character and every later scene has to explicitly negate it.
  *
  * **I2 — A restriction is a source-independent prohibition.**
  * A restriction names a capability unavailable to this character no matter where it would have come
- * from — the general catalog, their own `skills`, or the scene's `reach`. Canonical-name removal is
- * how it is implemented; the mechanism implements the rule, it is not the rule. `restrictions:
- * ["cameras"]` does not make `cameras` a fundamental human capability; it says this character does
- * not have the camera access something else would have granted. A restriction never removes a
- * capability by resemblance. Corollary — the blind-AI case: `restrictions: ["sight"]` does NOT
- * remove `reach: ["cameras :: ..."]`, because `cameras` and `sight` are different capabilities, not
- * two implementations of one. The authoring rule that makes this hold: name the interface, never
- * the sense it substitutes for.
+ * from — the general catalog, their own `skills`, or the scene's `reach` (implemented as
+ * canonical-name removal). It never removes by resemblance. Corollary — the blind-AI case:
+ * `restrictions: ["sight"]` does NOT remove `reach: ["cameras :: ..."]`, because `cameras` and
+ * `sight` are different capabilities. Authoring rule: name the interface, never the sense it
+ * substitutes for.
  *
  * **I3 — Intrinsic beats granted on collision.**
  * A reach entry may not reuse a canon name the general catalog or that character's own skills
  * already use. On collision the character's meaning stands and the reach entry is dropped with a
- * warning: reach vanishes at the scene boundary, so letting it win would change what a skill means
- * for one scene, then change it back.
+ * warning: reach vanishes at the scene boundary, so letting it win would flip a meaning for one
+ * scene, then flip it back.
  *
  * **I4 — Reach never leaks into a character-level representation.**
- * Every surface showing a character outside a scene resolves with reach empty and shows `skills`
- * and limits only. Only per-scene resolution in scene-loop.ts ever sees reach. (AURA reaching the
- * lobby cameras from the basement, forever, is the failure mode this exists to prevent.)
+ * Every surface showing a character outside a scene resolves with reach empty. Only per-scene
+ * resolution in scene-loop.ts ever sees reach. (AURA reaching the lobby cameras from the basement,
+ * forever, is the failure mode this prevents.)
  *
  * **I5 — Reach grants access, not existence.**
  * A reach meaning describes what the character can do THROUGH the thing; that the thing is there is
- * established by the scene's `place` or the story's `facts[]`. Enforced softly on purpose: whether
- * "a modern office building" establishes security cameras is a semantic judgement, not something a
- * validator should arbitrate, so I5 lives only in the architect's verify pass and warns rather than
- * blocks. I1–I4 are mechanical and enforced here; I5 is an authoring principle.
+ * established by the scene's `place` or the story's `facts[]`. Enforced softly on purpose — whether
+ * a place establishes cameras is semantic judgement — so I5 lives only in the architect's verify
+ * pass and warns rather than blocks. I1–I4 are mechanical and enforced here.
  *
  * Resolution order: the character's origin group (all of the general catalog when no origin is
  * named) → the character's own `skills` → the scene's `reach`, with restrictions applied by canon
- * name across all three. All three catalog layers are injectable — the special-skill bible
- * (`SPECIAL_SKILL_CATALOG`), the general skills, and the origin groups (`ORIGIN_SKILL_GROUPS`)
- * each default to the in-code catalogs, and the author's persisted ones are passed in as a
- * `Catalogs` bag by the caller.
+ * name across all three. All three catalog layers are injectable and travel as a `Catalogs` bag,
+ * each defaulting to the in-code catalogs.
  */
 /** SKILL CATALOG — the general skills every character has by default, and a story's overrides. */
 import { warn } from "./warnings.ts";

@@ -1,18 +1,14 @@
 /**
  * RUN MANIFEST — which engine actually wrote a run.
  *
- * A git revision alone does not answer that. A `--serve` process holds the modules it imported at
- * startup, so a `git checkout` reaches the tree and not the running server: on 2026-08-28 three runs
- * of a four-run series were written by an engine other than the one the tree was sitting on, and
- * telling them apart afterwards meant grepping the per-agent transcripts for a prompt string only one
- * revision contained. A manifest recording only the revision would have recorded the same wrong
- * answer with more authority.
+ * A git revision alone does not answer that: a `--serve` process holds the modules it imported at
+ * startup, so a `git checkout` reaches the tree and not the running server. A manifest recording
+ * only the revision would record the same wrong answer with more authority.
  *
- * So the fingerprint here is taken from the engine's own source **at import time** — process start,
- * when the modules that will run were read — and compared against the same source on disk when the
- * manifest is written. Equal means the process is running the tree. Different means it is not, and
- * that is the case worth shouting about, because a mislabelled control reads as a result where a
- * missing one is merely missing.
+ * So the fingerprint here is taken from the engine's own source **at import time** and compared
+ * against the same source on disk when the manifest is written. Equal means the process is running
+ * the tree; different is worth shouting about, because a mislabelled control reads as a result
+ * where a missing one is merely missing.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";

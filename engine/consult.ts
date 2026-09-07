@@ -183,21 +183,13 @@ export type Revision =
  * The judge's `revised` folded over the request it replaces, and checked by exactly the same gate a
  * first consult goes through — a field the judge left out keeps its previous value.
  *
- * A revision used to skip the check entirely, which is how a re-ask of "What do you do?" reached a
- * character that the front door had already refused.
- *
  * `wants` is pinned to the original — the judge may reframe a fork it asked badly, not turn one
- * fork into another: "which way do you go" and "what do you say about it" are different moments.
- * (The one exception is escalating an open beat, below.) The judge's own instructions already say
- * as much — a missing fact is fixed in the SITUATION, and an answer is never retried for being
- * inconvenient — so a changed `wants` is drift to record, not an instruction to honor. Nothing
- * here can tell whether a rewritten *question* is still the same fork; that judgement needs a
- * model, and the model that would make it is the one being checked. So the run record carries
- * what each retry replaced, and reading it is the check.
+ * fork into another. (The one exception is escalating an open beat, below.) A changed `wants` is
+ * drift to record, not an instruction to honor: whether a rewritten *question* is still the same
+ * fork needs a model, and the run record carrying what each retry replaced is the check.
  *
- * The cast, when given, travels with it: the judge's `revised.situation` is a situation-entry path
- * like any other — it reaches a fresh instance that has no way to know better — so it passes the
- * same CANNOT gate the first ask did.
+ * The cast, when given, travels with it: the judge's `revised.situation` passes the same CANNOT
+ * gate the first ask did.
  */
 export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>,
   cast?: CannotCast): Revision {
