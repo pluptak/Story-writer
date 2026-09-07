@@ -740,6 +740,11 @@
   /* Nothing selected: no inspector is rendered, so the list takes the whole width rather than
      sitting beside an empty panel. The two-column rule above is the base; this overrides it. */
   .lib-skills.no-inspector { grid-template-columns:minmax(0,1fr); }
+  /* A special skill carries no badge, so its row has one child fewer than the grid has columns and
+     auto-placement would park its ••• a column short of the others. Pin it to the last column. */
+  .lib-skills .lib-row .lib-more { grid-column:3; }
+  .lib-kind-mark { margin-right:5px; font-style:normal; }
+  .lib-skills .lib-avatar { font-size:var(--fs-20); background:linear-gradient(135deg,#7d8aa6,#3a3d4c); }
   .lib-section-copy { color:var(--muted); font-size:var(--fs-12); margin:0 0 10px; }
   .lib-kind-general { color:var(--faint); border-color:var(--line); }
   .lib-kind-badge { font:var(--fs-10) var(--mono); color:var(--accent); border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line)); border-radius:var(--r-pill); padding:2px 7px; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }

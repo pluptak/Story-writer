@@ -773,6 +773,44 @@ test("the skill editor refuses to delete a general skill an origin grants, and s
   await expect(page.locator(".lib-row").filter({ hasText: "sight" }).first()).toBeVisible();
 });
 
+test("each kind carries a marker, and the kind name never depends on it", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // The badge says the kind in words; the glyph in front of it is decoration. Whichever the browser
+  // renders — the glyph or the kind's initial — the readable name is there either way.
+  const human = page.locator(".lib-row").filter({ hasText: "human" });
+  await expect(human.locator('[data-tid="skill-library.kind-badge"]')).toContainText("Origin");
+  await expect(human.locator('[data-tid="skill-library.kind-badge"]')).toHaveAttribute("title", "Origin skill");
+  const mark = await human.locator(".lib-kind-mark").textContent();
+  expect(mark?.trim().length).toBeGreaterThan(0);
+
+  // The editor head marks the kind too, and names it for a screen reader rather than relying on the
+  // glyph alone.
+  await page.locator(".lib-row").filter({ hasText: "lockpicking" }).click();
+  const avatar = page.locator('[data-tid="skill-library.kind-avatar"]');
+  await expect(avatar).toHaveAttribute("aria-label", "Special skill");
+  expect((await avatar.textContent())?.trim().length).toBeGreaterThan(0);
+});
+
+test("every skill row lines its actions up in the same column", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // A special skill carries no badge, so its row has one child fewer than the grid has columns —
+  // without pinning, its ••• parks a column short of every other row's. Measured in one pass: the
+  // list re-renders when the usage fetch lands, and a handle taken before that is stale after it.
+  await expect(page.locator(".lib-row")).toHaveCount(13);
+  const lefts = await page.evaluate(() => {
+    const xOf = (name: string) => {
+      const row = [...document.querySelectorAll(".lib-row")]
+        .find(r => r.querySelector(".lib-row-copy strong")?.textContent?.trim() === name);
+      return Math.round(row!.querySelector(".lib-more")!.getBoundingClientRect().x);
+    };
+    return { special: xOf("lockpicking"), origin: xOf("human"), general: xOf("sight") };
+  });
+  expect(lefts.origin).toBe(lefts.special);
+  expect(lefts.general).toBe(lefts.special);
+});
+
 test("the skill editor carries no tags block", async ({ page, served }) => {
   await arrive(page, served, "#/catalog?kind=skills");
   await page.locator(".lib-row").filter({ hasText: "lockpicking" }).click();

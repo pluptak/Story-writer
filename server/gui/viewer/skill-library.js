@@ -1,5 +1,5 @@
 import { APP } from "./state.js";
-import { esc, tid, postJson, reasonOr } from "./util.js";
+import { esc, tid, postJson, reasonOr, glyphAvailable } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
 
@@ -8,6 +8,12 @@ import { loadVocab, refreshUsage } from "./catalog.js";
 // skills a kind of being starts with. So the editor carries both shapes: kind, and the origin's
 // general list (sent empty for the other two, which is what the catalog's own validation demands).
 const KINDS = ["general", "special", "origin"];
+const KIND_LABEL = { general:"General", special:"Special", origin:"Origin" };
+// One glyph per kind, with the kind's own initial as the fallback when the browser has no glyph for
+// it. The name is always in the title, so the icon is decoration that survives being missing — it
+// is never the only thing saying which kind this is.
+const KIND_GLYPH = { general:"◆", special:"✦", origin:"⚑" };
+const kindMark = kind => (glyphAvailable(KIND_GLYPH[kind]) ? KIND_GLYPH[kind] : KIND_LABEL[kind][0]);
 const kindOf = k => (KINDS.includes(k?.kind) ? k.kind : "special");
 const emptyDraft = () => ({ id:"", name:"", meaning:"", kind:"special", general:[] });
 const draftOf = k => ({ id:k?.id || "", name:k?.name || "", meaning:k?.meaning || "",
@@ -89,7 +95,7 @@ function listHtml() {
       : (k.meaning || "Describe what this skill lets a character do.");
     return `<div class="lib-row lib-row-${kind}${selected ? " selected" : ""}" data-skill-id="${esc(k.id)}" role="button" tabindex="0" ${tid("skill-library.row")}>
       <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(line)}</span></span>
-      ${kind === "special" ? "" : `<i class="lib-kind-badge lib-kind-${kind}" ${tid("skill-library.kind-badge")}>${kind === "origin" ? "Origin" : "General"}</i>`}
+      ${kind === "special" ? "" : `<i class="lib-kind-badge lib-kind-${kind}" title="${esc(KIND_LABEL[kind])} skill" ${tid("skill-library.kind-badge")}><span class="lib-kind-mark" aria-hidden="true">${esc(kindMark(kind))}</span>${kind === "origin" ? "Origin" : "General"}</i>`}
       <button class="lib-more" data-skill-select-id="${esc(k.id)}" aria-label="Open ${esc(k.name)} in editor">•••</button>
     </div>`;
   };
@@ -170,7 +176,7 @@ function editorHtml() {
     ? `<p class="hint">Grants ${d.general.length} of ${total} general skill${total === 1 ? "" : "s"} — a character of this kind starts with exactly these.</p>`
     : "";
   return `<div class="lib-editor-head">
-    <span class="lib-avatar">${esc((d.name || "?").slice(0, 2).toUpperCase())}</span><div><strong>${esc(d.name || "Untitled skill")}</strong><small>ID: ${esc(d.id || "not saved")}</small></div>
+    <span class="lib-avatar lib-avatar-${d.kind}" title="${esc(KIND_LABEL[d.kind])} skill" aria-label="${esc(KIND_LABEL[d.kind])} skill" ${tid("skill-library.kind-avatar")}>${esc(kindMark(d.kind))}</span><div><strong>${esc(d.name || "Untitled skill")}</strong><small>ID: ${esc(d.id || "not saved")}</small></div>
     <button class="lib-close" id="skilllib-close" aria-label="Close skill editor">×</button>
   </div>
   <div class="lib-actions">
