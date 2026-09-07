@@ -44,38 +44,92 @@ export const nextChapterOf = chapters => Math.max(0, ...chapters) + 1;
  *  shared with the handoff's proposed-chapter card (handoff-view.js). */
 export const wordsPovHtml = scene => `~${scene.length ?? "?"} words${scene.pov ? " · pov " + esc(scene.pov) : ""}`;
 
+/** Where a scene sits in the story's progress, in map words rather than engine words. Only
+ *  the chapter the story would write next can be blocked, and only by a scene genuinely being
+ *  written -- a not-yet-ready session disables its button with the reason, without parking the
+ *  chapter as waiting. Finished chapters stay readable and later ones stay upcoming regardless.
+ *  A scene with no question is invalid data no matter where it sits. */
+function sceneState(scene, chapters, blocked) {
+  if (!scene.question?.trim()) return "problematic";
+  if (chapters.includes(scene.n)) return "completed";
+  if (scene.n === nextChapterOf(chapters)) return blocked ? "blocked" : "current";
+  return "upcoming";
+}
+
+const STATE_TAG = {
+  completed:   `<span class="tag written">written</span>`,
+  current:     `<span class="tag next">next</span>`,
+  upcoming:    `<span class="tag soon">upcoming</span>`,
+  blocked:     `<span class="tag next">next</span> <span class="tag wait">waiting</span>`,
+  problematic: `<span class="tag bad">needs a question</span>`,
+};
+
+/** Who is in the scene, as inspectable chips: roster names that match the story's cast reuse the
+ *  same pills the header uses (so the full character card opens); the rest stay plain labels.
+ *  The card opens through the existing `[data-char-name]` handler -- no new wiring. */
+function sceneRosterHtml(names, characters, dir) {
+  if (!names?.length) return "";
+  const byName = new Map((characters || []).map(c => [(c.name || "").toLowerCase(), c]));
+  const chips = names.map(n => {
+    const c = byName.get((n || "").toLowerCase());
+    return c ? castChips([c], dir) : `<span class="mchip">${esc(n)}</span>`;
+  }).join("");
+  return `<div class="sc-roster" data-tid="story.scene-roster"><span class="hint">with</span> ${chips}</div>`;
+}
+
+/** The map's answer to where-am-I / what-happened / what's-next, in one strip above the scenes:
+ *  chapters written against chapters planned, and the chapter the story would write next. */
+function mapStatusHtml(s, canWrite, why) {
+  const scenes = scenesOf(s);
+  const written = (s.chapters || []).length;
+  const total = scenes.length;
+  const next = nextChapterOf(s.chapters || []);
+  const pct = total ? Math.min(100, Math.round(written / total * 100)) : 0;
+  const line = !total ? "no scenes planned yet"
+    : written >= total ? `all ${total} chapter${total === 1 ? "" : "s"} written`
+    : written === 0 ? `nothing written yet · first up: chapter ${next}`
+    : `${written} of ${total} chapters written · next: chapter ${next}`;
+  const mine = APP.handoff.active && APP.handoff.dir === s.dir;
+  return `<div class="mapstatus" data-tid="story.map-status">
+    <div class="mapstatus-line"><span>${esc(line)}</span></div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    ${!canWrite && why ? `<div class="mapblocked" data-tid="story.map-blocked">Waiting — ${esc(why)}.</div>` : ""}
+    ${mine ? `<div class="mapblocked info" data-tid="story.map-preparing">Preparing chapter ${APP.handoff.chapter} — writing unlocks when the preparation is accepted or abandoned.</div>` : ""}
+  </div>`;
+}
 /** `discardable` is set by the caller for the last authored scene when it is unwritten and not the
  *  only one -- the one an accepted-but-never-written chapter leaves behind (see nextChapterOf). */
-function sceneRowHtml(scene, chapters, canWrite, why, discardable, beats) {
+function sceneRowHtml(s, scene, chapters, canWrite, why, discardable, beats) {
   const written = chapters.includes(scene.n);
   const open = APP.chapter?.dir === APP.storyDir && APP.chapter.n === scene.n;
-  const next = !written && scene.n === nextChapterOf(chapters);
-  const tag = written ? `<span class="tag written">written</span>`
-            : next ? `<span class="tag next">next</span>` : "";
+  // A chapter that would not load is problematic no matter what the plan says.
+  const state = open && APP.chapterError ? "problematic" : sceneState(scene, chapters, APP.session.running);
   const runWhy = runningReason();   // discard is blocked by a run in flight, not by picking-readiness
   const detail = sceneDetailHtml(scene, beats || []);
-  return `<div class="cardwrap"><div class="scenerow" data-tid="story.scene-row" data-chapter="${scene.n}">
-    <div class="sc-q">${esc(scene.question || "(no scene question)")}${tag}</div>
+  // Card order is the brief: question, status, POV/length, characters, actions, then context.
+  return `<div class="cardwrap"><div class="scenerow" data-tid="story.scene-row" data-chapter="${scene.n}" data-state="${state}">
+    <div class="sc-q">${esc(scene.question || "(no scene question)")}${STATE_TAG[state]}</div>
     <div class="sc-meta">chapter ${scene.n}${scene.place ? " · " + esc(scene.place) : ""} · ${wordsPovHtml(scene)}</div>
-    ${detail}
-    <button ${tid("story.write-btn")} class="btn${next ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
-    ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
-    ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
+    ${sceneRosterHtml(scene.roster, s.characters, s.dir)}
+    <div class="sc-actions">
+      <button ${tid("story.write-btn")} class="btn${state === "current" ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
+      ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
+      ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
+      <button ${tid("story.scene-edit-btn")} class="btn small sceneedit" data-chapter="${scene.n}" title="edit this story's scenes and cast">edit</button>
+    </div>
+    ${detail ? `<details class="sc-context" data-tid="story.scene-context"><summary>Context</summary>${detail}</details>` : ""}
     ${open ? `<div class="prose mt-12">${paras(APP.chapter.text)}</div>` : ""}
     ${open && APP.chapterError ? errorLine(esc(APP.chapterError)) : ""}
   </div></div>`;
 }
 
-/** The scene's own detail: who is here, the reach the scene grants, and any world beat aimed at this
- *  chapter, rendered as the percentage of the scene it fires at. The beat's HOLD only -- its
- *  memories are the interview's to judge and a run's to hide inside a character; a map the author
- *  browses casually is deliberately not a third place to read them. Voided beats still show -- they
- *  were authored -- but read as struck from the plan. */
+/** A scene's context, behind the card's Context disclosure: the reach the scene grants and any
+ *  world beat aimed at this chapter, rendered as the percentage of the scene it fires at. Who is
+ *  here lives on the card itself (sceneRosterHtml, inspectable chips) rather than in here. The
+ *  beat's HOLD only -- its memories are the interview's to judge and a run's to hide inside a
+ *  character; a map the author browses casually is deliberately not a third place to read them.
+ *  Voided beats still show -- they were authored -- but read as struck from the plan. */
 function sceneDetailHtml(scene, beats) {
-  const roster = (scene.roster || []).length
-    ? `<div class="mapfield"><span>who is here</span>
-        <div class="mapchips">${scene.roster.map(n => `<span class="mchip">${esc(n)}</span>`).join("")}</div></div>`
-    : "";
   const reachRows = Object.entries(scene.reach || {}).filter(([, g]) => (g || []).length);
   const reach = reachRows.length
     ? `<div class="mapfield"><span>reach here</span>
@@ -94,7 +148,7 @@ function sceneDetailHtml(scene, beats) {
           <span class="hold">${esc(b.hold)}</span>
         </div>`).join("")}</div></div>`
     : "";
-  const body = roster + reach + beatRows;
+  const body = reach + beatRows;
   return body ? `<div class="map-extra">${body}</div>` : "";
 }
 
@@ -164,16 +218,19 @@ export function storyPageHtml() {
     ${pageTitle({ eyebrow: "story", title: s.name })}
     <p class="premise">${esc(s.premise || "")}</p>
     <div class="row">${castChips(s.characters, s.dir)}</div>
-    ${s.writerStyle ? `<div class="row mt-8"><span class="hint">voice</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
-
-    <div class="row mt-12"><span class="hint">model</span>${modelSelectHtml(s)}</div>
+    ${mapStatusHtml(s, canWrite, why)}
+    <details class="sc-setup" data-tid="story.setup-details">
+      <summary>Setup & voice</summary>
+      ${s.writerStyle ? `<div class="row mt-8"><span class="hint">voice</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
+      <div class="row mt-12"><span class="hint">model</span>${modelSelectHtml(s)}</div>
+    </details>
     ${APP.storyError ? errorLine(esc(APP.storyError)) : ""}
     ${APP.runError ? errorLine(esc(APP.runError)) : ""}
     ${(s.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
 
     ${divider("scenes")}
     <div class="cards">${scenesOf(s).map((sc, i, arr) =>
-      sceneRowHtml(sc, s.chapters || [], canWrite, why,
+      sceneRowHtml(s, sc, s.chapters || [], canWrite, why,
         i === arr.length - 1 && arr.length > 1 && !(s.chapters || []).includes(sc.n),
         s.timeline || [])).join("")}</div>
 
@@ -204,6 +261,11 @@ export function wireStoryPage(page) {
 
   for (const b of page.querySelectorAll(".scenediscard"))
     b.addEventListener("click", () => discardChapter(APP.storyDir, Number(b.dataset.chapter)));
+
+  // Every scene offers the full loop in place: run it, read it, edit the story behind it, and
+  // inspect who is in it (roster chips open the same character cards as the header pills).
+  for (const b of page.querySelectorAll(".sceneedit"))
+    b.addEventListener("click", () => { APP.editDir = APP.storyDir; go("edit"); });
 
   // A slow earlier read must never overwrite a faster later click's chapter -- last click wins.
   // Module-level: wireStoryPage re-runs on every render, so a closure-scoped token would reset

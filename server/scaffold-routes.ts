@@ -112,7 +112,7 @@ export async function handleScaffoldRoutes(
   }
 
   if (what === "set") {
-    const r = host.scaffoldSet({ story: o.story, field: o.field, value: o.value });
+    const r = host.scaffoldSet({ story: o.story, field: o.field, value: o.value, source: o.source });
     if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
     json(res, 200, r.state);
     return true;
@@ -131,6 +131,13 @@ export async function handleScaffoldRoutes(
     // `override` is the author overruling a gate that came back `blocked` — sent by the viewer's
     // confirming second click, and the only way past the cast gate's asymmetry judgement.
     const r = await host.scaffoldApprove(Boolean(o.override));
+    if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
+    json(res, 200, r.state);
+    return true;
+  }
+
+  if (what === "regenerate") {
+    const r = await host.scaffoldRegenerate();
     if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
     json(res, 200, r.state);
     return true;

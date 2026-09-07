@@ -51,6 +51,38 @@ test("the editor loads a story, saves an edit through the real path, and refuses
   }
 });
 
+test("execution settings live under Advanced and still save through the real path", async ({ page, served }) => {
+  const dir = await copyFixtureStory();
+  registerLive(dir);
+  try {
+    await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+
+    // The primary sections carry no execution controls: no per-scene override, no model, no
+    // retry ceiling, no config row beside the creative fields.
+    await expect(page.locator('[data-tid="edit.scene-row"] input[id$="-writerModel"]')).toHaveCount(0);
+    await expect(page.locator('[data-tid="edit.char-card"] input[id$="-model"]')).toHaveCount(0);
+    await expect(page.locator('[data-tid="edit.char-card"] input[id$="-maxRetries"]')).toHaveCount(0);
+
+    // Advanced is collapsed until asked for.
+    const advanced = page.locator('[data-tid="edit.advanced"]');
+    await expect(advanced).not.toHaveJSProperty("open", true);
+
+    // Open it: the relocated controls are there, with their wiring intact, and an edit soils
+    // the draft and persists through the real save path.
+    await advanced.locator(":scope > summary").click();
+    await expect(page.locator("#char-0-model")).toBeVisible();
+    await page.locator("#char-0-model").fill("test-model");
+    await advanced.locator("details.editor-section summary", { hasText: "Config" }).click();
+    await page.locator("#config-maxSteps").fill("30");
+    await expect(page.locator("#edit-save")).toBeEnabled();
+    await page.locator("#edit-save").click();
+    await expect.poll(async () => (await readStory(dir)).characters[0].model).toBe("test-model");
+    await expect.poll(async () => (await readStory(dir)).config.maxSteps).toBe(30);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("the editor saves an origin field edit and it persists to the story file", async ({ page, served }) => {
   const dir = await copyFixtureStory();
   registerLive(dir);

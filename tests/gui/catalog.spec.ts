@@ -1,6 +1,7 @@
 /** Catalog screens over the real engine catalog logic, isolated to temp files. Every catalog kind
  *  -- characters, styles, tags, skills -- has its own dedicated library workspace. */
 import { arrive, expect, holdCatalogWrites, test } from "./harness.ts";
+import { abandonWalk, startStaged } from "./scaffold-walk.ts";
 
 test("the character library creates, lists, and deletes a character entry", async ({ page, served }) => {
   await arrive(page, served, "#/catalog");
@@ -379,7 +380,7 @@ test("review mode reports findings without proposing a field change", async ({ p
   await expect(page.locator("#charlib-ai-apply")).toBeDisabled();
 });
 
-test("a hidden character is absent from the new-story import picker", async ({ page, served }) => {
+test("a hidden character is absent from the story's cast selection", async ({ page, served }) => {
   await arrive(page, served, "#/catalog");
   await page.locator("#charlib-new").click();
   await page.locator("#charlib-name").fill("IVET");
@@ -388,9 +389,16 @@ test("a hidden character is absent from the new-story import picker", async ({ p
   await page.locator("#charlib-toggle-hidden").click();
   await expect(page.locator(".lib-row")).toContainText("Hidden");
 
-  await arrive(page, served, "#/scaffold");
-  await expect(page.locator(".cat-chip[data-import-id]")).toHaveCount(0);
-  await expect(page.getByText(/No characters in the catalog yet/)).toBeVisible();
+  // Direction decides the cast while none exists: the hidden character reaches neither
+  // the chips nor the list.
+  await startStaged(page, served);
+  try {
+    const section = page.locator('[data-tid="scaffold.stage-section"][data-stage="direction"]');
+    await expect(section.locator(".cat-chip[data-import-id]")).toHaveCount(0);
+    await expect(section.getByText(/No characters in the catalog yet/)).toBeVisible();
+  } finally {
+    await abandonWalk(page, served);
+  }
 });
 
 // Phase 4: client-side search, sorting and pagination -----------------------------------
@@ -1094,9 +1102,14 @@ test("a character's full lifecycle: create, revise, hide, restore, assist, and p
   await page.locator("#charlib-toggle-hidden").click();
   await expect(page.locator(".lib-row")).toContainText("Hidden");
 
-  // 7. Confirm it is absent from new-story character selection.
-  await arrive(page, served, "#/scaffold");
-  await expect(page.locator('.cat-chip[data-import-id]', { hasText: "SCENARIO" })).toHaveCount(0);
+  // 7. Confirm it is absent from the story's cast selection.
+  await startStaged(page, served);
+  try {
+    const section = page.locator('[data-tid="scaffold.stage-section"][data-stage="direction"]');
+    await expect(section.locator('.cat-chip[data-import-id]', { hasText: "SCENARIO" })).toHaveCount(0);
+  } finally {
+    await abandonWalk(page, served);
+  }
 
   // 8. Restore it.
   await arrive(page, served, "#/catalog");
@@ -1105,8 +1118,13 @@ test("a character's full lifecycle: create, revise, hide, restore, assist, and p
   await expect(page.locator(".lib-row")).not.toContainText("Hidden");
 
   // 9. Confirm it can be selected again.
-  await arrive(page, served, "#/scaffold");
-  await expect(page.locator('.cat-chip[data-import-id]', { hasText: "SCENARIO" })).toHaveCount(1);
+  await startStaged(page, served);
+  try {
+    const section = page.locator('[data-tid="scaffold.stage-section"][data-stage="direction"]');
+    await expect(section.locator('.cat-chip[data-import-id]', { hasText: "SCENARIO" })).toHaveCount(1);
+  } finally {
+    await abandonWalk(page, served);
+  }
 
   // 10. Use the assistant with only impulse and voice selected.
   await arrive(page, served, "#/catalog");

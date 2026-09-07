@@ -27,13 +27,15 @@ function renderConsult(b) {
   const tags = `<span class="tag state" data-tid="consult.tag">${state}</span>` +
     (retried ? `<span class="tag retry" data-tid="consult.tag">×${b.attempts.length}</span>` : "");
 
-  // What happens next, in one line off the final state.
+  // What happens next, in one line off the final state. A capped retry was force-accepted by
+  // the chapter-wide ceiling, so it reaches the page even though its own verdict still reads
+  // "retry" — that check must win over the plain retry branch below it.
   const outcome = !ans
     ? `Waiting — the story pauses here until ${b.who} answers.`
-    : verdict === "retry"
-      ? `Set aside — ${b.who} is being asked again, and this answer will not reach the page.`
-      : retried
-        ? `Decided — ${b.who}'s answer stands and the story continues.${b.capped ? " The re-ask limit was reached, so this answer was kept." : ""}`
+    : b.capped
+      ? `Decided — ${b.who}'s answer stands and the story continues. The re-ask limit was reached, so this answer was kept.`
+      : verdict === "retry"
+        ? `Set aside — ${b.who} is being asked again, and this answer will not reach the page.`
         : `Decided — ${b.who}'s answer stands and the story continues.`;
 
   // Attempt mechanics, unchanged in content, disclosed one level down. Tids on the wrappers stay

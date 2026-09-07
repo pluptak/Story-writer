@@ -42,8 +42,12 @@ test("&block= opens the named consult on arrival and keeps naming it", async ({ 
 
   const consult = page.locator('[data-tid="prose.consult"][data-seq="2"]');
   await expect(consult).toHaveCount(1);
-  // Opened by the deep link itself — no click happened — and the URL still pins it.
+  // Opened by the deep link itself — no click happened — and the URL still pins it. The story
+  // layer (situation/answer) is visible at this level; attempt mechanics need one more disclosure.
   await expect(consult).toHaveAttribute("open", "");
+  await expect(page.getByTestId("consult.situation")).toBeVisible();
+  await expect(page.getByTestId("consult.attempt")).toBeHidden();
+  await page.getByTestId("consult.engine-details").locator("summary").click();
   await expect(page.getByTestId("consult.attempt")).toBeVisible();
   await expect(page).toHaveURL(/block=2$/);
 });

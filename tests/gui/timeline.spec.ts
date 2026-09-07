@@ -48,6 +48,9 @@ const openRun = async (page, served: number, dir: string, id: string) => {
   await arrive(page, served, "#/story?dir=" + encodeURIComponent(dir));
   await page.locator(`[data-tid="story.run-btn"][data-run="${id}"]`).click();
   await expect(page.getByTestId("prose.piece").first()).toBeVisible();
+  // Same-document navigation keeps the story page's scroll offset, so a run opened from further
+  // down its (now taller) map would start mid-page. Tests below assume top-of-page arrival.
+  await page.evaluate(() => window.scrollTo(0, 0));
 };
 
 test("the strip carries one marker per consult, named for the character asked", async ({ page, served }) => {

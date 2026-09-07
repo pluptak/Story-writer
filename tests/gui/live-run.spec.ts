@@ -36,11 +36,19 @@ test("a scripted run reaches the page: prose, consult, notes, end, and the agent
   await expect(piece).toHaveCount(1);
   await expect(piece).toContainText("names the one thing the log will accept");
 
-  // The consult: collapsed by default; opened it carries the attempt, the situation, the answer
-  // and the judge's verdict.
+  // The consult: collapsed by default; opened it tells the story first — who decides, the
+  // situation, the answer, what happens next — with attempt mechanics one disclosure down.
   const consult = page.getByTestId("prose.consult");
   await expect(consult).toHaveCount(1);
-  await consult.locator("summary").click();
+  await expect(consult.locator("summary").first()).toContainText("MERRITT");
+  await expect(consult.locator("summary").first()).toContainText("decides");
+  await consult.locator("summary").first().click();
+  await expect(page.getByTestId("consult.situation")).toContainText("named a price for walking away");
+  await expect(page.getByTestId("consult.answer")).toContainText("One package, one signature");
+  await expect(page.getByTestId("consult.outcome")).toContainText("Decided");
+  // Attempt mechanics hide behind How this was decided; the judge verdict lives there.
+  await expect(page.getByTestId("consult.verdict")).toBeHidden();
+  await page.getByTestId("consult.engine-details").locator("summary").click();
   await expect(page.getByTestId("consult.attempt")).toHaveCount(1);
   await expect(page.getByTestId("consult.situation")).toContainText("named a price for walking away");
   await expect(page.getByTestId("consult.answer")).toContainText("One package, one signature");
@@ -52,12 +60,19 @@ test("a scripted run reaches the page: prose, consult, notes, end, and the agent
   await expect(page.getByTestId("prose.end")).toContainText("210 words");
   await expect(page.getByTestId("prose.end")).toContainText("3 steps");
 
-  // The rail: per-agent model calls, the words-against-target stat, and the composing indicator.
+  // The rail: status line + words stay visible; engine numbers fold into Run details.
+  await expect(page.getByTestId("rail.status")).toBeVisible();
+  await expect(page.locator('[data-tid="rail.stat"][data-k="words"]')).toContainText("42 / 700");
+  await expect(page.getByTestId("rail.composing")).toContainText("WRITER");
+  // Engine detail is progressively disclosed: steps/model/retries/agent calls hide until opened.
+  const details = page.getByTestId("rail.engine-details");
+  await expect(details).toBeVisible();
+  await expect(page.locator('[data-tid="rail.stat"][data-k="steps"]')).toBeHidden();
+  await details.locator("summary").click();
   await expect(page.getByTestId("rail.agentstats")).toBeVisible();
   await expect(page.locator('[data-tid="rail.agent-row"][data-who="WRITER"]')).toBeVisible();
   await expect(page.locator('[data-tid="rail.agent-row"][data-who="MERRITT"]')).toBeVisible();
-  await expect(page.locator('[data-tid="rail.stat"][data-k="words"]')).toContainText("42 / 700");
-  await expect(page.getByTestId("rail.composing")).toContainText("WRITER");
+  await expect(page.locator('[data-tid="rail.stat"][data-k="steps"]')).toBeVisible();
 
   // The header built cast chips from scene_start, and the session bar shows live controls.
   await expect(page.getByTestId("cast.chip")).toHaveCount(2);

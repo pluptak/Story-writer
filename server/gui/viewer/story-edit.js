@@ -164,10 +164,6 @@ function sceneRowsHtml() {
       ${fld(`scene-${n}-roster`, "Roster (comma-separated)", roster)}
       ${fld(`scene-${n}-reach`, "Reach — one per line: NAME: thing :: meaning (granted by this scene only)",
            reachLines(sc.reach), "textarea")}
-      <div class="editor-row">
-        ${fld(`scene-${n}-writerModel`, "Writer model (optional)", sc.writerModel ?? "", "half")}
-        ${thinkSelect(`scene-${n}-writerThink`, "Writer thinking", sc.writerThink ?? "default")}
-      </div>
       ${issuesHtml(`scenes.${i}`)}
     </div>`;
   }).join("");
@@ -181,10 +177,7 @@ function characterCardsHtml() {
     const restrictions = Array.isArray(c.restrictions) ? c.restrictions.join(", ") : "";
     return `<div class="editor-char" data-tid="edit.char-card" data-char="${i}">
       <h4>${esc(c.name)}</h4>
-      <div class="editor-row">
-        ${fld(`char-${i}-name`, "Name", c.name, "half")}
-        ${fld(`char-${i}-model`, "Model", c.model, "half")}
-      </div>
+      ${fld(`char-${i}-name`, "Name", c.name)}
       ${fld(`char-${i}-persona`, "Persona", c.persona, "textarea")}
       <div class="editor-row">
         ${fld(`char-${i}-knows`, "Knows", c.knows, "half")}
@@ -200,10 +193,43 @@ function characterCardsHtml() {
         ${fld(`char-${i}-skills`, "Skills (comma-separated)", skills, "half")}
         ${fld(`char-${i}-restrictions`, "Restrictions (comma-separated)", restrictions, "half")}
       </div>
-      ${fld(`char-${i}-maxRetries`, "Max retries (optional)", c.maxRetries ?? "", "half")}
       ${issuesHtml(`characters.${i}`)}
     </div>`;
   }).join("");
+}
+
+/** Execution settings, in one collapsed place: per-scene model/thinking overrides,
+ *  per-character model and retry ceiling, run config, and models. Nothing here is a creative
+ *  choice -- the story reads the same whatever these say -- so the primary sections stay
+ *  creative and this one stays shut until asked for. Field ids are unchanged, so collection
+ *  and validation behave exactly as before; validation messages still surface beside their
+ *  scene/character above. */
+function advancedHtml() {
+  const s = APP.editDraft;
+  const scenes = (s?.scenes || []).map((sc, i) => {
+    const n = i + 1;
+    return `<div class="editor-scene" data-tid="edit.advanced-scene" data-scene="${n}">
+      <h4>Scene ${n} — execution overrides</h4>
+      <div class="editor-row">
+        ${fld(`scene-${n}-writerModel`, "Writer model (optional)", sc.writerModel ?? "", "half")}
+        ${thinkSelect(`scene-${n}-writerThink`, "Writer thinking", sc.writerThink ?? "default")}
+      </div>
+    </div>`;
+  }).join("");
+  const chars = (s?.characters || []).map((c, i) =>
+    `<div class="editor-char" data-tid="edit.advanced-char" data-char="${i}">
+      <h4>${esc(c.name)} — execution</h4>
+      <div class="editor-row">
+        ${fld(`char-${i}-model`, "Model", c.model, "half")}
+        ${fld(`char-${i}-maxRetries`, "Max retries (optional)", c.maxRetries ?? "", "half")}
+      </div>
+    </div>`).join("");
+  return `<details class="editor-section" data-tid="edit.advanced"><summary>Advanced — execution settings</summary>
+    ${hint(`Models, thinking, retries and budgets. Capable defaults already apply; open this only to override them.`)}
+    ${scenes}${chars}
+    ${configHtml()}
+    ${modelsHtml()}
+  </details>`;
 }
 
 function configHtml() {
@@ -233,8 +259,7 @@ function configHtml() {
   </details>`;
 }
 
-function modelsHtml() {
-  const m = APP.editDraft?.models || {};
+function modelsHtml() {  const m = APP.editDraft?.models || {};
   const def = m.default || "";
   const modelOpts = `<datalist id="model-list">${(APP.modelIds || []).map(id => `<option value="${esc(id)}">`).join("")}</datalist>`;
   return `<details class="editor-section" data-tid="edit.section"><summary>Models</summary>
@@ -390,8 +415,7 @@ export function storyEditHtml() {
       ${fld("edit-facts", "One fact per line", facts, "textarea")}
     </details>
 
-    ${configHtml()}
-    ${modelsHtml()}
+    ${advancedHtml()}
 
     <details class="editor-section" data-tid="edit.section"${APP.editSuggestOpen ? " open" : ""}><summary>Ask the architect</summary>
       <div id="edit-suggest-panel" class="${suggestOpen.trim()}">

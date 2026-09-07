@@ -1153,6 +1153,20 @@
     border-radius:var(--r-pill); color:var(--faint); font-family:var(--mono); font-size:var(--fs-10); }
   .scpage .tag.warn { color:var(--warn); border-color:var(--warn); background:var(--warn-soft); }
   .scpage .tag.reach { color:var(--accent); border-color:var(--accent); background:transparent; }
+  /* Artifact provenance: where a block came from. Catalog first-class (accent), the author's
+   * own words (good), the architect's proposal (faint outline), approved (good fill). The
+   * "changed this round" tag marks blocks the latest round touched. */
+  .scpage .tag.prov-catalog { color:var(--accent); border-color:var(--accent); }
+  .scpage .tag.prov-user { color:var(--good); border-color:var(--good); }
+  .scpage .tag.prov-ai { color:var(--faint); }
+  .scpage .tag.prov-approved { color:var(--good); border-color:var(--good); background:var(--good-soft, transparent); }
+  .scpage .tag.changed { color:var(--accent); border-color:var(--accent); border-style:dashed; }
+  .scpage .status-pill { display:inline-block; margin-left:8px; padding:2px 8px; border:1px solid var(--line);
+    border-radius:var(--r-pill); font-family:var(--mono); font-size:var(--fs-10); color:var(--faint); }
+  .scpage .status-pill.st-proposal { color:var(--accent); border-color:var(--accent); }
+  .scpage .status-pill.st-edited { color:var(--warn); border-color:var(--warn); }
+  .scpage .status-pill.st-approved { color:var(--good); border-color:var(--good); }
+  .scpage .status-pill.st-call { color:var(--warn); border-color:var(--warn); }
 
   /* conversation round */
   .scpage .round-note { margin:14px 0; padding:12px 13px; border-left:2px solid var(--accent);

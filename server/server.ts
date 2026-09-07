@@ -183,6 +183,10 @@ export interface ServerHost {
   /** Staged mode only: pass the open checklist gate and propose the next stage's content. `override`
    *  is the author overruling a gate that came back blocked. */
   scaffoldApprove(override: boolean): Promise<ScaffoldActionResult>;
+  /** Re-runs the open stage's prompt without advancing the checklist — staged re-proposes only
+   *  the open gate's fields, one-shot re-proposes the whole story. The conversation is kept, so
+   *  refinements usually survive; nothing reaches disk either way. */
+  scaffoldRegenerate(): Promise<ScaffoldActionResult>;
   /** Revises the author's concept on the open session — never re-runs a gate. */
   scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult>;
   /** Replaces the import tray on the open session, wholesale. */
@@ -190,8 +194,9 @@ export interface ServerHost {
   /** Puts one of the session's current bible candidates into the author's skill bible. */
   scaffoldPromote(name: string): Promise<ScaffoldActionResult>;
   /** Direct edit, bypassing the model: `{field, value}` for a single scalar field (today only
-   *  "scene.length"), or `{story}` to replace the in-memory draft wholesale from the full editor. */
-  scaffoldSet(input: { story?: unknown; field?: string; value?: unknown }): ScaffoldActionResult;
+   *  "scene.length"), or `{story}` to replace the in-memory draft wholesale -- from the full
+   *  editor, or (`source: "revert"`) from putting back a round's own changes. */
+  scaffoldSet(input: { story?: unknown; field?: string; value?: unknown; source?: string }): ScaffoldActionResult;
   /** Writes the accepted story to disk and ends the session on success. */
   scaffoldAccept(folder: string): Promise<ScaffoldAcceptResult>;
   /** Drops the open interview unconditionally — a round in flight discovers this and discards
@@ -205,6 +210,9 @@ export interface ServerHost {
   handoffStart(dir: string, model: string): Promise<HandoffActionResult>;
   /** A follow-up from the author, in the same edits-only format. */
   handoffSay(text: string): Promise<HandoffActionResult>;
+  /** Re-runs the handoff's opening round on the live session — a fresh proposal that keeps the
+   *  refinements said so far, unlike abandoning and starting over. Writes nothing. */
+  handoffRegenerate(): Promise<HandoffActionResult>;
   /** Writes the re-authored story over the one on disk; on failure puts back exactly what was there
    *  and answers `kind:"unloadable"`, leaving the session open to keep refining. */
   handoffAccept(): Promise<HandoffAcceptResult>;

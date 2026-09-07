@@ -73,8 +73,7 @@ export const APP = {
                                 // the idea modal in the window between the two.
   folderOpen: false,           // the sidebar's accept opened the folder step locally — the server only
                                 // forces it open through needsFolder
-  conceptOpen: false,          // the sidebar's concept editor is expanded. Local to the page: the
-                                // concept itself lives on the session, and revising it is a POST
+  conceptOpen: false,             // unused; kept so the APP shape stays stable
   ideaOpen: false,             // kept for compatibility; the scaffold page now owns the idea step
   ivHidden: false,             // kept for compatibility; the scaffold page is a route, not an overlay
   personasFull: false,
@@ -93,6 +92,10 @@ export const APP = {
   handoffAccepting: false,     // an accept is in flight. The server publishes {active:false} BEFORE
                                 // answering the POST, so without this the page falls back to the
                                 // start screen -- with a live start button -- between the two.
+  handoffRefined: false,          // a refinement landed on the open handoff since its last
+                                  // fresh proposal — the panel reads Edited rather than Generated
+                                  // proposal. Session-local only: the snapshot cannot tell a first
+                                  // proposal (edits kind) from a refined one. Cleared on start/abandon.
   handoffChapters: null,       // {dir, chapter, loading, items:[{n, place, words, error}]}: word
                                 // counts for the "chapters written" list, one /chapter fetch each.
                                 // Keyed by dir+prepared-chapter so it refetches when either changes.

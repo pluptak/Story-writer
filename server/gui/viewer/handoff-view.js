@@ -62,10 +62,14 @@ export function handoffPageHtml() {
       ${APP.handoffError ? errorLine(esc(APP.handoffError)) : ""}
       <div class="btns mt-lg">
         ${button({ label: "prepare the next chapter", id: "h-start", variant: "primary", disabled: !!busy, title: busy })}
-        ${handoffModelSelectHtml()}
         <span class="spacer"></span>
         ${button({ label: "back to the story", id: "h-back" })}
       </div>
+      <details class="sc-setup" data-tid="handoff.advanced">
+        <summary>Advanced — execution settings</summary>
+        <div class="row mt-12"><span class="hint">model</span>${handoffModelSelectHtml()}</div>
+        <p class="hint">Which model prepares the chapter. The story reads the same whatever it says.</p>
+      </details>
     </section>`;
   }
 
@@ -87,9 +91,9 @@ export function handoffPageHtml() {
 
   // A round that failed before anything was proposed leaves nothing to review, and the normal
   // panels ("the architect has not added it yet") describe the untouched story rather than what
-  // just happened. The failure is the state. No propose route exists to call twice, so "try again"
-  // reopens the session -- while `say` stays available, and is the lighter request: it does not
-  // resend the chapters.
+  // just happened. The failure is the state. "try again" re-runs the opening round on the live
+  // session -- while `say` stays available, and is the lighter request: it does not resend the
+  // chapters.
   if (s.last?.kind === "failed" && !s.edited) {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
@@ -116,6 +120,14 @@ export function handoffPageHtml() {
 
   body.push(`<h2>${esc(storyName(APP.handoffDir))}</h2>`);
   body.push(`<p class="sub">preparing chapter ${s.chapter}${s.model ? " · " + esc(s.model) : ""}</p>`);
+  // Draft · Generated proposal · Edited, derived per frame: the snapshot's edits rounds cannot
+  // tell a first proposal from a refined one, so a landed refinement is remembered session-locally.
+  const hStatus = s.pendingAsk ? ["Needs your call", ""]
+    : s.last?.kind === "failed" ? ["Draft", ""]
+    : APP.handoffRefined ? ["Edited", ""] : ["Generated proposal", ""];
+  body.push(`<p class="hint">status: <strong>${hStatus[0]}</strong>`
+    + (hStatus[0] === "Generated proposal" ? " — accept it, refine it, or regenerate it" : "")
+    + (hStatus[0] === "Edited" ? " — your refinements are in" : "") + `</p>`);
 
   // Proposed scene
   const sc = s.spec?.scenes?.[s.chapter - 1];
@@ -258,6 +270,10 @@ export function handoffPageHtml() {
   const unsent = !!hdraft.say.trim();
   const btnRow = [];
   btnRow.push(button({ label: "send", id: "h-send", variant: unsent && !s.busy ? "primary" : "", disabled: s.busy }));
+  if (!s.pendingAsk) {
+    btnRow.push(button({ label: "regenerate proposal", id: "h-regen", disabled: s.busy,
+      title: s.busy ? "thinking" : "re-run the opening round on this session — refinements said so far are kept, nothing is written" }));
+  }
   btnRow.push(button({
     label: APP.hAcceptArmed ? "accept — sure?" : "accept", id: "h-accept",
     disabled: s.busy || !s.edited, extraClass: APP.hAcceptArmed ? "armed" : "",

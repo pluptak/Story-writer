@@ -465,6 +465,13 @@ POST /scaffold/start    { idea, model?, mode?, tags?, castSize?, importIds? }
 POST /scaffold/say      { text }           → free-text turn; may return edits, a question, or a proposal.
                                              In staged mode it refines within the open gate (back-edits
                                              to earlier stages included) or answers `pendingAsk`.
+POST /scaffold/regenerate                   → re-runs the open stage's prompt without advancing the
+                                             checklist: staged re-proposes only the open gate's fields
+                                             (the merge starts from the current spec, so every other
+                                             gate keeps what it has); one-shot re-proposes the whole
+                                             story. Refused as a round while a question stands. The
+                                             conversation is kept, so refinements usually survive;
+                                             nothing reaches disk either way.
 POST /scaffold/approve                     → staged mode only: pass the open gate and propose the next
                                              stage's content. Refused as a round (not an HTTP error):
                                              on a one-shot session (`kind:"failed"`), while a question
@@ -588,6 +595,9 @@ POST /next-chapter/start   { dir, model? }  → opens the handoff on a discovere
                                                first round; 400 if the story is unknown, or has no
                                                `chapters/<n>.md` written for the handoff to read
 POST /next-chapter/say     { text }         → a follow-up, in the same edits-only format
+POST /next-chapter/regenerate               → re-runs the opening round on the live session: a fresh
+                                             proposal that keeps the refinements said so far, unlike
+                                             abandoning and starting over. Writes nothing.
 POST /next-chapter/accept                   → { ok:true, kind:"written", chapter, dir, files[], warnings[] }
                                                | { ok:false, kind:"unloadable"|"nothing", ... }
 POST /next-chapter/abandon                  → drops the session unconditionally, always { ok:true }

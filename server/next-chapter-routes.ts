@@ -56,6 +56,13 @@ export async function handleNextChapterRoutes(
     return true;
   }
 
+  if (what === "regenerate") {
+    const r = await host.handoffRegenerate();
+    if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
+    json(res, 200, r.state);
+    return true;
+  }
+
   if (what === "accept") {
     const r = await host.handoffAccept();
     if (!r.ok) {

@@ -63,6 +63,7 @@ const armTwice = (key, ms, action) => armConfirm({
  *  show it is busy before the POST rather than after it. */
 async function startHandoff() {
   APP.handoffError = "";
+  APP.handoffRefined = false;
   APP.handoff = { active:true, busy:true, dir: APP.handoffDir, chapter:0, problems:[] };
   APP.render();
   const j = await postHandoff("start", { dir: APP.handoffDir, model: APP.handoffModel });
@@ -72,12 +73,20 @@ async function startHandoff() {
 }
 
 /** The text stays in the draft until the round actually lands, so a 409 or dropped connection
- *  doesn't silently lose what you wrote. */
+ *  doesn't silently lose what you wrote. A landed refinement marks the proposal edited. */
 async function sendHSay() {
   const text = hdraft.say.trim();
   if (!text || APP.handoff.busy) return;
   const j = await postHandoff("say", { text });
-  if (j && j.active !== undefined) { hdraft.say = ""; APP.render(); }
+  if (j && j.active !== undefined) { hdraft.say = ""; APP.handoffRefined = true; APP.render(); }
+}
+
+/** Re-run the opening round on the live session: a fresh proposal that keeps the refinements
+ *  said so far, unlike abandoning and starting over. Writes nothing. */
+async function regenHandoff() {
+  if (APP.handoff.busy) return;
+  const j = await postHandoff("regenerate", {});
+  if (j && j.active !== undefined) { APP.handoffRefined = false; APP.render(); }
 }
 
 /** The server drops its session on a successful accept and pushes `{active:false}`, so the prepared
@@ -95,15 +104,16 @@ async function acceptHandoff() {
 async function abandonHandoff() {
   await postHandoff("abandon", {});
   APP.handoff = { active:false }; APP.handoffDone = null; APP.handoffError = "";
+  APP.handoffRefined = false;
   go("story");
 }
 
-/** There is no route that re-runs the opening round, so retrying is a fresh session on the same
- *  story. Nothing is lost -- a failed first round changed nothing to keep. */
+/** A failed round changed nothing to keep, so retrying re-runs the opening round on the live
+ *  session rather than abandoning it. Refinements already said stay said. */
 async function retryHandoff() {
-  await postHandoff("abandon", {});
-  APP.handoff = { active:false }; APP.handoffError = "";
-  await startHandoff();
+  if (APP.handoff.busy) return;
+  const j = await postHandoff("regenerate", {});
+  if (j && j.active !== undefined) { APP.handoffRefined = false; APP.render(); }
 }
 
 /** Starting the prepared chapter is `/select`, which only answers while the session is parked at
@@ -139,6 +149,7 @@ export function wireHandoff(page) {
 
   on(page, "h-start", startHandoff);
   on(page, "h-retry", retryHandoff);
+  on(page, "h-regen", regenHandoff);
   on(page, "h-send", sendHSay);
   on(page, "h-back", () => { APP.storyDir = APP.handoffDir; go("story"); });
   on(page, "h-write", writePrepared);

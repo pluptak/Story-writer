@@ -675,6 +675,21 @@ export class ScaffoldSession {
     return this.runGate(next, onStage);
   }
 
+  /** Re-run the open stage's prompt without advancing the checklist — the author's "try this
+   *  stage again". Only the open gate's fields are re-proposed (mergedRaw starts from the
+   *  current spec, so every other gate keeps what it has), and the conversation is kept, so
+   *  refinements said earlier usually survive the re-run. Anything it replaces can still be
+   *  re-said, reverted per-round in the viewer, or abandoned with the session. Refuses while a
+   *  question stands, like approve: answering re-runs the gate already. */
+  async rerun(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+    if (this.mode !== "staged") return this.propose(onStage);
+    if (!this.stage)
+      return { kind: "failed", error: "the checklist has not started — call propose() first" };
+    if (this.pendingAsk)
+      return { kind: "nothing", why: "answer the architect's question before re-running this gate", stage: this.stage };
+    return this.runGate(this.stage, onStage);
+  }
+
   private takeProposal(out: Record<string, any>): ScaffoldRound {
     const n = normalizeSpec(out, this.catalogs);
     if (!n.spec.characters.length) {

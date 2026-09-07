@@ -308,6 +308,23 @@ export async function scaffoldApprove(override: boolean): Promise<ScaffoldAction
   return { ok: true, state: scaffoldSnapshot() };
 }
 
+export async function scaffoldRegenerate(): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  const gen = scaffoldGen;
+  const session = SCAFFOLD;
+  scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
+  try {
+    const r = await session.rerun(stage => { scaffoldStage = stage; publishScaffold(); });
+    if (gen === scaffoldGen) scaffoldLast = r;
+  } catch (e) {
+    if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
+  } finally { scaffoldBusy = false; scaffoldStage = ""; }
+  if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
 export async function scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult> {
   if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
   if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
@@ -348,13 +365,14 @@ export async function scaffoldPromote(name: string): Promise<ScaffoldActionResul
   return { ok: true, state: scaffoldSnapshot() };
 }
 
-export function scaffoldSet(input: { story?: unknown; field?: string; value?: unknown }): ScaffoldActionResult {
+export function scaffoldSet(input: { story?: unknown; field?: string; value?: unknown; source?: string }): ScaffoldActionResult {
   if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
   if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
   if (!SCAFFOLD.haveStory()) return { ok: false, reason: "there is no story to change yet", status: 400 };
   if (input.story && typeof input.story === "object") {
     const r = SCAFFOLD.setSpec(input.story);
-    scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "updated from the story editor" };
+    const note = input.source === "revert" ? "reverted a round" : "updated from the story editor";
+    scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note };
     publishScaffold();
     return { ok: true, state: scaffoldSnapshot() };
   }
@@ -528,6 +546,25 @@ export async function handoffSay(text: string): Promise<HandoffActionResult> {
   return { ok: true, state: handoffSnapshot() };
 }
 
+export async function handoffRegenerate(): Promise<HandoffActionResult> {
+  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  const blocked = storyWriteBlocked(LIVE.storyLock);
+  if (blocked) return { ok: false, reason: blocked, status: 409 };
+  if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
+  const gen = handoffGen;
+  const session = HANDOFF;
+  handoffBusy = true; publishHandoffState();
+  try {
+    const r = await session.propose(stage => { handoffStage = stage; publishHandoffState(); });
+    if (gen === handoffGen) handoffLast = r;
+  } catch (e) {
+    if (gen === handoffGen) handoffLast = { kind: "failed", error: (e as Error).message };
+  } finally { handoffBusy = false; handoffStage = ""; }
+  if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
+  publishHandoffState();
+  return { ok: true, state: handoffSnapshot() };
+}
+
 export async function handoffAccept(): Promise<HandoffAcceptResult> {
   if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
   const blocked = storyWriteBlocked(LIVE.storyLock);
@@ -663,9 +700,9 @@ export const HOST: ServerHost = {
   // starts report the same skills.
   storyCards: async () => storyCards(await persistedCatalogs()),
   scaffoldState: scaffoldSnapshot,
-  scaffoldStart, scaffoldSay, scaffoldApprove, scaffoldConcept, scaffoldImport, scaffoldPromote,
+  scaffoldStart, scaffoldSay, scaffoldApprove, scaffoldRegenerate, scaffoldConcept, scaffoldImport, scaffoldPromote,
   scaffoldSet, scaffoldAccept, scaffoldAbandon,
-  handoffState, handoffStart, handoffSay, handoffAccept, handoffAbandon,
+  handoffState, handoffStart, handoffSay, handoffRegenerate, handoffAccept, handoffAbandon,
   architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
   outDir: () => ENGINE.outDir,
   editorConfig: (): EditorConfig => {
