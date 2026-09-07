@@ -1,7 +1,7 @@
 /**
  * Turn a real run's transcripts into the committed replay fixture.
  *
- *   node scripts/make-replay-fixture.mjs stories/doorway/out/<run-id>
+ *   node scripts/make-replay-fixture.mjs data/stories/doorway/out/<run-id>
  *
  * Writes tests/fixtures/recorded-run/: the story.json the run used, its scene.md, and calls.jsonl —
  * one `{agent, site, response}` per model call, in each agent's own order.

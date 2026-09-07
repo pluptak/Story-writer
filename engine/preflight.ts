@@ -225,7 +225,7 @@ export async function storyCards(catalogs?: Catalogs): Promise<StoryCard[]> {
     const s = r.summary;
     const [runs, chapters] = await Promise.all([retainedRuns(resolveStoryDir(dir)), writtenChapters(dir)]);
     out.push({
-      dir, name: dir.replace(/^stories\//, ""), ok: r.ok, error: r.error,
+      dir, name: dir.replace(/^data\/stories\//, ""), ok: r.ok, error: r.error,
       warnings: r.warnings.map(w => w.trim()),
       runs, chapters,
       ...(s ? {

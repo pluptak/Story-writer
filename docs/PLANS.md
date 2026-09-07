@@ -515,7 +515,7 @@ below: **The world timeline**.
   a save unless the existing catalog policy changes deliberately.
 
   **Migration.** Change `engine/catalog-schema.ts` so `LibraryCharacter` has `hidden` and `updatedAt`
-  defaults and no `tags`. When loading an old `catalog-characters.json`, drop the obsolete `tags` key,
+  defaults and no `tags`. When loading an old `data/catalogs/catalog-characters.json`, drop the obsolete `tags` key,
   default old entries to visible, and derive a stable initial `updatedAt` from the file migration time or
   entry version. Do not silently drop unknown non-tag fields without a warning. Persist atomically using
   the existing temp-file/rename path. The story import path in `host.ts` must filter hidden entries by

@@ -188,20 +188,20 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
 }
 
 // -- DISCOVERY -------------------------------------------------------------
-/** Every story folder under stories/ that has a loadable story.json, sorted by name. An absent
- *  stories/ directory is a fresh checkout and stays silent; any other listing failure warns,
+/** Every story folder under data/stories/ that has a loadable story.json, sorted by name. An absent
+ *  data/stories/ directory is a fresh checkout and stays silent; any other listing failure warns,
  *  since an empty shelf would otherwise be indistinguishable from "no stories". */
 export async function discoverStories(): Promise<string[]> {
   const choices: string[] = [];
   try {
-    const dirents = await readdir(joinPath(ROOT, "stories"), { withFileTypes: true });
+    const dirents = await readdir(joinPath(ROOT, "data", "stories"), { withFileTypes: true });
     for (const d of dirents.sort((a, b) => a.name.localeCompare(b.name))) {
       if (!d.isDirectory()) continue;
-      try { await readFile(joinPath(ROOT, "stories", d.name, "story.json"), "utf8"); choices.push(`stories/${d.name}`); } catch {}
+      try { await readFile(joinPath(ROOT, "data", "stories", d.name, "story.json"), "utf8"); choices.push(`data/stories/${d.name}`); } catch {}
     }
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT")
-      emitWarn(`could not list stories/: ${(e as Error).message}`);
+      emitWarn(`could not list data/stories/: ${(e as Error).message}`);
   }
   return choices;
 }
@@ -213,14 +213,14 @@ export async function chooseStory(arg: string): Promise<string> {
   if (arg) return arg;
   const choices = await discoverStories();
   if (!process.stdin.isTTY) {
-    if (!choices.length) throw new Error("No stories found under stories/.");
+    if (!choices.length) throw new Error("No stories found under data/stories/.");
     return choices[0];
   }
   if (!choices.length)
-    throw new Error("No stories found under stories/ — start the viewer with --serve and use the shelf's new-story interview.");
+    throw new Error("No stories found under data/stories/ — start the viewer with --serve and use the shelf's new-story interview.");
 
   console.log("\nAvailable stories:");
-  choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.replace(/^stories\//, "")}`));
+  choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.replace(/^data\/stories\//, "")}`));
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ans = (await rl.question(`Pick a story [1-${choices.length}] (default 1): `)).trim();
   rl.close();
@@ -233,7 +233,7 @@ export async function selectableStory(dir: string): Promise<string | null> {
   const want = String(dir ?? "").trim().replace(/\\/g, "/").replace(/\/+$/, "");
   if (!want) return null;
   const choices = await discoverStories();
-  return choices.find(c => c === want || c === `stories/${want}`) ?? null;
+  return choices.find(c => c === want || c === `data/stories/${want}`) ?? null;
 }
 
 const BUILTIN_MODEL = "qwen3.6-35b-a3b";

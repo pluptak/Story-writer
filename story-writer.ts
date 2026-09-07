@@ -46,7 +46,7 @@ configureArchitectDebug(ARCHITECT_DEBUG || !!ARCHITECT_DEBUG_LOG, ARCHITECT_DEBU
 
 async function runPreflightCli() {
   const dirs = STORY_DIR ? [STORY_DIR] : await discoverStories();
-  if (!dirs.length) { console.error("No stories found under stories/."); process.exitCode = 1; return; }
+  if (!dirs.length) { console.error("No stories found under data/stories/."); process.exitCode = 1; return; }
   let failed = 0;
   const catalogs = await persistedCatalogs();   // one read for the whole listing, not one per story
   for (const dir of dirs) {

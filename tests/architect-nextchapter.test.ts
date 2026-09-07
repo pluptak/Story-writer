@@ -40,7 +40,7 @@ const STORY = {
 describe("NextChapterSession", () => {
   const spec = normalizeSpec(STORY).spec;
   const written = [{ n: 1, text: "The signal never fired, and Aster wrote that it did." }];
-  const handoff = (script: unknown[], s = spec, dir = "stories/doorway") =>
+  const handoff = (script: unknown[], s = spec, dir = "data/stories/doorway") =>
     new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))),
                            SCAFFOLD_DEFAULTS, dir, s, written);
 
@@ -194,7 +194,7 @@ describe("NextChapterSession", () => {
   it("takes a reply written entirely in words as the architect asking", async () => {
     // Not JSON.stringify'd: the point is a model that never produced an object at all.
     const s = new NextChapterSession(new ScriptedAgent(["Which scene should I fill the details for?"]),
-                                     SCAFFOLD_DEFAULTS, "stories/doorway", spec, written);
+                                     SCAFFOLD_DEFAULTS, "data/stories/doorway", spec, written);
     const r = await s.propose();
     assert.equal(r.kind, "question");
     assert.equal(s.pendingAsk, "Which scene should I fill the details for?");

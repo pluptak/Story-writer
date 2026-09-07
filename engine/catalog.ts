@@ -190,7 +190,7 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
 function catalogPath(kind: CatalogKind, path?: string): string {
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
-  return path ?? joinPath(ROOT, reg.filename);
+  return path ?? joinPath(ROOT, "data", "catalogs", reg.filename);
 }
 
 /** The persisted bible as name → meaning pairs. Entries with a blank meaning are dropped: a bible

@@ -1,12 +1,12 @@
 /** The GUI harness: the real server (server/server.ts) bound in-process over a fixture
  *  ServerHost, so the browser exercises the genuine HTTP surface, static modules, and SSE bus
- *  against a deterministic backend — no LM Studio, no child process, nothing in stories/.
+ *  against a deterministic backend — no LM Studio, no child process, nothing in data/stories/.
  *
  *  The fixture story is tests/fixtures/doorway (the committed worked example). Everything that
  *  touches story.json — the editor's load/check/save/discard, the handoff's accept — is delegated
  *  to the REAL host (host.ts), so those paths run the engine's own logic against temp copies of
  *  the fixture. Only what must differ is overridden: model discovery (none), the story registry
- *  (temp dirs instead of stories/ discovery), the handoff session (scripted), and the catalog
+ *  (temp dirs instead of data/stories/ discovery), the handoff session (scripted), and the catalog
  *  (engine logic, temp files). Host methods no test has scripted yet throw, loudly. */
 import { readFile, writeFile, mkdtemp } from "node:fs/promises";
 import { join as joinPath } from "node:path";
@@ -71,7 +71,7 @@ export function cardFromStory(dir: string, raw: FixtureStory, name = dir): Story
 }
 
 /** A temp directory holding a copy of the fixture's story.json — the story a write-path test
- *  works on, so nothing committed or in stories/ is ever touched. */
+ *  works on, so nothing committed or in data/stories/ is ever touched. */
 export async function copyFixtureStory(): Promise<string> {
   const dir = await mkdtemp(joinPath(tmpdir(), "pw-story-"));
   await writeFile(joinPath(dir, "story.json"), await readFile(joinPath(ROOT, FIXTURE_DIR, "story.json"), "utf8"));

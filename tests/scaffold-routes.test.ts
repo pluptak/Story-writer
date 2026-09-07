@@ -211,7 +211,7 @@ describe("/scaffold routes", () => {
       const acceptP = post("/scaffold/accept", { folder: "the-fog-signal" }, h);
       await yieldMicrotasks();
       await post("/scaffold/abandon", {}, h);
-      fireAccept({ kind: "written", dir: "stories/the-fog-signal", files: [], warnings: [] });
+      fireAccept({ kind: "written", dir: "data/stories/the-fog-signal", files: [], warnings: [] });
       const accepted = await acceptP;
 
       assert.equal(accepted.code, 409);

@@ -30,9 +30,9 @@ let suggestCalls = 0;
 
 function makeHost(overrides?: Partial<ServerHost>): ServerHost {
   return baseHost({
-    selectableStory: async (d: string) => (d === "stories/doorway" || d === "doorway" ? "stories/doorway" : null),
+    selectableStory: async (d: string) => (d === "data/stories/doorway" || d === "doorway" ? "data/stories/doorway" : null),
     storyForEdit: async (dir: string) => {
-      if (dir !== "stories/doorway") return { ok: false, error: "not found" };
+      if (dir !== "data/stories/doorway") return { ok: false, error: "not found" };
       const parsed = {
         title: DOORWAY.title,
         premise: DOORWAY.premise,
@@ -52,7 +52,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
       return { ok: true, warnings: [] };
     },
     saveStory: async (dir: string, _story: any) => {
-      if (dir !== "stories/doorway") return { ok: false, reason: "not found" };
+      if (dir !== "data/stories/doorway") return { ok: false, reason: "not found" };
       return { ok: true, warnings: [] };
     },
     suggestEdits: async (_spec: unknown, text: string) => {

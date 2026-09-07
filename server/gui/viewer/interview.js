@@ -435,8 +435,8 @@ function folderNoteHtml() {
   const slug = slugify(draft.folder);
   if (!draft.folder.trim()) return "";
   if (!slug) return warnLine("that gives no usable folder name.");
-  if (folderTaken()) return warnLine(`stories/${esc(slug)} already exists — pick another name.`);
-  return slug !== draft.folder.trim() ? `<div class="hint">this lands in <b>stories/${esc(slug)}</b></div>` : "";
+  if (folderTaken()) return warnLine(`data/stories/${esc(slug)} already exists — pick another name.`);
+  return slug !== draft.folder.trim() ? `<div class="hint">this lands in <b>data/stories/${esc(slug)}</b></div>` : "";
 }
 
 // ── the sidebar ────────────────────────────────────────────────────────────────

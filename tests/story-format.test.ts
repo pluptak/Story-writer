@@ -593,7 +593,7 @@ describe("loadDefaults", () => {
 });
 
 // -- THE COMMITTED REFERENCE STORY -----------------------------------------
-// stories/* is the user's own content and gitignored; tests/fixtures/doorway is the one story
+// data/stories/* is the user's own content and gitignored; tests/fixtures/doorway is the one story
 // committed with the engine, doubling as the architect's worked example. See engine/architect.ts.
 describe("the doorway fixture", () => {
   it("loads, and is built so a bible skill and a restriction are both in play", async () => {
@@ -607,12 +607,12 @@ describe("the doorway fixture", () => {
   });
 });
 
-// -- STORY DISCOVERY (scans the real stories/ dir) -------------------------
-// discoverStories/selectableStory scan stories/, which is gitignored and empty on a fresh checkout.
-// These tests synthesize a throwaway story there from the committed fixture, exercise the scan, and
-// remove it — self-contained, not dependent on whatever is under stories/ locally.
+// -- STORY DISCOVERY (scans the real data/stories/ dir) -------------------------
+// discoverStories/selectableStory scan data/stories/, which is gitignored and empty on a fresh
+// checkout. These tests synthesize a throwaway story there from the committed fixture, exercise the
+// scan, and remove it — self-contained, not dependent on whatever is under data/stories/ locally.
 describe("story discovery", () => {
-  const probe = "stories/__discovery_probe__";
+  const probe = "data/stories/__discovery_probe__";
   before(async () => {
     await rm(join(ROOT, probe), { recursive: true, force: true });
     await mkdir(join(ROOT, probe), { recursive: true });
@@ -620,7 +620,7 @@ describe("story discovery", () => {
   });
   after(async () => { await rm(join(ROOT, probe), { recursive: true, force: true }); });
 
-  it("discovers a story under stories/, and never the tests/fixtures tree", async () => {
+  it("discovers a story under data/stories/, and never the tests/fixtures tree", async () => {
     const found = await discoverStories();
     assert.ok(found.includes(probe), `expected ${probe} among ${JSON.stringify(found)}`);
     assert.ok(!found.some(d => d.includes("badstory")));
@@ -643,13 +643,13 @@ describe("story discovery", () => {
     assert.equal(await selectableStory(probe), probe);
     assert.equal(await selectableStory("__discovery_probe__"), probe);
     assert.equal(await selectableStory(probe + "/"), probe);
-    assert.equal(await selectableStory("stories\\__discovery_probe__"), probe,
+    assert.equal(await selectableStory("data/stories\\__discovery_probe__"), probe,
                  "a Windows separator names the same story, not a different one");
   });
 
   it("refuses anything the engine did not discover", async () => {
-    for (const bad of ["", "   ", "../../etc/passwd", "stories/../story-writer.ts", "stories",
-                       "stories/nope", "/etc/passwd", "C:/Windows/System32", "tests/fixtures/badstory",
+    for (const bad of ["", "   ", "../../etc/passwd", "data/stories/../story-writer.ts", "data/stories",
+                       "data/stories/nope", "/etc/passwd", "C:/Windows/System32", "tests/fixtures/badstory",
                        "tests/fixtures/doorway"]) {
       assert.equal(await selectableStory(bad), null, `must refuse ${JSON.stringify(bad)}`);
     }

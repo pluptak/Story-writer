@@ -48,7 +48,7 @@ describe("/next-chapter routes", () => {
 
   const session = (script: unknown[]) =>
     new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))), SCAFFOLD_DEFAULTS,
-                           "stories/doorway", spec, [{ n: 1, text: "It happened." }]);
+                           "data/stories/doorway", spec, [{ n: 1, text: "It happened." }]);
 
   // Drives the real HOST handoff methods (host.ts) through setHandoffTestHooks, mirroring
   // scaffold-routes.test.ts -- newHandoffSession is no longer part of ServerHost (Block 6,
@@ -60,7 +60,7 @@ describe("/next-chapter routes", () => {
     return {
       ...HOST,
       storyCards: async () => [],
-      selectableStory: async (dir: string) => (dir === "stories/doorway" ? "stories/doorway" : null),
+      selectableStory: async (dir: string) => (dir === "data/stories/doorway" ? "data/stories/doorway" : null),
       resolveStoryDir: (dir: string) => dir,
       runDirs: async () => [],
       availableModelIds: async () => null,
@@ -83,8 +83,8 @@ describe("/next-chapter routes", () => {
   });
 
   it("reports why a story cannot be handed off, and stays closed", async () => {
-    const h = host(async () => { throw new Error("No chapters written yet in stories/doorway"); });
-    const r = await callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h);
+    const h = host(async () => { throw new Error("No chapters written yet in data/stories/doorway"); });
+    const r = await callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, h);
     assert.equal(r.code, 400);
     assert.match(r.body.reason, /No chapters written yet/);
     assert.equal((await callRoute(handleNextChapterRoutes, "/next-chapter", {}, h, "GET")).body.active, false);
@@ -94,7 +94,7 @@ describe("/next-chapter routes", () => {
   it("will not rewrite the story a run is reading", async () => {
     LIVE.running = true;
     try {
-      const r = await callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, host());
+      const r = await callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, host());
       assert.equal(r.code, 409);
       assert.match(r.body.reason, /a run is in flight/);
     } finally { LIVE.running = false; }
@@ -102,11 +102,11 @@ describe("/next-chapter routes", () => {
 
   it("opens, proposes, and publishes the chapter it is preparing", async () => {
     const h = host(async () => session([{ edits: [{ field: "characters.ASTER.goal", value: "Leave." }] }]));
-    const r = await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
+    const r = await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, h));
     assert.equal(r.code, 200);
     assert.equal(r.body.active, true);
     assert.equal(r.body.chapter, 2);
-    assert.equal(r.body.dir, "stories/doorway");
+    assert.equal(r.body.dir, "data/stories/doorway");
     assert.equal(r.body.edited, true);
     assert.equal(r.body.last.kind, "edits");
     assert.equal(r.body.spec.characters[0].goal, "Leave.");
@@ -131,7 +131,7 @@ describe("/next-chapter routes", () => {
     const gated = new Promise<NextChapterSession>(r => { release = r; });
     const h = host(() => gated);
     try {
-      const startP = callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h);
+      const startP = callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, h);
       await yieldMicrotasks();
       await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
       release(session([]));
@@ -148,7 +148,7 @@ describe("/next-chapter routes", () => {
     let fireAccept!: (r: unknown) => void;
     const gated = new Promise(r => { fireAccept = r; });
     const hanging = {
-      dir: "stories/doorway", chapter: 2, edited: true, pendingAsk: null, problems: [],
+      dir: "data/stories/doorway", chapter: 2, edited: true, pendingAsk: null, problems: [],
       defaults: SCAFFOLD_DEFAULTS, spec,
       propose: async () => ({ kind: "edits" }),
       say: async () => ({ kind: "edits" }),
@@ -156,14 +156,14 @@ describe("/next-chapter routes", () => {
     } as unknown as NextChapterSession;
     const h = host(async () => hanging);
     try {
-      const opened = await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
+      const opened = await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, h));
       assert.equal(opened.body.active, true);
       assert.match(String(LIVE.storyLock), /handoff is open/, "an open handoff holds the story");
 
       const acceptP = callRoute(handleNextChapterRoutes, "/next-chapter/accept", {}, h);
       await yieldMicrotasks();
       await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
-      fireAccept({ kind: "written", chapter: 2, dir: "stories/doorway", files: [], warnings: [] });
+      fireAccept({ kind: "written", chapter: 2, dir: "data/stories/doorway", files: [], warnings: [] });
       const accepted = await acceptP;
 
       assert.equal(accepted.code, 409);
@@ -181,7 +181,7 @@ describe("/next-chapter routes", () => {
     let fireAccept!: (r: unknown) => void;
     const gated = new Promise(r => { fireAccept = r; });
     const hanging = {
-      dir: "stories/doorway", chapter: 2, edited: true, pendingAsk: null, problems: [],
+      dir: "data/stories/doorway", chapter: 2, edited: true, pendingAsk: null, problems: [],
       defaults: SCAFFOLD_DEFAULTS, spec,
       propose: async () => ({ kind: "edits" }),
       say: async () => ({ kind: "edits" }),
@@ -189,7 +189,7 @@ describe("/next-chapter routes", () => {
     } as unknown as NextChapterSession;
     const h = host(async () => hanging);
     try {
-      await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
+      await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, h));
       const acceptP = callRoute(handleNextChapterRoutes, "/next-chapter/accept", {}, h);
       await yieldMicrotasks();
       await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
@@ -197,7 +197,7 @@ describe("/next-chapter routes", () => {
       // Sampled, not asserted, while the write is still gated: asserting here would leave `acceptP`
       // pending forever on failure and hang the runner instead of reporting it.
       const lockedMidWrite = LIVE.storyLock;
-      fireAccept({ kind: "written", chapter: 2, dir: "stories/doorway", files: [], warnings: [] });
+      fireAccept({ kind: "written", chapter: 2, dir: "data/stories/doorway", files: [], warnings: [] });
       await acceptP;
 
       assert.ok(lockedMidWrite, "abandon must not unlock a story an accept is still writing");
@@ -213,17 +213,17 @@ describe("/next-chapter routes", () => {
       saveStory: async () => ({ ok: true, warnings: [] }),
     });
     try {
-      await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "stories/doorway" }, h));
+      await quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, h));
       assert.ok(LIVE.storyLock);
 
       const save = await callRoute(handleStoryEditRoutes, "/story/save",
-        { dir: "stories/doorway", story: {} }, editHost);
+        { dir: "data/stories/doorway", story: {} }, editHost);
       assert.equal(save.code, 409);
       assert.match(save.body.reason, /handoff is open/);
 
       await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
       const after = await callRoute(handleStoryEditRoutes, "/story/save",
-        { dir: "stories/doorway", story: {} }, editHost);
+        { dir: "data/stories/doorway", story: {} }, editHost);
       assert.equal(after.code, 200, "abandoning the handoff releases the lock");
     } finally { LIVE.storyLock = null; }
   });
@@ -570,7 +570,7 @@ describe("handleRunControl", () => {
 // -- SECTION ----
 describe("/runs/llm routes", () => {
   const host: ServerHost = makeHost({
-    selectableStory: async (d: string) => d.startsWith("stories/") ? d : null,
+    selectableStory: async (d: string) => d.startsWith("data/stories/") ? d : null,
     resolveStoryDir: (d: string) => "/resolved/" + d,
     runDirs: async () => ["run-1"],
     runLlmLogs: async () => [{ file: "writer.jsonl", agent: "WRITER", role: "writer", models: ["m1"], calls: 3, promptChars: 100, responseChars: 20 }],
@@ -578,7 +578,7 @@ describe("/runs/llm routes", () => {
   });
 
   it("is not one of its routes", async () => {
-    const r = await callGet(handleRunLogRoutes, "/nope?dir=stories/x&id=run-1", host);
+    const r = await callGet(handleRunLogRoutes, "/nope?dir=data/stories/x&id=run-1", host);
     assert.equal(r.handled, false);
   });
 
@@ -589,13 +589,13 @@ describe("/runs/llm routes", () => {
   });
 
   it("refuses a run the story does not have", async () => {
-    const r = await callGet(handleRunLogRoutes, "/runs/llm?dir=stories/doorway&id=nope", host);
+    const r = await callGet(handleRunLogRoutes, "/runs/llm?dir=data/stories/doorway&id=nope", host);
     assert.equal(r.code, 404);
     assert.match(r.json().reason, /no such run/);
   });
 
   it("lists a run's transcripts", async () => {
-    const r = await callGet(handleRunLogRoutes, "/runs/llm?dir=stories/doorway&id=run-1", host);
+    const r = await callGet(handleRunLogRoutes, "/runs/llm?dir=data/stories/doorway&id=run-1", host);
     assert.equal(r.code, 200);
     const body = r.json();
     assert.equal(body.logs.length, 1);
@@ -604,7 +604,7 @@ describe("/runs/llm routes", () => {
   });
 
   it("serves one transcript as ndjson", async () => {
-    const r = await callGet(handleRunLogRoutes, "/runs/llm/file?dir=stories/doorway&id=run-1&file=writer.jsonl", host);
+    const r = await callGet(handleRunLogRoutes, "/runs/llm/file?dir=data/stories/doorway&id=run-1&file=writer.jsonl", host);
     assert.equal(r.code, 200);
     assert.equal(r.headers["Content-Type"], "application/x-ndjson");
     assert.equal(r.text.split("\n").filter((l: string) => l).length, 2);
@@ -612,7 +612,7 @@ describe("/runs/llm routes", () => {
 
   it("refuses a transcript the run does not have", async () => {
     // The engine's listing is the allowlist; the route never validates the name itself.
-    const r = await callGet(handleRunLogRoutes, "/runs/llm/file?dir=stories/doorway&id=run-1&file=../writing-log.jsonl", host);
+    const r = await callGet(handleRunLogRoutes, "/runs/llm/file?dir=data/stories/doorway&id=run-1&file=../writing-log.jsonl", host);
     assert.equal(r.code, 404);
     assert.match(r.json().reason, /no such transcript/);
   });
@@ -621,7 +621,7 @@ describe("/runs/llm routes", () => {
 // -- SECTION ----
 describe("/runs/log", () => {
   const hostAt = (base: string): ServerHost => makeHost({
-    selectableStory: async (d: string) => d.startsWith("stories/") ? d : null,
+    selectableStory: async (d: string) => d.startsWith("data/stories/") ? d : null,
     resolveStoryDir: () => base,
     runDirs: async () => ["run-1"],
   });
@@ -633,7 +633,7 @@ describe("/runs/log", () => {
   });
 
   it("refuses a run the story does not have", async () => {
-    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=nope", hostAt("/nowhere"));
+    const r = await callGet(handleRunLogRoutes, "/runs/log?dir=data/stories/doorway&id=nope", hostAt("/nowhere"));
     assert.equal(r.code, 404);
     assert.match(r.json().reason, /no such run/);
   });
@@ -643,7 +643,7 @@ describe("/runs/log", () => {
     try {
       await mkdir(join(base, "out", "run-1"), { recursive: true });
       await writeFile(join(base, "out", "run-1", "writing-log.jsonl"), '{"a":1}\n{"a":2}', "utf8");
-      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", hostAt(base));
+      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=data/stories/doorway&id=run-1", hostAt(base));
       assert.equal(r.code, 200);
       assert.equal(r.headers["Content-Type"], "application/x-ndjson");
       assert.equal(r.text.split("\n").filter((l: string) => l).length, 2);
@@ -656,7 +656,7 @@ describe("/runs/log", () => {
     const base = await mkdtemp(join(tmpdir(), "runslog-"));
     try {
       await mkdir(join(base, "out", "run-1"), { recursive: true });
-      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=stories/doorway&id=run-1", hostAt(base));
+      const r = await callGet(handleRunLogRoutes, "/runs/log?dir=data/stories/doorway&id=run-1", hostAt(base));
       assert.equal(r.code, 404);
       assert.match(r.json().reason, /no writing log/);
     } finally {

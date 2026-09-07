@@ -186,7 +186,7 @@ describe("startServer's handle", () => {
     await waitUntilListening(await handle.bound);
     const r = await fetch(`http://localhost:${await handle.bound}/select`,
                           { method: "POST", headers: { "content-type": "application/json" },
-                            body: JSON.stringify({ dir: "stories/doorway" }) });
+                            body: JSON.stringify({ dir: "data/stories/doorway" }) });
     assert.equal(r.status, 400);
     const body = (await r.json()) as { reason: string };
     assert.equal(body.reason, "the session is not waiting on a choice");

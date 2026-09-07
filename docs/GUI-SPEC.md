@@ -297,7 +297,7 @@ POST /catalog/assist { kind?, mode, fields[], instruction, character }
                                          failures, not a client error)
 ```
 
-A catalog is **global**: it lives beside `defaults.json`, not inside a story. So unlike the story
+A catalog is **global**: it lives in `data/catalogs/`, not inside a story. So unlike the story
 editor these routes take no `dir`, and none of them consults the story-write lock — a run reading one
 story's `story.json` has no bearing on a shelf of reusable characters. `/catalog/config` is the
 catalog's own schema-derived shape — the tag facet enum, the character voice-sample cap, and the

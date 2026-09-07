@@ -18,7 +18,7 @@ import { estimateTokens } from "./llm-client.ts";
 
 async function architectExample(): Promise<string> {
   try {
-    // The one story committed to the repo (everything under stories/ is the user's and gitignored),
+    // The one story committed to the repo (everything under data/stories/ is the user's and gitignored),
     // kept as a fixture so the worked example ships with the engine rather than depending on local content.
     const md = await readFile(joinPath(ROOT, "tests/fixtures/doorway/story.json"), "utf8");
     const story = JSON.parse(md);
@@ -397,7 +397,7 @@ export class ScaffoldSession {
    *  like `tension`, and never a story.json field. Tags steer the story stage and stop there;
    *  castSize is the OPENING cast's target size, which the cast stage reads. */
   constructor(public architect: Agent, public defaults: Defaults, public idea: string,
-              public storiesDir: string = joinPath(ROOT, "stories"),
+              public storiesDir: string = joinPath(ROOT, "data", "stories"),
               public mode: "oneshot" | "staged" = "oneshot",
               public newJudge?: () => Agent,
               public tags: readonly string[] = [],

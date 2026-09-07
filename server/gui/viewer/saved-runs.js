@@ -17,7 +17,7 @@ export async function loadSavedRun(dir, id, store = READV, repaint = true, agent
     if (!r.ok || req !== store.loadReq) return req === store.loadReq ? false : null;
     const text = await r.text();
     if (req !== store.loadReq) return null;
-    setSrc(store, `${dir.replace(/^stories\//, "")} · saved run`, false);
+    setSrc(store, `${dir.replace(/^data\/stories\//, "")} · saved run`, false);
     store.dir = dir; store.id = id;
     store.label = fmtRun((APP.stories?.find(s => s.dir === dir)?.runs || []).find(x => x.id === id) || {});
     ingest(text, store, repaint);

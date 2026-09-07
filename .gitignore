@@ -1,6 +1,6 @@
 node_modules/
-stories/
-catalog-*.json
+data/stories/
+data/catalogs/
 *.log
 test-results/
 .mcp.json
@@ -10,3 +10,4 @@ test-results/
 .continue/
 AGENTS.md
 opencode.jsonc
+.opencode/

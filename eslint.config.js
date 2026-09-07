@@ -19,7 +19,7 @@ export default [
   {
     ignores: [
       "node_modules/**",
-      "stories/**",      // the user's own content, gitignored
+      "data/stories/**", // the user's own content, gitignored
       "**/out/**",       // run artifacts
       "mockups/**",      // static design mockups, not shipped code
       ".continue/**",

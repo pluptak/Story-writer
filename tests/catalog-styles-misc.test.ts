@@ -258,10 +258,10 @@ describe("a persisted origin reaching a story", () => {
 });
 
 describe("the shipped catalog-skills.json", () => {
-  // The author's own file is gitignored user data, so what ships is whatever sits at the repo root.
+  // The author's own file is gitignored user data, so what ships is whatever sits in data/catalogs/.
   // This pins it to the engine's in-code seed: a fresh install and a first save must agree on what
   // special skills and origins exist.
-  const shipped = join(fileURLToPath(new URL("../..", import.meta.url)), "catalog-skills.json");
+  const shipped = join(fileURLToPath(new URL("../..", import.meta.url)), "data", "catalogs", "catalog-skills.json");
 
   it("carries both the special skills and the origins", async () => {
     const bible = await skillBibleEntries(shipped);

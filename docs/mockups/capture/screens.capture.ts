@@ -183,8 +183,8 @@ test("the shelf", async ({ page, served }) => {
     { ...raw.characters[0], name: "RIVEN" },
     { ...raw.characters[1], name: "TOBIAS", skills: ["recall :: quoting a document from memory, years later"], restrictions: [] },
   ];
-  registerStory("stories/the-signature", () => ({
-    ...cardFromStory("stories/the-signature", signature, "the-signature"),
+  registerStory("data/stories/the-signature", () => ({
+    ...cardFromStory("data/stories/the-signature", signature, "the-signature"),
     chapters: [1],
     runs: [{ id: "2026-09-04T22-11-08", mtimeMs: Date.parse("2026-09-04T22:11:08"), chapter: 2, steps: 6, words: 512, done: false, stopped: true }],
   }));
@@ -198,7 +198,7 @@ test("the shelf", async ({ page, served }) => {
     { ...raw.characters[0], name: "HALLE", skills: ["diving :: working at depth on a single tank"], restrictions: [] },
     { ...raw.characters[1], name: "OKON", skills: ["salvage :: reading a wreck for what will still lift"], restrictions: ["speech"] },
   ];
-  registerStory("stories/low-tide", () => cardFromStory("stories/low-tide", lowTide, "low-tide"));
+  registerStory("data/stories/low-tide", () => cardFromStory("data/stories/low-tide", lowTide, "low-tide"));
 
   await arrive(page, served, "#/shelf");
   await expect(page.getByTestId("shelf.story-card")).toHaveCount(3);
