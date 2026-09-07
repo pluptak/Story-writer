@@ -12,35 +12,71 @@ function renderConsult(b) {
   const flagged = b.attempts.some(a => a.flags.length);
   const asked   = b.attempts.some(a => a.qa.length);
   const isOpen  = APP.expandAll || open.has(b.seq);
-  // An open beat sends no question, so the situation is the ask and the header shows that.
-  const q = b.attempts[0]?.question || b.attempts[0]?.situation || "";
-  const tags = [
-    asked   ? '<span class="tag asked" data-tid="consult.tag">asked back</span>' : "",
-    retried ? `<span class="tag retry" data-tid="consult.tag">${b.attempts.length - 1} retry</span>` : "",
-    flagged ? '<span class="tag flag" data-tid="consult.flag">flagged</span>' : "",
-  ].join("");
+  // The story layer reads the FINAL attempt: that is the decision the story actually faced and
+  // the answer it kept. Earlier attempts are superseded mechanics and live in the details below.
+  const fin = b.attempts[b.attempts.length - 1] || {};
+  const first = b.attempts[0] || {};
+  // An open beat sends no question, so the situation is the decision and the header shows that.
+  const decision = fin.question || fin.situation || first.question || first.situation || "";
+  const ans = fin.answer;
+  const verdict = fin.judge?.verdict;
+  // Summary state in story words: decided (kept), reasked (tried again), asked back (needed a
+  // fact first), flagged (something about the reply needed attention). Attempt counts stay out
+  // of the collapsed line beyond the single reasked marker.
+  const state = retried ? "reasked" : asked ? "asked back" : flagged ? "flagged" : "decided";
+  const tags = `<span class="tag state" data-tid="consult.tag">${state}</span>` +
+    (retried ? `<span class="tag retry" data-tid="consult.tag">×${b.attempts.length}</span>` : "");
 
-  const attempts = b.attempts.map((a, i) => {
-    const ans = a.answer;
+  // What happens next, in one line off the final state.
+  const outcome = !ans
+    ? `Waiting — the story pauses here until ${b.who} answers.`
+    : verdict === "retry"
+      ? `Set aside — ${b.who} is being asked again, and this answer will not reach the page.`
+      : retried
+        ? `Decided — ${b.who}'s answer stands and the story continues.${b.capped ? " The re-ask limit was reached, so this answer was kept." : ""}`
+        : `Decided — ${b.who}'s answer stands and the story continues.`;
+
+  // Attempt mechanics, unchanged in content, disclosed one level down. Tids on the wrappers stay
+  // stable (deep links, timeline and the test ids address them); the per-attempt field rows keep
+  // their engine labels in here, where they belong.
+  const attempts = b.attempts.map((a) => {
+    const aAns = a.answer;
     return `<div class="attempt" data-tid="consult.attempt" data-n="${esc(a.n)}">
       <h4>${b.attempts.length > 1 ? `attempt ${esc(a.n)}${a.n > 1 ? " — fresh instance, no memory of the last" : ""}` : "asked"}</h4>
-      <div class="kv dim" data-tid="consult.situation"><span class="k">situation given</span><span class="v">${esc(a.situation)}</span></div>
-      ${a.question ? `<div class="kv" data-tid="consult.question"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>` : ""}
-      ${a.qa.map(x => `<div class="qa" data-tid="consult.qa"><div class="ask">${esc(x.q)}</div><div class="ans">${esc(x.a)}</div></div>`).join("")}
-      ${a.flags.map(f => `<div class="kv dim" data-tid="consult.flag"><span class="k">note</span><span class="v">${esc(f)}</span></div>`).join("")}
-      ${ans ? `<div class="ansblock" data-tid="consult.answer">
-          ${ans.speech ? `<div class="speech">“${esc(ans.speech)}”</div>` : ""}
-          ${ans.action ? `<div class="action">${esc(ans.action)}</div>` : ""}
-          ${ans.thought ? `<div class="thought">${esc(ans.thought)}</div>` : ""}
-          ${ans.note ? `<div class="thought">note: ${esc(ans.note)}</div>` : ""}
+      <div class="kv dim"><span class="k">situation given</span><span class="v">${esc(a.situation)}</span></div>
+      ${a.question ? `<div class="kv"><span class="k">question</span><span class="v">${esc(a.question)}</span></div>` : ""}
+      ${a.qa.map(x => `<div class="qa"><div class="ask">${esc(x.q)}</div><div class="ans">${esc(x.a)}</div></div>`).join("")}
+      ${a.flags.map(f => `<div class="kv dim"><span class="k">note</span><span class="v">${esc(f)}</span></div>`).join("")}
+      ${aAns ? `<div class="ansblock">
+          ${aAns.speech ? `<div class="speech">“${esc(aAns.speech)}”</div>` : ""}
+          ${aAns.action ? `<div class="action">${esc(aAns.action)}</div>` : ""}
+          ${aAns.thought ? `<div class="thought">${esc(aAns.thought)}</div>` : ""}
+          ${aAns.note ? `<div class="thought">note: ${esc(aAns.note)}</div>` : ""}
         </div>` : ""}
       ${a.judge ? `<div${tid("consult.verdict")} class="verdict ${esc(a.judge.verdict)}">${esc(a.judge.verdict)}${a.judge.note ? " — " + esc(a.judge.note) : ""}</div>` : ""}
     </div>`;
   }).join("");
 
   return `<details ${tid("prose.consult")} class="consult" data-seq="${esc(b.seq)}"${isOpen ? " open" : ""}>
-    <summary><span class="who">${esc(b.who)}</span><span class="qs">${esc(q)}</span>${tags}</summary>
-    <div class="body">${attempts}</div>
+    <summary><span class="who">${esc(b.who)}</span><span class="decide">decides</span><span class="qs">${esc(decision)}</span>${tags}</summary>
+    <div class="body">
+      <p class="decide-why">The story reached a moment only ${esc(b.who)} could decide, so it stopped for them.</p>
+      <div class="kv" data-tid="consult.situation"><span class="k">The situation</span><span class="v">${esc(fin.situation || "")}</span></div>
+      ${fin.question ? `<div class="kv" data-tid="consult.question"><span class="k">The decision</span><span class="v">${esc(fin.question)}</span></div>` : ""}
+      ${fin.qa.map(x => `<div class="qa" data-tid="consult.qa"><div class="ask">${esc(x.q)}</div><div class="ans">${esc(x.a)}</div></div>`).join("")}
+      ${ans ? `<div class="decide-answered"><span class="k">What ${esc(b.who)} answered</span>
+        <div class="ansblock" data-tid="consult.answer">
+          ${ans.speech ? `<div class="speech">“${esc(ans.speech)}”</div>` : ""}
+          ${ans.action ? `<div class="action">${esc(ans.action)}</div>` : ""}
+          ${ans.thought ? `<div class="thought">${esc(ans.thought)}</div>` : ""}
+          ${ans.note ? `<div class="thought">note: ${esc(ans.note)}</div>` : ""}
+        </div></div>` : ""}
+      <div class="decide-outcome" data-tid="consult.outcome">${esc(outcome)}</div>
+      <details class="engine-details" data-tid="consult.engine-details">
+        <summary>How this was decided${b.attempts.length > 1 ? ` · ${b.attempts.length} attempts` : ""}</summary>
+        ${attempts}
+      </details>
+    </div>
   </details>`;
 }
 

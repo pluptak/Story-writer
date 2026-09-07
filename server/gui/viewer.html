@@ -46,9 +46,19 @@
   </nav>
   <main class="page" id="page"></main>
   <aside class="rail" id="rail">
+    <!-- Rail hierarchy (writer-first): scene status, cast, controls, engine details. The status
+         card answers "what do I need to know while writing"; the engine's own numbers stay in
+         the collapsed disclosure at the bottom, never above the cast or the controls. -->
+    <section class="side" id="runscene" hidden>
+      <h3>Scene</h3>
+      <div id="railstatus"></div>
+    </section>
+    <section class="side" id="castcard" hidden>
+      <h3>cast in scene</h3>
+      <div class="cast" id="cast"></div>
+    </section>
     <section class="side" id="runctrl" data-tid="chrome.runctrl">
       <h3>run controls</h3>
-      <div id="railstats"></div>
       <div class="sessionbar" id="sessionbar" hidden>
         <select class="btn" id="modelSelect" title="override the model for the rest of this run"
                 aria-label="override the model for the rest of this run"><option value="">story default</option></select>
@@ -59,10 +69,10 @@
         <span class="ctrl-err" id="sessionNotice" role="status"></span>
       </div>
     </section>
-    <section class="side" id="castcard" hidden>
-      <h3>cast in scene</h3>
-      <div class="cast" id="cast"></div>
-    </section>
+    <!-- Engine plumbing (steps, model, retries, per-agent call stats): lowest priority in the rail,
+         collapsed by default (hud.js:renderRail) so it never outweighs the status, the cast or the
+         controls. -->
+    <div id="railstats"></div>
   </aside>
 </div>
 <div id="modalroot"></div>

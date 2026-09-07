@@ -14,7 +14,13 @@ export function renderSession() {
   const hidden = !onLive || !APP.live;
   if (hidden && !$("sessionbar").hidden) notify("", "sessionNotice");   // don't carry a stale refusal into the next run
   $("sessionbar").hidden = hidden;
-  for (const id of ["stop", "consultMe", "pause"]) $(id).hidden = !APP.session.running;
+  for (const id of ["stop", "pause"]) $(id).hidden = !APP.session.running;
+  // "consult me" is only meaningful in interactive mode; showing it disabled in hands-off mode
+  // teaches the engine handshake instead of the story. The model override is an engine detail:
+  // disclose it only when paused (the one moment it can apply) instead of competing with prose.
+  $("consultMe").hidden = !APP.session.running || !APP.session.interactive;
+  const ms = $("modelSelect");
+  ms.hidden = APP.session.running && !APP.session.paused;
   const b = $("stop");
   b.disabled = !APP.session.running || APP.session.stopping;
   b.classList.toggle("armed", !!APP.armed);
@@ -29,7 +35,6 @@ export function renderSession() {
   const p = $("pause");
   p.disabled = !APP.session.running || APP.session.stopping;
   p.textContent = APP.session.paused ? "resume" : APP.session.pausing ? "pausing…" : "pause";
-  const ms = $("modelSelect");
   ms.disabled = APP.session.running && !APP.session.paused;
   if (document.activeElement !== ms) setModelSelect(ms);
 }

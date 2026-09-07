@@ -11,7 +11,7 @@ import { characterLibraryHtml, wireCharacterLibrary, loadCharacterLibrary } from
 import { styleLibraryHtml, wireStyleLibrary, loadStyleLibrary } from "./style-library.js";
 import { tagLibraryHtml, wireTagLibrary, loadTagLibrary } from "./tag-library.js";
 import { skillLibraryHtml, wireSkillLibrary, loadSkillLibrary } from "./skill-library.js";
-import { paintSrcbar, paintTitle, renderRail, phaseOf } from "./hud.js";
+import { paintSrcbar, paintTitle, renderRail, clearRail, phaseOf } from "./hud.js";
 import { ensureLiveCast } from "./cast-sheet.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
@@ -111,7 +111,7 @@ function paintRibbon() {
 
 function renderShelf(page, keepFocus) {
   page.innerHTML = pickerHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   // The new-story card opens the scaffold page (a route now, not a modal); an interview already
   // running on the server is continued there, not started again.
   wirePicker(page, () => go("story"), () => go("scaffold"), () => go("catalog"));
@@ -121,7 +121,7 @@ function renderShelf(page, keepFocus) {
 
 function renderScaffold(page, keepFocus) {
   page.innerHTML = scaffoldHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireScaffold(page); wireModal(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -129,14 +129,14 @@ function renderScaffold(page, keepFocus) {
 
 function renderStoryPage(page) {
   page.innerHTML = storyPageHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireStoryPage(page);
   setFoldable(false);
 }
 
 function renderHandoff(page, keepFocus) {
   page.innerHTML = handoffPageHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireHandoff(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -144,7 +144,7 @@ function renderHandoff(page, keepFocus) {
 
 function renderCharacterLibrary(page, keepFocus) {
   page.innerHTML = characterLibraryHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireCharacterLibrary(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -153,7 +153,7 @@ function renderCharacterLibrary(page, keepFocus) {
 
 function renderStyleLibrary(page, keepFocus) {
   page.innerHTML = styleLibraryHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireStyleLibrary(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -162,7 +162,7 @@ function renderStyleLibrary(page, keepFocus) {
 
 function renderTagLibrary(page, keepFocus) {
   page.innerHTML = tagLibraryHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireTagLibrary(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -171,7 +171,7 @@ function renderTagLibrary(page, keepFocus) {
 
 function renderSkillLibrary(page, keepFocus) {
   page.innerHTML = skillLibraryHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireSkillLibrary(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
@@ -180,14 +180,14 @@ function renderSkillLibrary(page, keepFocus) {
 
 function renderReader(page) {
   page.innerHTML = readerPageHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireReaderPage(page);
   setFoldable(false);
 }
 
 function renderComparison(page) {
   page.innerHTML = comparisonPageHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireComparison(page);
   setFoldable(false);
 }
@@ -203,7 +203,7 @@ function renderEdit(page) {
   const folds = [...page.querySelectorAll("details.editor-section")].map(d => d.open);
 
   page.innerHTML = storyEditHtml();
-  $("railstats").innerHTML = "";
+  clearRail();
   wireStoryEditor(page);
 
   const sections = page.querySelectorAll("details.editor-section");
@@ -218,8 +218,9 @@ function renderEdit(page) {
   setFoldable(false);
 }
 
-/** The mockup's headline block. The scene question is the headline: it is what this chapter exists
- *  to answer, and the topbar stops repeating it while the live page is showing. */
+/** The headline block. Story + chapter identity and the scene question come first: they
+ *  are what the chapter exists to answer. The static explainer lede used to sit here on every
+ *  frame and compete with the prose; it now lives nowhere on this screen. */
 function liveHeaderHtml() {
   const m = LIVEV.meta;
   if (!m) return "";
@@ -227,8 +228,6 @@ function liveHeaderHtml() {
   return `<div class="livehead page-title" data-tid="live.head">
     <p class="eyebrow">${esc(where)} · ${esc(storyName(m.story))}</p>
     <h2>${esc(m.question || "")}</h2>
-    <p class="lede">The writer drafts only as far as the next choice that is a character's to make,
-      then asks them for it. It never sees their personas.</p>
   </div>`;
 }
 
@@ -268,29 +267,31 @@ function renderLive(page, blocks) {
       </div>`;
     }
     page.innerHTML = html;
-    $("railstats").innerHTML = "";
+    clearRail();
     const gb = page.querySelector("#go-shelf");
     if (gb) gb.addEventListener("click", () => go("shelf"));
     setFoldable(false);
     return;
   }
-  const steps = LIVEV.events.filter(e => e.t === "draft").length;
   const target = LIVEV.meta?.target || 0;
   const words = LIVEV.events.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);
-  const consults = blocks.filter(b => b.kind === "consult").length;
   const phase = phaseOf(LIVEV);
-  const chip = t => `<span class="metachip">${esc(t)}</span>`;
-  page.innerHTML = liveHeaderHtml() + `<section ${tid("live.prose-card")} class="prosecard">
+  // A pending author decision outranks the stream: surface it above the prose as its own banner
+  // (the reader card itself still renders inline, unchanged, further down).
+  const pending = blocks.filter(b => b.kind === "reader" && b.answer === null).length;
+  const decision = pending
+    ? `<div class="livedecision" data-tid="live.decision" role="status"><span class="label">needs your call</span>` +
+      `<span>${pending === 1 ? "The writer is waiting on one choice below." : `The writer is waiting on ${pending} choices below.`}</span></div>`
+    : "";
+  // Writer-first prose card: the head carries identity (phase) + one quiet progress line (words).
+  // Step number, consult counts and the interactive/hands-off mode used to sit here as chips at
+  // the same visual weight as the prose; they now live in the rail's Run details disclosure.
+  page.innerHTML = liveHeaderHtml() + decision + `<section ${tid("live.prose-card")} class="prosecard">
     <div class="head">
       <div><span class="label">live prose</span><h3>${esc(PHASE_TITLE[phase] || "The scene so far")}</h3></div>
-      <span class="label">step ${steps}</span>
+      <span class="label livewords" data-tid="live.words">${esc(target ? `${words} / ${target} words` : `${words} words`)}</span>
     </div>
     <div class="body">
-      <div class="runmeta">
-        ${chip(target ? `${words} / ${target} words` : `${words} words`)}
-        ${chip(`${consults} consult${consults === 1 ? "" : "s"}`)}
-        ${chip(APP.session.interactive ? "interactive" : "hands off")}
-      </div>
        <div class="prose">` + renderBlocks(blocks, true) + `</div>
     </div>
   </section>`;
@@ -311,7 +312,7 @@ function renderRead(page, blocks) {
              Pick an earlier one, which may have more in it.`
                  : `Open a story on the shelf and "read" a previous run, drop a saved
              <code>out/writing-log.jsonl</code> onto this page, or open one from disk.`}</p></div>`;
-    $("railstats").innerHTML = "";
+    clearRail();
     wireSavedRuns(page);
     setFoldable(false);
     return;
@@ -411,9 +412,11 @@ export function render() {
   else if (APP.view === "readstory") renderReader(page);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
-  // Empty on the shelf/story/handoff pages, and on live/read before there is anything to show --
-  // an empty bordered card with just a header is worse than no card at all.
-  $("runctrl").hidden = !$("railstats").innerHTML && $("sessionbar").hidden;
+  // Empty on the shelf/story/handoff pages -- an empty bordered card with just a header is worse
+  // than no card at all. The engine disclosure needs no such toggle: an empty div renders as
+  // nothing on its own, and it lives outside any card (hud.js:renderRail).
+  $("runctrl").hidden = $("sessionbar").hidden;
+  $("runscene").hidden = !$("railstatus").innerHTML;
   renderTimeline(blocks);
   wireTimeline();
   // The scroll needs the NEW DOM, so it runs after the page above is painted. syncHash last:

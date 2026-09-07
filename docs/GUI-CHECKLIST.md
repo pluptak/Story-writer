@@ -72,7 +72,7 @@ its locator; clicking copies the full string to the clipboard and swallows the c
 a button is never pressing it:
 
 ```
-#/read?dir=<story>&id=r7 :: prose.consult[seq=3] > consult.attempt[n=2]
+#/read?dir=<story>&id=r7 :: prose.consult[seq=3] > consult.engine-details > consult.attempt[n=2]
 ```
 
 The chain is built from the tid ancestors outward-in, each with its instance key folded in as
@@ -274,18 +274,25 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 
 Needs a run, so pair it with section 2. What the redesign changed:
 
-- [ ] The page opens with an eyebrow (`chapter N of M · story`), the **scene question as the
-      headline**, and a lede. The topbar no longer repeats the question — it reads
+- [ ] The page opens with an eyebrow (`chapter N of M · story`) and the **scene question as the
+      headline**, nothing else. The topbar no longer repeats the question — it reads
       `live chapter · <phase>` instead.
 - [ ] The prose sits in a card whose title tracks the phase: *A draft is arriving* while writing,
       *A choice is being checked* during a consult, *The writer wants your call* on a reader round,
-      *The step budget is spent* at the budget prompt.
-- [ ] The chip row shows words against target, the consult count, and `interactive` / `hands off`.
+      *The step budget is spent* at the budget prompt. The card's head carries only that title and one
+      quiet `N / target words` line — no consult count or `interactive`/`hands off` chip there anymore.
+- [ ] **A pending reader decision outranks the prose.** Arm interactive mode and trigger a reader
+      round: a bordered "needs your call" banner renders above the prose card, and the reader's own
+      answer form still renders inline, unchanged, further down.
 - [ ] The run controls are in the right-hand rail, not across the top. **Click each one**: pause,
-      resume, consult me, the model select, and stop (twice — it arms first). They were relocated as
-      elements rather than re-emitted, so if one is dead the relocation broke its wiring.
-- [ ] The rail shows phase, steps, words, model, then the bar and counts. Phase tracks what the run is
-      doing; model shows the override or `story default`.
+      resume, stop (twice — it arms first). `consult me` shows only in interactive mode; the model
+      override select shows only while paused — both read as engine actions, not standing controls.
+- [ ] **Run details is collapsed by default.** The rail shows one status line (phase name, plus a
+      composing indicator while an agent is generating) and the words-against-target bar; step count,
+      the model in effect, and per-consult/asked-back/retry counts sit behind a **Run details**
+      disclosure that starts closed. Click it open: the per-agent model-calls table appears there too.
+      Reload or let a new event arrive while it's open — it must stay open (a reading preference, not
+      reset by the stream).
 - [ ] The status bar reads `<story> · chapter N of M`, agreeing with the terminal's own run header.
 - [ ] On the read view the rail drops phase and model, and there is no headline or prose card — both
       are live-only.

@@ -207,13 +207,29 @@
   .consult > summary::after { content:""; flex:1; height:1px; background:var(--line); }
   .consult > summary:hover { color:var(--ink); }
   .consult > summary .who { color:var(--accent); font-weight:600; letter-spacing:.04em; }
+  .consult > summary .decide { color:var(--faint); font-family:var(--sans); font-size:var(--fs-12); }
   .consult > summary .qs { color:var(--muted); font-family:var(--sans); font-size:var(--fs-12);
                            overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:46%; }
   .consult[open] > summary { margin-bottom:10px; }
   .consult .tag { font-size:var(--fs-10); padding:1px 6px; border-radius:var(--r-pill); border:1px solid var(--line); }
   .consult .tag.retry { color:var(--warn); border-color:var(--warn); }
-  .consult .tag.flag  { color:var(--bad);  border-color:var(--bad); }
-  .consult .tag.asked { color:var(--accent); border-color:var(--accent); }
+  .consult .tag.state { color:var(--good); border-color:var(--good); }
+  /* The story layer speaks in story words: why the story stopped, the situation it stopped in,
+     the decision it needed, what the character answered, and what happens next. Serif carries
+     the story; mono stays with labels and the disclosed mechanics below. */
+  .decide-why { margin:0 0 12px; font-size:var(--fs-13); color:var(--muted); }
+  .consult > .body .kv .v { font-family:var(--serif); font-size:var(--fs-15); }
+  .decide-answered { margin:12px 0 4px; }
+  .decide-answered > .k { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+                          text-transform:uppercase; color:var(--faint); display:block; margin-bottom:5px; }
+  .decide-outcome { margin:12px 0 4px; font-size:var(--fs-13); color:var(--ink);
+                    border-left:2px solid var(--good); padding-left:11px; }
+  /* Attempt mechanics behind one more disclosure: same content as before, quieter home. */
+  .engine-details { margin-top:12px; border-top:1px dashed var(--line); padding-top:8px; }
+  .engine-details > summary { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+                              text-transform:uppercase; color:var(--faint); cursor:pointer; list-style:none; }
+  .engine-details > summary::-webkit-details-marker { display:none; }
+  .engine-details > summary:hover { color:var(--accent); }
 
   /* scoped to .consult: a bare `.body` here leaked into the live page's .prosecard .body,
      which only overrides padding -- the prose got an accidental nested card */
@@ -356,13 +372,39 @@
   /* the story page reuses the shelf card's chips/meta outside a .card -- `.row` is shared with
      `.card .row` above; `.said`/`.prob` are shared with the `.iv` modal below. */
   .scenerow { padding:13px 15px; }
-  .scenerow .sc-q { font-size:var(--fs-14); }
+  /* Scene states read at a glance: the current chapter carries the accent edge, a held one the
+     warn edge, an invalid one the bad edge; upcoming chapters sit quieter but stay legible. */
+  .scenerow[data-state="current"] { border-left:3px solid var(--accent); }
+  .scenerow[data-state="blocked"] { border-left:3px solid var(--warn); }
+  .scenerow[data-state="problematic"] { border-left:3px solid var(--bad); }
+  .scenerow[data-state="upcoming"] .sc-q { color:var(--muted); }
+  .scenerow .sc-q { font-size:var(--fs-15); font-weight:600; }
   .scenerow .sc-meta { font-family:var(--mono); font-size:var(--fs-11); color:var(--faint); margin-top:4px; }
+  .scenerow .sc-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .scenerow .sc-actions .btn { margin-top:0; }
+  .scenerow .sc-roster { display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin-top:8px; }
+  .scenerow .sc-roster .hint { margin:0; }
+  .sc-context, .sc-setup { margin-top:10px; }
+  .sc-context > summary, .sc-setup > summary { font-family:var(--mono); font-size:var(--fs-10);
+     letter-spacing:.09em; text-transform:uppercase; color:var(--faint); cursor:pointer; list-style:none; }
+  .sc-context > summary::-webkit-details-marker, .sc-setup > summary::-webkit-details-marker { display:none; }
+  .sc-context > summary:hover, .sc-setup > summary:hover { color:var(--accent); }
+  .sc-setup { margin-bottom:4px; }
+  /* The map strip: where am I, what happened, what's next -- one glance above the scenes. */
+  .mapstatus { background:var(--panel); border:1px solid var(--line); border-radius:var(--r-xl);
+               box-shadow:var(--shadow); padding:12px 15px; margin:14px 0 4px; }
+  .mapstatus-line { font-size:var(--fs-13); margin-bottom:8px; }
+  .mapstatus .bar { margin:0 0 2px; }
+  .mapblocked { margin-top:10px; font-size:var(--fs-13); color:var(--warn); }
+  .mapblocked.info { color:var(--accent); }
   .scenerow .btn { margin-top:10px; }
   .scenerow .tag { font-family:var(--mono); font-size:var(--fs-10); padding:1px 6px; border-radius:var(--r-pill);
                    border:1px solid var(--line); color:var(--faint); margin-left:6px; }
   .scenerow .tag.written { color:var(--good); border-color:var(--good); }
   .scenerow .tag.next { color:var(--accent); border-color:var(--accent); }
+  .scenerow .tag.soon { color:var(--faint); }
+  .scenerow .tag.wait { color:var(--warn); border-color:var(--warn); }
+  .scenerow .tag.bad { color:var(--bad); border-color:var(--bad); }
 
   /* the character card -- reuses the story page's .row for its can/cannot line */
   .charcard .row { display:flex; flex-wrap:wrap; gap:10px; font-size:var(--fs-13); margin-top:6px; }
@@ -638,9 +680,30 @@
   .prosecard .label { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.1em;
                       text-transform:uppercase; color:var(--faint); }
   .prosecard .body { padding:16px 18px; }
+  /* Writer-first live view: the prose owns the card. Engine chips used to sit above it at the
+     same weight (steps, consult counts, interactive mode); only a quiet word count remains in
+     the head, everything else folded into the rail's Run details. */
   .prosecard .runmeta { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:15px; }
   .prosecard .metachip { font-family:var(--mono); font-size:var(--fs-10); padding:3px 8px; border-radius:var(--r-pill);
                          border:1px solid var(--line); background:var(--panel-2); color:var(--muted); }
+  .prosecard .livewords { flex:none; padding-top:4px; }
+  .prosecard .prose { font-family:var(--serif); font-size:var(--fs-18); line-height:1.7; }
+  .prosecard .prose .piece p { margin:0 0 1em; }
+  /* The pending author decision outranks the stream: one accent-bordered line above the prose. */
+  .livedecision { display:flex; align-items:baseline; gap:10px; background:var(--panel);
+                  border:1px solid var(--accent); border-radius:var(--r-xl); box-shadow:var(--shadow);
+                  padding:12px 16px; margin-bottom:16px; font-size:var(--fs-14); }
+  .livedecision .label { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.1em;
+                         text-transform:uppercase; color:var(--accent); flex:none; }
+  /* Rail: one status line stays visible; engine numbers fold into Run details. */
+  .railstatus { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+                padding:2px 0 8px; border-bottom:1px solid var(--line); margin-bottom:4px; }
+  .railstatus .phasename { font-family:var(--sans); font-size:var(--fs-13); font-weight:600; }
+  .railstatus .composing { margin-top:0; }
+  .raildetails { margin-top:6px; }
+  .raildetails > summary { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.1em;
+                           text-transform:uppercase; color:var(--faint); cursor:pointer; padding:6px 0; }
+  .raildetails > summary:hover { color:var(--accent); }
 
   /* the story reader — accepted prose, chapter by chapter, no controls */
   .reader-view .reader-chapter { margin-bottom:18px; scroll-margin-top:64px; }

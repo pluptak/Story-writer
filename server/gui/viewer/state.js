@@ -141,6 +141,9 @@ export const APP = {
     generalSkills: {},
   },
   expandAll: false,
+  railDetailOpen: false,        // the live/read rail's collapsed "engine detail" toggle -- a
+                                 // reading preference like `open` below, not reset by a re-render
+                                 // or a new run arriving mid-session.
   wantReaderView: false,        // a reader consult just arrived: scroll to it once the run page is showing
   awaitingReader: false,        // that consult is still unanswered -- the run is blocked on a human, not
                                  // just "in progress" (tabdot, tab label, document.title read this).

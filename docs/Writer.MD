@@ -329,23 +329,40 @@ a character's answer — and it tracks the `reader_ask`/`reader_answer` frames i
 
 ## The live screen
 
-The shipped screen: the run controls in the right-hand rail, an eyebrow/headline/lede block at the
-top, and the prose in a card with a phase-derived title and a chip row. The cast is the header's
-"cast in scene" chips and nothing more — there is no second cast panel in the rail. Clicking a chip
-opens a character card whose authored half (persona, knows, goal, belief, impulse, voice, and the
-capabilities with reach labelled per scene) is the `/cast` fetch for the run's story, live-screen
-only; elsewhere the card shows just what its pill knew. Two deliberate decisions behind it:
+The shipped screen: an eyebrow/headline block naming the story, the chapter and the scene's question,
+then the prose in a card whose head carries only a phase-derived title and one quiet word-count line —
+the prose itself is the dominant thing on the page, in the same serif the manuscript reads in. The
+cast is the header's "cast in scene" chips and nothing more — there is no second cast panel in the
+rail. Clicking a chip opens a character card whose authored half (persona, knows, goal, belief,
+impulse, voice, and the capabilities with reach labelled per scene) is the `/cast` fetch for the run's
+story, live-screen only; elsewhere the card shows just what its pill knew. Two deliberate decisions
+behind it:
 
-- **The consult blocks were not simplified.** The shipped rendering carries the full per-attempt
-  detail — the fresh-instance note, asked-back Q&A, the flags on a forced or re-asked attempt, judge
-  verdicts. One consult going well is easy to render compactly; losing the rest would make a retry
-  unreadable, and a retry is the case worth watching.
+- **The consult blocks were not simplified, but they were re-framed and given a second disclosure
+  level.** A consult reads as a story event, not an engine procedure: the collapsed summary names who
+  is deciding and the state in story words (*decided*, *reasked*, *asked back*, *flagged*), never an
+  attempt count on its own. Opening it answers, in order, why the story stopped, the situation, the
+  decision, what the character answered, and what happens next (*Decided — the answer stands and the
+  story continues*, *Waiting — the story pauses here until they answer*, *Set aside — asked again*).
+  The full per-attempt detail — the fresh-instance note, asked-back Q&A, the flags on a forced or
+  re-asked attempt, judge verdicts — is still all there, but one disclosure further in, behind its own
+  "How this was decided" toggle. One consult going well is easy to render compactly; losing the rest
+  would make a retry unreadable, and a retry is the case worth watching — it is simply no longer the
+  first thing opening the block shows.
 - **POV is not shown.** POV is a hint to the writer about whose choice comes first, not something a
   reader of the run needs. `RunMeta` carries no `pov` and does not need to.
 
-The live rail also accumulates completed model calls by agent: call count, average duration, and
-prompt/completion token totals when the provider reports them. Missing token usage is shown as
-unavailable rather than guessed.
+A pending author decision outranks the stream: while a reader consult is unanswered, a bordered
+"needs your call" banner renders above the prose card (the reader card itself still renders inline,
+unchanged, further down) — the one point in the hierarchy where an engine event is allowed to sit
+above the prose, because it is squarely the author's turn.
+
+Everything else about the run's machinery — step count, the model in effect, per-consult/asked-back/
+retry counts, and the live rail's accumulated model calls by agent (call count, average duration, and
+prompt/completion token totals when the provider reports them; missing token usage shown as
+unavailable rather than guessed) — sits behind the rail's own collapsed **Run details** disclosure,
+closed by default. Opening it is a reading preference (`APP.railDetailOpen`), not tied to any one run,
+so it survives the next SSE frame's rebuild instead of slamming shut on every event.
 
 The manual pass that verifies all of this is [`GUI-CHECKLIST.md`](docs/GUI-CHECKLIST.md) §9; §8 covers
 the read-tab-only per-agent model-call panel.

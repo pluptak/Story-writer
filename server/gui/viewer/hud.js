@@ -131,6 +131,10 @@ export function phaseOf(store) {
   return "writing";
 }
 
+/** Clear both rail containers (status card + engine disclosure). Non-live views call this
+ *  instead of touching either div by hand, so the two can never disagree about a previous run. */
+export function clearRail() { $("railstatus").innerHTML = ""; $("railstats").innerHTML = ""; }
+
 export function renderRail(store, blocks) {
   const words = store.events.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);
   const target = store.meta?.target || 0;
@@ -156,17 +160,31 @@ export function renderRail(store, blocks) {
       <span title="prompt / completion tokens">${fmtTokens(s, "promptTokens")} / ${fmtTokens(s, "completionTokens")}</span>
     </div>`).join("")}
   </section>` : "";
-  $("railstats").innerHTML = `
-    ${live ? stat("phase", esc(phaseOf(store))) : ""}
-    ${stat("steps", budget ? `${count("draft")} / ${budget}` : count("draft"))}
+  // Writer-first rail, split across two containers so DOM order is the hierarchy: the Scene
+  // card (status + where-am-I-in-the-chapter progress) paints at the top of the rail, above the
+  // cast and the controls; every engine number (steps/budget, model, consult/ask/retry counts,
+  // per-agent tokens) folds into the collapsed Run details disclosure at the bottom. The phase
+  // line lives only here, not twice -- the disclosure below used to repeat it as a stat.
+  const composing = store === LIVEV && APP.composing
+    ? `<div class="composing" data-tid="rail.composing"><i></i><span class="who">${esc(APP.composing.who)}</span> composing… ${APP.composing.secs}s</div>` : "";
+  const status = live ? `<div class="railstatus" data-tid="rail.status"><span class="phasename">${esc(phaseOf(store))}</span>${composing}</div>` : composing;
+  $("railstatus").innerHTML = `
+    ${status}
     ${stat("words", target ? `${words} / ${target}` : words)}
-    ${live ? stat("model", esc(APP.session.model || "story default")) : ""}
-    <div class="bar"><i style="width:${pct}%"></i></div>
-    ${stat("consults", consults.length)}
-    ${count("reaction_fanout") ? stat("reactions", count("reaction_fanout")) : ""}
-    ${stat("asked back", count("clarify"))}
-    ${stat("retries", retries, retries ? "warn" : "")}
-     ${store === LIVEV && APP.composing ? `<div class="composing" data-tid="rail.composing"><i></i><span class="who">${esc(APP.composing.who)}</span>
-        composing… ${APP.composing.secs}s</div>` : ""}
-     ${statsPanel}`;
+    <div class="bar"><i style="width:${pct}%"></i></div>`;
+  $("railstats").innerHTML = `
+    <details class="raildetails" data-tid="rail.engine-details"${APP.railDetailOpen ? " open" : ""}>
+      <summary>Run details</summary>
+      ${stat("steps", budget ? `${count("draft")} / ${budget}` : count("draft"))}
+      ${live ? stat("model", esc(APP.session.model || "story default")) : ""}
+      ${stat("consults", consults.length)}
+      ${count("reaction_fanout") ? stat("reactions", count("reaction_fanout")) : ""}
+      ${stat("asked back", count("clarify"))}
+      ${stat("retries", retries, retries ? "warn" : "")}
+      ${statsPanel}
+    </details>`;
+  // Native <details> state would be wiped by the next SSE re-render (railstats is rebuilt whole
+  // every frame), so the toggle persists onto APP -- a reading preference, never reset by render.
+  const det = $("railstats").querySelector("details.raildetails");
+  if (det) det.ontoggle = () => { APP.railDetailOpen = det.open; };
 }
