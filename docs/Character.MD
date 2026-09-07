@@ -33,8 +33,9 @@ rendered as a labelled block (`prompts/consult.ts`):
 
 - `persona` — the character itself, verbatim.
 - **WHERE YOU ARE** — the scene's `place`.
-- **YOUR SKILLS (all of what you can do; nothing else)** — the resolved skill menu: general skills,
-  the character's own, and — in a `REACH` sub-heading when the scene grants any — what it has
+- **YOUR SKILLS (all of what you can do; nothing else)** — the resolved skill menu: the general
+  skills their `origin` starts them with (all of them when they name no origin), the character's
+  own, and — in a `REACH` sub-heading when the scene grants any — what it has
   *only through where it is standing right now; it leaves with this place*. Reach sits inside the
   same fenced block so the "nothing else" stays one sentence, under a heading that names it as
   situational, because the fence the menu exists to build would be broken by a grant that read as

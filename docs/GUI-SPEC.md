@@ -317,9 +317,11 @@ against the skills catalog when a story loads, exactly like a story-authored cha
 a catalog entry is and how it composes into a `CharacterDef` is [Architect.MD](docs/Architect.MD)'s
 *Character catalog*. The other three: a **tag** is `id`, `version`, `facet`, `label`; a **style** is
 `id`, `version`, `name`, `tags[]`, `description`, `voice`; a **skill** is `id`, `version`, `name`,
-`meaning`, `tags[]`, `kind` (`"special"` — given to a character by name — or `"origin"`, a named
-group of general skills a kind of being starts with), and on an origin the `general[]` list of
-general-skill names it grants (always empty on a special skill). Its `meaning` is the one prose field
+`meaning`, and `kind` — one of `"general"` (every character starts with it), `"special"` (given to a
+character by name), or `"origin"` (a named group of general skills a kind of being starts with) —
+plus, on an origin, the `general[]` list of general-skill names it grants (empty on the other two).
+Skills carry no tags; a legacy `tags` field on disk or in a payload is stripped rather than
+rejected. Its `meaning` is the one prose field
 in any kind the schema refuses rather than reports missing ([Architect.MD](docs/Architect.MD)'s *Skill
 bible* says why).
 
