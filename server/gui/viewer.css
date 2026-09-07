@@ -743,7 +743,10 @@
   .lib-skills .lib-row { grid-template-columns:minmax(0,1fr) auto 32px; }
   /* Nothing selected: no inspector is rendered, so the list takes the whole width rather than
      sitting beside an empty panel. The two-column rule above is the base; this overrides it. */
-  .lib-skills.no-inspector { grid-template-columns:minmax(0,1fr); }
+   .lib-skills.no-inspector { grid-template-columns:minmax(0,1fr); }
+   .lib-characters.no-inspector { grid-template-columns:minmax(0,1fr); }
+   .lib-styles.no-inspector { grid-template-columns:minmax(0,1fr); }
+   .lib-tags.no-inspector { grid-template-columns:minmax(0,1fr); }
   /* A special skill carries no badge, so its row has one child fewer than the grid has columns and
      auto-placement would park its ••• a column short of the others. Pin it to the last column. */
   .lib-skills .lib-row .lib-more { grid-column:3; }

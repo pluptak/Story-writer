@@ -2,6 +2,7 @@ import { APP } from "./state.js";
 import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
 import { loadLibrary } from "./catalog.js";
+import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // The scaffold's import picker reads the same library through a lazy cache. A write here has to drop
 // it, or the tray keeps offering a character this page has already changed or deleted.
@@ -23,10 +24,8 @@ const entryOf = d => ({
   skills:parseLines(d.skills), restrictions:parseLines(d.restrictions),
 });
 
-const clone = value => JSON.parse(JSON.stringify(value));
 const initials = name => String(name || "?").split(/\s+/).filter(Boolean).map(x => x[0]).join("").slice(0, 2).toUpperCase();
 const excerpt = value => String(value || "Start with a short, portable identity.").replace(/\s+/g, " ").trim().slice(0, 100);
-const newId = () => `chr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
 // The fields a temporary revision can name -- content only, never id/version/hidden/updatedAt.
 // The assistant's own diff (below) shares this list and these labels, so the two look like one
@@ -129,8 +128,8 @@ function dirtyFromDraft() {
 
 // A freshly created or duplicated character is never dirty -- its draft is derived from the very
 // object it is compared against -- but it also has never been persisted (version 0, set by
-// createNew()/duplicate()). Gate Save on either: an edit, or nothing to lose by pressing it.
-const needsSave = s => s.dirty || (!!s.selected && !s.selected.version);
+// createNew()/duplicate()). Save is gated on needsSave() from lib-inspector.js: an edit, or
+// nothing to lose by pressing it.
 
 function field(id, label, value, type = "textarea", hintText = "") {
   const control = type === "input"
@@ -174,34 +173,34 @@ function listHtml(pageEntries) {
 function editorHtml() {
   const s = APP.characterLibrary;
   const d = s.draft;
-  if (!d) return `<div class="lib-inspector-empty"><span>Select a character to edit</span><small>Or create a new reusable identity.</small></div>`;
+  if (!d) return inspectorEmpty("Select a character to edit", "Or create a new reusable identity.");
   const c = s.selected;
   const a = s.assistant;
-  return `<div class="lib-editor-head">
+  return `${editorHead(`
     <span class="lib-avatar">${esc(initials(d.name))}</span><div><strong>${esc(d.name || "Untitled character")}</strong><small>ID: ${esc(d.id || "not saved")}${c?.hidden ? ` · <span class="lib-hidden-badge" ${tid("character-library.hidden-badge")}>Hidden</span>` : ""}</small></div>
     <button class="lib-close" id="charlib-close" aria-label="Close character editor">×</button>
-  </div>
-  <div class="lib-actions">
+  `)}
+  ${actions(`
     ${button({label:"Duplicate", id:"charlib-duplicate", extraClass:"small"})}
     ${c?.version ? button({label:c.hidden ? "Restore character" : "Hide character", id:"charlib-toggle-hidden", extraClass:"small", disabled:s.togglingHiddenId === c?.id}) : ""}
     ${button({label:s.changes.length ? `Review changes (${s.changes.length})` : "Review changes", id:"charlib-review-changes", extraClass:"small", disabled:!s.changes.length})}
     ${button({label:"Delete", id:"charlib-delete", variant:"danger", extraClass:"small", disabled:s.deletingId === c?.id})}
-  </div>
-  <div class="lib-tabs"><button class="lib-tab active">Overview</button><button class="lib-tab" id="charlib-ai-tab">AI Assistant</button><button class="lib-tab" disabled>Revisions</button></div>
+  `)}
+  ${tabs(`<button class="lib-tab active">Overview</button><button class="lib-tab" id="charlib-ai-tab">AI Assistant</button><button class="lib-tab" disabled>Revisions</button>`)}
   ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
-  <div class="lib-section"><h3>Essence</h3><p>Reusable character identity. Keep story-specific goals and knowledge out of the library.</p>
+  ${section("Essence", "Reusable character identity. Keep story-specific goals and knowledge out of the library.", `
     ${field("charlib-name", "Name", d.name, "input")}
     ${field("charlib-persona", "Portable persona", d.portablePersona, "textarea", "The identity that travels between stories.")}
     ${field("charlib-belief", "Belief", d.belief)}
     ${field("charlib-impulse", "Impulse", d.impulse, "textarea", "What this character tends to do under pressure.")}
     ${field("charlib-voice", "Voice samples", d.voice, "textarea", "One line per sample, maximum 3.")}
-  </div>
-  <div class="lib-section"><h3>Capabilities</h3><p>Reusable capabilities, one per line. Skills may use <code>name :: meaning</code>.</p>
+  `)}
+  ${section("Capabilities", "Reusable capabilities, one per line. Skills may use <code>name :: meaning</code>.", `
     ${originField(d)}
     ${field("charlib-skills", "Skills", d.skills)}${field("charlib-restrictions", "Restrictions", d.restrictions, "textarea", "One restriction per line.")}
-  </div>
+  `)}
   <div class="lib-assistant"><div><strong>✦ Character assistant</strong></div><p>Create, revise, or review a subset of this character's fields from a plain-language instruction, on its own model.</p>${button({label:"Open AI assistant →", id:"charlib-ai-open", extraClass:"small"})}</div>
-  <div class="lib-editor-footer">${button({label:"Cancel", id:"charlib-cancel", disabled:!s.dirty || s.saving})}${button({label:s.saving ? "Saving…" : "Save changes", id:"charlib-save", variant:"primary", disabled:!needsSave(s) || s.saving})}</div>
+  ${editorFooter(`${button({label:"Cancel", id:"charlib-cancel", disabled:!s.dirty || s.saving})}${button({label:s.saving ? "Saving…" : "Save changes", id:"charlib-save", variant:"primary", disabled:!needsSave(s) || s.saving})}`)}
   ${a.open ? assistantHtml() : ""}${s.changesOpen ? changesHtml() : ""}`;
 }
 
@@ -288,7 +287,7 @@ export function characterLibraryHtml() {
   if (s.error && !s.entries.length) return `<section class="lib-page lib-characters"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again",id:"charlib-retry",variant:"primary"})}</div></section>`;
   const { slice, pageCount, total, start } = paginate(filteredSorted());
   const rangeText = total === 0 ? "Showing 0 characters" : `Showing ${start + 1}-${start + slice.length} of ${total} characters`;
-  return `<section class="lib-page lib-characters" ${tid("character-library.page")}><div class="lib-main">
+  return `${catalogPageOpen("characters", s.draft, tid("character-library.page"))}
     <header class="lib-top"><div class="page-title"><p class="eyebrow">library · characters</p><h1>Character Library <span class="lib-info">i</span></h1><p class="lede">Reusable characters you can import into any story.</p></div><div class="lib-top-actions">${button({label:"＋ New character", id:"charlib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="charlib-search" placeholder="⌕  Search characters…" value="${esc(s.search)}">
       <select class="lib-input" id="charlib-visibility"><option value="all"${s.visibility === "all" ? " selected" : ""}>All characters</option><option value="visible"${s.visibility === "visible" ? " selected" : ""}>Visible only</option><option value="hidden"${s.visibility === "hidden" ? " selected" : ""}>Hidden only</option></select>
@@ -308,7 +307,7 @@ export function characterLibraryHtml() {
         <option value="50"${s.pageSize === 50 ? " selected" : ""}>50 / page</option>
       </select>
     </footer>
-  </div><aside class="lib-inspector">${editorHtml()}</aside></section>`;
+  ${catalogPageClose(s, editorHtml())}`;
 }
 
 async function load() {
@@ -331,9 +330,9 @@ async function load() {
 // (plan: "changes should show edits relative to the initial draft").
 function setSelected(c) { const s = APP.characterLibrary; s.selected = c; s.baseline = clone(c); s.draft = draftOf(c); s.dirty = false; s.changes = []; s.changesOpen = false; s.menuId = ""; s.error = ""; s.assistant = { open:false, mode:"revise", fields:[], instruction:"", loading:false, proposal:null, error:"" }; ensureSelectedVisible(); APP.render(); }
 
-function createNew() { const s = APP.characterLibrary; const c = { ...entryOf({...emptyDraft(), id:newId(), name:"New character"}), hidden:false, version:0, updatedAt:Date.now() }; s.entries.unshift(c); setSelected(c); }
+function createNew() { const s = APP.characterLibrary; const c = { ...entryOf({...emptyDraft(), id:newId("chr"), name:"New character"}), hidden:false, version:0, updatedAt:Date.now() }; s.entries.unshift(c); setSelected(c); }
 
-function duplicate() { const s = APP.characterLibrary; if (!s.selected) return; const c = { ...clone(s.selected), id:newId(), name:`${s.selected.name} Copy`, version:0, updatedAt:Date.now(), hidden:false }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, c); setSelected(c); }
+function duplicate() { const s = APP.characterLibrary; if (!s.selected) return; const c = { ...clone(s.selected), id:newId("chr"), name:`${s.selected.name} Copy`, version:0, updatedAt:Date.now(), hidden:false }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, c); setSelected(c); }
 
 function collectDraft() { const s = APP.characterLibrary; if (!s.draft) return; for (const key of DIFF_FIELDS) { const el = document.getElementById(`charlib-${FIELD_DOM_ID(key)}`); if (el) s.draft[key] = el.value; } dirtyFromDraft(); }
 

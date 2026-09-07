@@ -2,6 +2,7 @@ import { APP, FACET_LABELS } from "./state.js";
 import { esc, tid, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
+import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // The character/style tag pickers and the scaffold's tag picker all read this same cache. A write
 // here has to drop it, or they keep offering a tag this page has already renamed or deleted.
@@ -10,8 +11,6 @@ const invalidateVocab = loadVocab.invalidate;
 const emptyDraft = () => ({ id:"", facet:"", label:"" });
 const draftOf = t => ({ id:t?.id || "", facet:t?.facet || "", label:t?.label || "" });
 const entryOf = d => ({ id:d.id, facet:d.facet.trim(), label:d.label.trim() });
-const clone = value => JSON.parse(JSON.stringify(value));
-const newId = () => `tag_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
 const folded = s => String(s ?? "").trim().toLowerCase();
 /** Whether any style carries the label -- the whole of the derived STYLE cut used to group the
@@ -41,11 +40,6 @@ function dirtyFromDraft() {
   s.dirty = !!s.selected && JSON.stringify(entryOf(s.draft)) !== JSON.stringify(entryOf(draftOf(s.selected)));
 }
 
-// A freshly created or duplicated tag is never dirty -- its draft is derived from the very object
-// it is compared against -- but it also has never been persisted (version 0). Gate Save on either:
-// an edit, or nothing to lose by pressing it.
-const needsSave = s => s.dirty || (!!s.selected && !s.selected.version);
-
 function facetOptionsHtml(selected) {
   return `<option value="">Select a facet…</option>` + APP.catalogConfig.tagFacets
     .map(f => `<option value="${esc(f)}"${selected === f ? " selected" : ""}>${esc(FACET_LABELS[f] ?? f)}</option>`).join("");
@@ -68,37 +62,37 @@ function listHtml() {
 function editorHtml() {
   const s = APP.tagLibrary;
   const d = s.draft;
-  if (!d) return `<div class="lib-inspector-empty"><span>Select a tag to edit</span><small>Or define a new one.</small></div>`;
+  if (!d) return inspectorEmpty("Select a tag to edit", "Or define a new one.");
   const c = s.selected;
   const stylesFor = tagStyles(d.label);
-  return `<div class="lib-editor-head">
+  return `${editorHead(`
     <span class="lib-avatar">${esc((d.label || "?").slice(0, 2).toUpperCase())}</span><div><strong>${esc(d.label || "Untitled tag")}</strong><small>ID: ${esc(d.id || "not saved")}</small></div>
     <button class="lib-close" id="taglib-close" aria-label="Close tag editor">×</button>
-  </div>
-  <div class="lib-actions">
+  `)}
+  ${actions(`
     ${button({label:"Duplicate", id:"taglib-duplicate", extraClass:"small"})}
     ${button({label:"Delete", id:"taglib-delete", variant:"danger", extraClass:"small"})}
-  </div>
+  `)}
   ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
-  <div class="lib-section"><h3>Tag identity</h3><p>A controlled vocabulary entry the architect and story editor offer as a choice.</p>
+  ${section("Tag identity", "A controlled vocabulary entry the architect and story editor offer as a choice.", `
     <label class="lib-field"><span>Facet</span><select class="lib-input" id="taglib-facet">${facetOptionsHtml(d.facet)}</select></label>
     <label class="lib-field"><span>Label</span><input class="lib-input" id="taglib-label" value="${esc(d.label)}" placeholder="e.g. Science Fiction, Comedy, Melancholic"></label>
-  </div>
-  ${c ? `<div class="lib-section"><h3>Usage</h3><p>What actually references this tag today, observed from the other catalogs.</p>${usageLine(d.label) || hint("nothing uses this tag yet")}
+  `)}
+  ${c ? section("Usage", "What actually references this tag today, observed from the other catalogs.", `${usageLine(d.label) || hint("nothing uses this tag yet")}
     ${stylesFor.length ? `<div class="lib-chips">${stylesFor.map(name => `<span class="lib-chip">${esc(name)}</span>`).join("")}</div>` : ""}
-  </div>` : ""}
-  <div class="lib-editor-footer">${button({label:"Cancel", id:"taglib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"taglib-save", variant:"primary", disabled:!needsSave(s)})}</div>`;
+  `) : ""}
+  ${editorFooter(`${button({label:"Cancel", id:"taglib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"taglib-save", variant:"primary", disabled:!needsSave(s)})}`)}`;
 }
 
 export function tagLibraryHtml() {
   const s = APP.tagLibrary;
   if (s.loading) return `<section class="lib-page lib-tags"><div class="lib-loading">${thinking("loading tag vocabulary…")}</div></section>`;
   if (s.error && !s.entries.length) return `<section class="lib-page lib-tags"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again", id:"taglib-retry", variant:"primary"})}</div></section>`;
-  return `<section class="lib-page lib-tags" ${tid("tag-library.page")}><div class="lib-main">
+  return `${catalogPageOpen("tags", s.draft, tid("tag-library.page"))}
     <header class="lib-top"><div class="page-title"><p class="eyebrow">library · tags</p><h1>Tag Vocabulary <span class="lib-info">i</span></h1><p class="lede">Define a controlled vocabulary of story descriptors.</p></div><div class="lib-top-actions">${button({label:"＋ New tag", id:"taglib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="taglib-search" placeholder="⌕  Search tags…" value="${esc(s.search)}"><select class="lib-input" id="taglib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>
     <div class="lib-list">${listHtml()}</div><footer class="lib-list-footer">Showing ${visibleEntries().length} of ${s.entries.length} tags</footer>
-  </div><aside class="lib-inspector">${editorHtml()}</aside></section>`;
+  ${catalogPageClose(s, editorHtml())}`;
 }
 
 async function load() {
@@ -116,8 +110,8 @@ async function load() {
 }
 
 function setSelected(t) { const s = APP.tagLibrary; s.selected = t; s.draft = draftOf(t); s.dirty = false; s.error = ""; APP.render(); }
-function createNew() { const s = APP.tagLibrary; const t = { ...entryOf({...emptyDraft(), id:newId()}), version:0, updatedAt:Date.now() }; s.entries.unshift(t); setSelected(t); }
-function duplicate() { const s = APP.tagLibrary; if (!s.selected) return; const t = { ...clone(s.selected), id:newId(), version:0, updatedAt:Date.now() }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, t); setSelected(t); }
+function createNew() { const s = APP.tagLibrary; const t = { ...entryOf({...emptyDraft(), id:newId("tag")}), version:0, updatedAt:Date.now() }; s.entries.unshift(t); setSelected(t); }
+function duplicate() { const s = APP.tagLibrary; if (!s.selected) return; const t = { ...clone(s.selected), id:newId("tag"), version:0, updatedAt:Date.now() }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, t); setSelected(t); }
 function collectDraft() { const s = APP.tagLibrary; if (!s.draft) return; for (const key of ["facet","label"]) { const el = document.getElementById(`taglib-${key}`); if (el) s.draft[key] = el.value; } dirtyFromDraft(); }
 
 async function save() {
