@@ -44,14 +44,16 @@ describe("LibraryCharacter schema", () => {
     assert.equal(char.updatedAt, 0);
   });
 
-  it("loads a legacy entry (no hidden/updatedAt on disk) as visible with updatedAt 0", () => {
-    const char = LibraryCharacter.parse({
-      id: "char-legacy",
-      version: 3,
-      name: "Legacy",
-    });
-    assert.equal(char.hidden, false);
-    assert.equal(char.updatedAt, 0);
+  it("defaults a legacy entry's origin to blank (every general skill)", () => {
+    const char = LibraryCharacter.parse({ id: "char-preorigins", name: "Old Hand" });
+    assert.equal(char.origin, "");
+  });
+
+  it("round-trips an explicit origin", () => {
+    const char = LibraryCharacter.parse({ id: "char-bird", name: "Pip", origin: "bird" });
+    assert.equal(char.origin, "bird");
+    // Blank stays blank: that is a real answer ("every general skill"), never coerced to a name.
+    assert.equal(LibraryCharacter.parse({ id: "char-x", name: "X", origin: "" }).origin, "");
   });
 
   it("round-trips an explicit hidden/updatedAt", () => {
@@ -185,13 +187,13 @@ describe("capabilityProblems", () => {
 
   it("honors an injected bible parameter", () => {
     const stubBible = (name: string) => name === "custom-skill" ? "a custom ability" : undefined;
-    const result = capabilityProblems("Henry", ["custom-skill"], [], stubBible);
+    const result = capabilityProblems("Henry", ["custom-skill"], [], undefined, { bible: stubBible });
     assert.deepEqual(result.problems, []);
   });
 
   it("uses the injected bible for restrictions too", () => {
     const stubBible = (name: string) => name === "custom-ability" ? "custom meaning" : undefined;
-    const result = capabilityProblems("Iris", [], ["custom-ability"], stubBible);
+    const result = capabilityProblems("Iris", [], ["custom-ability"], undefined, { bible: stubBible });
     assert.deepEqual(result.restrictions, ["custom-ability"]);
     assert.deepEqual(result.problems, []);
   });
@@ -434,12 +436,10 @@ describe("LibrarySkill schema", () => {
       version: 1,
       name: "Lockpicking",
       meaning: "opening a mechanical lock without its key",
-      tags: ["security", "theft"],
     });
     assert.equal(skill.id, "lockpicking");
     assert.equal(skill.name, "Lockpicking");
     assert.equal(skill.meaning, "opening a mechanical lock without its key");
-    assert.deepEqual(skill.tags, ["security", "theft"]);
   });
 
   it("applies defaults for missing optional fields", () => {
@@ -449,7 +449,6 @@ describe("LibrarySkill schema", () => {
       meaning: "ascending a sheer surface",
     });
     assert.equal(skill.version, 1);
-    assert.deepEqual(skill.tags, []);
   });
 
   it("rejects an entry with empty meaning", () => {
@@ -532,5 +531,62 @@ describe("SkillCatalog schema", () => {
     assert.equal(catalog.entries.length, 2);
     assert.equal(catalog.entries[0].name, "Lockpicking");
     assert.equal(catalog.entries[1].name, "Climbing");
+  });
+
+  it("applies defaults for kind and general on a pre-origins entry", () => {
+    const skill = LibrarySkill.parse({
+      id: "lockpicking",
+      name: "Lockpicking",
+      meaning: "opening locks",
+    });
+    assert.equal(skill.kind, "special");
+    assert.deepEqual(skill.general, []);
+  });
+
+  it("parses an origin entry with kind and general", () => {
+    const skill = LibrarySkill.parse({
+      id: "human",
+      name: "human",
+      meaning: "a person",
+      kind: "origin",
+      general: ["speech", "recall", "movement"],
+    });
+    assert.equal(skill.kind, "origin");
+    assert.deepEqual(skill.general, ["speech", "recall", "movement"]);
+  });
+
+  it("round-trips an origin entry", () => {
+    const original = {
+      id: "ai",
+      version: 1,
+      name: "ai",
+      meaning: "a program",
+      kind: "origin" as const,
+      general: ["speech", "recall"],
+    };
+    const skill = LibrarySkill.parse(original);
+    assert.deepEqual(skill, original);
+  });
+
+  it("parses a general-kind entry", () => {
+    const skill = LibrarySkill.parse({
+      id: "movement",
+      name: "Movement",
+      meaning: "moving your own body through the space you are in",
+      kind: "general",
+      general: [],
+    });
+    assert.equal(skill.kind, "general");
+    assert.deepEqual(skill.general, []);
+  });
+
+  it("rejects an entry with a tags key (strictObject)", () => {
+    const result = LibrarySkill.safeParse({
+      id: "lockpicking",
+      name: "Lockpicking",
+      meaning: "opening locks",
+      tags: [],
+    });
+    assert.equal(result.success, false);
   });
 });

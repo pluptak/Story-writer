@@ -63,7 +63,7 @@ describe("run manifest", () => {
     const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
     try {
       const m = await writeRunManifest(dir, {
-        run: "2026-08-28T00-00-00-000Z", story: "stories/x", chapter: 2,
+        run: "2026-08-28T00-00-00-000Z", story: "data/stories/x", chapter: 2,
         scene: { pov: "ELIAS", target: 700 }, models: { writer: "w", summary: "s" },
       });
       const onDisk = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
@@ -500,7 +500,7 @@ describe("prompt construction", () => {
 describe("reach boundaries", () => {
   const AURA: import("../engine/story-format.ts").CharacterDef = {
     name: "AURA", model: "", persona: "The building's AI.", knows: "", goal: "", belief: "",
-    impulse: "", voice: [],
+    impulse: "", voice: [], origin: "",
     skills: [{ name: "speech", meaning: "saying things aloud over the intercom", source: "general" }],
     limits: [],
   };

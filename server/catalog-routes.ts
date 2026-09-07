@@ -27,7 +27,9 @@ export async function handleCatalogRoutes(
   }
 
   if (path === "/catalog/config" && req.method === "GET") {
-    json(res, 200, host.catalogConfig());
+    // Awaited: the origin/general projections read the persisted skills catalog, so a host may
+    // answer asynchronously. Awaiting a synchronous reply is a no-op, which keeps test hosts plain.
+    json(res, 200, await host.catalogConfig());
     return true;
   }
 
@@ -133,7 +135,7 @@ export async function handleCatalogRoutes(
 
     const fields = Array.isArray(o.fields) ? o.fields.map((f: unknown) => String(f)) : [];
     if (!fields.length) { json(res, 400, { ok: false, reason: "no fields selected" }); return true; }
-    const { assistFields } = host.catalogConfig();
+    const { assistFields } = await host.catalogConfig();
     const unsupported = fields.find((f: string) => !assistFields.includes(f));
     if (unsupported) { json(res, 400, { ok: false, reason: `unsupported field "${unsupported}"` }); return true; }
 

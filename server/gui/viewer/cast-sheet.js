@@ -2,7 +2,7 @@ import { esc } from "./util.js";
 import { APP, LIVEV } from "./state.js";
 
 // ---- the authored character sheet ------------------------------------------
-// The full authored cast a live run works from -- persona, knows, goal, belief, impulse, voice,
+// The full authored cast a live run works from -- origin, persona, knows, goal, belief, impulse, voice,
 // skills, restrictions, and (labelled with its scene) reach -- fetched from /cast, keyed by story
 // dir, and rendered into the character card a cast pill opens. Authored data shown to the human;
 // it never travels back to any agent. Reach stays per scene, never merged into a character's
@@ -76,6 +76,7 @@ export function castCharacterSheet(name) {
     ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}${skills || restr ? " " : ""}${reach}</div>` : "";
   const voice = (c.voice || []).map(v => `<p class="cast-voice">“${esc(v)}”</p>`).join("");
   const fields = [
+    field("origin", c.origin),
     field("persona", c.persona),
     field("knows", c.knows),
     field("goal", c.goal),

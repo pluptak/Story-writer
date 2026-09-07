@@ -1,11 +1,13 @@
 node_modules/
-stories/
-catalog-*.json
+data/stories/
+data/catalogs/
 *.log
 test-results/
 .mcp.json
 .vscode/
 .claude/
 .codegraph/
+.continue/
 AGENTS.md
 opencode.jsonc
+.opencode/

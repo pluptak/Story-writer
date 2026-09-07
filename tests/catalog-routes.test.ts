@@ -611,8 +611,20 @@ describe("/catalog/assist (POST)", () => {
 // -- SECTION ----
 describe("/catalog/config (GET)", () => {
   it("returns the host's catalog-config projection verbatim", async () => {
-    const config = { tagFacets: ["genre", "dramaticMode", "tone"] as const, caps: { voiceSamples: 3 }, assistFields: [] as string[] };
+    const config = { tagFacets: ["genre", "dramaticMode", "tone"] as const, caps: { voiceSamples: 3 }, assistFields: [] as string[],
+                     originSkills: { ai: ["speech", "recall"] } as Record<string, string[]>,
+                     generalSkills: { speech: "saying things aloud" } as Record<string, string> };
     const host = makeHost({ catalogConfig: () => config });
+    const r = await callGet(handleCatalogRoutes, "/catalog/config", host);
+    assert.equal(r.code, 200);
+    assert.deepEqual(r.json(), config);
+  });
+
+  it("awaits an asynchronous catalog-config the same way", async () => {
+    const config = { tagFacets: ["genre"] as const, caps: { voiceSamples: 1 }, assistFields: [] as string[],
+                     originSkills: { bird: ["movement", "sight"] } as Record<string, string[]>,
+                     generalSkills: {} as Record<string, string> };
+    const host = makeHost({ catalogConfig: async () => config });
     const r = await callGet(handleCatalogRoutes, "/catalog/config", host);
     assert.equal(r.code, 200);
     assert.deepEqual(r.json(), config);

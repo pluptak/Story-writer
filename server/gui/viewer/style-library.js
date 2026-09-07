@@ -1,6 +1,6 @@
 import { APP } from "./state.js";
 import { esc, parseLines, postJson, reasonOr } from "./util.js";
-import { button, errorLine, hint, thinking, warnLine } from "./ui.js";
+import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
 
 const emptyDraft = () => ({ id:"", name:"", description:"", voice:"", tags:[] });
 const draftOf = s => ({ id:s?.id || "", name:s?.name || "", description:s?.description || "", voice:s?.voice || "", tags:[...(s?.tags || [])] });
@@ -35,7 +35,7 @@ function field(id, label, value, hintText = "") {
 
 function listHtml() {
   const s = APP.styleLibrary, entries = visibleEntries();
-  if (!entries.length) return `<div class="lib-empty"><div class="lib-empty-mark">✦</div><h3>${s.search ? "No styles match" : "Your style library is empty"}</h3><p>${s.search ? "Try a different search." : "Create a reusable writing approach for your stories."}</p>${button({label:"New style", id:"stylib-empty-new", variant:"primary"})}</div>`;
+  if (!entries.length) return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>${s.search ? "No styles match" : "Your style library is empty"}</h3><p>${s.search ? "Try a different search." : "Create a reusable writing approach for your stories."}</p>${button({label:"New style", id:"stylib-empty-new", variant:"primary"})}</div>`;
   return entries.map(x => {
     const selected = s.selected?.id === x.id;
     return `<div class="lib-row${selected ? " selected" : ""}" data-style-id="${esc(x.id)}" role="button" tabindex="0">
@@ -82,7 +82,7 @@ export function styleLibraryHtml() {
   const s = APP.styleLibrary;
   if (s.loading) return `<section class="lib-page lib-styles"><div class="lib-loading">${thinking("loading style library…")}</div></section>`;
   if (s.error && !s.entries.length) return `<section class="lib-page lib-styles"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again", id:"stylib-retry", variant:"primary"})}</div></section>`;
-  return `<section class="lib-page lib-styles"><div class="lib-main"><header class="lib-top"><div><h1>Style Library <span class="lib-info">i</span></h1><p>Reusable writing styles you can apply to any story.</p></div><div class="lib-top-actions">${button({label:"＋ New style", id:"stylib-new", variant:"primary"})}</div></header>
+  return `<section class="lib-page lib-styles"><div class="lib-main"><header class="lib-top"><div class="page-title"><p class="eyebrow">library · styles</p><h1>Style Library <span class="lib-info">i</span></h1><p class="lede">Reusable writing styles you can apply to any story.</p></div><div class="lib-top-actions">${button({label:"＋ New style", id:"stylib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="stylib-search" placeholder="⌕  Search styles…" value="${esc(s.search)}"><select class="lib-input" id="stylib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>
     <div class="lib-list">${listHtml()}</div><footer class="lib-list-footer">Showing ${visibleEntries().length} of ${s.entries.length} styles</footer></div><aside class="lib-inspector">${editorHtml()}</aside></section>`;
 }
@@ -111,7 +111,9 @@ async function toggleHidden() {
 // server confirms the entry is gone, against the same real route save() already uses.
 async function remove() {
   const s = APP.styleLibrary; if (!s.selected) return;
-  if (!confirm("Permanently delete this style? This cannot be undone.\n\nFor normal cleanup, use Hide instead.")) return;
+  if (!await confirmDialog({ title: "Delete this style?",
+    body: "This cannot be undone. For normal cleanup, use Hide instead.",
+    confirmLabel: "delete style", danger: true })) return;
   const id = s.selected.id;
   const j = await postJson("/catalog/delete", { kind:"styles", id }, msg => { s.error = msg; APP.render(); });
   if (!j?.ok) { s.error = reasonOr(j, "could not delete style"); APP.render(); return; }
@@ -143,10 +145,10 @@ export function wireStyleLibrary(page) {
   page.querySelector("#stylib-sort")?.addEventListener("change", e => { s.sort = e.target.value; APP.render(); });
   page.querySelector("#stylib-new")?.addEventListener("click", createNew); page.querySelector("#stylib-empty-new")?.addEventListener("click", createNew);
   page.querySelector("#stylib-retry")?.addEventListener("click", () => { s.loaded = false; load(); });
-  page.querySelectorAll("[data-style-id]").forEach(row => row.addEventListener("click", e => { if (e.target.closest("button")) return; collectDraft(); if (s.dirty && !confirm("Discard unsaved changes?")) return; setSelected(s.entries.find(x => x.id === row.dataset.styleId)); }));
-  page.querySelectorAll("[data-style-select-id]").forEach(action => action.addEventListener("click", e => { e.stopPropagation(); collectDraft(); if (s.dirty && !confirm("Discard unsaved changes?")) return; setSelected(s.entries.find(x => x.id === action.dataset.styleSelectId)); }));
+  page.querySelectorAll("[data-style-id]").forEach(row => row.addEventListener("click", async e => { if (e.target.closest("button")) return; collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return; setSelected(s.entries.find(x => x.id === row.dataset.styleId)); }));
+  page.querySelectorAll("[data-style-select-id]").forEach(action => action.addEventListener("click", async e => { e.stopPropagation(); collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return; setSelected(s.entries.find(x => x.id === action.dataset.styleSelectId)); }));
   for (const k of ["name","description","voice"]) page.querySelector(`#stylib-${k}`)?.addEventListener("input", () => { s.draft[k] = document.getElementById(`stylib-${k}`).value; dirtyFromDraft(); page.querySelector("#stylib-save").disabled = !needsSave(s); page.querySelector("#stylib-cancel").disabled = !s.dirty; });
-  page.querySelector("#stylib-close")?.addEventListener("click", () => { if (!s.dirty || confirm("Discard unsaved changes?")) { s.selected = null; s.draft = null; s.dirty = false; APP.render(); } });
+  page.querySelector("#stylib-close")?.addEventListener("click", async () => { if (!s.dirty || await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) { s.selected = null; s.draft = null; s.dirty = false; APP.render(); } });
   page.querySelector("#stylib-save")?.addEventListener("click", save); page.querySelector("#stylib-cancel")?.addEventListener("click", () => { s.draft = draftOf(s.selected); s.dirty = false; APP.render(); });
   page.querySelector("#stylib-duplicate")?.addEventListener("click", duplicate); page.querySelector("#stylib-toggle-hidden")?.addEventListener("click", toggleHidden); page.querySelector("#stylib-delete")?.addEventListener("click", remove);
   page.querySelector("#stylib-ai-open")?.addEventListener("click", () => { s.assistant.open = true; APP.render(); }); page.querySelector("#stylib-ai-tab")?.addEventListener("click", () => { s.assistant.open = true; APP.render(); });

@@ -19,10 +19,11 @@ test("the character library creates, lists, and deletes a character entry", asyn
   await expect(page.locator(".lib-row")).toHaveCount(1);
   await expect(page.locator(".lib-row")).toContainText("IVET");
 
-  // Deleting is a two-click confirm; the second click within the window removes the entry.
+  // Deleting asks in a styled confirm; the confirm button within removes the entry.
   await page.locator(".lib-row").first().click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#charlib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect(page.locator(".lib-row")).toHaveCount(0);
 
   // The row leaving the list is not the claim -- the entry leaving the catalog is. An optimistic
@@ -46,6 +47,31 @@ test("a brand-new character can be saved untouched, with just its default name",
   // Persisted for real, not just added to the in-memory list.
   await arrive(page, served, "#/catalog");
   await expect(page.locator(".lib-row")).toHaveCount(1);
+});
+
+test("a library character's origin persists and shows as a reviewable change", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog");
+
+  await page.locator("#charlib-new").click();
+  await page.locator("#charlib-name").fill("PIP");
+  await page.locator("#charlib-origin").fill("ai");
+  await page.locator("#charlib-save").click();
+
+  // The saved entry carries the origin on its row, backed by the real save path.
+  await expect(page.locator(".lib-row")).toContainText("PIP");
+  await expect(page.locator(".lib-row")).toContainText("ai");
+
+  // Persisted for real, not just in the in-memory list, and the known origin suggests from the config.
+  await arrive(page, served, "#/catalog");
+  await page.locator(".lib-row").first().click();
+  await expect(page.locator("#charlib-origin")).toHaveValue("ai");
+  await expect(page.locator("#charlib-origin-options option[value='ai']")).toHaveCount(1);
+
+  // Editing the origin is an ordinary content change with its own entry in the review panel.
+  await page.locator("#charlib-origin").fill("human");
+  await page.locator("#charlib-review-changes").click();
+  await expect(page.locator('[data-change-field="origin"]')).toBeVisible();
+  await expect(page.locator('[data-change-field="origin"]')).toContainText("Origin");
 });
 
 test("a duplicated character can be saved untouched", async ({ page, served }) => {
@@ -243,12 +269,14 @@ test("selecting another character with an in-progress revision prompts before di
   await ivetRow.click();
   await page.locator("#charlib-persona").fill("An unsaved edit.");
 
-  page.once("dialog", dialog => dialog.dismiss());
   await bobRow.click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.cancel"]').click();
   await expect(page.locator("#charlib-persona")).toHaveValue("An unsaved edit.");
 
-  page.once("dialog", dialog => dialog.accept());
   await bobRow.click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect(page.locator("#charlib-name")).toHaveValue("BOB");
 });
 
@@ -491,8 +519,9 @@ test("deleting the last item on the last page clamps back to a page that exists"
   await expect(page.locator(".lib-row")).toHaveCount(1);
 
   await page.locator(".lib-row").first().click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#charlib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
 
   await expect(page.locator(".lib-pager")).toHaveCount(0);
   await expect(page.locator(".lib-row")).toHaveCount(10);
@@ -577,8 +606,9 @@ test("deleting a tag persists — the row doesn't just leave the list", async ({
   await expect.poll(async () => page.locator(".lib-row").count()).toBe(before + 1);
 
   await page.locator(".lib-row").filter({ hasText: "Whimsical" }).click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#taglib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect.poll(async () => page.locator(".lib-row").count()).toBe(before);
 
   await arrive(page, served, "#/catalog?kind=tags");
@@ -589,10 +619,11 @@ test("the skill library seeds from the engine and new entries can be created", a
   await arrive(page, served, "#/catalog?kind=skills");
 
   await expect(page.locator(".lib-skills")).toBeVisible();
-  // The engine's seed: 3 entries (lockpicking, climbing, sleight-of-hand)
+  // The engine's seed: 8 general skills, 3 special ones (lockpicking, climbing, sleight-of-hand)
+  // and 2 origins (human, ai) — all three kinds live in this one catalog.
   const rows = page.locator(".lib-row");
   await expect(rows.first()).toBeVisible();
-  await expect.poll(async () => rows.count()).toBe(3);
+  await expect.poll(async () => rows.count()).toBe(13);
   await expect(page).toHaveURL(/kind=skills/);
 
   await page.locator("#skilllib-new").click();
@@ -602,12 +633,195 @@ test("the skill library seeds from the engine and new entries can be created", a
   await page.locator("#skilllib-save").click();
 
   // The saved entry is on the list, backed by the real save path.
-  await expect.poll(async () => rows.count()).toBe(4);
+  await expect.poll(async () => rows.count()).toBe(14);
   await expect(page.locator(".lib-row").filter({ hasText: "Telekinesis" })).toHaveCount(1);
 
   // Persisted for real, not just added to the in-memory list.
   await arrive(page, served, "#/catalog?kind=skills");
-  await expect.poll(async () => page.locator(".lib-row").count()).toBe(4);
+  await expect.poll(async () => page.locator(".lib-row").count()).toBe(14);
+});
+
+test("the skill library lists origins apart from the special skills", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // Three sections under their own headings, in the order the kinds build on each other.
+  const sections = page.locator(".lib-list .lib-facet-heading");
+  await expect(sections).toHaveText(["General skills", "Special skills", "Origins"]);
+
+  // An origin says what it starts a character with, and carries the badge; a general skill carries
+  // its own badge; a special skill carries neither, because it is the ordinary case.
+  const ai = page.locator(".lib-row").filter({ hasText: "ai" });
+  await expect(ai).toContainText("Origin");
+  await expect(ai).toContainText("starts with speech, recall");
+  const human = page.locator(".lib-row").filter({ hasText: "human" });
+  await expect(human).toContainText("starts with movement");
+  const sight = page.locator(".lib-row").filter({ hasText: "sight" }).first();
+  await expect(sight).toContainText("General");
+  const lockpicking = page.locator(".lib-row").filter({ hasText: "lockpicking" });
+  await expect(lockpicking).not.toContainText("Origin");
+  await expect(lockpicking).not.toContainText("General");
+});
+
+test("an origin can be created and saved with its general skills", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  await page.locator("#skilllib-new").click();
+  // A new entry starts as a special skill: the general picker is hidden until Origin is chosen.
+  await expect(page.locator("#skilllib-general-section")).toHaveCount(0);
+  await page.locator('[data-skill-kind="origin"]').click();
+  await page.locator("#skilllib-name").fill("Bird");
+  await page.locator("#skilllib-meaning").fill("a small bird: it flies, sees and hears, and cannot speak");
+  await page.locator('[data-general-skill="movement"]').click();
+  await page.locator('[data-general-skill="sight"]').click();
+  await expect(page.locator("#skilllib-save")).toBeEnabled();
+  await page.locator("#skilllib-save").click();
+
+  // The row says what the origin grants, and the editor still shows the two chips picked.
+  await expect(page.locator(".lib-row").filter({ hasText: "Bird" })).toContainText("starts with movement, sight");
+
+  // Persisted for real: a fresh load still has the origin with its coverage.
+  await arrive(page, served, "#/catalog?kind=skills");
+  await page.locator(".lib-row").filter({ hasText: "Bird" }).click();
+  await expect(page.locator('[data-skill-kind="origin"]')).toHaveClass(/on/);
+  await expect(page.locator('[data-general-skill="movement"]')).toHaveClass(/on/);
+  await expect(page.locator('[data-general-skill="sight"]')).toHaveClass(/on/);
+  await expect(page.locator('[data-general-skill="speech"]')).not.toHaveClass(/on/);
+});
+
+test("searching by a granted skill finds the origin that grants it", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  await page.locator("#skilllib-search").fill("sight");
+  // "sight" is a general skill in its own right, and the human origin's list carries it — a covered
+  // skill's name must surface the origin that grants it, not just the skill itself.
+  const hits = page.locator(".lib-row");
+  await expect(hits.filter({ hasText: "human" })).toHaveCount(1);
+  await expect(hits.filter({ hasText: "lockpicking" })).toHaveCount(0);
+});
+
+test("switching an origin back to a special skill drops the general list on save", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  await page.locator("#skilllib-new").click();
+  await page.locator('[data-skill-kind="origin"]').click();
+  await page.locator("#skilllib-name").fill("Ghost");
+  await page.locator("#skilllib-meaning").fill("a bodiless presence");
+  await page.locator('[data-general-skill="speech"]').click();
+  await page.locator("#skilllib-save").click();
+  await expect(page.locator(".lib-row").filter({ hasText: "Ghost" })).toContainText("starts with speech");
+
+  // Switch the saved origin to a special skill; the general list has nowhere to live.
+  await page.locator('[data-skill-kind="special"]').click();
+  await expect(page.locator("#skilllib-general-section")).toHaveCount(0);
+  await page.locator("#skilllib-save").click();
+  const ghost = page.locator(".lib-row").filter({ hasText: "Ghost" });
+  await expect(ghost).not.toContainText("starts with speech");
+  await expect(ghost).toContainText("a bodiless presence");
+
+  await arrive(page, served, "#/catalog?kind=skills");
+  await page.locator(".lib-row").filter({ hasText: "Ghost" }).click();
+  await expect(page.locator('[data-skill-kind="special"]')).toHaveClass(/on/);
+  await expect(page.locator("#skilllib-general-section")).toHaveCount(0);
+});
+
+test("the list runs full width until a skill is selected", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // Nothing selected: no inspector in the DOM at all, rather than a panel saying "select a skill".
+  await expect(page.locator(".lib-skills.no-inspector")).toHaveCount(1);
+  await expect(page.locator(".lib-inspector")).toHaveCount(0);
+
+  await page.locator(".lib-row").filter({ hasText: "lockpicking" }).click();
+  await expect(page.locator(".lib-inspector")).toHaveCount(1);
+  await expect(page.locator(".lib-skills.no-inspector")).toHaveCount(0);
+
+  await page.locator("#skilllib-close").click();
+  await expect(page.locator(".lib-inspector")).toHaveCount(0);
+});
+
+test("a general skill can be created, and its kind is fixed once saved", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  await page.locator("#skilllib-new").click();
+  // All three kinds are offered while the entry has never been saved.
+  await expect(page.locator('[data-skill-kind="general"]')).toHaveCount(1);
+  await page.locator('[data-skill-kind="general"]').click();
+  await page.locator("#skilllib-name").fill("Balance");
+  await page.locator("#skilllib-meaning").fill("keeping your feet under you on an unsteady footing");
+  // A general skill is name and meaning only — no general-skill picker of its own.
+  await expect(page.locator("#skilllib-general-section")).toHaveCount(0);
+  await page.locator("#skilllib-save").click();
+
+  const balance = page.locator(".lib-row").filter({ hasText: "Balance" });
+  await expect(balance).toContainText("General");
+
+  // Saved: the kind is now fixed, and the picker is replaced by the reason why.
+  await arrive(page, served, "#/catalog?kind=skills");
+  await page.locator(".lib-row").filter({ hasText: "Balance" }).click();
+  await expect(page.locator('[data-tid="skill-library.kind-fixed"]')).toBeVisible();
+  await expect(page.locator('[data-skill-kind="origin"]')).toHaveCount(0);
+});
+
+test("the skill editor refuses to delete a general skill an origin grants, and says which", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // "sight" is granted by the human origin in the seed, so it cannot go.
+  await page.locator(".lib-row").filter({ hasText: "sight" }).first().click();
+  await expect(page.locator('[data-tid="skill-library.granted-by"]')).toContainText("human");
+  // Refused before any confirm: the origin-grant guard answers, no styled dialog ever opens.
+  await page.locator("#skilllib-delete").click();
+  // The refusal's own wording, not the Usage line's — that already says "granted by origin human",
+  // so asserting on it would pass whether or not the delete was actually refused.
+  await expect(page.locator(".lib-inspector")).toContainText("remove it from it first");
+  // Refused before the round trip: still on the list, and still on the list after a reload.
+  await arrive(page, served, "#/catalog?kind=skills");
+  await expect(page.locator(".lib-row").filter({ hasText: "sight" }).first()).toBeVisible();
+});
+
+test("each kind carries a marker, and the kind name never depends on it", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // The badge says the kind in words; the glyph in front of it is decoration. Whichever the browser
+  // renders — the glyph or the kind's initial — the readable name is there either way.
+  const human = page.locator(".lib-row").filter({ hasText: "human" });
+  await expect(human.locator('[data-tid="skill-library.kind-badge"]')).toContainText("Origin");
+  await expect(human.locator('[data-tid="skill-library.kind-badge"]')).toHaveAttribute("title", "Origin skill");
+  const mark = await human.locator(".lib-kind-mark").textContent();
+  expect(mark?.trim().length).toBeGreaterThan(0);
+
+  // The editor head marks the kind too, and names it for a screen reader rather than relying on the
+  // glyph alone.
+  await page.locator(".lib-row").filter({ hasText: "lockpicking" }).click();
+  const avatar = page.locator('[data-tid="skill-library.kind-avatar"]');
+  await expect(avatar).toHaveAttribute("aria-label", "Special skill");
+  expect((await avatar.textContent())?.trim().length).toBeGreaterThan(0);
+});
+
+test("every skill row lines its actions up in the same column", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+
+  // A special skill carries no badge, so its row has one child fewer than the grid has columns —
+  // without pinning, its ••• parks a column short of every other row's. Measured in one pass: the
+  // list re-renders when the usage fetch lands, and a handle taken before that is stale after it.
+  await expect(page.locator(".lib-row")).toHaveCount(13);
+  const lefts = await page.evaluate(() => {
+    const xOf = (name: string) => {
+      const row = [...document.querySelectorAll(".lib-row")]
+        .find(r => r.querySelector(".lib-row-copy strong")?.textContent?.trim() === name);
+      return Math.round(row!.querySelector(".lib-more")!.getBoundingClientRect().x);
+    };
+    return { special: xOf("lockpicking"), origin: xOf("human"), general: xOf("sight") };
+  });
+  expect(lefts.origin).toBe(lefts.special);
+  expect(lefts.general).toBe(lefts.special);
+});
+
+test("the skill editor carries no tags block", async ({ page, served }) => {
+  await arrive(page, served, "#/catalog?kind=skills");
+  await page.locator(".lib-row").filter({ hasText: "lockpicking" }).click();
+  await expect(page.locator(".lib-inspector")).toBeVisible();
+  await expect(page.locator(".lib-inspector")).not.toContainText("Tags");
+  await expect(page.locator(".lib-pick[data-tag-label]")).toHaveCount(0);
 });
 
 test("the skill library's search keeps the caret while it filters", async ({ page, served }) => {
@@ -623,6 +837,7 @@ test("the skill library's search keeps the caret while it filters", async ({ pag
   await page.keyboard.type("telekin");
   await expect(page.locator("#skilllib-search")).toHaveValue("telekin");
   await expect(page.locator(".lib-row")).toHaveCount(1);
+  await expect(page.locator(".lib-row")).toContainText("Telekinesis");
 });
 
 test("the style library edits a style through the dedicated inspector", async ({ page, served }) => {
@@ -685,8 +900,9 @@ test("deleting a style persists — the row doesn't just leave the list", async 
   await expect(page.locator(".lib-row")).toHaveCount(1);
 
   await page.locator(".lib-row").first().click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#stylib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect(page.locator(".lib-row")).toHaveCount(0);
 
   // An optimistic delete against a route that doesn't exist would pass the count above and fail
@@ -721,8 +937,9 @@ test("a save that lands after switching characters updates the list row, not the
     // fixed wait, so the test cannot pass by accident on timing.
     await expect(page.locator("#charlib-save")).toBeDisabled();
 
-    page.once("dialog", dialog => dialog.accept());
     await bobRow.click();
+    await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+    await page.locator('[data-tid="confirm.ok"]').click();
     await expect(page.locator("#charlib-name")).toHaveValue("BOB");
   } finally {
     // A held server-side request that never gets released hangs the harness's own teardown too --
@@ -751,8 +968,9 @@ test("a delete that lands after switching characters removes its own row, not th
   await ivetRow.click();
   const release = holdCatalogWrites();
   try {
-    page.once("dialog", dialog => dialog.accept()); // the delete confirm
     await page.locator("#charlib-delete").click();
+    await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+    await page.locator('[data-tid="confirm.ok"]').click();
     await expect(page.locator("#charlib-delete")).toBeDisabled();
 
     // Nothing was edited on IVET before deleting it, so switching to BOB is not a "discard unsaved

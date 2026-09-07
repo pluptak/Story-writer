@@ -132,10 +132,13 @@ export const APP = {
     caps: { voiceSamples: 3 },
   },
   // Schema-derived catalog shape, fetched once from /catalog/config -- same bootstrap-then-replace
-  // pattern as editorConfig above.
+  // pattern as editorConfig above. originSkills/generalSkills render as empty until the fetch
+  // lands; the pickers that read them say so rather than offering nothing silently.
   catalogConfig: {
     tagFacets: ["genre", "dramaticMode", "tone"],
     caps: { voiceSamples: 3 },
+    originSkills: {},
+    generalSkills: {},
   },
   expandAll: false,
   wantReaderView: false,        // a reader consult just arrived: scroll to it once the run page is showing

@@ -1,7 +1,7 @@
 import { esc, tid } from "./util.js";
 import { APP } from "./state.js";
 import { charChip } from "./character-card.js";
-import { hint, divider } from "./ui.js";
+import { hint, divider, pageTitle } from "./ui.js";
 
 // ---- the shelf ------------------------------------------------------------
 // The hub: reachable any time an engine is attached, including mid-run -- browsing is always
@@ -10,8 +10,9 @@ import { hint, divider } from "./ui.js";
 export const castChips = (list, dir) => (list || []).map(c => charChip(c, dir)).join("");
 
 export function pickerHtml() {
-  if (!APP.stories) return `<section class="picker"><h2>Choose a story</h2>
-    <p class="sub">reading the shelf…</p></section>`;
+  if (!APP.stories) return `<section class="picker" data-tid="shelf.picker">`
+    + pageTitle({ eyebrow: "shelf", title: "Choose a story", lede: "reading the shelf…" })
+    + `</section>`;
 
   const cards = APP.stories.map(s => {
     // A story that does not load says so here, and cannot be chosen -- the same pre-flight the CLI
@@ -44,8 +45,8 @@ export function pickerHtml() {
     : hint(`no stories on the shelf yet — start one above`, { style: "text-align:center;margin:14px 0 0" });
 
   return `<section class="picker" data-tid="shelf.picker">
-    <h2>Choose a story</h2>
-    <p class="sub">${APP.picked ? "starting…" : "pick one to see what it's about"}</p>
+    ${pageTitle({ eyebrow: "shelf", title: "Choose a story",
+      lede: APP.picked ? "starting…" : "pick one to see what it's about" })}
     ${newCard}
     ${catalogCard}
     ${dividerLine}

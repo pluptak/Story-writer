@@ -15,7 +15,7 @@ import { ENGINE } from "./engine/engine-state.ts";
 import { PROVIDER } from "./engine/provider.ts";
 import { discoverStories, type StoryConfig } from "./engine/story-format.ts";
 import { runPreflight, contextFit } from "./engine/preflight.ts";
-import { skillBible } from "./engine/catalog.ts";
+import { persistedCatalogs } from "./engine/catalog.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
 import { configureArchitectDebug } from "./engine/architect.ts";
 import { newCharacterAgent } from "./engine/scene-loop.ts";
@@ -46,11 +46,11 @@ configureArchitectDebug(ARCHITECT_DEBUG || !!ARCHITECT_DEBUG_LOG, ARCHITECT_DEBU
 
 async function runPreflightCli() {
   const dirs = STORY_DIR ? [STORY_DIR] : await discoverStories();
-  if (!dirs.length) { console.error("No stories found under stories/."); process.exitCode = 1; return; }
+  if (!dirs.length) { console.error("No stories found under data/stories/."); process.exitCode = 1; return; }
   let failed = 0;
-  const bible = await skillBible();   // one read for the whole listing, not one per story
+  const catalogs = await persistedCatalogs();   // one read for the whole listing, not one per story
   for (const dir of dirs) {
-    const r = await runPreflight(dir, bible);
+    const r = await runPreflight(dir, catalogs);
     const head = r.ok ? `${C.green}✓${C.reset}` : `${C.red}✗${C.reset}`;
     const titleSuffix = r.summary?.title ? ` ${C.dim}${r.summary.title}${C.reset}` : "";
     console.log(`\n${head} ${C.bold}${dir}${C.reset}${titleSuffix}`);

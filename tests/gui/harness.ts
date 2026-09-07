@@ -1,12 +1,12 @@
 /** The GUI harness: the real server (server/server.ts) bound in-process over a fixture
  *  ServerHost, so the browser exercises the genuine HTTP surface, static modules, and SSE bus
- *  against a deterministic backend — no LM Studio, no child process, nothing in stories/.
+ *  against a deterministic backend — no LM Studio, no child process, nothing in data/stories/.
  *
  *  The fixture story is tests/fixtures/doorway (the committed worked example). Everything that
  *  touches story.json — the editor's load/check/save/discard, the handoff's accept — is delegated
  *  to the REAL host (host.ts), so those paths run the engine's own logic against temp copies of
  *  the fixture. Only what must differ is overridden: model discovery (none), the story registry
- *  (temp dirs instead of stories/ discovery), the handoff session (scripted), and the catalog
+ *  (temp dirs instead of data/stories/ discovery), the handoff session (scripted), and the catalog
  *  (engine logic, temp files). Host methods no test has scripted yet throw, loudly. */
 import { readFile, writeFile, mkdtemp } from "node:fs/promises";
 import { join as joinPath } from "node:path";
@@ -16,10 +16,12 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
 import { LIVE, resetLive } from "../../live.ts";
-import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible } from "../../engine/catalog.ts";
-import { CATALOG_KINDS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
+import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, originSkillGroups } from "../../engine/catalog.ts";
+import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
          type TagEntry } from "../../engine/catalog-schema.ts";
-import { canonSkill } from "../../engine/skills.ts";
+import { SKILL_CATALOG, canonSkill } from "../../engine/skills.ts";
+import { ASSIST_FIELDS } from "../../engine/catalog-assist.ts";
+import { VOICE_SAMPLE_CAP } from "../../engine/story-schema.ts";
 import { HOST, setScaffoldTestHooks, setHandoffTestHooks } from "../../host.ts";
 import type { StoryCard } from "../../engine/preflight.ts";
 import type { ImportedCharacter, NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
@@ -31,7 +33,7 @@ export type FixtureStory = {
   title: string; premise: string; writerStyle: string;
   scenes: { place: string; question: string; pov: string; length: number; roster: string[]; reach?: Record<string, string[]> }[];
   characters: { name: string; persona: string; knows: string; goal: string; belief: string;
-                impulse: string; voice: string[]; skills: string[]; restrictions: string[] }[];
+                impulse: string; voice: string[]; origin?: string; skills: string[]; restrictions: string[] }[];
   config: { maxSteps: number };
 };
 
@@ -69,7 +71,7 @@ export function cardFromStory(dir: string, raw: FixtureStory, name = dir): Story
 }
 
 /** A temp directory holding a copy of the fixture's story.json — the story a write-path test
- *  works on, so nothing committed or in stories/ is ever touched. */
+ *  works on, so nothing committed or in data/stories/ is ever touched. */
 export async function copyFixtureStory(): Promise<string> {
   const dir = await mkdtemp(joinPath(tmpdir(), "pw-story-"));
   await writeFile(joinPath(dir, "story.json"), await readFile(joinPath(ROOT, FIXTURE_DIR, "story.json"), "utf8"));
@@ -105,6 +107,22 @@ export function holdCatalogWrites(): () => void {
   let release!: () => void;
   held = new Promise<void>(r => { release = r; });
   return () => { release(); held = null; };
+}
+
+// -- HOST ANSWERS A TEST SUPPLIES ITSELF --------------------------------------
+// The fixture host is built once, by the `served` fixture, BEFORE the test body runs -- so an
+// override merged into that object at build time could never come from the test that needs it.
+// These are read at CALL time instead, through a proxy on the host the server holds, which is what
+// lets a test install one after the server is already listening.
+//
+// Reach for this only where the real host method cannot be allowed to run: `suggestEdits` calls a
+// model. Anything that is a pure function of files on disk -- run logs, transcripts, chapters --
+// should be given real files in a temp story dir rather than an override, so the test exercises the
+// engine's own reading of them.
+let hostOverrides: Partial<ServerHost> = {};
+/** Install host answers for this test; null (or the `served` fixture) clears them. */
+export function setHostOverrides(overrides: Partial<ServerHost> | null) {
+  hostOverrides = overrides ?? {};
 }
 
 let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
@@ -159,7 +177,7 @@ export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldS
         const e = byId.get(id);
         if (!e) { missing.push(id); continue; }
         imported.push({ libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
-                        belief: e.belief, impulse: e.impulse,
+                        belief: e.belief, impulse: e.impulse, origin: e.origin,
                         voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions] });
       }
       return { imported, missing };
@@ -172,7 +190,7 @@ export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldS
     promote: async (name, meaning) => {
       const entry = { id: `skill-${canonSkill(name)}`, version: 1, name, meaning, tags: [] };
       const bible = await skillBible(catalogFile("skills"));
-      const result = await saveEntry("skills", entry, catalogFile("skills"), bible);
+      const result = await saveEntry("skills", entry, catalogFile("skills"), { bible });
       if (!result.ok) return result;
       return { ok: true as const, bible: await skillBible(catalogFile("skills")), problems: result.problems };
     },
@@ -189,7 +207,7 @@ async function fixtureHost(): Promise<ServerHost> {
     if (!CATALOG_KINDS.includes(kind as CatalogKind)) throw new Error(`no such catalog "${kind}"`);
     return kind as CatalogKind;
   };
-  return {
+  const fixture = {
     // The real host: every path that reads or writes story.json or validates a draft runs the
     // engine's own code — the editor and the handoff's accept are not lookalikes.
     ...HOST,
@@ -200,9 +218,10 @@ async function fixtureHost(): Promise<ServerHost> {
     selectableStory: async dir => (dir === FIXTURE_DIR || extraStories.has(dir) ? dir : null),
     availableModelIds: async () => null,          // no LM Studio behind the harness — on purpose
     runDirs: async dir => extraRunDirs.get(dir) ?? [],
-    // Saved-run GUI tests do not need transcript fixtures; an empty listing is a valid response.
-    runLlmLogs: async () => [],
-    readLlmLog: async () => null,
+    // runLlmLogs/readLlmLog are NOT overridden: they are pure functions of
+    // <storyDir>/out/<id>/llm/*.jsonl, and a temp story dir is a real directory, so the engine's
+    // own implementations read exactly what a test wrote there. A story with no llm/ folder still
+    // lists nothing, which is what every test that does not care about transcripts sees.
     outDir: () => "",
     catalogEntries: async (kind, opts) => {
       const v = withKind(kind);
@@ -215,7 +234,7 @@ async function fixtureHost(): Promise<ServerHost> {
       // The harness must never read the user's real catalog at ROOT, which is why it passes its
       // own temp-scoped skills bible instead.
       const bible = await skillBible(catalogFile("skills"));
-      const r = checkEntry(v, entry, bible);
+      const r = checkEntry(v, entry, { bible });
       return r.ok ? { ok: true, problems: r.problems } : { ok: false, issues: r.issues };
     },
     catalogSave: async (kind, entry) => {
@@ -224,7 +243,7 @@ async function fixtureHost(): Promise<ServerHost> {
       // The harness must never read the user's real catalog at ROOT, which is why it passes its
       // own temp-scoped skills bible instead.
       const bible = await skillBible(catalogFile("skills"));
-      return saveEntry(v, entry, catalogFile(v), bible);
+      return saveEntry(v, entry, catalogFile(v), { bible });
     },
     catalogDelete: async (kind, id) => {
       if (held) await held;
@@ -259,10 +278,27 @@ async function fixtureHost(): Promise<ServerHost> {
       });
       return { ok: true, proposal: { draft, changes, warnings: [] } };
     },
+    // Same reason as catalogCheck/catalogSave above: catalogConfig reads the persisted skills
+    // catalog for its origin/general projections, so it is temp-scoped here too.
+    catalogConfig: async () => ({
+      tagFacets: TAG_FACETS,
+      caps: { voiceSamples: VOICE_SAMPLE_CAP },
+      assistFields: ASSIST_FIELDS,
+      originSkills: await originSkillGroups(catalogFile("skills")),
+      generalSkills: { ...SKILL_CATALOG },
+    }),
     // Usage is derived from the temp catalogs, which start empty — never from the author's real
     // files at ROOT, which the spread HOST would read.
     catalogUsage: async () => ({ tags: {}, skills: {} }),
   } as ServerHost;
+
+  // Every property the server reads goes through here, so `setHostOverrides` applies to a host
+  // that was built before the test that overrides it existed.
+  const read = (o: object, key: string) => (o as Record<string, unknown>)[key];
+  return new Proxy(fixture, {
+    get: (target, key) =>
+      typeof key === "string" && key in hostOverrides ? read(hostOverrides, key) : read(target, key as string),
+  }) as ServerHost;
 }
 
 /** Deep-link arrival. A hash-only goto is a same-document navigation whose hashchange makes the
@@ -284,6 +320,7 @@ export const test = base.extend<{ served: number }>({
     handoffFactory = null;
     scaffoldFactory = null;
     held = null;
+    hostOverrides = {};
     const handle: ServerHandle = startServer(0, await fixtureHost());
     const port = await handle.bound;
     await page.goto(`http://127.0.0.1:${port}/`);

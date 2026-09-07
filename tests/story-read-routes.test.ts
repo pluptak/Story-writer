@@ -14,12 +14,12 @@ let castFails = false;
 
 function makeHost(overrides?: Partial<ServerHost>): ServerHost {
   return baseHost({
-    selectableStory: async (d: string) => (d === "stories/doorway" || d === "doorway" ? "stories/doorway" : null),
+    selectableStory: async (d: string) => (d === "data/stories/doorway" || d === "doorway" ? "data/stories/doorway" : null),
     fullCast: async (dir: string) => {
       if (castFails) {
         return { ok: false, error: "cannot parse" };
       }
-      if (dir !== "stories/doorway") return { ok: false, error: "not found" };
+      if (dir !== "data/stories/doorway") return { ok: false, error: "not found" };
       return {
         ok: true,
         characters: [
@@ -28,6 +28,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
             persona: "Keeps the log.",
             knows: "The signal did not fire.",
             goal: "",
+            origin: "ai",
             skills: [{ text: "lockpicking", meaning: "" }],
             restrictions: [],
           },
@@ -36,6 +37,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
             persona: "Came up from the boats.",
             knows: "",
             goal: "",
+            origin: "",
             skills: [],
             restrictions: ["hearing"],
           },
@@ -67,6 +69,13 @@ describe("/cast (GET)", () => {
     assert.equal(r.json().characters.length, 2);
     assert.equal(r.json().characters[0].name, "ASTER");
     assert.equal(r.json().characters[0].knows, "The signal did not fire.");
+  });
+
+  it("includes each character's origin", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.equal(r.json().ok, true);
+    assert.equal(r.json().characters[0].origin, "ai");
+    assert.equal(r.json().characters[1].origin, "");
   });
 
   it("omits each character's model", async () => {
@@ -121,7 +130,7 @@ describe("/cast (GET)", () => {
 
 describe("/stories (GET)", () => {
   it("returns the story cards", async () => {
-    const host = makeHost({ storyCards: async () => [{ dir: "stories/doorway", name: "Doorway", ok: true, warnings: [] }] as never });
+    const host = makeHost({ storyCards: async () => [{ dir: "data/stories/doorway", name: "Doorway", ok: true, warnings: [] }] as never });
     const r = await callGet(handleStoryReadRoutes, "/stories", host);
     assert.equal(r.code, 200);
     assert.equal(r.json().stories.length, 1);

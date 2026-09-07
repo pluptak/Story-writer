@@ -11,11 +11,11 @@ import { LIVE, setWhere, sseWrite, runState, stopRun, releaseForStop } from "./l
 import { startServer, type ServerHandle } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { NET } from "./engine/llm-client.ts";
-import { loadStory, chooseStory, writtenChapters, type StoryConfig } from "./engine/story-format.ts";
+import { loadStory, chooseStory, writtenChapters, readChapterCatalogs, type StoryConfig } from "./engine/story-format.ts";
 import { startupRefusal } from "./engine/run-gate.ts";
 import { warn } from "./engine/warnings.ts";
 import { runAndSave } from "./run-and-save.ts";
-import { skillBible } from "./engine/catalog.ts";
+import { persistedCatalogs } from "./engine/catalog.ts";
 import { HOST } from "./host.ts";
 
 /** What one process invocation passes down from the command line: the run's knobs and the console
@@ -66,9 +66,13 @@ export async function chapterStartRefusal(dir: string, chapter: number, replace:
 export async function startChapterRun(dir: string, chapter = 1, cli: CliConfig,
                                       opts: { replace?: boolean } = {}) {
   try {
-    // The run resolves against the author's own bible, so a skill they promoted into it means in a
-    // scene what it means in the editor.
-    const sc = await loadStory(dir, LIVE.modelOverride ?? undefined, await skillBible());
+    // The run resolves against the author's own catalogs, so a skill they promoted and an origin
+    // they configured mean in a scene what they mean in the editor — EXCEPT when re-writing a
+    // chapter that already has a snapshot, which resolves against the catalogs it was written
+    // from. A later bible edit must not change what a name meant in a chapter already on disk.
+    const wanted = Number(cli.chapter) || chapter;
+    const sc = await loadStory(dir, LIVE.modelOverride ?? undefined,
+                               await readChapterCatalogs(dir, wanted) ?? await persistedCatalogs());
     ENGINE.stream = sc.stream; ENGINE.debug = sc.debug;
     NET.timeoutMs = sc.requestTimeout * 1000;
     NET.retries = sc.attempts - 1;

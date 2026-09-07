@@ -4,8 +4,9 @@ import { join as joinPath } from "node:path";
 import { PROVIDER } from "./provider.ts";
 import { estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
+import { skillOrigins } from "./catalog.ts";
 import type { TimelineDef } from "./story-schema.ts";
-import { bibleMeaningOf, type BibleLookup } from "./skills.ts";
+import { type Catalogs } from "./skills.ts";
 import { ENGINE } from "./engine-state.ts";
 import { WARN } from "./warnings.ts";
 
@@ -102,7 +103,7 @@ export function modelSwapWarning(models: string[]): string | null {
     + `consider one model for the cast`;
 }
 
-export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): Promise<PreflightResult> {
+export function runPreflight(dir: string, catalogs?: Catalogs): Promise<PreflightResult> {
   const task = preflightChain.then(async (): Promise<PreflightResult> => {
     const warnings: string[] = [];
     // The chain serializes checks, so swapping the sink here cannot capture another story's
@@ -110,7 +111,7 @@ export function runPreflight(dir: string, bible: BibleLookup = bibleMeaningOf): 
     const origSink = WARN.sink;
     WARN.sink = (...a: unknown[]) => { warnings.push(a.map(String).join(" ")); };
     try {
-      const sc = await loadStory(dir, undefined, bible);
+      const sc = await loadStory(dir, undefined, catalogs);
 
       const wanted = [...new Set([sc.models.default, sc.models.writer, sc.models.summary,
                                   ...sc.characters.map(c => c.model)])].filter(Boolean);
@@ -216,15 +217,15 @@ export async function retainedRuns(storyDir: string): Promise<RunSummary[]> {
   return out.reverse();   // newest first
 }
 
-export async function storyCards(bible: BibleLookup = bibleMeaningOf): Promise<StoryCard[]> {
+export async function storyCards(catalogs?: Catalogs): Promise<StoryCard[]> {
   const dirs = await discoverStories();
   const out: StoryCard[] = [];
   for (const dir of dirs) {
-    const r = await runPreflight(dir, bible);
+    const r = await runPreflight(dir, catalogs);
     const s = r.summary;
     const [runs, chapters] = await Promise.all([retainedRuns(resolveStoryDir(dir)), writtenChapters(dir)]);
     out.push({
-      dir, name: dir.replace(/^stories\//, ""), ok: r.ok, error: r.error,
+      dir, name: dir.replace(/^data\/stories\//, ""), ok: r.ok, error: r.error,
       warnings: r.warnings.map(w => w.trim()),
       runs, chapters,
       ...(s ? {

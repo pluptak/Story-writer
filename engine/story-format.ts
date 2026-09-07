@@ -3,7 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { bibleMeaningOf, removedCapabilities, resolveSkills, type BibleLookup, type Skill } from "./skills.ts";
+import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills,
+         type Catalogs, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
@@ -13,7 +14,8 @@ export type { SceneDef } from "./story-schema.ts";
 
 /** A loaded character: everything the agents need, with skills already resolved to the final list,
  *  and `limits` carrying what the authored restrictions took away as explicit negative facts —
- *  general AND special skills, so a removed lockpicking is nameable, not merely absent. */
+ *  general AND special skills, so a removed lockpicking is nameable, not merely absent. `origin` is
+ *  kept for display and round-trip; `skills` and `limits` are already resolved against it. */
 export interface CharacterDef {
   name: string;
   model: string;
@@ -23,6 +25,7 @@ export interface CharacterDef {
   belief: string;
   impulse: string;
   voice: string[];
+  origin: string;
   skills: Skill[];
   limits: string[];
   maxRetries?: number;
@@ -51,11 +54,11 @@ export interface StoryConfig {
   maxTokens: number;
   models: { default: string; writer: string; summary: string };
   characters: CharacterDef[];
-  /** The bible this story's capabilities were resolved against, carried so the per-scene reach layer
-   *  resolves the same names. I2 and I3 both depend on the two layers agreeing on which capabilities
-   *  exist, so resolving them against different bibles would be a bug that only surfaces on a
-   *  restriction — the expensive kind. */
-  bible: BibleLookup;
+  /** The catalogs this story's capabilities were resolved against, carried so the per-scene reach
+   *  layer resolves the same names. I2 and I3 both depend on the two layers agreeing on which
+   *  capabilities exist, so resolving them against different catalogs would be a bug that only
+   *  surfaces on a restriction — the expensive kind. */
+  catalogs: Catalogs;
   maxCharacterRetries?: number;
 }
 
@@ -65,10 +68,10 @@ export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const resolveStoryDir = (dir: string) => (isAbsolute(dir) ? dir : resolvePath(ROOT, dir));
 
 /** Validate and load a story into a StoryConfig; a model override beats the story's own default.
- *  `bible` is the special-skill bible the cast's capabilities resolve against — the in-code catalog
- *  by default, the author's persisted one when the caller loads it. */
-export async function loadStory(dir: string, modelOverride?: string,
-                                bible: BibleLookup = bibleMeaningOf): Promise<StoryConfig> {
+ *  `catalogs` bundles the special-skill bible, the general skills, and the origin groups — all three
+ *  are injected as a bag because every caller that can load one can load all three. Defaults to the
+ *  in-code catalogs when unset. */
+export async function loadStory(dir: string, modelOverride?: string, catalogs?: Catalogs): Promise<StoryConfig> {
   const base = resolveStoryDir(dir);
   const storyPath = joinPath(base, "story.json");
   const raw = JSON.parse(await readFile(storyPath, "utf8"));
@@ -81,6 +84,8 @@ export async function loadStory(dir: string, modelOverride?: string,
 
   if (!parsed.premise.trim())
     throw new Error(`Premise is empty in ${base}/story.json — there is nothing to write.`);
+
+  const resolvedCatalogs: Catalogs = catalogs ?? {};
 
   const warn = (msg: string) => emitWarn(`  (${msg})`);
 
@@ -98,6 +103,7 @@ export async function loadStory(dir: string, modelOverride?: string,
     if (!name) { warn("a character has no name — skipped"); continue; }
     if (seen.has(nameKey(name))) { warn(`Duplicate character "${name}" — skipped`); continue; }
     seen.add(nameKey(name));
+    const origin = resolveOrigin(name, c.origin, resolvedCatalogs);
     const skillsRaw = c.skills.join(" | "), restrictionsRaw = c.restrictions.join(" | ");
     characters.push({
       name,
@@ -108,9 +114,10 @@ export async function loadStory(dir: string, modelOverride?: string,
       belief: c.belief,
       impulse: c.impulse,
       voice: c.voice,
+      origin: c.origin.trim(),
       // Reach empty on both (I4): a character-level view never sees a scene's grant.
-      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", bible),
-      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", bible),
+      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
+      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       maxRetries: c.maxRetries,
     });
   }
@@ -175,26 +182,26 @@ export async function loadStory(dir: string, modelOverride?: string,
     maxTokens: config.maxTokens,
     models,
     characters,
-    bible,
+    catalogs: resolvedCatalogs,
     maxCharacterRetries: config.maxCharacterRetries,
   };
 }
 
 // -- DISCOVERY -------------------------------------------------------------
-/** Every story folder under stories/ that has a loadable story.json, sorted by name. An absent
- *  stories/ directory is a fresh checkout and stays silent; any other listing failure warns,
+/** Every story folder under data/stories/ that has a loadable story.json, sorted by name. An absent
+ *  data/stories/ directory is a fresh checkout and stays silent; any other listing failure warns,
  *  since an empty shelf would otherwise be indistinguishable from "no stories". */
 export async function discoverStories(): Promise<string[]> {
   const choices: string[] = [];
   try {
-    const dirents = await readdir(joinPath(ROOT, "stories"), { withFileTypes: true });
+    const dirents = await readdir(joinPath(ROOT, "data", "stories"), { withFileTypes: true });
     for (const d of dirents.sort((a, b) => a.name.localeCompare(b.name))) {
       if (!d.isDirectory()) continue;
-      try { await readFile(joinPath(ROOT, "stories", d.name, "story.json"), "utf8"); choices.push(`stories/${d.name}`); } catch {}
+      try { await readFile(joinPath(ROOT, "data", "stories", d.name, "story.json"), "utf8"); choices.push(`data/stories/${d.name}`); } catch {}
     }
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT")
-      emitWarn(`could not list stories/: ${(e as Error).message}`);
+      emitWarn(`could not list data/stories/: ${(e as Error).message}`);
   }
   return choices;
 }
@@ -206,14 +213,14 @@ export async function chooseStory(arg: string): Promise<string> {
   if (arg) return arg;
   const choices = await discoverStories();
   if (!process.stdin.isTTY) {
-    if (!choices.length) throw new Error("No stories found under stories/.");
+    if (!choices.length) throw new Error("No stories found under data/stories/.");
     return choices[0];
   }
   if (!choices.length)
-    throw new Error("No stories found under stories/ — start the viewer with --serve and use the shelf's new-story interview.");
+    throw new Error("No stories found under data/stories/ — start the viewer with --serve and use the shelf's new-story interview.");
 
   console.log("\nAvailable stories:");
-  choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.replace(/^stories\//, "")}`));
+  choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.replace(/^data\/stories\//, "")}`));
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const ans = (await rl.question(`Pick a story [1-${choices.length}] (default 1): `)).trim();
   rl.close();
@@ -226,7 +233,7 @@ export async function selectableStory(dir: string): Promise<string | null> {
   const want = String(dir ?? "").trim().replace(/\\/g, "/").replace(/\/+$/, "");
   if (!want) return null;
   const choices = await discoverStories();
-  return choices.find(c => c === want || c === `stories/${want}`) ?? null;
+  return choices.find(c => c === want || c === `data/stories/${want}`) ?? null;
 }
 
 const BUILTIN_MODEL = "qwen3.6-35b-a3b";
@@ -314,6 +321,22 @@ export async function readChapterSpec(storyDir: string, n: number): Promise<unkn
   try {
     const text = await readFile(joinPath(base, "chapters", `${n}.json`), "utf8");
     return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/** The catalogs a chapter resolved against, or null for one written before catalog snapshots existed
+ *  (or one whose snapshot will not parse). A caller with null has no choice but today's catalogs —
+ *  what a name meant then is simply not recorded — so it must fall back quietly. */
+export async function readChapterCatalogs(storyDir: string, n: number): Promise<Catalogs | null> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const raw = JSON.parse(await readFile(joinPath(base, "chapters", `${n}.catalogs.json`), "utf8"));
+    if (!raw || typeof raw !== "object") return null;
+    return catalogsFrom({
+      bible: raw.bible ?? {}, generals: raw.generals ?? {}, origins: raw.origins ?? {},
+    });
   } catch {
     return null;
   }

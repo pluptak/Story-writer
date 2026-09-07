@@ -7,7 +7,7 @@
 import { esc, post, latest, parseLines, parseCommaSeparated } from "./util.js";
 import { APP } from "./state.js";
 import { go } from "./nav.js";
-import { button, hint, errorLine, warnLine, thinking } from "./ui.js";
+import { button, hint, errorLine, warnLine, thinking, confirmDialog } from "./ui.js";
 import { on, onInput } from "./wire.js";
 
 // Dirty-guard: warn before closing the tab / navigating away
@@ -193,6 +193,7 @@ function characterCardsHtml() {
         ${fld(`char-${i}-impulse`, 'Impulse ("when X → Y")', c.impulse ?? "", "half")}
       </div>
       ${voiceFld(i, c.voice)}
+      ${fld(`char-${i}-origin`, "Origin (blank = every general skill)", c.origin ?? "", "half")}
       <div class="editor-row">
         ${fld(`char-${i}-skills`, "Skills (comma-separated)", skills, "half")}
         ${fld(`char-${i}-restrictions`, "Restrictions (comma-separated)", restrictions, "half")}
@@ -566,8 +567,9 @@ export function wireStoryEditor(page) {
   });
 
   // Revert button
-  on(page, "edit-revert", () => {
-    if (!confirm("Discard all unsaved changes?")) return;
+  on(page, "edit-revert", async () => {
+    if (!await confirmDialog({ title: "Discard all unsaved changes?",
+      body: "The editor will return to the last saved version.", confirmLabel: "discard changes", danger: true })) return;
     APP.editDraft = clone(APP.editStory);
     APP.editDirty = false;
     APP.editError = "";

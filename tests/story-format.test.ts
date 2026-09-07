@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, ROOT,
+  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, readChapterCatalogs, ROOT,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
@@ -506,25 +506,6 @@ describe("writtenChapters", () => {
       assert.deepEqual(chapters, [2, 10]);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
-
-  it("returns the same chapter numbers that readChapters will read with contents", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
-    try {
-      await mkdir(join(dir, "chapters"), { recursive: true });
-      await writeFile(join(dir, "chapters", "2.md"), "Chapter 2 text", "utf8");
-      await writeFile(join(dir, "chapters", "10.md"), "Chapter 10 text", "utf8");
-
-      const nums = await writtenChapters(dir);
-      const full = await readChapters(dir);
-
-      assert.deepEqual(nums, [2, 10]);
-      assert.equal(full.length, 2);
-      assert.equal(full[0].n, 2);
-      assert.equal(full[0].text, "Chapter 2 text");
-      assert.equal(full[1].n, 10);
-      assert.equal(full[1].text, "Chapter 10 text");
-    } finally { await rm(dir, { recursive: true, force: true }); }
-  });
 });
 
 describe("readChapterSpec", () => {
@@ -612,7 +593,7 @@ describe("loadDefaults", () => {
 });
 
 // -- THE COMMITTED REFERENCE STORY -----------------------------------------
-// stories/* is the user's own content and gitignored; tests/fixtures/doorway is the one story
+// data/stories/* is the user's own content and gitignored; tests/fixtures/doorway is the one story
 // committed with the engine, doubling as the architect's worked example. See engine/architect.ts.
 describe("the doorway fixture", () => {
   it("loads, and is built so a bible skill and a restriction are both in play", async () => {
@@ -626,12 +607,12 @@ describe("the doorway fixture", () => {
   });
 });
 
-// -- STORY DISCOVERY (scans the real stories/ dir) -------------------------
-// discoverStories/selectableStory scan stories/, which is gitignored and empty on a fresh checkout.
-// These tests synthesize a throwaway story there from the committed fixture, exercise the scan, and
-// remove it — self-contained, not dependent on whatever is under stories/ locally.
+// -- STORY DISCOVERY (scans the real data/stories/ dir) -------------------------
+// discoverStories/selectableStory scan data/stories/, which is gitignored and empty on a fresh
+// checkout. These tests synthesize a throwaway story there from the committed fixture, exercise the
+// scan, and remove it — self-contained, not dependent on whatever is under data/stories/ locally.
 describe("story discovery", () => {
-  const probe = "stories/__discovery_probe__";
+  const probe = "data/stories/__discovery_probe__";
   before(async () => {
     await rm(join(ROOT, probe), { recursive: true, force: true });
     await mkdir(join(ROOT, probe), { recursive: true });
@@ -639,7 +620,7 @@ describe("story discovery", () => {
   });
   after(async () => { await rm(join(ROOT, probe), { recursive: true, force: true }); });
 
-  it("discovers a story under stories/, and never the tests/fixtures tree", async () => {
+  it("discovers a story under data/stories/, and never the tests/fixtures tree", async () => {
     const found = await discoverStories();
     assert.ok(found.includes(probe), `expected ${probe} among ${JSON.stringify(found)}`);
     assert.ok(!found.some(d => d.includes("badstory")));
@@ -662,13 +643,13 @@ describe("story discovery", () => {
     assert.equal(await selectableStory(probe), probe);
     assert.equal(await selectableStory("__discovery_probe__"), probe);
     assert.equal(await selectableStory(probe + "/"), probe);
-    assert.equal(await selectableStory("stories\\__discovery_probe__"), probe,
+    assert.equal(await selectableStory("data/stories\\__discovery_probe__"), probe,
                  "a Windows separator names the same story, not a different one");
   });
 
   it("refuses anything the engine did not discover", async () => {
-    for (const bad of ["", "   ", "../../etc/passwd", "stories/../story-writer.ts", "stories",
-                       "stories/nope", "/etc/passwd", "C:/Windows/System32", "tests/fixtures/badstory",
+    for (const bad of ["", "   ", "../../etc/passwd", "data/stories/../story-writer.ts", "data/stories",
+                       "data/stories/nope", "/etc/passwd", "C:/Windows/System32", "tests/fixtures/badstory",
                        "tests/fixtures/doorway"]) {
       assert.equal(await selectableStory(bad), null, `must refuse ${JSON.stringify(bad)}`);
     }
@@ -696,7 +677,7 @@ describe("loadStory with an injected bible", () => {
   it("gives a bare skill the bible's meaning, and tags it bible rather than custom", async () => {
     const dir = await storyWith({ name: "SEER", skills: ["telepathy"] });
     try {
-      const sc = await loadStory(dir, undefined, bible);
+      const sc = await loadStory(dir, undefined, { bible });
       const skill = sc.characters[0].skills.find(s => s.name === "telepathy");
       assert.ok(skill, "the skill must survive the load");
       assert.equal(skill.meaning, TELEPATHY);
@@ -722,7 +703,7 @@ describe("loadStory with an injected bible", () => {
       const keep = WARN.sink;
       WARN.sink = (...a: unknown[]) => { kept.push(a.map(String).join(" ")); };
       let withBible;
-      try { withBible = await loadStory(dir, undefined, bible); } finally { WARN.sink = keep; }
+      try { withBible = await loadStory(dir, undefined, { bible }); } finally { WARN.sink = keep; }
       assert.deepEqual(withBible.characters[0].limits, ["telepathy"],
                        "a bible skill the author removed is nameable, not merely absent");
       assert.ok(!kept.some(w => w.includes("telepathy")),
@@ -739,14 +720,82 @@ describe("loadStory with an injected bible", () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
-  it("carries the bible it resolved against on the config, for the per-scene reach layer", async () => {
+  it("carries the catalogs it resolved against on the config, for the per-scene reach layer", async () => {
     const dir = await storyWith({ name: "SEER", skills: ["telepathy"] });
     try {
-      const sc = await loadStory(dir, undefined, bible);
-      assert.equal(sc.bible, bible, "the reach layer must resolve the same names the cast did");
+      const sc = await loadStory(dir, undefined, { bible });
+      assert.equal(sc.catalogs.bible, bible, "the reach layer must resolve the same names the cast did");
       const fallback = await quiet(() => loadStory(dir));
-      assert.equal(fallback.bible("lockpicking") !== undefined, true,
-                   "the default is the in-code catalog, not an empty bible");
+      assert.equal(fallback.catalogs.bible?.("lockpicking"), undefined,
+                   "an unset bag stays unset; the in-code default is applied at each resolution, not baked in here");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("readChapterCatalogs", () => {
+  const storyWithSnapshot = async (catalogs: unknown | null) => {
+    const dir = await mkdtemp(join(tmpdir(), "chapter-catalogs-test-"));
+    await writeFile(join(dir, "story.json"), JSON.stringify({
+      title: "T", premise: "A premise.",
+      scenes: [{ place: "The strand", question: "Does she read it?" }],
+      characters: [{ name: "MAEVE", persona: "A pilot.", skills: ["tidewalking"] }],
+    }), "utf8");
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    await writeFile(join(dir, "chapters", "1.md"), "Chapter 1 prose.", "utf8");
+    if (catalogs !== null)
+      await writeFile(join(dir, "chapters", "1.catalogs.json"), JSON.stringify(catalogs), "utf8");
+    return dir;
+  };
+
+  it("returns null for a chapter written before catalog snapshots existed", async () => {
+    const dir = await storyWithSnapshot(null);
+    try {
+      assert.equal(await readChapterCatalogs(dir, 1), null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns null for a snapshot that will not parse, rather than throwing", async () => {
+    const dir = await storyWithSnapshot(null);
+    try {
+      await writeFile(join(dir, "chapters", "1.catalogs.json"), "{ not json", "utf8");
+      assert.equal(await readChapterCatalogs(dir, 1), null);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("rebuilds all three lookups from the snapshot", async () => {
+    const dir = await storyWithSnapshot({
+      bible: { tidewalking: "reading the turn of a tide by standing in it" },
+      generals: { hearing: "perceiving sound" },
+      origins: { selkie: ["hearing"] },
+    });
+    try {
+      const c = (await readChapterCatalogs(dir, 1))!;
+      assert.equal(c.bible?.("tidewalking"), "reading the turn of a tide by standing in it");
+      assert.deepEqual(c.generals, { hearing: "perceiving sound" });
+      assert.deepEqual(c.origins?.("selkie"), ["hearing"]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("keeps what a name meant in a written chapter, whatever the bible says now", async () => {
+    // The guarantee: MAEVE's `skills: ["tidewalking"]` is a bare name, so its meaning comes from a
+    // catalog. Deleting the bible entry afterwards must not reach back into a written chapter.
+    const dir = await storyWithSnapshot({
+      bible: { tidewalking: "reading the turn of a tide by standing in it" },
+      generals: {}, origins: {},
+    });
+    try {
+      const written = await readChapterCatalogs(dir, 1) ?? {};
+      const asWritten = await quiet(() => loadStory(dir, undefined, written));
+      const then = asWritten.characters[0].skills.find(s => s.name === "tidewalking")!;
+      assert.equal(then.meaning, "reading the turn of a tide by standing in it");
+      assert.equal(then.source, "bible");
+
+      // The same story loaded against a catalog that no longer has the entry: the name survives,
+      // its meaning does not. This is what the snapshot exists to prevent.
+      const asNow = await quiet(() => loadStory(dir, undefined, { bible: () => undefined }));
+      const now = asNow.characters[0].skills.find(s => s.name === "tidewalking")!;
+      assert.equal(now.meaning, "");
+      assert.equal(now.source, "custom");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

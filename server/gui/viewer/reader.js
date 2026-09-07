@@ -2,7 +2,7 @@ import { esc, basename, tid } from "./util.js";
 import { APP, READER, storyName } from "./state.js";
 import { go, syncHash } from "./nav.js";
 import { paras } from "./blocks.js";
-import { button, errorLine, thinking, divider } from "./ui.js";
+import { button, errorLine, thinking, divider, pageTitle } from "./ui.js";
 
 // ---- the story reader ----------------------------------------------------
 // A read-only view of a story's accepted prose, chapter by chapter. No SSE,
@@ -54,27 +54,26 @@ export async function loadReader(dir) {
 export function readerPageHtml() {
   if (!READER.dir) {
     return `<section class="picker">
-      <h2>Read a story</h2>
-      <p class="sub">open a story from the shelf and choose "read story"</p>
-      <div class="btns" style="margin-top:18px">${button({ label: "back to shelf", id: "reader-back" })}</div>
+      ${pageTitle({ eyebrow: "reading", title: "Read a story", lede: "open a story from the shelf and choose “read story”" })}
+      <div class="btns mt-lg">${button({ label: "back to shelf", id: "reader-back" })}</div>
     </section>`;
   }
   const name = storyName(READER.dir) || basename(READER.dir);
   if (READER.loading) {
     return `<section class="picker reader-view">
-      <h2>${esc(name)}</h2>
+      ${pageTitle({ eyebrow: "reading", title: name })}
       ${thinking("loading chapters…", { tag: "p" })}
-      <div class="btns" style="margin-top:18px">${button({ label: "back", id: "reader-back" })}</div>
+      <div class="btns mt-lg">${button({ label: "back", id: "reader-back" })}</div>
     </section>`;
   }
   if (READER.error) {
     return `<section class="picker reader-view">
-      <h2>${esc(name)}</h2>
+      ${pageTitle({ eyebrow: "reading", title: name })}
       ${errorLine(esc(READER.error))}
-      <div class="btns" style="margin-top:18px">${button({ label: "back", id: "reader-back" })}</div>
+      <div class="btns mt-lg">${button({ label: "back", id: "reader-back" })}</div>
     </section>`;
   }
-  const body = [`<h2>${esc(name)}</h2>`];
+  const body = [pageTitle({ eyebrow: "reading", title: name })];
   body.push(`<div class="reader-search">
     <input type="text" id="reader-q" placeholder="search this story" value="${esc(READER.query || "")}"
       aria-label="search this story" autocomplete="off" spellcheck="false">
@@ -86,7 +85,7 @@ export function readerPageHtml() {
       ${ch.error ? errorLine(esc(ch.error)) : `<div class="prose">${paras(ch.text)}</div>`}
     </div>`);
   }
-  body.push(`<div class="btns" style="margin-top:18px">${button({ label: "back", id: "reader-back" })}</div>`);
+  body.push(`<div class="btns mt-lg">${button({ label: "back", id: "reader-back" })}</div>`);
   return `<section class="picker reader-view">${body.join("")}</section>`;
 }
 

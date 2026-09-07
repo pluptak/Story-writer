@@ -17,8 +17,8 @@ const DOORWAY = {
   facts: [] as string[],
   timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
   characters: [
-    { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: [] },
-    { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], skills: [] as string[], restrictions: ["hearing"] },
+    { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: [] },
+    { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: ["hearing"] },
   ],
   config: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140, stream: true, debug: false,
             requestTimeout: 120, attempts: 3, maxTokens: 2000,
@@ -30,9 +30,9 @@ let suggestCalls = 0;
 
 function makeHost(overrides?: Partial<ServerHost>): ServerHost {
   return baseHost({
-    selectableStory: async (d: string) => (d === "stories/doorway" || d === "doorway" ? "stories/doorway" : null),
+    selectableStory: async (d: string) => (d === "data/stories/doorway" || d === "doorway" ? "data/stories/doorway" : null),
     storyForEdit: async (dir: string) => {
-      if (dir !== "stories/doorway") return { ok: false, error: "not found" };
+      if (dir !== "data/stories/doorway") return { ok: false, error: "not found" };
       const parsed = {
         title: DOORWAY.title,
         premise: DOORWAY.premise,
@@ -52,7 +52,7 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
       return { ok: true, warnings: [] };
     },
     saveStory: async (dir: string, _story: any) => {
-      if (dir !== "stories/doorway") return { ok: false, reason: "not found" };
+      if (dir !== "data/stories/doorway") return { ok: false, reason: "not found" };
       return { ok: true, warnings: [] };
     },
     suggestEdits: async (_spec: unknown, text: string) => {

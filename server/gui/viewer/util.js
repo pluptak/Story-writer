@@ -75,6 +75,28 @@ export async function postJson(path, body, onError = msg => notify(msg)) {
 
 /** Split text into a list of lines: newlines, trimmed, empties dropped -- what a textarea holds
  *  for a list-valued field. */
+/** Whether the browser actually has a glyph for a character, so an icon never renders as tofu.
+ *  Measured rather than sniffed: a missing glyph falls back to the font's .notdef box, which is the
+ *  same width as any other missing glyph — so comparing against a private-use codepoint no font
+ *  claims tells a real glyph from a box. Memoised per character; the answer cannot change while the
+ *  page is open, and measuring is the expensive part. */
+const glyphCache = new Map();
+export function glyphAvailable(ch) {
+  if (glyphCache.has(ch)) return glyphCache.get(ch);
+  let ok = false;
+  try {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (ctx) {
+      ctx.font = "24px sans-serif";
+      // U+E000 is the first Private Use codepoint: nothing standard maps it, so it always measures
+      // as the .notdef box.
+      ok = ctx.measureText(ch).width !== ctx.measureText("").width;
+    }
+  } catch { ok = false; }
+  glyphCache.set(ch, ok);
+  return ok;
+}
+
 export const parseLines = text => (text || "").split("\n").map(s => s.trim()).filter(Boolean);
 
 /** Split text into a comma-separated list: trimmed, empties dropped. */

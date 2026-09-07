@@ -1,5 +1,5 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
-import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems, type BibleLookup } from "./skills.ts";
+import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems, type Catalogs } from "./skills.ts";
 import { RunConfig, THINK_LEVELS, TimelineDef, type ThinkLevel, type SceneDef } from "./story-schema.ts";
 
 export type { SceneDef, CharacterDef, RunConfig, TimelineDef } from "./story-schema.ts";
@@ -20,7 +20,7 @@ export interface StorySpec {
   models: { default: string; writer: string; summary: string };
   characters: Array<{
     name: string; model: string; persona: string; knows: string; goal: string;
-    belief: string; impulse: string; voice: string[];
+    belief: string; impulse: string; voice: string[]; origin: string;
     skills: string[]; restrictions: string[]; maxRetries?: number;
   }>;
 }
@@ -110,9 +110,11 @@ export function timelineOrderProblems(beats: TimelineDef[]): string[] {
 }
 
 /** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing.
- *  The bible is a parameter so the architect validates against the one the author edits, not the one
- *  in the source. */
-export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { spec: StorySpec; problems: string[] } {
+ *  The catalogs are a parameter so the architect validates against the ones the author edits, not
+ *  the ones in the source. */
+export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec; problems: string[] } {
+  const bible = catalogs?.bible ?? bibleMeaningOf;
+  const generals = catalogs?.generals ?? SKILL_CATALOG;
   const problems: string[] = [];
   const o = raw ?? {};
   const rawScenes: any[] = Array.isArray(o.scenes) ? o.scenes
@@ -133,7 +135,7 @@ export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { 
     if (seen.has(name.toLowerCase())) { problems.push(`two characters called "${name}" — kept the first`); continue; }
     seen.add(name.toLowerCase());
     const skills = asStrings(c?.skills);
-    const cap = capabilityProblems(name, skills, asStrings(c?.restrictions ?? c?.lacks), bible);
+    const cap = capabilityProblems(name, skills, asStrings(c?.restrictions ?? c?.lacks), undefined, catalogs);
     const restrictions = cap.restrictions;
     problems.push(...cap.problems);
     const voice = asStrings(c?.voice);
@@ -149,6 +151,7 @@ export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { 
       knows: [knows, learned].filter(Boolean).join(" "),
       goal: String(c?.goal ?? "").trim(),
       belief, impulse, voice,
+      origin: String(c?.origin ?? "").trim(),
       skills, restrictions,
       ...(Number.isInteger(c?.maxRetries) && c.maxRetries >= 0 ? { maxRetries: c.maxRetries } : {}),
     });
@@ -201,7 +204,7 @@ export function normalizeSpec(raw: any, bible: BibleLookup = bibleMeaningOf): { 
         // skill name is naming the sense/capability, not the interface — their own meaning stands and
         // the reach entry is dropped. Surfaces here, not only mid-run.
         const key = canonSkill(text);
-        if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === key)
+        if (Object.keys(generals).some(g => canonSkill(g) === key)
             || bible(text) !== undefined || ownSkillKeys.has(key)) {
           problems.push(`${ch.name}'s reach "${text}" collides with a skill name — name the INTERFACE, not the sense or capability it substitutes for; the entry is dropped`);
           return false;
@@ -284,7 +287,7 @@ export function canonicalField(field: string): string {
     .replace(/\[([^\]\d][^\]]*)\]/g, ".$1");
 }
 
-export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bibleMeaningOf): {
+export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
   spec: StorySpec; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; problems: string[];
 } {
   type Applied = { field: string; before: unknown; after: unknown };
@@ -320,7 +323,7 @@ export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bible
     }
     return undefined;
   };
-  const normalizedDraft = () => normalizeSpec(draft, bible).spec;
+  const normalizedDraft = () => normalizeSpec(draft, catalogs).spec;
   const add = (entry: Omit<Work, "after"> & { after?: unknown }) => work.push(entry as Work);
   const scalarResolver = (key: string, resolve: (next: StorySpec) => unknown, before: unknown, field = key) => {
     const normalized = normalizedDraft();
@@ -441,7 +444,7 @@ export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bible
       continue;
     }
 
-    const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|belief|impulse|voice|skills|restrictions|lacks|name)$/);
+    const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|belief|impulse|voice|origin|skills|restrictions|lacks|name)$/);
     if (cm) {
       // Models copy the <NAME> placeholder literally sometimes; unwrap it rather than refuse.
       const who = cm[1].replace(/^<+/, "").replace(/>+$/, "").trim() || cm[1];
@@ -658,7 +661,7 @@ export function applyEdits(spec: StorySpec, raw: any, bible: BibleLookup = bible
     }
   }
 
-  const { spec: next, problems } = normalizeSpec(draft, bible);
+  const { spec: next, problems } = normalizeSpec(draft, catalogs);
   const counts = new Map<string, number>();
   for (const e of work) counts.set(e.key, (counts.get(e.key) ?? 0) + 1);
   const applied = work.map(({ field, before, snapshot, resolve, key }) => ({
@@ -737,6 +740,7 @@ export function storyJsonShape(spec: StorySpec, models: { default: string }) {
     belief: c.belief,
     impulse: c.impulse,
     voice: c.voice,
+    origin: c.origin,
     skills: c.skills,
     restrictions: c.restrictions,
     ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),
@@ -781,7 +785,7 @@ export function specView(spec: StorySpec) {
     facts: spec.facts, timeline: spec.timeline, config: spec.config, models: spec.models,
     characters: spec.characters.map(c => ({
       name: c.name, model: c.model, persona: c.persona, knows: c.knows, goal: c.goal,
-      belief: c.belief, impulse: c.impulse, voice: c.voice,
+      belief: c.belief, impulse: c.impulse, voice: c.voice, origin: c.origin,
       skills: c.skills.map(s => splitMeaning(s)),
       restrictions: c.restrictions,
       ...(c.maxRetries !== undefined ? { maxRetries: c.maxRetries } : {}),

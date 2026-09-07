@@ -1,8 +1,9 @@
 import { esc, tid, modelOptionsHtml } from "./util.js";
 
 // Small shared markup builders for the modal-backdrop pattern (character card, the new-story idea
-// modal, the library picker, the end-of-run modal) and the `.btn` family. Each modal's header/footer
-// stays caller-built -- only the wrapper genuinely identical across all four is shared here.
+// modal, the library picker, the end-of-run modal, the confirm dialog) and the `.btn` family.
+// Each modal's header/footer stays caller-built -- only the wrapper genuinely identical across
+// all of them is shared here.
 
 /** The `.modal-backdrop` > `.picker.iv[.extraClass]` wrapper every modal uses. `body` is the raw
  *  inner HTML the caller already builds (header, form, footer). */
@@ -12,6 +13,53 @@ export function modal({ id, dataTid, ariaLabel, extraClass, body }) {
                aria-label="${esc(ariaLabel)}">
     <section class="${cls}">${body}</section>
   </div>`;
+}
+
+/** One page-title recipe (eyebrow · serif title · lede), shared by the shelf, story, reader,
+ *  scaffold, live and library headers. `eyebrow`/`lede` are optional; `title` is plain text,
+ *  `dataTid` names the area (`shelf.`, `story.`, …) so locators keep working. `extraClass`
+ *  keeps a view's scoping class (e.g. `sc-head`) on the same node while it migrates. */
+export function pageTitle({ eyebrow, title, lede, dataTid, extraClass }) {
+  const cls = extraClass ? `page-title ${extraClass}` : "page-title";
+  return `<div class="${cls}"${dataTid ? tid(dataTid) : ""}>`
+    + (eyebrow ? `<p class="eyebrow">${esc(eyebrow)}</p>` : "")
+    + `<h2>${esc(title)}</h2>`
+    + (lede ? `<p class="lede">${esc(lede)}</p>` : "")
+    + `</div>`;
+}
+
+/** Promise-based styled confirm on the shared modal() kit. Renders into #modalroot so it
+ *  stacks above page content like every other modal; resolves true on confirm, false on
+ *  cancel / backdrop / Escape. `danger` paints the confirm button red; `confirmLabel` defaults
+ *  to "confirm". Tids name the role, never the state: `confirm.dialog`, `confirm.ok`,
+ *  `confirm.cancel`. A confirm already open owns the decision -- a second call while one is
+ *  showing resolves false immediately rather than stacking a duplicate #confirm-backdrop. */
+export function confirmDialog({ title, body, confirmLabel = "confirm", danger = false } = {}) {
+  return new Promise(resolve => {
+    const root = document.getElementById("modalroot");
+    if (!root || document.getElementById("confirm-backdrop")) { resolve(false); return; }
+    const wrap = document.createElement("div");
+    wrap.innerHTML = modal({
+      id: "confirm-backdrop", dataTid: "confirm.dialog", ariaLabel: title || "confirm",
+      body: `<div class="confirm-body"><h2>${esc(title || "Are you sure?")}</h2>`
+        + (body ? `<p class="sub">${esc(body)}</p>` : "")
+        + `<div class="btns mt-sm">`
+        + `<button class="btn${danger ? " danger" : " primary"}" id="confirm-ok"${tid("confirm.ok")}>${esc(confirmLabel)}</button>`
+        + `<button class="btn" id="confirm-cancel"${tid("confirm.cancel")}>cancel</button>`
+        + `</div></div>`,
+    });
+    const bd = wrap.firstElementChild;
+    const done = v => { bd.remove(); resolve(v); };
+    bd.querySelector("#confirm-ok").addEventListener("click", () => done(true));
+    bd.querySelector("#confirm-cancel").addEventListener("click", () => done(false));
+    bd.addEventListener("click", e => { if (e.target === bd) done(false); });
+    // Escape routing lives in chrome.js, which knows nothing about this promise -- stash the
+    // resolver on the node so the topmost-backdrop handler can settle it as a cancel.
+    bd._confirmResolve = done;
+    root.appendChild(bd);
+    const ok = bd.querySelector("#confirm-ok");
+    if (ok) ok.focus();
+  });
 }
 
 /** The `×` icon button every modal's own close affordance uses (not every modal has one). */

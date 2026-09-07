@@ -44,9 +44,9 @@ describe("/scaffold routes", () => {
 
   const LIB = [
     { id: "lib-ivet", version: 2, name: "IVET", portablePersona: "Ex-locksmith.", belief: "b",
-      impulse: "i", voice: ["v"], skills: ["lockpicking :: opening a lock"], restrictions: ["sight"] },
+      impulse: "i", voice: ["v"], skills: ["lockpicking :: opening a lock"], restrictions: ["sight"], origin: "human" },
     { id: "lib-merritt", version: 1, name: "MERRITT", portablePersona: "From the boats.", belief: "b2",
-      impulse: "i2", voice: [], skills: [], restrictions: [] },
+      impulse: "i2", voice: [], skills: [], restrictions: [], origin: "" },
   ];
 
   const STYLES = [
@@ -79,6 +79,7 @@ describe("/scaffold routes", () => {
             libraryId: e.id, version: e.version, name: e.name, portablePersona: e.portablePersona,
             belief: e.belief, impulse: e.impulse,
             voice: [...e.voice], skills: [...e.skills], restrictions: [...e.restrictions],
+            origin: e.origin,
           });
         }
         return { imported, missing };
@@ -210,7 +211,7 @@ describe("/scaffold routes", () => {
       const acceptP = post("/scaffold/accept", { folder: "the-fog-signal" }, h);
       await yieldMicrotasks();
       await post("/scaffold/abandon", {}, h);
-      fireAccept({ kind: "written", dir: "stories/the-fog-signal", files: [], warnings: [] });
+      fireAccept({ kind: "written", dir: "data/stories/the-fog-signal", files: [], warnings: [] });
       const accepted = await acceptP;
 
       assert.equal(accepted.code, 409);

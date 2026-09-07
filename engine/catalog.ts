@@ -4,7 +4,8 @@ import { join as joinPath } from "node:path";
 import { z } from "zod";
 import { warn } from "./warnings.ts";
 import { characterPsychologyWarnings } from "./story-spec.ts";
-import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, bibleFrom, type BibleLookup } from "./skills.ts";
+import { capabilityProblems, SKILL_CATALOG, SPECIAL_SKILL_CATALOG, canonSkill, bibleMeaningOf, bibleFrom, ORIGIN_SKILL_GROUPS, originsFrom, catalogsFrom, type BibleLookup, type OriginLookup, type Catalogs,
+         type CatalogData } from "./skills.ts";
 import { ROOT } from "./story-format.ts";
 import {
   CharacterCatalog,
@@ -23,17 +24,17 @@ type CatalogRegistry = {
   filename: string;
   catalog: z.ZodType<any>;
   entry: z.ZodType<any>;
-  problems: (entry: any, bible?: BibleLookup) => string[];
+  problems: (entry: any, catalogs?: Catalogs) => string[];
   seed?: () => any[];
 };
 
 /** Character-specific problems: psychology, capabilities, and portable-persona checks. */
-function characterProblems(entry: LibraryCharacter, bible: BibleLookup = bibleMeaningOf): string[] {
+function characterProblems(entry: LibraryCharacter, catalogs?: Catalogs): string[] {
   const problems: string[] = [];
 
   problems.push(...characterPsychologyWarnings(entry.name, entry.belief, entry.impulse, entry.voice));
 
-  const capProblems = capabilityProblems(entry.name, entry.skills, entry.restrictions, bible);
+  const capProblems = capabilityProblems(entry.name, entry.skills, entry.restrictions, undefined, catalogs);
   problems.push(...capProblems.problems);
 
   if (!entry.portablePersona.trim()) {
@@ -95,19 +96,43 @@ function styleProblems(entry: LibraryStyle): string[] {
 }
 
 /** Skill-specific problems: advisory only. */
-function skillProblems(entry: LibrarySkill): string[] {
+function skillProblems(entry: LibrarySkill, catalogs?: Catalogs): string[] {
+  const generals = catalogs?.generals ?? SKILL_CATALOG;
   const problems: string[] = [];
 
   if (!entry.meaning.trim()) {
     problems.push(
-      `${entry.name} has no meaning — a bible entry exists to say what the skill lets a character do`
+      `${entry.name} has no meaning — a catalog entry exists to say what it lets a character do`
     );
   }
 
-  if (Object.keys(SKILL_CATALOG).some(g => canonSkill(g) === canonSkill(entry.name))) {
+  if (entry.kind === "special") {
+    if (Object.keys(generals).some(g => canonSkill(g) === canonSkill(entry.name))) {
+      problems.push(
+        `${entry.name} is a general skill every character already has — a bible entry by that name adds nothing`
+      );
+    }
+  }
+
+  if (entry.kind !== "origin" && entry.general.length > 0) {
     problems.push(
-      `${entry.name} is a general skill every character already has — a bible entry by that name adds nothing`
+      `${entry.name} — only an origin lists general skills; ${entry.kind} must not carry a general list`
     );
+  }
+
+  if (entry.kind === "origin") {
+    const unknown = entry.general.filter(s => !Object.prototype.hasOwnProperty.call(generals, canonSkill(s)));
+    if (unknown.length) {
+      problems.push(
+        `${entry.name} names "${unknown.join('", "')}" — not a general skill, so a character of this kind would start without it`
+      );
+    }
+
+    if (entry.general.length === 0) {
+      problems.push(
+        `${entry.name} grants no general skills — a character of this kind would start with none at all`
+      );
+    }
   }
 
   if (entry.name.includes("::")) {
@@ -125,7 +150,7 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
     filename: "catalog-characters.json",
     catalog: CharacterCatalog,
     entry: LibraryCharacter,
-    problems: characterProblems,
+    problems: (entry, catalogs) => characterProblems(entry, catalogs),
   },
   tags: {
     filename: "catalog-tags.json",
@@ -149,25 +174,34 @@ const REGISTRY: Record<CatalogKind, CatalogRegistry> = {
     filename: "catalog-skills.json",
     catalog: SkillCatalog,
     entry: LibrarySkill,
-    problems: skillProblems,
-    // The in-code special-skill catalog is the seed; the file wins entirely once it exists.
-    seed: () => Object.entries(SPECIAL_SKILL_CATALOG).map(([name, meaning]) => ({ id: name, version: 1, name, meaning, tags: [] })),
+    problems: (entry, catalogs) => skillProblems(entry, catalogs),
+    // The in-code catalogs are the seed: general skills, special skills, and origins.
+    seed: () => [
+      ...Object.entries(SKILL_CATALOG).map(([name, meaning]) =>
+        ({ id: name, version: 1, name, meaning, kind: "general" as const, general: [] })),
+      ...Object.entries(SPECIAL_SKILL_CATALOG).map(([name, meaning]) =>
+        ({ id: name, version: 1, name, meaning, kind: "special" as const, general: [] })),
+      ...Object.entries(ORIGIN_SKILL_GROUPS).map(([name, group]) =>
+        ({ id: name, version: 1, name, meaning: group.meaning, kind: "origin" as const, general: [...group.skills] })),
+    ],
   },
 };
 
 function catalogPath(kind: CatalogKind, path?: string): string {
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
-  return path ?? joinPath(ROOT, reg.filename);
+  return path ?? joinPath(ROOT, "data", "catalogs", reg.filename);
 }
 
 /** The persisted bible as name → meaning pairs. Entries with a blank meaning are dropped: a bible
  *  entry exists to say what a skill lets a character do, and one that says nothing is not a bible
- *  entry. This is the shape the architect's system prompt needs. */
+ *  entry. This is the shape the architect's system prompt needs. Only special-skill entries are
+ *  returned; origins are never resolved as special skills. */
 export async function skillBibleEntries(path?: string): Promise<Record<string, string>> {
   const catalog = await loadCatalog("skills", path);
   const entries: Record<string, string> = {};
   for (const entry of catalog.entries) {
+    if (entry.kind !== "special") continue;
     const trimmed = entry.meaning.trim();
     if (trimmed) {
       entries[entry.name] = trimmed;
@@ -183,6 +217,64 @@ export async function skillBibleEntries(path?: string): Promise<Record<string, s
  *  required `meaning` field exists to prevent. */
 export async function skillBible(path?: string): Promise<BibleLookup> {
   return bibleFrom(await skillBibleEntries(path));
+}
+
+/** The persisted origins as name → general-skill names. Entries with `kind !== "origin"` are skipped.
+ *  Unknown names in `general` are not filtered: `resolveOrigin` drops those with a warning naming
+ *  the character, which is the more useful place to hear about it. */
+export async function originSkillGroups(path?: string): Promise<Record<string, string[]>> {
+  const catalog = await loadCatalog("skills", path);
+  const entries: Record<string, string[]> = {};
+  for (const entry of catalog.entries) {
+    if (entry.kind !== "origin") continue;
+    entries[entry.name] = entry.general;
+  }
+  return entries;
+}
+
+/** The persisted origin groups as an OriginLookup: `originsFrom(await originSkillGroups(path))`,
+ *  mirroring `skillBible` exactly. */
+export async function skillOrigins(path?: string): Promise<OriginLookup> {
+  return originsFrom(await originSkillGroups(path));
+}
+
+/** The persisted general skills as name → meaning pairs. Entries with `kind !== "general"` are
+ *  skipped. CRITICAL: if the loaded catalog contains NO general entries at all, returns the in-code
+ *  SKILL_CATALOG instead of an empty map. A catalog file written before general skills existed must
+ *  not silently strip all eight general skills from every character — that would be a data loss bug
+ *  surfacing only when first saved. An empty map means "this file predates general skills", never
+ *  "this author has no general skills".
+ *
+ *  The corner that buys: an author who deletes every general entry gets the in-code eight back,
+ *  because nothing on disk distinguishes that from a catalog written before they existed. Deleting
+ *  most of them works; deleting the last one does not stick. */
+export async function generalSkillEntries(path?: string): Promise<Record<string, string>> {
+  const catalog = await loadCatalog("skills", path);
+  const entries: Record<string, string> = {};
+  for (const entry of catalog.entries) {
+    if (entry.kind !== "general") continue;
+    entries[entry.name] = entry.meaning;
+  }
+  if (!Object.keys(entries).length) return { ...SKILL_CATALOG };
+  return entries;
+}
+
+/** All three catalogs bundled: the special-skill bible, the general skills, and the origins, all
+ *  persisted in the same file. This is what callers pass around; it exists so no caller can load
+ *  two of the three. */
+export async function persistedCatalogs(path?: string): Promise<Catalogs> {
+  return catalogsFrom(await persistedCatalogData(path));
+}
+
+/** The same three as plain data, for the snapshot written beside a finished chapter. Taken whole
+ *  rather than only what the story names: a later chapter may reach for an entry this one never
+ *  used, and the snapshot is a few kilobytes either way. */
+export async function persistedCatalogData(path?: string): Promise<CatalogData> {
+  return {
+    bible: await skillBibleEntries(path),
+    generals: await generalSkillEntries(path),
+    origins: await originSkillGroups(path),
+  };
 }
 
 /** Every entry in one catalog. Missing file returns the seed (if one exists) or an empty catalog, silently.
@@ -212,6 +304,16 @@ export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any
     return { entries: [] };
   }
 
+  // Strip tags from skill entries — legacy field, and strictObject would reject the whole file over
+  // it. Shape-guarded so a malformed file still reaches safeParse and degrades to an empty catalog.
+  if (kind === "skills" && raw && typeof raw === "object" && Array.isArray(raw.entries)) {
+    raw = {
+      ...raw,
+      entries: raw.entries.map((e: any) =>
+        e && typeof e === "object" ? (({ tags: _tags, ...rest }) => rest)(e) : e),
+    };
+  }
+
   const result = reg.catalog.safeParse(raw);
   if (!result.success) {
     warn(`${kind} catalog could not be parsed — using empty catalog`);
@@ -222,20 +324,27 @@ export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any
 }
 
 /** Validate one entry without saving it: schema issues first, then advisory problems.
- *  Synchronous and catalog-free — the bible arrives as a parameter for exactly that reason:
- *  the caller that can load one passes it, and the default is the in-code one. */
-export function checkEntry(kind: CatalogKind, raw: unknown, bible: BibleLookup = bibleMeaningOf): { ok: false; issues: string[] } | { ok: true; entry: any; problems: string[] } {
+ *  Synchronous and catalog-free — the catalogs arrive as a parameter for exactly that reason:
+ *  the caller that can load one passes it, and the defaults are the in-code ones. */
+export function checkEntry(kind: CatalogKind, raw: unknown, catalogs?: Catalogs): { ok: false; issues: string[] } | { ok: true; entry: any; problems: string[] } {
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
 
-  const result = reg.entry.safeParse(raw);
+  // Strip tags from skill entries — the viewer's editor still sends it, strictObject would reject the save.
+  let toValidate = raw;
+  if (kind === "skills" && raw && typeof raw === "object" && "tags" in raw) {
+    const { tags: _, ...rest } = raw as any;
+    toValidate = rest;
+  }
+
+  const result = reg.entry.safeParse(toValidate);
   if (!result.success) {
     const issues = result.error.issues.map(i => `${i.path.join(".") || "entry"}: ${i.message}`);
     return { ok: false, issues };
   }
 
   const entry = result.data;
-  const problems = reg.problems(entry, bible);
+  const problems = reg.problems(entry, catalogs);
 
   return { ok: true, entry, problems };
 }
@@ -244,9 +353,9 @@ export function checkEntry(kind: CatalogKind, raw: unknown, bible: BibleLookup =
  *  Kinds with an identity of their own beyond the id report a collision as an advisory problem —
  *  a duplicate facet+label for tags, a duplicate canonical name for skills. Neither blocks the save,
  *  since the catalog is an editing surface. */
-export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, bible: BibleLookup = bibleMeaningOf):
+export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, catalogs?: Catalogs):
   Promise<{ ok: true; entry: any; problems: string[] } | { ok: false; reason: string; issues?: string[] }> {
-  const check = checkEntry(kind, raw, bible);
+  const check = checkEntry(kind, raw, catalogs);
   if (!check.ok) {
     return { ok: false, reason: "entry validation failed", issues: check.issues };
   }
@@ -360,6 +469,20 @@ export async function deleteEntry(kind: CatalogKind, id: string, path?: string):
   const existingIndex = catalog.entries.findIndex((e: any) => e.id === id);
   if (existingIndex === -1) {
     return { ok: false, reason: `entry "${id}" not found`, missing: true };
+  }
+
+  // A general skill an origin still grants cannot go: the origin would name something that no
+  // longer exists, and every character of that kind would quietly start without it. Refused rather
+  // than cascaded — which general skills a kind of being has is the author's call, not a
+  // consequence of tidying the list.
+  const doomed = catalog.entries[existingIndex];
+  if (kind === "skills" && doomed.kind === "general") {
+    const granting = (catalog.entries as LibrarySkill[])
+      .filter(e => e.kind === "origin" && e.general.some(g => canonSkill(g) === canonSkill(doomed.name)))
+      .map(e => `"${e.name}"`);
+    if (granting.length)
+      return { ok: false, reason: `"${doomed.name}" is granted by ${granting.length > 1 ? "origins" : "origin"} `
+        + `${granting.join(", ")} — remove it from ${granting.length > 1 ? "them" : "it"} first` };
   }
 
   catalog.entries.splice(existingIndex, 1);

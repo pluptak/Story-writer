@@ -6,7 +6,7 @@ import { loadReader } from "./reader.js";
 import { go } from "./nav.js";
 import { prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paras } from "./blocks.js";
-import { button, hint, errorLine, warnLine, divider, modelSelect } from "./ui.js";
+import { button, hint, errorLine, warnLine, divider, modelSelect, confirmDialog, pageTitle } from "./ui.js";
 
 // ---- the story page ----------------------------------------------------------
 // One story, a full page rather than a modal (`#/story?dir=...`, so a reload or bookmark lands back
@@ -59,7 +59,7 @@ function sceneRowHtml(scene, chapters, canWrite, why, discardable, beats) {
     <button ${tid("story.write-btn")} class="btn${next ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
     ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
     ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
-    ${open ? `<div class="prose" style="margin-top:12px">${paras(APP.chapter.text)}</div>` : ""}
+    ${open ? `<div class="prose mt-12">${paras(APP.chapter.text)}</div>` : ""}
     ${open && APP.chapterError ? errorLine(esc(APP.chapterError)) : ""}
   </div></div>`;
 }
@@ -141,14 +141,14 @@ export function storyPageHtml() {
   const s = (APP.stories || []).find(x => x.dir === APP.storyDir);
   if (!s) return `<section class="picker"><h2>Not found</h2>
     <p class="sub">this story is no longer on the shelf.</p>
-    <div class="btns" style="margin-top:14px">${button({ label: "back to shelf", id: "story-back" })}</div>
+    <div class="btns mt-sm">${button({ label: "back to shelf", id: "story-back" })}</div>
   </section>`;
 
   if (!s.ok) return `<section class="picker story">
     <h2>${esc(s.name)}</h2>
     ${errorLine(`does not load — ${esc(s.error || "unknown error")}`)}
     ${(s.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
-    <div class="btns" style="margin-top:14px">${button({ label: "back to shelf", id: "story-back" })}</div>
+    <div class="btns mt-sm">${button({ label: "back to shelf", id: "story-back" })}</div>
   </section>`;
 
   // The client-side mirror of what /select and /model would refuse anyway (server.ts, run-control-
@@ -159,12 +159,12 @@ export function storyPageHtml() {
   const canWrite = !why;
 
   return `<section class="picker story">
-    <h2>${esc(s.name)}</h2>
+    ${pageTitle({ eyebrow: "story", title: s.name })}
     <p class="premise">${esc(s.premise || "")}</p>
     <div class="row">${castChips(s.characters, s.dir)}</div>
-    ${s.writerStyle ? `<div class="row" style="margin-top:8px"><span class="hint">voice</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
+    ${s.writerStyle ? `<div class="row mt-8"><span class="hint">voice</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
 
-    <div class="row" style="margin-top:12px"><span class="hint">model</span>${modelSelectHtml(s)}</div>
+    <div class="row mt-12"><span class="hint">model</span>${modelSelectHtml(s)}</div>
     ${APP.storyError ? errorLine(esc(APP.storyError)) : ""}
     ${APP.runError ? errorLine(esc(APP.runError)) : ""}
     ${(s.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
@@ -180,7 +180,7 @@ export function storyPageHtml() {
     ${divider("previous runs")}
     ${runsListHtml(s)}
 
-    <div class="btns" style="margin-top:18px">
+    <div class="btns mt-lg">
       ${button({ label: "edit story", id: "story-edit", tidName: "story.edit-btn" })}
       ${(s.chapters?.length) ? button({ label: "read story", id: "story-read-story", tidName: "story.read-story-btn" }) : ""}
       ${(s.runs?.length >= 2) ? button({ label: "compare runs", id: "story-compare", tidName: "story.compare-btn" }) : ""}
@@ -271,7 +271,7 @@ async function playChosen(dir, model, chapter) {
   // case that would overwrite a chapter with no dialog shown. The handoff's start button does not
   // go through here -- it sends no replace, and is refused if its prepared chapter somehow collides
   // with what is on disk.
-  const replace = authorizeChapterRun(chapter);
+  const replace = await authorizeChapterRun(chapter);
   if (replace === null) return;
   if (APP.picked) return;
   const mj = await post("/model", { model }, false);
@@ -283,13 +283,15 @@ async function playChosen(dir, model, chapter) {
  *  unwritten one. `null` means the owner said no; `true` means they confirmed a deviation and the
  *  server may allow it; `false` means there was nothing to confirm, and the server's own guard stays
  *  in force -- which catches a story list this page read before the chapter existed. */
-function authorizeChapterRun(n) {
+async function authorizeChapterRun(n) {
   const s = (APP.stories || []).find(x => x.dir === APP.storyDir);
   const written = s?.chapters || [];
   if (written.includes(n))
-    return confirm(`Rewrite chapter ${n}? The new run replaces the chapter file on disk.`) ? true : null;
+    return await confirmDialog({ title: `Rewrite chapter ${n}?`,
+      body: "The new run replaces the chapter file on disk.", confirmLabel: `rewrite chapter ${n}`, danger: true }) ? true : null;
   if (n > 1 && !written.includes(n - 1))
-    return confirm(`Chapter ${n - 1} has never been written. Skip ahead to chapter ${n} anyway?`) ? true : null;
+    return await confirmDialog({ title: `Skip ahead to chapter ${n}?`,
+      body: `Chapter ${n - 1} has never been written.`, confirmLabel: `write chapter ${n} anyway`, danger: true }) ? true : null;
   return false;
 }
 
@@ -297,7 +299,9 @@ function authorizeChapterRun(n) {
  *  scene while unwritten (sceneRowHtml), and the server re-checks all of that -- nothing written is
  *  touched, so a re-prepare puts the chapter back. */
 async function discardChapter(dir, n) {
-  if (!confirm(`Discard chapter ${n}? Its scene is removed from the story. Nothing already written is affected, and you can prepare the chapter again.`)) return;
+  if (!await confirmDialog({ title: `Discard chapter ${n}?`,
+    body: "Its scene is removed from the story. Nothing already written is affected, and you can prepare the chapter again.",
+    confirmLabel: `discard chapter ${n}`, danger: true })) return;
   APP.storyError = "";
   const j = await post("/story/discard", { dir, n }, false);
   if (!j || j.ok === false) { APP.storyError = reasonOr(j, "could not discard that chapter"); APP.render(); return; }

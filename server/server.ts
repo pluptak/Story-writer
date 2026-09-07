@@ -28,10 +28,11 @@ export type Concept = { tags: string[]; castSize: number; styleId: string };
 /** What the reusable vocabulary is being used by, derived by scanning the other catalogs — the
  *  "18 uses" line, observed rather than authored. Tags are keyed by folded label (what entries
  *  store); a style carries the STYLE NAMES whose tags include it, for the tag page's "commonly
- *  associated" line. Skills are keyed by the name a character's `skills` line names, counted
- *  with the engine's own case-insensitive identity match. */
+ *  associated" line. Skills carry no tags, so nothing counts them here; `skills` is the other
+ *  direction — keyed by the name a character's `skills` line names, counted with the engine's own
+ *  case-insensitive identity match. */
 export interface CatalogUsage {
-  tags: Record<string, { characters: number; styles: string[]; skills: number }>;
+  tags: Record<string, { characters: number; styles: string[] }>;
   skills: Record<string, number>;
 }
 
@@ -58,6 +59,12 @@ export interface CatalogConfig {
   tagFacets: readonly TagFacet[];
   caps: { voiceSamples: number };
   assistFields: readonly string[];
+  /** The persisted origin groups: origin name → the general skills it grants. Feeds the skill
+   *  editor's origin view and the character library's origin picker; empty when no origins exist. */
+  originSkills: Readonly<Record<string, readonly string[]>>;
+  /** The general-skill catalog, name → meaning. The selectable universe for an origin's `general`
+   *  list — derived only from origins would hide a general skill no origin happens to grant yet. */
+  generalSkills: Readonly<Record<string, string>>;
 }
 
 /** One in-progress interview's full snapshot — what GET /scaffold and every /scaffold/* action
@@ -221,11 +228,11 @@ export interface ServerHost {
   /** A story's full authored cast for the live screen's read-only character sheet. Same load and
    *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted.
    *  `scenes[].reach` is the per-scene grant, kept OUT of the characters (I4: reach is
-   *  character-in-place, never intrinsic). On a story that will not parse, returns `{ ok:false, error }`. */
+   *  character-in-place, never intrinsic). Origin is intrinsic and travels with the character. On a story that will not parse, returns `{ ok:false, error }`. */
   fullCast(dir: string): Promise<{
     ok: true; characters: {
       name: string; persona: string; knows: string; goal: string;
-      belief: string; impulse: string; voice: string[];
+      belief: string; impulse: string; voice: string[]; origin: string;
       skills: { text: string; meaning: string }[]; restrictions: string[];
     }[]; scenes?: { n: number; reach: Record<string, string[]> }[];
   } | {
@@ -263,8 +270,9 @@ export interface ServerHost {
     ok: false; error: string
   }>;
   /** The catalog's schema-derived shape (tag facets, voice-sample cap) for the catalog editor —
-   *  never the schema itself, so the GUI stops hand-copying it. */
-  catalogConfig(): CatalogConfig;
+   *  never the schema itself, so the GUI stops hand-copying it. The origin/general projections read
+   *  the persisted skills catalog, so this may be asynchronous; the route awaits it. */
+  catalogConfig(): CatalogConfig | Promise<CatalogConfig>;
   /** All entries in a catalog. `kind` is validated here because it arrives from the wire.
    *  Hidden entries are excluded unless `includeHidden` is set — every selectable-characters
    *  surface (the new-story cast picker, the library picker) wants the default; only the

@@ -3,7 +3,7 @@ import { APP, draft, FACET_LABELS } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
 import { loadVocab, loadLibrary, loadStyles } from "./catalog.js";
-import { modal, button, hint, errorLine, warnLine, thinking } from "./ui.js";
+import { modal, button, hint, errorLine, warnLine, thinking, pageTitle } from "./ui.js";
 import { on, onKey } from "./wire.js";
 
 // ---- the scaffold interview --------------------------------------------------
@@ -274,8 +274,8 @@ function proposalHtml(s) {
   // Later scenes are provisional question sketches -- the handoff re-authors them, so they render
   // as questions and nothing else.
   const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
-  if (sketches.length) scene += `<div style="margin-top:14px"><span class="label">later scenes · provisional</span>${
-    sketches.map(sc => `<div class="question" style="margin-top:6px">${esc(sc.question)}</div>`).join("")}</div>`;
+  if (sketches.length) scene += `<div class="mt-sm"><span class="label">later scenes · provisional</span>${
+    sketches.map(sc => `<div class="question mt-xs">${esc(sc.question)}</div>`).join("")}</div>`;
 
   // An empty ledger is the commonest correct answer, so the open world gate says so out loud
   // rather than rendering as a blank section the author cannot tell apart from a stage that failed.
@@ -435,8 +435,8 @@ function folderNoteHtml() {
   const slug = slugify(draft.folder);
   if (!draft.folder.trim()) return "";
   if (!slug) return warnLine("that gives no usable folder name.");
-  if (folderTaken()) return warnLine(`stories/${esc(slug)} already exists — pick another name.`);
-  return slug !== draft.folder.trim() ? `<div class="hint">this lands in <b>stories/${esc(slug)}</b></div>` : "";
+  if (folderTaken()) return warnLine(`data/stories/${esc(slug)} already exists — pick another name.`);
+  return slug !== draft.folder.trim() ? `<div class="hint">this lands in <b>data/stories/${esc(slug)}</b></div>` : "";
 }
 
 // ── the sidebar ────────────────────────────────────────────────────────────────
@@ -569,11 +569,8 @@ function activePageHtml(s) {
   const gated = s.mode !== "oneshot";
 
   return `
-    <div class="sc-head">
-      <p class="eyebrow">scaffold · ${s.mode === "oneshot" ? "one-shot" : "staged"}</p>
-      <h2>${headline}</h2>
-      <p class="lede">${esc(s.idea || "")}</p>
-    </div>
+    ${pageTitle({ eyebrow: `scaffold · ${s.mode === "oneshot" ? "one-shot" : "staged"}`,
+      title: headline, lede: s.idea || "", extraClass: "sc-head" })}
     <div class="statusbar">
       <span class="status-dot${s.busy || folderStep ? " busy" : ""}"></span>
       <span>${statusText}</span>
@@ -597,9 +594,9 @@ function scaffoldPageHtml() {
   }
   if (!s.active) {
     return `<div class="scpage">
-      <div class="sc-head"><p class="eyebrow">scaffold interview</p>
-        <h2>Nothing proposed yet</h2>
-        <p class="lede">Describe an idea below. The editor stays empty until the first proposal lands.</p></div>
+      ${pageTitle({ eyebrow: "scaffold interview", title: "Nothing proposed yet",
+        lede: "Describe an idea below. The editor stays empty until the first proposal lands.",
+        extraClass: "sc-head" })}
       ${ideaModalHtml()}
     </div>`;
   }

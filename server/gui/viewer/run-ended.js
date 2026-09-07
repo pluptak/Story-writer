@@ -16,7 +16,7 @@ export function runEndedModalHtml() {
     id: "runended-backdrop", dataTid: "runended.modal", ariaLabel: "run ended", extraClass: "runended",
     body: `<div class="iv-head"><h2>${esc(verdict)}</h2></div>
       <p class="sub">${esc(e.words)} words · ${esc(e.steps)} steps</p>
-      <div class="btns" style="margin-top:14px">
+      <div class="btns mt-sm">
         ${button({ label: "back to shelf", id: "runended-shelf", variant: "primary" })}
         ${button({ label: "stay here", id: "runended-stay" })}
       </div>`,

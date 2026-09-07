@@ -10,6 +10,7 @@ import { runDirs } from "./engine/preflight.ts";
 import { runChapter, type RunEvent } from "./engine/scene-loop.ts";
 import { warn } from "./engine/warnings.ts";
 import { writeRunManifest } from "./run-manifest.ts";
+import { persistedCatalogData } from "./engine/catalog.ts";
 import type { StoryConfig } from "./engine/story-format.ts";
 
 const MAX_RUNS = 10;
@@ -136,6 +137,17 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
                       await readFile(joinPath(sc.dir, "story.json"), "utf8"), "utf8");
     } catch (e) {
       console.log(`${C.dim}chapter ${chapter}'s definition was not snapshotted — ${(e as Error).message}${C.reset}`);
+    }
+
+    // story.json names capabilities; the catalogs say what those names mean, and the author edits
+    // them freely between chapters. Without this, deleting a bible entry would change what a name
+    // meant in a chapter already written. Same rule as the definition beside it: losing the snapshot
+    // must never cost the chapter that is already safely written.
+    try {
+      await writeFile(joinPath(chaptersDir, `${chapter}.catalogs.json`),
+                      JSON.stringify(await persistedCatalogData(), null, 2) + "\n", "utf8");
+    } catch (e) {
+      console.log(`${C.dim}chapter ${chapter}'s catalogs were not snapshotted — ${(e as Error).message}${C.reset}`);
     }
 
     // Which world events this chapter was set up for and never reached. The snapshot beside it is a

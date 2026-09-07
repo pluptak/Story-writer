@@ -224,7 +224,7 @@ function liveHeaderHtml() {
   const m = LIVEV.meta;
   if (!m) return "";
   const where = m.chapters > 1 ? `chapter ${m.chapter} of ${m.chapters}` : "chapter";
-  return `<div class="livehead" data-tid="live.head">
+  return `<div class="livehead page-title" data-tid="live.head">
     <p class="eyebrow">${esc(where)} · ${esc(storyName(m.story))}</p>
     <h2>${esc(m.question || "")}</h2>
     <p class="lede">The writer drafts only as far as the next choice that is a character's to make,
@@ -367,11 +367,19 @@ function settleFocus(page) {
  *  own modules, since painting "every overlay modal" isn't any one's job. */
 function paintModals(goShelf) {
   const root = $("modalroot");
-  if (!APP.runEnded && !APP.charCard && !APP.picker.open) { if (root.innerHTML) root.innerHTML = ""; return; }
-  root.innerHTML = runEndedModalHtml() + characterCardModalHtml() + libraryPickerHtml();
-  wireRunEndedModal(root, goShelf);
-  wireCharacterCard(root);
-  wireLibraryPicker(root);
+  // A styled confirm (ui.js confirmDialog) owns a promise that settles on click/backdrop/Escape --
+  // a repaint clearing #modalroot would strand that promise forever (the backdrop is gone but the
+  // await never resolves). Detach it across the repaint and re-append it topmost.
+  const confirm = root.querySelector("#confirm-backdrop");
+  if (confirm) confirm.remove();
+  if (!APP.runEnded && !APP.charCard && !APP.picker.open) { if (root.innerHTML) root.innerHTML = ""; }
+  else {
+    root.innerHTML = runEndedModalHtml() + characterCardModalHtml() + libraryPickerHtml();
+    wireRunEndedModal(root, goShelf);
+    wireCharacterCard(root);
+    wireLibraryPicker(root);
+  }
+  if (confirm) root.appendChild(confirm);
 }
 
 export function render() {
@@ -412,5 +420,13 @@ export function render() {
   // every state change above (focus tag/clear, modal want) lands in the address bar without each
   // mutator having to remember to call it. replaceState-only, so nothing re-enters go().
   settleFocus(page);
+  // View-enter animation, navigation only: go() sets the flag, SSE repaints never do, so a
+  // mid-run rebuild never replays it. Reflow between remove/add restarts the keyframes.
+  if (APP.wantViewEnter) {
+    APP.wantViewEnter = false;
+    page.classList.remove("view-enter");
+    void page.offsetWidth;
+    page.classList.add("view-enter");
+  }
   syncHash();
 }
