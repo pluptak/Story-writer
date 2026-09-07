@@ -1,4 +1,3 @@
-import { reasonOr } from "./util.js";
 import { APP } from "./state.js";
 import { syncHash } from "./nav.js";
 
@@ -32,15 +31,11 @@ function makeLazyLoader({ path, slot, label }) {
     try {
       const r = await fetch(path);
       const j = await r.json();
-      if (j.ok) {
-        APP.catalog[slot] = j.entries || [];
-      } else {
-        APP.catalog.error = reasonOr(j, `could not load ${label}`);
-      }
+      if (j.ok) APP.catalog[slot] = j.entries || [];
       APP.render();
       syncHash();
-    } catch (err) {
-      APP.catalog.error = `${label} did not load: ` + (err.message || "network error");
+    } catch {
+      // Left as [] (its initial value): callers already treat an empty slot as "nothing to offer".
       APP.render();
       syncHash();
     } finally {

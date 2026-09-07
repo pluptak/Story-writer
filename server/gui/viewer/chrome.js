@@ -1,4 +1,4 @@
-import { $ } from "./util.js";
+import { $, notify } from "./util.js";
 import { APP, READV, open } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
@@ -40,7 +40,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
 // even mid-run, like clicking the read tab. The live scene keeps streaming into LIVEV and is one
 // click on the run tab away.
 const openLog = f =>
-  f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; READV.dir = ""; READV.id = ""; ingest(t, READV); go("read"); });
+  f.text().then(t => { setSrc(READV, f.name, false); READV.label = ""; READV.dir = ""; READV.id = ""; ingest(t, READV); go("read"); })
+    .catch(() => notify(`could not read ${f.name}`));
 $("file").onchange = e => {
   const f = e.target.files[0];
   e.target.value = "";              // picking the same file again after a cancel must still fire

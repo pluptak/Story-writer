@@ -20,8 +20,11 @@ export function assembledProse(store) {
 
 function words(text) { return String(text).match(/\S+/g) || []; }
 
-function wordDiff(left, right) {
-  const a = words(left), b = words(right);
+// ~16MB Uint32Array matrix at this size -- past it a full word-diff would freeze the tab, so
+// diffHtml() skips straight to the side-by-side panes instead of building it.
+const MAX_DIFF_CELLS = 4_000_000;
+
+function wordDiff(a, b) {
   const rows = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
   for (let i = a.length - 1; i >= 0; i--)
     for (let j = b.length - 1; j >= 0; j--)
@@ -39,8 +42,11 @@ function wordDiff(left, right) {
 }
 
 function diffHtml(left, right) {
-  const ops = wordDiff(left, right);
-  if (!ops.length) return hint(`neither run contains accepted prose.`);
+  const a = words(left), b = words(right);
+  if (!a.length && !b.length) return hint(`neither run contains accepted prose.`);
+  if ((a.length + 1) * (b.length + 1) > MAX_DIFF_CELLS)
+    return hint(`these chapters are too long to diff word-by-word (${a.length} vs ${b.length} words) — read them side by side above instead.`);
+  const ops = wordDiff(a, b);
   return `<section ${tid("compare.diff")} class="prose-diff" aria-label="word-level prose diff">${ops.map(([kind, word]) =>
     kind === "same" ? esc(word) + " " : `<span class="diff-${kind}">${esc(word)}</span> `).join("")}</section>`;
 }

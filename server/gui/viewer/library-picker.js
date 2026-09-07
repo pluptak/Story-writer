@@ -7,10 +7,12 @@
 // only of the prose. It holds its own APP.picker slice for the same reason: `APP.catalog` is the
 // catalog PAGE, and an overlay sharing it would wipe the half-filled form underneath.
 
-import { esc, tid, reasonOr, latest } from "./util.js";
+import { esc, tid, reasonOr, makeLatest } from "./util.js";
 import { APP } from "./state.js";
 import { modal, closeButton, button, hint as hintLine, errorLine } from "./ui.js";
 import { on, wireModalClose } from "./wire.js";
+
+const latest = makeLatest();
 
 let onDone = null;            // the caller's resolver
 let preselectNames = [];      // matched against entry names once the fetch lands

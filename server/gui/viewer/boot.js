@@ -4,13 +4,18 @@ import { setSrc } from "./hud.js";
 import { go, parseHashParams } from "./nav.js";
 import { tryHttp, loadDeepLinkedRun } from "./sse.js";
 
+const isSameOrigin = url => { try { return new URL(url, location.href).origin === location.origin; } catch { return false; } };
+
 // ---- boot ---------------------------------------------------------------
 export async function boot() {
   // Sub-page deep links (&block=, &modal=) are read before anything loads, so whichever flow this
   // boot takes lands with them pending -- pages.js's settle picks them up once the target exists
   // on screen.
   const p = parseHashParams();
-  if (p.get("block")) APP.focusSeq = Number(p.get("block"));
+  if (p.get("block")) {
+    const seq = Number(p.get("block"));
+    if (Number.isFinite(seq)) APP.focusSeq = seq;
+  }
   if (p.get("modal")) APP.modalWant = p.get("modal");
   // Same reason, one page further on: the catalog seeds its kind from the URL, and the first
   // go() syncs the hash from state -- so reading it after that would read a URL this boot
@@ -19,8 +24,11 @@ export async function boot() {
   if (kindParam && CATALOG_KINDS.includes(kindParam)) {
     APP.catalog.kind = kindParam;
   }
+  // Restricted to same-origin (relative paths resolve same-origin; a file:// page's opaque origin
+  // always compares equal to itself) so a crafted ?src= link on a hosted viewer can't point it at
+  // an arbitrary host.
   const src = new URLSearchParams(location.search).get("src");
-  if (src) {
+  if (src && isSameOrigin(src)) {
     try {
       const r = await fetch(src);
       setSrc(READV, src, false);

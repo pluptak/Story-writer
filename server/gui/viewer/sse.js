@@ -64,7 +64,6 @@ export async function tryHttp() {
   }
     if (APP.view === "readstory") loadDeepLinkedReader();     // sets READER.dir and starts the fetch
     if (APP.view === "read") await loadDeepLinkedRun();       // before loadStories()/render() below
-    if (APP.view === "compare") loadDeepLinkedComparison();
     if (APP.view === "readstory" || APP.view === "read" || APP.view === "compare" || APP.view === "shelf" || APP.view === "story" || APP.view === "handoff" || APP.view === "edit") {
       await loadStories();
       if (APP.view === "compare") { loadDeepLinkedComparison(); loadComparisonRuns(); }

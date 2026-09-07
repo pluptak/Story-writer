@@ -306,7 +306,12 @@ export interface ServerHost {
   >;
 }
 
-async function serveFile(res: ServerResponse, url: URL, contentType: string) {
+async function serveFile(res: ServerResponse, url: URL, contentType: string, method: string) {
+  if (method !== "GET") {
+    res.writeHead(405, { Allow: "GET" });
+    res.end();
+    return;
+  }
   try {
     res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-cache" });
     res.end(await readFile(url, "utf8"));
@@ -340,18 +345,18 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
     try {
       const path = (req.url || "/").split("?")[0];
       if (path === "/" || path === "/index.html") {
-        await serveFile(res, viewerPath, "text/html; charset=utf-8");
+        await serveFile(res, viewerPath, "text/html; charset=utf-8", req.method || "");
       } else if (path === "/viewer.css") {
-        await serveFile(res, viewerCssPath, "text/css; charset=utf-8");
+        await serveFile(res, viewerCssPath, "text/css; charset=utf-8", req.method || "");
       } else if (path === "/viewer.js") {
-        await serveFile(res, viewerJsPath, "application/javascript; charset=utf-8");
+        await serveFile(res, viewerJsPath, "application/javascript; charset=utf-8", req.method || "");
       } else if (viewerModule.test(path)) {
         // viewer.js's own submodules -- an allowlist regex (flat filenames only, no subfolders)
         // rather than a `..`-blacklist check, since that's the shape the folder actually has.
         const file = path.match(viewerModule)![1];
-        await serveFile(res, new URL(`./gui/viewer/${file}`, import.meta.url), "application/javascript; charset=utf-8");
+        await serveFile(res, new URL(`./gui/viewer/${file}`, import.meta.url), "application/javascript; charset=utf-8", req.method || "");
       } else if (path === "/studio" || path === "/studio/") {
-        await serveFile(res, new URL("../mockups/studio/index.html", import.meta.url), "text/html; charset=utf-8");
+        await serveFile(res, new URL("../mockups/studio/index.html", import.meta.url), "text/html; charset=utf-8", req.method || "");
       } else if (path === "/events") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream", "Cache-Control": "no-cache",

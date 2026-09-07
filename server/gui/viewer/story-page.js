@@ -1,4 +1,4 @@
-import { esc, post, fmtRun, latest, reasonOr, tid } from "./util.js";
+import { esc, post, fmtRun, makeLatest, reasonOr, tid } from "./util.js";
 import { APP, READV, runningReason } from "./state.js";
 import { castChips } from "./shelf.js";
 import { loadRun, loadStories } from "./saved-runs.js";
@@ -7,6 +7,8 @@ import { go } from "./nav.js";
 import { prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paras } from "./blocks.js";
 import { button, hint, errorLine, warnLine, divider, modelSelect, confirmDialog, pageTitle } from "./ui.js";
+
+const latest = makeLatest();
 
 // ---- the story page ----------------------------------------------------------
 // One story, a full page rather than a modal (`#/story?dir=...`, so a reload or bookmark lands back
@@ -256,6 +258,8 @@ export function wireStoryPage(page) {
       b.disabled = true;
       const ok = await loadRun(APP.storyDir, b.dataset.run);
       // null = superseded by a newer click; that click owns the read tab, so say and do nothing
+      // except leave this button clickable again -- it isn't the render that would otherwise do it.
+      if (ok === null) { b.disabled = false; return; }
       if (ok === false) { APP.storyError = "could not load that run"; APP.render(); return; }
       if (ok) { APP.storyError = ""; go("read"); }
     });

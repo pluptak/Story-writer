@@ -15,7 +15,8 @@ export const basename = p => (p || "").replace(/^.*[\\/]/, "");
 export const slugify = (s, max = 40) => String(s ?? "").toLowerCase().normalize("NFKD")
   .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max).replace(/-+$/, "");
 export const fmtRun = r => {
-  const when = new Date(r.mtimeMs).toLocaleString(undefined,
+  const d = new Date(r.mtimeMs);
+  const when = Number.isNaN(d.getTime()) ? "" : d.toLocaleString(undefined,
     { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
   const status = r.stopped ? "stopped" : r.done ? "finished" : r.words != null ? "unfinished" : "no output";
   return [when, r.words != null ? `${r.words}w` : "", status].filter(Boolean).join(" · ");
@@ -102,13 +103,15 @@ export const parseLines = text => (text || "").split("\n").map(s => s.trim()).fi
 /** Split text into a comma-separated list: trimmed, empties dropped. */
 export const parseCommaSeparated = text => (text || "").split(",").map(s => s.trim()).filter(Boolean);
 
-let latestSeq = 0;
-/** A generation token for "newest wins" fetches: call `const g = latest()` before the first await,
- *  and `if (!g.current()) return;` after each one -- a slow earlier call bows out to whatever
- *  newer call has since begun, instead of overwriting its result. */
-export function latest() {
-  const mine = ++latestSeq;
-  return { current: () => mine === latestSeq };
+/** A generation-token factory for "newest wins" fetches. Each call site makes its own counter
+ *  once at module scope (`const latest = makeLatest()`), then calls it per fetch: `const g =
+ *  latest()` before the first await, `if (!g.current()) return;` after each one -- a slow
+ *  earlier call bows out to whatever newer call has since begun, instead of overwriting its
+ *  result. One counter per call site, not shared, so an unrelated feature's fetch can't
+ *  invalidate this one's in-flight generation. */
+export function makeLatest() {
+  let seq = 0;
+  return () => { const mine = ++seq; return { current: () => mine === seq }; };
 }
 
 /** First click arms a confirming second click within `ms`; the second click disarms and runs

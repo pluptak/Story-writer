@@ -4,11 +4,13 @@
  * /story/check, and saves through /story/save.
  */
 
-import { esc, post, latest, parseLines, parseCommaSeparated } from "./util.js";
+import { esc, post, makeLatest, parseLines, parseCommaSeparated } from "./util.js";
 import { APP } from "./state.js";
 import { go } from "./nav.js";
 import { button, hint, errorLine, warnLine, thinking, confirmDialog } from "./ui.js";
 import { on, onInput } from "./wire.js";
+
+const latest = makeLatest();
 
 // Dirty-guard: warn before closing the tab / navigating away
 addEventListener("beforeunload", e => {
@@ -412,6 +414,16 @@ function setDirty() {
   APP.editDirty = !deepEq(APP.editStory, APP.editDraft);
 }
 
+// Number(value) on garbage text is NaN, and JSON.stringify(NaN) sends a literal null to the
+// server -- fall back to undefined (field unset, so the story's default applies) instead of
+// letting a mistyped digit through as null.
+const toNum = value => { const n = Number(value); return value === "" || !Number.isFinite(n) ? undefined : n; };
+
+const NUMERIC_CONFIG_KEYS = new Set([
+  "retries", "clarifications", "maxSteps", "maxProseWords", "requestTimeout", "attempts",
+  "maxTokens", "maxCharacterRetries",
+]);
+
 function applyField(id, value) {
   // Element IDs to editDraft paths. "edit-facts" is deliberately absent: it needs line splitting
   // into an array, handled by its own branch below -- a map entry here would shadow it.
@@ -447,7 +459,8 @@ function applyField(id, value) {
     } else if (field === "reach") {
       APP.editDraft.scenes[idx].reach = parseReach(value);
     } else if (field === "length") {
-      APP.editDraft.scenes[idx].length = value === "" ? APP.editorConfig.defaults.sceneLength : Math.max(1, Number(value));
+      const n = toNum(value);
+      APP.editDraft.scenes[idx].length = n === undefined ? APP.editorConfig.defaults.sceneLength : Math.max(1, n);
     } else if (field === "writerModel") {
       APP.editDraft.scenes[idx].writerModel = value || undefined;
     } else if (field === "writerThink") {
@@ -470,7 +483,7 @@ function applyField(id, value) {
     } else if (field === "voice") {
       APP.editDraft.characters[idx].voice = parseLines(value).slice(0, APP.editorConfig.caps.voiceSamples);
     } else if (field === "maxRetries") {
-      APP.editDraft.characters[idx].maxRetries = value === "" ? undefined : Number(value);
+      APP.editDraft.characters[idx].maxRetries = toNum(value);
     } else {
       APP.editDraft.characters[idx][field] = value;
     }
@@ -488,8 +501,8 @@ function applyField(id, value) {
     const key = parts[parts.length - 1];
     if (key === "stream" || key === "debug") {
       obj[key] = value;
-    } else if (key === "maxCharacterRetries") {
-      obj[key] = value === "" ? undefined : Number(value);
+    } else if (NUMERIC_CONFIG_KEYS.has(key)) {
+      obj[key] = toNum(value);
     } else {
       obj[key] = value;
     }

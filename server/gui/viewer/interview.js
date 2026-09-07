@@ -427,7 +427,7 @@ function folderHtml(s) {
  *  anyway; knowing it here is what lets the step say so before the click, not after. */
 function folderTaken() {
   const slug = slugify(draft.folder);
-  return Boolean(slug) && (APP.stories || []).some(x => x.dir === slug);
+  return Boolean(slug) && (APP.stories || []).some(x => x.name === slug);
 }
 
 /** What the name will actually become, or why it cannot be used. */

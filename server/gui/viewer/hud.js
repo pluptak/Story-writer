@@ -73,7 +73,7 @@ export function paintProviderChip() {
   const queued = p.depth ? ` · ${p.depth} queued` : "";
   const fail = p.lastFailure ? ` · ⚠ ${p.lastFailure.kind}` : "";
   el.textContent = `${p.provider}${busy}${queued}${fail}`;
-  el.title = p.baseUrl + (p.lastFailure ? `\n${p.lastFailure.what}: ${p.lastFailure.message}` : "");
+  el.title = (p.baseUrl || "") + (p.lastFailure ? `\n${p.lastFailure.what}: ${p.lastFailure.message}` : "");
   el.classList.toggle("warn", !!p.lastFailure);
 }
 export function setSrc(store, text, isLive) { store.source = text; store.isLive = isLive; paintSrcbar(); }
@@ -143,7 +143,7 @@ export function renderRail(store, blocks) {
   // The starting budget is not in RunMeta; a `budget` event is the only place the number appears,
   // so steps show a denominator only once the budget was extended at least once.
   const budget = store.events.filter(e => e.t === "budget").pop()?.budget;
-  const fmtMs = ms => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+  const fmtMs = ms => !Number.isFinite(ms) ? "—" : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
   const fmtTokens = (s, key) => s.tokenCalls === s.calls ? s[key].toLocaleString() : "unavailable";
   const agentStats = store === LIVEV ? Object.values(store.agentStats || {}) : [];
   const statsPanel = live && agentStats.length ? `<section class="agentstats" data-tid="rail.agentstats">
