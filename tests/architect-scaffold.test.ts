@@ -639,6 +639,19 @@ describe("ScaffoldSession, staged", () => {
       assert.match(text, /"timeline": \[\]/);
     });
 
+    it("lists all four memory constraints: COST, AGREEMENT, ACTION, AUDIENCE", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /IT NAMES A SPECIFIC COST/);
+      assert.match(text, /IT AGREES WITH THE EVENT/);
+      assert.match(text, /IT OPENS AN ACTION/);
+      assert.match(text, /IT GOES TO WHOEVER MUST MOVE/);
+    });
+
+    it("forbids quoted speech in the fired form", () => {
+      const text = P.architectWorldStage("(so far)");
+      assert.match(text, /No dialogue and no quotation marks/);
+    });
+
     it("checklistLine() now reports six stages", () => {
       const storyText = P.architectStoryStage("idea");
       assert.match(storyText, /stage 1 of 6/);

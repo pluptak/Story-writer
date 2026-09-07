@@ -517,3 +517,116 @@ describe("deleteEntry", () => {
     }
   });
 });
+
+describe("verification and corruption detection", () => {
+  it("detects when a saved file becomes corrupt and prevents using stale data", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "catalog-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const entry = {
+        id: "test",
+        name: "Test",
+        portablePersona: "A character",
+        belief: "X",
+        impulse: "Y",
+        voice: ["Z"],
+        tags: [],
+        skills: [],
+        restrictions: [],
+      };
+
+      const save = await saveEntry("characters", entry, path);
+      assert.equal(save.ok, true);
+
+      // Corrupt the file on disk.
+      await writeFile(path, "{ invalid json", "utf8");
+
+      // Next loadCatalog should return empty and warn.
+      const warns: string[] = [];
+      const orig = WARN.sink;
+      WARN.sink = (msg: string) => { warns.push(msg); };
+      let result;
+      try {
+        result = await loadCatalog("characters", path);
+      } finally {
+        WARN.sink = orig;
+      }
+
+      assert.deepEqual(result, { entries: [] });
+      assert.ok(warns.length > 0, "corrupt file should warn");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns entry with the version that was actually persisted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "catalog-test-"));
+    const path = join(dir, "catalog.json");
+    try {
+      const entry1 = {
+        id: "versioned",
+        name: "Versioned",
+        portablePersona: "A character",
+        belief: "X",
+        impulse: "Y",
+        voice: ["Z"],
+        tags: [],
+        skills: [],
+        restrictions: [],
+      };
+
+      const save1 = await saveEntry("characters", entry1, path);
+      assert.equal(save1.ok, true);
+      if (save1.ok) {
+        assert.equal(save1.entry.version, 1);
+
+        // Re-read and verify the persisted version.
+        const loaded = await loadCatalog("characters", path);
+        assert.equal(loaded.entries[0].version, 1);
+      }
+
+      const entry2 = { ...entry1, portablePersona: "Updated character" };
+      const save2 = await saveEntry("characters", entry2, path);
+      assert.equal(save2.ok, true);
+      if (save2.ok) {
+        assert.equal(save2.entry.version, 2);
+
+        // Re-read and verify the updated version.
+        const loaded = await loadCatalog("characters", path);
+        assert.equal(loaded.entries[0].version, 2);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the correct path derived from kind for default paths", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "catalog-test-"));
+    try {
+      const entry = {
+        id: "kind-test",
+        name: "Kind Test",
+        portablePersona: "A character",
+        belief: "X",
+        impulse: "Y",
+        voice: ["Z"],
+        tags: [],
+        skills: [],
+        restrictions: [],
+      };
+
+      // Save with the default path (no explicit path argument).
+      // The default for "characters" kind should use "catalog-characters.json".
+      const pathInDir = join(dir, "catalog-characters.json");
+      const save = await saveEntry("characters", entry, pathInDir);
+      assert.equal(save.ok, true);
+
+      // Verify the file was created at the expected location.
+      const loaded = await loadCatalog("characters", pathInDir);
+      assert.equal(loaded.entries.length, 1);
+      assert.equal(loaded.entries[0].id, "kind-test");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
