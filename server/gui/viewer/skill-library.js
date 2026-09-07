@@ -1,6 +1,6 @@
 import { APP } from "./state.js";
 import { esc, tid, postJson, reasonOr, glyphAvailable } from "./util.js";
-import { button, errorLine, hint, thinking, warnLine } from "./ui.js";
+import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
 
 // Three kinds share this one catalog. A GENERAL skill is one every character starts with; a
@@ -81,10 +81,10 @@ function listHtml() {
   const s = APP.skillLibrary;
   const entries = visibleEntries();
   if (!s.entries.length) {
-    return `<div class="lib-empty"><div class="lib-empty-mark">◇</div><h3>Your skill catalog is empty</h3><p>Define the special skills a story can draw on by name, and the origins that group general skills.</p>${button({label:"New skill", id:"skilllib-empty-new", variant:"primary"})}</div>`;
+    return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>Your skill catalog is empty</h3><p>Define the special skills a story can draw on by name, and the origins that group general skills.</p>${button({label:"New skill", id:"skilllib-empty-new", variant:"primary"})}</div>`;
   }
   if (!entries.length) {
-    return `<div class="lib-empty"><div class="lib-empty-mark">◇</div><h3>No skills match</h3><p>Try a different search.</p></div>`;
+    return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>No skills match</h3><p>Try a different search.</p></div>`;
   }
   const row = k => {
     const selected = s.selected?.id === k.id;
@@ -206,7 +206,7 @@ export function skillLibraryHtml() {
   // The inspector is not rendered at all until something is selected, so the list gets the whole
   // width rather than sitting beside a panel saying nothing.
   return `<section class="lib-page lib-skills${s.draft ? "" : " no-inspector"}" ${tid("skill-library.page")}><div class="lib-main">
-    <header class="lib-top"><div><h1>Skill Bible <span class="lib-info">i</span></h1><p>The special skills a story can draw on by name, and the origins that group general skills.</p></div><div class="lib-top-actions">${button({label:"＋ New skill", id:"skilllib-new", variant:"primary"})}</div></header>
+    <header class="lib-top"><div class="page-title"><p class="eyebrow">library · skills</p><h1>Skill Bible <span class="lib-info">i</span></h1><p class="lede">The special skills a story can draw on by name, and the origins that group general skills.</p></div><div class="lib-top-actions">${button({label:"＋ New skill", id:"skilllib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="skilllib-search" placeholder="⌕  Search skills and origins…" value="${esc(s.search)}"><select class="lib-input" id="skilllib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>
     <div class="lib-list">${listHtml()}</div><footer class="lib-list-footer">Showing ${visibleEntries().length} of ${s.entries.length} skills and origins</footer>
   </div>${s.draft ? `<aside class="lib-inspector">${editorHtml()}</aside>` : ""}</section>`;
@@ -257,7 +257,8 @@ async function remove() {
   }
   const used = APP.catalog.usage?.skills?.[folded(k.name)] ?? 0;
   const carried = used ? ` ${used} character${used === 1 ? "" : "s"} in your library carr${used === 1 ? "ies" : "y"} it.` : "";
-  if (!confirm(`Permanently delete "${k.name}"?${carried} This cannot be undone.`)) return;
+  if (!await confirmDialog({ title: `Delete "${k.name}"?`, body: `${carried} This cannot be undone.`,
+    confirmLabel: "delete skill", danger: true })) return;
   const id = k.id;
   const j = await postJson("/catalog/delete", { kind:"skills", id }, msg => { s.error = msg; APP.render(); });
   if (!j?.ok) { s.error = reasonOr(j, "could not delete skill"); APP.render(); return; }
@@ -275,9 +276,9 @@ export function wireSkillLibrary(page) {
   page.querySelector("#skilllib-new")?.addEventListener("click", createNew);
   page.querySelector("#skilllib-empty-new")?.addEventListener("click", createNew);
   page.querySelector("#skilllib-retry")?.addEventListener("click", () => { s.loaded = false; load(); });
-  page.querySelectorAll("[data-skill-id]").forEach(row => row.addEventListener("click", e => { if (e.target.closest("button")) return; collectDraft(); if (s.dirty && !confirm("Discard unsaved changes?")) return; setSelected(s.entries.find(k => k.id === row.dataset.skillId)); }));
-  page.querySelectorAll("[data-skill-select-id]").forEach(action => action.addEventListener("click", e => {
-    e.stopPropagation(); collectDraft(); if (s.dirty && !confirm("Discard unsaved changes?")) return;
+  page.querySelectorAll("[data-skill-id]").forEach(row => row.addEventListener("click", async e => { if (e.target.closest("button")) return; collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return; setSelected(s.entries.find(k => k.id === row.dataset.skillId)); }));
+  page.querySelectorAll("[data-skill-select-id]").forEach(action => action.addEventListener("click", async e => {
+    e.stopPropagation(); collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return;
     setSelected(s.entries.find(k => k.id === action.dataset.skillSelectId));
   }));
   for (const key of ["name","meaning"]) page.querySelector(`#skilllib-${key}`)?.addEventListener("input", () => { s.draft[key] = document.getElementById(`skilllib-${key}`).value; dirtyFromDraft(); page.querySelector("#skilllib-save").disabled = !needsSave(s); page.querySelector("#skilllib-cancel").disabled = !s.dirty; });
@@ -297,7 +298,7 @@ export function wireSkillLibrary(page) {
     if (idx >= 0) general.splice(idx, 1); else general.push(name);
     dirtyFromDraft(); APP.render();
   }));
-  page.querySelector("#skilllib-close")?.addEventListener("click", () => { if (!s.dirty || confirm("Discard unsaved changes?")) { s.selected = null; s.draft = null; s.dirty = false; APP.render(); } });
+  page.querySelector("#skilllib-close")?.addEventListener("click", async () => { if (!s.dirty || await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) { s.selected = null; s.draft = null; s.dirty = false; APP.render(); } });
   page.querySelector("#skilllib-save")?.addEventListener("click", save);
   page.querySelector("#skilllib-cancel")?.addEventListener("click", () => { s.draft = draftOf(s.selected); s.dirty = false; APP.render(); });
   page.querySelector("#skilllib-duplicate")?.addEventListener("click", duplicate);

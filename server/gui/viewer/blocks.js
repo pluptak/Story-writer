@@ -66,7 +66,7 @@ function renderReader(b, interactive) {
   const opts = b.options.map((o, i) =>
     `<button ${tid("reader.opt")} class="btn readerOpt" data-seq="${esc(b.seq)}" data-i="${i}">${esc(o)}</button>`).join("");
   const err = APP.readerError && APP.readerError.seq === b.seq
-    ? `<div class="ctrl-err" style="margin-top:8px">${esc(APP.readerError.text)}</div>` : "";
+    ? `<div class="ctrl-err mt-8">${esc(APP.readerError.text)}</div>` : "";
   // The id matches FIELDS (state.js) so keepFocus carries caret across the re-render each frame causes.
   return `<div ${tid("prose.reader")} class="reader pending" data-seq="${esc(b.seq)}">
     <div class="rlabel">the writer wants your call</div>

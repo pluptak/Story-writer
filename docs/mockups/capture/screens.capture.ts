@@ -13,16 +13,16 @@ import { tmpdir } from "node:os";
 import {
   arrive, cardFromStory, copyFixtureStory, expect, registerRunDirs, registerStory,
   setHandoffFactory, setScaffoldFactory, test, FIXTURE_DIR,
-} from "../../tests/gui/harness.ts";
-import type { FixtureStory } from "../../tests/gui/harness.ts";
-import { LIVE, publish, setWhere, sseClients, sseWrite } from "../../live.ts";
-import { NextChapterSession, ScaffoldSession } from "../../engine/architect.ts";
-import { normalizeSpec } from "../../engine/story-spec.ts";
-import { ScriptedAgent } from "../../tests/helpers.ts";
-import type { Defaults } from "../../engine/story-format.ts";
+} from "../../../tests/gui/harness.ts";
+import type { FixtureStory } from "../../../tests/gui/harness.ts";
+import { LIVE, publish, setWhere, sseClients, sseWrite } from "../../../live.ts";
+import { NextChapterSession, ScaffoldSession } from "../../../engine/architect.ts";
+import { normalizeSpec } from "../../../engine/story-spec.ts";
+import { ScriptedAgent } from "../../../tests/helpers.ts";
+import type { Defaults } from "../../../engine/story-format.ts";
 import { snapshot, writeIndex } from "./snapshot.ts";
 
-const ROOT = new URL("../../", import.meta.url);
+const ROOT = new URL("../../../", import.meta.url);
 const fixtureRaw = async () =>
   JSON.parse(await readFile(new URL(`${FIXTURE_DIR}/story.json`, ROOT), "utf8")) as FixtureStory;
 

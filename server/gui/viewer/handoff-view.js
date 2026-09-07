@@ -19,7 +19,7 @@ export function handoffPageHtml() {
   if (!APP.handoffDir) {
     return `<section class="picker story">
       <h2>nothing is being prepared</h2>
-      <div class="btns" style="margin-top:18px">
+      <div class="btns mt-lg">
         ${button({ label: "back to the story", id: "h-back" })}
       </div>
     </section>`;
@@ -32,7 +32,7 @@ export function handoffPageHtml() {
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">chapter ${APP.handoffDone.chapter} is prepared</p>
       ${(APP.handoffDone.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
-      <div class="btns" style="margin-top:18px">
+      <div class="btns mt-lg">
         ${button({ label: `write chapter ${APP.handoffDone.chapter}`, id: "h-write", variant: "primary", disabled: !!why, title: why })}
         <span class="spacer"></span>
         ${button({ label: "back to the story", id: "h-back" })}
@@ -60,7 +60,7 @@ export function handoffPageHtml() {
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">the architect reads the chapters already written and re-authors the cast for the next one</p>
       ${APP.handoffError ? errorLine(esc(APP.handoffError)) : ""}
-      <div class="btns" style="margin-top:18px">
+      <div class="btns mt-lg">
         ${button({ label: "prepare the next chapter", id: "h-start", variant: "primary", disabled: !!busy, title: busy })}
         ${handoffModelSelectHtml()}
         <span class="spacer"></span>
@@ -79,7 +79,7 @@ export function handoffPageHtml() {
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">the architect is reading the chapters already written</p>
       ${thinking("thinking about it…")}
-      <div class="btns" style="margin-top:18px">
+      <div class="btns mt-lg">
         ${button({ label: APP.hAbandonArmed ? "abandon — sure?" : "abandon", id: "h-abandon" })}
       </div>
     </section>`;

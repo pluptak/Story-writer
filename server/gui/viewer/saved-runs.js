@@ -38,7 +38,7 @@ export function readChromeHtml(store = READV, includeAgents = store === READV, a
     <h2>Cast</h2>
     ${cast ? `<div class="row">${cast}</div>`
            : `<p class="sub">open a story on the shelf, then "read" a previous run — or open one from disk</p>`}
-    ${includeOpen ? `<div class="btns" style="margin-top:14px">${button({ label: "open a saved log", id: "open-log", tidName: "read.open-log-btn" })}</div>` : ""}
+    ${includeOpen ? `<div class="btns mt-sm">${button({ label: "open a saved log", id: "open-log", tidName: "read.open-log-btn" })}</div>` : ""}
   </section>` + (includeAgents ? agentsPanelHtml(store, agentState) : "");
 }
 

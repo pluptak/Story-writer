@@ -1,5 +1,6 @@
 import { APP, READV, READER } from "./state.js";
 import { loadStories } from "./saved-runs.js";
+import { confirmDialog } from "./ui.js";
 
 // ---- pages and navigation --------------------------------------------------
 /** A scene is being written RIGHT NOW -- as opposed to paused, finished, or not yet started. */
@@ -67,16 +68,23 @@ export const clearFocus = () => {
 
 /** Go to a page. The shelf is always a legal destination while an engine is attached -- it is the
  *  hub, not a parking spot -- so the only rewrite left is for a viewer with no engine behind it at
- *  all, which has nothing but a saved run to show. */
-export function go(v) {
+ *  all, which has nothing but a saved run to show. Async: the editor dirty guard is a styled
+ *  confirm now, so navigation waits for it. On cancel the URL is rolled back synchronously --
+ *  a hashchange (browser back, a bookmark) has already moved location.hash, so without this the
+ *  address bar shows the page we refused while the editor stays on screen. */
+export async function go(v) {
   if (!APP.live && v !== "read" && v !== "readstory" && v !== "compare") v = "read";
   // Leaving live/read drops the block anchor -- it names a seq in the scene that page was showing,
   // and carrying it over would scroll to whatever happens to reuse the number.
   if (v !== "live" && v !== "read" && APP.focusSeq != null) { APP.focusSeq = null; APP.focusScrolled = false; }
-  // Dirty guard: confirm before leaving the editor with unsaved changes. On cancel, put the URL
-  // back: a hashchange (browser back, a bookmark) has already moved location.hash, so without this
-  // the address bar shows the page we refused while the editor stays on screen.
-  if (v !== "edit" && APP.editDirty && !confirm("Discard unsaved changes?")) { syncHash(); return; }
+  // Dirty guard: styled confirm before leaving the editor with unsaved changes. confirmDialog()
+  // itself resolves false when one is already open, so a second navigation stacking under it
+  // rolls the URL back the same way an explicit cancel does.
+  if (v !== "edit" && APP.editDirty) {
+    const ok = await confirmDialog({ title: "Discard unsaved changes?",
+      body: "The editor has unsaved changes that will be lost.", confirmLabel: "discard", danger: true });
+    if (!ok) { syncHash(); return; }
+  }
   // Actually leaving the editor clears its state -- "discard" has to mean discard. Without this
   // the guard re-prompts on every later navigation, beforeunload keeps warning on tab close, and
   // the surviving draft can be saved into whichever story opens next.
@@ -86,6 +94,9 @@ export function go(v) {
     APP.editDirty = false; APP.editError = ""; APP.editIssues = []; APP.editRaw = null;
   }
   APP.view = v;
+  // Navigation-only enter animation (pages.js consumes it): SSE repaints call render() without
+  // passing through go(), so streaming prose never re-animates.
+  APP.wantViewEnter = true;
   // The URL is synced BEFORE the fetch, because loadStories() renders synchronously on its first
   // line -- and a page that reads the URL on arrival (the catalog's kind) would otherwise be handed
   // the address of the page we just left, and reset itself to what that one said.

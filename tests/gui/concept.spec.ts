@@ -141,8 +141,9 @@ test("a character in the catalog can be cast, and the tray takes over the cast s
   // Clean up: delete the IVET character from the catalog so the next test sees it empty.
   await arrive(page, served, "#/catalog");
   await page.locator(".lib-row").first().click();
-  await page.on("dialog", dialog => dialog.accept());
   await page.locator("#charlib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect(page.locator(".lib-row")).toHaveCount(0);
 });
 

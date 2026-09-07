@@ -4,7 +4,7 @@
  *
  *  Deliberately NOT under tests/gui: `npm run test:gui` matches `**\/*.spec.ts`, and a capture is
  *  not a test — it asserts almost nothing and it writes into the repo. Run it with
- *  `npm run capture` (playwright test -c mockups/capture/capture.config.ts).
+  *  `npm run capture` (playwright test -c docs/mockups/capture/capture.config.ts).
  *
  *  mockups/ is eslint-ignored and outside tsconfig's `include`, so this file and its siblings add
  *  nothing to the checked surface. */

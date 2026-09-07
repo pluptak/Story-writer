@@ -13,8 +13,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 
-const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-export const OUT_DIR = join(ROOT, "mockups", "current");
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+export const OUT_DIR = join(ROOT, "docs", "mockups", "current");
 /** The same screens as flat images, for anywhere HTML will not go — a doc, a message, a diff. */
 export const PNG_DIR = join(OUT_DIR, "png");
 

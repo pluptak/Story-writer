@@ -1,6 +1,6 @@
 import { APP } from "./state.js";
 import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
-import { button, errorLine, hint, thinking, warnLine } from "./ui.js";
+import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
 import { loadLibrary } from "./catalog.js";
 
 // The scaffold's import picker reads the same library through a lazy cache. A write here has to drop
@@ -156,7 +156,7 @@ function listHtml(pageEntries) {
   const s = APP.characterLibrary;
   if (!pageEntries.length) {
     const filtering = s.search.trim() || s.visibility !== "all";
-    return `<div class="lib-empty"><div class="lib-empty-mark">♙</div><h3>${filtering ? "No characters match" : "Your library is empty"}</h3><p>${filtering ? "Try a different search or filter." : "Create a reusable character identity to bring into any story."}</p>${button({label:"New character", id:"charlib-empty-new", variant:"primary"})}</div>`;
+    return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>${filtering ? "No characters match" : "Your library is empty"}</h3><p>${filtering ? "Try a different search or filter." : "Create a reusable character identity to bring into any story."}</p>${button({label:"New character", id:"charlib-empty-new", variant:"primary"})}</div>`;
   }
   return pageEntries.map(c => {
     const selected = s.selected?.id === c.id;
@@ -289,7 +289,7 @@ export function characterLibraryHtml() {
   const { slice, pageCount, total, start } = paginate(filteredSorted());
   const rangeText = total === 0 ? "Showing 0 characters" : `Showing ${start + 1}-${start + slice.length} of ${total} characters`;
   return `<section class="lib-page lib-characters" ${tid("character-library.page")}><div class="lib-main">
-    <header class="lib-top"><div><h1>Character Library <span class="lib-info">i</span></h1><p>Reusable characters you can import into any story.</p></div><div class="lib-top-actions">${button({label:"＋ New character", id:"charlib-new", variant:"primary"})}</div></header>
+    <header class="lib-top"><div class="page-title"><p class="eyebrow">library · characters</p><h1>Character Library <span class="lib-info">i</span></h1><p class="lede">Reusable characters you can import into any story.</p></div><div class="lib-top-actions">${button({label:"＋ New character", id:"charlib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="charlib-search" placeholder="⌕  Search characters…" value="${esc(s.search)}">
       <select class="lib-input" id="charlib-visibility"><option value="all"${s.visibility === "all" ? " selected" : ""}>All characters</option><option value="visible"${s.visibility === "visible" ? " selected" : ""}>Visible only</option><option value="hidden"${s.visibility === "hidden" ? " selected" : ""}>Hidden only</option></select>
       <select class="lib-input" id="charlib-sort">
@@ -390,7 +390,9 @@ async function toggleHidden() {
 // moved on to a different character must remove the old row without closing the new one's editor.
 async function remove() {
   const s = APP.characterLibrary; if (!s.selected || s.deletingId === s.selected.id) return;
-  if (!confirm("Permanently delete this character? This cannot be undone.\n\nFor normal cleanup, use Hide instead.")) return;
+  if (!await confirmDialog({ title: "Delete this character?",
+    body: "This cannot be undone. For normal cleanup, use Hide instead.",
+    confirmLabel: "delete character", danger: true })) return;
   const id = s.selected.id;
   s.deletingId = id; APP.render();
   const j = await postJson("/catalog/delete", { kind:"characters", id }, msg => { if (s.selected?.id === id) s.error = msg; });
@@ -447,9 +449,9 @@ export function wireCharacterLibrary(page) {
   page.querySelector("#charlib-new")?.addEventListener("click", createNew);
   page.querySelector("#charlib-empty-new")?.addEventListener("click", createNew);
   page.querySelector("#charlib-retry")?.addEventListener("click", () => { s.loaded = false; load(); });
-  page.querySelectorAll("[data-char-id]").forEach(row => row.addEventListener("click", e => { if (e.target.closest("button")) return; collectDraft(); if (s.dirty && !confirm("Discard unsaved changes?")) return; setSelected(s.entries.find(c => c.id === row.dataset.charId)); }));
-  page.querySelectorAll("[data-char-select-id]").forEach(action => action.addEventListener("click", e => {
-    e.stopPropagation(); collectDraft(); if (s.dirty && !confirm("Discard unsaved changes?")) return;
+  page.querySelectorAll("[data-char-id]").forEach(row => row.addEventListener("click", async e => { if (e.target.closest("button")) return; collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return; setSelected(s.entries.find(c => c.id === row.dataset.charId)); }));
+  page.querySelectorAll("[data-char-select-id]").forEach(action => action.addEventListener("click", async e => {
+    e.stopPropagation(); collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return;
     setSelected(s.entries.find(c => c.id === action.dataset.charSelectId));
   }));
   for (const key of DIFF_FIELDS) page.querySelector(`#charlib-${FIELD_DOM_ID(key)}`)?.addEventListener("input", () => {
@@ -463,7 +465,7 @@ export function wireCharacterLibrary(page) {
       reviewBtn.textContent = s.changes.length ? `Review changes (${s.changes.length})` : "Review changes";
     }
   });
-  page.querySelector("#charlib-close")?.addEventListener("click", () => { if (!s.dirty || confirm("Discard unsaved changes?")) { s.selected = null; s.draft = null; s.dirty = false; s.baseline = null; s.changes = []; s.changesOpen = false; APP.render(); } });
+  page.querySelector("#charlib-close")?.addEventListener("click", async () => { if (!s.dirty || await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) { s.selected = null; s.draft = null; s.dirty = false; s.baseline = null; s.changes = []; s.changesOpen = false; APP.render(); } });
   page.querySelector("#charlib-save")?.addEventListener("click", save);
   page.querySelector("#charlib-cancel")?.addEventListener("click", () => { s.draft = draftOf(s.selected); dirtyFromDraft(); APP.render(); });
   page.querySelector("#charlib-duplicate")?.addEventListener("click", duplicate);

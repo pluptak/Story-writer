@@ -157,17 +157,18 @@ On **THE SERIAL**. Call `W` its last written chapter and `U` the next unwritten 
 this section matter: the rewrite confirm needs `W`, and everything after it needs the run to be for
 the chapter the click actually named.
 
-- [ ] **A written chapter asks first.** Click **write chapter W**. The click raises a confirm naming
-      chapter W as a rewrite. Cancel it: nothing is sent, the shelf stays put.
+- [ ] **A written chapter asks first.** Click **write chapter W**. The click raises the styled
+      confirm modal titled for chapter W as a rewrite. Cancel it (cancel button, backdrop, or
+      Escape): nothing is sent, the shelf stays put.
 
   Only a confirmed rewrite sends `replace`, and `chapters/` is the durable record, so the run
   refuses to start without it. The refusal is what covers a story list this page read before the
   chapter existed: leave the shelf open, write a chapter from another shell
   (`npx tsx story-writer.ts stories/<story> --chapter=n`), then start that same chapter from the
-  still-open page. No confirm is offered — the page does not know it exists — and the run must be
+   still-open page. No confirm modal is offered — the page does not know it exists — and the run must be
   refused with `chapter n is already written` rather than overwriting it silently.
 
-- [ ] Now click **write chapter U** — unwritten, so no confirm — and let that be the run the rest of
+- [ ] Now click **write chapter U** — unwritten, so no confirm modal — and let that be the run the rest of
       this section follows.
 
 - [ ] **Check the terminal, not the screen.** The run header must name chapter `U`, not chapter 1.
@@ -220,9 +221,10 @@ section 2 wrote. (`P` has to be a scene the story does not have yet — that is 
       scene `P` row offering to write chapter `P`.
 - [ ] **Discard the unwritten chapter.** On that same scene `P` row (accepted but not yet written), a
       red **discard chapter P** button sits beside **write chapter P**. It appears only on the last
-      scene while unwritten — written chapters and any earlier scene have none. Click it, confirm the
-      dialog, and the scene `P` row disappears; the row for the last *written* chapter is untouched,
-      and **prepare chapter P** can add it back. The button is disabled while a run is in flight.
+      scene while unwritten — written chapters and any earlier scene have none. Click it, confirm in
+      the styled dialog, and the scene `P` row disappears; the row for the last *written* chapter is
+      untouched, and **prepare chapter P** can add it back. The button is disabled while a run is in
+      flight. Escape or the backdrop cancels with nothing discarded.
 - [ ] **Try again panel.** Unload the architect's model in LM Studio, then open a handoff. Expect a
       panel offering to retry, not a dead screen. Reload the model afterwards.
 
@@ -249,9 +251,9 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Sections are collapsible.** Metadata and scenes open by default; config, models and facts start closed.
 - [ ] **Edit a field.** Change the title. The "unsaved changes" banner appears. The save button becomes enabled.
 - [ ] **Server-side validation.** Remove the premise text. After ~400ms the debounced `/story/check` call shows a validation error in both the issues list and the metadata section.
-- [ ] **Revert.** Click **revert**. Confirm the dialog. The title goes back to what it was. The "unsaved changes" banner disappears.
+- [ ] **Revert.** Click **revert**. Confirm in the styled dialog. The title goes back to what it was. The "unsaved changes" banner disappears.
 - [ ] **Save.** Change the premise, click **save**. The save button briefly shows "saving…" then returns to "save". The "unsaved changes" banner disappears. Reload the page to confirm the edit persisted.
-- [ ] **Dirty guard.** With unsaved changes, click **back to story**. A `confirm()` dialog warns about unsaved changes. Cancel stays on the editor; confirm navigates away.
+- [ ] **Dirty guard.** With unsaved changes, click **back to story**. A styled confirm modal warns about unsaved changes. Cancel (button, backdrop, or Escape) stays on the editor; discard navigates away, and the address bar follows — it never shows the refused page.
 - [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
@@ -521,24 +523,22 @@ The global character library, accessible from the shelf and reloadable by direct
 - [ ] **Save with draft intact.** Add an entry. Introduce a validation error (e.g. an invalid JSON
       field). Attempt to save. The save is rejected and the error appears in `issues`. The user's
       drafted text stays on screen, not cleared.
-- [ ] **Delete takes two clicks.** Click the delete button on an entry. The button arms (changes
-      appearance, shows "confirm delete"). A second click within ~8 seconds deletes it. Wait longer
-      than ~8 seconds — the button disarms and returns to normal. A second click after disarming does
-      not delete.
-- [ ] **Armed state does not survive navigation.** Click delete on an entry to arm it. Without
-      clicking again, navigate away (back to shelf, to another story, or reload the page). Return to
-      `#/catalog`. The delete button is disarmed and the entry is still there — the armed state and
-      timer did not persist.
+- [ ] **Delete asks first.** Click the delete button on an entry. A styled confirm modal names the
+      entry and its confirm button is red. Confirm deletes it; cancel, the backdrop, or Escape keeps
+      it. There is no armed button state — the modal is the whole question.
+- [ ] **A confirm never strands a delete.** Open a delete confirm, then navigate away (back to shelf,
+      to another story, or reload the page) without confirming. Return to `#/catalog`: the entry is
+      still there — nothing was deleted, and no modal is left open.
 - [ ] **Reload on `#/catalog`.** Close the tab, reopen the browser, and land directly on `#/catalog`
       by pasting the URL. The catalog page comes back, not the shelf.
 - [ ] **Switching entries with unsaved edits.** Open an entry and make a change without saving. Click
-      another entry. A confirm dialog warns about unsaved changes. Cancel stays on the current entry;
-      confirm navigates to the other one.
+      another entry. A styled confirm modal warns about unsaved changes. Cancel stays on the current
+      entry; discard navigates to the other one.
 - [ ] **Switching kinds.** At the top of the catalog, a kind switcher shows four tabs: **characters**,
       **tags**, **styles** and **skills** — one per entry in `CATALOG_KINDS` (`server/gui/viewer/state.js`),
       which is the browser's copy of the engine's list. Clicking any of them switches the list and the
-      form to that kind. With unsaved edits in the form, clicking another tab warns with a confirm
-      dialog; cancel stays on the current kind, confirm switches and discards the draft. The nav's
+      form to that kind. With unsaved edits in the form, clicking another tab warns with a styled
+      confirm modal; cancel stays on the current kind, discard switches and drops the draft. The nav's
       **Libraries** group switches kinds by navigation too — each entry seeds the kind before the page
       loads, landing on the same view the switcher would show.
 - [ ] **Tags render grouped STORY / STYLE, derived.** When browsing tags, the list groups entries

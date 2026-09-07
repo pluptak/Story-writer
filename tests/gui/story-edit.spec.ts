@@ -94,9 +94,10 @@ test("the story page discards the last unwritten chapter's scene — and only th
     await expect(discard2).toBeVisible();
     await expect(page.locator('[data-tid="story.scene-row"][data-chapter="1"] [data-tid="story.discard-btn"]')).toHaveCount(0);
 
-    // The story page confirms first — accept the dialog, then the real discard path writes the file.
-    page.on("dialog", d => d.accept());
+    // The story page confirms first — accept the styled confirm, then the real discard path writes the file.
     await discard2.click();
+    await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+    await page.locator('[data-tid="confirm.ok"]').click();
     await expect.poll(async () => (await readStory(dir)).scenes.length).toBe(1);
     // The page follows the disk, because the provider re-reads it: scene 2's row is gone.
     await expect(page.locator('[data-tid="story.scene-row"][data-chapter="2"]')).toHaveCount(0);

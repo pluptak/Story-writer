@@ -19,10 +19,11 @@ test("the character library creates, lists, and deletes a character entry", asyn
   await expect(page.locator(".lib-row")).toHaveCount(1);
   await expect(page.locator(".lib-row")).toContainText("IVET");
 
-  // Deleting is a two-click confirm; the second click within the window removes the entry.
+  // Deleting asks in a styled confirm; the confirm button within removes the entry.
   await page.locator(".lib-row").first().click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#charlib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect(page.locator(".lib-row")).toHaveCount(0);
 
   // The row leaving the list is not the claim -- the entry leaving the catalog is. An optimistic
@@ -268,12 +269,14 @@ test("selecting another character with an in-progress revision prompts before di
   await ivetRow.click();
   await page.locator("#charlib-persona").fill("An unsaved edit.");
 
-  page.once("dialog", dialog => dialog.dismiss());
   await bobRow.click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.cancel"]').click();
   await expect(page.locator("#charlib-persona")).toHaveValue("An unsaved edit.");
 
-  page.once("dialog", dialog => dialog.accept());
   await bobRow.click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect(page.locator("#charlib-name")).toHaveValue("BOB");
 });
 
@@ -516,8 +519,9 @@ test("deleting the last item on the last page clamps back to a page that exists"
   await expect(page.locator(".lib-row")).toHaveCount(1);
 
   await page.locator(".lib-row").first().click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#charlib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
 
   await expect(page.locator(".lib-pager")).toHaveCount(0);
   await expect(page.locator(".lib-row")).toHaveCount(10);
@@ -602,8 +606,9 @@ test("deleting a tag persists — the row doesn't just leave the list", async ({
   await expect.poll(async () => page.locator(".lib-row").count()).toBe(before + 1);
 
   await page.locator(".lib-row").filter({ hasText: "Whimsical" }).click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#taglib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect.poll(async () => page.locator(".lib-row").count()).toBe(before);
 
   await arrive(page, served, "#/catalog?kind=tags");
@@ -763,7 +768,7 @@ test("the skill editor refuses to delete a general skill an origin grants, and s
   // "sight" is granted by the human origin in the seed, so it cannot go.
   await page.locator(".lib-row").filter({ hasText: "sight" }).first().click();
   await expect(page.locator('[data-tid="skill-library.granted-by"]')).toContainText("human");
-  page.on("dialog", dialog => dialog.accept());
+  // Refused before any confirm: the origin-grant guard answers, no styled dialog ever opens.
   await page.locator("#skilllib-delete").click();
   // The refusal's own wording, not the Usage line's — that already says "granted by origin human",
   // so asserting on it would pass whether or not the delete was actually refused.
@@ -895,8 +900,9 @@ test("deleting a style persists — the row doesn't just leave the list", async 
   await expect(page.locator(".lib-row")).toHaveCount(1);
 
   await page.locator(".lib-row").first().click();
-  page.on("dialog", dialog => dialog.accept());
   await page.locator("#stylib-delete").click();
+  await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+  await page.locator('[data-tid="confirm.ok"]').click();
   await expect(page.locator(".lib-row")).toHaveCount(0);
 
   // An optimistic delete against a route that doesn't exist would pass the count above and fail
@@ -931,8 +937,9 @@ test("a save that lands after switching characters updates the list row, not the
     // fixed wait, so the test cannot pass by accident on timing.
     await expect(page.locator("#charlib-save")).toBeDisabled();
 
-    page.once("dialog", dialog => dialog.accept());
     await bobRow.click();
+    await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+    await page.locator('[data-tid="confirm.ok"]').click();
     await expect(page.locator("#charlib-name")).toHaveValue("BOB");
   } finally {
     // A held server-side request that never gets released hangs the harness's own teardown too --
@@ -961,8 +968,9 @@ test("a delete that lands after switching characters removes its own row, not th
   await ivetRow.click();
   const release = holdCatalogWrites();
   try {
-    page.once("dialog", dialog => dialog.accept()); // the delete confirm
     await page.locator("#charlib-delete").click();
+    await expect(page.locator('[data-tid="confirm.dialog"]')).toBeVisible();
+    await page.locator('[data-tid="confirm.ok"]').click();
     await expect(page.locator("#charlib-delete")).toBeDisabled();
 
     // Nothing was edited on IVET before deleting it, so switching to BOB is not a "discard unsaved

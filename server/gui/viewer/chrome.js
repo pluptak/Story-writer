@@ -62,12 +62,15 @@ addEventListener("drop", e => {
 });
 
 // Escape closes the topmost modal only -- picker stacks above character card, which stacks above
-// run-ended, which sits above the interview. Each close is that modal's own "dismiss, never submit" path.
+// run-ended, which sits above the interview. A styled confirm (ui.js confirmDialog) stacks above
+// them all and settles its own promise as a cancel. Each close is that modal's own "dismiss, never
+// submit" path.
 addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const backdrops = [...document.querySelectorAll(".modal-backdrop")];
   const top = backdrops[backdrops.length - 1];
   if (!top) return;
+  if (top.id === "confirm-backdrop") { e.preventDefault(); top._confirmResolve?.(false); return; }
   if (top.id === "iv-backdrop") { e.preventDefault(); go("shelf"); return; }
   if (top.id === "picker-backdrop") { e.preventDefault(); cancelLibraryPicker(); return; }
   if (top.id === "charcard-backdrop") { APP.charCard = null; APP.modalWant = ""; }
