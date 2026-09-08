@@ -493,12 +493,16 @@ a *new* story folder — so it can go anywhere in the pass.
       the draft the editor validates is a story, not a spec view, and the first edit is what triggers
       the first check. If something ever does invalidate it, the reason renders above the button
       rather than leaving it dead with nothing said.
-- [ ] **Accept.** The sidebar's **accept & choose folder** opens the folder step in the main column
-      (**write story.json →**). On success the run starts and the page follows to the live screen.
+- [ ] **Accept.** The sidebar's **accept & choose folder** opens the handoff in the main column:
+      a ready-to-write summary (premise, characters, structure, validation) with one dominant
+      **Start writing →**. On success the run starts and the page follows to the live screen.
       Accepting over unsent text or a `problems` flag takes a confirming second click.
+      Secondaries: **return to blueprint**, **save and leave** (session stays live; the shelf's
+      resume panel shows it), and an **inspect details** disclosure with the complete Blueprint.
 - [ ] **The folder step says what is taken, before the click.** Type the name of a story that already
-      exists: the step says *stories/&lt;slug&gt; already exists — pick another name* and **write
-      story.json →** goes disabled, updating as you type without the caret jumping. Type a name that
+      exists: the step says *stories/&lt;slug&gt; already exists — pick another name* and **Start
+      writing →** goes disabled, updating as you type without the caret jumping. The field arrives
+      prefilled from the title slug. Type a name that
       slugifies to something different (`Bay 4 — Hatches!`) and it previews *this lands in
       stories/bay-4-hatches* instead. Two stories built from one premise get the same title and so
       the same slug, which is how this is hit in practice.

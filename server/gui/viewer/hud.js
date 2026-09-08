@@ -9,6 +9,24 @@ const CATALOG_CRUMB = { characters: "characters", styles: "writer styles", tags:
 
 const chapterSuffix = m => (m && m.chapters > 1) ? ` · chapter ${m.chapter} of ${m.chapters}` : "";
 
+/** Where the open interview sits in the Blueprint lifecycle: Story → Ingredients →
+ *  Blueprint → Review → Write. A presentation mirror of interview.js:stageOf (which owns the
+ *  canonical gate→stage mapping): idea/direction/castworld gather the ingredients, structure
+ *  builds the blueprint, review/handoff approve it. One-shot's direction stage already holds the
+ *  whole proposal, so it reads as blueprint, not ingredients. Two levels max: shelf › step.
+ *  Exported for the shelf's resume panel — same derivation, one home. */
+export function scaffoldLifecycle() {
+  const s = APP.scaffold || {};
+  if (s.needsFolder || APP.folderOpen) return "review";
+  const complete = !!s.last && s.last.kind === "nothing" && /checklist is complete/.test(s.last.why || "");
+  if (complete) return "review";
+  if (s.mode === "oneshot") return s.haveStory ? "review" : (s.spec && s.haveDraft) ? "blueprint" : "ingredients";
+  const gate = s.gate || "story";
+  if (gate === "story" || gate === "cast" || gate === "settings") return "ingredients";
+  if (gate === "technical" || gate === "scene" || gate === "world") return "blueprint";
+  return "ingredients";
+}
+
 /** The breadcrumb for the current view: earlier crumbs are clickable ancestors, the last is where
  *  you are. Ancestor links appear only with an engine attached -- the shelf and a story page are
  *  unreachable without one (go() would rewrite them to the read tab). */
@@ -22,7 +40,7 @@ function crumbsFor() {
   switch (APP.view) {
     case "shelf":     return [{ label: "choosing a story" }];
     case "story":     return [shelf, { label: name(APP.storyDir) }];
-    case "scaffold":  return [shelf, { label: "new story" }];
+    case "scaffold":  return [shelf, { label: "architect · " + scaffoldLifecycle() }];
     case "edit":      return APP.editNew
                         ? [shelf, { label: "new story", view: "scaffold" }, { label: "edit in full" }]
                         : [shelf, { label: name(APP.editDir), view: "story", dir: APP.editDir }, { label: "edit story" }];

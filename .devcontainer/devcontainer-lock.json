@@ -1,0 +1,19 @@
+{
+  "features": {
+    "ghcr.io/devcontainer-config/features/dot-config:4": {
+      "version": "4.0.0",
+      "resolved": "ghcr.io/devcontainer-config/features/dot-config@sha256:d9ca770ccb218e619d5725fd50f00dfacdf582d92a8c3901f11b53b1caddd878",
+      "integrity": "sha256:d9ca770ccb218e619d5725fd50f00dfacdf582d92a8c3901f11b53b1caddd878"
+    },
+    "ghcr.io/jsburckhardt/devcontainer-features/opencode:1": {
+      "version": "1.1.1",
+      "resolved": "ghcr.io/jsburckhardt/devcontainer-features/opencode@sha256:047f9144ad6540ee416cc2ea170f41bfae887c6c2cd883e14d2ab44a1ce20fc8",
+      "integrity": "sha256:047f9144ad6540ee416cc2ea170f41bfae887c6c2cd883e14d2ab44a1ce20fc8"
+    },
+    "registry.gitlab.com/pravorskyi/devcontainer-features/claude-code:1": {
+      "version": "1.0.0",
+      "resolved": "registry.gitlab.com/pravorskyi/devcontainer-features/claude-code@sha256:a90de8afc73d35e2a849efa2ef20a42557b85bfca17a5d72088d8549e2709df3",
+      "integrity": "sha256:a90de8afc73d35e2a849efa2ef20a42557b85bfca17a5d72088d8549e2709df3"
+    }
+  }
+}

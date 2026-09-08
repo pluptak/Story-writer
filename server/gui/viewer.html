@@ -37,11 +37,13 @@
       <button class="navitem" id="nav-read" data-view="read" data-tid="chrome.navitem" title="a saved run, read-only">Saved runs</button>
     </div>
     <div class="navgroup" id="navgroup-libraries">
-      <h3>Libraries</h3>
-      <button class="navitem" id="nav-cat-characters" data-view="catalog" data-kind="characters" data-tid="chrome.navitem">Characters</button>
-      <button class="navitem" id="nav-cat-styles" data-view="catalog" data-kind="styles" data-tid="chrome.navitem">Styles</button>
-      <button class="navitem" id="nav-cat-tags" data-view="catalog" data-kind="tags" data-tid="chrome.navitem">Tag Vocabulary</button>
-      <button class="navitem" id="nav-cat-skills" data-view="catalog" data-kind="skills" data-tid="chrome.navitem">Skill Bible</button>
+      <details class="navlibraries" id="nav-libraries" data-tid="chrome.navlibraries">
+        <summary title="reusable libraries — characters, voices, tags, skills">Libraries</summary>
+        <button class="navitem" id="nav-cat-characters" data-view="catalog" data-kind="characters" data-tid="chrome.navitem">Characters</button>
+        <button class="navitem" id="nav-cat-styles" data-view="catalog" data-kind="styles" data-tid="chrome.navitem">Styles</button>
+        <button class="navitem" id="nav-cat-tags" data-view="catalog" data-kind="tags" data-tid="chrome.navitem">Tag Vocabulary</button>
+        <button class="navitem" id="nav-cat-skills" data-view="catalog" data-kind="skills" data-tid="chrome.navitem">Skill Bible</button>
+      </details>
     </div>
   </nav>
   <main class="page" id="page"></main>

@@ -20,7 +20,7 @@ import { libraryPickerHtml, wireLibraryPicker } from "./library-picker.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
 import { readerPageHtml, wireReaderPage } from "./reader.js";
 import { comparisonPageHtml, wireComparison } from "./compare.js";
-import { go, generating, syncHash, tagFocus, clearFocus } from "./nav.js";
+import { go, generating, syncHash, tagFocus, clearFocus, parseHashParams } from "./nav.js";
 import { renderSession } from "./session.js";
 import { button, hint, thinking } from "./ui.js";
 
@@ -371,6 +371,26 @@ function wireConsultToggles(page) {
   }
 }
 
+/** Lifecycle deep link: `#/scaffold?step=ingredients|blueprint|review` scrolls to the first
+ *  matching stage section once it exists on screen. Inbound only — syncHash keeps writing the
+ *  bare `#/scaffold`, so repaints never leak the step into the URL. Fires once per step value
+ *  (SSE repaints must not yank the page back); a step with no matching section — blueprint on
+ *  the one-shot walk, which has no structure stage — simply never fires. */
+const STEP_SECTIONS = {
+  ingredients: ["idea", "direction", "castworld"],
+  blueprint: ["structure"],
+  review: ["review", "handoff"],
+};
+function settleStep(page) {
+  if (APP.view !== "scaffold") { APP.stepScrolledFor = null; return; }
+  const step = (parseHashParams().get("step") || "").toLowerCase();
+  if (!STEP_SECTIONS[step] || APP.stepScrolledFor === step) return;
+  const t = STEP_SECTIONS[step].map(k => page.querySelector(`[data-stage="${k}"]`)).find(Boolean);
+  if (!t) return;                       // stage not on screen yet -- retry on a later frame
+  APP.stepScrolledFor = step;
+  t.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 /** One-shot scroll to the &block=/timeline target once it exists on screen. Runs after each render;
  *  fires only until it has scrolled for the current focusSeq, so a mid-run rebuild never yanks the
  *  page back. */
@@ -447,6 +467,7 @@ export function render() {
   // every state change above (focus tag/clear, modal want) lands in the address bar without each
   // mutator having to remember to call it. replaceState-only, so nothing re-enters go().
   settleFocus(page);
+  settleStep(page);
   // View-enter animation, navigation only: go() sets the flag, SSE repaints never do, so a
   // mid-run rebuild never replays it. Reflow between remove/add restarts the keyframes.
   if (APP.wantViewEnter) {

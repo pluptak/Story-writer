@@ -569,6 +569,8 @@ test("the tag library seeds from the engine and its kind rides the URL", async (
 
 test("the sidenav's Tag Vocabulary link reaches the tag library", async ({ page, served }) => {
   await arrive(page, served, "#/catalog");
+  // Libraries live in a secondary disclosure now, not as primary destinations.
+  await page.locator("#nav-libraries > summary").click();
   const link = page.locator("#nav-cat-tags");
   await expect(link).toBeVisible();
   await expect(link).toHaveText("Tag Vocabulary");

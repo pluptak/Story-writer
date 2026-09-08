@@ -396,14 +396,14 @@ function sceneHtml(spec) {
   return `<div class="scene">
     ${sc.place ? `<h4>${esc(sc.place)}</h4>` : ""}
     <p class="scene-meta">scene 1${meta ? " · " + meta : ""}</p>
-    ${sc.question ? `<div class="question"><span class="label">dramatic question</span>${esc(sc.question)}</div>` : ""}
+    ${sc.question ? `<div class="question"><span class="label">dramatic question</span> <span class="tag prov-ai">proposed</span>${esc(sc.question)}</div>` : ""}
   </div>`;
 }
 
 function factsHtml(spec) {
   const facts = spec.facts || [];
   if (!facts.length) return "";
-  return `<div class="facts">${facts.map(f =>
+  return `<div class="facts"><span class="tag prov-ai">proposed</span>${facts.map(f =>
     `<div class="fact"><strong>fact</strong><span>${esc(f)}</span></div>`).join("")}</div>`;
 }
 
@@ -426,7 +426,7 @@ function timelineHtml(spec) {
   return beats.map((b, i) => {
     const mem = Object.entries(b.memories || {});
     return `<div class="scene" data-tid="scaffold.beat">
-      <p class="scene-meta">world event ${i + 1} · chapter ${esc(b.chapter)} · fires at ${esc(b.at)} of the target</p>
+      <p class="scene-meta">world event ${i + 1} · chapter ${esc(b.chapter)} · fires at ${esc(b.at)} of the target <span class="tag prov-ai">proposed</span></p>
       <div class="facts">
         <div class="fact"><strong>held</strong><span>${esc(b.hold)}</span></div>
         <div class="fact"><strong>fired</strong><span>${esc(b.fired)}</span></div>
@@ -567,6 +567,7 @@ function lockedSection(key, waitsOn) {
   return `<section class="card stage-locked" data-tid="scaffold.stage-section" data-stage="${key}">
     <div class="card-head">
       <div><span class="label">${esc(STAGE_LABELS[key])} · ahead</span><h3>${esc(meta.q)}</h3></div>
+      <span class="status-pill" data-tid="scaffold.artifact-status">Draft</span>
     </div>
     <div class="card-body">${hint(esc(waitsOn))}</div>
   </section>`;
@@ -665,12 +666,149 @@ function statusBlock(s) {
   return lastHtml(s.last);
 }
 
-/** Advisory engine notes. They never block refinement or approval -- they are judgements about
- *  the design, and accepting over them takes the same confirming second click as before. */
-function problemsHtml(s) {
-  if (!(s.problems || []).length) return "";
-  return `<div class="stage-problems"><span class="label">engine notes · advisory, never blocking</span>`
-    + s.problems.map(p => warnLine(`⚠ ${esc(p)}`)).join("") + `</div>`;
+/** Findings: validation presented as story-design problems, not a flat warning list.
+ *  Three buckets over signals the engine already emits — nothing here invents a check:
+ *  Blocking (load-bearing content absent, or a gate state that already refuses approve),
+ *  Needs attention (an ambiguity or contradiction in the architecture), Suggestion
+ *  (hygiene the author can proceed past). Every finding names what is wrong, where it
+ *  occurs, why it matters, and the shortest fix. An unrecognized string lands in the
+ *  unsorted bucket, visible — never dropped to make the groups look clean. */
+const FINDING_RULES = [
+  // Blocking — the Writer cannot reasonably start without these.
+  { sev: "blocking", re: /^no title/i, where: "direction",
+    why: "An untitled story gives the Writer nothing to shape toward.",
+    fix: "Say the title." },
+  { sev: "blocking", re: /^no premise/i, where: "direction",
+    why: "Without a premise the cast, voice and scenes answer to nothing.",
+    fix: "Say what happens, to whom, and what is at stake." },
+  { sev: "blocking", re: /no characters at all/i, where: "cast",
+    why: "No cast means no scene can be written and no consult can fire.",
+    fix: "Say who walks into scene 1." },
+  { sev: "blocking", re: /(scene \d+) has no question/i, where: 1,
+    why: "A scene with nothing to answer gives the Writer no objective to write toward.",
+    fix: "Say what that scene asks." },
+  { sev: "blocking", re: /came back as text rather than an object/i, where: "structure",
+    why: "Scene 1 has no usable shape — the reply carried no scene to keep.",
+    fix: "Say where scene 1 happens and what it asks." },
+  // Needs attention — the architecture contradicts itself or names someone absent.
+  { sev: "attention", re: /(scene \d+) roster "([^"]+)" is not one of the characters/i, where: 1,
+    why: "A scene requiring someone outside the cast asks the Writer for a stranger.",
+    fix: "Rename them to a cast member, or add the character." },
+  { sev: "attention", re: /roster "[^"]+" is not one of the characters/i, where: "the draft",
+    why: "A scene requiring someone outside the cast asks the Writer for a stranger.",
+    fix: "Rename them to a cast member, or add the character." },
+  { sev: "attention", re: /(scene \d+) pov "[^"]+" is not in the roster/i, where: 1,
+    why: "The reader would sit inside the perception of someone not placed in the room.",
+    fix: "Add them to the roster, or move the POV to someone in it." },
+  { sev: "attention", re: /pov "[^"]+" is not one of the characters/i, where: "the draft",
+    why: "The POV was cleared, so scene 1 currently has no eyes.",
+    fix: "Say whose eyes scene 1 is seen through." },
+  { sev: "attention", re: /grants reach to "[^"]+", who is not/i, where: "the draft",
+    why: "A capability granted to someone absent never reaches a run.",
+    fix: "Grant it to a roster member, or place them in the scene." },
+  { sev: "attention", re: /keys a memory to "[^"]+", who is not/i, where: "the draft",
+    why: "A memory for someone absent silently never implants.",
+    fix: "Key it to a roster member, or place them in the chapter." },
+  { sev: "attention", re: /aimed at chapter (\d+), past the story's last scene/i, where: "the world ledger",
+    why: "A beat aimed past the last scene can never fire.",
+    fix: "Re-aim it at a written chapter, or void it." },
+  { sev: "attention", re: /beats fire in authored order/i, where: "the world ledger",
+    why: "Two beats compete for the same page — the later one fires early.",
+    fix: "Reorder their `at` points so the authored order matches the intended one." },
+  { sev: "attention", re: /carries quoted speech/i, where: "the world ledger",
+    why: "An event with a voice reads as an invented line to the quote lint.",
+    fix: "Keep the held and fired forms wordless." },
+  { sev: "attention", re: /still names "[^"]+", who was renamed/i, where: "the draft",
+    why: "A rename left a stale reference — that field still talks about someone gone.",
+    fix: "Say what the field should name now." },
+  { sev: "attention", re: /is not one of the imported characters/i, where: "cast",
+    why: "The cast gate added someone the author never chose from the catalog.",
+    fix: "Reject them, or keep them deliberately." },
+  { sev: "attention", re: /reverted to/i, where: "the draft",
+    why: "The architect rewrote something the author chose (a catalog field or the preset voice) and the engine put it back.",
+    fix: "Change it under Libraries if the new value is what you want." },
+  { sev: "attention", re: /persona restates/i, where: "the draft",
+    why: "The persona repeats a rendered field and will contradict it on the page.",
+    fix: "Say what the persona should carry instead." },
+  { sev: "attention", re: /was left out of the proposal — added back/i, where: "cast",
+    why: "An import the reply omitted was restored — worth checking it still fits.",
+    fix: "Reject them if they do not, or leave them placed." },
+  { sev: "suggestion", re: /with no name — dropped|two characters called|keeping the first \d+/i, where: "cast",
+    why: "The engine kept the draft unambiguous by dropping the extra entry.",
+    fix: "Re-add them with a distinct name if they matter." },
+  { sev: "attention", re: /— dropped/i, where: "the draft",
+    why: "The engine discarded something malformed rather than keep a broken entry.",
+    fix: "Re-add it in the shape the note names." },
+  // Suggestion — potential improvement, safe to proceed past.
+  { sev: "suggestion", re: /has no belief|has no impulse|has no voice samples/i, where: "the draft",
+    why: "A character without psychology defaults to agreeable — friction costs extra later.",
+    fix: "Give them the missing belief, impulse, or voice line." },
+  { sev: "suggestion", re: /has no persona/i, where: "the draft",
+    why: "Without a persona the character arrives as a name with a job.",
+    fix: "Say who they are beyond their role." },
+  { sev: "suggestion", re: /not a bible skill, and it carries no ":: meaning"/i, where: "the draft",
+    why: "Nobody — engine or reader — can tell what the skill lets them do.",
+    fix: "Write it as `name :: what it lets them do`, or promote it to the bible." },
+  { sev: "suggestion", re: /not a known skill, so it would remove nothing/i, where: "the draft",
+    why: "The restriction names nothing the character has, so it changes no behavior.",
+    fix: "Name a general, bible, or own skill — or drop it." },
+  { sev: "suggestion", re: /more than 3 voice samples/i, where: "the draft",
+    why: "Only the first three reach the prompt; the rest is dead weight.",
+    fix: "Keep the three that sound most like them." },
+  { sev: "suggestion", re: /arrived with "learned"/i, where: "the draft",
+    why: "Housekeeping only — it was folded into knows.",
+    fix: "Nothing to do." },
+  { sev: "suggestion", re: /nobody has any restrictions/i, where: "cast",
+    why: "Without one restriction the consult has no perceptual asymmetry to bite on.",
+    fix: "Give one character something they cannot do." },
+  { sev: "suggestion", re: /against maxSteps|consulted at each beat/i, where: "structure",
+    why: "A wide cast spends the step budget on breadth instead of depth.",
+    fix: "Narrow the roster, or raise config.maxSteps." },
+];
+
+function findingOf(text) {
+  for (const r of FINDING_RULES) {
+    // A rule without a matcher must never match-all: skip it loudly in structure,
+    // invisibly here — the unsorted bucket below is the honest fallback.
+    if (!(r.re instanceof RegExp) || typeof r.sev !== "string") continue;
+    const m = String(text || "").match(r.re);
+    if (m) return { sev: r.sev, what: String(text),
+      where: typeof r.where === "number" ? (m[r.where] || "the draft") : r.where,
+      why: r.why, fix: r.fix };
+  }
+  return { sev: "unsorted", what: String(text), where: "the draft",
+    why: "An engine note with no category yet — shown rather than hidden to keep the groups honest.",
+    fix: "Say what should change about it." };
+}
+
+function findingsHtml(s) {
+  const list = [...(s.problems || [])].map(findingOf);
+  if (s.pendingAsk) list.unshift({ sev: "blocking",
+    what: "A question stands — nothing passes until it is answered.",
+    where: s.gate ? `${s.gate} gate` : "the open gate",
+    why: "The architect cannot proceed without a call only the author can make.",
+    fix: "Answer in the composer below." });
+  if (s.last && s.last.kind === "blocked") list.unshift({ sev: "blocking",
+    what: s.last.why || "The cast gate is blocked.",
+    where: "cast gate",
+    why: "A stateless judge found this cast's asymmetry does not bite on the tension.",
+    fix: "Refine the cast below, or approve again to overrule." });
+  if (!list.length) return "";
+  const groups = [
+    ["blocking", "Blocking — the Writer cannot reasonably start"],
+    ["attention", "Needs attention — ambiguity or contradiction"],
+    ["suggestion", "Suggestion — safe to proceed"],
+    ["unsorted", "Unsorted engine note"],
+  ];
+  return groups.map(([sev, label]) => {
+    const mine = list.filter(f => f.sev === sev);
+    if (!mine.length) return "";
+    return `<div class="stage-problems"><span class="label">${label}</span>` + mine.map(f =>
+      `<div class="finding finding-${sev}" data-tid="scaffold.finding" data-sev="${sev}">`
+      + `<p><strong>${esc(f.what)}</strong><span class="hint"> · ${esc(f.where)}</span></p>`
+      + `<p class="hint">Why it matters: ${esc(f.why)}</p>`
+      + `<p class="hint">Shortest fix: ${esc(f.fix)}</p></div>`).join("") + `</div>`;
+  }).join("");
 }
 
 // A bespoke skill is the architect telling you this cast needed a capability the bible does not
@@ -729,8 +867,8 @@ function directionBits(s) {
   const ch = changedSections(s);
   return [
     changedTag(ch, "direction"),
-    spec.title ? `<h4>${esc(spec.title)}</h4>` : "",
-    spec.premise ? `<p class="stage-copy">${esc(spec.premise)}</p>` : "",
+    spec.title ? `<h4>${esc(spec.title)} <span class="tag prov-ai">proposed</span></h4>` : "",
+    spec.premise ? `<p class="stage-copy">${esc(spec.premise)} <span class="tag prov-ai">proposed</span></p>` : "",
     s.tension ? `<div class="question"><span class="label">load-bearing tension</span> <span class="tag prov-ai">proposed</span>${esc(s.tension)}</div>` : "",
     factsHtml(spec),
   ].join("");
@@ -807,14 +945,92 @@ function structureBits(s) {
   return out.join("");
 }
 
+// ── review: decisions first, blueprint behind expandables ────────────────────
+// Review answers one question — "would I trust this plan enough to let the Writer
+// start?" — so the decisions that carry the story render prominently and the complete
+// Blueprint sits behind expandables reusing the stage renderers above. No new data:
+// the protagonist is derived from scene 1's POV (labelled as derived), and open
+// contradictions are s.problems folded in here — which is why openReview drops the
+// separate engine-notes block the other stages keep.
+function reviewDecisionsHtml(s) {
+  const spec = s.spec || {};
+  const scenes = spec.scenes || [];
+  const sc1 = scenes[0] || {};
+  const pov = sc1.pov || "";
+  const cast = spec.characters || [];
+  const protagonist = cast.find(c => c.name === pov) || cast[0] || null;
+  const beats = spec.timeline || [];
+  const decision = (label, body) =>
+    `<div class="decision"><span class="label">${label}</span>${body}</div>`;
+  const roles = cast.length
+    ? `<ul class="decision-roles">${cast.map(c =>
+        `<li><strong>${esc(c.name)}</strong>${c.goal ? ` — ${esc(c.goal)}` : " — no goal yet"}</li>`).join("")}</ul>`
+    : hint(`No cast yet — say who walks into scene 1.`);
+  const structure = [
+    ...scenes.filter(sc => sc.question)
+      .map((sc, i) => `<div class="question mt-xs"><span class="label">scene ${i + 1}</span>${esc(sc.question)}</div>`),
+    ...beats.map((b, i) =>
+      `<div class="question mt-xs"><span class="label">world event ${i + 1} · chapter ${esc(b.chapter)}</span>${esc(b.hold)}</div>`),
+  ].join("") || hint(`No structural beats yet — scene 1's dramatic question lands first.`);
+  return `<div data-tid="scaffold.review-decisions">`
+    + `<p class="hint">Would you trust this plan enough to let the Writer start? Read the decisions below — the full Blueprint waits behind the expandables.</p>`
+    + decision("premise", spec.premise
+      ? `<p class="stage-copy">${esc(spec.premise)} <span class="tag prov-ai">proposed</span></p>`
+      : hint(`No premise yet.`))
+    + decision("protagonist · derived from scene 1's POV", protagonist
+      ? `<p class="stage-copy"><strong>${esc(protagonist.name)}</strong>${protagonist.goal ? ` — ${esc(protagonist.goal)}` : ""}</p>`
+      : hint(`No POV yet — say whose eyes scene 1 is seen through.`))
+    + decision("central conflict", [
+        s.tension ? `<div class="question"><span class="label">load-bearing tension</span> <span class="tag prov-ai">proposed</span>${esc(s.tension)}</div>` : "",
+        sc1.question ? `<div class="question"><span class="label">scene 1 asks</span> <span class="tag prov-ai">proposed</span>${esc(sc1.question)}</div>` : "",
+      ].join("") || hint(`No conflict yet — the tension and scene 1's question land in their stages.`))
+    + decision("character roles", roles)
+    + decision("structural beats", structure)
+    + decision("open contradictions", findingsHtml(s)
+      || `<p class="stage-copy">None flagged — the engine's checks pass. Approval still takes a confirming click.</p>`)
+    + `</div>`;
+}
+
+function reviewBlueprintDetails(s) {
+  const spec = s.spec;
+  const ch = changedSections(s);
+  const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
+  const group = (key, label, body) => body
+    ? `<details class="card stage-done" data-tid="scaffold.blueprint-details" data-stage="${key}">`
+      + `<summary><span class="label">complete blueprint</span> <strong>${label}</strong></summary>`
+      + `<div class="card-body">${body}</div></details>` : "";
+  return group("direction", "Direction — title, tension, facts", [
+      changedTag(ch, "direction"),
+      spec.title ? `<h4>${esc(spec.title || "(untitled)")} <span class="tag prov-ai">proposed</span></h4>` : "",
+      spec.premise ? `<p class="stage-copy">${esc(spec.premise)} <span class="tag prov-ai">proposed</span></p>` : "",
+      s.tension ? `<div class="question"><span class="label">load-bearing tension</span> <span class="tag prov-ai">proposed</span>${esc(s.tension)}</div>` : "",
+      factsHtml(spec),
+    ].join(""))
+    + group("cast", "Cast & voice", [
+      changedTag(ch, "cast"),
+      spec.characters.length ? castHtml(spec, catalogOf(s), false, rejectEntriesOf(s)) : "",
+      changedTag(ch, "voice"),
+      spec.writerStyle ? `<p class="stage-copy">${voiceBadge(s)} ${esc(spec.writerStyle)}</p>` : "",
+    ].join(""))
+    + group("structure", "Structure — scenes & world events", [
+      technicalHtml(spec),
+      changedTag(ch, "structure"),
+      sceneHtml(spec),
+      sketches.length ? `<div class="mt-sm"><span class="label">later scenes · provisional</span>${
+        sketches.map(sc => `<div class="question mt-xs">${esc(sc.question)}</div>`).join("")}</div>` : "",
+      timelineHtml(spec)
+        || `<p class="stage-copy">No world events — the pressure in this story runs between the people in it.</p>`,
+    ].join(""));
+}
+
 function reviewBits(s) {
   const spec = s.spec;
   const ch = changedSections(s);
   const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
   return [
     changedTag(ch, "direction"),
-    spec.title ? `<h4>${esc(spec.title || "(untitled)")}</h4>` : "",
-    spec.premise ? `<p class="stage-copy">${esc(spec.premise)}</p>` : "",
+    spec.title ? `<h4>${esc(spec.title || "(untitled)")} <span class="tag prov-ai">proposed</span></h4>` : "",
+    spec.premise ? `<p class="stage-copy">${esc(spec.premise)} <span class="tag prov-ai">proposed</span></p>` : "",
     s.tension ? `<div class="question"><span class="label">load-bearing tension</span> <span class="tag prov-ai">proposed</span>${esc(s.tension)}</div>` : "",
     factsHtml(spec),
     changedTag(ch, "cast"),
@@ -831,29 +1047,66 @@ function reviewBits(s) {
   ].join("");
 }
 
+/** The handoff summary — one screen answering "is this ready to write?". Premise, main
+ *  characters, major structure with its scene count, and validation via the same grouped
+ *  findings Review shows (blocking and non-blocking stay in their groups). The Writer entry
+ *  names the story it opens, so the blueprint link is stated before anything is written. */
+function handoffSummaryHtml(s) {
+  const spec = s.spec || {};
+  const cast = spec.characters || [];
+  const scenes = spec.scenes || [];
+  const questions = scenes.filter(sc => sc.question);
+  const flags = s.problems || [];
+  const title = spec.title?.trim() || "(untitled)";
+  return `<div data-tid="scaffold.handoff-summary">`
+    + `<p class="stage-copy"><strong>Your story is ready to write.</strong> `
+    + `Start writing opens “${esc(title)}” — chapter 1, written from the approved Blueprint exactly as it stands.</p>`
+    + (spec.premise ? `<p class="stage-copy">${esc(spec.premise)} <span class="tag prov-ai">proposed</span></p>` : "")
+    + (cast.length
+      ? `<div class="decision"><span class="label">main characters · ${cast.length}</span><ul class="decision-roles">`
+        + cast.map(c => `<li><strong>${esc(c.name)}</strong>${c.goal ? ` — ${esc(c.goal)}` : ""}</li>`).join("")
+        + `</ul></div>` : "")
+    + (questions.length
+      ? `<div class="decision"><span class="label">major structure · ${scenes.length} scene${scenes.length === 1 ? "" : "s"}</span>`
+        + questions.map((sc, i) => `<div class="question mt-xs"><span class="label">scene ${i + 1}</span>${esc(sc.question)}</div>`).join("")
+        + `</div>` : "")
+    + `<div class="decision"><span class="label">validation · ${flags.length ? `${flags.length} open flag${flags.length === 1 ? "" : "s"}` : "checks pass"}</span>`
+    + (findingsHtml(s)
+      || `<p class="stage-copy">None flagged — the engine's checks pass.</p>`) + `</div>`
+    + `</div>`;
+}
+
 /** The accept step -- opened by the sidebar's accept button, or forced open by a needs_folder
- *  answer. Owns acceptance while it is open -- "write story.json →" IS the accept. */
+ *  answer. Owns acceptance while it is open -- "Start writing" IS the accept, through the same
+ *  folder-scoped POST that writes story.json verbatim from the approved spec. */
 function folderHtml(s) {
   // The folder is the story's identity on disk, and two stories built from one premise land on the
   // same title and so the same slug. accept() refuses a taken folder, but only after the click --
   // say it here, while the name is still being typed.
   return `<section class="card" data-tid="scaffold.folder-card">
     <div class="card-head">
-      <div><span class="label">accept</span><h3>Name the story folder</h3></div>
+      <div><span class="label">handoff</span><h3>Your story is ready to write</h3></div>
       ${s.needsFolder ? `<span class="label">needs_folder</span>` : ""}
     </div>
     <div class="card-body">
-      <p>${esc(s.needsFolder || "Name where this story lands — nothing is written until you accept.")}</p>
+      ${handoffSummaryHtml(s)}
       ${acceptProvenanceHtml(s)}
       <label class="field-label" for="f-folder">story folder</label>
       <input type="text" id="f-folder" value="${esc(draft.folder)}">
       <div id="iv-folder-note">${folderNoteHtml()}</div>
       <div class="composer-foot">
-        <span class="hint">nothing is written until this answers</span>
+        <span class="hint">nothing is written until Start writing answers</span>
         ${thinking("writing &amp; preflighting…", { show: s.busy, tag: "span" })}
-        ${!s.needsFolder && APP.folderOpen ? button({ label: "← keep editing", id: "iv-folder-back" }) : ""}
-        ${button({ label: "write story.json →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}
       </div>
+      <div class="side-actions">${button({ label: "Start writing →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}</div>
+      <div class="side-actions secondary">
+        ${!s.needsFolder && APP.folderOpen ? button({ label: "← return to blueprint", id: "iv-folder-back" }) : ""}
+        ${button({ label: "save and leave", id: "iv-save-leave" })}
+      </div>
+      <details class="card stage-done" data-tid="scaffold.handoff-details">
+        <summary><span class="label">complete blueprint</span> <strong>Inspect details</strong></summary>
+        <div class="card-body">${reviewBlueprintDetails(s)}</div>
+      </details>
     </div>
   </section>`;
 }
@@ -1104,7 +1357,7 @@ function openDirection(s) {
     ? "The proposal covers the whole story — continue to review."
     : "Accept the direction to assemble the cast against it.";
   return stageSection(s, "direction", {
-    generated: statusBlock(s) + directionBits(s) + problemsHtml(s),
+    generated: statusBlock(s) + directionBits(s) + findingsHtml(s),
     editable: directionPickersHtml(s) + composerHtml(s, "What should change about the direction?")
       + regenRowHtml(s) + revertRowHtml(s),
     next,
@@ -1116,7 +1369,7 @@ function openCastworld(s) {
     ? "Accept the voice to shape the structure."
     : "Accept the cast to decide the voice.";
   return stageSection(s, "castworld", {
-    generated: statusBlock(s) + castworldBits(s) + problemsHtml(s),
+    generated: statusBlock(s) + castworldBits(s) + findingsHtml(s),
     editable: castworldPickersHtml(s) + composerHtml(s, "What should change about the cast or voice?")
       + regenRowHtml(s) + revertRowHtml(s),
     next,
@@ -1128,7 +1381,7 @@ function openStructure(s) {
     ? "Accept the world to review the whole architecture."
     : "Accept to continue shaping the structure.";
   return stageSection(s, "structure", {
-    generated: statusBlock(s) + structureBits(s) + problemsHtml(s),
+    generated: statusBlock(s) + structureBits(s) + findingsHtml(s),
     editable: composerHtml(s, "What should change about the structure?")
       + regenRowHtml(s) + revertRowHtml(s),
     next,
@@ -1138,7 +1391,7 @@ function openStructure(s) {
 function openProposal(s) {
   // The one-shot walk: one complete proposal covers direction, cast and structure at once.
   return stageSection(s, "direction", {
-    generated: statusBlock(s) + reviewBits(s) + problemsHtml(s),
+    generated: statusBlock(s) + reviewBits(s) + findingsHtml(s),
     editable: composerHtml(s, "What should change about the proposal?")
       + regenRowHtml(s) + revertRowHtml(s),
     next: "The proposal covers the whole story — continue to review.",
@@ -1157,7 +1410,7 @@ function openReview(s) {
       extraClass: APP.acceptArmed ? "armed" : "" }) : "",
   ].filter(Boolean).join("");
   return stageSection(s, "review", {
-    generated: statusBlock(s) + reviewBits(s) + problemsHtml(s) + bibleCardHtml(s),
+    generated: statusBlock(s) + reviewDecisionsHtml(s) + reviewBlueprintDetails(s) + bibleCardHtml(s),
     editable: composerHtml(s, "What needs fixing before approval?")
       + revertRowHtml(s)
       + (actions ? `<div class="side-actions">${actions}</div>` : ""),
@@ -1168,9 +1421,8 @@ function openReview(s) {
 function openHandoff(s) {
   return stageSection(s, "handoff", {
     generated: folderHtml(s),
-    editable: !s.needsFolder && APP.folderOpen
-      ? button({ label: "← back to review", id: "iv-folder-back" }) : "",
-    next: "Writing starts chapter 1 with the Writer.",
+    editable: "",
+    next: "Start writing opens chapter 1 with the Writer, from this Blueprint exactly.",
   });
 }
 
@@ -1356,7 +1608,10 @@ function acceptStory() {
   if ((unsent || flagged) && !APP.acceptArmed) { APP.acceptArmed = setTimeout(disarmAccept, 5000); APP.render(); return; }
   if (APP.scaffold.busy) return;
   clearTimeout(APP.acceptArmed); APP.acceptArmed = 0;
-  // Open the folder step; "write story.json →" owns the actual accept and the run it starts. The
+  // The folder defaults to the title slug — the engine still requires an explicit name, and
+  // refuses a taken one, so this only saves typing, never decides.
+  if (!draft.folder.trim()) draft.folder = slugify(APP.scaffold.spec?.title || "");
+  // Open the folder step; "Start writing" owns the actual accept and the run it starts. The
   // shelf's story list is what the taken-folder check reads, and the scaffold page never loads it.
   APP.folderOpen = true; APP.render();
   loadStories();
@@ -1596,6 +1851,11 @@ export function wireScaffold(page) {
   on(page, "iv-folder-back", () => {
     // Only the locally-opened step can be dismissed -- a needs_folder demand stays until answered.
     APP.folderOpen = false; APP.render();
+  });
+  on(page, "iv-save-leave", () => {
+    // Leave the session live on the server and step out: the shelf's resume panel shows it, and
+    // the interview continues where it stood. Nothing is written, nothing is abandoned.
+    APP.folderOpen = false; go("shelf");
   });
   on(page, "iv-accept", acceptStory);
 }

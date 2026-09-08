@@ -174,6 +174,13 @@
   .navitem:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .navitem.current { color:var(--ink); background:var(--panel-2); border-color:var(--line); font-weight:600; }
   .navitem[hidden] { display:none; }
+  /* Libraries are reusable globals, not primary destinations: a secondary disclosure inside
+     their group, collapsed until needed. Buttons keep their ids, so deep links and the
+     create-then-return flow are untouched. */
+  .navlibraries summary { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.12em;
+    text-transform:uppercase; color:var(--faint); font-weight:600; padding:0 8px; margin:0 0 6px;
+    cursor:pointer; }
+  .navlibraries summary:hover { color:var(--ink); }
   /* Narrow: a horizontal strip, so the nav costs a line rather than a screen of height. Like the
      `.rail` position rule above, this has to come AFTER the base rules -- equal specificity, so
      source order is what decides, and stated first it would be silently undone. */
@@ -337,6 +344,15 @@
   .picker h2 { font-family:var(--serif); font-weight:400; font-size:var(--fs-21); margin:0 0 3px; }
   .picker .sub { font-size:var(--fs-13); color:var(--muted); margin:0 0 14px; }
   .cards { display:grid; gap:10px; }
+  /* Architect resume: the live session's progress on the shelf's continue card — current
+     stage, completed stages, unresolved decisions, latest Blueprint, validation, next action.
+     Definition rows in the card's own muted register; the next action reads as the card's
+     destination. */
+  .resume { margin:10px 0 2px; padding-top:8px; border-top:1px solid var(--line); display:grid; gap:3px; }
+  .resume-row { display:flex; gap:9px; font-size:var(--fs-12); color:var(--muted); }
+  .resume-row > span:first-child { min-width:74px; color:var(--faint); font-family:var(--mono);
+    font-size:var(--fs-10); text-transform:uppercase; line-height:1.7; }
+  .resume-next { margin-top:5px; font-size:var(--fs-13); color:var(--accent); }
   .card { display:block; width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;
           padding:13px 15px; }
   .card:hover { border-color:var(--accent); }
@@ -1198,6 +1214,19 @@
   .scpage .status-pill.st-edited { color:var(--warn); border-color:var(--warn); }
   .scpage .status-pill.st-approved { color:var(--good); border-color:var(--good); }
   .scpage .status-pill.st-call { color:var(--warn); border-color:var(--warn); }
+  /* Findings: validation as story-design problems. Severity lives on the left border —
+     blocking (bad) outranks attention (warn); suggestions and unsorted stay neutral. */
+  .scpage .finding { margin-top:8px; padding:8px 10px; border:1px solid var(--line);
+    border-left-width:3px; border-radius:var(--r-lg); }
+  .scpage .finding p { margin:2px 0; }
+  .scpage .finding-blocking { border-left-color:var(--bad); }
+  .scpage .finding-attention { border-left-color:var(--warn); }
+  /* Review decisions: the six high-impact calls, each a labelled row. Plain rows on purpose —
+     the decision is the content, and the full Blueprint waits behind the expandables below. */
+  .scpage .decision { margin-top:12px; }
+  .scpage .decision > .label { display:block; margin-bottom:4px; }
+  .scpage .decision-roles { margin:4px 0 0; padding-left:18px; color:var(--muted); font-size:var(--fs-13); }
+  .scpage .decision-roles li { margin-top:3px; }
 
   /* conversation round */
   .scpage .round-note { margin:14px 0; padding:12px 13px; border-left:2px solid var(--accent);
@@ -1241,6 +1270,9 @@
   .scpage .side-copy { margin:0; color:var(--muted); font-size:var(--fs-12); }
   .scpage .side-actions { display:grid; gap:8px; margin-top:14px; }
   .scpage .side-actions .btn { text-align:center; }
+  /* Handoff secondaries sit a breath below the dominant action, quiet but reachable. */
+  .scpage .side-actions.secondary { margin-top:8px; }
+  .scpage .side-actions.secondary .btn { font-weight:400; }
   /* the tension as its text, under the stats it used to be a "coined" row of */
   .scpage .side-tension { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
   .scpage .side-tension .label { display:block; margin-bottom:4px; }

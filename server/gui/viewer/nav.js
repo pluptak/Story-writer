@@ -113,6 +113,10 @@ export async function go(v) {
 addEventListener("hashchange", () => {
   const v = parseHash();
   if (v && v !== APP.view) go(v);
+  // Same-view scaffold link (a ?step= lifecycle deep link pasted while already there):
+  // parseHash sees the same path, so go() would do nothing — repaint instead and let
+  // settleStep do the scrolling.
+  else if (v === "scaffold" && v === APP.view) APP.render();
 });
 
 for (const t of document.querySelectorAll("#sidenav .navitem"))

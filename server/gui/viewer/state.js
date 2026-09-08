@@ -67,6 +67,7 @@ export const APP = {
   focusSeq: null,               // deep link / timeline jump target: the seq of the consult block to
                                  // scroll to and open on live or read (&block=)
   focusScrolled: false,         // settleFocus scrolls once per focusSeq change, not every frame
+  stepScrolledFor: null,      // settleStep scrolls once per ?step= value, not every frame
   scaffold: { active:false },  // the interview, from /scaffold and its SSE frames
   scaffoldInspect: null, // which catalog candidate the author is previewing: {kind:"import"|"style", id}
                          // or null. Local UI only — selecting stays chip-only, inspecting never posts.
