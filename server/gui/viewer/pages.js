@@ -371,15 +371,20 @@ function wireConsultToggles(page) {
   }
 }
 
-/** Lifecycle deep link: `#/scaffold?step=ingredients|blueprint|review` scrolls to the first
- *  matching stage section once it exists on screen. Inbound only — syncHash keeps writing the
- *  bare `#/scaffold`, so repaints never leak the step into the URL. Fires once per step value
- *  (SSE repaints must not yank the page back); a step with no matching section — blueprint on
- *  the one-shot walk, which has no structure stage — simply never fires. */
+/** Lifecycle deep link: `#/scaffold?step=` scrolls to the first matching stage section once it
+ *  exists on screen. Inbound only — syncHash keeps writing the bare `#/scaffold`, so repaints
+ *  never leak the step into the URL. Fires once per step value (SSE repaints must not yank the
+ *  page back); a step with no matching section — structure on the one-shot walk, which has no
+ *  structure stage — simply never fires. The six keys are the same six stages the stepper and
+ *  breadcrumb show (hud.js:scaffoldLifecycle), so a deep link and the page it lands on always
+ *  agree on what to call the moment. */
 const STEP_SECTIONS = {
-  ingredients: ["idea", "direction", "castworld"],
-  blueprint: ["structure"],
-  review: ["review", "handoff"],
+  idea: ["idea"],
+  direction: ["direction"],
+  castworld: ["castworld"],
+  structure: ["structure"],
+  review: ["review"],
+  accept: ["handoff"],
 };
 function settleStep(page) {
   if (APP.view !== "scaffold") { APP.stepScrolledFor = null; return; }

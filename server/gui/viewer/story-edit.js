@@ -147,6 +147,26 @@ function unsavedBannerHtml() {
   return warnLine("⚠ unsaved changes", "mb-md");
 }
 
+/** What this editor session IS, stated once and up front -- the two modes behind this one form
+ *  (`APP.editNew`) are different artifacts, not a cosmetic label swap. A scaffold draft edited
+ *  here is the SAME in-memory proposal the interview is building (every change syncs back through
+ *  /scaffold/set, and "confirm and write" is /scaffold/accept -- the interview's own accept); an
+ *  existing story is story.json on disk, saved straight there, with no scaffold session involved
+ *  at all. Nothing about that relationship is guessable from the form fields alone. */
+function relationBannerHtml() {
+  return APP.editNew
+    ? `<div class="editor-relation" data-tid="edit.relation">`
+      + `<span class="label">directly editing the architect's Blueprint</span>`
+      + `<p>This is the same in-progress story the interview is building — not a separate copy. `
+      + `Every field you change here updates that Blueprint live, and "confirm and write" is the `
+      + `same accept step the interview's sidebar offers. Nothing is written to disk until then.</p></div>`
+    : `<div class="editor-relation" data-tid="edit.relation">`
+      + `<span class="label">directly editing the story specification</span>`
+      + `<p>This edits story.json on disk — the specification a chapter run reads from. `
+      + `It saves straight to the file and does not go through the architect; the suggestion `
+      + `panel below is optional one-off help, not a proposal round.</p></div>`;
+}
+
 function sceneRowsHtml() {
   const s = APP.editDraft;
   if (!s?.scenes) return "";
@@ -373,7 +393,7 @@ export function storyEditHtml() {
     // offer a way out, rather than a back-button-less "loading…" that hangs forever.
     if (APP.editNew && !APP.scaffold?.spec) {
       return `<section class="picker story"><h2>New story</h2>
-        ${hint(`This draft is no longer available — start a new one from the shelf.`)}
+        ${hint(`This Blueprint is no longer available — start a new one from the shelf.`)}
         <div class="btns mt-sm">${button({ label: "back to the shelf", id: "edit-loading-back" })}</div>
       </section>`;
     }
@@ -384,12 +404,13 @@ export function storyEditHtml() {
 
   const s = APP.editDraft;
   const facts = Array.isArray(s.facts) ? s.facts.join("\n") : "";
-  const title = APP.editNew ? "new story draft" : esc(APP.stories?.find(x => x.dir === APP.editDir)?.name || APP.editDir || "");
+  const title = APP.editNew ? "new story Blueprint" : esc(APP.stories?.find(x => x.dir === APP.editDir)?.name || APP.editDir || "");
   const suggestOpen = APP.editSuggestOpen ? "" : " hidden";
 
   return `<section class="picker story"><div class="editor">
-    <h2 class="mb-xs">${APP.editNew ? "Review new story" : "Edit story"}</h2>
+    <h2 class="mb-xs">${APP.editNew ? "Edit the Blueprint in full" : "Edit story specification"}</h2>
     ${hint(title, { extraClass: "mb-lg" })}
+    ${relationBannerHtml()}
     ${unsavedBannerHtml()}
     ${errorBannerHtml()}
     ${envWarningsHtml()}

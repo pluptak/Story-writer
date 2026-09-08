@@ -395,7 +395,7 @@ test("a hidden character is absent from the story's cast selection", async ({ pa
   try {
     const section = page.locator('[data-tid="scaffold.stage-section"][data-stage="direction"]');
     await expect(section.locator(".cat-chip[data-import-id]")).toHaveCount(0);
-    await expect(section.getByText(/No characters in the catalog yet/)).toBeVisible();
+    await expect(section.getByText(/No characters in the library yet/)).toBeVisible();
   } finally {
     await abandonWalk(page, served);
   }

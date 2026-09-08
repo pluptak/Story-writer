@@ -28,25 +28,25 @@ const STAGES = [
     why: "Everything is built from one situation — a moment with pressure in it, not a plot.",
     gates: [] },
   { key: "direction", q: "What kind of story should it become?",
-    why: "The premise and tension steer every later choice: the cast, the voice, the scenes.",
+    why: "The premise and tension steer every later choice: the cast, the style, the scenes.",
     gates: ["story"] },
-  { key: "castworld", q: "Which catalog assets belong to it?",
-    why: "Reusable characters and a voice, chosen for this story. Their role here is shaped in conversation.",
+  { key: "castworld", q: "Which library assets belong to it?",
+    why: "Reusable characters and a style, chosen for this story. Their role here is shaped in conversation.",
     gates: ["cast", "settings"] },
   { key: "structure", q: "What is the story's shape?",
     why: "One fully-built opening scene; the world ledger only if the story needs it.",
     gates: ["technical", "scene", "world"] },
-  { key: "review", q: "Does this architecture make sense?",
+  { key: "review", q: "Does this Blueprint make sense?",
     why: "The last look before anything is written — read it whole, fix what is off.",
     gates: [] },
-  { key: "handoff", q: "Approve the Blueprint and start writing.",
+  { key: "handoff", q: "Accept the Blueprint and start writing.",
     why: "Naming the folder writes story.json and starts chapter 1. Nothing is on disk until then.",
     gates: [] },
 ];
 const STAGE_LABELS = { idea: "Idea", direction: "Direction", castworld: "Cast & world",
-  structure: "Structure", review: "Review", handoff: "Handoff" };
+  structure: "Structure", review: "Review", handoff: "Accept" };
 const APPROVE_LABELS = {
-  story: "accept the concept", cast: "accept the cast", settings: "accept the voice",
+  story: "accept the concept", cast: "accept the cast", settings: "accept the style",
   technical: "accept the run shape", scene: "accept the scene", world: "accept the world",
 };
 
@@ -81,7 +81,7 @@ function tagChipsHtml(s) {
   const chosen = c.tags || [];
   const vocab = APP.catalog.vocab || [];
   if (!vocab.length)
-    return hint(`No tags in the catalog yet — <button class="hint-link" data-goto-catalog="tags" type="button">add some under Libraries</button> and they show up here.`);
+    return hint(`No tags in the library yet — <button class="hint-link" data-goto-catalog="tags" type="button">add some under Libraries</button> and they show up here.`);
   const rows = APP.catalogConfig.tagFacets.map(facet => {
     const mine = vocab.filter(t => t.facet === facet);
     if (!mine.length) return "";
@@ -97,7 +97,7 @@ function tagChipsHtml(s) {
 const castSizeFieldHtml = s => {
   const c = s.concept || {};
   const size = c.castSize || 0;
-  return `<div class="field"><label for="f-cast-size">opening cast</label>
+  return `<div class="field"><label for="f-cast-size">opening cast size</label>
     <select id="f-cast-size">
       ${[[0, "let the architect decide"], [2, "2 characters"], [3, "3 characters"], [4, "4 characters"]]
         .map(([n, label]) => `<option value="${n}"${size === n ? " selected" : ""}>${label}</option>`).join("")}
@@ -117,7 +117,7 @@ function importPickerHtml(s) {
   const pickedIds = (c.imported || []).map(i => i.libraryId);
   const lib = APP.catalog.library || [];
   if (!lib.length)
-    return hint(`No characters in the catalog yet — <button class="hint-link" data-goto-catalog="characters" type="button">add some under Libraries</button> and you can cast them here.`);
+    return hint(`No characters in the library yet — <button class="hint-link" data-goto-catalog="characters" type="button">add some under Libraries</button> and you can cast them here.`);
   // Inspecting previews a candidate in the shared panel below; selecting stays chip-only.
   // The info button lives beside its chip (never inside it — a button in a button is invalid,
   // and a full/disabled chip must still be inspectable).
@@ -181,7 +181,7 @@ function importPickerHtml(s) {
     </details>`;
   }).join("")}</div>`;
   return `<div class="cat-tags-row">${chips}</div>${preview}${cast}`
-    + hint(`Removing here takes them out of this story only — the catalog entry is untouched. `
+    + hint(`Removing here takes them out of this story only — the library entry is unchanged. `
       + `<button class="hint-link" data-goto-catalog="characters" type="button">Manage characters under Libraries</button>.`);
 }
 
@@ -204,7 +204,7 @@ function stylePickerHtml(s) {
   const c = s.concept || {};
   const styles = rankedStyles(s);
   if (!styles.length)
-    return hint(`No styles in the catalog yet — <button class="hint-link" data-goto-catalog="styles" type="button">add some under Libraries</button> and you can pick one here.`);
+    return hint(`No styles in the library yet — <button class="hint-link" data-goto-catalog="styles" type="button">add some under Libraries</button> and you can pick one here.`);
   const insp = APP.scaffoldInspect;
   const chips = styles.map(e => {
     const expanded = !!insp && insp.kind === "style" && insp.id === e.id;
@@ -223,8 +223,8 @@ function stylePickerHtml(s) {
         + `<summary>${esc(target.name)} — previewing</summary>`
         + `<div class="story-cast-body">`
         + `${target.description ? `<p>${esc(target.description)}</p>` : ""}`
-        + `${target.voice ? `<p><span class="label">voice</span> ${esc(target.voice)}</p>` : ""}`
-        + `<p class="hint">Preview — use its chip above to tell this story in this voice.</p>`
+        + `${target.voice ? `<p><span class="label">style</span> ${esc(target.voice)}</p>` : ""}`
+        + `<p class="hint">Preview — use its chip above to tell this story in this style.</p>`
         + `</div></details>`;
     }
   }
@@ -234,13 +234,13 @@ function stylePickerHtml(s) {
       <summary>${esc(picked.name)} — telling this story</summary>
       <div class="story-cast-body">
         ${picked.description ? `<p>${esc(picked.description)}</p>` : ""}
-        ${picked.voice ? `<p><span class="label">voice</span> ${esc(picked.voice)}</p>` : ""}
-        <p class="hint">Reusable voice — this story's own narration rules are derived at the voice gate. The preset itself is untouched.</p>
+        ${picked.voice ? `<p><span class="label">style</span> ${esc(picked.voice)}</p>` : ""}
+        <p class="hint">Reusable style — this story's own narration rules are derived at the style gate. The preset itself is untouched.</p>
         <div class="side-actions"><button class="btn" data-clear-style type="button">use no preset for this story</button></div>
       </div>
     </details>`;
   return `<div class="cat-tags-row">${chips}</div>${preview}${detail}` + (picked
-    ? hint(`The architect is handed this voice and asked only what THIS cast and POV make impossible to narrate. `
+    ? hint(`The architect is handed this style and asked only what THIS cast and POV make impossible to narrate. `
       + `<button class="hint-link" data-goto-catalog="styles" type="button">Manage styles under Libraries</button>.`)
     : hint(`Pick none and the architect writes the house style itself. `
       + `<button class="hint-link" data-goto-catalog="styles" type="button">New style? Add it under Libraries first</button>.`));
@@ -252,7 +252,7 @@ function directionPickersHtml(s) {
   const trayLive = s.mode !== "oneshot" && (c.castSizeSteers || c.importsSteer);
   const styleLive = s.mode !== "oneshot" && c.styleSteers;
   const warning = c.unknownTags && c.unknownTags.length
-    ? warnLine(`not in the tag catalog: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway`)
+    ? warnLine(`not in the tag library: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway`)
     : "";
   return `<div class="stage-pick" data-tid="scaffold.direction-pickers">
     <label class="field-label">Story vocabulary <span class="hint">optional — reusable tags, chosen for this story</span></label>
@@ -260,7 +260,7 @@ function directionPickersHtml(s) {
       ? hint(`Tags steered the direction and are now decided: ${esc(c.tags.join(", "))}.`) + warning : ""}
     ${trayLive ? `<label class="field-label">Characters for this story <span class="hint">optional — reusable characters, cast here before the cast exists</span></label>`
       + trayBlockHtml(s) : ""}
-    ${styleLive ? `<label class="field-label">Story style <span class="hint">optional — a reusable voice preset, telling this story</span></label>`
+    ${styleLive ? `<label class="field-label">Story style <span class="hint">optional — a reusable style preset, telling this story</span></label>`
       + styleBlockHtml(s) : ""}
   </div>`;
 }
@@ -272,17 +272,17 @@ function trayBlockHtml(s) {
   const c = s.concept || {};
   const tray = (c.imported || []).map(i => i.libraryId);
   const importsWarning = c.missingImports && c.missingImports.length
-    ? warnLine(`no longer in the catalog: ${esc(c.missingImports.join(", "))} — these were dropped from the cast`)
+    ? warnLine(`no longer in the library: ${esc(c.missingImports.join(", "))} — these were dropped from the cast`)
     : "";
   return importPickerHtml(s) + importsWarning
     + (!tray.length ? castSizeFieldHtml(s)
-      : hint(`The cast chosen above is the opening cast, so its size is already chosen.`));
+      : hint(`The cast chosen above already sets the opening cast size.`));
 }
 
 function styleBlockHtml(s) {
   const c = s.concept || {};
   const styleWarning = c.missingStyle
-    ? warnLine(`the style "${esc(c.missingStyle)}" is no longer in the catalog — the architect writes the house style itself`)
+    ? warnLine(`the style "${esc(c.missingStyle)}" is no longer in the library — the architect writes the house style itself`)
     : "";
   return stylePickerHtml(s) + styleWarning;
 }
@@ -296,7 +296,7 @@ function castworldPickersHtml(s) {
     ${trayLive ? `<label class="field-label">Characters for this story <span class="hint">optional — reusable characters, cast here before the cast exists</span></label>`
       + trayBlockHtml(s) : tray.length
       ? hint(`Cast for this story: ${esc((c.imported || []).map(i => i.name).join(", "))} — placed.`) : ""}
-    ${styleLive ? `<label class="field-label">Story style <span class="hint">optional — a reusable voice preset, telling this story</span></label>`
+    ${styleLive ? `<label class="field-label">Story style <span class="hint">optional — a reusable style preset, telling this story</span></label>`
       + styleBlockHtml(s) : c.styleName
       ? hint(`Voice for this story: ${esc(c.styleName)}.`) : ""}
   </div>`;
@@ -312,7 +312,7 @@ function ideaModalHtml() {
     body: `<span class="label">step 1 of 6 · Story idea</span>
       <h2>What is this story?</h2>
       <p class="sub">A situation, not a plot — it will find the pressure in it, and ask if it needs more.
-        Kind, cast and voice come next, each where it is decided.</p>
+        Kind, cast and style come next, each where it is decided.</p>
       <div class="field"><label for="f-idea">the idea</label>
         <textarea id="f-idea" rows="4" placeholder="${esc(IDEA_PLACEHOLDER)}">${esc(draft.idea)}</textarea></div>
       <label class="field-label">how it proposes</label>
@@ -368,15 +368,15 @@ function castHtml(spec, catalog, scoped = false, entries = []) {
     const busy = !!APP.scaffold?.busy;
     return `<div class="person" data-tid="scaffold.person" data-name="${esc(c.name)}">
       <div class="person-top"><span class="person-name">${esc(c.name)}</span>`
-      + (fromCatalog ? tag(`from your catalog`, " prov-catalog") : tag(`proposed`, " prov-ai")) + `</div>
+      + (fromCatalog ? tag(`from your library`, " prov-catalog") : tag(`proposed`, " prov-ai")) + `</div>
       ${c.persona ? `<p>${esc(c.persona)}</p>` : ""}
       ${roleFieldHtml(c, "knows", busy, entries)}
       ${roleFieldHtml(c, "goal", busy, entries)}
-      ${scoped ? `<div class="side-actions"><button class="btn" data-regen-character="${esc(c.name)}"`
-        + ` type="button">regenerate just ${esc(c.name)}</button></div>` : ""}
-      ${addedEntryFor(entries, c.name)
-        ? `<div class="side-actions"><button class="btn" data-reject-character="${esc(c.name)}"`
-          + ` type="button">reject ${esc(c.name)}</button></div>` : ""}
+      ${scoped || addedEntryFor(entries, c.name) ? `<p class="hint">`
+        + (scoped ? `<button class="hint-link" data-regen-character="${esc(c.name)}" type="button">regenerate just ${esc(c.name)}</button>` : "")
+        + (scoped && addedEntryFor(entries, c.name) ? " · " : "")
+        + (addedEntryFor(entries, c.name) ? `<button class="hint-link" data-reject-character="${esc(c.name)}" type="button">reject ${esc(c.name)}</button>` : "")
+        + `</p>` : ""}
       ${c.belief ? tag(`belief: ${esc(c.belief)}`) : ""}
       ${c.impulse ? tag(`impulse: ${esc(c.impulse)}`) : ""}
       ${(c.voice || []).map(v => tag(`voice: “${esc(v)}”`)).join("")}
@@ -471,12 +471,12 @@ const changedTag = (set, key) =>
 // an edits round means your refinements are in it, a passed gate means approved.
 function artifactStatus(s, key) {
   const unsent = draft.say.trim() ? " · unsent refinement in the box" : "";
-  if (key === "handoff") return { label: "Approved", cls: "st-approved", note: "The blueprint was approved — naming the folder writes it." };
+  if (key === "handoff") return { label: "Approved", cls: "st-approved", note: "The Blueprint was approved — naming the folder writes it." };
   if (key === "idea") return { label: "Draft", cls: "", note: "The direction hasn't landed yet." };
   if (key === "review") {
     return (s.last && s.last.kind === "edits")
-      ? { label: "Edited", cls: "st-edited", note: "Your fixes are in — approve the blueprint when it holds." + unsent }
-      : { label: "Generated proposal", cls: "st-proposal", note: "The whole architecture, awaiting approval." + unsent };
+      ? { label: "Edited", cls: "st-edited", note: "Your fixes are in — approve the Blueprint when it holds." + unsent }
+      : { label: "Generated proposal", cls: "st-proposal", note: "The whole Blueprint, awaiting approval." + unsent };
   }
   if (s.pendingAsk) return { label: "Needs your call", cls: "st-call", note: "Answer the question to continue." };
   const k = s.last && s.last.kind;
@@ -516,15 +516,50 @@ function composerHtml(s, label) {
     <div class="composer-foot">${foot.join("")}</div>`;
 }
 
-/** What still needs a decision in this stage, or "" when the stage is passable. */
-function neededHtml(s, gates) {
-  if (s.busy) return hint(`The architect is working — decide once this round lands.`);
-  if (s.pendingAsk) return hint(`Answer the architect's question to continue — nothing passes until you do.`);
-  if (s.last?.kind === "blocked")
-    return `<div class="round-note"><span class="label">needs your call</span>`
-      + `<p>${esc(s.last.why)}</p>`
+/** Whether this stage is waiting on something only the author can resolve -- a standing
+ *  question, or a judge's block. When true, that's the one decision on screen; nothing else
+ *  (content-completeness, round narration) competes with it for attention. */
+function isUrgent(s) {
+  return !!s.pendingAsk || (s.last && s.last.kind === "blocked");
+}
+
+/** Tier "focus": the standing question or the cast gate's judgement, read prominently above the
+ *  generated content -- it IS the decision, not one more status line among several. Nothing here
+ *  once it's resolved; the composer already reflects that (its own label, its own button). */
+function urgentHtml(s) {
+  if (s.pendingAsk)
+    return `<div class="round-question"><span class="label">the architect's question</span><p>${esc(s.pendingAsk)}</p></div>`;
+  if (s.last && s.last.kind === "blocked")
+    return `<div class="round-note"><span class="label">the cast gate</span><p>${esc(s.last.why)}</p>`
       + hint(`Refine the cast below, or approve again to overrule this judgement.`) + `</div>`;
-  if (s.last?.kind === "failed") return errorLine(`That round failed — nothing changed. Say what you want again.`);
+  return "";
+}
+
+/** The architect's own words about the round that just landed, plus what mechanically changed --
+ *  read as the tail of a conversation about the content just shown, not a status log. Nothing
+ *  here while urgentHtml() owns the turn (a standing question or a block already said this). */
+function roundNoteHtml(s) {
+  const last = s.last;
+  if (!last || isUrgent(s)) return "";
+  if (last.kind === "failed") return errorLine(`that round failed (${esc(last.error)}) — nothing changed`);
+  if (last.kind === "edits") {
+    const note = last.note ? `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>` : "";
+    const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
+    const ig = last.ignored.map(x => errorLine(`ignored ${esc(x)}`)).join("");
+    return `${note}<div class="said good">${changed}</div>${ig}`;
+  }
+  if (last.kind === "proposal" && last.note)
+    return `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>`;
+  if (last.kind === "nothing" && !/has not landed/.test(last.why || "") && !/checklist is complete/.test(last.why || ""))
+    return errorLine(`it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}`);
+  return "";
+}
+
+/** What still needs a decision before this stage can pass, or "" when nothing is missing --
+ *  the "next" hint already says what approving does, so this only speaks up when there's a real
+ *  gap. Suppressed while urgentHtml() or the composer's own busy state already own the turn. */
+function missingHtml(s, gates) {
+  if (isUrgent(s) || s.busy) return "";
   const missing = {
     story: s.spec.title?.trim() || s.spec.premise?.trim() ? "" : "a title or premise",
     cast: s.spec.characters.length ? "" : "at least one character",
@@ -534,16 +569,27 @@ function neededHtml(s, gates) {
     world: "",
   };
   const need = gates.map(g => missing[g]).filter(Boolean);
-  if (need.length) return hint(`Still needed: ${esc(need.join("; "))}.`);
-  if (s.mode === "oneshot") return hint(`Say what should change, or continue to review.`);
-  return hint(`This stage has landed — approve to continue, or refine it first.`);
+  return need.length ? hint(`Still needed: ${esc(need.join("; "))}.`) : "";
 }
 
-function stageSection(s, key, { generated = "", editable = "", next = "" }) {
+// Advanced/diagnostic count for the collapsed disclosure's own summary -- same "· N …" idiom the
+// consult transcript's own engine-details uses, so the two collapsed-details patterns in the app
+// read as one language rather than two.
+function advancedLabel(s) {
+  const n = (s.problems || []).length;
+  return n ? `Advanced · ${n} engine note${n === 1 ? "" : "s"}, regenerate, revert` : `Advanced · regenerate, revert`;
+}
+
+// One open stage, five tiers, in reading order: the question (card head), what the architect
+// currently believes (primary), its own words about the round that produced it (a conversational
+// aside, not a status log), the one place the author acts (composer + any inline pickers), what's
+// still missing or what approving does next, and -- collapsed, never competing for the eye --
+// validation findings, regenerate and revert. A standing question or a judge's block pre-empts all
+// of it: urgentHtml() renders once, right under the stage's own subtitle, and IS the decision.
+function stageSection(s, key, { primary = "", action = "", next = "", advanced = "" }) {
   const meta = STAGES.find(t => t.key === key);
-  const decided = decidedHtml(s, key);
   const gates = meta.gates;
-  const needed = key === "review" || key === "handoff" || key === "idea" ? "" : neededHtml(s, gates);
+  const skipMissing = key === "review" || key === "handoff" || key === "idea";
   const st = artifactStatus(s, key);
   return `<section class="card stage-open" data-tid="scaffold.stage-section" data-stage="${key}">
     <div class="card-head">
@@ -552,12 +598,13 @@ function stageSection(s, key, { generated = "", editable = "", next = "" }) {
     </div>
     <div class="card-body">
       <p class="sub">${esc(meta.why)}</p>
-      <p class="hint">${esc(st.note)}</p>
-      ${decided ? `<div class="stage-decided"><span class="label">already decided</span>${decided}</div>` : ""}
-      ${needed}
-      ${generated}
-      ${editable}
+      ${urgentHtml(s)}
+      <div class="stage-primary">${primary}</div>
+      ${roundNoteHtml(s)}
+      ${action ? `<div class="stage-action">${action}</div>` : ""}
+      ${skipMissing ? "" : missingHtml(s, gates)}
       ${next ? `<p class="hint">Next: ${esc(next)}</p>` : ""}
+      ${advanced ? `<details class="engine-details" data-tid="scaffold.advanced"><summary>${esc(advancedLabel(s))}</summary>${advanced}</details>` : ""}
     </div>
   </section>`;
 }
@@ -618,7 +665,7 @@ function decidedHtml(s, key) {
     const bits = [];
     if (spec.title) bits.push(`<strong>${esc(spec.title)}</strong>`);
     if (s.tension) bits.push(esc(s.tension));
-    if ((c.tags || []).length) bits.push(`vocabulary: ${esc(c.tags.join(", "))} <span class="tag prov-catalog">your catalog</span>`);
+    if ((c.tags || []).length) bits.push(`vocabulary: ${esc(c.tags.join(", "))} <span class="tag prov-catalog">your library</span>`);
     if ((spec.facts || []).length) bits.push(`${spec.facts.length} fact(s)`);
     return bits.length ? `<p class="side-copy">${bits.join(" · ")}</p>` : "";
   }
@@ -626,9 +673,9 @@ function decidedHtml(s, key) {
     const names = (spec.characters || []).map(x => x.name);
     const bits = [];
     if (names.length) bits.push(esc(names.join(", ")));
-    if (spec.writerStyle) bits.push("voice decided");
-    else if (c.styleName) bits.push(`voice: ${esc(c.styleName)}`);
-    if ((c.imported || []).length) bits.push("cast from your catalog");
+    if (spec.writerStyle) bits.push("style decided");
+    else if (c.styleName) bits.push(`style: ${esc(c.styleName)}`);
+    if ((c.imported || []).length) bits.push("cast from your library");
     return bits.length ? `<p class="side-copy">${bits.join(" · ")}</p>` : "";
   }
   if (key === "structure") {
@@ -679,7 +726,7 @@ const FINDING_RULES = [
     why: "An untitled story gives the Writer nothing to shape toward.",
     fix: "Say the title." },
   { sev: "blocking", re: /^no premise/i, where: "direction",
-    why: "Without a premise the cast, voice and scenes answer to nothing.",
+    why: "Without a premise the cast, style and scenes answer to nothing.",
     fix: "Say what happens, to whom, and what is at stake." },
   { sev: "blocking", re: /no characters at all/i, where: "cast",
     why: "No cast means no scene can be written and no consult can fire.",
@@ -694,19 +741,19 @@ const FINDING_RULES = [
   { sev: "attention", re: /(scene \d+) roster "([^"]+)" is not one of the characters/i, where: 1,
     why: "A scene requiring someone outside the cast asks the Writer for a stranger.",
     fix: "Rename them to a cast member, or add the character." },
-  { sev: "attention", re: /roster "[^"]+" is not one of the characters/i, where: "the draft",
+  { sev: "attention", re: /roster "[^"]+" is not one of the characters/i, where: "the Blueprint",
     why: "A scene requiring someone outside the cast asks the Writer for a stranger.",
     fix: "Rename them to a cast member, or add the character." },
   { sev: "attention", re: /(scene \d+) pov "[^"]+" is not in the roster/i, where: 1,
     why: "The reader would sit inside the perception of someone not placed in the room.",
     fix: "Add them to the roster, or move the POV to someone in it." },
-  { sev: "attention", re: /pov "[^"]+" is not one of the characters/i, where: "the draft",
+  { sev: "attention", re: /pov "[^"]+" is not one of the characters/i, where: "the Blueprint",
     why: "The POV was cleared, so scene 1 currently has no eyes.",
     fix: "Say whose eyes scene 1 is seen through." },
-  { sev: "attention", re: /grants reach to "[^"]+", who is not/i, where: "the draft",
+  { sev: "attention", re: /grants reach to "[^"]+", who is not/i, where: "the Blueprint",
     why: "A capability granted to someone absent never reaches a run.",
     fix: "Grant it to a roster member, or place them in the scene." },
-  { sev: "attention", re: /keys a memory to "[^"]+", who is not/i, where: "the draft",
+  { sev: "attention", re: /keys a memory to "[^"]+", who is not/i, where: "the Blueprint",
     why: "A memory for someone absent silently never implants.",
     fix: "Key it to a roster member, or place them in the chapter." },
   { sev: "attention", re: /aimed at chapter (\d+), past the story's last scene/i, where: "the world ledger",
@@ -718,44 +765,44 @@ const FINDING_RULES = [
   { sev: "attention", re: /carries quoted speech/i, where: "the world ledger",
     why: "An event with a voice reads as an invented line to the quote lint.",
     fix: "Keep the held and fired forms wordless." },
-  { sev: "attention", re: /still names "[^"]+", who was renamed/i, where: "the draft",
+  { sev: "attention", re: /still names "[^"]+", who was renamed/i, where: "the Blueprint",
     why: "A rename left a stale reference — that field still talks about someone gone.",
     fix: "Say what the field should name now." },
   { sev: "attention", re: /is not one of the imported characters/i, where: "cast",
-    why: "The cast gate added someone the author never chose from the catalog.",
+    why: "The cast gate added someone the author never chose from the library.",
     fix: "Reject them, or keep them deliberately." },
-  { sev: "attention", re: /reverted to/i, where: "the draft",
-    why: "The architect rewrote something the author chose (a catalog field or the preset voice) and the engine put it back.",
+  { sev: "attention", re: /reverted to/i, where: "the Blueprint",
+    why: "The architect rewrote something the author chose (a library field or the preset style) and the engine put it back.",
     fix: "Change it under Libraries if the new value is what you want." },
-  { sev: "attention", re: /persona restates/i, where: "the draft",
+  { sev: "attention", re: /persona restates/i, where: "the Blueprint",
     why: "The persona repeats a rendered field and will contradict it on the page.",
     fix: "Say what the persona should carry instead." },
   { sev: "attention", re: /was left out of the proposal — added back/i, where: "cast",
     why: "An import the reply omitted was restored — worth checking it still fits.",
     fix: "Reject them if they do not, or leave them placed." },
   { sev: "suggestion", re: /with no name — dropped|two characters called|keeping the first \d+/i, where: "cast",
-    why: "The engine kept the draft unambiguous by dropping the extra entry.",
+    why: "The engine kept the Blueprint unambiguous by dropping the extra entry.",
     fix: "Re-add them with a distinct name if they matter." },
-  { sev: "attention", re: /— dropped/i, where: "the draft",
+  { sev: "attention", re: /— dropped/i, where: "the Blueprint",
     why: "The engine discarded something malformed rather than keep a broken entry.",
     fix: "Re-add it in the shape the note names." },
   // Suggestion — potential improvement, safe to proceed past.
-  { sev: "suggestion", re: /has no belief|has no impulse|has no voice samples/i, where: "the draft",
+  { sev: "suggestion", re: /has no belief|has no impulse|has no voice samples/i, where: "the Blueprint",
     why: "A character without psychology defaults to agreeable — friction costs extra later.",
     fix: "Give them the missing belief, impulse, or voice line." },
-  { sev: "suggestion", re: /has no persona/i, where: "the draft",
+  { sev: "suggestion", re: /has no persona/i, where: "the Blueprint",
     why: "Without a persona the character arrives as a name with a job.",
     fix: "Say who they are beyond their role." },
-  { sev: "suggestion", re: /not a bible skill, and it carries no ":: meaning"/i, where: "the draft",
+  { sev: "suggestion", re: /not a bible skill, and it carries no ":: meaning"/i, where: "the Blueprint",
     why: "Nobody — engine or reader — can tell what the skill lets them do.",
     fix: "Write it as `name :: what it lets them do`, or promote it to the bible." },
-  { sev: "suggestion", re: /not a known skill, so it would remove nothing/i, where: "the draft",
+  { sev: "suggestion", re: /not a known skill, so it would remove nothing/i, where: "the Blueprint",
     why: "The restriction names nothing the character has, so it changes no behavior.",
     fix: "Name a general, bible, or own skill — or drop it." },
-  { sev: "suggestion", re: /more than 3 voice samples/i, where: "the draft",
+  { sev: "suggestion", re: /more than 3 voice samples/i, where: "the Blueprint",
     why: "Only the first three reach the prompt; the rest is dead weight.",
     fix: "Keep the three that sound most like them." },
-  { sev: "suggestion", re: /arrived with "learned"/i, where: "the draft",
+  { sev: "suggestion", re: /arrived with "learned"/i, where: "the Blueprint",
     why: "Housekeeping only — it was folded into knows.",
     fix: "Nothing to do." },
   { sev: "suggestion", re: /nobody has any restrictions/i, where: "cast",
@@ -773,10 +820,10 @@ function findingOf(text) {
     if (!(r.re instanceof RegExp) || typeof r.sev !== "string") continue;
     const m = String(text || "").match(r.re);
     if (m) return { sev: r.sev, what: String(text),
-      where: typeof r.where === "number" ? (m[r.where] || "the draft") : r.where,
+      where: typeof r.where === "number" ? (m[r.where] || "the Blueprint") : r.where,
       why: r.why, fix: r.fix };
   }
-  return { sev: "unsorted", what: String(text), where: "the draft",
+  return { sev: "unsorted", what: String(text), where: "the Blueprint",
     why: "An engine note with no category yet — shown rather than hidden to keep the groups honest.",
     fix: "Say what should change about it." };
 }
@@ -836,7 +883,7 @@ function lastHtml(last) {
   if (last.kind === "failed")  return errorLine(`${at}that round failed (${esc(last.error)}) — nothing changed`);
   if (last.kind === "nothing") {
     if (/review the draft and accept/.test(last.why))
-      return `<div class="said good">${at}checklist complete — review the draft, then accept</div>`;
+      return `<div class="said good">${at}checklist complete — review the Blueprint, then accept</div>`;
     if (/has not landed/.test(last.why))
       return errorLine(`${at}this stage has nothing yet — ${esc(last.why)}`);
     return errorLine(`${at}it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}`);
@@ -878,8 +925,8 @@ function voiceBadge(s) {
   // A set styleId means the voice standing is the reusable preset verbatim (the settings gate
   // reverts any rewrite); otherwise the architect authored it for this story.
   return ((s.concept || {}).styleId && s.spec.writerStyle)
-    ? `<span class="tag prov-catalog">reusable voice · from your catalog</span>`
-    : `<span class="tag prov-ai">proposed voice</span>`;
+    ? `<span class="tag prov-catalog">reusable style · from your library</span>`
+    : `<span class="tag prov-ai">proposed style</span>`;
 }
 
 // The accept step names what rode in from the catalog, because the link ends here: story.json
@@ -895,10 +942,10 @@ function acceptProvenanceHtml(s) {
   const styleFromCatalog = Boolean(styleId && spec.writerStyle);
   if (!names.length && !styleFromCatalog) return "";
   const bits = [];
-  if (names.length) bits.push(`cast from your catalog: ${esc(names.join(", "))}`);
+  if (names.length) bits.push(`cast from your library: ${esc(names.join(", "))}`);
   if (styleFromCatalog) {
     const styleName = (s.concept || {}).styleName;
-    bits.push(styleName ? `voice from your catalog: “${esc(styleName)}”` : `voice from your catalog`);
+    bits.push(styleName ? `style from your library: “${esc(styleName)}”` : `style from your library`);
   }
   return hint(`${bits.join(" · ")} — story.json keeps the words, not where they came from.`);
 }
@@ -919,7 +966,7 @@ function castworldBits(s) {
       : hint(`No cast yet — the architect proposes one, or cast reusable characters above.`),
     changedTag(ch, "voice"),
     spec.writerStyle ? `<p class="stage-copy">${voiceBadge(s)} ${esc(spec.writerStyle)}</p>`
-      : hint(`No voice yet — pick a reusable voice above, or leave the house style to the architect.`),
+      : hint(`No style yet — pick a reusable style above, or leave the house style to the architect.`),
   ].join("");
 }
 
@@ -927,10 +974,6 @@ function structureBits(s) {
   const spec = s.spec;
   const ch = changedSections(s);
   const out = [changedTag(ch, "structure")];
-  if (s.gate === "technical" || !spec.scenes?.[0]?.question) {
-    const tech = technicalHtml(spec);
-    out.push(tech || hint(`Run settings come from the defaults — nothing to decide here.`));
-  }
   out.push(sceneHtml(spec)
     || ((s.gate === "scene" || s.gate === "world")
       ? hint(`Scene 1 has no shape yet — say where it happens and what it asks.`) : ""));
@@ -997,7 +1040,7 @@ function reviewBlueprintDetails(s) {
   const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
   const group = (key, label, body) => body
     ? `<details class="card stage-done" data-tid="scaffold.blueprint-details" data-stage="${key}">`
-      + `<summary><span class="label">complete blueprint</span> <strong>${label}</strong></summary>`
+      + `<summary><span class="label">complete Blueprint</span> <strong>${label}</strong></summary>`
       + `<div class="card-body">${body}</div></details>` : "";
   return group("direction", "Direction — title, tension, facts", [
       changedTag(ch, "direction"),
@@ -1006,7 +1049,7 @@ function reviewBlueprintDetails(s) {
       s.tension ? `<div class="question"><span class="label">load-bearing tension</span> <span class="tag prov-ai">proposed</span>${esc(s.tension)}</div>` : "",
       factsHtml(spec),
     ].join(""))
-    + group("cast", "Cast & voice", [
+    + group("cast", "Cast & style", [
       changedTag(ch, "cast"),
       spec.characters.length ? castHtml(spec, catalogOf(s), false, rejectEntriesOf(s)) : "",
       changedTag(ch, "voice"),
@@ -1021,30 +1064,6 @@ function reviewBlueprintDetails(s) {
       timelineHtml(spec)
         || `<p class="stage-copy">No world events — the pressure in this story runs between the people in it.</p>`,
     ].join(""));
-}
-
-function reviewBits(s) {
-  const spec = s.spec;
-  const ch = changedSections(s);
-  const sketches = (spec.scenes || []).slice(1).filter(sc => sc.question);
-  return [
-    changedTag(ch, "direction"),
-    spec.title ? `<h4>${esc(spec.title || "(untitled)")} <span class="tag prov-ai">proposed</span></h4>` : "",
-    spec.premise ? `<p class="stage-copy">${esc(spec.premise)} <span class="tag prov-ai">proposed</span></p>` : "",
-    s.tension ? `<div class="question"><span class="label">load-bearing tension</span> <span class="tag prov-ai">proposed</span>${esc(s.tension)}</div>` : "",
-    factsHtml(spec),
-    changedTag(ch, "cast"),
-    spec.characters.length ? castHtml(spec, catalogOf(s), false, rejectEntriesOf(s)) : "",
-    changedTag(ch, "voice"),
-    spec.writerStyle ? `<p class="stage-copy">${voiceBadge(s)} ${esc(spec.writerStyle)}</p>` : "",
-    technicalHtml(spec),
-    changedTag(ch, "structure"),
-    sceneHtml(spec),
-    sketches.length ? `<div class="mt-sm"><span class="label">later scenes · provisional</span>${
-      sketches.map(sc => `<div class="question mt-xs">${esc(sc.question)}</div>`).join("")}</div>` : "",
-    timelineHtml(spec)
-      || `<p class="stage-copy">No world events — the pressure in this story runs between the people in it.</p>`,
-  ].join("");
 }
 
 /** The handoff summary — one screen answering "is this ready to write?". Premise, main
@@ -1085,7 +1104,7 @@ function folderHtml(s) {
   // say it here, while the name is still being typed.
   return `<section class="card" data-tid="scaffold.folder-card">
     <div class="card-head">
-      <div><span class="label">handoff</span><h3>Your story is ready to write</h3></div>
+      <div><span class="label">accept</span><h3>Your story is ready to write</h3></div>
       ${s.needsFolder ? `<span class="label">needs_folder</span>` : ""}
     </div>
     <div class="card-body">
@@ -1100,11 +1119,11 @@ function folderHtml(s) {
       </div>
       <div class="side-actions">${button({ label: "Start writing →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}</div>
       <div class="side-actions secondary">
-        ${!s.needsFolder && APP.folderOpen ? button({ label: "← return to blueprint", id: "iv-folder-back" }) : ""}
+        ${!s.needsFolder && APP.folderOpen ? button({ label: "← return to Blueprint", id: "iv-folder-back" }) : ""}
         ${button({ label: "save and leave", id: "iv-save-leave" })}
       </div>
       <details class="card stage-done" data-tid="scaffold.handoff-details">
-        <summary><span class="label">complete blueprint</span> <strong>Inspect details</strong></summary>
+        <summary><span class="label">complete Blueprint</span> <strong>Inspect details</strong></summary>
         <div class="card-body">${reviewBlueprintDetails(s)}</div>
       </details>
     </div>
@@ -1142,7 +1161,7 @@ function regenSubject(s) {
   if (s.mode === "oneshot") return "proposal";
   if (s.gate === "story") return "direction";
   if (s.gate === "cast") return "cast";
-  if (s.gate === "settings") return "voice";
+  if (s.gate === "settings") return "style";
   return "structure";
 }
 
@@ -1280,8 +1299,8 @@ function revertOp(field, before, after, snapshot) {
     const k = m[1];
     return scalar(d => d.models?.[k], (d, v) => { d.models[k] = v; });
   }
-  if (field === "tension") return fail(`tension lives on the session, not the draft`);
-  if (field === "story") return fail(`whole-draft replaces have no single round to put back`);
+  if (field === "tension") return fail(`tension lives on the session, not the Blueprint`);
+  if (field === "story") return fail(`a full Blueprint replacement has no single round to put back`);
   return fail(`unknown field "${field}"`);
 }
 
@@ -1357,44 +1376,52 @@ function openDirection(s) {
     ? "The proposal covers the whole story — continue to review."
     : "Accept the direction to assemble the cast against it.";
   return stageSection(s, "direction", {
-    generated: statusBlock(s) + directionBits(s) + findingsHtml(s),
-    editable: directionPickersHtml(s) + composerHtml(s, "What should change about the direction?")
-      + regenRowHtml(s) + revertRowHtml(s),
+    primary: directionBits(s),
+    action: directionPickersHtml(s) + composerHtml(s, "What should change about the direction?"),
     next,
+    advanced: findingsHtml(s) + regenRowHtml(s) + revertRowHtml(s),
   });
 }
 
 function openCastworld(s) {
   const next = s.gate === "settings"
-    ? "Accept the voice to shape the structure."
-    : "Accept the cast to decide the voice.";
+    ? "Accept the style to shape the structure."
+    : "Accept the cast to decide the style.";
   return stageSection(s, "castworld", {
-    generated: statusBlock(s) + castworldBits(s) + findingsHtml(s),
-    editable: castworldPickersHtml(s) + composerHtml(s, "What should change about the cast or voice?")
-      + regenRowHtml(s) + revertRowHtml(s),
+    primary: castworldBits(s),
+    action: castworldPickersHtml(s) + composerHtml(s, "What should change about the cast or style?"),
     next,
+    advanced: findingsHtml(s) + regenRowHtml(s) + revertRowHtml(s),
   });
 }
 
 function openStructure(s) {
-  const next = s.gate === "world"
-    ? "Accept the world to review the whole architecture."
+  const next = s.gate === "technical"
+    ? "Nothing to configure here — approve to continue to scene 1."
+    : s.gate === "world"
+    ? "Accept the world to review the whole Blueprint."
     : "Accept to continue shaping the structure.";
+  // Run config genuinely has nothing to decide (technicalHtml mostly just says so), so it lives
+  // in Advanced rather than competing with the scene and world-ledger content for the eye.
+  const tech = technicalHtml(s.spec) || hint(`Run settings come from the defaults — nothing to decide here.`);
   return stageSection(s, "structure", {
-    generated: statusBlock(s) + structureBits(s) + findingsHtml(s),
-    editable: composerHtml(s, "What should change about the structure?")
-      + regenRowHtml(s) + revertRowHtml(s),
+    primary: structureBits(s),
+    action: composerHtml(s, "What should change about the structure?"),
     next,
+    advanced: tech + findingsHtml(s) + regenRowHtml(s) + revertRowHtml(s),
   });
 }
 
 function openProposal(s) {
   // The one-shot walk: one complete proposal covers direction, cast and structure at once.
+  // reviewDecisionsHtml() is the same curated distillation Review uses -- one-shot's single stage
+  // IS "the whole story," the same shape Review already handles well -- with the full flat dump
+  // (what reviewBits() used to render inline) demoted into the same collapsed blueprint Review uses.
   return stageSection(s, "direction", {
-    generated: statusBlock(s) + reviewBits(s) + findingsHtml(s),
-    editable: composerHtml(s, "What should change about the proposal?")
-      + regenRowHtml(s) + revertRowHtml(s),
+    primary: reviewDecisionsHtml(s),
+    action: composerHtml(s, "What should change about the proposal?"),
     next: "The proposal covers the whole story — continue to review.",
+    advanced: reviewBlueprintDetails(s) + regenRowHtml(s) + revertRowHtml(s),
   });
 }
 
@@ -1402,7 +1429,7 @@ function openReview(s) {
   const acceptable = s.haveStory && !s.needsFolder && !APP.folderOpen && !s.busy;
   const unsent = !!draft.say.trim();
   const flags = (s.problems || []).length;
-  const acceptLabel = !APP.acceptArmed ? "Approve the blueprint →"
+  const acceptLabel = !APP.acceptArmed ? "Approve the Blueprint →"
     : unsent ? "discard what you typed and approve"
     : `approve over ${flags} flag(s)`;
   const actions = [
@@ -1410,27 +1437,26 @@ function openReview(s) {
       extraClass: APP.acceptArmed ? "armed" : "" }) : "",
   ].filter(Boolean).join("");
   return stageSection(s, "review", {
-    generated: statusBlock(s) + reviewDecisionsHtml(s) + reviewBlueprintDetails(s) + bibleCardHtml(s),
-    editable: composerHtml(s, "What needs fixing before approval?")
+    primary: statusBlock(s) + reviewDecisionsHtml(s) + reviewBlueprintDetails(s) + bibleCardHtml(s),
+    action: composerHtml(s, "What needs fixing before approval?")
       + revertRowHtml(s)
       + (actions ? `<div class="side-actions">${actions}</div>` : ""),
-    next: "Approval opens the handoff: name the folder, write story.json, start chapter 1.",
+    next: "Approval opens Accept: name the folder, write story.json, start chapter 1.",
   });
 }
 
 function openHandoff(s) {
   return stageSection(s, "handoff", {
-    generated: folderHtml(s),
-    editable: "",
+    primary: folderHtml(s),
     next: "Start writing opens chapter 1 with the Writer, from this Blueprint exactly.",
   });
 }
 
 function openIdeaWorking(s) {
   return stageSection(s, "idea", {
-    generated: statusBlock(s) + hint(`The architect is reading your idea — the direction lands here first.`),
-    editable: composerHtml(s, "Say more about it"),
-    next: "The direction lands first then the cast, voice and structure.",
+    primary: statusBlock(s) + hint(`The architect is reading your idea — the direction lands here first.`),
+    action: composerHtml(s, "Say more about it"),
+    next: "The direction lands first then the cast, style and structure.",
   });
 }
 
@@ -1444,7 +1470,7 @@ function activePageHtml(s) {
   const statusText = s.busy ? "the architect is working…"
     : s.pendingAsk ? "a question stands — answer it to continue"
     : open === "handoff" ? "name the folder — nothing is written until you do"
-    : open === "review" ? "read it whole — approve the blueprint when it holds"
+    : open === "review" ? "read it whole — approve the Blueprint when it holds"
     : "nothing is on disk until you accept";
   const meta = STAGES[cur];
 
@@ -1455,11 +1481,11 @@ function activePageHtml(s) {
     idea: "Propose the idea first.",
     direction: "Propose the idea first.",
     castworld: "Decide the direction first.",
-    structure: "Choose the cast and voice first.",
+    structure: "Choose the cast and style first.",
     review: s.mode === "oneshot"
       ? "The proposal lands first."
       : "Shape the structure first — approve through the world gate.",
-    handoff: "Approve the blueprint in review first.",
+    handoff: "Approve the Blueprint in review first.",
   };
   const flow = [];
   for (const t of STAGES) {
@@ -1482,7 +1508,8 @@ function activePageHtml(s) {
       <span class="status-dot${s.busy ? " busy" : ""}"></span>
       <span>step ${cur + 1} of 6 · ${esc(STAGE_LABELS[meta.key])} — ${statusText}</span>
       <span class="spacer">${s.mode === "oneshot" ? "one-shot walk" : "staged walk"}</span>
-      ${s.haveStory && !s.needsFolder && !APP.folderOpen ? button({ label: "edit in full →", id: "iv-edit" }) : ""}
+      ${s.haveStory && !s.needsFolder && !APP.folderOpen ? button({ label: "edit in full →", id: "iv-edit",
+        title: "Edit this same Blueprint field-by-field instead of through conversation — nothing is written until you accept." }) : ""}
       ${button({ label: APP.abandonArmed ? "abandon — sure?" : "abandon", id: "iv-abandon",
         variant: "danger", extraClass: APP.abandonArmed ? "armed" : "" })}
     </div>

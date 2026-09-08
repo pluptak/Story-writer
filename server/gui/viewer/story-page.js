@@ -220,8 +220,8 @@ export function storyPageHtml() {
     <div class="row">${castChips(s.characters, s.dir)}</div>
     ${mapStatusHtml(s, canWrite, why)}
     <details class="sc-setup" data-tid="story.setup-details">
-      <summary>Setup & voice</summary>
-      ${s.writerStyle ? `<div class="row mt-8"><span class="hint">voice</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
+      <summary>Setup & style</summary>
+      ${s.writerStyle ? `<div class="row mt-8"><span class="hint">style</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
       <div class="row mt-12"><span class="hint">model</span>${modelSelectHtml(s)}</div>
     </details>
     ${APP.storyError ? errorLine(esc(APP.storyError)) : ""}
@@ -240,12 +240,14 @@ export function storyPageHtml() {
     ${runsListHtml(s)}
 
     <div class="btns mt-lg">
-      ${button({ label: "edit story", id: "story-edit", tidName: "story.edit-btn" })}
+      ${button({ label: "edit story", id: "story-edit", tidName: "story.edit-btn",
+        title: "Directly edit the story specification (story.json) that a chapter run reads from — skips the architect." })}
       ${(s.chapters?.length) ? button({ label: "read story", id: "story-read-story", tidName: "story.read-story-btn" }) : ""}
       ${(s.runs?.length >= 2) ? button({ label: "compare runs", id: "story-compare", tidName: "story.compare-btn" }) : ""}
       <span class="spacer"></span>
       ${button({ label: "back to shelf", id: "story-back", tidName: "story.back-btn" })}
     </div>
+    <p class="hint">edit story writes directly to story.json — unlike prepare chapter above, it does not go through the architect.</p>
   </section>`;
 }
 

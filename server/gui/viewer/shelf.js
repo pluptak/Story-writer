@@ -20,7 +20,7 @@ export const castChips = (list, dir) => (list || []).map(c => charChip(c, dir)).
 // owns the canonical map — shelf.js only needs the count, and importing interview.js
 // here would close a module cycle (nav.js -> saved-runs.js -> shelf.js).
 const RESUME_GATES = ["story", "cast", "settings", "technical", "scene", "world"];
-const RESUME_GATE_LABELS = { story: "direction", cast: "cast", settings: "voice",
+const RESUME_GATE_LABELS = { story: "direction", cast: "cast", settings: "style",
   technical: "run shape", scene: "scene 1", world: "world events" };
 const RESUME_BLOCKING_RE = /^(no title|no premise)|no characters at all|has no question|came back as text rather than an object/i;
 
@@ -56,7 +56,7 @@ function resumeHtml(s) {
     : s.pendingAsk ? "answer the architect's question →"
     : s.last?.kind === "blocked" ? "refine the cast — or approve again to overrule →"
     : (s.needsFolder || APP.folderOpen) ? "name the folder to write story.json →"
-    : complete || (s.mode === "oneshot" && s.haveStory) ? "approve the blueprint →"
+    : complete || (s.mode === "oneshot" && s.haveStory) ? "approve the Blueprint →"
     : blocking ? `fix ${blocking} blocking flag${blocking === 1 ? "" : "s"} →`
     : s.mode === "oneshot" ? "continue to review →"
     : `accept the ${RESUME_GATE_LABELS[s.gate || "story"] || "stage"} & continue →`;

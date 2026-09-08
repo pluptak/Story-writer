@@ -9,22 +9,24 @@ const CATALOG_CRUMB = { characters: "characters", styles: "writer styles", tags:
 
 const chapterSuffix = m => (m && m.chapters > 1) ? ` · chapter ${m.chapter} of ${m.chapters}` : "";
 
-/** Where the open interview sits in the Blueprint lifecycle: Story → Ingredients →
- *  Blueprint → Review → Write. A presentation mirror of interview.js:stageOf (which owns the
- *  canonical gate→stage mapping): idea/direction/castworld gather the ingredients, structure
- *  builds the blueprint, review/handoff approve it. One-shot's direction stage already holds the
- *  whole proposal, so it reads as blueprint, not ingredients. Two levels max: shelf › step.
- *  Exported for the shelf's resume panel — same derivation, one home. */
+/** Where the open interview sits, named with the SAME six stages interview.js's own stepper
+ *  shows -- idea, direction, cast & world, structure, review, accept -- never a second, compressed
+ *  vocabulary of its own. A presentation mirror of interview.js:stageOf (which owns the canonical
+ *  gate→stage mapping); hud.js cannot import it directly without closing a module cycle (saved-
+ *  runs.js already imports hud.js, and interview.js imports saved-runs.js), so the mapping is
+ *  duplicated here and must be kept in sync by hand. Two levels max: shelf › step. Exported for
+ *  the shelf's resume panel — same derivation, one home. */
 export function scaffoldLifecycle() {
   const s = APP.scaffold || {};
-  if (s.needsFolder || APP.folderOpen) return "review";
+  if (!s.spec && !s.haveDraft) return "idea";
+  if (s.needsFolder || APP.folderOpen) return "accept";
   const complete = !!s.last && s.last.kind === "nothing" && /checklist is complete/.test(s.last.why || "");
+  if (s.mode === "oneshot") return (complete || s.haveStory) ? "review" : "direction";
   if (complete) return "review";
-  if (s.mode === "oneshot") return s.haveStory ? "review" : (s.spec && s.haveDraft) ? "blueprint" : "ingredients";
   const gate = s.gate || "story";
-  if (gate === "story" || gate === "cast" || gate === "settings") return "ingredients";
-  if (gate === "technical" || gate === "scene" || gate === "world") return "blueprint";
-  return "ingredients";
+  if (gate === "story") return "direction";
+  if (gate === "cast" || gate === "settings") return "cast & world";
+  return "structure";
 }
 
 /** The breadcrumb for the current view: earlier crumbs are clickable ancestors, the last is where

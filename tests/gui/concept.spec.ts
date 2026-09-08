@@ -91,7 +91,7 @@ test("with an empty character catalog the cast picker says where characters come
     await expect(section.locator(".cat-chip[data-import-id]")).toHaveCount(0);
 
     // The hint text is visible explaining where characters come from.
-    await expect(section.getByText(/No characters in the catalog yet/)).toBeVisible();
+    await expect(section.getByText(/No characters in the library yet/)).toBeVisible();
 
     // The cast-size select is still present: nothing is cast yet, so the size still means something.
     await expect(section.locator("#f-cast-size")).toBeVisible();
@@ -129,8 +129,8 @@ test("a character in the catalog can be cast, and the tray takes over the cast s
     // The cast-size select is now gone because the chosen cast is the opening cast.
     await expect(section.locator("#f-cast-size")).toHaveCount(0);
 
-    // The hint text is visible explaining that the chosen cast is the opening cast.
-    await expect(section.getByText(/The cast chosen above is the opening cast/)).toBeVisible();
+    // The hint text is visible explaining that the chosen cast already sets the opening cast size.
+    await expect(section.getByText(/The cast chosen above already sets the opening cast size/)).toBeVisible();
 
     // Click the IVET chip again to deselect it.
     await ivetChip.click();
@@ -174,7 +174,7 @@ test("with no presets authored, the voice picker says so instead of offering not
     await startStaged(page, served);
     await approveTo(page, "castworld");
     const section = page.locator('[data-tid="scaffold.stage-section"][data-stage="castworld"]');
-    await expect(section).toContainText("No styles in the catalog yet");
+    await expect(section).toContainText("No styles in the library yet");
     await expect(section.locator("button.cat-chip[data-style-id]")).toHaveCount(0);
   } finally {
     await abandonWalk(page, served);

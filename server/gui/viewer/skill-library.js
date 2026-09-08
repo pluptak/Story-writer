@@ -80,7 +80,7 @@ function listHtml() {
   const s = APP.skillLibrary;
   const entries = visibleEntries();
   if (!s.entries.length) {
-    return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>Your skill catalog is empty</h3><p>Define the special skills a story can draw on by name, and the origins that group general skills.</p>${button({label:"New skill", id:"skilllib-empty-new", variant:"primary"})}</div>`;
+    return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>Your skill library is empty</h3><p>Define the special skills a story can draw on by name, and the origins that group general skills.</p>${button({label:"New skill", id:"skilllib-empty-new", variant:"primary"})}</div>`;
   }
   if (!entries.length) {
     return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>No skills match</h3><p>Try a different search.</p></div>`;

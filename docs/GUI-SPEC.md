@@ -92,22 +92,24 @@ current view replaces. The sidenav's three groups are the author's mental model,
 Architect, whichever session is live; `story` — Story map; `live` — Write; `readstory` — Manuscript;
 `read` — Saved runs), and **Libraries** — a secondary, collapsed-by-default disclosure holding the
 character catalog's four kinds (`characters`, `styles`, `tags`, `skills`). Libraries stay globally
-accessible (same routes, same shelf card, same contextual pickers inside the interview's Ingredients
-stages) but are no longer primary destinations. The principle the grouping follows: **the GUI exposes the
+accessible (same routes, same shelf card, same contextual pickers inside the interview's direction
+and cast & world stages) but are no longer primary destinations. The principle the grouping follows: **the GUI exposes the
 author's mental model, while the schema remains the engine's executable model** — nothing in the nav
 names a `story.json` top-level object.
 
 The architect's own position reads as a lifecycle, not a route list: the breadcrumb on `scaffold`
-is `shelf › architect · ingredients|blueprint|review`, derived from the open gate (idea/direction/
-castworld gather ingredients, structure builds the blueprint, review approves it; one-shot's
-direction stage already holds the whole proposal, so it reads as blueprint). Story → Ingredients →
-Blueprint → Review → Write, two levels and never deeper.
+is `shelf › architect · <stage>`, where `<stage>` is one of the same six stage names the stepper
+shows — idea, direction, cast & world, structure, review, accept (idea/direction/castworld map
+directly to the open gate; technical/scene/world all read as structure; the folder step reads as
+accept). One-shot's direction stage already holds the whole proposal, so it reads as direction until
+review. Two levels and never deeper.
 
 The view strings are a URL contract, not UI labels: `#/shelf`, `#/story?dir=`, `#/live`, `#/read?dir=&id=`,
 `#/readstory?dir=`, `#/compare?dir=&a=&b=`, `#/scaffold`, `#/handoff?dir=`, `#/edit?dir=` or `#/edit?new=1`,
 and `#/catalog?kind=`. Sub-page targets ride along — `&block=` names a consult to open, `&modal=` the
 character card to reopen — so the URL a bug report pastes is the pinpoint. `#/scaffold` additionally
-takes an inbound-only `&step=` (`ingredients`, `blueprint`, `review`) that scrolls to the first matching
+takes an inbound-only `&step=` (the same six stage names: `idea`, `direction`, `castworld`,
+`structure`, `review`, `accept`) that scrolls to the first matching
 stage section once it exists; repaints keep writing the bare `#/scaffold`, so the step never leaks into
 the URL. Views are renamed in the
 labels only; the strings behind the hash never change, because bookmarks and pasted URLs outlive any

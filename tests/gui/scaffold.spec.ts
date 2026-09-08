@@ -23,7 +23,7 @@ test("the progression tracks the stage, the approve button names it, and the ten
     await expect(page.locator('[data-tid="scaffold.stage-section"][data-stage="direction"]'))
       .toContainText(WALK_TENSION);
     const castworld = page.locator('[data-tid="scaffold.stage-section"][data-stage="castworld"]');
-    await expect(castworld).toContainText("What should change about the cast or voice?");
+    await expect(castworld).toContainText("What should change about the cast or style?");
     await expect(page.locator("#iv-approve")).toContainText("accept the cast");
   } finally {
     await abandonWalk(page, served);
