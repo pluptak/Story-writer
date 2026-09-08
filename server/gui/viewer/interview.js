@@ -59,6 +59,18 @@ const modeChoice = (value, title, blurb) => {
     <b>${title}</b><span>${blurb}</span></label>`;
 };
 
+// Create-then-return: the scaffold session lives server-side and survives navigation untouched,
+// so going to a library is pure client routing — but a plain outbound anchor would lose the way
+// back (and the hash alone doesn't even carry the catalog kind: nav.js routes on path only).
+// These buttons set the kind explicitly, arm APP.catalog.returnTo for the library's return banner,
+// and go() from there. The libraries auto-return after a successful save; wireScaffold's return
+// hook fires the one-shot pendingSelect once the refetched caches hold the new entry.
+function goCatalogFromScaffold(kind) {
+  APP.catalog.kind = kind;
+  APP.catalog.returnTo = { view: "scaffold", kind };
+  go("catalog");
+}
+
 // The vocabulary is the tag catalog's, and only the catalog authors it: an off-vocabulary tag is
 // something the route tolerates, not something this picker offers. Curated is the point -- free
 // text here would be a second idea box. Choosing a tag says what KIND of story this one is; the
@@ -69,7 +81,7 @@ function tagChipsHtml(s) {
   const chosen = c.tags || [];
   const vocab = APP.catalog.vocab || [];
   if (!vocab.length)
-    return hint(`No tags in the catalog yet — <a href="#/catalog?kind=tags">add some under Libraries</a> and they show up here.`);
+    return hint(`No tags in the catalog yet — <button class="hint-link" data-goto-catalog="tags" type="button">add some under Libraries</button> and they show up here.`);
   const rows = APP.catalogConfig.tagFacets.map(facet => {
     const mine = vocab.filter(t => t.facet === facet);
     if (!mine.length) return "";
@@ -79,7 +91,7 @@ function tagChipsHtml(s) {
       <div class="cat-tags-row">${chips}</div></div>`;
   }).join("");
   return `<div class="cat-tags-picker">${rows}</div>`
-    + hint(`Tags steer this story's direction only. The vocabulary itself is managed <a href="#/catalog?kind=tags">under Libraries</a>.`);
+    + hint(`Tags steer this story's direction only. The vocabulary itself is managed <button class="hint-link" data-goto-catalog="tags" type="button">under Libraries</button>.`);
 }
 
 const castSizeFieldHtml = s => {
@@ -105,16 +117,54 @@ function importPickerHtml(s) {
   const pickedIds = (c.imported || []).map(i => i.libraryId);
   const lib = APP.catalog.library || [];
   if (!lib.length)
-    return hint(`No characters in the catalog yet — <a href="#/catalog">add some under Libraries</a> and you can cast them here.`);
+    return hint(`No characters in the catalog yet — <button class="hint-link" data-goto-catalog="characters" type="button">add some under Libraries</button> and you can cast them here.`);
+  // Inspecting previews a candidate in the shared panel below; selecting stays chip-only.
+  // The info button lives beside its chip (never inside it — a button in a button is invalid,
+  // and a full/disabled chip must still be inspectable).
+  const insp = APP.scaffoldInspect;
   const chips = lib.map(x => {
     const on = pickedIds.includes(x.id);
     const full = !on && pickedIds.length >= MAX_IMPORTS;
-    return `<button class="cat-chip${on ? " on" : ""}" data-import-id="${esc(x.id)}" type="button"${
-      full ? " disabled" : ""} title="${esc(x.portablePersona || x.name)}">${esc(x.name)}</button>`;
+    const expanded = !!insp && insp.kind === "import" && insp.id === x.id;
+    return `<span class="cat-chip-wrap">`
+      + `<button class="cat-chip${on ? " on" : ""}" data-import-id="${esc(x.id)}" type="button"${full ? " disabled" : ""}`
+      + ` title="${esc(x.portablePersona || x.name)}">${esc(x.name)}</button>`
+      + `<button class="cat-chip-info${expanded ? " on" : ""}" data-inspect-import="${esc(x.id)}" type="button"`
+      + ` aria-expanded="${expanded ? "true" : "false"}" aria-label="inspect ${esc(x.name)}" title="inspect ${esc(x.name)}">ⓘ</button>`
+      + `</span>`;
   }).join("");
+  // One shared preview panel under the row: the inspected candidate, when it exists and is not
+  // already selected (a selected character already shows its full detail in the cast list below —
+  // duplicating it here would read as a second copy, not a preview).
+  let preview = "";
+  if (insp && insp.kind === "import") {
+    const target = lib.find(x => x.id === insp.id);
+    if (target && !pickedIds.includes(target.id)) {
+      const skills = (target.skills || []).join(", ");
+      preview = `<details class="story-cast-member is-inspecting" data-tid="scaffold.story-cast-preview" data-cast-id="${esc(target.id)}" open>`
+        + `<summary>${esc(target.name)} — previewing</summary>`
+        + `<div class="story-cast-body">`
+        + `${target.portablePersona ? `<p>${esc(target.portablePersona)}</p>` : ""}`
+        + `${target.belief ? `<p><span class="label">belief</span> ${esc(target.belief)}</p>` : ""}`
+        + `${target.impulse ? `<p><span class="label">impulse</span> ${esc(target.impulse)}</p>` : ""}`
+        + `${(target.voice || []).map(v => `<p><span class="label">voice</span> “${esc(v)}”</p>`).join("")}`
+        + `${skills ? `<p><span class="label">brings</span> ${esc(skills)}</p>` : ""}`
+        + `${target.origin ? `<p><span class="label">origin</span> ${esc(target.origin)}</p>` : ""}`
+        + `<p class="hint">Preview — use its chip above to cast it in this story.</p>`
+        + `</div></details>`;
+    }
+  }
   const picked = lib.filter(x => pickedIds.includes(x.id));
+  const busy = !!s.busy;
+  const entries = rejectEntriesOf(s);
+  // The detail below is catalog data, but goal/knows live on the spec character — so the inputs
+  // bind the same-named spec entry, and only render when the cast actually holds one (the tray is
+  // live while no cast exists, and there is nothing to edit yet then).
+  const specRoleOf = name =>
+    (s.spec?.characters || []).find(sc => String(sc.name || "").toLowerCase() === String(name || "").toLowerCase());
   const cast = !picked.length ? "" : `<div class="story-cast">${picked.map(x => {
     const skills = (x.skills || []).join(", ");
+    const specChar = specRoleOf(x.name);
     return `<details class="story-cast-member" data-tid="scaffold.story-cast-member" data-cast-id="${esc(x.id)}">
       <summary>${esc(x.name)} — in this story</summary>
       <div class="story-cast-body">
@@ -124,14 +174,15 @@ function importPickerHtml(s) {
         ${(x.voice || []).map(v => `<p><span class="label">voice</span> “${esc(v)}”</p>`).join("")}
         ${skills ? `<p><span class="label">brings</span> ${esc(skills)}</p>` : ""}
         ${x.origin ? `<p><span class="label">origin</span> ${esc(x.origin)}</p>` : ""}
-        <p class="hint">Reusable character — what they want and know HERE is shaped in conversation, not stored on them.</p>
+        ${specChar ? roleFieldHtml(specChar, "knows", busy, entries) + roleFieldHtml(specChar, "goal", busy, entries) : ""}
+        <p class="hint">Reusable character — what they want and know HERE lives in this story, not on them: edit it here, or shape it in conversation.</p>
         <div class="side-actions"><button class="btn" data-remove-import="${esc(x.id)}" type="button">remove from this story</button></div>
       </div>
     </details>`;
   }).join("")}</div>`;
-  return `<div class="cat-tags-row">${chips}</div>${cast}`
+  return `<div class="cat-tags-row">${chips}</div>${preview}${cast}`
     + hint(`Removing here takes them out of this story only — the catalog entry is untouched. `
-      + `<a href="#/catalog">Manage characters under Libraries</a>.`);
+      + `<button class="hint-link" data-goto-catalog="characters" type="button">Manage characters under Libraries</button>.`);
 }
 
 // The presets the author's tags speak to, first. Ranking is ALL this does with them: a tag is a
@@ -153,10 +204,30 @@ function stylePickerHtml(s) {
   const c = s.concept || {};
   const styles = rankedStyles(s);
   if (!styles.length)
-    return hint(`No styles in the catalog yet — <a href="#/catalog?kind=styles">add some under Libraries</a> and you can pick one here.`);
-  const chips = styles.map(e =>
-    `<button class="cat-chip${c.styleId === e.id ? " on" : ""}" data-style-id="${esc(e.id)}" type="button"` +
-    ` title="${esc(e.description || e.voice)}">${esc(e.name)}</button>`).join("");
+    return hint(`No styles in the catalog yet — <button class="hint-link" data-goto-catalog="styles" type="button">add some under Libraries</button> and you can pick one here.`);
+  const insp = APP.scaffoldInspect;
+  const chips = styles.map(e => {
+    const expanded = !!insp && insp.kind === "style" && insp.id === e.id;
+    return `<span class="cat-chip-wrap">`
+      + `<button class="cat-chip${c.styleId === e.id ? " on" : ""}" data-style-id="${esc(e.id)}" type="button"`
+      + ` title="${esc(e.description || e.voice)}">${esc(e.name)}</button>`
+      + `<button class="cat-chip-info${expanded ? " on" : ""}" data-inspect-style="${esc(e.id)}" type="button"`
+      + ` aria-expanded="${expanded ? "true" : "false"}" aria-label="inspect ${esc(e.name)}" title="inspect ${esc(e.name)}">ⓘ</button>`
+      + `</span>`;
+  }).join("");
+  let preview = "";
+  if (insp && insp.kind === "style") {
+    const target = styles.find(e => e.id === insp.id);
+    if (target && target.id !== c.styleId) {
+      preview = `<details class="story-cast-member is-inspecting" data-tid="scaffold.story-style-preview" open>`
+        + `<summary>${esc(target.name)} — previewing</summary>`
+        + `<div class="story-cast-body">`
+        + `${target.description ? `<p>${esc(target.description)}</p>` : ""}`
+        + `${target.voice ? `<p><span class="label">voice</span> ${esc(target.voice)}</p>` : ""}`
+        + `<p class="hint">Preview — use its chip above to tell this story in this voice.</p>`
+        + `</div></details>`;
+    }
+  }
   const picked = styles.find(e => e.id === c.styleId);
   const detail = !picked ? ""
     : `<details class="story-cast-member" data-tid="scaffold.story-style-detail">
@@ -168,11 +239,11 @@ function stylePickerHtml(s) {
         <div class="side-actions"><button class="btn" data-clear-style type="button">use no preset for this story</button></div>
       </div>
     </details>`;
-  return `<div class="cat-tags-row">${chips}</div>${detail}` + (picked
+  return `<div class="cat-tags-row">${chips}</div>${preview}${detail}` + (picked
     ? hint(`The architect is handed this voice and asked only what THIS cast and POV make impossible to narrate. `
-      + `<a href="#/catalog?kind=styles">Manage styles under Libraries</a>.`)
+      + `<button class="hint-link" data-goto-catalog="styles" type="button">Manage styles under Libraries</button>.`)
     : hint(`Pick none and the architect writes the house style itself. `
-      + `<a href="#/catalog">New style? Add it under Libraries first</a>.`));
+      + `<button class="hint-link" data-goto-catalog="styles" type="button">New style? Add it under Libraries first</button>.`));
 }
 
 function directionPickersHtml(s) {
@@ -233,6 +304,9 @@ function castworldPickersHtml(s) {
 
 function ideaModalHtml() {
   const err = APP.scaffoldError ? errorLine(esc(APP.scaffoldError)) : "";
+  // The override genuinely can't wait past the first call (unlike retries), so the collapsed state
+  // names the model that proposing will actually use — the default stays valid with Advanced shut.
+  const using = draft.model || APP.modelDefault || "";
   return modal({
     id: "iv-backdrop", dataTid: "scaffold.idea-modal", ariaLabel: "new story",
     body: `<span class="label">step 1 of 6 · Story idea</span>
@@ -248,9 +322,14 @@ function ideaModalHtml() {
         ${modeChoice("oneshot", "the whole story at once",
             "One complete proposal, then review and refinement.")}
       </div>
-      <div class="field"><label for="f-model">built by</label>
-        ${modelSelect({ id: "f-model", defaultLabel: `defaults${APP.modelDefault ? " · " + esc(APP.modelDefault) : ""}`,
-                        selected: draft.model, modelIds: APP.modelIds })}</div>
+      <div class="field"><span class="field-label">built by</span>
+        <p class="hint">using ${using ? esc(using) : "the story default"}</p>
+        <details class="sc-setup" data-tid="idea.advanced">
+          <summary>Advanced — choose a different model</summary>
+          <div class="field"><label for="f-model">built by</label>
+            ${modelSelect({ id: "f-model", defaultLabel: `defaults${APP.modelDefault ? " · " + esc(APP.modelDefault) : ""}`,
+                            selected: draft.model, modelIds: APP.modelIds })}</div>
+        </details></div>
       ${err}
       <div class="btns">${button({ label: "propose →", id: "iv-start", variant: "primary" })}
         ${button({ label: "back to the shelf", id: "iv-back" })}
@@ -263,7 +342,20 @@ function ideaModalHtml() {
 // Provenance: a character either rode in on the author's import tray (catalog-derived, enforced
 // by the adaptation contract) or was invented for this story (AI-generated). The badge names
 // which — the stage's status pill says whether it is draft, proposed, edited or approved.
-function castHtml(spec, catalog) {
+// Block C: goal/knows are story-positional — they live on the spec character, never on a
+// catalog entry — so each cast card edits them inline. Always rendered (empty with a placeholder
+// when unset, so an author can shape a proposed character too); disabled while a gate runs, so
+// no typed-but-unsaved value can diverge from the session. Block G's per-field reject hooks onto
+// the same data-role-name / data-role-field attributes.
+const roleFieldHtml = (c, field, busy, entries = []) => {
+  const rej = fieldEntryFor(entries, c.name, field);
+  return `<label class="role-field"><span>${field}</span>`
+    + `<input type="text" value="${esc(c[field] || "")}" placeholder="—"`
+    + ` data-role-name="${esc(c.name)}" data-role-field="${field}"${busy ? " disabled" : ""}></label>`
+    + (rej ? `<button class="hint-link" data-reject-name="${esc(c.name)}" data-reject-field="${field}"`
+      + ` type="button">reject this ${field}</button>` : "");
+};
+function castHtml(spec, catalog, scoped = false, entries = []) {
   // Reach is scene-scoped, so it is shown per character but labelled with the scene that grants it
   // -- never as an intrinsic skill.
   const reachOf = name => (spec.scenes?.[0]?.reach || {})[name]
@@ -273,12 +365,18 @@ function castHtml(spec, catalog) {
     const skills = c.skills.map(s => esc(s.text) + (s.meaning ? ` :: ${esc(s.meaning)}` : "")).join(", ");
     const reach = reachOf(c.name);
     const fromCatalog = catalog && catalog.has(String(c.name || "").toLowerCase());
+    const busy = !!APP.scaffold?.busy;
     return `<div class="person" data-tid="scaffold.person" data-name="${esc(c.name)}">
       <div class="person-top"><span class="person-name">${esc(c.name)}</span>`
       + (fromCatalog ? tag(`from your catalog`, " prov-catalog") : tag(`proposed`, " prov-ai")) + `</div>
       ${c.persona ? `<p>${esc(c.persona)}</p>` : ""}
-      ${c.knows ? tag(`knows: ${esc(c.knows)}`) : ""}
-      ${c.goal ? tag(`goal: ${esc(c.goal)}`) : ""}
+      ${roleFieldHtml(c, "knows", busy, entries)}
+      ${roleFieldHtml(c, "goal", busy, entries)}
+      ${scoped ? `<div class="side-actions"><button class="btn" data-regen-character="${esc(c.name)}"`
+        + ` type="button">regenerate just ${esc(c.name)}</button></div>` : ""}
+      ${addedEntryFor(entries, c.name)
+        ? `<div class="side-actions"><button class="btn" data-reject-character="${esc(c.name)}"`
+          + ` type="button">reject ${esc(c.name)}</button></div>` : ""}
       ${c.belief ? tag(`belief: ${esc(c.belief)}`) : ""}
       ${c.impulse ? tag(`impulse: ${esc(c.impulse)}`) : ""}
       ${(c.voice || []).map(v => tag(`voice: “${esc(v)}”`)).join("")}
@@ -646,12 +744,40 @@ function voiceBadge(s) {
     : `<span class="tag prov-ai">proposed voice</span>`;
 }
 
+// The accept step names what rode in from the catalog, because the link ends here: story.json
+// keeps the words, never where they came from (engine/architect.ts's provenance invariant, kept).
+// Renders nothing when everything was proposed for this story.
+function acceptProvenanceHtml(s) {
+  const spec = s.spec || {};
+  const catalog = catalogOf(s);
+  const names = (spec.characters || [])
+    .filter(c => catalog.has(String(c.name || "").toLowerCase()))
+    .map(c => c.name);
+  const styleId = (s.concept || {}).styleId;
+  const styleFromCatalog = Boolean(styleId && spec.writerStyle);
+  if (!names.length && !styleFromCatalog) return "";
+  const bits = [];
+  if (names.length) bits.push(`cast from your catalog: ${esc(names.join(", "))}`);
+  if (styleFromCatalog) {
+    const styleName = (s.concept || {}).styleName;
+    bits.push(styleName ? `voice from your catalog: “${esc(styleName)}”` : `voice from your catalog`);
+  }
+  return hint(`${bits.join(" · ")} — story.json keeps the words, not where they came from.`);
+}
+
 function castworldBits(s) {
   const spec = s.spec;
   const ch = changedSections(s);
+  // Scoped regenerate is offered on the member's own card, and only at the staged cast gate —
+  // openCastworld spans the settings gate too, and reviewBits (oneshot + final review) keeps the
+  // whole-gate button only. Same availability as regenRowHtml: a scoped re-run would overwrite
+  // full-editor touches on that member just as surely.
+  const fromEditor = !!s.last && s.last.kind === "edits" && s.last.note === "updated from the story editor";
+  const scoped = s.mode === "staged" && s.gate === "cast" && !s.busy && !s.pendingAsk && !fromEditor;
+  const entries = rejectEntriesOf(s);
   return [
     changedTag(ch, "cast"),
-    spec.characters.length ? castHtml(spec, catalogOf(s))
+    spec.characters.length ? castHtml(spec, catalogOf(s), scoped, entries)
       : hint(`No cast yet — the architect proposes one, or cast reusable characters above.`),
     changedTag(ch, "voice"),
     spec.writerStyle ? `<p class="stage-copy">${voiceBadge(s)} ${esc(spec.writerStyle)}</p>`
@@ -692,7 +818,7 @@ function reviewBits(s) {
     s.tension ? `<div class="question"><span class="label">load-bearing tension</span> <span class="tag prov-ai">proposed</span>${esc(s.tension)}</div>` : "",
     factsHtml(spec),
     changedTag(ch, "cast"),
-    spec.characters.length ? castHtml(spec, catalogOf(s)) : "",
+    spec.characters.length ? castHtml(spec, catalogOf(s), false, rejectEntriesOf(s)) : "",
     changedTag(ch, "voice"),
     spec.writerStyle ? `<p class="stage-copy">${voiceBadge(s)} ${esc(spec.writerStyle)}</p>` : "",
     technicalHtml(spec),
@@ -718,6 +844,7 @@ function folderHtml(s) {
     </div>
     <div class="card-body">
       <p>${esc(s.needsFolder || "Name where this story lands — nothing is written until you accept.")}</p>
+      ${acceptProvenanceHtml(s)}
       <label class="field-label" for="f-folder">story folder</label>
       <input type="text" id="f-folder" value="${esc(draft.folder)}">
       <div id="iv-folder-note">${folderNoteHtml()}</div>
@@ -750,8 +877,10 @@ function folderNoteHtml() {
 // ── proposal lifecycle: regenerate & revert ───────────────────────────────────
 // Regenerating re-runs the open stage's prompt through /scaffold/regenerate — staged
 // re-proposes only the open gate's fields (the merge starts from the current spec, so every
-// other gate keeps what it has), one-shot re-proposes the whole story. The conversation is
-// kept, so refinements usually survive; nothing reaches disk either way, and anything it
+// other gate keeps what it has), one-shot re-proposes the whole story. At the staged cast gate
+// each member also carries its own regenerate button, posting the same action with a scope —
+// only that entry is ever replaced. The conversation is kept, so refinements usually survive;
+// nothing reaches disk either way, and anything it
 // replaces can be re-said, reverted below, or abandoned with the session. Reverting puts back
 // exactly what the latest edits round changed, field by field through /scaffold/set — the same
 // path as the full editor — after verifying each field still holds what the round left.
@@ -776,8 +905,10 @@ function regenRowHtml(s) {
   const scope = s.mode === "oneshot"
     ? "A fresh whole-story proposal."
     : "Only this stage's prompt re-runs — other stages keep what they have.";
+  const one = s.mode === "staged" && s.gate === "cast"
+    ? " For one member, use the regenerate button on its card." : "";
   return `<div class="side-actions">${button({ label: `regenerate ${subject}`, id: "iv-regen" })}</div>`
-    + hint(`${scope} The conversation is kept, so refinements usually survive. For one field, say what you want instead.`);
+    + hint(`${scope} The conversation is kept, so refinements usually survive. For one field, say what you want instead.${one}`);
 }
 
 function revertRowHtml(s) {
@@ -917,6 +1048,50 @@ function revertPlan(applied, draft) {
   }
   return { ok: true, count: ops.length,
     apply: (d) => { for (const op of ops) op.apply(d); return { ok: true }; } };
+}
+
+// ── Block G: reject one generated item ────────────────────────────────────────
+// The last round's put-backable entries: rejectable on a fresh proposal, applied on an edits
+// round. Anything else — a question, nothing, a failure — offers no targets, and while a gate
+// runs nothing is offered either. Matching is always against s.last, so a stale button can never
+// fire: the entries it matched are gone with the round.
+const rejectEntriesOf = s => (s && !s.busy && s.last && s.last.kind === "proposal" ? s.last.rejectable
+  : s && !s.busy && s.last && s.last.kind === "edits" ? s.last.applied : null) || [];
+const addedEntryFor = (entries, name) => (entries || []).find(e =>
+  String((e && e.field) || "").toLowerCase() === `added ${String(name || "").toLowerCase()}`);
+const fieldEntryFor = (entries, name, field) => {
+  const n = String(name || "").toLowerCase();
+  const keys = field === "knows"
+    ? [`${n}.knows`, `characters.${n}.knows`, `${n}.learned`, `characters.${n}.learned`]
+    : [`${n}.${field}`, `characters.${n}.${field}`];
+  return (entries || []).find(e => keys.includes(String((e && e.field) || "").toLowerCase()));
+};
+
+/** Put back exactly one entry through the same verify-then-apply machinery as revertRound().
+ *  Applied-shaped entries strip the snapshot the whole-round path verifies against, so the after
+ *  value plays that role here — for an added member it is the normalized character, verified
+ *  against the draft before anything is removed. Posts source "revert": no new route, no new
+ *  host method. */
+async function revertOne(entry) {
+  const s = APP.scaffold;
+  if (!s || s.busy || !s.storyDraft || !entry) return;
+  const single = [{ field: String(entry.field || ""), before: entry.before, after: entry.after,
+                    snapshot: entry.after }];
+  const plan = revertPlan(single, s.storyDraft);
+  if (!plan.ok) { APP.scaffoldError = `cannot put that back: ${plan.reason}`; APP.render(); return; }
+  const patched = cloneJson(s.storyDraft);
+  plan.apply(patched);
+  await postScaffold("set", { story: patched, source: "revert" });
+  // An imported member lives in the tray as well as the spec: leaving the tray entry would let
+  // the next whole-gate regen add them straight back via the import contract.
+  const m = /^added (.+)$/.exec(String(entry.field || ""));
+  const imp = m && ((APP.scaffold.concept || {}).imported || [])
+    .find(i => String(i.name || "").toLowerCase() === m[1].toLowerCase());
+  if (imp && APP.scaffold && !APP.scaffold.busy && !APP.scaffoldError) {
+    const ids = ((APP.scaffold.concept || {}).imported || []).map(i => i.libraryId)
+      .filter(id => id !== imp.libraryId);
+    await postScaffold("import", { importIds: ids });
+  }
 }
 
 // ── open stages ─────────────────────────────────────────────────────────────
@@ -1139,12 +1314,28 @@ async function revertRound() {
   await postScaffold("set", { story: patched, source: "revert" });
 }
 
+/** Block C: structured goal/knows edit for one cast member. Same whole-draft-replace path as
+ *  revertRound(), so setSpec()/normalizeSpec() validates it — matched by name, the key both
+ *  surfaces render into data-role-name. A change that somehow fires while busy (the inputs are
+ *  disabled then) re-renders the authoritative value instead of posting over a running gate. */
+async function setCharacterField(name, field, value) {
+  const s = APP.scaffold;
+  if (!s || s.busy || !s.storyDraft || (field !== "goal" && field !== "knows")) { APP.render(); return; }
+  const patched = cloneJson(s.storyDraft);
+  const c = (patched.characters || []).find(c => c.name === name);
+  if (!c) { APP.render(); return; }
+  c[field] = value;
+  await postScaffold("set", { story: patched, source: "role" });
+}
+
 async function startInterview() {
   const idea = draft.idea.trim();
   if (!idea || APP.scaffold.busy) return;
   const mode = draft.mode === "oneshot" ? "oneshot" : "staged";
   APP.scaffoldError = "";
   APP.folderOpen = false;
+  APP.scaffoldInspect = null;
+  APP.catalog.returnTo = null; APP.catalog.pendingSelect = null;
   APP.scaffold = { active:true, busy:true, idea, problems:[], haveStory:false, model:draft.model,
                    mode, gate: mode === "staged" ? "story" : null };
   APP.render();
@@ -1177,7 +1368,7 @@ async function acceptIntoFolder() {
   if (!folder || APP.scaffold.busy) return;
   APP.scaffoldAccepting = true; APP.render();
   const j = await postScaffold("accept", { folder });
-  if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.scaffoldAccepting = false; APP.folderOpen = false; go("live"); }
+  if (j && j.ok) { draft.idea = draft.say = draft.folder = ""; APP.scaffoldAccepting = false; APP.folderOpen = false; APP.scaffoldInspect = null; APP.catalog.returnTo = null; APP.catalog.pendingSelect = null; go("live"); }
   // A refusal is usually needs_folder, which forces the step open without going through
   // acceptStory() -- so the taken-folder check needs the story list fetched here too.
   else { APP.scaffoldAccepting = false; APP.render(); loadStories(); }
@@ -1220,6 +1411,49 @@ export function wireScaffold(page) {
   };
   const sessionTray = () => (APP.scaffold.concept?.imported || []).map(i => i.libraryId);
 
+  // Outbound to a library from the scaffold: arm the return loop, then go. The kind is set
+  // explicitly because the hash alone doesn't carry it (nav.js routes on path only).
+  for (const b of page.querySelectorAll("[data-goto-catalog]"))
+    b.addEventListener("click", () => goCatalogFromScaffold(b.getAttribute("data-goto-catalog")));
+
+  // Create-then-return: a library save armed pendingSelect and navigated back. The loaders above
+  // refetch the invalidated caches; once the new entry is visible, fire the same POST its chip
+  // would send — once. Consumed before posting so the SSE re-renders (which re-run this wiring)
+  // never re-fire it. While the entry hasn't landed the flag is kept for a later frame; a settled
+  // cache that still lacks it means it never lands (failed refetch, deleted meanwhile), so the
+  // one-shot is dropped rather than carried stale into some later visit. A dead scaffold, or an
+  // unknown kind, just clears it.
+  const pend = APP.catalog.pendingSelect;
+  if (pend && page.querySelector(".scpage")) {
+    if (!APP.scaffold?.active) { APP.catalog.pendingSelect = null; APP.catalog.returnTo = null; }
+    else if (!APP.scaffold.busy) {
+      if (pend.kind === "characters") {
+        const target = (APP.catalog.library || []).find(x => x.id === pend.selectId);
+        if (target) {
+          APP.catalog.pendingSelect = null;
+          const ids = sessionTray();
+          if (!ids.includes(target.id) && ids.length < MAX_IMPORTS)
+            postScaffold("import", { importIds: [...ids, target.id] });
+        } else if (loadLibrary.settled()) APP.catalog.pendingSelect = null;
+      } else if (pend.kind === "styles") {
+        const target = (APP.catalog.styles || []).find(x => x.id === pend.selectId);
+        if (target) {
+          APP.catalog.pendingSelect = null;
+          if (sessionConcept().styleId !== target.id)
+            postScaffold("concept", { ...sessionConcept(), styleId: target.id });
+        } else if (loadStyles.settled()) APP.catalog.pendingSelect = null;
+      } else if (pend.kind === "tags") {
+        const target = (APP.catalog.vocab || []).find(t => t.label === pend.selectLabel);
+        if (target) {
+          APP.catalog.pendingSelect = null;
+          const concept = sessionConcept();
+          if (!concept.tags.includes(target.label))
+            postScaffold("concept", { ...concept, tags: [...concept.tags, target.label] });
+        } else if (loadVocab.settled()) APP.catalog.pendingSelect = null;
+      } else { APP.catalog.pendingSelect = null; }
+    }
+  }
+
   for (const chip of page.querySelectorAll(".cat-chip[data-tag-label]"))
     chip.addEventListener("click", () => {
       if (APP.scaffold.busy) return;
@@ -1258,6 +1492,50 @@ export function wireScaffold(page) {
     b.addEventListener("click", () => {
       if (APP.scaffold.busy) return;
       postScaffold("concept", { ...sessionConcept(), styleId: "" });
+    });
+  // Block C: commit on change (blur/Enter), one whole-draft POST per field edit — never mid-keystroke,
+  // so the SSE re-render the post causes cannot steal typing.
+  for (const el of page.querySelectorAll("[data-role-field]"))
+    el.addEventListener("change", () => {
+      setCharacterField(el.getAttribute("data-role-name") || "",
+        el.getAttribute("data-role-field") || "", el.value);
+    });
+  // Block F: one member reconsidered, everything else untouched by construction. The button only
+  // renders at the staged cast gate; the route re-validates the scope, so this posts blind.
+  for (const b of page.querySelectorAll("[data-regen-character]"))
+    b.addEventListener("click", () => {
+      if (APP.scaffold.busy) return;
+      postScaffold("regenerate", { scope: { kind: "character", name: b.getAttribute("data-regen-character") || "" } });
+    });
+  // Block G: put one generated item back — a member, or a single goal/knows value. The entry is
+  // re-matched at click time against the live last round, so a stale button can never fire.
+  for (const b of page.querySelectorAll("[data-reject-character]"))
+    b.addEventListener("click", () => {
+      if (APP.scaffold.busy) return;
+      const entry = addedEntryFor(rejectEntriesOf(APP.scaffold),
+        b.getAttribute("data-reject-character") || "");
+      if (entry) revertOne(entry);
+      else APP.render();
+    });
+  for (const b of page.querySelectorAll("[data-reject-field]"))
+    b.addEventListener("click", () => {
+      if (APP.scaffold.busy) return;
+      const entry = fieldEntryFor(rejectEntriesOf(APP.scaffold),
+        b.getAttribute("data-reject-name") || "", b.getAttribute("data-reject-field") || "");
+      if (entry) revertOne(entry);
+      else APP.render();
+    });
+  // Inspect-before-select: the ⓘ beside a chip previews that candidate in the one shared panel
+  // below its row. Local UI only — never posts, never changes selection. Selecting stays chip-only.
+  for (const b of page.querySelectorAll("[data-inspect-import],[data-inspect-style]"))
+    b.addEventListener("click", e => {
+      e.stopPropagation();
+      const isImport = b.hasAttribute("data-inspect-import");
+      const kind = isImport ? "import" : "style";
+      const id = b.getAttribute(isImport ? "data-inspect-import" : "data-inspect-style");
+      const cur = APP.scaffoldInspect;
+      APP.scaffoldInspect = (cur && cur.kind === kind && cur.id === id) ? null : { kind, id };
+      APP.render();
     });
 
   const cast = page.querySelector("#f-cast-size");
@@ -1303,6 +1581,8 @@ export function wireScaffold(page) {
       ms: 4000,
       action: () => postScaffold("abandon", {}).then(() => {
         APP.scaffold = { active:false }; APP.scaffoldError = ""; APP.folderOpen = false;
+        APP.scaffoldInspect = null;
+        APP.catalog.returnTo = null; APP.catalog.pendingSelect = null;
         draft.idea = draft.say = draft.folder = "";
         draft.tags = [];
         draft.castSize = 0;

@@ -23,7 +23,7 @@ import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBi
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import { assistCharacter, ASSIST_FIELDS, type AssistField, type AssistMode } from "./engine/catalog-assist.ts";
 import type {
-  ServerHost, Concept, CatalogUsage, EditorConfig, CatalogConfig,
+  ServerHost, Concept, RegenScope, CatalogUsage, EditorConfig, CatalogConfig,
   ScaffoldState, ScaffoldActionResult, ScaffoldAcceptResult,
   HandoffState, HandoffActionResult, HandoffAcceptResult,
 } from "./server/server.ts";
@@ -308,14 +308,20 @@ export async function scaffoldApprove(override: boolean): Promise<ScaffoldAction
   return { ok: true, state: scaffoldSnapshot() };
 }
 
-export async function scaffoldRegenerate(): Promise<ScaffoldActionResult> {
+export async function scaffoldRegenerate(scope?: RegenScope): Promise<ScaffoldActionResult> {
   if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
   if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  // The name is validated against the live cast before anything runs: a scoped re-run for a
+  // stranger would otherwise spend a model round to discover there is nobody to reconsider.
+  if (scope && !SCAFFOLD.spec.characters.some(c => sameName(c.name, scope.name)))
+    return { ok: false, reason: `there is no cast member named "${scope.name}"`, status: 400 };
   const gen = scaffoldGen;
   const session = SCAFFOLD;
   scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
   try {
-    const r = await session.rerun(stage => { scaffoldStage = stage; publishScaffold(); });
+    const r = scope
+      ? await session.rerunScoped(scope, stage => { scaffoldStage = stage; publishScaffold(); })
+      : await session.rerun(stage => { scaffoldStage = stage; publishScaffold(); });
     if (gen === scaffoldGen) scaffoldLast = r;
   } catch (e) {
     if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
@@ -371,7 +377,10 @@ export function scaffoldSet(input: { story?: unknown; field?: string; value?: un
   if (!SCAFFOLD.haveStory()) return { ok: false, reason: "there is no story to change yet", status: 400 };
   if (input.story && typeof input.story === "object") {
     const r = SCAFFOLD.setSpec(input.story);
-    const note = input.source === "revert" ? "reverted a round" : "updated from the story editor";
+    // "role" is Block C's structured goal/knows edit: same whole-draft path as a revert, so it
+    // keeps regenerate enabled — unlike the story editor's free-form note, which disables it.
+    const note = input.source === "revert" ? "reverted a round"
+      : input.source === "role" ? "updated a character's role" : "updated from the story editor";
     scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note };
     publishScaffold();
     return { ok: true, state: scaffoldSnapshot() };

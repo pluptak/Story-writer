@@ -142,10 +142,32 @@ function renderHandoff(page, keepFocus) {
   setFoldable(false);
 }
 
+// ---- create-then-return ------------------------------------------------------
+// While the scaffold armed APP.catalog.returnTo, each of the three libraries it links to
+// (characters, styles, tags) carries a way back. Prepended after the library's own HTML so it
+// shows the whole visit — even while the list itself is a spinner or an error. Hidden when the
+// scaffold is gone (abandoned or accepted elsewhere), since "your story" would point nowhere.
+const returnToScaffoldArmed = () => APP.catalog.returnTo?.view === "scaffold" && !!APP.scaffold?.active;
+function catalogReturnBannerHtml() {
+  return `<div class="lib-return" data-tid="catalog.return-banner" role="status">`
+    + `<span class="label">new story in progress</span>`
+    + `<span>Creating for your story — it stays open underneath.</span>`
+    + `${button({ label: "back to your story →", id: "lib-return", tidName: "catalog.return-btn" })}</div>`;
+}
+function wireCatalogReturnBanner(page) {
+  if (!returnToScaffoldArmed()) return;
+  page.insertAdjacentHTML("afterbegin", catalogReturnBannerHtml());
+  page.querySelector("#lib-return")?.addEventListener("click", () => {
+    APP.catalog.returnTo = null; APP.catalog.pendingSelect = null;
+    go("scaffold");
+  });
+}
+
 function renderCharacterLibrary(page, keepFocus) {
   page.innerHTML = characterLibraryHtml();
   clearRail();
   wireCharacterLibrary(page);
+  wireCatalogReturnBanner(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
   loadCharacterLibrary();
@@ -155,6 +177,7 @@ function renderStyleLibrary(page, keepFocus) {
   page.innerHTML = styleLibraryHtml();
   clearRail();
   wireStyleLibrary(page);
+  wireCatalogReturnBanner(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
   loadStyleLibrary();
@@ -164,6 +187,7 @@ function renderTagLibrary(page, keepFocus) {
   page.innerHTML = tagLibraryHtml();
   clearRail();
   wireTagLibrary(page);
+  wireCatalogReturnBanner(page);
   restoreFocus(page, keepFocus);
   setFoldable(false);
   loadTagLibrary();

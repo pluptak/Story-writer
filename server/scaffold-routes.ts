@@ -12,7 +12,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { LIVE } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
-import type { ServerHost, Concept } from "./server.ts";
+import type { ServerHost, Concept, RegenScope } from "./server.ts";
 
 const MAX_TAGS = 8;
 const MAX_TAG_LEN = 40;
@@ -42,6 +42,19 @@ function readImportIds(o: Record<string, unknown>): { ok: true; ids: string[] } 
   const ids = raw.map(x => String(x ?? "").trim()).filter(Boolean);
   if (ids.length > MAX_IMPORTS) return { ok: false, reason: `at most ${MAX_IMPORTS} imported characters` };
   return { ok: true, ids };
+}
+
+/** A scoped regenerate ("just this character"), or a reason the shape is unusable. Resolving
+ *  the name against the cast needs the host, so this only checks the shape. */
+function readRegenScope(o: Record<string, unknown>): { ok: true; scope?: RegenScope } | { ok: false; reason: string } {
+  if (o.scope === undefined) return { ok: true };
+  const s = o.scope;
+  if (typeof s !== "object" || s === null) return { ok: false, reason: "scope must be an object" };
+  const kind = (s as Record<string, unknown>).kind, name = (s as Record<string, unknown>).name;
+  if (kind !== "character") return { ok: false, reason: `unknown regenerate scope "${String(kind)}"` };
+  if (typeof name !== "string" || !name.trim()) return { ok: false, reason: "a scoped regenerate names a character" };
+  if (name.trim().length > MAX_ID_LEN) return { ok: false, reason: `that name is longer than ${MAX_ID_LEN} characters` };
+  return { ok: true, scope: { kind: "character", name: name.trim() } };
 }
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -137,7 +150,9 @@ export async function handleScaffoldRoutes(
   }
 
   if (what === "regenerate") {
-    const r = await host.scaffoldRegenerate();
+    const scoped = readRegenScope(o);
+    if (!scoped.ok) { json(res, 400, { ok: false, reason: scoped.reason }); return true; }
+    const r = await host.scaffoldRegenerate(scoped.scope);
     if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
     json(res, 200, r.state);
     return true;

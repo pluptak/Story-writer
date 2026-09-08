@@ -2,6 +2,7 @@ import { APP, FACET_LABELS } from "./state.js";
 import { esc, tid, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
+import { go } from "./nav.js";
 import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // The character/style tag pickers and the scaffold's tag picker all read this same cache. A write
@@ -126,6 +127,13 @@ async function save() {
   const idx = s.entries.findIndex(t => t.id === next.id); if (idx >= 0) s.entries[idx] = next; else s.entries.unshift(next);
   refreshUsage();
   setSelected(next);
+  // Create-then-return: same shape as character-library.js's save — the scaffold's tag chips key
+  // on labels, not ids, so the one-shot carries the label.
+  if (APP.catalog.returnTo?.view === "scaffold" && APP.scaffold?.active) {
+    APP.catalog.pendingSelect = { kind: "tags", selectLabel: next.label };
+    APP.catalog.returnTo = null;
+    go("scaffold");
+  }
 }
 
 async function remove() {

@@ -2,6 +2,7 @@ import { APP } from "./state.js";
 import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
 import { loadLibrary } from "./catalog.js";
+import { go } from "./nav.js";
 import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // The scaffold's import picker reads the same library through a lazy cache. A write here has to drop
@@ -357,6 +358,14 @@ async function save() {
   const next = { ...j.entry, hidden: !!j.entry.hidden, updatedAt: j.entry.updatedAt || 0 };
   const idx = s.entries.findIndex(c => c.id === next.id); if (idx >= 0) s.entries[idx] = next; else s.entries.unshift(next);
   if (s.selected?.id === savingId) setSelected(next); else APP.render();
+  // Create-then-return: the scaffold sent the author here. Arm the one-shot select, clear the
+  // flag before navigating (so a failed navigation can't loop), and go back — wireScaffold's
+  // return hook fires the same POST the new chip would send once the refetched cache lands it.
+  if (APP.catalog.returnTo?.view === "scaffold" && APP.scaffold?.active) {
+    APP.catalog.pendingSelect = { kind: "characters", selectId: next.id };
+    APP.catalog.returnTo = null;
+    go("scaffold");
+  }
 }
 
 // Response-driven, not optimistic: the row and badge only flip once the server confirms the

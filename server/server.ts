@@ -25,6 +25,10 @@ import type { TagFacet } from "../engine/catalog-schema.ts";
  *  the one-shot walk has no gate for any of them to steer. */
 export type Concept = { tags: string[]; castSize: number; styleId: string };
 
+/** A scoped regenerate: reconsider exactly one cast member at the staged cast gate. Cast-only by
+ *  design — no other gate has a meaningful scoped form. */
+export type RegenScope = { kind: "character"; name: string };
+
 /** What the reusable vocabulary is being used by, derived by scanning the other catalogs — the
  *  "18 uses" line, observed rather than authored. Tags are keyed by folded label (what entries
  *  store); a style carries the STYLE NAMES whose tags include it, for the tag page's "commonly
@@ -185,8 +189,9 @@ export interface ServerHost {
   scaffoldApprove(override: boolean): Promise<ScaffoldActionResult>;
   /** Re-runs the open stage's prompt without advancing the checklist — staged re-proposes only
    *  the open gate's fields, one-shot re-proposes the whole story. The conversation is kept, so
-   *  refinements usually survive; nothing reaches disk either way. */
-  scaffoldRegenerate(): Promise<ScaffoldActionResult>;
+   *  refinements usually survive; nothing reaches disk either way. With a scope, re-runs only
+   *  that member at the staged cast gate, leaving every other cast member untouched. */
+  scaffoldRegenerate(scope?: RegenScope): Promise<ScaffoldActionResult>;
   /** Revises the author's concept on the open session — never re-runs a gate. */
   scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult>;
   /** Replaces the import tray on the open session, wholesale. */

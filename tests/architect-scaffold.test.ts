@@ -10,7 +10,7 @@ import { join } from "node:path";
 import {
   loadStory, type Defaults,
 } from "../engine/story-format.ts";
-import { normalizeSpec, applyEdits } from "../engine/story-spec.ts";
+import { normalizeSpec, applyEdits, storyJsonShape } from "../engine/story-spec.ts";
 import * as P from "../prompts.ts";
 import { ScaffoldSession, type ImportedCharacter } from "../engine/architect.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
@@ -790,6 +790,162 @@ describe("ScaffoldSession, staged", () => {
       assert.equal(r.kind, "edits");
       assert.match((r as { ignored: string[] }).ignored.join(" "), /unknown field "timeline"/);
       assert.deepEqual(s.spec.timeline, []);
+    });
+  });
+
+  describe("rerunScoped", () => {
+    const RECAST_BRAE = {
+      name: "BRAE", persona: "Sold the boat and keeps the log now, nervously.",
+      knows: "The manifest closed at midnight.", goal: "An honest log at any cost",
+      belief: "Paper sinks men.", impulse: "when cornered, gets very precise",
+      voice: ["Show me where it says that."], skills: [], restrictions: ["hearing"],
+    };
+    // Walk a staged session to the open cast gate, consuming two scripted replies.
+    const atCastGate = async (script: unknown[]) => {
+      const s = stage(script);
+      await s.propose();
+      await s.approve();
+      assert.equal(s.stage, "cast");
+      return s;
+    };
+
+    it("reconsiders one member, leaving the rest byte-identical", async () => {
+      const s = await atCastGate([STORY_STAGE, CAST_STAGE, { characters: [
+        RECAST_BRAE,
+        { ...STORY.characters[0] },                       // returned unchanged, as instructed
+        { name: "ZED", persona: "Uninvited.", knows: "", goal: "", belief: "",
+          impulse: "", voice: [], skills: [], restrictions: [] },   // extra: dropped
+      ] }]);
+      const asterBefore = JSON.stringify(s.spec.characters.find(c => c.name === "ASTER"));
+      const r = await s.rerunScoped({ kind: "character", name: "brae" });
+      assert.equal(r.kind, "proposal");
+      assert.equal(s.spec.characters.length, 2, "extras in a scoped reply are ignored");
+      assert.equal(JSON.stringify(s.spec.characters.find(c => c.name === "ASTER")), asterBefore);
+      const brae = s.spec.characters.find(c => c.name === "BRAE");
+      assert.equal(brae?.goal, "An honest log at any cost");
+      assert.equal(s.spec.title, "The Fog Signal", "other gates survive the scoped merge");
+      const heard = s.architect.history.map(h => h.content).join("\n");
+      assert.match(heard, /Reconsider brae/i, "the prompt names the target");
+    });
+
+    it("leaves the spec untouched when the reply has no such member", async () => {
+      const s = await atCastGate([STORY_STAGE, CAST_STAGE, { characters: [
+        { name: "ZED", persona: "Uninvited.", knows: "", goal: "", belief: "",
+          impulse: "", voice: [], skills: [], restrictions: [] },
+      ] }]);
+      const before = JSON.stringify(s.spec.characters);
+      const r = await s.rerunScoped({ kind: "character", name: "BRAE" });
+      assert.equal(r.kind, "nothing");
+      assert.match((r as { why: string }).why, /did not contain "BRAE"/);
+      assert.equal(JSON.stringify(s.spec.characters), before);
+    });
+
+    it("refuses an unknown name without spending a model round", async () => {
+      const s = await atCastGate([STORY_STAGE, CAST_STAGE]);
+      const calls = (s.architect as unknown as { calls: number }).calls;
+      const r = await s.rerunScoped({ kind: "character", name: "ZED" });
+      assert.equal(r.kind, "failed");
+      assert.match((r as { error: string }).error, /no cast member named "ZED"/);
+      assert.equal((s.architect as unknown as { calls: number }).calls, calls, "refused before any model call");
+    });
+
+    it("refuses outside the staged cast gate", async () => {
+      const one = scaffold([STORY]);
+      const r = await one.rerunScoped({ kind: "character", name: "ASTER" });
+      assert.equal(r.kind, "failed");
+      assert.match((r as { error: string }).error, /staged cast gate/);
+    });
+  });
+
+  describe("proposal rejectables", () => {
+    it("offers every new member on the cast proposal, and only new ones", async () => {
+      const s = stage([STORY_STAGE, CAST_STAGE]);
+      const story = await s.propose();
+      assert.equal(story.kind, "proposal");
+      assert.equal((story as { stage?: string }).stage, "story");
+      assert.equal((story as { rejectable?: unknown }).rejectable, undefined,
+        "the story gate carries no rejectables");
+      const cast = await s.approve();
+      assert.equal(cast.kind, "proposal");
+      assert.deepEqual(
+        ((cast as { rejectable?: { field: string }[] }).rejectable || []).map(e => e.field).sort(),
+        ["added ASTER", "added BRAE"]);
+    });
+
+    it("a same-name re-run offers nothing", async () => {
+      const s = stage([STORY_STAGE, CAST_STAGE, { characters: STORY.characters }]);
+      await s.propose();
+      await s.approve();
+      const again = await s.rerun();
+      assert.equal(again.kind, "proposal");
+      assert.equal((again as { rejectable?: unknown }).rejectable, undefined,
+        "no new names means nothing to put back");
+    });
+
+    it("oneshot proposals carry rejectables", async () => {
+      const s = scaffold([STORY]);
+      const r = await s.propose();
+      assert.equal(r.kind, "proposal");
+      assert.deepEqual(
+        ((r as { rejectable?: { field: string }[] }).rejectable || []).map(e => e.field).sort(),
+        ["added ASTER", "added BRAE"]);
+    });
+  });
+
+  describe("regenerated cast merge", () => {
+    const FRESH_ASTER = { ...STORY.characters[0], persona: "Keeps the log in a large careless hand.",
+      knows: "The lamp went dark." };
+    const FRESH_BRAE = { ...STORY.characters[1], persona: "Sold the boat and keeps the log now.",
+      knows: "The manifest closed at midnight.", goal: "An honest log at any cost" };
+    // Walk to the open cast gate, then hand-edit BRAE's goal exactly the way Block C posts it:
+    // a whole-draft replace through setSpec.
+    const gateWithEdit = async (rerunReply: unknown) => {
+      const s = stage([STORY_STAGE, CAST_STAGE, rerunReply]);
+      await s.propose();
+      await s.approve();
+      const draft = storyJsonShape(s.spec, { default: "none" });
+      const brae = draft.characters.find((c: { name: string }) => c.name === "BRAE");
+      assert.ok(brae);
+      (brae as { goal: string }).goal = "A quiet winter, in my own words";
+      s.setSpec(draft);
+      return s;
+    };
+
+    it("keeps hand-edited fields and takes fresh ones per item", async () => {
+      const s = await gateWithEdit({ characters: [FRESH_ASTER, FRESH_BRAE] });
+      const r = await s.rerun();
+      assert.equal(r.kind, "proposal");
+      const brae = s.spec.characters.find(c => c.name === "BRAE");
+      assert.equal(brae?.goal, "A quiet winter, in my own words", "the hand edit survives");
+      assert.equal(brae?.knows, "The manifest closed at midnight.", "untouched fields go fresh");
+      assert.equal(brae?.persona, "Sold the boat and keeps the log now.");
+      const aster = s.spec.characters.find(c => c.name === "ASTER");
+      assert.equal(aster?.persona, "Keeps the log in a large careless hand.",
+        "a member nobody touched goes wholly fresh");
+      assert.equal(s.spec.title, "The Fog Signal", "other gates still survive the merge");
+    });
+
+    it("keeps a member the reply dropped, and adds one it introduced", async () => {
+      const ZED = { name: "ZED", persona: "Uninvited.", knows: "", goal: "", belief: "",
+        impulse: "", voice: [], skills: [], restrictions: [] };
+      const s = await gateWithEdit({ characters: [FRESH_ASTER, ZED] });
+      const r = await s.rerun();
+      assert.equal(r.kind, "proposal");
+      assert.equal(s.spec.characters.length, 3);
+      const brae = s.spec.characters.find(c => c.name === "BRAE");
+      assert.equal(brae?.goal, "A quiet winter, in my own words", "the dropped member keeps its hand edit");
+      const rej = ((r as { rejectable?: { field: string }[] }).rejectable || []).map(e => e.field);
+      assert.deepEqual(rej, ["added ZED"], "only the introduced name is rejectable");
+    });
+
+    it("a scoped re-run keeps the author's edits on its target too", async () => {
+      const s = await gateWithEdit({ characters: [FRESH_ASTER, FRESH_BRAE] });
+      // The scoped path pre-merges, so the reply only needs the target; anything else is ignored.
+      const r = await s.rerunScoped({ kind: "character", name: "BRAE" });
+      assert.equal(r.kind, "proposal");
+      const brae = s.spec.characters.find(c => c.name === "BRAE");
+      assert.equal(brae?.goal, "A quiet winter, in my own words", "even the target's hand edit survives");
+      assert.equal(brae?.knows, "The manifest closed at midnight.", "its untouched fields go fresh");
     });
   });
 });

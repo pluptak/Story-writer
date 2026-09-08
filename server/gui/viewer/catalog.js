@@ -43,6 +43,9 @@ function makeLazyLoader({ path, slot, label }) {
     }
   };
   load.invalidate = () => { APP.catalog[slot] = []; loading = false; loaded = false; };
+  // Whether the current cycle finished — success or failure. The scaffold's create-then-return
+  // hook waits on this: a settled cache that still lacks the awaited entry means it never lands.
+  load.settled = () => loaded;
   return load;
 }
 

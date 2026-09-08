@@ -489,6 +489,48 @@ is preserved. Judge it, name it in "note", and let the author change the cast or
 
 ${STAGE_RULES}`;
 
+/** The cast gate reconsidering exactly one member. Not a new stage prompt: the shape, the fields
+ *  and the ask contract are the cast stage's own — the only difference is scope. Everyone except
+ *  the named character must come back as an exact copy of [THE STORY SO FAR]; the engine replaces
+ *  only the named entry no matter what else the reply contains, so editing anyone else only spends
+ *  the round for nothing. */
+export const architectCastRegenerateOne = (
+  premise: string, tension: string, specSoFar: string, targetName: string,
+) => `${checklistLine("cast")}
+
+[THE PREMISE]
+${premise}
+
+[THE TENSION]
+${tension}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+YOUR STAGE: one member of the cast, and no one else --
+
+{"characters": [
+   {"name": "NAME", "persona": "...", "knows": "...", "goal": "...",
+    "belief": "...", "impulse": "when X -> Y", "voice": ["one line they would actually say"],
+    "skills": ["lockpicking :: opening a mechanical lock without its key"],
+    "restrictions": ["sight"]}],
+ "ask": "",
+ "note": ""}
+
+Reconsider ${targetName}, and only ${targetName}: return every character, but copy everyone else
+back EXACTLY as they stand above — same names, same fields, same order. Do not add anyone, do not
+remove anyone, do not touch anyone else's wants, knowledge or wording. What ${targetName} becomes
+must still put THE TENSION under strain alongside the unchanged rest of the cast. For them:
+${CHARACTER_FIELDS}
+
+${FIELD_KNOWS}
+${FIELD_GOAL}
+
+ASK RATHER THAN INVENT, for ${targetName} as for a whole cast: if you cannot tell what they want
+here, use "ask" and send nothing else.
+
+${STAGE_RULES}`;
+
 /** The style preset the author chose from their catalog, as this stage needs to see it. */
 export type StylePresetForPrompt = { name: string; voice: string };
 

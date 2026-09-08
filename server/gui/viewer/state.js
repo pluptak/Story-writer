@@ -68,6 +68,8 @@ export const APP = {
                                  // scroll to and open on live or read (&block=)
   focusScrolled: false,         // settleFocus scrolls once per focusSeq change, not every frame
   scaffold: { active:false },  // the interview, from /scaffold and its SSE frames
+  scaffoldInspect: null, // which catalog candidate the author is previewing: {kind:"import"|"style", id}
+                         // or null. Local UI only — selecting stays chip-only, inspecting never posts.
   scaffoldAccepting: false,    // an accept is in flight. The server publishes {active:false} BEFORE
                                 // the run starts, so without this the scaffold page would fall back to
                                 // the idea modal in the window between the two.
@@ -173,10 +175,16 @@ export const APP = {
                                    // vocab is separate from entries because entries is whatever kind is on
                                    // screen, while vocab is always the tags — the character form needs the
                                    // vocabulary even while it is browsing characters
-             library:[],           // the character catalog's entries, cached for the scaffold's import picker,
-                                   // separate from entries for the same reason vocab is
-             styles:[]             // the style catalog's entries, cached for the scaffold's voice picker
-            },  // the global character catalog, which unlike every other page is not scoped to a story
+              library:[],           // the character catalog's entries, cached for the scaffold's import picker,
+                                    // separate from entries for the same reason vocab is
+              styles:[],            // the style catalog's entries, cached for the scaffold's voice picker
+              returnTo:null,        // create-then-return: {view:"scaffold", kind} set when the scaffold
+                                    // sends the author to a library; the library shows a return banner
+                                    // while it is set and auto-returns after a successful save
+              pendingSelect:null,   // one-shot select on return: {kind, selectId} or {kind:"tags", selectLabel}.
+                                    // Consumed by wireScaffold's return hook with the same POST a chip
+                                    // click would send, then cleared so SSE re-renders never re-fire it
+             },  // the global character catalog, which unlike every other page is not scoped to a story
   characterLibrary: {
     loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false, menuId:"",
     search:"", visibility:"all", sort:"updated", page:1, pageSize:10,

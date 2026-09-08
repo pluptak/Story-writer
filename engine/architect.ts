@@ -217,7 +217,11 @@ export type AutoPass = {
 /** What one exchange with the architect produced, for the CLI/SSE to announce. Staged rounds carry
  *  `stage`, the checklist gate the round belongs to. */
 export type ScaffoldRound =
-  | { kind: "proposal"; note: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
+  | { kind: "proposal"; note: string; stage?: P.ScaffoldStage; auto?: AutoPass[];
+      /** What this proposal added that can be put back one item at a time — cast members a
+       *  re-run or first proposal introduced, in applied-entry shape so the viewer's revert
+       *  machinery consumes them untouched. Only ever populated for the cast. */
+      rejectable?: { field: string; before: unknown; after: unknown }[] }
   | { kind: "edits"; applied: { field: string; before: unknown; after: unknown }[]; ignored: string[]; flags: string[]; note: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
   | { kind: "question"; ask: string; stage?: P.ScaffoldStage; auto?: AutoPass[] }
   | { kind: "nothing"; why: string; stage?: P.ScaffoldStage | "done" }
@@ -383,6 +387,13 @@ export class ScaffoldSession {
   /** The style preset the author chose, if any. Assigned by whoever built the session, like
    *  `imported`: it changes what the settings gate is ASKED for rather than what the story holds. */
   style: StylePreset | null = null;
+
+  /** The cast as it stood right after the last cast content landed, keyed by lower-cased name.
+   *  A whole-gate regenerate merges per item against this: a field the author has not touched
+   *  since takes the fresh value, a field they edited keeps theirs — so hand edits survive a
+   *  re-run. One slot, overwritten on every landing, never a history. Deep-cloned on snapshot:
+   *  later gates (the technical gate writes maxRetries in place) must not move the baseline. */
+  private lastGeneratedCharacters: Map<string, StorySpec["characters"][number]> | null = null;
 
   /** The bible this session validates a proposed cast against. Assigned by whoever built the
    *  session, so the architect is judged by the catalogs the author edits rather than the ones in
@@ -552,6 +563,36 @@ export class ScaffoldSession {
     return Array.isArray(named?.value) ? named.value : undefined;
   }
 
+  /** Per-item merge for a regenerated cast (Block H). `fresh` is the just-normalized reply,
+   *  `before` the normalized spec it lands on. For every name in both, each field still equal to
+   *  the baseline (untouched by the author since generation) takes the fresh value; a field that
+   *  differs (a hand edit, a Block C role value, a technical-gate maxRetries) keeps the current
+   *  one. A name the reply dropped is kept — mirroring the import contract's "added back
+   *  unchanged" policy; a name it introduces is taken as-is. No baseline (first landing) means
+   *  wholesale. Both sides are normalized, so plain JSON comparison is field-exact. */
+  private mergeRegeneratedCast(before: StorySpec["characters"], fresh: StorySpec["characters"]):
+    StorySpec["characters"] {
+    const base = this.lastGeneratedCharacters;
+    if (!base) return fresh;
+    const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const currentByName = new Map(before.map(c => [nameKey(c.name), c]));
+    const out: StorySpec["characters"] = [];
+    for (const f of fresh) {
+      const key = nameKey(f.name);
+      const cur = currentByName.get(key);
+      currentByName.delete(key);
+      const b = base.get(key);
+      if (!cur || !b) { out.push(f); continue; }
+      const merged: Record<string, unknown> = {};
+      for (const k of new Set([...Object.keys(cur), ...Object.keys(f)]))
+        merged[k] = eq((cur as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])
+          ? (f as Record<string, unknown>)[k] : (cur as Record<string, unknown>)[k];
+      out.push(merged as StorySpec["characters"][number]);
+    }
+    for (const cur of currentByName.values()) out.push(cur);
+    return out;
+  }
+
   private takeStaged(stage: P.ScaffoldStage, out: Record<string, any>): ScaffoldRound {
     const ask = String(out.ask ?? "").trim();
     if (!ScaffoldSession.stageHasContent(stage, out, this.imported.length > 0, Boolean(this.style))) {
@@ -582,11 +623,27 @@ export class ScaffoldSession {
           + `— reverted to "${this.style.name}"`);
     }
 
+    const beforeNames = new Set(this.spec.characters.map(c => nameKey(c.name)));
     const n = normalizeSpec(this.mergedRaw(stage, mergedOut), this.catalogs);
     archLog(`STAGE ${stage}: content accepted. problems=`, n.problems);
-    this.spec = n.spec;
+    // A regenerated cast merges per item against the baseline so hand edits survive the re-run;
+    // the baseline then resets to what actually landed. First landing has no baseline: wholesale.
+    const characters = stage === "cast"
+      ? this.mergeRegeneratedCast(this.spec.characters, n.spec.characters) : n.spec.characters;
+    this.spec = { ...n.spec, characters };
     this.problems = ScaffoldSession.visibleProblems(this.spec, [...n.problems, ...importNotes, ...styleNotes], stage);
-    return { kind: "proposal", note: withAsk(out), stage };
+    if (stage === "cast")
+      this.lastGeneratedCharacters = new Map(characters.map(c =>
+        [nameKey(c.name), JSON.parse(JSON.stringify(c))] as const));
+    // Only genuinely new names are rejectable: a member who survives a re-run was not introduced
+    // by it. Added-only by design — a dropped member is re-proposed or re-said, never an entry.
+    const rejectable = stage === "cast"
+      ? this.spec.characters
+          .filter(c => !beforeNames.has(nameKey(c.name)))
+          .map(c => ({ field: `added ${c.name}`, before: null, after: c }))
+      : [];
+    return { kind: "proposal", note: withAsk(out), stage,
+             ...(rejectable.length ? { rejectable } : {}) };
   }
 
   /** One gate's proposal round. After the scene lands, the verify pass runs once: its checks --
@@ -690,6 +747,34 @@ export class ScaffoldSession {
     return this.runGate(this.stage, onStage);
   }
 
+  /** Re-run the cast gate for exactly one member — the viewer's "regenerate just this one". Only
+   *  the named entry is ever replaced: the reply's other characters are discarded and the merged
+   *  list goes back through takeStaged, so the import contract, normalizeSpec and the proposal
+   *  round all behave exactly as a whole-gate re-run. Anything else (another gate, oneshot, a
+   *  reply without the target) refuses with the spec untouched. */
+  async rerunScoped(scope: { kind: "character"; name: string },
+    onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
+    const target = String(scope?.name ?? "").trim();
+    if (this.mode !== "staged" || this.stage !== "cast")
+      return { kind: "failed", error: "a single character can only be re-run at the staged cast gate" };
+    if (!target)
+      return { kind: "failed", error: "no character named" };
+    if (!this.spec.characters.some(c => nameKey(c.name) === nameKey(target)))
+      return { kind: "failed", error: `there is no cast member named "${target}"` };
+    if (this.pendingAsk)
+      return { kind: "nothing", why: "answer the architect's question before re-running this gate", stage: this.stage };
+    const r = await architectRound(this.architect, P.architectCastRegenerateOne(
+      this.spec.premise || this.idea, this.tension || this.spec.premise, this.specJsonText(), target));
+    if ("error" in r) return { kind: "failed", error: r.error };
+    const repl = (Array.isArray(r.out.characters) ? r.out.characters : [])
+      .find((c: unknown) => nameKey(String((c as Record<string, unknown>)?.name ?? "")) === nameKey(target));
+    if (!repl)
+      return { kind: "nothing", why: `the re-proposal did not contain "${target}" — nothing changed`, stage: this.stage };
+    const characters = this.spec.characters.map(c =>
+      nameKey(c.name) === nameKey(target) ? repl : c);
+    return this.takeStaged("cast", { ...r.out, characters });
+  }
+
   private takeProposal(out: Record<string, any>): ScaffoldRound {
     const n = normalizeSpec(out, this.catalogs);
     if (!n.spec.characters.length) {
@@ -699,9 +784,19 @@ export class ScaffoldSession {
       return { kind: "nothing", why: "the reply was neither a story nor a question" };
     }
     this.asks = 0; this.pendingAsk = "";
-    this.spec = n.spec; this.problems = n.problems;
+    const beforeNames = new Set(this.spec.characters.map(c => nameKey(c.name)));
+    // Same per-item merge as a staged cast re-run: a one-shot re-proposal is also a whole-gate
+    // regenerate, and must not clobber hand edits either.
+    const characters = this.mergeRegeneratedCast(this.spec.characters, n.spec.characters);
+    this.spec = { ...n.spec, characters }; this.problems = n.problems;
     archLog("PROPOSAL: accepted. problems=", n.problems);
-    return { kind: "proposal", note: withAsk(out) };
+    this.lastGeneratedCharacters = new Map(characters.map(c =>
+      [nameKey(c.name), JSON.parse(JSON.stringify(c))] as const));
+    const rejectable = characters
+      .filter(c => !beforeNames.has(nameKey(c.name)))
+      .map(c => ({ field: `added ${c.name}`, before: null, after: c }));
+    return { kind: "proposal", note: withAsk(out),
+             ...(rejectable.length ? { rejectable } : {}) };
   }
 
   /** Runs the automatic fill-gaps/verify passes right after a proposal lands, whether reached via

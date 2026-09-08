@@ -1,7 +1,8 @@
 import { APP } from "./state.js";
 import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
-import { loadVocab, refreshUsage } from "./catalog.js";
+import { loadVocab, loadStyles, refreshUsage } from "./catalog.js";
+import { go } from "./nav.js";
 import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 const emptyDraft = () => ({ id:"", name:"", description:"", voice:"", tags:[] });
@@ -136,7 +137,24 @@ function duplicate() { const s = APP.styleLibrary; if (!s.selected) return; cons
 // sync directly, and a collapsed facet only renders its first 5 chips, so deriving tags from
 // `.lib-chip.on` would silently drop any selected tag past that cutoff.
 function collectDraft() { const s = APP.styleLibrary; if (!s.draft) return; for (const k of ["name","description","voice"]) { const el = document.getElementById(`stylib-${k}`); if (el) s.draft[k] = el.value; } dirtyFromDraft(); }
-async function save() { const s = APP.styleLibrary; collectDraft(); if (!s.draft || !needsSave(s)) return; const payload = entryOf(s.draft); if (!payload.name) { s.error = "A style needs a name."; APP.render(); return; } const j = await postJson("/catalog/save", { kind:"styles", entry:payload }, msg => { s.error = msg; APP.render(); }); if (!j?.ok) { s.error = reasonOr(j, "could not save style"); APP.render(); return; } const next = { ...j.entry, hidden:s.selected?.hidden || false, updatedAt:Date.now() }; const i = s.entries.findIndex(x => x.id === next.id); if (i >= 0) s.entries[i] = next; else s.entries.unshift(next); setSelected(next); }
+async function save() {
+  const s = APP.styleLibrary; collectDraft(); if (!s.draft || !needsSave(s)) return;
+  const payload = entryOf(s.draft); if (!payload.name) { s.error = "A style needs a name."; APP.render(); return; }
+  const j = await postJson("/catalog/save", { kind:"styles", entry:payload }, msg => { s.error = msg; APP.render(); });
+  if (!j?.ok) { s.error = reasonOr(j, "could not save style"); APP.render(); return; }
+  // The scaffold's voice picker reads its own lazy cache — drop it, or the tray keeps offering
+  // the list from before this save (the character and tag saves already invalidate theirs).
+  loadStyles.invalidate();
+  const next = { ...j.entry, hidden:s.selected?.hidden || false, updatedAt:Date.now() };
+  const i = s.entries.findIndex(x => x.id === next.id); if (i >= 0) s.entries[i] = next; else s.entries.unshift(next);
+  setSelected(next);
+  // Create-then-return: same shape as character-library.js's save.
+  if (APP.catalog.returnTo?.view === "scaffold" && APP.scaffold?.active) {
+    APP.catalog.pendingSelect = { kind: "styles", selectId: next.id };
+    APP.catalog.returnTo = null;
+    go("scaffold");
+  }
+}
 // Visibility is not built yet: ask the placeholder endpoint, report its answer, don't flip locally.
 async function toggleHidden() {
   const s = APP.styleLibrary; if (!s.selected) return;

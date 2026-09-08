@@ -156,6 +156,32 @@ describe("/scaffold routes", () => {
     assert.equal(blocked.body.gate, "cast");
   });
 
+  it("regenerate shape-checks a scope before touching the session", async () => {
+    for (const scope of ["x", { kind: "party" }, { kind: "character" }, { kind: "character", name: "  " }]) {
+      const r = await post("/scaffold/regenerate", { scope }, host([]));
+      assert.equal(r.code, 400, `scope ${JSON.stringify(scope)} is refused`);
+    }
+  });
+
+  it("scoped regenerate reconsiders one member and refuses strangers", async () => {
+    const RECAST = { ...CAST_STAGE.characters[1], knows: "The manifest closed at midnight.",
+                     goal: "An honest log at any cost" };
+    const h = host([STORY_STAGE, CAST_STAGE, { characters: [RECAST, CAST_STAGE.characters[0]] }]);
+    LIVE.awaitingPick = true;
+    await post("/scaffold/start", { idea: "two lighthouse keepers" }, h);
+    await post("/scaffold/approve", {}, h);   // the cast gate is open
+    const unknown = await post("/scaffold/regenerate",
+                               { scope: { kind: "character", name: "ZED" } }, h);
+    assert.equal(unknown.code, 400);
+    assert.match(unknown.body.reason, /no cast member named "ZED"/);
+    const r = await post("/scaffold/regenerate", { scope: { kind: "character", name: "BRAE" } }, h);
+    assert.equal(r.body.last.kind, "proposal");
+    const chars = r.body.spec.characters;
+    assert.equal(chars.length, 2);
+    assert.equal(chars.find((c: { name: string }) => c.name === "BRAE")?.goal, "An honest log at any cost");
+    assert.equal(chars.find((c: { name: string }) => c.name === "ASTER")?.knows, "It did not fire.");
+  });
+
   // -- ABANDON VERSUS WORK IN FLIGHT -----------------------------------------
   // An abandon landing while an architect round is still awaiting must strip that round of its
   // right to commit: no resurrected session, no picker resolution, no success report.
