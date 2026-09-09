@@ -87,8 +87,11 @@ test("a marker scrolls to its own block and opens it — not to itself", async (
 
     await expect(block).toBeInViewport();
     await expect(block).toHaveAttribute("open", "");
-    // The jump is addressable: what you clicked is what a pasted link reopens.
-    await expect(page).toHaveURL(new RegExp(`block=${seq}$`));
+    // The jump is addressable: what you clicked is what a pasted link reopens -- the block and
+    // the consultation inspector alike, since the marker opens both.
+    await expect(page).toHaveURL(new RegExp(`block=${seq}&inspect=${seq}$`));
+    // The inspector shows this marker's consultation, not another run's.
+    await expect(page.getByTestId("inspect.dialog")).toContainText("MERRITT");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

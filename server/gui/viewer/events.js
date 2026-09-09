@@ -36,7 +36,11 @@ export function build(store) {
         break;
       case "consult": {
         if (!cur || e.attempt === 1) { cur = { kind:"consult", seq:e.seq, who:e.character, attempts:[] }; blocks.push(cur); }
-        cur.attempts.push({ n:e.attempt, situation:e.situation, question:e.question, qa:[], flags:[] });
+        // `wants` names the shape the writer asked for (engine/consult.ts logs it on every ask,
+        // prompts/consult.ts sends it with the situation); `ctx` is the character-context snapshot
+        // the run record may one day carry beside it -- absent today, rendered only when present.
+        cur.attempts.push({ n:e.attempt, situation:e.situation, question:e.question, wants:e.wants ?? "",
+                            ctx:e.ctx ?? null, qa:[], flags:[] });
         break;
       }
       case "clarify":   last(cur)?.qa.push({ q:e.question, a:e.answer }); break;

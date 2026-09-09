@@ -19,9 +19,18 @@ export const parseHashParams = () => {
 /** The hash a page WANTS, params and all -- not just its path. A story page and a saved run are
  *  each about one particular thing, and a reload that keeps the page but loses which one is a
  *  bookmark that does not work. Sub-page targets ride along: `&block=` names the consult to open
- *  (live/read), `&modal=` the character card to reopen -- so the URL a bug report pastes IS the
- *  pinpoint. */
+ *  (live/read), `&inspect=` the consultation inspector open for it, `&modal=` the character card
+ *  to reopen -- so the URL a bug report pastes IS the pinpoint. */
 const joiner = h => h + (h.includes("?") ? "&" : "?");
+/** The inspector's deep link, extending `&block=` rather than inventing a second convention: it
+ *  names the same seq, and only when the open panel belongs to the store this view is showing
+ *  (a live inspector never leaks into a history URL, nor one run's into another's). */
+const inspectParam = view => {
+  const k = APP.consultInspect;
+  if (!k || k.view !== view || k.seq == null) return "";
+  if (view === "read" && (READV.dir !== k.dir || READV.id !== k.id)) return "";
+  return `&inspect=${k.seq}`;
+};
 const hashFor = () => {
   if (APP.view === "story" && APP.storyDir) return withExtras(`#/story?dir=${encodeURIComponent(APP.storyDir)}`);
   if (APP.view === "handoff" && APP.handoffDir) return `#/handoff?dir=${encodeURIComponent(APP.handoffDir)}`;
@@ -37,12 +46,19 @@ const hashFor = () => {
   if (APP.view === "read" && READV.dir && READV.id) {
     let h = `#/read?dir=${encodeURIComponent(READV.dir)}&id=${encodeURIComponent(READV.id)}`;
     if (APP.focusSeq != null) h += `&block=${APP.focusSeq}`;
+    h += inspectParam("read");
     return withExtras(h);
   }
   if (APP.view === "compare" && APP.compareDir)
     return `#/compare?dir=${encodeURIComponent(APP.compareDir)}&a=${encodeURIComponent(APP.compareA)}&b=${encodeURIComponent(APP.compareB)}`;
-  if ((APP.view === "live" || APP.view === "read") && APP.focusSeq != null)
-    return `#/${APP.view}?block=${APP.focusSeq}`;
+  if ((APP.view === "live" || APP.view === "read") && (APP.focusSeq != null || inspectParam(APP.view))) {
+    // The inspector extends &block=: closing the inline block while it stays open leaves
+    // &inspect= on its own, and a reload still lands on the same consultation.
+    const ins = inspectParam(APP.view).replace(/^&/, "");
+    const block = APP.focusSeq != null ? `block=${APP.focusSeq}` : "";
+    const sep = block && ins ? "&" : "";
+    return `#/${APP.view}?${block}${sep}${ins}`;
+  }
   return withExtras("#/" + APP.view);
 };
 /** modal= applies on any route (the card opens over live, read, shelf and story alike). */
@@ -76,8 +92,10 @@ export const clearFocus = () => {
 export async function go(v) {
   if (!APP.live && v !== "read" && v !== "readstory" && v !== "compare") v = "read";
   // Leaving live/read drops the block anchor -- it names a seq in the scene that page was showing,
-  // and carrying it over would scroll to whatever happens to reuse the number.
+  // and carrying it over would scroll to whatever happens to reuse the number. The inspector
+  // belongs to that scene too, so it closes with the page rather than following along.
   if (v !== "live" && v !== "read" && APP.focusSeq != null) { APP.focusSeq = null; APP.focusScrolled = false; }
+  if (v !== "live" && v !== "read") { APP.consultInspect = null; APP.inspectWant = null; }
   // Dirty guard: styled confirm before leaving the editor with unsaved changes. confirmDialog()
   // itself resolves false when one is already open, so a second navigation stacking under it
   // rolls the URL back the same way an explicit cancel does.

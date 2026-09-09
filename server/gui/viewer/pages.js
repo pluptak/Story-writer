@@ -15,6 +15,7 @@ import { paintSrcbar, paintTitle, renderRail, clearRail, phaseOf } from "./hud.j
 import { ensureLiveCast } from "./cast-sheet.js";
 import { renderTimeline, wireTimeline } from "./timeline.js";
 import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./character-card.js";
+import { consultInspectorHtml, wireConsultInspector, wireConsultInspectButtons, settleInspectWant } from "./consult-inspector.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { libraryPickerHtml, wireLibraryPicker } from "./library-picker.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
@@ -323,10 +324,11 @@ function renderLive(page, blocks) {
        <div class="prose">` + renderBlocks(blocks, true) + `</div>
     </div>
   </section>`;
-  wireConsultToggles(page);
-  wireReader(page);
-  setFoldable(blocks.some(b => b.kind === "consult"));
-  renderRail(LIVEV, blocks);
+   wireConsultToggles(page);
+   wireConsultInspectButtons(page);
+   wireReader(page);
+   setFoldable(blocks.some(b => b.kind === "consult"));
+   renderRail(LIVEV, blocks);
 }
 function renderRead(page, blocks) {
   const chrome = readChromeHtml();
@@ -352,6 +354,7 @@ function renderRead(page, blocks) {
   }
   page.innerHTML = chrome + `<div class="prose">` + renderBlocks(blocks, false) + `</div>`;
   wireConsultToggles(page);
+  wireConsultInspectButtons(page);
   wireSavedRuns(page);
   // "Compare this run" preselects the run on screen; prepareComparison defaults the other side
   // to a mate from the same chapter (story-page.js: the same pairing rule as the history rows).
@@ -430,21 +433,25 @@ function settleFocus(page) {
 /** Repainted every render(), regardless of view -- the header pill that opens the character card is
  *  visible on the live and read pages too, not just the shelf, so neither modal can live inside
  *  `#page` like the interview's does. Modals stack in order of increasing z-index: run-ended,
- *  character card, then picker as the topmost active task. Owned here rather than by the modals'
- *  own modules, since painting "every overlay modal" isn't any one's job. */
-function paintModals(goShelf) {
+ *  character card, then picker as the topmost active task. The consultation inspector paints with
+ *  them but is modeless -- a floating panel with no backdrop, below every modal -- and reads the
+ *  blocks the current view just built, so it always shows the run on screen. Owned here rather
+ *  than by the modals' own modules, since painting "every overlay" isn't any one's job. */
+function paintModals(goShelf, blocks) {
   const root = $("modalroot");
   // A styled confirm (ui.js confirmDialog) owns a promise that settles on click/backdrop/Escape --
   // a repaint clearing #modalroot would strand that promise forever (the backdrop is gone but the
   // await never resolves). Detach it across the repaint and re-append it topmost.
   const confirm = root.querySelector("#confirm-backdrop");
   if (confirm) confirm.remove();
-  if (!APP.runEnded && !APP.charCard && !APP.picker.open) { if (root.innerHTML) root.innerHTML = ""; }
+  const inspect = consultInspectorHtml(blocks);
+  if (!APP.runEnded && !APP.charCard && !APP.picker.open && !inspect) { if (root.innerHTML) root.innerHTML = ""; }
   else {
-    root.innerHTML = runEndedModalHtml() + characterCardModalHtml() + libraryPickerHtml();
+    root.innerHTML = runEndedModalHtml() + characterCardModalHtml() + libraryPickerHtml() + inspect;
     wireRunEndedModal(root, goShelf);
     wireCharacterCard(root);
     wireLibraryPicker(root);
+    wireConsultInspector(root);
   }
   if (confirm) root.appendChild(confirm);
 }
@@ -460,14 +467,17 @@ export function render() {
   paintRibbon();
   paintTitle();
   // A pending &modal= resolves against the PREVIOUS frame's chips -- they are still in the DOM
-  // here, before the page below repaints -- so the card paints in this same pass.
+  // here, before the page below repaints -- so the card paints in this same pass. A pending
+  // &inspect= resolves against the blocks just built instead: the run they name may still be
+  // loading, in which case it stays pending for a later frame.
   settleModalWant();
+  if (store && (APP.view === "live" || APP.view === "read")) settleInspectWant(blocks, APP.view, store);
   // The run-ended modal returns to the story that ran -- the next chapter, the manuscript
   // and the history all live there, not on the shelf. The shelf stays one sidenav click away.
   paintModals(() => {
     if (!APP.storyDir && LIVEV.meta?.story) APP.storyDir = LIVEV.meta.story;
     go(APP.storyDir ? "story" : "shelf");
-  });
+  }, blocks);
   const page = $("page");
   const active = document.activeElement;
   const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";

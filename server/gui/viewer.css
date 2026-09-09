@@ -296,6 +296,74 @@
   .skills .bad { color:var(--bad); }
   .verdict { margin-top:9px; font-family:var(--mono); font-size:var(--fs-11); letter-spacing:.05em; }
   .verdict.accept { color:var(--good); } .verdict.retry { color:var(--warn); }
+  /* the inline way into the floating inspector: one quiet button under the outcome, and the
+     dialogue glyph leading the collapsed summary line */
+  .consult > summary .chat { color:var(--accent); }
+  .consult-inspect { margin:10px 0 2px; }
+  .consult-inspect .btn { font-weight:400; }
+
+  /* ── the consultation inspector ──────────────────────────────────────────
+     A floating, modeless reading of one Writer ↔ Character consultation. Panel surfaces,
+     type and radius are the shared kit above; only the dialogue bubbles and the side-sheet
+     positioning are its own. Status is glyph + words, never colour alone. */
+  .inspect-panel { position:fixed; top:64px; right:16px; z-index:40; width:min(440px, calc(100vw - 32px));
+    max-height:calc(100vh - 96px); overflow:auto; background:var(--panel); border:1px solid var(--line);
+    border-radius:var(--r-xl); box-shadow:var(--shadow); padding:18px 18px 16px; }
+  .inspect-panel .eyebrow { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.1em;
+    text-transform:uppercase; color:var(--faint); margin:0 0 4px; }
+  .inspect-panel .ihead { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .inspect-panel .ihead h2 { font-family:var(--serif); font-weight:600; font-size:var(--fs-20);
+    margin:0; min-width:0; overflow-wrap:anywhere; }
+  .inspect-panel .ihead h2 .was { font-weight:400; font-size:var(--fs-15); color:var(--muted); }
+  .inspect-panel .ihead .btn { flex:none; }
+  .inspect-panel .iquest { font-family:var(--serif); font-style:italic; color:var(--muted);
+    margin:6px 0 0; font-size:var(--fs-14); }
+  .inspect-panel .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .istat { font-size:var(--fs-13); border-left:2px solid var(--line); padding-left:11px; margin:12px 0; }
+  .istat.is-accepted { border-left-color:var(--good); color:var(--ink); }
+  .istat.is-waiting { border-left-color:var(--warn); color:var(--ink); }
+  /* the conversation: two voices, told apart by side, label and serif/sans pairing */
+  .iconv { display:grid; gap:8px; margin:4px 0 12px; }
+  .inspect-panel .msg { border:1px solid var(--line); border-radius:var(--r-lg); padding:9px 12px; }
+  .inspect-panel .msg-writer { background:var(--panel-2); border-left:3px solid var(--accent); }
+  .inspect-panel .msg-character { background:var(--panel); border-left:3px solid var(--good); }
+  .inspect-panel .msg-who { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+    text-transform:uppercase; color:var(--faint); display:block; margin-bottom:4px; }
+  .inspect-panel .msg-character .msg-who { color:var(--accent); }
+  .inspect-panel .msg-body { font-size:var(--fs-14); }
+  .inspect-panel .msg-writer .msg-body { font-family:var(--sans); color:var(--ink); }
+  .inspect-panel .msg-character .msg-body { font-family:var(--serif); }
+  .inspect-panel .msg-body p { margin:0 0 .6em; }
+  .inspect-panel .msg-body p:last-child { margin-bottom:0; }
+  .inspect-panel .msg .speech { font-size:var(--fs-15); }
+  .inspect-panel .msg .action { color:var(--muted); margin-top:4px; font-size:var(--fs-13); }
+  .inspect-panel .msg .thought { color:var(--faint); font-style:italic; margin-top:4px; font-size:var(--fs-13); }
+  .inspect-panel .msg .wants { font-family:var(--mono); font-size:var(--fs-10); color:var(--accent);
+    border:1px solid var(--line); border-radius:var(--r-pill); padding:1px 7px; white-space:nowrap; }
+  .inspect-panel .inote { font-family:var(--mono); font-size:var(--fs-11); color:var(--muted);
+    margin:6px 0; line-height:1.5; }
+  .inspect-panel .iset { font-size:var(--fs-12); color:var(--warn); margin:6px 0; }
+  /* secondary and tertiary matter, one disclosure each; rejected attempts share the pattern */
+  .inspect-panel .idis { border-top:1px dashed var(--line); padding:8px 0 4px; margin-top:4px; }
+  .inspect-panel .idis > summary { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+    text-transform:uppercase; color:var(--faint); cursor:pointer; list-style:none; }
+  .inspect-panel .idis > summary::-webkit-details-marker { display:none; }
+  .inspect-panel .idis > summary:hover { color:var(--accent); }
+  .inspect-panel .idis > summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px;
+    border-radius:var(--r-xs); }
+  .inspect-panel .idis-body { padding:8px 0 4px; }
+  .inspect-panel .idis .kv { margin:0 0 8px; }
+  .inspect-panel .prev + .prev { margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); }
+  .inspect-panel .cdef { background:var(--panel-2); border-radius:var(--r-lg); padding:10px 12px; margin:8px 0; }
+  .inspect-panel .cdef .charcard-eyebrow, .inspect-panel .charcard-eyebrow { font-family:var(--mono);
+    font-size:var(--fs-10); letter-spacing:.09em; text-transform:uppercase; color:var(--faint); margin:0 0 6px; }
+  .inspect-panel .cast-voice { font-family:var(--serif); font-style:italic; color:var(--muted); margin:4px 0; }
+  .inspect-panel :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  /* narrow screens: the side sheet becomes a bottom sheet, like the library modal above */
+  @media (max-width:600px) {
+    .inspect-panel { top:auto; right:0; left:0; bottom:0; width:100%; max-height:84vh;
+      border-radius:var(--r-xl) var(--r-xl) 0 0; }
+  }
 
   /* Engine notes: a left-aligned footnote, not a centered banner — keeps the reader's eye in the
      serif column instead of bouncing out to parse engine chatter between pieces. Tone colour carries
@@ -1551,7 +1619,7 @@
       --line:#c9c9c9; --shadow:none; }
     body { background:#fff; }
     .topbar, .srcbar, .sessionbar, .timeline, .ribbon, .rail, .sidenav, .tabdot, .drop, .prompt,
-    .modal-backdrop, .lib-modal-backdrop, .reader-search, .btn, .btns, .skip { display:none !important; }
+    .modal-backdrop, .lib-modal-backdrop, .inspect-panel, .reader-search, .btn, .btns, .skip { display:none !important; }
     .page.view-enter { animation:none !important; }
     .reader-view .reader-chapter .prose > p:first-of-type::first-letter { float:none; font-size:inherit;
       line-height:inherit; padding:0; color:inherit; }

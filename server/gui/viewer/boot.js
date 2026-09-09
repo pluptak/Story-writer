@@ -8,13 +8,22 @@ const isSameOrigin = url => { try { return new URL(url, location.href).origin ==
 
 // ---- boot ---------------------------------------------------------------
 export async function boot() {
-  // Sub-page deep links (&block=, &modal=) are read before anything loads, so whichever flow this
+  // Sub-page deep links (&block=, &inspect=, &modal=) are read before anything loads, so whichever flow this
   // boot takes lands with them pending -- pages.js's settle picks them up once the target exists
   // on screen.
   const p = parseHashParams();
   if (p.get("block")) {
     const seq = Number(p.get("block"));
     if (Number.isFinite(seq)) APP.focusSeq = seq;
+  }
+  // &inspect= extends &block=: without a block it still implies one, so a bare inspect link
+  // scrolls to the consultation it opens.
+  if (p.get("inspect")) {
+    const seq = Number(p.get("inspect"));
+    if (Number.isFinite(seq)) {
+      APP.inspectWant = seq;
+      if (APP.focusSeq == null) APP.focusSeq = seq;
+    }
   }
   if (p.get("modal")) APP.modalWant = p.get("modal");
   // Same reason, one page further on: the catalog seeds its kind from the URL, and the first

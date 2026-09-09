@@ -69,6 +69,16 @@ export const APP = {
   focusSeq: null,               // deep link / timeline jump target: the seq of the consult block to
                                  // scroll to and open on live or read (&block=)
   focusScrolled: false,         // settleFocus scrolls once per focusSeq change, not every frame
+  consultInspect: null,         // the consultation inspector's target: {view:"live"|"read", dir, id, seq,
+                                // invoker:{type:"timeline"|"block", seq}|null} -- or null when it is closed.
+                                // Read runs key dir+id so a stored run's inspector can never show the live
+                                // run's conversation; live keys the view alone (LIVEV has no run id) and a
+                                // fresh scene (events reset, seq gone) drops it at the next paint.
+  inspectWant: null,            // deep link pending: the seq `&inspect=` names -- resolved against the blocks
+                                // once the run they belong to is on screen, like &block= above
+  consultFocusPending: false,   // the inspector just opened: focus its close button once painted, then clear
+  consultFocusInside: false,    // focus is inside the inspector: an SSE repaint that drops it back to
+                                // <body> puts it back, so a live run never strands a keyboard reader
   stepScrolledFor: null,      // settleStep scrolls once per ?step= value, not every frame
   scaffold: { active:false },  // the interview, from /scaffold and its SSE frames
   scaffoldInspect: null, // which catalog candidate the author is previewing: {kind:"import"|"style", id}

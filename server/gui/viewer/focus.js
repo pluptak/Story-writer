@@ -60,13 +60,13 @@ $("focusexit").onclick = () => exitFocus();
 addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "Escape") {
-    if (!focusOn() || document.querySelector(".modal-backdrop")) return;
+    if (!focusOn() || document.querySelector(".modal-backdrop") || APP.consultInspect) return;
     e.preventDefault();
     exitFocus();
     return;
   }
   if (e.key.toLowerCase() !== "f") return;
-  if (!isFocusView() || document.querySelector(".modal-backdrop")) return;
+  if (!isFocusView() || document.querySelector(".modal-backdrop") || APP.consultInspect) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   e.preventDefault();

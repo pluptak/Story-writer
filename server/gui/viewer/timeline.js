@@ -1,6 +1,7 @@
 import { $, esc, tid } from "./util.js";
 import { APP } from "./state.js";
 import { noteFocus } from "./nav.js";
+import { openConsultInspector } from "./consult-inspector.js";
 
 /** A compact horizontal consult-timeline strip below the run controls. Each marker shows one
  *  consult block: the character's name, whether it was retried, whether it hit the chapter-wide
@@ -35,13 +36,15 @@ export function renderTimeline(blocks) {
 /** Wired from the strip's own element, not from `#page` -- it is a sibling of the layout, not a
  *  child of it. The jump goes through noteFocus + render: pages.js's settle does the
  *  scroll-and-open against the fresh DOM, and the URL gains `&block=` so what you jumped to is
- *  what a pasted link reopens. */
+ *  what a pasted link reopens. The consultation inspector opens for the same marker, so the
+ *  exchange behind it reads as a dialogue rather than an engine log. */
 export function wireTimeline() {
   const el = $("timeline");
   if (!el) return;
   for (const m of el.querySelectorAll(".tl-marker")) {
     m.addEventListener("click", () => {
       noteFocus(Number(m.dataset.seq));
+      openConsultInspector(Number(m.dataset.seq), { type: "timeline", seq: Number(m.dataset.seq) });
       APP.render();
     });
   }

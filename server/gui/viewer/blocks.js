@@ -60,7 +60,7 @@ function renderConsult(b) {
   }).join("");
 
   return `<details ${tid("prose.consult")} class="consult" data-seq="${esc(b.seq)}"${isOpen ? " open" : ""}>
-    <summary><span class="who">${esc(b.who)}</span><span class="decide">decides</span><span class="qs">${esc(decision)}</span>${tags}</summary>
+    <summary><span class="chat" aria-hidden="true">💬</span><span class="who">${esc(b.who)}</span><span class="decide">decides</span><span class="qs">${esc(decision)}</span>${tags}</summary>
     <div class="body">
       <p class="decide-why">The story reached a moment only ${esc(b.who)} could decide, so it stopped for them.</p>
       <div class="kv" data-tid="consult.situation"><span class="k">The situation</span><span class="v">${esc(fin.situation || "")}</span></div>
@@ -74,6 +74,8 @@ function renderConsult(b) {
           ${ans.note ? `<div class="thought">note: ${esc(ans.note)}</div>` : ""}
         </div></div>` : ""}
       <div class="decide-outcome" data-tid="consult.outcome">${esc(outcome)}</div>
+      <div class="consult-inspect"><button ${tid("consult.inspect-btn")} class="btn small" data-seq="${esc(b.seq)}"
+        title="open the Writer ↔ ${esc(b.who)} exchange in a floating inspector">💬 Inspect the conversation</button></div>
       <details class="engine-details" data-tid="consult.engine-details">
         <summary>How this was decided${b.attempts.length > 1 ? ` · ${b.attempts.length} attempts` : ""}</summary>
         ${attempts}

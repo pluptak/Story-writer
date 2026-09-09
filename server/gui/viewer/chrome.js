@@ -5,6 +5,7 @@ import { setSrc } from "./hud.js";
 import { go } from "./nav.js";
 import { cancelLibraryPicker } from "./library-picker.js";
 import { refocusCharInvoker } from "./character-card.js";
+import { closeConsultInspector } from "./consult-inspector.js";
 
 // ---- chrome -------------------------------------------------------------
 $("expand").onclick = () => {
@@ -71,7 +72,17 @@ addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const backdrops = [...document.querySelectorAll(".modal-backdrop")];
   const top = backdrops[backdrops.length - 1];
-  if (!top) return;
+  if (!top) {
+    // The consultation inspector is modeless -- above the page but below every modal -- so it
+    // only gets the key when nothing else wants it. Consumed here (no focus-mode exit on the
+    // same keystroke): the keystroke closed the panel, not the mode.
+    if (APP.consultInspect) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeConsultInspector();
+    }
+    return;
+  }
   if (top.id === "confirm-backdrop") { e.preventDefault(); top._confirmResolve?.(false); return; }
   if (top.id === "iv-backdrop") { e.preventDefault(); go("shelf"); return; }
   if (top.id === "picker-backdrop") { e.preventDefault(); cancelLibraryPicker(); return; }
