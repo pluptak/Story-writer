@@ -164,7 +164,7 @@ test("repeated buttons carry distinct accessible names", async ({ page, served }
     await expect(page.getByRole("button", { name: /read chapter 1.*run/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /compare chapter 1.*run/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "read chapter 1", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /edit chapter 1 scenes/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /edit story.*chapter 1/ })).toBeVisible();
 
     await page.locator('[data-tid="story.run-btn"][data-run="run-a"]').click();
     await expect(page.getByTestId("agents.panel")).toBeVisible();
@@ -172,6 +172,24 @@ test("repeated buttons carry distinct accessible names", async ({ page, served }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("closing a character card returns focus to its pill", async ({ page, served }) => {
+  await expect.poll(() => sseClients.size, { timeout: 5_000 }).toBeGreaterThan(0);
+  LIVE.running = true;
+  setWhere("writing", true);
+  await arrive(page, served, "#/live");
+  await expect.poll(() => sseClients.size, { timeout: 5_000 }).toBeGreaterThan(0);
+  publish({ t: "scene_start", story: "tests/fixtures/doorway", characters: ["RIVEN"], target: 700, chapter: 1 });
+  publish({ t: "draft", step: 1, consulting: "", salvaged: false, chapter: 1, words: 42,
+    prose: "Merritt hears the courier out, then names the one thing the log will accept." });
+  await expect(page.getByTestId("live.prose-card")).toBeVisible();
+  const pill = page.getByTestId("cast.chip").first();
+  await pill.click();
+  await expect(page.locator("#charcard-backdrop")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#charcard-backdrop")).toHaveCount(0);
+  await expect(pill).toBeFocused();
 });
 
 test("secondary text keeps 4.5:1 in light and dark", async ({ page, served }) => {

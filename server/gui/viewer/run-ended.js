@@ -20,18 +20,18 @@ export function runEndedModalHtml() {
         <div class="tech">${esc(e.steps)} steps taken</div></details>
       ${hint(`nothing is running anymore. Chapters and past runs are on the story page.`)}
       <div class="btns mt-sm">
-        ${button({ label: "back to shelf", id: "runended-shelf", variant: "primary" })}
+        ${button({ label: "back to the story", id: "runended-story", variant: "primary" })}
         ${button({ label: "stay here", id: "runended-stay" })}
       </div>`,
   });
 }
 
-/** `goShelf` is injected (pages.js, which owns navigation and repaints this every render via its
- *  own `paintModals`) rather than imported, keeping this module ignorant of how "go to the shelf"
+/** `goStory` is injected (pages.js, which owns navigation and repaints this every render via its
+ *  own `paintModals`) rather than imported, keeping this module ignorant of how "go to the story"
  *  is done. */
-export function wireRunEndedModal(root, goShelf) {
+export function wireRunEndedModal(root, goStory) {
   const stay = () => { APP.runEnded = null; APP.render(); };
   wireModalClose(root, { backdropId: "runended-backdrop", onClose: stay });
   on(root, "runended-stay", stay);
-  on(root, "runended-shelf", () => { APP.runEnded = null; goShelf(); });
+  on(root, "runended-story", () => { APP.runEnded = null; goStory(); });
 }

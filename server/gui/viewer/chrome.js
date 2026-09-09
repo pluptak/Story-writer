@@ -4,6 +4,7 @@ import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
 import { go } from "./nav.js";
 import { cancelLibraryPicker } from "./library-picker.js";
+import { refocusCharInvoker } from "./character-card.js";
 
 // ---- chrome -------------------------------------------------------------
 $("expand").onclick = () => {
@@ -74,7 +75,14 @@ addEventListener("keydown", e => {
   if (top.id === "confirm-backdrop") { e.preventDefault(); top._confirmResolve?.(false); return; }
   if (top.id === "iv-backdrop") { e.preventDefault(); go("shelf"); return; }
   if (top.id === "picker-backdrop") { e.preventDefault(); cancelLibraryPicker(); return; }
-  if (top.id === "charcard-backdrop") { APP.charCard = null; APP.modalWant = ""; }
+  if (top.id === "charcard-backdrop") {
+    const name = APP.charCard?.name;
+    APP.charCard = null; APP.modalWant = "";
+    e.preventDefault();
+    APP.render();
+    refocusCharInvoker(name);
+    return;
+  }
   else if (top.id === "runended-backdrop") APP.runEnded = null;
   else return;
   e.preventDefault();

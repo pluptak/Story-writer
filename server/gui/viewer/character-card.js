@@ -112,8 +112,22 @@ export function characterCardModalHtml() {
   });
 }
 
+/** Return focus to the pill that opened the card: closing rebuilds the page, so the invoking
+ *  chip is looked up by name afterwards rather than held across the render. A card opened from
+ *  a deep link (or whose pill has since vanished) simply leaves focus where the render put it. */
+export function refocusCharInvoker(name) {
+  if (!name) return;
+  const chip = [...document.querySelectorAll(".chip[data-char-name]")]
+    .find(c => c.dataset.charName === name);
+  if (chip instanceof HTMLElement) { try { chip.focus(); } catch { /* keep focus where it is */ } }
+}
+
 export function wireCharacterCard(root) {
-  const close = () => { APP.charCard = null; APP.modalWant = ""; APP.render(); };
+  const close = () => {
+    const name = APP.charCard?.name;
+    APP.charCard = null; APP.modalWant = ""; APP.render();
+    refocusCharInvoker(name);
+  };
   wireModalClose(root, { backdropId: "charcard-backdrop", closeId: "charcard-close", onClose: close });
 }
 

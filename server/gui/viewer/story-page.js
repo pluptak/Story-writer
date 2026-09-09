@@ -129,7 +129,7 @@ function sceneRowHtml(s, scene, chapters, canWrite, why, discardable, beats) {
       <button ${tid("story.write-btn")} class="btn${state === "current" ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
       ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}" aria-label="${open ? "close" : "read"} chapter ${scene.n}">${open ? "close" : "read"}</button>` : ""}
       ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
-      <button ${tid("story.scene-edit-btn")} class="btn small sceneedit" data-chapter="${scene.n}" title="edit this story's scenes and cast" aria-label="edit chapter ${scene.n} scenes and cast">edit</button>
+      <button ${tid("story.scene-edit-btn")} class="btn small sceneedit" data-chapter="${scene.n}" title="edit this story's scenes and cast" aria-label="edit story — from chapter ${scene.n}">edit</button>
     </div>
     ${detail ? `<details class="sc-context" data-tid="story.scene-context"><summary>Context</summary>${detail}</details>` : ""}
     ${open ? `<div class="prose mt-12">${paras(APP.chapter.text)}</div>` : ""}

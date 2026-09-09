@@ -88,9 +88,9 @@ state. See "Replacing the GUI" below.
 
 The page is a persistent shell — topbar, srcbar breadcrumb, sidenav, run rail — over one `#page` the
 current view replaces. The sidenav's three groups are the author's mental model, not the schema's:
-**Stories** (`shelf` — My stories, `scaffold` — + New story), **Workspace** (`scaffold`/`handoff` —
-Architect, whichever session is live; `story` — Story map; `live` — Write; `readstory` — Manuscript;
-`read` — Saved runs), and **Libraries** — a secondary, collapsed-by-default disclosure holding the
+**Stories** (`shelf` — My stories, `scaffold` — + New story), **Workspace** (`story` — Story map,
+including the chapter preparation it launches; `live` — Write; `readstory` — Manuscript;
+`read` — History), and **Libraries** — a secondary, collapsed-by-default disclosure holding the
 character catalog's four kinds (`characters`, `styles`, `tags`, `skills`). Libraries stay globally
 accessible (same routes, same shelf card, same contextual pickers inside the interview's direction
 and cast & world stages) but are no longer primary destinations. The principle the grouping follows: **the GUI exposes the

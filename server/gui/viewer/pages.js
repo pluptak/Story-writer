@@ -43,13 +43,14 @@ function restoreFocus(page, id) {
 // ---- the three pages --------------------------------------------------------
 function renderNav() {
   document.body.dataset.view = APP.view;
-  // Map views to their nav items: the story page reads as "shelf"; the handoff and scaffold read
-  // as their respective architect buttons; the edit page reads as "story".
+  // Map views to their nav items: the story page reads as the story map; the scaffold (the
+  // new-story interview) reads as "+ New story", which is also its entry point; the chapter
+  // preparation reads as the story map that launched it; the edit page reads as "story" too.
   const viewToNav = {
     shelf: "nav-shelf",
     story: "nav-story",
-    scaffold: "nav-architect",
-    handoff: "nav-architect",
+    scaffold: "nav-new",
+    handoff: "nav-story",
     edit: "nav-story",
     live: "nav-live",
     read: "nav-read",
@@ -461,7 +462,12 @@ export function render() {
   // A pending &modal= resolves against the PREVIOUS frame's chips -- they are still in the DOM
   // here, before the page below repaints -- so the card paints in this same pass.
   settleModalWant();
-  paintModals(() => go("shelf"));
+  // The run-ended modal returns to the story that ran -- the next chapter, the manuscript
+  // and the history all live there, not on the shelf. The shelf stays one sidenav click away.
+  paintModals(() => {
+    if (!APP.storyDir && LIVEV.meta?.story) APP.storyDir = LIVEV.meta.story;
+    go(APP.storyDir ? "story" : "shelf");
+  });
   const page = $("page");
   const active = document.activeElement;
   const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";

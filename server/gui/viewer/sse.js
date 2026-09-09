@@ -31,7 +31,12 @@ export async function tryHttp() {
   try {
     const r = await fetch("/run"); if (!r.ok) throw 0;
     const j = await r.json();
-    if (j.run) { LIVEV.meta = j.run; }
+    if (j.run) {
+      LIVEV.meta = j.run;
+      // A reload straight into the live view never visited the story page, so the story map
+      // would render empty -- recover the running story while nothing else has claimed it.
+      if (j.run.story && !APP.storyDir) APP.storyDir = j.run.story;
+    }
     APP.session = sessionFrom(j);
     APP.live = true;
     loadModels();
@@ -188,6 +193,10 @@ export function startSSE() {
     // identity of the event in both the log and the stream.
     if (f.seq !== undefined) { if (LIVEV.seen.has(f.seq)) return; LIVEV.seen.add(f.seq); }
     LIVEV.events.push(f);
+    // The run names its story; a viewer pulled here by the run-start edge (or a reconnect that
+    // missed the boot fetch) recovers it the same way, so the story map stays reachable. Only
+    // when empty -- never retarget a story page deliberately being browsed mid-run.
+    if (f.t === "scene_start" && f.story && !APP.storyDir) APP.storyDir = f.story;
     if (f.t === "reader_ask") { APP.wantReaderView = true; APP.awaitingReader = true; }
     if (f.t === "reader_answer") APP.awaitingReader = false;
     // Re-render whole, debounced: a scene is a few dozen events, and rebuilding is far cheaper

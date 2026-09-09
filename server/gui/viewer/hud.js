@@ -58,7 +58,9 @@ function crumbsFor() {
     case "live": {
       const d = LIVEV.meta?.story;
       if (!d) return [shelf, { label: "writing" }];
-      return [shelf, { label: name(d) }, { label: "writing" + chapterSuffix(LIVEV.meta) }];
+      // The story crumb carries its destination: after a reload straight into the live view
+      // APP.storyDir may be empty, and navigateCrumb (chrome.js) seeds it from the crumb.
+      return [shelf, { label: name(d), view: "story", dir: d }, { label: "writing" + chapterSuffix(LIVEV.meta) }];
     }
     default:          return [{ label: "nothing loaded" }];
   }

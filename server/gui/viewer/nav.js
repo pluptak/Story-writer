@@ -135,12 +135,5 @@ for (const t of document.querySelectorAll("#sidenav .navitem"))
       if (kind === "tags") APP.tagLibrary.loaded = false;
       if (kind === "skills") APP.skillLibrary.loaded = false;
     }
-    // "Architect" is whichever session is open — the handoff re-authors a cast, the scaffold builds
-    // a new story, and only one of them is ever live.
-    if (t.id === "nav-architect" && APP.handoff.active) {
-      APP.handoffDir = APP.handoff.dir;
-      go("handoff");
-      return;
-    }
     go(v);
   });

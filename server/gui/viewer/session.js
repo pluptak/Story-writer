@@ -1,5 +1,5 @@
 import { $, post, notify, modelOptionsHtml } from "./util.js";
-import { APP } from "./state.js";
+import { APP, LIVEV } from "./state.js";
 
 /** Every session control shares one inline slot -- cleared at the start of each new attempt so a
  *  stale refusal from a different button doesn't linger, set again only if this one also fails. */
@@ -25,7 +25,14 @@ export function renderSession() {
   b.disabled = !APP.session.running || APP.session.stopping;
   b.classList.toggle("armed", !!APP.armed);
   b.textContent = APP.session.stopping ? "stopping…" : APP.armed ? "confirm stop" : "stop run";
-  $("where").textContent = (onLive && APP.session.where) ? "· " + APP.session.where : "";
+  // The engine's `where` carries a raw directory suffix ("writing data/stories/doorway") that
+  // means nothing to a writer and duplicates the breadcrumb beside it. Strip the path the run
+  // is known by, and hide the steady state entirely -- the crumbs and the rail already say
+  // "writing". What remains visible is a genuine change: choosing, loading, finished, stopped.
+  const raw = onLive && APP.session.where ? APP.session.where : "";
+  const dir = LIVEV.meta?.story || APP.storyDir || "";
+  const shown = (dir ? raw.replace(dir, "") : raw).replace(/\s{2,}/g, " ").trim();
+  $("where").textContent = shown && shown !== "writing" ? "· " + shown : "";
   const iv = $("interactive");
   iv.classList.toggle("off", !APP.session.interactive);
   iv.textContent = APP.session.interactive ? "interactive" : "hands off";

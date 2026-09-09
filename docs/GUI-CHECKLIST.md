@@ -312,7 +312,7 @@ story page → **read story**. The button only appears once a story has a writte
       the hash is written twice, once by `go()` before the story is known and again by `loadReader`.
       Reload the page on that URL: it comes back to the same story's prose, not the shelf.
 - [ ] **back** returns to the story page it was opened from, not the shelf.
-- [ ] **The saved-run view is untouched.** Open a retained run from the Saved runs view, note which run it
+- [ ] **The saved-run view is untouched.** Open a retained run from the History view, note which run it
       is, then open the reader and come back. `#/read?dir=&id=` still opens that run, still labelled —
       the reader must not have cleared it.
 - [ ] **Empty story.** Open the reader on **THE BLANK** by hand at `#/readstory?dir=<THE BLANK>`.
@@ -359,7 +359,7 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
       and `no restriction`, never merged into either list.
 - [ ] **Read-only.** No inputs, no edit affordances — it is for the human reviewing what a consult
       was working from, never an edit surface.
-- [ ] **Live only.** The same pill on the shelf or the Saved runs view opens the card with the pill's own
+- [ ] **Live only.** The same pill on the shelf or the History view opens the card with the pill's own
       can/cannot row only — no authored fields, and no `/cast` fetch fires. The sheet belongs to a
       running scene.
 - [ ] **It survives a model swap and a pause** without refetching visibly or losing the fields —
@@ -713,13 +713,13 @@ The sidenav is fixed chrome, so most of what can go wrong is reachability and wh
 Without an engine attached (`go()` rewrites everything but `read`/`readstory`/`compare` to `read`):
 
 - [ ] **Only what is reachable is visible.** Stories and Libraries show no items; the Workspace group
-      shows only **Saved runs** and **Manuscript**. A group whose every item is hidden must not render
+      shows only **History** and **Manuscript**. A group whose every item is hidden must not render
       as a bare heading — a hidden group follows its children.
-- [ ] **With an engine attached**, all three groups appear: My stories / + New story; Architect / Story
-      map / Write / Manuscript / Saved runs; Characters / Styles / Tags / Skill Bible.
-- [ ] **The Architect item is whichever session is live.** Start a new story (+ New story), then
-      navigate away and click **Architect** — the interview continues, not a second one. With a
-      handoff open on a story, clicking **Architect** lands on the handoff panel.
+- [ ] **With an engine attached**, all three groups appear: My stories / + New story; Story
+      map / Write / Manuscript / History; Characters / Styles / Tags / Skill Bible.
+- [ ] **One door per destination.** + New story is the only sidenav entry to the interview; an open
+      interview is continued from the shelf's resume card, an open chapter preparation from its
+      story page's "continue preparing" row.
 - [ ] **Each Libraries entry lands on its kind.** Click Tags: the URL reads `#/catalog?kind=tags` and
       the tag list loads — not characters. Deep-linking `#/catalog?kind=skills` cold does the same.
 - [ ] **The current item is marked.** The view you are on reads as `current` (and `aria-current="page"`),

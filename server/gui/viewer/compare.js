@@ -115,7 +115,13 @@ export async function loadComparisonRuns() {
 function paneHtml(store, title, side) {
   if (!store.events.length) return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${hint(COMPAREV.loading ? "reading…" : "this run is empty")}</section>`;
   const blocks = build(store);
-  return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${readChromeHtml(store, true, COMPARE_AGENTS[side], false)}<div class="prose">${blocks.map(b => renderBlock(b, false)).join("")}</div></section>`;
+  // A comparison is about the prose: a pane whose run logged no model calls drops its Model
+  // calls section rather than showing an empty one twice. Anything still loading (or failed)
+  // keeps the panel, so "reading…" and errors still surface.
+  const ag = COMPARE_AGENTS[side];
+  const noCalls = !!ag?.agents && ag.agents.dir === store.dir && ag.agents.id === store.id
+    && !ag.agents.logs.length && !ag.agentsError;
+  return `<section ${tid("compare.pane")} class="compare-pane" data-side="${side}"><h3>${esc(title)}</h3>${readChromeHtml(store, !noCalls, ag, false)}<div class="prose">${blocks.map(b => renderBlock(b, false)).join("")}</div></section>`;
 }
 
 export function comparisonPageHtml() {
