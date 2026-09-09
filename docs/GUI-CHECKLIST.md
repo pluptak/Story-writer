@@ -2,7 +2,7 @@
 
 **Everything in this file is work for a person.** `npm test` covers the engine and the route modules
 and `npm run test:gui` covers the viewer's mechanical half — Playwright driving the real server
-in-process over a fixture ServerHost, no LM Studio, nothing in `stories/` touched. What is left here
+in-process over a fixture ServerHost, no LM Studio, nothing in `data/stories/` touched. What is left here
 is what neither can reach: a real model's behaviour, a truth that is not on the page, a second
 client, and layout, theme, focus and feel.
 
@@ -54,7 +54,7 @@ as addressed. Instances are told apart by the data-* key beside the tid: `data-s
 
 Rules for new work:
 
-- A component added under [server/gui/](server/gui/) carries a `data-tid`; build it with the `tid()`
+- A component added under [server/gui/](../server/gui/) carries a `data-tid`; build it with the `tid()`
   helper from `util.js`.
 - The tid names the **role**, never state or position (`story.write-btn`, not `story.write-btn-green`
   or `story.write-btn2`) — a restyle or reorder must never invalidate a locator.
@@ -101,12 +101,12 @@ unreachable in practice and cannot be re-checked live.
 
 ## Pick your stories — do this before section 1
 
-`stories/` is the author's own content and is gitignored, so **this list never names a story**: every
+`data/stories/` is the author's own content and is gitignored, so **this list never names a story**: every
 story it once named has since been deleted, taking a third of the pass with it. The checks below
 refer to stories by the role they have to play. Find today's cast first:
 
 ```bash
-for d in stories/*/; do n=$(basename "$d"); echo "$n | scenes=$(node -p "JSON.parse(require('fs').readFileSync('$d/story.json','utf8')).scenes?.length??1") | chapters=[$(ls "$d/chapters" 2>/dev/null | grep -c json)] | runs=$(ls -d "$d"/out/*/ 2>/dev/null | wc -l)"; done
+for d in data/stories/*/; do n=$(basename "$d"); echo "$n | scenes=$(node -p "JSON.parse(require('fs').readFileSync('$d/story.json','utf8')).scenes?.length??1") | chapters=[$(ls "$d/chapters" 2>/dev/null | grep -c json)] | runs=$(ls -d "$d"/out/*/ 2>/dev/null | wc -l)"; done
 ```
 
 - **THE SERIAL** — two or more scenes and at least one written chapter. Sections 2, 4, 5, 7 and 8
@@ -114,7 +114,7 @@ for d in stories/*/; do n=$(basename "$d"); echo "$n | scenes=$(node -p "JSON.pa
   exists, section 2 creates one by writing the next chapter, so run section 2 before them.
 - **THE SINGLETON** — one scene, two or more retained runs. Section 1's flat-list check needs it.
 - **THE BLANK** — no written chapters, for section 8's empty-reader check. If every story on disk
-  has one, make a throwaway: copy any `story.json` into `stories/scratch/` and leave it unrun.
+  has one, make a throwaway: copy any `story.json` into `data/stories/scratch/` and leave it unrun.
 
 Where a check needs more than the role gives it, it says so and offers the skip.
 
@@ -125,7 +125,7 @@ Shelf → **THE SERIAL** → the *previous runs* list at the bottom.
 Run IDs rotate, so read the truth off disk rather than trusting a list written here:
 
 ```bash
-for r in stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o '"chapter":[0-9]*' "$r/writing-log.jsonl" | tail -1; done
+for r in data/stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o '"chapter":[0-9]*' "$r/writing-log.jsonl" | tail -1; done
 ```
 
 - [ ] Every run that command prints appears on the page, under a label matching the chapter it printed.
@@ -164,7 +164,7 @@ the chapter the click actually named.
   Only a confirmed rewrite sends `replace`, and `chapters/` is the durable record, so the run
   refuses to start without it. The refusal is what covers a story list this page read before the
   chapter existed: leave the shelf open, write a chapter from another shell
-  (`npx tsx story-writer.ts stories/<story> --chapter=n`), then start that same chapter from the
+  (`npx tsx story-writer.ts data/stories/<story> --chapter=n`), then start that same chapter from the
    still-open page. No confirm modal is offered — the page does not know it exists — and the run must be
   refused with `chapter n is already written` rather than overwriting it silently.
 
@@ -232,7 +232,7 @@ section 2 wrote. (`P` has to be a scene the story does not have yet — that is 
 
 Drift is detected by comparing a chapter's prose against the `chapters/<n>.json` snapshot taken when
 it was written, so only chapters that *have* one can be checked. Any chapter written before snapshots
-existed stays quiet forever — check `ls stories/<THE SERIAL>/chapters/` and use a chapter that has a
+existed stays quiet forever — check `ls data/stories/<THE SERIAL>/chapters/` and use a chapter that has a
 `.json` beside its `.md`. Call it `S` — the chapter section 2 wrote is always one.
 
 - [ ] Hand-edit that story's `story.json`, changing scene `S`'s `question`.
@@ -258,7 +258,7 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
       still there, labelled by scene everywhere it shows.
-- [ ] **Reach never reads as intrinsic.** Open a cast pill's character card on the live screen (§10)
+- [ ] **Reach never reads as intrinsic.** Open a cast pill's character card on the live screen (§7)
       for a story whose
       scenes carry reach: each grant appears as its own accent-coloured tag naming its scene
       (`⇢ cameras · scene N`), separate from skills (`+…`) and restrictions (`no …`), and never as a
@@ -500,11 +500,11 @@ a *new* story folder — so it can go anywhere in the pass.
       Secondaries: **return to blueprint**, **save and leave** (session stays live; the shelf's
       resume panel shows it), and an **inspect details** disclosure with the complete Blueprint.
 - [ ] **The folder step says what is taken, before the click.** Type the name of a story that already
-      exists: the step says *stories/&lt;slug&gt; already exists — pick another name* and **Start
+       exists: the step says *data/stories/&lt;slug&gt; already exists — pick another name* and **Start
       writing →** goes disabled, updating as you type without the caret jumping. The field arrives
       prefilled from the title slug. Type a name that
-      slugifies to something different (`Bay 4 — Hatches!`) and it previews *this lands in
-      stories/bay-4-hatches* instead. Two stories built from one premise get the same title and so
+       slugifies to something different (`Bay 4 — Hatches!`) and it previews *this lands in
+       data/stories/bay-4-hatches* instead. Two stories built from one premise get the same title and so
       the same slug, which is how this is hit in practice.
 - [ ] **Abandon** (second click) drops the session and returns to the shelf.
 - [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
@@ -658,7 +658,7 @@ half, the clauses a story derives from its POV and its cast's restrictions, is d
 ### Skills, the fourth kind
 
 The persisted special-skill bible. A skill takes a name, a meaning and tags; it takes no voice, no
-persona and no restrictions ([`Architect.MD`](docs/Architect.MD)'s *Skill bible* says why restrictions get
+persona and no restrictions ([`Architect.MD`](Architect.MD)'s *Skill bible* says why restrictions get
 no catalog of their own).
 
 - [ ] **The seed is there before anything is saved.** A first run on `#/catalog?kind=skills` lists the
@@ -695,7 +695,7 @@ the page already loaded returns **the same instance**:
 
 ```js
 const { APP, LIVEV } = await import('/viewer/state.js');
-LIVEV.meta = { story:"stories/doorway", chapter:2, chapters:3, target:700, question:"…", characters:[] };
+LIVEV.meta = { story:"data/stories/doorway", chapter:2, chapters:3, target:700, question:"…", characters:[] };
 LIVEV.events = [ /* the same shapes writing-log.jsonl holds */ ];
 APP.view = "live"; APP.live = true; APP.render();
 ```

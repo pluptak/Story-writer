@@ -4,7 +4,7 @@
 single-purpose model call that guards one door the writer's own judgement cannot be trusted to
 guard alone. This document owns all of them — their shared contract, one section per variant, and
 the failure behaviour each fails with. The writer's side of the consult protocol is in
-[`Writer.MD`](docs/Writer.MD); the cast gate's session behaviour is in [`Architect.MD`](docs/Architect.MD).
+[`Writer.MD`](Writer.MD); the cast gate's session behaviour is in [`Architect.MD`](Architect.MD).
 
 ## The family
 
@@ -17,7 +17,7 @@ All five share one contract, and it is what makes them judges rather than helper
   takes the architect's.
 - **One response schema each.** Nothing else in the engine holds exactly one shape.
 - **The shared cast block** (`castBlock`, `prompts/internal.ts`) — each character's delta from the
-  human baseline (`can:`, `REACH:`, `CANNOT:`; see [`Writer.MD`](docs/Writer.MD)) — plus a closing
+  human baseline (`can:`, `REACH:`, `CANNOT:`; see [`Writer.MD`](Writer.MD)) — plus a closing
   absolute: *a CANNOT is absolute; anything that reaches through one is unusable however good it
   reads.* Three of the four scene-loop judges share it. The cast judge does not: no scene exists yet,
   so there are no per-scene capabilities to show, and it reads the authoring-time cast sheet (goals,
@@ -33,11 +33,11 @@ second shape to fall into (`prompts/judge.ts`'s header keeps the record).
 
 | agent | built by | model | shown | verdict | call fails |
 | --- | --- | --- | --- | --- | --- |
-| **JUDGE** | `newJudge` per call (`engine/scene-loop.ts:215`) | writer's | the situation, the question, the answer, the cast's limits | `accept` \| `retry` | `judge_failed` → answer accepted |
-| **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts:229`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → piece goes to the page |
-| **BATCH-JUDGE** | `newBatchJudge` (`engine/scene-loop.ts:222`) | writer's | every volunteered deed in one call | one `promotable` flag each | `batch_judge_failed` → nothing promoted |
+| **JUDGE** | `newJudge` per call (`engine/scene-loop.ts`) | writer's | the situation, the question, the answer, the cast's limits | `accept` \| `retry` | `judge_failed` → answer accepted |
+| **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → piece goes to the page |
+| **BATCH-JUDGE** | `newBatchJudge` (`engine/scene-loop.ts`) | writer's | every volunteered deed in one call | one `promotable` flag each | `batch_judge_failed` → nothing promoted |
 | **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `ok` true/false + why | `done_judge_failed` → nothing recorded |
-| **CAST-JUDGE** | `newCastAsymmetryJudge` (`engine/architect.ts:52`) | architect's | the tension, the cast sheet | `ok` true/false + why | gate passes |
+| **CAST-JUDGE** | `newCastAsymmetryJudge` (`engine/architect.ts`) | architect's | the tension, the cast sheet | `ok` true/false + why | gate passes |
 
 Every one fails **open** — the same policy as every other model-in-the-loop check in this engine —
 but each failure is recorded under its own event, so the run record distinguishes a model getting a
@@ -172,7 +172,7 @@ A thought is never judged — it always satisfies the reaction floor — so **no
 no judge call at all**. `parseBatchVerdict` reads a reactor the judge omitted, or a malformed
 reply, as *not promotable*: a deed lapses safely rather than reaching the page unchecked. The
 writer still promotes at most one of those offered (`promote`), and the promote's consequences are
-[`Writer.MD`](docs/Writer.MD)'s to describe; the batch judge only decides which deeds are even offered.
+[`Writer.MD`](Writer.MD)'s to describe; the batch judge only decides which deeds are even offered.
 
 ## DONE-JUDGE — the ending gate
 
@@ -232,11 +232,11 @@ A `false` verdict comes back as a `blocked` round — distinct from `nothing`, b
 land — and the author may overrule it with an explicit second approval. It fails open: an outage
 or a reply carrying no verdict passes the gate, because an outage must not strand an author
 mid-checklist. The gate's place in the checklist and the override's UI behaviour are
-[`Architect.MD`](docs/Architect.MD)'s.
+[`Architect.MD`](Architect.MD)'s.
 
 ## Known weak spots
 
-Unbuilt improvements and observed failure modes are tracked in [`PLANS.md`](docs/PLANS.md): the judge's
+Unbuilt improvements and observed failure modes are tracked in [`PLANS.md`](PLANS.md): the judge's
 escalation path is the one place the question gates still fire, and whether its re-asks still pass
 them is unmeasured; the quotation flag's `why` string overstates what the mechanical check does; a
 further judge variant — whether a scene honoured both characters' choices at a shared fork — is

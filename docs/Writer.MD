@@ -1,13 +1,13 @@
 # Writer
 
-**Status: built.** [`story-page.js`](server/gui/viewer/story-page.js),
-[`blocks.js`](server/gui/viewer/blocks.js), [`events.js`](server/gui/viewer/events.js),
-[`hud.js`](server/gui/viewer/hud.js) and [`timeline.js`](server/gui/viewer/timeline.js) render drafts,
+**Status: built.** [`story-page.js`](../server/gui/viewer/story-page.js),
+[`blocks.js`](../server/gui/viewer/blocks.js), [`events.js`](../server/gui/viewer/events.js),
+[`hud.js`](../server/gui/viewer/hud.js) and [`timeline.js`](../server/gui/viewer/timeline.js) render drafts,
 consults, retries, accepted answers, group reactions and character exits off `/events`. What is left
 is listed under [Remaining work](#remaining-work).
 
 This document owns the writer's role and the live-run screen. The routes and SSE frames it consumes
-are specified in [`GUI-SPEC.md`](docs/GUI-SPEC.md) — the single source of truth for the wire, and complete
+are specified in [`GUI-SPEC.md`](GUI-SPEC.md) — the single source of truth for the wire, and complete
 enough to drive this screen without additions.
 
 ## Role
@@ -42,9 +42,9 @@ is unavailable whatever its source would have been. A situational capability is 
 Two author-side jobs sit beside the writing itself: **judging** an answer (accept or retry) and
 **clarifying** a fact a character asked for. Both are the author's own voice, and both were once extra
 sections of this system prompt, answered on the writer's history; sharing that history cost real
-judgements, so each is a separate agent now, holding exactly one response schema. All four judge
-variants and their gates are specified in [`Judge.MD`](Judge.MD), and the clarifier — its bounds and
-its history across a scene — in [`Clarifier.MD`](docs/Clarifier.MD). This section keeps only what the
+judgements, so each is a separate agent now, holding exactly one response schema. All five judge
+variants and their gates are specified in `Judge.MD`, and the clarifier — its bounds and
+its history across a scene — in [`Clarifier.MD`](Clarifier.MD). This section keeps only what the
 writer's loop does around them.
 
 The loop's contract with them: an answer is judged before the writer ever sees it, and every
@@ -64,8 +64,10 @@ of the two happened (`schema_mismatch`, or `judge_failed`, `lint_failed`, `batch
 `clarify_failed`, `fanout_skip`): one is a model occasionally getting the shape wrong, the other is
 the LM Studio connection dropping out from under a chapter mid-write. Each author-side agent logs to
 its own transcript under its own name (`writer.jsonl`, `judge.jsonl`, `batch-judge.jsonl`,
-`narration-judge.jsonl`, `clarifier.jsonl`), with its own role field, live stats row and tag colour
-— and all follow a mid-run `/model` swap.
+`narration-judge.jsonl`, `done-judge.jsonl`, `clarifier.jsonl`), with live stats row and tag colour
+— and all follow a mid-run `/model` swap. The scene-loop judges, the writer and the clarifier log
+under their own role field; the done judge and the cast judge log under role `"character"`
+(`engine/agent.ts`'s `ROLES` has no entry for them).
 
 Between chapters, the handoff can declare what a chapter taught someone as `characters.<NAME>.learned`;
 the engine folds it into their `knows` verbatim rather than trusting the architect to weave it in
@@ -172,7 +174,7 @@ those into the scene by naming that character in `promote` on its next reply; th
 folded into that character's history as canon, and every un-promoted deed stays a private impulse —
 only the thought is folded, so the page and the character's memory never disagree. Which volunteered
 deeds are even offered for promotion is decided by **one** batch-judge call over all of them
-([`Judge.MD`](docs/Judge.MD)); a deed that reaches through a CANNOT is not offered, and with no
+([`Judge.MD`](Judge.MD)); a deed that reaches through a CANNOT is not offered, and with no
 volunteered deed there is no judge call at all.
 
 ### Length is a budget, not a suggestion
@@ -201,7 +203,7 @@ it does (`engine/world-timeline.ts` decides; the loop injects). The decision nee
 A world event is the one category no character decides, so it is never a consult: it arrives as
 established fact inside the `[WRITE]`, the way the length budget does. A fired beat may also carry
 **memories** — per-character knowledge implanted the moment it fires (see
-[`Character.MD`](docs/Character.MD)).
+[`Character.MD`](Character.MD)).
 
 **Nothing checks that the event reached the page.** A beat is injected once and the writer is
 trusted with it; if the piece ignores it, the run record says the beat fired and nothing says it
@@ -209,7 +211,7 @@ never landed. A mechanical check was built and removed — it could not tell a f
 an unrelated piece — and what replaces it is the repair entity's, still unbuilt.
 
 What the ledger is for, and the repairs when a character's choice breaks it, are still
-[PLANS.md](docs/PLANS.md)'s.
+[PLANS.md](PLANS.md)'s.
 
 ### The narration lint
 
@@ -230,7 +232,7 @@ consult's `situation` stay the model's, because neither has a list to check agai
 **alongside** each other and their `why` strings join into the one `narration_flag` — there is only
 one redraft, so a piece carrying two findings has to report both in the same message. What the lint
 judge is shown, the verdict shapes it may return, the mechanical halves' conservatism, and why a
-check nobody made must not read as a check that passed are [`Judge.MD`](docs/Judge.MD)'s.
+check nobody made must not read as a check that passed are [`Judge.MD`](Judge.MD)'s.
 
 ### The repeat guard
 
@@ -262,7 +264,7 @@ back, the scene closes after it.
 A `scene_done` that survives that is put to the done judge, which reads the page back against the
 scene's question and records `done_flagged` when it is not settled there. The writer is not told:
 the ending stands, and the verdict is the run record's, not an instruction. Why it only records is
-[`Judge.MD`](docs/Judge.MD)'s.
+[`Judge.MD`](Judge.MD)'s.
 
 A `scene_done` on a page with nothing on it is refused once — there is no scene to end — and honored
 if the writer insists again. The backstop for an empty chapter is in saving: a chapter file is
@@ -325,7 +327,7 @@ characters still own their own choices, and the writer still has to consult them
 A screen therefore renders a reader round as a short list of directions, not as a question waiting for
 a character's answer — and it tracks the `reader_ask`/`reader_answer` frames itself, because
 `run_state` deliberately reports no outstanding reader question (see `/consult-me` in
-[`GUI-SPEC.md`](docs/GUI-SPEC.md)).
+[`GUI-SPEC.md`](GUI-SPEC.md)).
 
 ## The live screen
 
@@ -364,7 +366,7 @@ unavailable rather than guessed) — sits behind the rail's own collapsed **Run 
 closed by default. Opening it is a reading preference (`APP.railDetailOpen`), not tied to any one run,
 so it survives the next SSE frame's rebuild instead of slamming shut on every event.
 
-The manual pass that verifies all of this is [`GUI-CHECKLIST.md`](docs/GUI-CHECKLIST.md) §9; §8 covers
+The manual pass that verifies all of this is `GUI-CHECKLIST.md` §7; §8 covers
 the read-tab-only per-agent model-call panel.
 
 ## Remaining work

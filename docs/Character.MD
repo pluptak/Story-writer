@@ -4,8 +4,8 @@
 writer drafts prose and opens consults; the character decides what its own moment holds. This
 document owns the character agent — what it is built from, what it is and is not shown, and the
 consult conversation from its side. The writer's side of the same protocol is in
-[`Writer.MD`](docs/Writer.MD); the wire and event contract is in [`GUI-SPEC.md`](docs/GUI-SPEC.md); authoring
-the definition each agent is built from is in [`Architect.MD`](docs/Architect.MD).
+[`Writer.MD`](Writer.MD); the wire and event contract is in [`GUI-SPEC.md`](GUI-SPEC.md); authoring
+the definition each agent is built from is in [`Architect.MD`](Architect.MD).
 
 ## Role
 
@@ -21,10 +21,10 @@ prompt, model, temperature and thinking level:
 - **temperature** — `0.9`.
 - **thinking** — the story's `thinking.character` level.
 
-Agents are built fresh for each chapter in `runChapter` (`engine/scene-loop.ts:931`), keyed by
+Agents are built fresh for each chapter in `runChapter` (`engine/scene-loop.ts`), keyed by
 lowercased name in the agents map. No history crosses chapters — the story file is the only
 continuity mechanism, which is the handoff's job to maintain
-([`Architect.MD`](docs/Architect.MD)'s operating principle).
+([`Architect.MD`](Architect.MD)'s operating principle).
 
 ### What it holds
 
@@ -39,7 +39,7 @@ rendered as a labelled block (`prompts/consult.ts`):
   *only through where it is standing right now; it leaves with this place*. Reach sits inside the
   same fenced block so the "nothing else" stays one sentence, under a heading that names it as
   situational, because the fence the menu exists to build would be broken by a grant that read as
-  intrinsic (invariants I1/I4 in [`Architect.MD`](docs/Architect.MD)).
+  intrinsic (invariants I1/I4 in [`Architect.MD`](Architect.MD)).
 - **WHAT YOU KNOW COMING INTO THIS** — `knows`.
 - **WHAT YOU WANT TONIGHT** — `goal`.
 - **WHAT YOU BELIEVE** — `belief`, authored to be possibly false and load-bearing.
@@ -160,7 +160,7 @@ The **point-of-view rule** runs from this seat too: a thought always enters the 
 history — it is their memory and continuity depends on it — but the writer receives it only from
 the point-of-view character. The character is never told any of this, including that its thought
 may be withheld: one writing for an audience is not answering as itself. The writer-side
-consequences are in [`Writer.MD`](docs/Writer.MD).
+consequences are in [`Writer.MD`](Writer.MD).
 
 ## Reaction fan-outs
 

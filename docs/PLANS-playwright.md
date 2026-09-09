@@ -1,6 +1,6 @@
 # Plans — Playwright against the manual checklist
 
-A single-topic annex to [`PLANS.md`](docs/PLANS.md): what of [`GUI-CHECKLIST.md`](docs/GUI-CHECKLIST.md) the
+A single-topic annex to [`PLANS.md`](PLANS.md): what of [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) the
 Playwright suite could take over, in blocks. It follows the same rule as everything in `PLANS.md` —
 nothing here is committed work, and when a block ships **the block is deleted from this file**. When
 the last block is gone, so is this file.
@@ -103,14 +103,14 @@ override not carrying to a later gate. A bespoke `name :: meaning` skill in the 
 the negative half (a bare skill with no meaning, and a scene's `reach`, must never be offered) is the
 I4 invariant worth a test.
 
-The folder step needs no agent at all: *stories/&lt;slug&gt; already exists* disabling the button as
-you type, and `Bay 4 — Hatches!` previewing `stories/bay-4-hatches`.
+The folder step needs no agent at all: *data/stories/&lt;slug&gt; already exists* disabling the button as
+you type, and `Bay 4 — Hatches!` previewing `data/stories/bay-4-hatches`.
 
 **Done when** §12's manual entries are only the four that read a real round's content.
 
 ### Block 8 — §5, the drift warning (4 checks)
 
-`sceneDrift` ([`engine/architect.ts`](engine/architect.ts)) compares a chapter's snapshot spec against
+`sceneDrift` ([`engine/architect.ts`](../engine/architect.ts)) compares a chapter's snapshot spec against
 the current one; no model produces the warning. A temp story with a `chapters/1.json` whose question
 differs, plus a scripted handoff session, asserts the warning names the chapter and the field, that a
 chapter with no snapshot draws none, and that the warning does not block accept.

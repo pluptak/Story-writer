@@ -8,7 +8,7 @@ A **story writer** engine. A writer agent drafts one scene from a premise and, w
 next turns on a character's choice, **consults** that character's agent. The character may ask for a
 fact it was not given before answering; the writer accepts the answer or rewrites the question and
 asks a **fresh instance** that never learns it was rejected. Everything about a particular story
-lives in [stories/](stories/) — the user's own content, gitignored — and the engine knows nothing
+lives in `data/stories/` — the user's own content, gitignored — and the engine knows nothing
 about any of it. The one exception is [tests/fixtures/doorway/](tests/fixtures/doorway/), the single
 story committed with the engine: it is the architect's worked example (`architectExample()`) and the
 shared fixture the deterministic tests load, so neither depends on whatever the user keeps locally.
@@ -38,7 +38,7 @@ afterwards.
 | [Judge.MD](docs/Judge.MD) | any judge variant — the per-answer gate, the narration lint, the batch judge, the cast judge |
 | [GUI-CHECKLIST.md](docs/GUI-CHECKLIST.md) | you changed anything under `server/gui/` — `npm run test:gui` for the mechanical pass (Playwright, `tests/gui/`), the checklist for what it cannot see |
 | [PLANS.md](docs/PLANS.md) | anything not built yet — every proposal, follow-up and known weak spot |
-| [defaults.md](defaults.md) | what `defaults.json` settles before a story exists |
+| [defaults.md](docs/defaults.md) | what `defaults.json` settles before a story exists |
 
 The repository has no separate protocol, story-format, run-record, or scaffold specifications — the
 Zod schema in `engine/story-schema.ts` is the story format's own definition. Keep the route contract in
@@ -67,7 +67,7 @@ Change is delivered in **small, independently-pausable blocks**, not whole featu
 ## Commands
 
 ```bash
-npx tsx story-writer.ts stories/doorway --chapter=1
+npx tsx story-writer.ts data/stories/doorway --chapter=1
 ```
 
 ```bash
@@ -104,7 +104,7 @@ minutes — how long a queued call waits before giving up).
 
 The engine (everything `story-writer.ts` used to hold in one file) lives under [engine/](engine/),
 split leaf-first: `engine-state.ts`, `config-util.ts`, `json-extract.ts`, `warnings.ts`,
-`quote-lint.ts`, `repeat-lint.ts`, `skills.ts`, `story-schema.ts` and
+`quote-lint.ts`, `repeat-lint.ts`, `world-timeline.ts`, `skills.ts`, `story-schema.ts` and
 `catalog-schema.ts` have no engine dependencies; `llm-client.ts`, `agent.ts`, `sense-lint.ts`,
 `story-format.ts` and `story-spec.ts` build on those; `preflight.ts`, `consult.ts`, `architect.ts`, `catalog.ts` and `scene-loop.ts`
 build on those in turn; `catalog-assist.ts` builds on `catalog.ts` (one tier further up, since it
@@ -137,6 +137,7 @@ way.**
 | [engine/quote-lint.ts](engine/quote-lint.ts) | the mechanical half of the narration lint: quoted lines matched against the granted ledger, no model call |
 | [engine/sense-lint.ts](engine/sense-lint.ts) | the other mechanical half: a restricted sense narrated anyway, matched by verb against the character's own CANNOT list, no model call |
 | [engine/repeat-lint.ts](engine/repeat-lint.ts) | the repeat guard: a drafted piece that re-emits the page's tail is stripped back to its new text before the append, no model call |
+| [engine/world-timeline.ts](engine/world-timeline.ts) | the pure decision half of the world-event ledger: what fires this turn, what is held, which memories implant — no engine dependencies, no model call; the scene loop owns the mutation |
 | [engine/skills.ts](engine/skills.ts) | the general skill catalog, the special-skill bible, the origin groups, restriction and reach resolution (I1–I5), and a story's `skills:`/`restrictions:` overrides. All three catalogs are injectable, as one `Catalogs` bag — they travel together because passing two of the three is a bug that only surfaces on a name the third would have resolved. The in-code catalogs are the defaults; the author's persisted ones are passed in. A character's `origin` names which general skills they start with, and what it withholds is a stated CANNOT, not a silent absence |
 | [engine/story-schema.ts](engine/story-schema.ts) | the Zod schema for `story.json` (`SceneDef`, `CharacterDef`, `ThinkingConfig`, `ModelsConfig`, ...) |
 | [engine/catalog-schema.ts](engine/catalog-schema.ts) | the Zod schema for a catalog of reusable assets, one per `CATALOG_KINDS` entry — `LibraryCharacter` is the portable half of a character, with no `goal`/`knows` (story-positional) and no reach (I4); `TagEntry`, `LibraryStyle` and `LibrarySkill` (one entry of the persisted skill catalog — `kind` tells its three sorts apart: `general`, `special`, and `origin`, which carries the `general[]` names it grants — and whose `meaning` is required) are the others |
@@ -157,15 +158,15 @@ way.**
 | [engine/narration-lint.ts](engine/narration-lint.ts) | the three checks on a drafted piece run alongside each other — quotation, restricted sense, and the narration judge's read |
 | [engine/architect.ts](engine/architect.ts) | building the architect agent, the interactive story-building conversation, and the between-chapters handoff that re-authors the cast |
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
-| [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, architect, consult, writer, judge, clarify, catalog-assist), which match one engine caller each |
+| [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, internal, architect, consult, writer, judge, clarify, catalog-assist), which match one engine caller each |
 | [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: static files (from `server/gui/`), SSE, and dispatch to the route modules |
 | [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side: wire validation and dispatch to `ServerHost.scaffold*()`, nothing else — it never touches a `ScaffoldSession` |
 | [server/next-chapter-routes.ts](server/next-chapter-routes.ts) | `/next-chapter` and `/next-chapter/*` — the architect handoff, server side, the same shape as `scaffold-routes.ts`: dispatch to `ServerHost.handoff*()`, never a `NextChapterSession` |
 | [server/run-log-routes.ts](server/run-log-routes.ts) | `/runs/llm`, `/runs/llm/file`, `/runs/log`, `/log.jsonl` — a run's logs (per-agent LLM transcripts, the retained and the in-progress writing logs), read-only by construction |
 | [server/story-read-routes.ts](server/story-read-routes.ts) | `/stories`, `/cast` (GET), `/chapter` (GET) — read-only story views: the shelf's story-card listing, the live screen's full cast (models omitted), and an accepted chapter's markdown; all available while a run is in flight |
-| [server/story-edit-routes.ts](server/story-edit-routes.ts) | `/story/edit` (GET), `/story/check`, `/story/save`, `/story/discard`, `/story/suggest` (POST) — the `story.json` form editor; load, validate, save, discard the last unwritten scene, and a stateless architect suggestion call. Refuses with `409` while something holds `story.json`: a run, the post-pick loading window, or an open handoff |
-| [server/catalog-routes.ts](server/catalog-routes.ts) | `/catalog` (GET), `/catalog/entry` (GET), `/catalog/check`, `/catalog/save`, `/catalog/delete`, `/catalog/visibility`, `/catalog/assist` (POST) — the global character catalog. Takes no story dir and never consults the story-write lock: a catalog is not scoped to a story |
+| [server/story-edit-routes.ts](server/story-edit-routes.ts) | `/story/edit` (GET), `/story/edit-config` (GET), `/story/check`, `/story/save`, `/story/discard`, `/story/suggest` (POST) — the `story.json` form editor; load, schema-derived editor config, validate, save, discard the last unwritten scene, and a stateless architect suggestion call. Refuses with `409` while something holds `story.json`: a run, the post-pick loading window, or an open handoff |
+| [server/catalog-routes.ts](server/catalog-routes.ts) | `/catalog` (GET), `/catalog/config` (GET), `/catalog/usage` (GET), `/catalog/entry` (GET), `/catalog/check`, `/catalog/save`, `/catalog/delete`, `/catalog/visibility`, `/catalog/assist` (POST) — the global character catalog. Takes no story dir and never consults the story-write lock: a catalog is not scoped to a story |
 | [server/http-util.ts](server/http-util.ts) | the `json()` response helper, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
 | [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel, the character catalog) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus, the stop signal, and the loop's human-interaction port (`SceneIo`/`LIVE_IO`: step budget, pause, reader seat) |
@@ -178,10 +179,10 @@ the draft, or anyone else's replies. Every other rule follows from protecting th
 only by system prompt, model and temperature: **writer** (0.8) and one **character** (0.9) per entry
 in `story.json`'s `characters[]`, plus author-side helpers that share the writer's voice but hold one
 response schema each — the **clarifier** (one per scene) and, at 0.3 with no history, four judge
-variants (`newJudge`, `newBatchJudge`, `newNarrationJudge`, `newDoneJudge`). Each role owns a doc of its own — [Writer.MD](Writer.MD), [Character.MD](Character.MD),
-[Clarifier.MD](Clarifier.MD) and [Judge.MD](Judge.MD), the last one covering all five judge
+variants (`newJudge`, `newBatchJudge`, `newNarrationJudge`, `newDoneJudge`). Each role owns a doc of its own — [Writer.MD](docs/Writer.MD), [Character.MD](docs/Character.MD),
+[Clarifier.MD](docs/Clarifier.MD) and [Judge.MD](docs/Judge.MD), the last one covering all five judge
 variants, cast judge included. Why they are separate agents rather than
-sections of the writer's prompt is in [Judge.MD](Judge.MD).
+sections of the writer's prompt is in [Judge.MD](docs/Judge.MD).
 
 Two invariants to hold while editing the engine. **`consult()` never touches `agent.history`** —
 the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean

@@ -6,7 +6,7 @@ once a story is loaded, that story's `models` and `config` apply. The catalog is
 story-scoped, so its assistant always reads `defaults.json` — there is no story to fall back to.
 
 The file is optional. If it is missing, the built-in defaults in
-[`engine/story-format.ts`](engine/story-format.ts) are used silently; if it exists but cannot be
+[`engine/story-format.ts`](../engine/story-format.ts) are used silently; if it exists but cannot be
 read or parsed, the built-ins are used anyway **and a warning names the error** — otherwise a
 broken file would silently swap the configured model for the built-in one. A CLI `--model` override
 takes priority over both sources.
@@ -36,5 +36,5 @@ explicitly — to the same model as `models.default` if that is genuinely what y
 assistant on.
 
 The checked-in values are intentionally suitable for the local LM Studio setup. Edit
-[`defaults.json`](docs/defaults.json) when changing them; this file documents their meaning rather than
+[`defaults.json`](../defaults.json) when changing them; this file documents their meaning rather than
 duplicating the values.

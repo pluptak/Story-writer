@@ -1,21 +1,21 @@
 # GUI-SPEC — the viewer's HTTP surface
 
 Read this before adding a route, an SSE event, or anything a run control does to the run — and before
-deciding whether the GUI under [server/gui/](server/gui/) could be swapped for something else. It is
-written from the server's side: what [server/server.ts](server/server.ts),
-[server/run-control-routes.ts](server/run-control-routes.ts),
-[server/scaffold-routes.ts](server/scaffold-routes.ts),
-[server/next-chapter-routes.ts](server/next-chapter-routes.ts) and
-[server/run-log-routes.ts](server/run-log-routes.ts) actually expose, independent of the one
+deciding whether the GUI under [server/gui/](../server/gui/) could be swapped for something else. It is
+written from the server's side: what [server/server.ts](../server/server.ts),
+[server/run-control-routes.ts](../server/run-control-routes.ts),
+[server/scaffold-routes.ts](../server/scaffold-routes.ts),
+[server/next-chapter-routes.ts](../server/next-chapter-routes.ts) and
+[server/run-log-routes.ts](../server/run-log-routes.ts) actually expose, independent of the one
 client that happens to consume it today.
 
 ## The shape of it
 
 One Node process drives **at most one run at a time**. `--serve` starts an HTTP server
-([server.ts:46](server/server.ts#L46)) alongside it; the server does not own the run, it watches and
+(`server/server.ts`) alongside it; the server does not own the run, it watches and
 steers the one the CLI process is already running. There is no database and no per-request session —
-state lives in three module-level objects, [live.ts](live.ts)'s `LIVE`/`RUN` and, private to
-[host.ts](host.ts), the open scaffold interview (`SCAFFOLD`) and the open handoff (`HANDOFF`) — no
+state lives in three module-level objects, [live.ts](../live.ts)'s `LIVE`/`RUN` and, private to
+[host.ts](../host.ts), the open scaffold interview (`SCAFFOLD`) and the open handoff (`HANDOFF`) — no
 route module holds either directly, only `ServerHost.scaffold*()`/`handoff*()` methods reach them —
 and a browser reconnecting just resubscribes to whichever run (if any) is already in flight. **No
 auth, no CORS headers, no CSRF token** — anything that can reach the port can steer the run or start a
@@ -30,8 +30,8 @@ LAN. Widening that bind means adding auth first; there is deliberately no CLI fl
 
 `--headless` starts the server without a story argument, a console picker, or a one-shot run: the
 process comes up serving, the browser drives everything from the shelf, and SIGINT/SIGTERM shut it
-down gracefully — a run in flight takes the same path a `/stop` takes (`releaseForStop()`, then
-`stopRun()`) so `run-and-save`'s streams flush before the process exits; a second signal force-exits.
+down gracefully — a run in flight takes the same path a `/stop` takes (`stopRun()`, then
+`releaseForStop()`) so `run-and-save`'s streams flush before the process exits; a second signal force-exits.
 `startServer` returns a `ServerHandle` (`bound`, `close()`), which is how shutdown ends the SSE
 clients, stops the keep-alive ping and frees the port — after a `close()` a fresh `startServer` may
 bind again. Outside headless the console owns Ctrl-C and no signal handlers are installed. Headless
@@ -47,9 +47,13 @@ the JSONL logs — the GUI never becomes a second source of truth.**
 Two channels carry everything:
 
 - **JSON request/response** — plain `POST`/`GET`, `Content-Type: application/json`, no framework
-  ([http-util.ts](server/http-util.ts)). Every `POST` replies `{ ok: true, ... }` or
-  `{ ok: false, reason }` with a `4xx`/`5xx` status; a handful (`/select`, `/run`, `/stories`, `/models`)
-  are read/mutate calls that reply with the resource itself instead of an `ok` envelope.
+  (`server/http-util.ts`). Most mutating `POST`s reply `{ ok: true, ... }` or
+  `{ ok: false, reason }` with a `4xx`/`5xx` status; a handful (`/stories`, `/models`)
+  are read calls that reply with the resource itself instead of an `ok` envelope, and the
+  scaffold/handoff progress `POST`s (`/scaffold/start`, `/scaffold/say`, `/scaffold/approve`,
+  `/scaffold/regenerate`, `/scaffold/concept`, `/scaffold/import`, `/scaffold/promote`,
+  `/scaffold/set`, `/next-chapter/start`, `/next-chapter/say`, `/next-chapter/regenerate`)
+  reply with the session state object itself. `GET /run` is a read, not a `POST`.
   `readJsonBody()` rejects rather than resolving `{}` when a body is malformed (`400`), larger than
   1 MiB (`413`), or carries a non-JSON `Content-Type` (`400`) — a *missing* content type is fine, since
   the viewer's no-body `POST`s send none. Those rejections are `HttpError`s, and one try/catch around
@@ -57,14 +61,14 @@ Two channels carry everything:
   defensively. An unexpected throw becomes a generic `500`: the real message goes to the console, not
   to the browser.
 - **Server-Sent Events on `/events`** — one shared stream, fanned out to every connected client
-  ([live.ts:52](live.ts#L52)). This is not a notification side-channel; it is how the client learns
+  (`live.ts`). This is not a notification side-channel; it is how the client learns
   a `POST` succeeded elsewhere (its own `fetch` replies too, but every other open tab or window
   finds out only through `/events`).
 
 Nothing under `server/*.ts` imports `engine/` — not even as a type, for `engine/architect.ts` or
-`engine/story-spec.ts` specifically ([tests/boundaries.test.ts](tests/boundaries.test.ts) checks
+`engine/story-spec.ts` specifically ([tests/boundaries.test.ts](../tests/boundaries.test.ts) checks
 both claims). Every route reaches the engine only through the `ServerHost` interface built once in
-`story-writer.ts` ([server.ts:21](server/server.ts#L21)). The scaffold and handoff domains are
+`story-writer.ts` (`server/server.ts`). The scaffold and handoff domains are
 entirely behind it: no route module holds a `ScaffoldSession` or a `NextChapterSession`, only
 `ServerHost.scaffold*()`/`handoff*()` methods, each wire-shaped in and returning a plain result type
 declared in `server.ts`. A route that needs something new gets a host method, never an import
@@ -73,14 +77,14 @@ declared in `server.ts`. A route that needs something new gets a host method, ne
 ## Static routes
 
 ```
-GET  /              → server/gui/viewer.html
+GET  /              → server/gui/viewer.html   (also /index.html)
 GET  /viewer.css     → server/gui/viewer.css
 GET  /viewer.js      → server/gui/viewer.js
 GET  /viewer/{name}.js  → server/gui/viewer/{name}.js   (flat filenames only, regex allowlist)
-GET  /studio           → mockups/studio/index.html        (static dev/preview route — not part of the product surface)
+GET  /studio           → mockups/studio/index.html        (also /studio/; static dev/preview route — not part of the product surface)
 ```
 
-These four lines are the **entire** coupling between the API and the specific GUI in this repo. They
+These five lines are the **entire** coupling between the API and the specific GUI in this repo. They
 serve fixed files by fixed path — nothing about them is generated from, or aware of, engine or story
 state. See "Replacing the GUI" below.
 
@@ -142,9 +146,10 @@ GET /stories
 
 StoryCard = { dir, name, ok, error?, warnings[],
               title?, premise?, scene?: {place,question,pov,length}, scenes?: {place,question,pov,length}[],
+              timeline?, writerStyle?, writerStyleConstraints?,
               characters?: {name,skills[],restrictions[]}[],
               maxSteps?, defaultModel?,
-              runs: { id, mtimeMs, steps?, words?, done?, stopped? }[],
+              runs: { id, mtimeMs, chapter?, steps?, words?, done?, stopped? }[],
               chapters: number[] }
 ```
 `title` is the story's own, as authored — empty when it has none, and never substituted with the
@@ -152,7 +157,7 @@ folder name; what to show in its absence is the client's call, and `name` is the
 `scenes[0]`, kept because the shelf and scaffold interview read it; a card from an older server has
 only that one. `chapters` lists the chapter numbers already written to `chapters/<n>.md`, in numeric
 order. One call gets the whole picker: every discovered story, preflighted, with its own retained runs
-embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 10` — [run-and-save.ts:15](run-and-save.ts#L15)).
+embedded (`RunSummary[]`, newest first, capped at `MAX_RUNS = 10` — `run-and-save.ts`).
 There is no separate "list runs" route; a run only exists as a story's `runs[]` entry.
 
 ```
@@ -215,7 +220,7 @@ POST /select   { dir, chapter?, replace? }
 ```
 Only meaningful while `picking: true` (i.e. `LIVE.awaitingPick`). There is no queue — one browser
 resolves the parked `Promise<{ dir, chapter }>` the CLI's `pickStory()` is blocked on
-([app.ts:129](app.ts#L129)), and `picking` immediately goes false for everyone. A
+(`app.ts`), and `picking` immediately goes false for everyone. A
 second click after that returns `400 the session is not waiting on a choice`, not a second run.
 `chapter` is which chapter that run writes — one run writes one chapter — and anything that is not a
 positive integer falls back to `1` rather than failing the pick. Out of range for *this* story is not
@@ -254,13 +259,15 @@ levels, and the voice-sample cap, for the editor and the new-story form to rende
 hand-copying `story-schema.ts`'s own defaults. Never blocked by the story-write lock — it names
 nothing about any one story.
 
-Every mutating action here (`edit`, `save`, `discard`, `suggest`) refuses with `409` while
+Every action here that touches a story on disk (`edit`, `save`, `discard`, `suggest`) refuses with `409` while
 something else is reading or writing `story.json`: a run in flight, the loading window after a
 pick (`loading: true`), or an open handoff holding the file it will rewrite on accept. The refusal
 reason names which — editing the definition a live run is reading would be a race.
+`/story/edit-config` is the exception: it is story-independent and never takes the lock.
 
 `/story/check` validates a modified draft in memory against the Zod schema and engine-level checks
-(empty premise, no characters, scenes without questions). Never writes.
+(empty premise, no characters, scenes without questions). Never writes, and never takes the
+story-write lock.
 
 `/story/save` validates, atomically writes via `.tmp` rename, then re-loads to confirm. Refuses
 with `409` under the same story-write lock as `/story/edit`.
@@ -279,7 +286,7 @@ travel with it) and re-validates; nothing reaches disk until a save — the engi
 suggestion.
 
 The story editor renders each scene's `reach` — the scene-scoped capability grants
-([Architect.MD](docs/Architect.MD), I1) — as one textarea per scene, one
+([Architect.MD](Architect.MD), I1) — as one textarea per scene, one
 `NAME: thing :: meaning` per line. Reach round-trips through `/story/check` and `/story/save`
 inside `StoryJson`'s scenes; it is character-in-place data and never appears on a character card in
 the editor.
@@ -295,7 +302,8 @@ GET  /catalog/usage                  → { ok:true, usage }   (read-only derivat
 GET  /catalog/entry?kind=&id=        → { ok:true, entry }
                                        | { ok:false, reason }        (400 no id · 404 no such entry)
 POST /catalog/check  { entry }       → { ok:true, problems[] }
-                                       | { ok:false, issues[] }      (both 200)
+                                        | { ok:false, issues[] }      (validation verdicts are 200;
+                                          an unknown kind is 400)
 POST /catalog/save   { kind?, entry }→ { ok:true, entry, problems[] }
                                        | { ok:false, reason, issues? }
 POST /catalog/delete { kind?, id }   → { ok:true }
@@ -321,13 +329,13 @@ which catalog — `characters`, `tags`, `styles` or `skills` — and decides the
 is `400`, validated in the host because it arrives from a query string. Every route above is
 kind-parameterised, so a new kind is a registry entry in `engine/catalog.ts` and never a new route.
 
-A **character** entry is the **portable half** of a character: `id`, `version`, `name`, `tags[]`,
+A **character** entry is the **portable half** of a character: `id`, `version`, `name`,
 `portablePersona`, `belief`, `impulse`, `voice[]`, `origin`, `skills[]`, `restrictions[]`, `hidden`,
 `updatedAt`. There is deliberately no `goal` and no `knows` — those are story-positional — and no
-`model` or `maxRetries`, which are run configuration. `origin` names a kind of being whose
+`model` or `maxRetries`, which are run configuration, and no `tags[]`. `origin` names a kind of being whose
 general-skill group the character starts from, or is blank for every general skill; it resolves
 against the skills catalog when a story loads, exactly like a story-authored character's origin. What
-a catalog entry is and how it composes into a `CharacterDef` is [Architect.MD](docs/Architect.MD)'s
+a catalog entry is and how it composes into a `CharacterDef` is [Architect.MD](Architect.MD)'s
 *Character catalog*. The other three: a **tag** is `id`, `version`, `facet`, `label`; a **style** is
 `id`, `version`, `name`, `tags[]`, `description`, `voice`; a **skill** is `id`, `version`, `name`,
 `meaning`, and `kind` — one of `"general"` (every character starts with it), `"special"` (given to a
@@ -335,7 +343,7 @@ character by name), or `"origin"` (a named group of general skills a kind of bei
 plus, on an origin, the `general[]` list of general-skill names it grants (empty on the other two).
 Skills carry no tags; a legacy `tags` field on disk or in a payload is stripped rather than
 rejected. Its `meaning` is the one prose field
-in any kind the schema refuses rather than reports missing ([Architect.MD](docs/Architect.MD)'s *Skill
+in any kind the schema refuses rather than reports missing ([Architect.MD](Architect.MD)'s *Skill
 bible* says why).
 
 **`hidden`/`updatedAt` exist only on a character entry today** — every other kind's schema omits
@@ -364,7 +372,7 @@ constrained result — never the model's own claim about what it changed. `revie
 that is a complete, successful outcome, not a failure. The assistant runs on `defaults.json`'s
 `models.assistant`, a model slot that — unlike `models.architect` — does **not** fall back to
 `models.default`: an unconfigured assistant model is `{ok:false, kind:"model_unavailable"}`, not a
-silent run on the story's own model ([defaults.md](docs/defaults.md) says why).
+silent run on the story's own model ([defaults.md](defaults.md) says why).
 
 `tags` and `skills` **seed** — a `GET` against a catalog whose file does not exist yet answers with
 the engine's starting vocabulary rather than an empty list, and the first save writes that whole seed
@@ -383,13 +391,12 @@ choose one. Both writes go
 through the same atomic `.tmp` rename as `/story/save`, then re-read and assert what they expected to
 find: that the entry is present at its new version, or that a deleted id is gone.
 
-`GET /catalog/usage` derives what the other catalogs reference — the "used by 4 characters" line and
-the tag page's grouping. **Derived, not authored**: a tag's counts come from the characters, styles
-and skills whose `tags[]` fold to its label; a skill's count from the characters whose `skills`
-lines name it, matched the way every identity comparison is. The tag page's STORY/STYLE split is the
-same derivation — a tag is **STYLE** when some style carries it, **STORY** when none does — so the
-editor gains no "used for" checkbox, and the grouping moves the moment a style picks the tag up. It
-reads the catalogs it was asked for and nothing else; a failure to derive is the caller's to
+`GET /catalog/usage` derives what the other catalogs reference — the "used by N characters" line and
+the tag page's grouping. **Derived, not authored**: the server reports which styles carry each tag
+and how many characters hold each skill (matched the way every identity comparison is). The tag
+page's STORY/STYLE split — a tag is **STYLE** when some style carries it, **STORY** when none
+does — is the viewer's reading of that derivation, so the editor gains no "used for" checkbox,
+and the grouping moves the moment a style picks the tag up. A failure to derive is the caller's to
 decorate away, which the viewer does by keeping its last known counts.
 
 ## Read-only cast view
@@ -400,16 +407,17 @@ GET /cast?dir=...  → { ok:true, characters[], scenes[] }
 ```
 
 Available while a run is in flight (the live rail needs it exactly then). Each character carries
-`name`, `persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `skills` (as `{text, meaning}`),
+`name`, `persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `origin`, `skills` (as `{text, meaning}`),
 and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants as
 `{ n: number, reach: { NAME: ["thing :: what they can do through it"] } }`. **Reach never merges into
-a character's `skills`** ([Architect.MD](docs/Architect.MD) I4): the GUI labels each grant with its scene,
+a character's `skills`** ([Architect.MD](Architect.MD) I4): the GUI labels each grant with its scene,
 so it can never read as intrinsic.
 
 ## Run control
 
 All of these require a run already in flight (`running: true`) except `/interactive`, which is a
-standing preference. Every one of them pushes a fresh `run_state` SSE frame on success, so a client
+standing preference, and `/model`, which sets the override for the next run when idle (and only
+refuses when a run is in flight but unpaused). Every one of them pushes a fresh `run_state` SSE frame on success, so a client
 never needs to poll after calling one.
 
 ```
@@ -417,7 +425,7 @@ POST /stop                       → { ok:true, already? }
 POST /pause                      → { ok:true, already? }
 POST /resume                     → { ok:true } | 400 "not paused"
 POST /continue        { steps }  → { ok:true } | 400 "no run is waiting on a budget decision"
-POST /model            { model } → { ok:true } | 400 (must be paused first; must be a loaded id)
+POST /model            { model } → { ok:true } | 400 (must be paused first when a run is in flight; must be a loaded id)
 POST /interactive      { on }    → { ok:true }
 POST /consult-me                 → { ok:true, already? } | 400 "interactive is off"
 POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answer is empty)
@@ -431,7 +439,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
   live `writer`/`agents` agents, not just the preference for the next run.
 - **`/consult-me`** arms the reader as the **director** for the next round, not as a stand-in for a
   character. It does not itself ask a question: at its next boundary the loop spends a writer round
-  asking for directions instead of prose ([scene-loop.ts:152](engine/scene-loop.ts#L152)), and that
+  asking for directions instead of prose (`engine/scene-loop.ts`), and that
   arrives as a `reader_ask` frame — `framing` plus up to three `options` — **not** as a `consult`.
   `/reader-answer` is how the human replies, and the answer is fed back as the direction the scene
   takes from here, so it need not be one of the three offered. `armed` in `run_state` means the
@@ -553,7 +561,7 @@ will read again, and the viewer stops offering to.
 `imported` is the tray: the characters the author cast out of the catalog, carried as provenance and
 name only, because that is all a page needs. A non-empty tray forces `castSizeSteers` false — the tray
 IS the opening cast's size — and switches the cast gate to a different stage prompt with an enforced
-adaptation contract ([Architect.MD](docs/Architect.MD), *Casting from the library*). It is session state
+adaptation contract ([Architect.MD](Architect.MD), *Casting from the library*). It is session state
 that ends at accept: no part of it reaches `story.json`, and the handoff never learns a character came
 from a template. `missingImports` are ids the catalog no longer holds; they are reported rather than
 fatal, because the catalog is the author's and a tray that silently shrank is worse than one that says
@@ -643,8 +651,8 @@ that reply is the chapter now prepared — write it with `POST /select { dir, ch
 
 Every handoff route republishes a `{ t: "handoff", state }` SSE frame (`state` is exactly the
 `GET /next-chapter` body). The viewer's handoff page consumes it
-([handoff.js](server/gui/viewer/handoff.js)); the screen itself is designed in
-[Architect.MD](docs/Architect.MD).
+([handoff.js](../server/gui/viewer/handoff.js)); the screen itself is designed in
+[Architect.MD](Architect.MD).
 
 ## `/events` — the SSE stream
 
@@ -654,7 +662,7 @@ happen, plus a 15s comment ping to hold the connection open. `liveHistory` (and 
 resets on `resetLive()` at the start of each new run — so reconnecting mid-run replays that run only,
 never a previous one.
 
-Every frame is `data: <json>\n\n`. The union, `LiveFrame` ([live.ts:37](live.ts#L37)):
+Every frame is `data: <json>\n\n`. The union, `LiveFrame` (`live.ts`):
 
 ```
 { seq, ...RunEvent }                     — see below; seq makes ordering/de-dup possible client-side
@@ -683,12 +691,12 @@ from `main()`'s catch, which then re-enters `pickStory()`. The viewer holds it i
 rather than `APP.storyError` precisely because the pick window that opens a moment later clears
 `storyError`, which would otherwise wipe the message before it could be read.
 
-`RunEvent` ([scene-loop.ts:49](engine/scene-loop.ts#L49)) is the part that also gets written to
+`RunEvent` (`engine/scene-loop.ts`) is the part that also gets written to
 `writing-log.jsonl` — `/events`, `/log.jsonl` and `/runs/log` are three windows onto the same event
 sequence, live/current/retained:
 
 ```
-ConsultEvent (engine/consult.ts:80):
+ConsultEvent (engine/consult.ts):
   { t:"consult"; character; situation; question; wants; attempt }
   { t:"need"; character; question }
   { t:"clarify"; character; question; answer }
@@ -787,11 +795,11 @@ ruled on: nothing but an explicit `ok` counts as a verdict.
 half of that same signal: the call didn't come back wrong-shaped, it didn't come back at all — LM
 Studio unreachable, timed out, or the model errored outright. Each names exactly where an
 author-side helper's silent fail-open default was taken, so a run can be told apart from one where
-every judgement actually happened; see [Writer.MD](docs/Writer.MD).
+every judgement actually happened; see [Writer.MD](Writer.MD).
 
 ## Replacing the GUI
 
-**Yes — the API is a complete, self-describing surface, and [server/gui/](server/gui/) is not privileged
+**Yes — the API is a complete, self-describing surface, and [server/gui/](../server/gui/) is not privileged
 against it.** Two things make that true:
 
 1. **The four static routes are the entire coupling.** They serve fixed files by path; nothing in
@@ -827,8 +835,10 @@ GUI trick) rather than being derivable client-side: editing a story's files fiel
 (`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts),
 reading a story's full cast — `knows`, `goal`, `belief`, `impulse`, `voice` and `persona` — for a story that is not in a scaffold or
 handoff session, starting a run without going through the picker/scaffold handshake, or anything about
-a run that already fell out of `MAX_RUNS` retention. The first two are proposed in
-[PLANS.md](docs/PLANS.md) (plans 1 and 2C), which is also where the routes they would add are drafted.
+a run that already fell out of `MAX_RUNS` retention. Field-by-field story editing
+(`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts)
+and the read-only cast view (`GET /cast`) are the routes those needs grew into; anything further
+belongs in `PLANS.md`, which is also where the routes they would add are drafted.
 
 If "replace" means **serve the new frontend from somewhere other than this process** (a separate dev
 server, a static host): the JSON/SSE routes have no CORS headers today, so a different-origin client

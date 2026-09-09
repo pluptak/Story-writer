@@ -5,8 +5,8 @@
 
 This document owns the architect: its role, the between-chapters handoff behaviour, and the two
 screens that drive it (the scaffold interview and the handoff panel). The route contract stays in
-[`GUI-SPEC.md`](docs/GUI-SPEC.md), which is the single source of truth for request bodies, replies and SSE
-state. The proposed `story.json` form editor ([`GUI-SPEC.md`](docs/GUI-SPEC.md) §Story editor) is a different
+[`GUI-SPEC.md`](GUI-SPEC.md), which is the single source of truth for request bodies, replies and SSE
+state. The proposed `story.json` form editor ([`GUI-SPEC.md`](GUI-SPEC.md) §Story editor) is a different
 screen — its architect panel edits an in-memory draft and is not the handoff.
 
 ## Role
@@ -107,7 +107,7 @@ it finds (*Casting from the library* below).
 A reusable library of character templates, stored beside `defaults.json` rather than inside any
 story, so it is not scoped to one and survives every story it is used in. `engine/catalog-schema.ts`
 is its format's own definition, the way `story-schema.ts` is `story.json`'s; the routes are
-[`GUI-SPEC.md`](docs/GUI-SPEC.md)'s *Character catalog*.
+[`GUI-SPEC.md`](GUI-SPEC.md)'s *Character catalog*.
 
 **A library character is not a `CharacterDef`.** It carries only what travels between stories:
 
@@ -311,13 +311,15 @@ other reasons.
 
 The architect can edit the fields supported by `engine/story-spec.ts`:
 
-- story metadata: `title`, `premise`, and `writerStyle`
+- story metadata: `title`, `premise`, `writerStyle`, and `writerStyleConstraints`
 - scenes: `scene_<n>.place`, `question`, `pov`, `length`, `roster`, and `reach`
   (an object: `{"NAME": ["thing :: what they can do through it"]}`)
 - scene structure: `add_scene` and `remove_scene`
-- characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`, and `restrictions`
+- characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`,
+  `restrictions`, `origin`, and `lacks`, plus `name` (rename, with roster/pov references
+  carried along) and `characters.<NAME>.learned` (folded into `knows` on arrival)
 - cast membership: `add_character` and `remove_character`
-- story facts: `add_fact`, `remove_fact`, and an indexed update of `facts[n]`
+- story facts: `add_fact`, `remove_fact`, and an indexed update of `fact_<n>`
 - the world-event ledger: `beat_<n>.chapter`, `at`, `hold`, `fired`, `state`, and `memories`
   (an object: `{"NAME": "what they have always known"}`, replacing the map wholesale), plus
   `add_beat` and `remove_beat`. The spelling follows `scene_<n>` and `fact_<n>` — the two other
@@ -415,8 +417,7 @@ characters and while the budget is still at least eight beats wide, which are th
 
 Revising the concept never re-runs a gate — it changes what the *next* build of a stage prompt says.
 Once the stage that reads a half has produced its content, nothing ahead reads it again, and the
-session says so (`tagsSteer`, `castSizeSteers` in [GUI-SPEC.md](docs/
-GUI-SPEC.md)). The viewer stops
+session says so (`tagsSteer`, `castSizeSteers` in `GUI-SPEC.md`). The viewer stops
 offering to revise a spent half rather than letting it go quietly inert: an editor that looks like it
 steers the run, and does not, is worse than no editor.
 
@@ -572,7 +573,7 @@ model-in-the-loop check in this engine accepts on failure and an outage must not
 mid-checklist. `normalizeSpec`'s "nobody has any restrictions" problem is unchanged and still
 advisory — it is the only asymmetry signal on the surfaces that have no gate at all (the story
 editor, one-shot mode, the handoff). The judge agent itself — its contract, its verdict shapes, and
-the family it belongs to — is specified in [`Judge.MD`]docs/(Judge.MD).
+the family it belongs to — is specified in `Judge.MD`.
 
 **What the world gate is told about a beat**, in `TIMELINE_FIELDS` — one const shared with the
 whole-story format, so the two modes cannot drift. A world event is the one category nobody in the
@@ -580,7 +581,7 @@ scene decides; if a person could decline it, it is not one. Each beat carries a 
 the writer may not start before it fires) and a **fired** form (what has happened) — the held form
 is not decoration, since a writer left to itself invents the event early. The fired form must carry
 no quotation marks: an event with a voice cannot be told apart from an invented line, and
-[`engine/quote-lint.ts`](engine/quote-lint.ts) will flag it as one. At most one beat per chapter
+[`engine/quote-lint.ts`](../engine/quote-lint.ts) will flag it as one. At most one beat per chapter
 unless the idea demands two, because beats fire in authored order and two events compete for the
 same page.
 
@@ -592,7 +593,7 @@ open an action rather than closing one (a memory that makes a character's plan p
 nowhere to go and their goal simply wins); and give it to whoever the scene's question turns on. Only
 characters in that chapter's roster — `timelineBeatProblems` warns for anyone else, because the loop
 resolves memory names against the scene roster and a memory for an absent character silently never
-implants. What a memory *is* from the character's side is [`Character.MD`]docs/(Character.MD)'s.
+implants. What a memory *is* from the character's side is `Character.MD`'s.
 
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.
@@ -646,12 +647,15 @@ the next run. The GUI must offer the prepared chapter as a separate action.
 ## Round shapes
 
 Which rounds each mode can produce — the bodies and the state each route publishes are
-[`GUI-SPEC.md`]docs/(GUI-SPEC.md)'s *Scaffold* and *The handoff* sections:
+`GUI-SPEC.md`'s *Scaffold* and *The handoff* sections:
 
 | mode | `last.kind` |
 | --- | --- |
-| scaffold | `proposal` \| `edits` \| `question` \| `nothing` \| `failed` |
+| scaffold | `proposal` \| `edits` \| `question` \| `nothing` \| `blocked` \| `failed` |
 | handoff | `edits` \| `question` \| `nothing` \| `failed` |
+
+`blocked` is the staged cast gate's refusal (the cast landed but the asymmetry judge did not
+pass it); the author may overrule it with an explicit second approval.
 
 A staged scaffold round also carries `stage` — the checklist gate the round belongs to
 (`"story"` | `"cast"` | `"settings"` | `"technical"` | `"scene"` | `"world"`), so callers can label it
@@ -678,7 +682,7 @@ handoff:  start → edits    → say/refine → accept → select prepared chapt
 
 ## The screens
 
-The visual prototype is the [`mockups/architect`]docs/(mockups/architect) set — interactive static pages
+The visual prototype is the `mockups/architect` set — interactive static pages
 covering both modes, question and edit rounds, the accept flow, the theme toggle and the responsive
 layout, without calling the API. **It is the picture; this section is the rules.**
 
@@ -698,7 +702,7 @@ reviewed; the architect input stays sticky at the bottom while the proposal scro
 
 ### Scaffold interview
 
-Built as its own `#/scaffold` route in [`interview.js`](server/gui/viewer/interview.js), reached from
+Built as its own `#/scaffold` route in [`interview.js`](../server/gui/viewer/interview.js), reached from
 the shelf's "start a new story" card — which relabels itself "continue new story…" while a session is
 open on the server. The idea step is a modal over an empty scaffold shell; once the first proposal
 lands the page keeps three things visible at all times: the proposed story (a card), the current round
@@ -707,7 +711,7 @@ yet" — that
 owns **accept** and **abandon**. The view drops the run-controls rail and breaks out of the page column
 the other screens sit in, so the wide proposal-and-sidebar layout has room.
 
-The full schema-aware editor in [`story-edit.js`](server/gui/viewer/story-edit.js) is no longer the
+The full schema-aware editor in [`story-edit.js`](../server/gui/viewer/story-edit.js) is no longer the
 review surface — it is an optional **edit in full** action from the sidebar, backed by the same
 in-memory session (it syncs field changes back through `/scaffold/set`, and its confirm still calls
 scaffold accept). Neither walk routes there on its own any more; both stay on the scaffold page.
@@ -763,8 +767,8 @@ Behaviour:
 
 ### Handoff panel
 
-Built as [`handoff.js`](server/gui/viewer/handoff.js) and
-[`handoff-view.js`](server/gui/viewer/handoff-view.js) on its own `#/handoff?dir=` route, reached from
+Built as [`handoff.js`](../server/gui/viewer/handoff.js) and
+[`handoff-view.js`](../server/gui/viewer/handoff-view.js) on its own `#/handoff?dir=` route, reached from
 the story page's "prepare chapter N" button. Four states:
 
 - **Preparing** — `busy` renders as `.thinking`; Accept and Send are disabled, Abandon stays available.
@@ -810,31 +814,33 @@ the two have similar round shapes and different lifecycle rules.
 ## HTTP surface
 
 ```bash
-npx tsx story-writer.ts stories/example --chapter=2
+npx tsx story-writer.ts data/stories/example --chapter=2
 ```
 
 Both conversations are viewer-only: the new-story interview is driven from the shelf through
-`GET /scaffold`, `POST /scaffold/{start,say,approve,set,accept,abandon}`, and the handoff from
-`#/handoff?dir=` through `GET /next-chapter` and `POST /next-chapter/{start,say,accept,abandon}`,
-specified in [`GUI-SPEC.md`]docs/(GUI-SPEC.md). The server reaches the engine through `ServerHost` and
+`GET /scaffold`, `POST /scaffold/{start,say,approve,regenerate,concept,import,promote,set,accept,abandon}`,
+and the handoff from `#/handoff?dir=` through `GET /next-chapter` and
+`POST /next-chapter/{start,say,regenerate,accept,abandon}`,
+specified in `GUI-SPEC.md`. The server reaches the engine through `ServerHost` and
 never imports engine modules directly. The old console walkthrough (`--new`, `--oneshot`,
-`--next-chapter`) was removed; those flags are rejected with a pointer at `--serve`.
+`--idea`, `--next-chapter`) was removed; those flags are rejected with a pointer at `--serve`.
 
 ## Remaining work
 
-- `specView` omits `config`, `models` and per-character `model` — needed only if a panel shows them.
+- `specView` carries `config`, `models`, per-character `model` and `maxRetries` alongside the
+  GUI-facing shape — nothing there is omitted that a panel might need.
 - A **scaffold** architect receives a hard-coded worked example from `tests/fixtures/doorway`
   (~1,870 estimated tokens) — the one story committed with the engine, since everything under
-  `stories/` is the user's own content and gitignored. A **handoff** architect no longer gets it —
+  `data/stories/` is the user's own content and gitignored. A **handoff** architect no longer gets it —
   the handoff prompt names every edit field inline and resends the real story each round, so the
   example was the format said twice.
 - **The scaffold has a scripted session in the GUI harness**: `setScaffoldFactory`, in the shape
   `setHandoffFactory` already had, installs a `ScaffoldSession` whose architect replies from a
-  script, and [`scaffold.spec.ts`](tests/gui/scaffold.spec.ts) walks a staged session through
+  script, and [`scaffold.spec.ts`](../tests/gui/scaffold.spec.ts) walks a staged session through
   `/scaffold/start` and one approve — asserting the stepper tracks the published gate, the approve
   button names the gate it passes, and the tension reaches the rail as its text. The deeper gates
   (settings onward, and the blocked-gate override) stay in
-  [GUI-CHECKLIST.md]docs/(GUI-CHECKLIST.md)'s manual section 14. The concept's three catalog lookups
+  `GUI-CHECKLIST.md`'s manual scaffold-interview section (§12). The concept's three catalog lookups
   (`unknownTags`, `importCharacters`, `resolveStyle`) now read the harness's temp files rather than
   the author's own catalog at ROOT, which the spread `HOST` would otherwise have reached.
 
