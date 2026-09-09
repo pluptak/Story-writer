@@ -15,8 +15,12 @@ import { wireModalClose } from "./wire.js";
 /** A clickable pill for one character, used by the header, the shelf cards and the scene
  *  rosters. A `<span role="button">`, not a `<button>`, so pills keep working inside any card
  *  without nesting real buttons. `scene` is the chapter number the pill was rendered for, when
- *  one is known -- it rides to the card as `data-char-scene`. */
-export function charChip(c, dir, scene = null) {
+ *  one is known -- it rides to the card as `data-char-scene`. `chat` is the run-on-screen's
+ *  consulted names (lowercased), or null where no run is on screen: on a run screen each pill
+ *  gains a 💬 sibling that opens that character's inspector conversation, disabled while they
+ *  have no consultation yet. A sibling, never a child -- the pill itself opens the card, and
+ *  two nested actions would fight over one click. */
+export function charChip(c, dir, scene = null, chat = null) {
   const can = c.skills || [];
   const cannot = c.restrictions || [];
   const reach = c.reach || [];
@@ -24,12 +28,19 @@ export function charChip(c, dir, scene = null) {
   if (can.length) bits.push(`<span class="yes">+${esc(can.join(", "))}</span>`);
   if (cannot.length) bits.push(`<span class="no">no ${esc(cannot.join(", "))}</span>`);
   if (reach.length) bits.push(`<span class="reach">⇢${esc(reach.join(", "))}</span>`);
+  const chatBtn = chat == null ? "" : (() => {
+    const has = chat.has(String(c.name || "").toLowerCase());
+    const label = has ? `Inspect ${c.name}'s conversation`
+      : `${c.name} has no consultation in this run yet`;
+    return ` <button${tid("cast.chat")} class="chatbtn" data-chat-for="${esc(c.name)}"`
+      + ` title="${esc(label)}" aria-label="${esc(label)}"${has ? "" : " disabled"}>💬</button>`;
+  })();
   return `<span${tid("cast.chip")} class="chip" role="button" tabindex="0"
             data-char-name="${esc(c.name)}" data-char-dir="${esc(dir || "")}"
             data-char-can="${esc(can.join("|"))}" data-char-cannot="${esc(cannot.join("|"))}"
             data-char-reach="${esc(reach.join("|"))}"
             ${scene != null ? `data-char-scene="${scene}"` : ""}>
-    <b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>`;
+    <b>${esc(c.name)}</b>${bits.length ? " " + bits.join(" ") : ""}</span>${chatBtn}`;
 }
 
 /** The chapter a card's scene number points at, read off the already-loaded shelf cards --

@@ -11,7 +11,8 @@ import { scaffoldLifecycle } from "./hud.js";
 // A card doesn't play a story, it opens one: browsing is always allowed,
 // even mid-run -- only *starting* a run is refused, and that refusal lives
 // on the story page, not here.
-export const castChips = (list, dir, scene = null) => (list || []).map(c => charChip(c, dir, scene)).join("");
+export const castChips = (list, dir, scene = null, chat = null) =>
+  (list || []).map(c => charChip(c, dir, scene, chat)).join("");
 
 // Mirrors story-page.js's scenesOf/nextChapterOf without importing them:
 // story-page.js already imports shelf.js (castChips), so importing it back

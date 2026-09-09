@@ -74,7 +74,13 @@ function historyHeaderHtml(store) {
 }
 
 export function readChromeHtml(store = READV, includeAgents = store === READV, agentState = APP, includeOpen = store === READV) {
-  const cast = store.meta ? castChips(store.meta.characters, store.meta.story, store.meta.chapter ?? null) : "";
+  // The read tab's own Cast section carries the same chat shortcuts as the live header: enabled
+  // while the character has a consultation in the run on screen. Compare panes (includeOpen
+  // false, another store) stay plain pills -- their inspector belongs to no run on screen.
+  const chat = includeOpen && store === READV && store.meta
+    ? new Set((store.events || []).filter(e => e.t === "consult").map(e => String(e.character || "").toLowerCase()))
+    : null;
+  const cast = store.meta ? castChips(store.meta.characters, store.meta.story, store.meta.chapter ?? null, chat) : "";
   const loaded = !!(store.dir && store.id);
   return (includeOpen ? historyHeaderHtml(store) : "")
   + `<section ${tid("read.chrome")} class="picker readchrome">

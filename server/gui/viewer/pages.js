@@ -79,7 +79,7 @@ function renderNav() {
   $("tabasked").hidden = !APP.awaitingReader;
 }
 
-function renderHeader() {
+function renderHeader(blocks = []) {
   // Manuscript mode: show the story name, no cast, no engine question
   if (APP.view === "readstory") {
     const name = storyName(READER.dir) || basename(READER.dir) || "manuscript";
@@ -97,7 +97,10 @@ function renderHeader() {
   $("question").textContent = APP.view === "live" ? (ph ? `live chapter · ${ph}` : "") : (m.question || "");
   // Live only: the read page carries its own "Cast" section, and the same pills in the header too
   // is one set too many.
-  $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story, m.chapter ?? null) : "";
+  // The header pills carry each character's chat shortcut: enabled while they have a consultation
+  // in this run, which is what the consulted names below say.
+  const consulted = new Set(blocks.filter(b => b.kind === "consult").map(b => String(b.who || "").toLowerCase()));
+  $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story, m.chapter ?? null, consulted) : "";
   $("castcard").hidden = !(APP.view === "live" && m.characters?.length);
   // The authored sheet behind a pill's character card fetches once per story, first live frame --
   // so the card is full when a pill is clicked instead of filling in as it is read.
@@ -321,14 +324,14 @@ function renderLive(page, blocks) {
       <span class="label livewords" data-tid="live.words">${esc(target ? `${words} / ${target} words` : `${words} words`)}</span>
     </div>
     <div class="body">
-       <div class="prose">` + renderBlocks(blocks, true) + `</div>
+      <div class="prose">` + renderBlocks(blocks, true) + `</div>
     </div>
   </section>`;
-   wireConsultToggles(page);
-   wireConsultInspectButtons(page);
-   wireReader(page);
-   setFoldable(blocks.some(b => b.kind === "consult"));
-   renderRail(LIVEV, blocks);
+  wireConsultToggles(page);
+  wireConsultInspectButtons(page);
+  wireReader(page);
+  setFoldable(blocks.some(b => b.kind === "consult"));
+  renderRail(LIVEV, blocks);
 }
 function renderRead(page, blocks) {
   const chrome = readChromeHtml();
@@ -461,7 +464,7 @@ export function render() {
   paintFocus();
   const store = APP.view === "live" ? LIVEV : APP.view === "read" ? READV : null;
   const blocks = store ? build(store) : [];
-  renderHeader();
+  renderHeader(blocks);
   renderSession();
   paintSrcbar();
   paintRibbon();

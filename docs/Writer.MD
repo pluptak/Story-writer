@@ -348,11 +348,19 @@ behind it:
   story continues*, *Waiting — the story pauses here until they answer*, *Set aside — asked again*).
   The full per-attempt detail — the fresh-instance note, asked-back Q&A, the flags on a forced or
   re-asked attempt, judge verdicts — is still all there, but one disclosure further in, behind its own
-  "How this was decided" toggle. One consult going well is easy to render compactly; losing the rest
-  would make a retry unreadable, and a retry is the case worth watching — it is simply no longer the
-  first thing opening the block shows.
-- **POV is not shown.** POV is a hint to the writer about whose choice comes first, not something a
-  reader of the run needs. `RunMeta` carries no `pov` and does not need to.
+   "How this was decided" toggle. One consult going well is easy to render compactly; losing the rest
+   would make a retry unreadable, and a retry is the case worth watching — it is simply no longer the
+   first thing opening the block shows.
+ - **POV is not shown.** POV is a hint to the writer about whose choice comes first, not something a
+   reader of the run needs. `RunMeta` carries no `pov` and does not need to.
+ - **The floating inspector is the Character Behavior Inspector.** Opening any consult shows that
+   consultation's Writer ↔ Character exchange as the primary view, with the character's standing
+   across the whole run beside it: how many consults they answered, which were reasked, asked
+   back, or flagged, and every group reaction they joined. Prev/next steps through that
+   character's consultations in run order; the rest of their run waits one disclosure down
+   ("More from NAME in this run"). A reaction reads from their side — a promoted deed as acted,
+   any other volunteered deed as an impulse never taken — because only a promoted deed enters
+   their memory. It stays read-only: no inputs, nothing posts.
 
 A pending author decision outranks the stream: while a reader consult is unanswered, a bordered
 "needs your call" banner renders above the prose card (the reader card itself still renders inline,

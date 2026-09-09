@@ -2,9 +2,24 @@ import { esc, tid } from "./util.js";
 import { APP, LIVEV, READV } from "./state.js";
 import { noteFocus } from "./nav.js";
 
+/** A cast chip's 💬 shortcut: open one character's latest consultation in the run on screen.
+ *  The button renders disabled while they have nothing to show, so reaching here with no
+ *  consultation means the run moved on -- say so rather than opening nothing. */
+function openCharacterConversation(name) {
+  if (APP.view !== "live" && APP.view !== "read") return;
+  const store = APP.view === "live" ? LIVEV : READV;
+  const blocks = (store === READV ? READV.events : LIVEV.events) || [];
+  const mine = blocks.filter(e => e.t === "consult"
+    && String(e.character || "").toLowerCase() === String(name || "").toLowerCase());
+  if (!mine.length) return;
+  openConsultInspector(Number(mine[mine.length - 1].seq),
+    { type: "chip", seq: Number(mine[mine.length - 1].seq), name });
+  APP.render();
+}
 // ---- the consultation inspector -------------------------------------------
-// A floating, modeless reading of one historical Writer ↔ Character consultation:
-// Writer asked → character knew → character answered → accepted or set aside.
+// A floating, modeless Character Behavior Inspector: one character's Writer ↔
+// Character conversation as its primary view, with that character's standing across
+// the whole run one step away.
 //
 // It reads the same blocks events.js builds for the prose views, so the live run and a
 // retained run show their own conversation with no second data model and no GUI-only copy:
@@ -54,6 +69,54 @@ export function consultStatus(b) {
   return { key: "accepted", glyph: "✓", label: "Accepted", line: bits.join(" · "),
            attempts: attempts.length, capped: !!b.capped, setAside,
            judgeNote: fin.judge?.note || "" };
+}
+
+/** Case-insensitive identity, the same funnel every engine comparison goes through. */
+const sameWho = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+
+/** Every consult block addressed to one character, in run order — the whole run, not a filter. */
+function consultsOf(blocks, who) {
+  return (blocks || []).filter(b => b.kind === "consult" && sameWho(b.who, who));
+}
+
+/** Every group reaction one character answered, in run order. Each entry carries whether
+ *  their volunteered deed was promoted: thought and speech are folded into the character's
+ *  own history either way (fanout.ts), while an action joins it only through `[YOU ACTED]`
+ *  on promotion — an un-taken impulse never becomes memory. */
+function reactionsOf(blocks, who) {
+  const out = [];
+  for (const b of blocks || []) {
+    if (b.kind !== "reaction") continue;
+    const r = (b.reacted || []).find(x => sameWho(x.name, who));
+    if (!r || (!r.thought && !r.speech && !r.action)) continue;
+    const promoted = !!b.promoted && sameWho(b.promoted.character, who);
+    out.push({ seq: b.seq, situation: b.situation || "", thought: r.thought || "",
+               speech: r.speech || "", action: r.action || "", promoted });
+  }
+  return out;
+}
+
+/** One character's standing across the run on screen, in story words. */
+function behaviorOf(blocks, who) {
+  const consults = consultsOf(blocks, who);
+  const attempts = consults.reduce((n, b) => n + (b.attempts || []).length, 0);
+  const reasked = consults.filter(b => (b.attempts || []).length > 1).length;
+  const askedBack = consults.filter(b => (b.attempts || []).some(a => (a.qa || []).length)).length;
+  const flagged = consults.filter(b => (b.attempts || []).some(a => (a.flags || []).length)).length;
+  const reactions = reactionsOf(blocks, who);
+  const acted = reactions.filter(r => r.promoted && r.action).length;
+  return { consults: consults.length, attempts, reasked, askedBack, flagged,
+           reactions: reactions.length, acted };
+}
+
+function behaviorLine(who, beh) {
+  const bits = [`${beh.consults} consult${beh.consults === 1 ? "" : "s"}`];
+  if (beh.reasked) bits.push(`reasked ×${beh.reasked}`);
+  if (beh.askedBack) bits.push(`asked back ×${beh.askedBack}`);
+  if (beh.flagged) bits.push(`flagged ×${beh.flagged}`);
+  if (beh.reactions) bits.push(`${beh.reactions} reaction${beh.reactions === 1 ? "" : "s"}`
+    + (beh.acted ? ` (${beh.acted} acted)` : ""));
+  return `${who} across this run: ${bits.join(" · ")}`;
 }
 
 /** One message bubble. `role` is `writer` or the character's name; the aria-label carries it so
@@ -186,7 +249,7 @@ function detailsHtml(b, store) {
     + `</div></details>`;
 }
 
-function headerHtml(b, store, st) {
+function headerHtml(b, store, st, blocks) {
   const start = (store.events || []).find(e => e.t === "scene_start");
   const chapter = start?.chapter ?? store.meta?.chapter ?? null;
   const question = store.meta?.question || "";
@@ -195,13 +258,78 @@ function headerHtml(b, store, st) {
   // this character rather than duplicating its authored sheet here.
   const hasCard = [...document.querySelectorAll(".chip[data-char-name]")]
     .some(c => (c.dataset.charName || "").toLowerCase() === b.who.toLowerCase());
+  // Whole-run stepping: the consults before and after this one addressed to the same character,
+  // in run order. One character, one conversation continued across the scene.
+  const sibs = consultsOf(blocks, b.who);
+  const at = sibs.findIndex(x => Number(x.seq) === Number(b.seq));
+  const prev = at > 0 ? sibs[at - 1] : null;
+  const next = at >= 0 && at < sibs.length - 1 ? sibs[at + 1] : null;
+  const pos = at >= 0 ? ` · ${at + 1} of ${sibs.length}` : "";
+  const nav = sibs.length > 1
+    ? `<div class="inav" role="group" aria-label="more consultations with ${esc(b.who)}">`
+      + (prev ? `<button${tid("inspect.prev")} class="btn small" data-inspect-seq="${esc(prev.seq)}"`
+        + ` title="previous consultation with ${esc(b.who)}" aria-label="previous consultation with ${esc(b.who)}">← prev</button>`
+        : `<button${tid("inspect.prev")} class="btn small" disabled aria-disabled="true">← prev</button>`)
+      + `<span class="ipos"${tid("inspect.pos")}>${esc(at + 1)} of ${esc(sibs.length)}</span>`
+      + (next ? `<button${tid("inspect.next")} class="btn small" data-inspect-seq="${esc(next.seq)}"`
+        + ` title="next consultation with ${esc(b.who)}" aria-label="next consultation with ${esc(b.who)}">next →</button>`
+        : `<button${tid("inspect.next")} class="btn small" disabled aria-disabled="true">next →</button>`)
+      + `</div>`
+    : "";
   return `<p class="eyebrow">${eyebrow}</p>`
     + `<div class="ihead"><h2>${esc(b.who)} <span class="was">was consulted</span></h2>`
     + `<button${tid("inspect.close")} class="btn" title="close (Esc)" aria-label="close consultation inspector">×</button></div>`
     + (question ? `<p class="iquest">“${esc(question)}”</p>` : "")
     + `<p${tid("inspect.status")} class="istat is-${st.key}"><span aria-hidden="true">${esc(st.glyph)}</span> ${esc(st.line)}</p>`
+    + `<p${tid("inspect.behavior")} class="ibehav">${esc(behaviorLine(b.who, behaviorOf(blocks, b.who)))}${esc(pos)}</p>`
+    + nav
     + (hasCard ? `<div class="btns"><button${tid("inspect.charcard")} class="btn small" data-who="${esc(b.who)}">`
       + `about ${esc(b.who)} — character card</button></div>` : "");
+}
+
+/** One group reaction from a single character's side: the shared beat they answered,
+ *  and what they gave. A promoted deed reads as acted; any other volunteered deed stayed
+ *  an impulse — the page and the character's memory never disagree. */
+function reactionMiniHtml(r, who) {
+  const parts = [];
+  if (r.speech) parts.push(`<div class="speech">“${esc(r.speech)}”</div>`);
+  if (r.action) parts.push(r.promoted
+    ? `<div class="action">acted: ${esc(r.action)}</div>`
+    : `<div class="thought dim">impulse, not taken: ${esc(r.action)}</div>`);
+  if (r.thought) parts.push(`<div class="thought">${esc(r.thought)}</div>`);
+  return msgHtml("writer", "The group was asked", paras(r.situation || "(the shared beat)"),
+      { tidName: "inspect.writer-msg" })
+    + msgHtml(who, `${who} reacted`, parts.join("") || `<div class="thought">took the moment in</div>`,
+      { tidName: "inspect.character-msg" });
+}
+
+/** The rest of this character's run, one disclosure down: their other consultations and
+ *  every group reaction they answered. The open consultation above stays the primary view;
+ *  this answers "what else did they do?" without leaving the panel. */
+function runMoreHtml(b, blocks) {
+  const others = consultsOf(blocks, b.who).filter(x => Number(x.seq) !== Number(b.seq));
+  const reacts = reactionsOf(blocks, b.who);
+  if (!others.length && !reacts.length) return "";
+  const n = others.length + reacts.length;
+  const consultRows = others.map(o => {
+    const fin = (o.attempts || [])[(o.attempts || []).length - 1] || {};
+    const text = String(fin.situation || fin.question || "").trim().replace(/\s+/g, " ");
+    const snip = text.length > 90 ? text.slice(0, 90) + "…" : text || "(no exchange yet)";
+    const st = consultStatus(o);
+    const state = st.key === "waiting" ? "waiting" : st.attempts > 1 ? "reasked" : "decided";
+    return `<button class="imorelink" data-inspect-seq="${esc(o.seq)}"${tid("inspect.jump")}>`
+      + `<span class="k">consultation ${esc(o.seq)} · ${esc(state)}</span>`
+      + `<span class="v">${esc(snip)}</span></button>`;
+  }).join("");
+  const reactRows = reacts.map(r =>
+    `<section class="prev" aria-label="group reaction ${esc(r.seq)}">`
+    + `<p class="charcard-eyebrow">Group reaction · ${r.promoted && r.action ? "deed acted" : "moment taken in"}</p>`
+    + `${reactionMiniHtml(r, b.who)}</section>`).join("");
+  const memoryNote = reacts.length
+    ? `<p class="inote">What a reaction leaves in memory: what they felt and said, always;`
+      + ` a volunteered deed only when the writer made it real.</p>` : "";
+  return `<details${tid("inspect.run-more")} class="idis"><summary>▸ More from ${esc(b.who)} in this run (${n})</summary>`
+    + `<div class="idis-body">${consultRows}${reactRows}${memoryNote}</div></details>`;
 }
 
 /** The panel HTML for the open target, or "" when nothing is inspectable. A stale key (run
@@ -218,13 +346,13 @@ export function consultInspectorHtml(blocks) {
   const fin = attempts[attempts.length - 1] || {};
   return `<section${tid("inspect.dialog")} class="inspect-panel" role="dialog" aria-modal="false"`
     + ` aria-label="consultation with ${esc(b.who)}" data-seq="${esc(b.seq)}">`
-    + headerHtml(b, store, st)
+    + headerHtml(b, store, st, blocks)
     + `<div class="iconv" aria-label="conversation">`
     + (fin.answer || (fin.qa || []).length || fin.situation
       ? attemptHtml(b, fin, { final: true })
       : `<p class="inote">Nothing exchanged yet.</p>`)
     + `</div>`
-    + contextHtml(b) + previousHtml(b) + detailsHtml(b, store)
+    + contextHtml(b) + previousHtml(b) + runMoreHtml(b, blocks) + detailsHtml(b, store)
     + `</section>`;
 }
 
@@ -236,17 +364,23 @@ export function openConsultInspector(seq, invoker) {
   noteFocus(Number(seq));
 }
 
-/** Close and hand focus back to the consultation event that opened the panel. */
+/** Close and hand focus back to whatever opened the panel: a timeline marker, an inline
+ *  consult's inspect button, or a cast chip's chat shortcut. */
 export function closeConsultInspector() {
   const inv = APP.consultInspect?.invoker;
   APP.consultInspect = null;
   APP.consultFocusPending = false;
   APP.consultFocusInside = false;
   APP.render();
-  const sel = inv?.type === "timeline"
-    ? `[data-tid="timeline.marker"][data-seq="${inv.seq}"]`
-    : inv ? `[data-tid="consult.inspect-btn"][data-seq="${inv.seq}"]` : "";
-  const el = sel ? document.querySelector(sel) : null;
+  let el = null;
+  if (inv?.type === "timeline") {
+    el = document.querySelector(`[data-tid="timeline.marker"][data-seq="${inv.seq}"]`);
+  } else if (inv?.type === "chip" && inv?.name) {
+    el = [...document.querySelectorAll('[data-tid="cast.chat"]')]
+      .find(b => String(b.dataset.chatFor || "").toLowerCase() === String(inv.name).toLowerCase()) ?? null;
+  } else if (inv) {
+    el = document.querySelector(`[data-tid="consult.inspect-btn"][data-seq="${inv.seq}"]`);
+  }
   if (el instanceof HTMLElement) { try { el.focus(); } catch { /* keep focus where it is */ } }
 }
 
@@ -261,11 +395,25 @@ export function settleInspectWant(blocks, view, store) {
   noteFocus(b.seq);
 }
 
+/** Step the open panel to another consultation in the same run. The original invoker is
+ *  kept, so closing still hands focus back to the event that opened the panel; the page's
+ *  own focus tag follows, keeping panel and prose in sync and the URL addressable. */
+export function stepInspector(seq) {
+  if (!APP.consultInspect) return;
+  APP.consultInspect = { ...APP.consultInspect, seq: Number(seq) };
+  APP.consultFocusPending = true;
+  noteFocus(Number(seq));
+  APP.render();
+}
+
 export function wireConsultInspector(root) {
   const panel = root.querySelector('[data-tid="inspect.dialog"]');
   if (!panel) return;
   panel.querySelector('[data-tid="inspect.close"]')
     ?.addEventListener("click", () => closeConsultInspector());
+  for (const btn of panel.querySelectorAll("[data-inspect-seq]")) {
+    btn.addEventListener("click", () => stepInspector(Number(btn.dataset.inspectSeq)));
+  }
   panel.querySelector('[data-tid="inspect.charcard"]')
     ?.addEventListener("click", e => {
       const name = (e.currentTarget.dataset.who || "").toLowerCase();
@@ -294,3 +442,13 @@ export function wireConsultInspectButtons(page) {
     });
   }
 }
+
+// The chat shortcut sits beside its pill, not inside it -- so the pill's own capture-phase card
+// handler never sees the click (closest("[data-char-name]") misses a sibling), and this bubble
+// listener is the only one that fires. stopPropagation keeps it from reaching anything else.
+document.addEventListener("click", e => {
+  const btn = e.target instanceof Element ? e.target.closest("[data-chat-for]") : null;
+  if (!btn || btn.disabled) return;
+  e.stopPropagation();
+  openCharacterConversation(btn.dataset.chatFor);
+});

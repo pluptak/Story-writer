@@ -251,6 +251,149 @@ test("closing the inspector returns to Write with focus on the consultation even
   await expect(page).toHaveURL(/block=2$/);
 });
 
+/** scene_start + two accepted consults for the same character + drafts. */
+function scriptTwoConsults() {
+  startRun();
+  publish({ t: "consult", character: "MARA", question: "Does Mara name the price aloud?", wants: "speech", attempt: 1,
+            situation: "The courier is two steps nearer the service door than when they arrived." });
+  publish({ t: "answer", character: "MARA", thought: "The lock has been sticking for a month.",
+            action: "Mara stays where she is.", note: "", speech: "Name it, then." });
+  publish({ t: "judge", character: "MARA", verdict: "accept", note: "answers in character", attempt: 1, chapter: 1 });
+  publish({ t: "accept", character: "MARA", attempt: 1, speech: "Name it, then.",
+            action: "Mara stays where she is.", chapter: 1 });
+  publish({ t: "draft", step: 1, consulting: "", salvaged: false, chapter: 1, words: 42,
+            prose: "Mara names the price of the open door." });
+  publish({ t: "consult", character: "MARA", question: "Does Mara open the door herself?", wants: "action", attempt: 1,
+            situation: "The courier sets the package down and waits for someone to turn the key." });
+  publish({ t: "answer", character: "MARA", thought: "Someone has to turn it.", speech: "",
+            action: "Mara turns the key.", note: "" });
+  publish({ t: "judge", character: "MARA", verdict: "accept", note: "answers in character", attempt: 1, chapter: 1 });
+  publish({ t: "accept", character: "MARA", attempt: 1, speech: "", action: "Mara turns the key.", chapter: 1 });
+  publish({ t: "draft", step: 2, consulting: "", salvaged: false, chapter: 1, words: 84,
+            prose: "Mara turns the key, and the door swings wide." });
+}
+
+/** scene_start + one accepted consult + a group reaction the same character answered. */
+function scriptConsultAndReaction() {
+  startRun();
+  publish({ t: "consult", character: "MARA", question: "Does Mara name the price aloud?", wants: "speech", attempt: 1,
+            situation: "The courier is two steps nearer the service door than when they arrived." });
+  publish({ t: "answer", character: "MARA", thought: "The lock has been sticking for a month.",
+            action: "Mara stays where she is.", note: "", speech: "Name it, then." });
+  publish({ t: "judge", character: "MARA", verdict: "accept", note: "answers in character", attempt: 1, chapter: 1 });
+  publish({ t: "accept", character: "MARA", attempt: 1, speech: "Name it, then.",
+            action: "Mara stays where she is.", chapter: 1 });
+  publish({ t: "reaction_fanout", reactors: ["MARA", "JULES"],
+            situation: "The alarm sounds through the whole wing.", chapter: 1 });
+  publish({ t: "reaction", character: "MARA", thought: "Not the boiler again.",
+            speech: "Everyone stay where you are.", action: "", chapter: 1 });
+  publish({ t: "reaction", character: "JULES", thought: "They never drill us.",
+            speech: "", action: "Jules backs against the wall.", chapter: 1 });
+  publish({ t: "draft", step: 2, consulting: "", salvaged: false, chapter: 1, words: 84,
+            prose: "The alarm sounds, and Mara holds the room." });
+}
+
+test("the inspector steps through one character's consultations across the whole run", async ({ page }) => {
+  await expect.poll(() => sseClients.size, { timeout: 5_000 }).toBeGreaterThan(0);
+  scriptTwoConsults();
+  await expect(page.getByTestId("live.prose-card")).toBeVisible();
+  await expect(page.getByTestId("timeline.marker")).toHaveCount(2);
+
+  await page.getByTestId("timeline.marker").first().click();
+  const dialog = page.getByTestId("inspect.dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("two steps nearer the service door");
+  await expect(page.getByTestId("inspect.behavior"))
+    .toContainText("MARA across this run: 2 consults");
+  await expect(page.getByTestId("inspect.pos")).toContainText("1 of 2");
+  await expect(page.getByTestId("inspect.prev")).toBeDisabled();
+
+  await page.getByTestId("inspect.next").click();
+  await expect(dialog).toContainText("sets the package down");
+  await expect(page.getByTestId("inspect.pos")).toContainText("2 of 2");
+  await expect(page.getByTestId("inspect.next")).toBeDisabled();
+  // The panel and the prose stay in sync: stepping retags the URL to the new consultation.
+  await expect(page).toHaveURL(/inspect=\d+$/);
+
+  await page.getByTestId("inspect.prev").click();
+  await expect(dialog).toContainText("two steps nearer the service door");
+});
+
+test("a group reaction they answered reads as part of their run", async ({ page }) => {
+  await expect.poll(() => sseClients.size, { timeout: 5_000 }).toBeGreaterThan(0);
+  scriptConsultAndReaction();
+  await expect(page.getByTestId("live.prose-card")).toBeVisible();
+
+  await openFromTimeline(page);
+  const dialog = page.getByTestId("inspect.dialog");
+  await expect(page.getByTestId("inspect.behavior")).toContainText("1 reaction");
+
+  const more = page.getByTestId("inspect.run-more");
+  await expect(more.locator("summary")).toContainText("More from MARA in this run (1)");
+  // The other character's answer is not theirs: only Mara's reaction waits inside.
+  await expect(dialog.getByText("They never drill us")).toBeHidden();
+  await more.locator("summary").click();
+  await expect(dialog).toContainText("Everyone stay where you are.");
+  await expect(dialog).toContainText("Not the boiler again.");
+  await expect(dialog).toContainText("leaves in memory");
+  await expect(dialog.getByText("They never drill us")).toHaveCount(0);
+});
+
+/** scene_start with two characters, but only MARA is consulted + draft. */
+function scriptTwoCastOneConsult() {
+  LIVE.running = true;
+  setWhere("writing", true);
+  publish({ t: "scene_start", story: "tests/fixtures/doorway", characters: ["MARA", "JULES"], target: 700, chapter: 1 });
+  publish({ t: "consult", character: "MARA", question: "Does Mara name the price aloud?", wants: "speech", attempt: 1,
+            situation: "The courier is two steps nearer the service door than when they arrived." });
+  publish({ t: "answer", character: "MARA", thought: "The lock has been sticking for a month.",
+            action: "Mara stays where she is.", note: "", speech: "Name it, then." });
+  publish({ t: "judge", character: "MARA", verdict: "accept", note: "answers in character", attempt: 1, chapter: 1 });
+  publish({ t: "accept", character: "MARA", attempt: 1, speech: "Name it, then.",
+            action: "Mara stays where she is.", chapter: 1 });
+  publish({ t: "draft", step: 1, consulting: "", salvaged: false, chapter: 1, words: 42,
+            prose: "Mara names the price of the open door." });
+}
+
+test("a cast pill's chat shortcut opens that character's conversation", async ({ page }) => {
+  await expect.poll(() => sseClients.size, { timeout: 5_000 }).toBeGreaterThan(0);
+  scriptTwoCastOneConsult();
+  await expect(page.getByTestId("live.prose-card")).toBeVisible();
+
+  // MARA was consulted, JULES was not: one shortcut live, one honestly disabled.
+  const maraChat = page.locator('[data-tid="cast.chat"][data-chat-for="MARA"]');
+  const julesChat = page.locator('[data-tid="cast.chat"][data-chat-for="JULES"]');
+  await expect(maraChat).toBeEnabled();
+  await expect(julesChat).toBeDisabled();
+  await expect(julesChat).toHaveAttribute("aria-label", /no consultation in this run yet/);
+
+  await maraChat.click();
+  const dialog = page.getByTestId("inspect.dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("MARA");
+  await expect(dialog).toContainText("Name it, then.");
+  await expect(page).toHaveURL(/inspect=\d+$/);
+
+  // Closing hands focus back to the shortcut that opened the panel.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(maraChat).toBeFocused();
+});
+
+test("a retained run's cast pills open that character's conversation", async ({ page, served }) => {
+  const dir = await storyWithRuns();
+  try {
+    await openRun(page, served, dir, "run-a");
+    const rivenChat = page.locator('[data-tid="cast.chat"][data-chat-for="RIVEN"]');
+    await expect(rivenChat).toBeEnabled();
+    await rivenChat.click();
+    const dialog = page.getByTestId("inspect.dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("RIVEN");
+    await expect(dialog).toContainText("standing nearer the door");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test("&inspect= opens that consultation on arrival", async ({ page, served }) => {
   scriptAccepted();
   await arrive(page, served, "#/live?block=2&inspect=2");
