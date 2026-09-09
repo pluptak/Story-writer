@@ -1,5 +1,6 @@
 /** STORY FORMAT — loads and validates story.json, and discovers stories on disk. */
 import { readFile, readdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
@@ -234,6 +235,21 @@ export async function selectableStory(dir: string): Promise<string | null> {
   if (!want) return null;
   const choices = await discoverStories();
   return choices.find(c => c === want || c === `data/stories/${want}`) ?? null;
+}
+
+/** Resolve a console-given story directory the way the viewer already does: a
+ *  bare name like `doorway` means `data/stories/doorway` when that exists. A
+ *  path that already points at a story.json (relative or absolute) passes
+ *  through untouched, as does anything unresolvable — loadStory reports that. */
+export function resolveCliStoryDir(dir: string): string {
+  const want = String(dir ?? "").trim();
+  if (!want) return want;
+  const norm = want.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (norm && existsSync(joinPath(resolveStoryDir(norm), "story.json"))) return norm;
+  const bare = norm.replace(/^(data\/stories\/|\/+)/, "");
+  if (bare && existsSync(joinPath(ROOT, "data", "stories", bare, "story.json")))
+    return `data/stories/${bare}`;
+  return want;
 }
 
 const BUILTIN_MODEL = "qwen3.6-35b-a3b";

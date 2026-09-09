@@ -13,10 +13,12 @@ import { pathToFileURL } from "node:url";
 import { C } from "./ansi.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { PROVIDER } from "./engine/provider.ts";
-import { discoverStories, type StoryConfig } from "./engine/story-format.ts";
+import { discoverStories, resolveCliStoryDir, type StoryConfig } from "./engine/story-format.ts";
 import { runPreflight, contextFit } from "./engine/preflight.ts";
 import { persistedCatalogs } from "./engine/catalog.ts";
 import { canonWants, consult, type ConsultRequest } from "./engine/consult.ts";
+import { runOpenConsult, type OpenParticipant } from "./engine/open-consult.ts";
+import { lintPressure, openCharacterSystem, openConsultSystem } from "./prompts/open-consult.ts";
 import { configureArchitectDebug } from "./engine/architect.ts";
 import { newCharacterAgent } from "./engine/scene-loop.ts";
 import { setFitWarning } from "./engine/agent.ts";
@@ -45,7 +47,7 @@ ENGINE.echoCast = flag("no-cast-echo") === undefined;
 configureArchitectDebug(ARCHITECT_DEBUG || !!ARCHITECT_DEBUG_LOG, ARCHITECT_DEBUG_LOG);
 
 async function runPreflightCli() {
-  const dirs = STORY_DIR ? [STORY_DIR] : await discoverStories();
+  const dirs = STORY_DIR ? [resolveCliStoryDir(STORY_DIR)] : await discoverStories();
   if (!dirs.length) { console.error("No stories found under data/stories/."); process.exitCode = 1; return; }
   let failed = 0;
   const catalogs = await persistedCatalogs();   // one read for the whole listing, not one per story
@@ -83,6 +85,73 @@ async function runConsultCli(sc: StoryConfig, who: string) {
     return (await rl.question(`${label}: `)).trim();
   };
   const situation = await ask("Situation", flag("situation"));
+
+  // --open-consult: freetext pressure-test chat (spike). The gated path below
+  // is untouched; this branch forks the character, builds an author-side
+  // consult agent from a pressure brief (problem + stakes, never an outcome),
+  // and prints the full verbatim transcript plus the coercion tallies.
+  if (flag("open-consult") !== undefined) {
+    const pressure = await ask("Pressure (problem + stakes, not an outcome)", flag("pressure"));
+    const pressureWhy = lintPressure(pressure, def.name);
+    if (pressureWhy) {
+      console.log(`\n${C.yellow}(pressure refused — ${pressureWhy})${C.reset}`);
+      rl.close();
+      return;
+    }
+    const skillNames = def.skills.map(s => s.name).filter(Boolean);
+    const character: OpenParticipant = {
+      name: def.name, model: def.model,
+      system: openCharacterSystem({
+        persona: def.persona, place: sc.scenes[0].place, skills: def.skills,
+        knows: def.knows, goal: def.goal, belief: def.belief, impulse: def.impulse,
+        voice: def.voice, situation,
+      }),
+      temperature: 0.9, think: sc.thinking.character,
+    };
+    const consultAgent: OpenParticipant = {
+      name: "CONSULT", model: def.model,
+      system: openConsultSystem({
+        characterName: def.name, situation, pressure,
+        premise: sc.premise, place: sc.scenes[0]?.place,
+        skills: skillNames, limits: def.limits,
+      }),
+      temperature: 0.7, think: sc.thinking.writer,
+    };
+    // Production skill lint: the character's own CANNOT list, substring
+    // match. What it cannot see (invented facts) is the consult agent's job
+    // and the transcript review's — this only evidences the blatant breaks.
+    const cannots = def.limits.map(l => l.toLowerCase()).filter(Boolean);
+    console.log(`\n${C.bold}${def.name}${C.reset} ${C.dim}× CONSULT (open-chat spike, budget 10)${C.reset}`);
+    const result = await runOpenConsult({
+      character, consult: consultAgent, situation, pressure,
+      lintCharacter: cannots.length
+        ? (text) => {
+            const t = text.toLowerCase();
+            const hit = cannots.find(c => c && t.includes(c));
+            return hit ? `reached through CANNOT: "${hit}"` : null;
+          }
+        : undefined,
+    });
+    rl.close();
+
+    for (const turn of result.transcript) {
+      const who = turn.from === "consult" ? `${C.magenta}CONSULT${C.reset}` : `${C.cyan}${def.name}${C.reset}`;
+      console.log(`\n${C.dim}[round ${turn.round}]${C.reset} ${who}\n${turn.text}`);
+    }
+    console.log(`\n${C.dim}--- close: ${result.endedBy}${result.forced ? " (forced, budget spent)" : ""} `
+      + `· rounds ${result.roundsUsed} · vetoes ${result.vetoes} · skill flags ${result.skillFlags.length} ---${C.reset}`);
+    const s = result.stance;
+    if (s.thought) console.log(`${C.gray}thought:${C.reset} ${s.thought}`);
+    if (s.speech)  console.log(`${C.cyan}speech: ${C.reset} "${s.speech}"`);
+    if (s.action)  console.log(`${C.green}action: ${C.reset} ${s.action}`);
+    if (s.note)    console.log(`${C.dim}note:    ${s.note}${C.reset}`);
+    for (const f of result.skillFlags) console.log(`${C.yellow}skill flag:${C.reset} ${f}`);
+    const c = result.coercion;
+    console.log(`${C.dim}coercion: suggestions ${c.suggestions} · stance-shifts ${c.stanceShifts} `
+      + `· veto-over-divergence ${c.vetoOverDivergence} · missed-violations ${c.missedViolations}${C.reset}`);
+    return;
+  }
+
   const question  = await ask("Question", flag("question"));
   const wants     = canonWants(flag("wants")) ?? "";
   const req: ConsultRequest = { character: def.name, situation, question, wants };

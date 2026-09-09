@@ -25,6 +25,9 @@ const OPTIONS = {
   situation: { type: "string" },
   question: { type: "string" },
   wants: { type: "string" },
+  // Open-chat Consult spike (CLI-only prototype): freetext pressure-test chat.
+  "open-consult": { type: "boolean" },
+  pressure: { type: "string" },
   // Architect tracing.
   "architect-debug": { type: "boolean" },
   "architect-debug-log": { type: "string" },

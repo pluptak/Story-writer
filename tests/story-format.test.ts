@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, readChapterCatalogs, ROOT,
+  loadStory, discoverStories, chooseStory, selectableStory, resolveCliStoryDir, loadDefaults, readChapters, writtenChapters, readChapterSpec, readChapterCatalogs, ROOT,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
@@ -653,6 +653,16 @@ describe("story discovery", () => {
                        "tests/fixtures/doorway"]) {
       assert.equal(await selectableStory(bad), null, `must refuse ${JSON.stringify(bad)}`);
     }
+  });
+
+  it("resolveCliStoryDir maps a bare console name to data/stories/, passing the rest through", async () => {
+    assert.equal(resolveCliStoryDir("__discovery_probe__"), probe);
+    assert.equal(resolveCliStoryDir(probe), probe);
+    assert.equal(resolveCliStoryDir(`${probe}/`), probe);
+    assert.equal(resolveCliStoryDir("data/stories\\__discovery_probe__"), probe);
+    // Unresolvable input is not rewritten — loadStory reports it, unchanged.
+    assert.equal(resolveCliStoryDir("no-such-story"), "no-such-story");
+    assert.equal(resolveCliStoryDir(""), "");
   });
 });
 

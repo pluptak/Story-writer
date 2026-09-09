@@ -5,7 +5,7 @@ import { C } from "../ansi.ts";
 import { RUN, StoppedError } from "../live.ts";
 import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
-import { topLevelObjects } from "./json-extract.ts";
+import { topLevelObjects, visibleReply } from "./json-extract.ts";
 import { PROVIDER } from "./provider.ts";
 import { onceAdmitted, QueueGaveUpError, TELEMETRY, announceProviderState } from "./req-queue.ts";
 import type { ThinkLevel } from "./story-schema.ts";
@@ -48,7 +48,10 @@ interface RawReply { content: string; reasoning: string; finishReason: string | 
  *  any separate reasoning is carried alongside it — never concatenated with the text. A reply that
  *  arrived only as reasoning falls back to being the text, flagged. */
 function assembleReply(r: RawReply): Omit<Completion, "usage"> {
-  const content = r.content.trim();
+  // Content-side thinking that rode in as text (channel markers the server did
+  // not consume) is trace, not answer — strip it the same way readers do, so
+  // histories, digests and transcripts never carry it forward.
+  const content = visibleReply(r.content);
   const reason = r.reasoning.trim();
   if (content)
     return { text: content, reasoning: reason || null, finishReason: r.finishReason,
