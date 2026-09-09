@@ -51,8 +51,12 @@ function diffHtml(left, right) {
     kind === "same" ? esc(word) + " " : `<span class="diff-${kind}">${esc(word)}</span> `).join("")}</section>`;
 }
 
+/** A run named the way history names it: what chapter it wrote first, then when/how it ended.
+ *  Shared by the picker options, the versus line and the pane titles, so all three agree. */
+const runLabel = r => `${typeof r?.chapter === "number" ? `chapter ${r.chapter} · ` : ""}${fmtRun(r || {})}`;
+
 function optionHtml(runs, selected) {
-  return runs.map(r => `<option value="${esc(r.id)}"${r.id === selected ? " selected" : ""}>${esc(fmtRun(r))}</option>`).join("");
+  return runs.map(r => `<option value="${esc(r.id)}"${r.id === selected ? " selected" : ""}>${esc(runLabel(r))}</option>`).join("");
 }
 
 export function prepareComparison(dir, a = "", b = "") {
@@ -123,15 +127,15 @@ export function comparisonPageHtml() {
   const error = APP.compareError || selectionError();
   return `<section ${tid("compare.picker")} class="picker compare-picker">
     <h2>Compare runs</h2>
-    <p class="sub">${esc(story.name)} · choose two runs from the same chapter.</p>
+    <p class="sub">${esc(story.name)} · two attempts at the same chapter, side by side. Choose two runs from the same chapter.</p>
     <div class="row"><label for="compare-a">first run</label><select class="btn" id="compare-a">${optionHtml(runs, APP.compareA)}</select></div>
     <div class="row"><label for="compare-b">second run</label><select class="btn" id="compare-b">${optionHtml(runs, APP.compareB)}</select></div>
-    ${error ? errorLine(esc(error)) : hint(`${esc(fmtRun(a || {}))} versus ${esc(fmtRun(b || {}))}`)}
+    ${error ? errorLine(esc(error)) : hint(`${esc(runLabel(a))} versus ${esc(runLabel(b))}`)}
     ${divider("comparison")}
     ${COMPAREV.error ? errorLine(esc(COMPAREV.error)) : COMPAREV.loading ? thinking('reading both runs…', { tag: "p" })
       : `<div class="prose-diff-card"><div class="label">accepted prose diff
            <span class="diff-legend"><span class="diff-added">only in second</span> <span class="diff-removed">only in first</span></span></div>${diffHtml(assembledProse(COMPAREV.a), assembledProse(COMPAREV.b))}</div>
-         <div class="compare-panes">${paneHtml(COMPAREV.a, fmtRun(a || {}), "a")}${paneHtml(COMPAREV.b, fmtRun(b || {}), "b")}</div>`}
+         <div class="compare-panes">${paneHtml(COMPAREV.a, runLabel(a), "a")}${paneHtml(COMPAREV.b, runLabel(b), "b")}</div>`}
   </section>`;
 }
 

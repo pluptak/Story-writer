@@ -60,8 +60,10 @@ export const APP = {
   runError: "",                 // the engine failed to load or run the picked story, shown on the story page
   runEnded: null,                // the run just finished: {done, stopped, words, steps} -- the
                                   // end-of-run modal is up until "back to shelf" or "stay here" clears it
-  charCard: null,               // a character pill was clicked: {name, dir, can, cannot} -- the
-                                 // character card modal is up for them
+  charCard: null,               // a character pill was clicked: {name, dir, can, cannot, scene} --
+                                 // the character card modal is up for them. scene is the chapter number
+                                 // the pill was rendered for (null when none was known) -- the card's
+                                 // "in this scene" section resolves against it.
   modalWant: "",                // deep link pending: "character-card:<name>" from &modal= -- resolved
                                  // once a chip for that name is on screen
   focusSeq: null,               // deep link / timeline jump target: the seq of the consult block to
@@ -147,9 +149,12 @@ export const APP = {
     generalSkills: {},
   },
   expandAll: false,
+  focus: false,                 // distraction-free mode (focus.js): prose and decisions only, on the
+                               // live and manuscript views. Pure chrome state -- toggling it never
+                               // touches the run, the story, or anything the engine reads.
   railDetailOpen: false,        // the live/read rail's collapsed "engine detail" toggle -- a
-                                 // reading preference like `open` below, not reset by a re-render
-                                 // or a new run arriving mid-session.
+                               // reading preference like `open` below, not reset by a re-render
+                               // or a new run arriving mid-session.
   wantReaderView: false,        // a reader consult just arrived: scroll to it once the run page is showing
   awaitingReader: false,        // that consult is still unanswered -- the run is blocked on a human, not
                                  // just "in progress" (tabdot, tab label, document.title read this).

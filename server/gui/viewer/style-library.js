@@ -1,6 +1,6 @@
 import { APP } from "./state.js";
 import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
-import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
+import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadVocab, loadStyles, refreshUsage } from "./catalog.js";
 import { go } from "./nav.js";
 import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
@@ -114,7 +114,8 @@ function assistantHtml() {
 export function styleLibraryHtml() {
   const s = APP.styleLibrary;
   if (s.loading) return `<section class="lib-page lib-styles"><div class="lib-loading">${thinking("loading style library…")}</div></section>`;
-  if (s.error && !s.entries.length) return `<section class="lib-page lib-styles"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again", id:"stylib-retry", variant:"primary"})}</div></section>`;
+  if (s.error && !s.entries.length) return `<section class="lib-page lib-styles"><div class="lib-loading">${storyNote({ meaning: "Couldn't load the style library — your stories are unaffected.",
+    detail: esc(s.error) })}${button({label:"Try again", id:"stylib-retry", variant:"primary"})}</div></section>`;
   return `${catalogPageOpen("styles", s.draft, tid("style-library.page"))}<header class="lib-top"><div class="page-title"><p class="eyebrow">library · styles</p><h1>Style Library <span class="lib-info">i</span></h1><p class="lede">Reusable writing styles you can apply to any story.</p></div><div class="lib-top-actions">${button({label:"＋ New style", id:"stylib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="stylib-search" placeholder="⌕  Search styles…" value="${esc(s.search)}"><select class="lib-input" id="stylib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>
     <div class="lib-list">${listHtml()}</div><footer class="lib-list-footer">Showing ${visibleEntries().length} of ${s.entries.length} styles</footer>${catalogPageClose(s, editorHtml())}`;

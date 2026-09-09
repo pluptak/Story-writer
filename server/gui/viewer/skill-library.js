@@ -1,6 +1,6 @@
 import { APP } from "./state.js";
 import { esc, tid, postJson, reasonOr, glyphAvailable } from "./util.js";
-import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
+import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
 import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
@@ -200,7 +200,8 @@ function editorHtml() {
 export function skillLibraryHtml() {
   const s = APP.skillLibrary;
   if (s.loading) return `<section class="lib-page lib-skills"><div class="lib-loading">${thinking("loading skill bible…")}</div></section>`;
-  if (s.error && !s.entries.length) return `<section class="lib-page lib-skills"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again", id:"skilllib-retry", variant:"primary"})}</div></section>`;
+  if (s.error && !s.entries.length) return `<section class="lib-page lib-skills"><div class="lib-loading">${storyNote({ meaning: "Couldn't load the skill library — your stories are unaffected.",
+    detail: esc(s.error) })}${button({label:"Try again", id:"skilllib-retry", variant:"primary"})}</div></section>`;
   // The inspector is not rendered at all until something is selected, so the list gets the whole
   // width rather than sitting beside a panel saying nothing.
   return `${catalogPageOpen("skills", s.draft, tid("skill-library.page"))}

@@ -514,29 +514,6 @@ below: **The world timeline**.
   for missing belief, impulse, voice, portable persona or unresolved capabilities. Warnings do not block
   a save unless the existing catalog policy changes deliberately.
 
-  **Migration.** Change `engine/catalog-schema.ts` so `LibraryCharacter` has `hidden` and `updatedAt`
-  defaults and no `tags`. When loading an old `data/catalogs/catalog-characters.json`, drop the obsolete `tags` key,
-  default old entries to visible, and derive a stable initial `updatedAt` from the file migration time or
-  entry version. Do not silently drop unknown non-tag fields without a warning. Persist atomically using
-  the existing temp-file/rename path. The story import path in `host.ts` must filter hidden entries by
-  default and continue returning only `portablePersona`, `belief`, `impulse`, `voice`, `skills` and
-  `restrictions`.
-
-  **Tags leave the character model entirely, not just its editor.** A tag is the architect's during
-  story creation and the style editor's; a character was never one of its subjects. So dropping the
-  field is not enough — two readers still take a character's tags as an input and have to go with it,
-  or they will keep deriving counts from a field nothing writes:
-
-  - `host.ts`'s `/catalog/usage` derivation counts a tag's `characters` by folding every character's
-    `tags[]`. That whole loop goes, and `CatalogUsage.tags` loses its `characters` member — a tag is
-    used by styles and skills, and by nothing else.
-  - `catalog-view.js`'s `tagUsageHtml()` renders the `used by N characters` half of that line, and the
-    generic character row renders a `cat-tags` string. Both go with the count behind them.
-
-  Until they do, every save from the character library silently zeroes that character's contribution
-  to a number the tag page still displays. Doing this in the same block as the schema change is what
-  keeps the window shut.
-
   **Assistant proposal shape.** The assistant receives only the character draft and the instruction;
   it must not receive a complete `StorySpec` or story transcript. It returns:
 

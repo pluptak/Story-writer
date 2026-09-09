@@ -1,6 +1,6 @@
 import { APP } from "./state.js";
 import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
-import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
+import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadLibrary } from "./catalog.js";
 import { go } from "./nav.js";
 import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
@@ -285,7 +285,8 @@ function pagerHtml(pageCount) {
 export function characterLibraryHtml() {
   const s = APP.characterLibrary;
   if (s.loading) return `<section class="lib-page lib-characters"><div class="lib-loading">${thinking("loading character library…")}</div></section>`;
-  if (s.error && !s.entries.length) return `<section class="lib-page lib-characters"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again",id:"charlib-retry",variant:"primary"})}</div></section>`;
+  if (s.error && !s.entries.length) return `<section class="lib-page lib-characters"><div class="lib-loading">${storyNote({ meaning: "Couldn't load the character library — your stories are unaffected.",
+    detail: esc(s.error) })}${button({label:"Try again",id:"charlib-retry",variant:"primary"})}</div></section>`;
   const { slice, pageCount, total, start } = paginate(filteredSorted());
   const rangeText = total === 0 ? "Showing 0 characters" : `Showing ${start + 1}-${start + slice.length} of ${total} characters`;
   return `${catalogPageOpen("characters", s.draft, tid("character-library.page"))}

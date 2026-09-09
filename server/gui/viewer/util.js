@@ -14,12 +14,21 @@ export const basename = p => (p || "").replace(/^.*[\\/]/, "");
 // truncates the result (the folder cap is 40; catalog ids pass Infinity and never truncate).
 export const slugify = (s, max = 40) => String(s ?? "").toLowerCase().normalize("NFKD")
   .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, max).replace(/-+$/, "");
-export const fmtRun = r => {
-  const d = new Date(r.mtimeMs);
-  const when = Number.isNaN(d.getTime()) ? "" : d.toLocaleString(undefined,
+export const fmtWhen = ms => {
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(undefined,
     { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
-  const status = r.stopped ? "stopped" : r.done ? "finished" : r.words != null ? "unfinished" : "no output";
-  return [when, r.words != null ? `${r.words}w` : "", status].filter(Boolean).join(" · ");
+};
+/** How a run ended, as a stable key + words -- shared by the history rows (story page, read
+ *  header, compare labels), which all answer "was it accepted/completed/stopped?" off the same
+ *  {stopped, done} shape the shelf's RunSummary and the log's scene_end event both carry. */
+export const runOutcome = r => r?.stopped ? { key: "stopped", label: "stopped" }
+  : r?.done ? { key: "finished", label: "finished" }
+  : r?.words != null ? { key: "unfinished", label: "unfinished" }
+  : { key: "none", label: "no output" };
+export const fmtRun = r => {
+  const when = fmtWhen(r.mtimeMs);
+  return [when, r.words != null ? `${r.words}w` : "", runOutcome(r).label].filter(Boolean).join(" · ");
 };
 
 /** How a run ended, in words -- shared by the "end" block (blocks.js) and the end-of-run modal
@@ -112,6 +121,15 @@ export const parseCommaSeparated = text => (text || "").split(",").map(s => s.tr
 export function makeLatest() {
   let seq = 0;
   return () => { const mine = ++seq; return { current: () => mine === seq }; };
+}
+
+/** scrollIntoView that honours reduced motion: a smooth glide otherwise, an instant jump when
+ *  the OS asks for less motion. All programmatic scrolling goes through here. */
+export function scrollToEl(el, block = "start") {
+  if (!el) return;
+  try {
+    el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block });
+  } catch { el.scrollIntoView(); }
 }
 
 /** First click arms a confirming second click within `ms`; the second click disarms and runs

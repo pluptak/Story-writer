@@ -1,4 +1,4 @@
-import { $, esc, basename, wireBackdropClose, tid } from "./util.js";
+import { $, esc, basename, wireBackdropClose, tid, scrollToEl } from "./util.js";
 import { APP, LIVEV, READV, READER, FIELDS, open, storyName } from "./state.js";
 import { build } from "./events.js";
 import { renderBlocks, wireReader } from "./blocks.js";
@@ -18,8 +18,9 @@ import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./ch
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { libraryPickerHtml, wireLibraryPicker } from "./library-picker.js";
 import { scaffoldHtml, wireScaffold } from "./interview.js";
-import { readerPageHtml, wireReaderPage } from "./reader.js";
-import { comparisonPageHtml, wireComparison } from "./compare.js";
+import { readerPageHtml, wireReaderPage, loadReader } from "./reader.js";
+import { comparisonPageHtml, wireComparison, prepareComparison, loadComparisonRuns } from "./compare.js";
+import { paintFocus } from "./focus.js";
 import { go, generating, syncHash, tagFocus, clearFocus, parseHashParams } from "./nav.js";
 import { renderSession } from "./session.js";
 import { button, hint, thinking } from "./ui.js";
@@ -77,11 +78,11 @@ function renderNav() {
 }
 
 function renderHeader() {
-  // Reader mode: show the story name, no cast
+  // Manuscript mode: show the story name, no cast, no engine question
   if (APP.view === "readstory") {
-    const name = storyName(READER.dir) || basename(READER.dir) || "reader";
+    const name = storyName(READER.dir) || basename(READER.dir) || "manuscript";
     $("title").textContent = name;
-    $("question").textContent = "reading · " + name;
+    $("question").textContent = "manuscript · " + name;
     $("cast").innerHTML = ""; $("castcard").hidden = true;
     return;
   }
@@ -94,7 +95,7 @@ function renderHeader() {
   $("question").textContent = APP.view === "live" ? (ph ? `live chapter · ${ph}` : "") : (m.question || "");
   // Live only: the read page carries its own "Cast" section, and the same pills in the header too
   // is one set too many.
-  $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story) : "";
+  $("cast").innerHTML = APP.view === "live" ? castChips(m.characters, m.story, m.chapter ?? null) : "";
   $("castcard").hidden = !(APP.view === "live" && m.characters?.length);
   // The authored sheet behind a pill's character card fetches once per story, first live frame --
   // so the card is full when a pill is clicked instead of filling in as it is read.
@@ -104,9 +105,9 @@ function renderHeader() {
 function paintRibbon() {
   const el = $("ribbon");
   if (APP.view !== "read" || !READV.meta) { el.hidden = true; el.textContent = ""; return; }
-  const who = basename(READV.meta.story) || "saved run";
+  const who = basename(READV.meta.story) || "history";
   el.hidden = false;
-  el.textContent = `reading a saved run · ${who}${READV.label ? " · " + READV.label : ""}`;
+  el.textContent = `history · ${who}${READV.label ? " · " + READV.label : ""}`;
 }
 
 function renderShelf(page, keepFocus) {
@@ -114,7 +115,9 @@ function renderShelf(page, keepFocus) {
   clearRail();
   // The new-story card opens the scaffold page (a route now, not a modal); an interview already
   // running on the server is continued there, not started again.
-  wirePicker(page, () => go("story"), () => go("scaffold"), () => go("catalog"));
+  wirePicker(page, () => go("story"), () => go("scaffold"), () => go("catalog"),
+    dir => { go("readstory"); loadReader(dir); },
+    dir => { APP.editDir = dir; go("edit"); });
   restoreFocus(page, keepFocus);
   setFoldable(false);
 }
@@ -278,8 +281,8 @@ function renderLive(page, blocks) {
       const name = storyName(APP.picked || LIVEV.meta?.story || "");
       html = `<div class="empty starting" data-tid="live.empty">
         <h2>Starting${name ? ` <em>${esc(name)}</em>` : ""}…</h2>
-        ${thinking("waiting for the writer — a cold model can take a few seconds", { tag: "p" })}
-        ${hint(`use <b>stop</b> in the run controls to cancel, once they appear`)}
+        ${thinking("loading the story and reaching the model — the first reply can take a while", { tag: "p" })}
+        ${hint(`nothing needed. Safe to look around — the run keeps going, and <b>stop</b> appears in the run controls once it starts`)}
       </div>`;
     } else {
       const text = APP.live ? "The scene will appear here as soon as the engine starts writing."
@@ -305,7 +308,7 @@ function renderLive(page, blocks) {
   const pending = blocks.filter(b => b.kind === "reader" && b.answer === null).length;
   const decision = pending
     ? `<div class="livedecision" data-tid="live.decision" role="status"><span class="label">needs your call</span>` +
-      `<span>${pending === 1 ? "The writer is waiting on one choice below." : `The writer is waiting on ${pending} choices below.`}</span></div>`
+      `<span>${pending === 1 ? "The writer is waiting on one choice below." : `The writer is waiting on ${pending} choices below.`} The run waits as long as needed.</span></div>`
     : "";
   // Writer-first prose card: the head carries identity (phase) + one quiet progress line (words).
   // Step number, consult counts and the interactive/hands-off mode used to sit here as chips at
@@ -331,11 +334,16 @@ function renderRead(page, blocks) {
     // leaves a log holding only `scene_start`. Saying "nothing loaded" there blames the wrong thing
     // and reads like a failed fetch, so an empty run says it is empty.
     const empty = READV.events.length > 0;
+    // The incomplete run keeps its machine identity one disclosure down -- the meaning and the
+    // next step stay the headline.
+    const emptyTech = empty && READV.id
+      ? `<details class="engine-details read-empty-tech" data-tid="read.empty-tech"><summary>Technical details</summary>`
+        + `<div class="tech">run ${esc(READV.id)}${READV.dir ? ` · ${esc(READV.dir)}` : ""}</div></details>` : "";
     page.innerHTML = chrome + `<div class="empty" data-tid="read.empty"><h2>${empty ? "This run is empty" : "Nothing loaded"}</h2>
       <p>${empty ? `${esc(READV.label || "it")} — the run was stopped before a word of it was written.
              Pick an earlier one, which may have more in it.`
-                 : `Open a story on the shelf and "read" a previous run, drop a saved
-             <code>out/writing-log.jsonl</code> onto this page, or open one from disk.`}</p></div>`;
+                  : `Open a story on the shelf and "read" a run from its history, drop a saved
+              <code>out/writing-log.jsonl</code> onto this page, or open one from disk.`}</p>${emptyTech}</div>`;
     clearRail();
     wireSavedRuns(page);
     setFoldable(false);
@@ -344,6 +352,14 @@ function renderRead(page, blocks) {
   page.innerHTML = chrome + `<div class="prose">` + renderBlocks(blocks, false) + `</div>`;
   wireConsultToggles(page);
   wireSavedRuns(page);
+  // "Compare this run" preselects the run on screen; prepareComparison defaults the other side
+  // to a mate from the same chapter (story-page.js: the same pairing rule as the history rows).
+  const cmp = page.querySelector("#read-compare");
+  if (cmp) cmp.addEventListener("click", () => {
+    prepareComparison(READV.dir, READV.id);
+    go("compare");
+    loadComparisonRuns();
+  });
   setFoldable(blocks.some(b => b.kind === "consult"));
   renderRail(READV, blocks);
 }
@@ -393,7 +409,7 @@ function settleStep(page) {
   const t = STEP_SECTIONS[step].map(k => page.querySelector(`[data-stage="${k}"]`)).find(Boolean);
   if (!t) return;                       // stage not on screen yet -- retry on a later frame
   APP.stepScrolledFor = step;
-  t.scrollIntoView({ behavior: "smooth", block: "start" });
+  scrollToEl(t);
 }
 
 /** One-shot scroll to the &block=/timeline target once it exists on screen. Runs after each render;
@@ -407,7 +423,7 @@ function settleFocus(page) {
   APP.focusScrolled = true;
   if (t instanceof HTMLDetailsElement) t.open = true;
   open.add(APP.focusSeq);
-  t.scrollIntoView({ behavior: "smooth", block: "center" });
+  scrollToEl(t, "center");
 }
 
 /** Repainted every render(), regardless of view -- the header pill that opens the character card is
@@ -434,6 +450,7 @@ function paintModals(goShelf) {
 
 export function render() {
   renderNav();
+  paintFocus();
   const store = APP.view === "live" ? LIVEV : APP.view === "read" ? READV : null;
   const blocks = store ? build(store) : [];
   renderHeader();
@@ -448,6 +465,17 @@ export function render() {
   const page = $("page");
   const active = document.activeElement;
   const keepFocus = active && FIELDS.test(active.id || "") ? active.id : "";
+  // Whatever inside #page had focus is about to be rebuilt -- during a live run that is every
+  // SSE frame. Remember it (by id, or by consult seq for summaries, which carry none) so a
+  // focus genuinely destroyed by the rebuild can be put back below.
+  const focusEl = active instanceof HTMLElement && page.contains(active) ? active : null;
+  const seqHost = focusEl && focusEl.tagName === "SUMMARY" ? focusEl.closest("details.consult") : null;
+  const doomed = focusEl ? {
+    id: focusEl.id || "",
+    seq: seqHost instanceof HTMLElement ? seqHost.dataset.seq ?? "" : "",
+    start: typeof focusEl.selectionStart === "number" ? focusEl.selectionStart : null,
+    end: typeof focusEl.selectionEnd === "number" ? focusEl.selectionEnd : null,
+  } : null;
   if (APP.view === "shelf") renderShelf(page, keepFocus);
   else if (APP.view === "story") renderStoryPage(page);
   else if (APP.view === "handoff") renderHandoff(page, keepFocus);
@@ -461,6 +489,19 @@ export function render() {
   else if (APP.view === "readstory") renderReader(page);
   else if (APP.view === "read") renderRead(page, blocks);
   else renderLive(page, blocks);
+  // The rebuild drops whatever inside #page had focus. When focus truly died with it (it fell
+  // back to <body>, rather than moving somewhere on purpose), put it back -- caret and all.
+  // Views that restore their own focus above already refocused, so this is a no-op for them.
+  if (doomed && (doomed.id || doomed.seq) && document.activeElement === document.body) {
+    const el = doomed.id ? document.getElementById(doomed.id)
+      : page.querySelector(`details.consult[data-seq="${Number(doomed.seq)}"] > summary`);
+    if (el) {
+      el.focus();
+      if (doomed.start != null) {
+        try { el.setSelectionRange(doomed.start, doomed.end); } catch { /* not a text field */ }
+      }
+    }
+  }
   // Empty on the shelf/story/handoff pages -- an empty bordered card with just a header is worse
   // than no card at all. The engine disclosure needs no such toggle: an empty div renders as
   // nothing on its own, and it lives outside any card (hud.js:renderRail).

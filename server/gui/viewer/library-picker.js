@@ -22,7 +22,7 @@ export function entryFace(kind, e) {
   if (kind === "skills") {
     return { id: e.id, name: e.name, blurb: e.meaning, meta: (e.tags || []).join(" · ") };
   } else if (kind === "characters") {
-    return { id: e.id, name: e.name, blurb: e.portablePersona, meta: (e.tags || []).join(" · ") };
+    return { id: e.id, name: e.name, blurb: e.portablePersona, meta: "" };
   } else if (kind === "styles") {
     return { id: e.id, name: e.name, blurb: e.description, meta: (e.tags || []).join(" · ") };
   } else if (kind === "tags") {

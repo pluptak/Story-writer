@@ -1,7 +1,7 @@
 :root {
     /* Warm paper, ported from mockups/architect. The dark palette is authored to the same intent:
        warm charcoal rather than blue-gray, the accent lightened until it holds on the darker ground. */
-    --bg:#f3f1ec; --panel:#fffdfa; --panel-2:#ebe7df; --ink:#22221f; --muted:#6f6b62; --faint:#8f8a80;
+     --bg:#f3f1ec; --panel:#fffdfa; --panel-2:#ebe7df; --ink:#22221f; --muted:#675f57; --faint:#6a655f;
     --line:#ddd8cf; --accent:#5d5a7d; --warn:#9b6b29; --bad:#9b4d4d; --good:#3f775f;
     --judge:#6d54c4; --batch-judge:#a84fb0; --narration-judge:#c2547e; --clarifier:#7d6d14;
     --scroll:#cfc9be;
@@ -16,18 +16,18 @@
     --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:16px; --r-pill:999px;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#211e1a; --panel:#2a2723; --panel-2:#242119; --ink:#eae6dd; --muted:#a59e92; --faint:#8c867b;
+    :root { --bg:#211e1a; --panel:#2a2723; --panel-2:#242119; --ink:#eae6dd; --muted:#a59e92; --faint:#948e84;
       --line:#3d382f; --accent:#a9a3d6; --warn:#d8a559; --bad:#dd8a7f; --good:#82bd9c;
       --judge:#b18cff; --batch-judge:#e08ae0; --narration-judge:#ef8ab0; --clarifier:#cbc04a;
       --scroll:#3d382f;
       --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.4); }
   }
-  :root[data-theme="dark"]{ --bg:#211e1a;--panel:#2a2723;--panel-2:#242119;--ink:#eae6dd;--muted:#a59e92;--faint:#8c867b;
+  :root[data-theme="dark"]{ --bg:#211e1a;--panel:#2a2723;--panel-2:#242119;--ink:#eae6dd;--muted:#a59e92;--faint:#948e84;
     --line:#3d382f;--accent:#a9a3d6;--warn:#d8a559;--bad:#dd8a7f;--good:#82bd9c;
     --judge:#b18cff;--batch-judge:#e08ae0;--narration-judge:#ef8ab0;--clarifier:#cbc04a;
     --scroll:#3d382f;
     --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 30px rgba(0,0,0,.4); }
-  :root[data-theme="light"]{ --bg:#f3f1ec;--panel:#fffdfa;--panel-2:#ebe7df;--ink:#22221f;--muted:#6f6b62;--faint:#8f8a80;
+  :root[data-theme="light"]{ --bg:#f3f1ec;--panel:#fffdfa;--panel-2:#ebe7df;--ink:#22221f;--muted:#675f57;--faint:#6a655f;
     --line:#ddd8cf;--accent:#5d5a7d;--warn:#9b6b29;--bad:#9b4d4d;--good:#3f775f;
     --judge:#6d54c4;--batch-judge:#a84fb0;--narration-judge:#c2547e;--clarifier:#7d6d14;
     --scroll:#cfc9be;
@@ -51,22 +51,24 @@
 
   .topbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; padding:10px 20px;
             border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:8; }
+  /* Skip link: off-screen until keyboard focus lands on it, then pinned above everything. */
+  .skip { position:fixed; left:12px; top:-56px; z-index:100; background:var(--panel);
+          border:1px solid var(--accent); border-radius:var(--r-md); padding:8px 12px;
+          color:var(--ink); font-size:var(--fs-13); text-decoration:none; box-shadow:var(--shadow); }
+  .skip:focus-visible { top:12px; outline:2px solid var(--accent); outline-offset:2px; }
+  /* The skip target itself never shows a focus ring -- the link already announced the jump. */
+  #page:focus { outline:none; }
   .brand { margin-right:auto; min-width:0; }
   .brand h1 { font-size:var(--fs-15); margin:0; font-weight:600; }
   .brand .q { font-size:var(--fs-12); color:var(--muted); margin-top:1px; }
 
- .tabs { display:flex; gap:4px; }
-  .tab { font-family:var(--sans); font-size:var(--fs-12); font-weight:500;
-         color:var(--muted); background:transparent; border:1px solid transparent; border-radius:var(--r-md);
-         padding:6px 10px; cursor:pointer; }
-  .tab:hover { color:var(--ink); }
-  .tab:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  .tab.current { color:var(--ink); background:var(--panel-2); border-color:var(--line); }
-  .tab[hidden] { display:none; }
+  /* The run marker is a steady dot, not a pulse: it stands for the whole run, and a
+     perpetual animation is the ops-dashboard feel the writing views avoid. The one pulse
+     left marks work happening right now (the composing indicator). */
   .tabdot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent);
-            margin-left:6px; vertical-align:middle; animation:pulse 1.2s ease-in-out infinite; }
+            margin-left:6px; vertical-align:middle; }
   .tabdot[hidden] { display:none; }
-  .tabdot.asked { background:var(--warn); animation:pulse .8s ease-in-out infinite; }
+  .tabdot.asked { background:var(--warn); }
   .tabasked { color:var(--warn); font-weight:600; margin-left:4px; }
   .tabasked[hidden] { display:none; }
 
@@ -137,6 +139,9 @@
   .provchip { margin-left:auto; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40%; }
   .provchip.warn { color:var(--warn); }
   #src { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+  /* A crumb can carry a long unbreakable token (a story dir path) -- without its own
+     min-width:0 it holds the whole srcbar, and the page, wider than the viewport. */
+  #src .crumb { min-width:0; overflow-wrap:anywhere; }
   .crumb { color:var(--muted); }
   .crumb[data-view] { cursor:pointer; }
   .crumb[data-view]:hover { color:var(--ink); text-decoration:underline; }
@@ -156,6 +161,23 @@
   .layout { display:grid; grid-template-columns:216px minmax(0,1fr) 285px; align-items:start; }
   body[data-view="catalog"] .layout { grid-template-columns:216px minmax(0,1fr); }
   body[data-view="catalog"] .rail { display:none; }
+  /* Focus mode (focus.js): prose and decisions only, on the live and manuscript views. The
+     sidenav, topbar, breadcrumbs, timeline and ribbon go; the rail keeps only the run
+     controls with their secondary half (model override, interactive toggle) hidden; the
+     manuscript keeps its title and chapters while its return bar, TOC, search and tech
+     details go. In-page decision controls -- reader consults, the budget prompt, stop /
+     pause / consult-me -- are untouched, as are modals. The exit button is fixed chrome,
+     outside the grid, so it survives the layout below collapsing. */
+  body.focus .topbar, body.focus .srcbar, body.focus .ribbon, body.focus .timeline,
+  body.focus #sidenav { display:none; }
+  body.focus .layout { grid-template-columns:minmax(0,1fr) 285px; }
+  body.focus #runscene, body.focus #castcard, body.focus #railstats,
+  body.focus #runctrl h3, body.focus #interactive, body.focus #modelSelect { display:none; }
+  body.focus .reader-return, body.focus .reader-toc, body.focus .reader-search,
+  body.focus #reader-results, body.focus .reader-tech { display:none; }
+  #focusexit { position:fixed; top:12px; right:12px; z-index:60;
+               box-shadow:var(--shadow); }
+  @media (max-width: 900px) { body.focus .layout { grid-template-columns:1fr; } }
   body[data-view="catalog"] .page { max-width:none; margin:0; padding:0 0 140px; }
   /* The rail carries the run controls now, so it stacks on a narrow screen instead of vanishing --
      hiding it would take away the only way to stop a run. The `position` half of that has to come
@@ -197,8 +219,12 @@
     .navitem { white-space:nowrap; flex:none; width:auto; }
   }
 
-  .page { padding:28px clamp(16px,4vw,40px) 140px; max-width:730px; margin:0 auto; width:100%; }
-  .prose { font-family:var(--serif); font-size:var(--fs-18); line-height:1.66; }
+  /* min-width:0 lets the page column actually shrink to a narrow viewport: a consult
+     summary's unbreakable decision line (and any engine token like it) would otherwise hold
+     the whole grid track wider than the window. Long prose tokens still break, they just
+     break inside the column instead of stretching it. */
+  .page { padding:28px clamp(16px,4vw,40px) 140px; max-width:730px; margin:0 auto; width:100%; min-width:0; }
+  .prose { font-family:var(--serif); font-size:var(--fs-18); line-height:1.66; overflow-wrap:break-word; }
   .prose p { margin:0 0 1.05em; }
   .prose p:last-child { margin-bottom:0; }
   .piece { margin:0 0 1.05em; }
@@ -216,10 +242,13 @@
   .consult > summary .who { color:var(--accent); font-weight:600; letter-spacing:.04em; }
   .consult > summary .decide { color:var(--faint); font-family:var(--sans); font-size:var(--fs-12); }
   .consult > summary .qs { color:var(--muted); font-family:var(--sans); font-size:var(--fs-12);
-                           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:46%; }
+                           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:46%;
+                           /* nowrap makes the intrinsic minimum the whole line, and the percentage
+                              cap cannot contain it while the track is still indefinite -- without
+                              min-width:0 the summary holds narrow pages wider than the viewport. */
+                           min-width:0; }
   .consult[open] > summary { margin-bottom:10px; }
   .consult .tag { font-size:var(--fs-10); padding:1px 6px; border-radius:var(--r-pill); border:1px solid var(--line); }
-  .consult .tag.retry { color:var(--warn); border-color:var(--warn); }
   .consult .tag.state { color:var(--good); border-color:var(--good); }
   /* The story layer speaks in story words: why the story stopped, the situation it stopped in,
      the decision it needed, what the character answered, and what happens next. Serif carries
@@ -237,6 +266,14 @@
                               text-transform:uppercase; color:var(--faint); cursor:pointer; list-style:none; }
   .engine-details > summary::-webkit-details-marker { display:none; }
   .engine-details > summary:hover { color:var(--accent); }
+  /* the two-layer failure note (ui.js storyNote): the meaning reads as the surface's own voice,
+     the raw detail sits one disclosure down, still selectable and searchable. */
+  .said .meaning, .prob .meaning { margin:0; }
+  .said .tech, .prob .tech { font-family:var(--mono); font-size:var(--fs-11); color:var(--muted);
+    margin-top:6px; overflow-wrap:anywhere; white-space:pre-wrap; }
+  .said .engine-details, .prob .engine-details { margin-top:8px; border-top:0; padding-top:0; }
+  /* the incomplete-run empty state keeps its machine identity centered and quiet */
+  .read-empty-tech { display:inline-block; text-align:left; margin-top:10px; }
 
   /* scoped to .consult: a bare `.body` here leaked into the live page's .prosecard .body,
      which only overrides padding -- the prose got an accidental nested card */
@@ -271,6 +308,13 @@
   .note.tone-info { border-left-color:var(--accent); color:var(--muted); }
   .note.end  { color:var(--accent); border-left-color:var(--accent); }
   .note.exit { color:var(--warn); border-left-color:var(--warn); }
+  /* The end marker's step count sits one disclosure down: no divider, tight spacing, so the
+     collapsed line reads as a quiet continuation of the verdict rather than a second block. */
+  .note.end .engine-details { margin-top:2px; border-top:0; padding-top:0; }
+  /* Agent rows lead with who and how many calls; token volumes and model ids live one
+     disclosure down in the same row. */
+  .agentrow .engine-details { margin-top:6px; border-top:0; padding-top:0; }
+  .agentrow .engine-details .tech { font-family:var(--mono); font-size:var(--fs-11); color:var(--muted); }
 
   /* Non-critical notes collapse into a pill row so the prose keeps flowing; the full text is one
      hover/click away (native title + aria-label). Reuses the .tag/.pill language the rest of the
@@ -372,16 +416,60 @@
   .card.new .q { color:var(--muted); }
   .card.new.top { margin-bottom:18px; }
   .cardwrap { display:flex; flex-direction:column; gap:6px; }
+  /* the shelf as project library: each story is an article with its own actions, not one big
+     button — so the card itself stays quiet and the title carries the open affordance. */
+  .card.shelf-card { cursor:default; }
+  .card.shelf-card:hover { border-color:var(--line); }
+  .shelf-title { background:none; border:none; padding:0; margin:0; text-align:left; cursor:pointer;
+    font:inherit; color:inherit; }
+  .shelf-title .name { font-family:var(--serif); font-size:var(--fs-16); font-weight:400; }
+  .shelf-title:hover .name { color:var(--accent); }
+  .shelf-title:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:var(--r-xs); }
+  .shelf-title[disabled] { cursor:not-allowed; }
+  .shelf-title[disabled]:hover .name { color:inherit; }
+  .shelf-status { font-size:var(--fs-13); font-weight:600; margin:8px 0 0; }
+  .shelf-card .bar { margin:8px 0 2px; }
+  .shelf-meta { font-family:var(--mono); font-size:var(--fs-11); color:var(--faint); margin-top:6px; }
+  .shelf-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
   .divider { display:flex; align-items:center; gap:10px; margin:0 0 14px;
              font-family:var(--mono); font-size:var(--fs-11); letter-spacing:.06em; color:var(--faint); }
   .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--line); }
   .runs { display:flex; flex-wrap:wrap; gap:6px; }
   /* the run-picker button and the model-call button are the same small pill */
-  .runbtn, .callbtn { font-size:var(--fs-10); padding:4px 8px; }
+  .runbtn, .callbtn { font-size:var(--fs-10); padding:4px 8px; border-radius:var(--r-pill); }
   .runbtn.current, .callbtn.current { color:var(--accent); border-color:var(--accent); background:var(--panel-2); }
   /* grouped by chapter: the label is a left column, the runs wrap beside it */
   .rungroup { display:flex; align-items:baseline; gap:10px; margin-bottom:8px; }
   .rungroup > .hint { flex:0 0 auto; min-width:62px; }
+  /* history rows: one run's story (chapter, outcome, when, how far) with reading and
+     comparing as the actions; the raw log sits one disclosure down per row */
+  .runhistory { flex-direction:column; align-items:stretch; }
+  .runrow { border-top:1px dashed var(--line); padding:10px 0 6px; }
+  .runrow:first-child { border-top:0; padding-top:0; }
+  .runrow-main { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; }
+  .runrow-title { font-size:var(--fs-13); font-weight:600; }
+  .runrow .tag { font-family:var(--mono); font-size:var(--fs-10); padding:1px 6px;
+                 border-radius:var(--r-pill); border:1px solid var(--line); color:var(--faint); }
+  .runrow .tag.outcome-finished { color:var(--good); border-color:var(--good); }
+  .runrow .tag.outcome-stopped { color:var(--warn); border-color:var(--warn); }
+  .runrow-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .runrow-q { flex-basis:100%; margin:0; }
+  .runrow-log { margin-top:6px; }
+  .runrow-log > summary { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+     text-transform:uppercase; color:var(--faint); cursor:pointer; list-style:none; }
+  .runrow-log > summary::-webkit-details-marker { display:none; }
+  .runrow-log > summary:hover { color:var(--accent); }
+  .runrow-log .tech { font-family:var(--mono); font-size:var(--fs-11); color:var(--muted); margin-top:4px; }
+  /* the read page's history header: what story, what chapter, when, outcome, how far --
+     then the compare action and the raw-log disclosure */
+  .run-history .run-history-line { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0 0; }
+  .run-history .tag { font-family:var(--mono); font-size:var(--fs-10); padding:1px 6px;
+     border-radius:var(--r-pill); border:1px solid var(--line); color:var(--faint); }
+  .run-history .tag.outcome-finished { color:var(--good); border-color:var(--good); }
+  .run-history .tag.outcome-stopped { color:var(--warn); border-color:var(--warn); }
+  .run-history .btns { margin-top:10px; }
+  .run-history .runlog { margin-top:10px; }
+  .run-history .runlog .tech { font-family:var(--mono); font-size:var(--fs-11); color:var(--muted); margin-top:4px; }
   /* the read tab's chrome -- just the loaded run's cast, reusing the shelf card's .row spacing */
   .readchrome .row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; }
 
@@ -425,6 +513,16 @@
   /* the character card -- reuses the story page's .row for its can/cannot line */
   .charcard .row { display:flex; flex-wrap:wrap; gap:10px; font-size:var(--fs-13); margin-top:6px; }
   .charmd-placeholder { font-size:var(--fs-13); color:var(--faint); margin-top:14px; }
+  /* the card reads scene-first: the eyebrow names which half is which, so scene state can never
+     read as definition. The about half sits below a hairline, after what matters right now. */
+  .charcard-eyebrow { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+    text-transform:uppercase; color:var(--faint); margin:12px 0 8px; }
+  .charcard-eyebrow:first-child { margin-top:6px; }
+  .charcard-role { font-size:var(--fs-13); margin:0 0 6px; }
+  .charcard-scene span { font-size:var(--fs-12); color:var(--muted); }
+  .charcard-scene p { font-family:var(--serif); font-size:var(--fs-15); font-style:italic; margin:2px 0 8px; }
+  .charcard-about { margin-top:14px; padding-top:4px; border-top:1px solid var(--line); }
+  .charcard-about .hint { margin:6px 0 0; }
 
   .modal-backdrop { position:fixed; inset:0; z-index:30; background:rgba(0,0,0,.55);
                      display:flex; align-items:flex-start; justify-content:center;
@@ -442,6 +540,12 @@
   .iv .lead { font-family:var(--serif); font-size:var(--fs-16); margin:0 0 12px; color:var(--muted); }
   .iv .said, .story .said { font-family:var(--mono); font-size:var(--fs-11); color:var(--faint); margin:10px 0 0; }
   .iv .said.bad, .story .said.bad { color:var(--bad); } .iv .said.good, .story .said.good { color:var(--good); }
+  /* One warning/error recipe everywhere: the toned line always wears its soft tint box, so a
+     refusal on the story page reads exactly like one in the interview or the scaffold. The
+     neutral .said (no tone) stays bare text -- it carries no severity. */
+  .prob { color:var(--warn); background:var(--warn-soft); border-radius:var(--r-sm); padding:9px 10px; }
+  .said.bad { color:var(--bad); background:var(--bad-soft); border-radius:var(--r-sm); padding:9px 10px; }
+  .said.good { color:var(--good); background:var(--good-soft); border-radius:var(--r-sm); padding:9px 10px; }
   .iv .asked { border-left:2px solid var(--warn); padding-left:12px; margin:14px 0 0; }
   .iv .asked .k { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em; text-transform:uppercase;
                   color:var(--warn); display:block; margin-bottom:3px; }
@@ -522,7 +626,7 @@
   .hchap { display:flex; gap:9px; align-items:baseline; background:var(--panel);
            border:1px solid var(--line); border-radius:var(--r-lg); padding:6px 11px; }
   .hchap .n { font-family:var(--mono); font-size:var(--fs-11); color:var(--good); flex:none; }
-  .hchap .place { font-size:var(--fs-13); color:var(--muted); flex:1 1 auto;
+  .hchap .place { font-size:var(--fs-13); color:var(--muted); flex:1 1 auto; min-width:0;
                   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .hchap .w { font-family:var(--mono); font-size:var(--fs-11); color:var(--faint); flex:none; }
   .hchap.prep .n, .hchap.prep .w { color:var(--accent); }
@@ -618,8 +722,15 @@
   .prompt { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:12;
             background:var(--panel); border:1px solid var(--warn); border-radius:var(--r-xl);
             padding:14px 16px; box-shadow:var(--shadow); display:none; align-items:center; gap:12px;
-            font-size:var(--fs-13); }
+            font-size:var(--fs-13); max-width:calc(100vw - 24px); flex-wrap:wrap; justify-content:center; }
   .prompt.on { display:flex; }
+  /* Narrow: the sticky topbar is the tallest chrome on the smallest screens, so it compresses --
+     tighter padding and no subtitle (the srcbar below already carries the context). The nav
+     strip, breadcrumbs, timeline and prompt all wrap or scroll internally already. */
+  @media (max-width: 600px) {
+    .topbar { gap:8px; padding:10px 12px; }
+    .brand .q { display:none; }
+  }
   .prompt input { width:64px; font-family:var(--mono); font-size:var(--fs-13); padding:5px 8px;
                   border:1px solid var(--line); border-radius:var(--r-sm); background:var(--panel-2); color:var(--ink); }
 
@@ -686,7 +797,7 @@
   .timeline .tl-marker.retried.capped { background:color-mix(in srgb, var(--bad) 28%, var(--panel-2)); }
 
   /* the read tab's per-agent panel -- reuses .cards/.divider/.hint/.said from the story page */
-  .agents { margin-top: 18px; }
+  .agents { margin-top:18px; }
   .agentrow { padding:13px 15px; }
   .agentrow .ag-name { font-size:var(--fs-14); }
   .agentrow .ag-name .tag { font-family:var(--mono); font-size:var(--fs-10); padding:1px 6px; border-radius:var(--r-pill);
@@ -722,12 +833,9 @@
   .prosecard .body { padding:16px 18px; }
   /* Writer-first live view: the prose owns the card. Engine chips used to sit above it at the
      same weight (steps, consult counts, interactive mode); only a quiet word count remains in
-     the head, everything else folded into the rail's Run details. */
-  .prosecard .runmeta { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:15px; }
-  .prosecard .metachip { font-family:var(--mono); font-size:var(--fs-10); padding:3px 8px; border-radius:var(--r-pill);
-                         border:1px solid var(--line); background:var(--panel-2); color:var(--muted); }
+     the head, everything else folded into the rail's Run details. The prose itself inherits
+     the shared .prose measure rather than carrying its own line-height. */
   .prosecard .livewords { flex:none; padding-top:4px; }
-  .prosecard .prose { font-family:var(--serif); font-size:var(--fs-18); line-height:1.7; }
   .prosecard .prose .piece p { margin:0 0 1em; }
   /* The pending author decision outranks the stream: one accent-bordered line above the prose. */
   .livedecision { display:flex; align-items:baseline; gap:10px; background:var(--panel);
@@ -739,6 +847,7 @@
   .railstatus { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
                 padding:2px 0 8px; border-bottom:1px solid var(--line); margin-bottom:4px; }
   .railstatus .phasename { font-family:var(--sans); font-size:var(--fs-13); font-weight:600; }
+  .phasesub { font-size:var(--fs-12); color:var(--muted); margin-top:4px; line-height:1.45; }
   .railstatus .composing { margin-top:0; }
   .raildetails { margin-top:6px; }
   .raildetails > summary { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.1em;
@@ -768,6 +877,30 @@
   .reader-view .hit-line { font-size:var(--fs-14); color:var(--muted); }
   .reader-view .hit-line mark { background:var(--accent); color:var(--panel); border-radius:var(--r-xs);
     padding:0 2px; }
+
+  /* Manuscript as reading mode: the way back to authoring sits under the title, chapter
+     navigation beside the search, and run-level detail behind one disclosure at the end.
+     Serif prose and the warm-paper tokens above are untouched; these reuse the .btn/.hint
+     kit so the manuscript reads like the rest of the app, only quieter. */
+  .reader-return { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; }
+  .reader-toc { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 16px; }
+  .reader-toc-link { font-family:var(--sans); font-size:var(--fs-12); color:var(--muted);
+    background:var(--panel-2); border:1px solid var(--line); border-radius:var(--r-pill);
+    padding:4px 12px; cursor:pointer; }
+  .reader-toc-link:hover { color:var(--ink); border-color:var(--accent); }
+  .reader-toc-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .reader-tech { margin-top:24px; border-top:1px solid var(--line); padding-top:8px; }
+  .reader-tech > summary { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.09em;
+    text-transform:uppercase; color:var(--faint); cursor:pointer; list-style:none; }
+  .reader-tech > summary::-webkit-details-marker { display:none; }
+  .reader-tech > summary:hover { color:var(--accent); }
+  .reader-tech .hint { margin:8px 0; }
+  .reader-tech .btns { margin-top:8px; }
+
+  /* Reading mode hides the engine's own indicators: the provider/queue chip and the consult
+     timeline strip belong to the run views. Breadcrumbs stay — they carry the way back. */
+  body[data-view="readstory"] #provchip { display:none; }
+  body[data-view="readstory"] #timeline { display:none; }
 
   /* the character card's authored half — /cast fields behind a cast pill on the live screen */
   .charcard .cast-note { font-size:var(--fs-12); color:var(--muted); margin:8px 0 0; }
@@ -1012,13 +1145,16 @@
   button.pill { cursor:pointer; font:inherit; }
   /* legacy aliases: one base shape + tone language, same hover grammar as every pill */
   .chip, .cat-chip, .lib-chip, button.lib-chip, .lib-pick, .npill,
-  .prosecard .metachip, .mchip, .timeline .tl-marker, .runbtn, .callbtn,
+  .mchip, .timeline .tl-marker, .runbtn, .callbtn,
   .scenerow .tag, .consult .tag, .agentrow .ag-name .tag, .scpage .tag {
     border-radius:var(--r-pill); border:1px solid var(--line); background:var(--panel-2); }
   .chip:hover, .chip:focus-visible, .cat-chip:hover, button.lib-chip:hover, .lib-pick:hover,
   .npill:hover, .timeline .tl-marker:hover, .mchip:hover, .scpage .tag:hover {
     border-color:var(--accent); }
   .runbtn.current, .callbtn.current { color:var(--accent); border-color:var(--accent); }
+
+  /* Every disclosure summary is keyboard-reachable; one focus ring for all of them. */
+  summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:var(--r-xs); }
 
   /* ── one input recipe ──
      .field is the label + control column; .lib-input, .reader-search input and .scpage inputs
@@ -1059,12 +1195,12 @@
   /* ── interaction grammar ──
      Every interactive surface shares one transition; press feedback is universal; hover lifts
      cards and borders pills with the accent. */
-  .btn, .tab, .chip, .card, .crumb[data-view], .pill, .lib-row, .lib-more, .lib-tab, .lib-pick,
+  .btn, .chip, .card, .crumb[data-view], .pill, .lib-row, .lib-more, .lib-tab, .lib-pick,
   .navitem, .pick-row, .catalog-entry, .runbtn, .callbtn, .tl-marker, .reader-hit {
     transition: color .12s ease, background-color .12s ease, border-color .12s ease,
                 box-shadow .14s ease, transform .14s ease;
   }
-  .btn:active, .tab:active, .chip:active, .card:active, .pill:active, .navitem:active,
+  .btn:active, .chip:active, .card:active, .pill:active, .navitem:active,
   .lib-row:active, .pick-row:active {
     transform:translateY(1px); }
   .card:not([disabled]):hover { transform:translateY(-1px); box-shadow:var(--shadow);
@@ -1262,12 +1398,9 @@
   .scpage .thinking { display:none; align-items:center; gap:7px; margin:0; }
   .scpage .thinking.show { display:inline-flex; }
 
-  .scpage .prob { color:var(--warn); background:var(--warn-soft); border-radius:var(--r-sm); padding:9px 10px;
-    font-size:var(--fs-12); margin-top:12px; }
-  .scpage .said.bad { color:var(--bad); background:var(--bad-soft); border-radius:var(--r-sm); padding:9px 10px;
-    font-size:var(--fs-12); margin-top:12px; }
-  .scpage .said.good { color:var(--good); background:var(--good-soft); border-radius:var(--r-sm); padding:9px 10px;
-    font-size:var(--fs-12); margin-top:12px; }
+  .scpage .prob { font-size:var(--fs-12); margin-top:12px; }
+  .scpage .said.bad { font-size:var(--fs-12); margin-top:12px; }
+  .scpage .said.good { font-size:var(--fs-12); margin-top:12px; }
 
   /* state sidebar */
   .scpage aside { position:sticky; top:16px; display:grid; gap:14px; align-self:start; }
@@ -1307,7 +1440,7 @@
   .scpage .stages .stage { display:inline-flex; align-items:center; gap:6px; padding:4px 10px 4px 6px;
     border-radius:var(--r-pill); color:var(--faint); white-space:nowrap; }
   .scpage .stages .stage-num { flex:none; width:17px; height:17px; border-radius:50%;
-    border:1.5px solid currentColor; display:grid; place-items:center; font-size:9px;
+    border:1.5px solid currentColor; display:grid; place-items:center; font-size:var(--fs-10);
     font-weight:600; line-height:1; }
   .scpage .stages .stage-copy b { font-weight:600; }
   /* Each stage's question repeats as that stage's own card heading below -- once there is enough,
@@ -1417,8 +1550,8 @@
       --bg:#fff; --panel:#fff; --panel-2:#fff; --ink:#111; --muted:#333; --faint:#555;
       --line:#c9c9c9; --shadow:none; }
     body { background:#fff; }
-    .topbar, .srcbar, .sessionbar, .timeline, .ribbon, .rail, .sidenav, .tabs, .tabdot, .drop, .prompt,
-    .modal-backdrop, .lib-modal-backdrop, .reader-search, .btn, .btns { display:none !important; }
+    .topbar, .srcbar, .sessionbar, .timeline, .ribbon, .rail, .sidenav, .tabdot, .drop, .prompt,
+    .modal-backdrop, .lib-modal-backdrop, .reader-search, .btn, .btns, .skip { display:none !important; }
     .page.view-enter { animation:none !important; }
     .reader-view .reader-chapter .prose > p:first-of-type::first-letter { float:none; font-size:inherit;
       line-height:inherit; padding:0; color:inherit; }

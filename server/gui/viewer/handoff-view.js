@@ -1,7 +1,7 @@
 import { esc, tid } from "./util.js";
 import { APP, storyName, hdraft, runningReason, handoffForPage } from "./state.js";
 import { wordsPovHtml } from "./story-page.js";
-import { button, hint, errorLine, warnLine, thinking, divider, modelSelect } from "./ui.js";
+import { button, hint, errorLine, warnLine, thinking, divider, modelSelect, storyNote } from "./ui.js";
 
 // The architect default (defaults.json's models.architect) is repo-wide, not per-story, so it can
 // name a model this story never asked for and that may not even be loaded -- the dropdown lets a
@@ -59,7 +59,8 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">the architect reads the chapters already written and re-authors the cast for the next one</p>
-      ${APP.handoffError ? errorLine(esc(APP.handoffError)) : ""}
+      ${APP.handoffError ? storyNote({ meaning: "Couldn't do that — nothing changed.",
+        detail: esc(APP.handoffError) }) : ""}
       <div class="btns mt-lg">
         ${button({ label: "prepare the next chapter", id: "h-start", variant: "primary", disabled: !!busy, title: busy })}
         <span class="spacer"></span>
@@ -82,7 +83,7 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">the architect is reading the chapters already written</p>
-      ${thinking("thinking about it…")}
+      ${thinking("waiting for the first round — it reads everything written so far, so this one takes a while. Nothing needed; safe to look around.")}
       <div class="btns mt-lg">
         ${button({ label: APP.hAbandonArmed ? "abandon — sure?" : "abandon", id: "h-abandon" })}
       </div>
@@ -98,13 +99,15 @@ export function handoffPageHtml() {
     return `<section class="picker story">
       <h2>${esc(storyName(APP.handoffDir))}</h2>
       <p class="sub">preparing chapter ${s.chapter}${s.model ? " · " + esc(s.model) : ""}</p>
-      ${errorLine(`that round failed (${esc(s.last.error)}) — nothing changed`)}
-      ${APP.handoffError ? errorLine(esc(APP.handoffError)) : ""}
+      ${storyNote({ meaning: "That round failed — nothing changed. Try again, or ask for a smaller change below.",
+        detail: esc(s.last.error) })}
+      ${APP.handoffError ? storyNote({ meaning: "Couldn't do that — nothing changed.",
+        detail: esc(APP.handoffError) }) : ""}
       <div class="hbar">
         <div class="field"><label for="h-say">or ask for a change instead</label>
           <textarea id="h-say" ${s.busy ? "disabled" : ""} rows="2"
             placeholder="a smaller request than the opening round">${esc(hdraft.say)}</textarea></div>
-        ${s.busy ? `${thinking("thinking about it…")}` : ""}
+        ${s.busy ? `${thinking("waiting for the round — nothing needed; safe to look around.")}` : ""}
         <div class="btns">
           ${button({ label: "try again", id: "h-retry", variant: "primary", disabled: s.busy })}
           ${button({ label: "send", id: "h-send", disabled: s.busy })}
@@ -214,7 +217,8 @@ export function handoffPageHtml() {
 
   // Failed or nothing
   if (s.last?.kind === "failed") {
-    body.push(errorLine(`that round failed (${esc(s.last.error)}) — nothing changed`));
+    body.push(storyNote({ meaning: "That round failed — nothing changed. Try again, or ask for a smaller change below.",
+      detail: esc(s.last.error) }));
   }
   if (s.last?.kind === "nothing") {
     body.push(errorLine("it didn't come back with changes — try saying what should be different"));
@@ -256,14 +260,15 @@ export function handoffPageHtml() {
   body.push(`<div class="field"><label for="h-say">ask for a change</label>
     <textarea id="h-say" ${s.busy ? "disabled" : ""} placeholder="e.g. Ivo should not know about the log yet.">${esc(hdraft.say)}</textarea></div>`);
 
-  // Thinking
+  // A round in flight -- all the client knows is the reply hasn't landed yet.
   if (s.busy) {
-    body.push(`${thinking("thinking about it…")}`);
+    body.push(`${thinking("waiting for the round — nothing needed; safe to look around.")}`);
   }
 
   // Error
   if (APP.handoffError) {
-    body.push(errorLine(esc(APP.handoffError)));
+    body.push(storyNote({ meaning: "Couldn't do that — nothing changed.",
+      detail: esc(APP.handoffError) }));
   }
 
   // Buttons

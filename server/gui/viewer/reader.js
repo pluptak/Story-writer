@@ -1,22 +1,25 @@
-import { esc, basename, tid } from "./util.js";
+import { esc, basename, tid, scrollToEl } from "./util.js";
 import { APP, READER, storyName } from "./state.js";
 import { go, syncHash } from "./nav.js";
 import { paras } from "./blocks.js";
 import { button, errorLine, thinking, divider, pageTitle } from "./ui.js";
 
-// ---- the story reader ----------------------------------------------------
-// A read-only view of a story's accepted prose, chapter by chapter. No SSE,
-// no run controls. Reached at `#/readstory?dir=...`.
+// ---- the manuscript ------------------------------------------------------
+// Reading mode, not a run inspector: accepted chapter prose only, chapter by
+// chapter. It never renders consult/note/run blocks (only paras() of the
+// saved chapter files), carries no run controls and no SSE. Technical run
+// detail stays one explicit step away, behind the "About this manuscript"
+// disclosure and the Story map's runs. Reached at `#/readstory?dir=...`.
 
 async function fetchChapters(dir, numbers) {
   const results = [];
   for (const n of numbers) {
     try {
       const r = await fetch(`/chapter?dir=${encodeURIComponent(dir)}&n=${n}`);
-      if (!r.ok) results.push({ n, text: "", error: "could not load" });
+      if (!r.ok) results.push({ n, text: "", error: "This chapter could not be opened." });
       else results.push({ n, text: await r.text(), error: "" });
     } catch {
-      results.push({ n, text: "", error: "could not load" });
+      results.push({ n, text: "", error: "This chapter could not be opened." });
     }
   }
   return results;
@@ -51,32 +54,69 @@ export async function loadReader(dir) {
   APP.render();
 }
 
+/** The way back to authoring, up front where a reader finds it without
+ *  scrolling: Story map first (the full context — scenes, runs, next
+ *  chapter), Write alongside it. One `#reader-back` only — a second element
+ *  sharing the id would break strict locators. */
+function returnBarHtml() {
+  return `<div class="reader-return" data-tid="reader.return">`
+    + `${button({ label: "← Story map", id: "reader-back", tidName: "reader.to-story" })}`
+    + `${button({ label: "Continue writing →", id: "reader-write", tidName: "reader.to-write" })}`
+    + `</div>`;
+}
+
+/** Chapter navigation that never touches the route: the app owns
+ *  location.hash (`#/readstory?dir=`), so TOC jumps scroll like search hits
+ *  do instead of linking to `#reader-ch-N` and losing the story. */
+function tocHtml(chapters) {
+  const links = chapters.map(ch =>
+    `<button class="reader-toc-link" data-tid="reader.toc-link" data-ch="${ch.n}">Chapter ${ch.n}</button>`
+  ).join("");
+  return `<nav class="reader-toc" data-tid="reader.toc" aria-label="Chapters">${links}</nav>`;
+}
+
+/** The explicit secondary action for technical detail. Collapsed, below the
+ *  prose: what this view is, and where the run-level record (saved runs,
+ *  drafts, consults, model calls) lives — on the Story map. */
+function techDetailsHtml(count) {
+  return `<details class="reader-tech" data-tid="reader.tech-details">`
+    + `<summary>About this manuscript</summary>`
+    + `<p class="hint">Accepted prose only — ${count} ${count === 1 ? "chapter" : "chapters"}. `
+    + `Drafts, consults and model calls stay with the story's history.</p>`
+    + `<div class="btns">${button({ label: "Open Story map for runs & detail", id: "reader-tech-story", tidName: "reader.tech-story" })}</div>`
+    + `</details>`;
+}
+
 export function readerPageHtml() {
   if (!READER.dir) {
     return `<section class="picker">
-      ${pageTitle({ eyebrow: "reading", title: "Read a story", lede: "open a story from the shelf and choose “read story”" })}
+      ${pageTitle({ eyebrow: "Manuscript", title: "Read a story", lede: "open a story from the shelf and choose “read story”" })}
       <div class="btns mt-lg">${button({ label: "back to shelf", id: "reader-back" })}</div>
     </section>`;
   }
   const name = storyName(READER.dir) || basename(READER.dir);
   if (READER.loading) {
     return `<section class="picker reader-view">
-      ${pageTitle({ eyebrow: "reading", title: name })}
+      ${pageTitle({ eyebrow: "Manuscript", title: name })}
       ${thinking("loading chapters…", { tag: "p" })}
       <div class="btns mt-lg">${button({ label: "back", id: "reader-back" })}</div>
     </section>`;
   }
   if (READER.error) {
     return `<section class="picker reader-view">
-      ${pageTitle({ eyebrow: "reading", title: name })}
+      ${pageTitle({ eyebrow: "Manuscript", title: name })}
       ${errorLine(esc(READER.error))}
       <div class="btns mt-lg">${button({ label: "back", id: "reader-back" })}</div>
     </section>`;
   }
-  const body = [pageTitle({ eyebrow: "reading", title: name })];
+  const count = READER.chapters.length;
+  const body = [pageTitle({ eyebrow: "Manuscript", title: name,
+    lede: `${count} ${count === 1 ? "chapter" : "chapters"}` })];
+  body.push(returnBarHtml());
+  if (count > 1) body.push(tocHtml(READER.chapters));
   body.push(`<div class="reader-search">
-    <input type="text" id="reader-q" placeholder="search this story" value="${esc(READER.query || "")}"
-      aria-label="search this story" autocomplete="off" spellcheck="false">
+    <input type="text" id="reader-q" placeholder="Search this story" value="${esc(READER.query || "")}"
+      aria-label="Search this story" autocomplete="off" spellcheck="false">
   </div>
   <div id="reader-results">${resultsHtml()}</div>`);
   for (const ch of READER.chapters) {
@@ -85,7 +125,7 @@ export function readerPageHtml() {
       ${ch.error ? errorLine(esc(ch.error)) : `<div class="prose">${paras(ch.text)}</div>`}
     </div>`);
   }
-  body.push(`<div class="btns mt-lg">${button({ label: "back", id: "reader-back" })}</div>`);
+  body.push(techDetailsHtml(count));
   return `<section class="picker reader-view">${body.join("")}</section>`;
 }
 
@@ -136,24 +176,36 @@ function resultsHtml() {
     <div class="reader-hits">${items}</div>`;
 }
 
+/** Back to authoring without losing the manuscript: READER keeps its dir
+ *  and chapters (dir-keyed, so another story's load still replaces them),
+ *  so Manuscript ↔ Story map ↔ Write is a round trip, not a reload. */
+function backToStory() {
+  const dir = READER.dir;
+  if (dir) { APP.storyDir = dir; go("story"); } else go("shelf");
+}
+
 export function wireReaderPage(page) {
   const back = page.querySelector("#reader-back");
-  if (back) back.addEventListener("click", () => {
-    const dir = READER.dir;
-    READER.dir = ""; READER.chapters = []; READER.error = ""; READER.query = "";
-    if (dir) { APP.storyDir = dir; go("story"); } else go("shelf");
-  });
+  if (back) back.addEventListener("click", backToStory);
+  const tech = page.querySelector("#reader-tech-story");
+  if (tech) tech.addEventListener("click", backToStory);
+  const write = page.querySelector("#reader-write");
+  if (write) write.addEventListener("click", () => go("live"));
 
   const results = page.querySelector("#reader-results");
-  // A hit jumps to its chapter's heading. The whole story is one scrolling page, so this is a
-  // scroll, not a route change -- #/readstory?dir= stays put.
+  // A hit — or a TOC entry — jumps to its chapter's heading. The whole story is one scrolling
+  // page, so this is a scroll, not a route change -- #/readstory?dir= stays put.
   const wireHits = () => {
     for (const b of page.querySelectorAll(".reader-hit"))
       b.addEventListener("click", () => {
-        page.querySelector(`#reader-ch-${b.dataset.ch}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        scrollToEl(page.querySelector(`#reader-ch-${b.dataset.ch}`));
       });
   };
   wireHits();
+  for (const b of page.querySelectorAll(".reader-toc-link"))
+    b.addEventListener("click", () => {
+      scrollToEl(page.querySelector(`#reader-ch-${b.dataset.ch}`));
+    });
 
   // Repaint only the results list on a keystroke -- a full render would rebuild every chapter's
   // prose and drop focus out of the box mid-word.

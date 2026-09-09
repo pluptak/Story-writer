@@ -304,9 +304,10 @@ export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any
     return { entries: [] };
   }
 
-  // Strip tags from skill entries — legacy field, and strictObject would reject the whole file over
-  // it. Shape-guarded so a malformed file still reaches safeParse and degrades to an empty catalog.
-  if (kind === "skills" && raw && typeof raw === "object" && Array.isArray(raw.entries)) {
+  // Strip tags from skill and character entries — legacy field on both, and strictObject would
+  // reject the whole file over it. Shape-guarded so a malformed file still reaches safeParse and
+  // degrades to an empty catalog.
+  if ((kind === "skills" || kind === "characters") && raw && typeof raw === "object" && Array.isArray(raw.entries)) {
     raw = {
       ...raw,
       entries: raw.entries.map((e: any) =>
@@ -330,9 +331,9 @@ export function checkEntry(kind: CatalogKind, raw: unknown, catalogs?: Catalogs)
   const reg = REGISTRY[kind];
   if (!reg) throw new Error(`Unknown catalog kind: ${kind}`);
 
-  // Strip tags from skill entries — the viewer's editor still sends it, strictObject would reject the save.
+  // Strip tags from skill and character entries — legacy field on both, strictObject would reject the save.
   let toValidate = raw;
-  if (kind === "skills" && raw && typeof raw === "object" && "tags" in raw) {
+  if ((kind === "skills" || kind === "characters") && raw && typeof raw === "object" && "tags" in raw) {
     const { tags: _, ...rest } = raw as any;
     toValidate = rest;
   }

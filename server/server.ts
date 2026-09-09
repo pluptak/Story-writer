@@ -36,7 +36,7 @@ export type RegenScope = { kind: "character"; name: string };
  *  direction — keyed by the name a character's `skills` line names, counted with the engine's own
  *  case-insensitive identity match. */
 export interface CatalogUsage {
-  tags: Record<string, { characters: number; styles: string[] }>;
+  tags: Record<string, { styles: string[] }>;
   skills: Record<string, number>;
 }
 

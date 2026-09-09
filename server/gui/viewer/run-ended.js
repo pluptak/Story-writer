@@ -1,6 +1,6 @@
 import { esc, verdictText } from "./util.js";
 import { APP } from "./state.js";
-import { modal, button } from "./ui.js";
+import { modal, button, hint } from "./ui.js";
 import { on, wireModalClose } from "./wire.js";
 
 // ---- the end-of-run modal ----------------------------------------------------
@@ -15,7 +15,10 @@ export function runEndedModalHtml() {
   return modal({
     id: "runended-backdrop", dataTid: "runended.modal", ariaLabel: "run ended", extraClass: "runended",
     body: `<div class="iv-head"><h2>${esc(verdict)}</h2></div>
-      <p class="sub">${esc(e.words)} words · ${esc(e.steps)} steps</p>
+      <p class="sub">${esc(e.words)} words</p>
+      <details class="engine-details" data-tid="runended.details"><summary>${esc(e.steps)} steps</summary>
+        <div class="tech">${esc(e.steps)} steps taken</div></details>
+      ${hint(`nothing is running anymore. Chapters and past runs are on the story page.`)}
       <div class="btns mt-sm">
         ${button({ label: "back to shelf", id: "runended-shelf", variant: "primary" })}
         ${button({ label: "stay here", id: "runended-stay" })}

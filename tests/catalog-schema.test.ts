@@ -14,7 +14,6 @@ describe("LibraryCharacter schema", () => {
       id: "char-123",
       version: 1,
       name: "Alice",
-      tags: ["protagonist", "brave"],
       portablePersona: "determined and clever",
       belief: "good always wins",
       impulse: "when threatened → protect others",
@@ -24,7 +23,6 @@ describe("LibraryCharacter schema", () => {
     });
     assert.equal(char.id, "char-123");
     assert.equal(char.name, "Alice");
-    assert.deepEqual(char.tags, ["protagonist", "brave"]);
   });
 
   it("applies defaults for missing optional fields", () => {
@@ -33,7 +31,6 @@ describe("LibraryCharacter schema", () => {
       name: "Bob",
     });
     assert.equal(char.version, 1);
-    assert.deepEqual(char.tags, []);
     assert.deepEqual(char.voice, []);
     assert.deepEqual(char.skills, []);
     assert.deepEqual(char.restrictions, []);
@@ -42,6 +39,15 @@ describe("LibraryCharacter schema", () => {
     assert.equal(char.impulse, "");
     assert.equal(char.hidden, false);
     assert.equal(char.updatedAt, 0);
+  });
+
+  it("rejects an entry with a tags key (strictObject)", () => {
+    const result = LibraryCharacter.safeParse({
+      id: "char-tagged",
+      name: "Tagged",
+      tags: [],
+    });
+    assert.equal(result.success, false);
   });
 
   it("defaults a legacy entry's origin to blank (every general skill)", () => {

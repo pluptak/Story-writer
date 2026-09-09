@@ -3,7 +3,7 @@ import { APP, draft, FACET_LABELS } from "./state.js";
 import { go } from "./nav.js";
 import { loadStories } from "./saved-runs.js";
 import { loadVocab, loadLibrary, loadStyles } from "./catalog.js";
-import { modal, button, hint, errorLine, warnLine, thinking, pageTitle, modelSelect } from "./ui.js";
+import { modal, button, hint, warnLine, thinking, pageTitle, modelSelect, storyNote } from "./ui.js";
 import { on, onKey } from "./wire.js";
 
 // ---- the scaffold interview --------------------------------------------------
@@ -307,7 +307,8 @@ function castworldPickersHtml(s) {
 }
 
 function ideaModalHtml() {
-  const err = APP.scaffoldError ? errorLine(esc(APP.scaffoldError)) : "";
+  const err = APP.scaffoldError ? storyNote({ meaning: "Couldn't do that — nothing changed.",
+    detail: esc(APP.scaffoldError) }) : "";
   // The override genuinely can't wait past the first call (unlike retries), so the collapsed state
   // names the model that proposing will actually use — the default stays valid with Advanced shut.
   const using = draft.model || APP.modelDefault || "";
@@ -499,7 +500,8 @@ function artifactStatus(s, key) {
 /** The composer: refine within the stage, or pass the gate. Refinement never advances a gate;
  *  only the approve button does. Hidden while a question stands (answer first) and while busy. */
 function composerHtml(s, label) {
-  if (s.busy) return thinking("the architect is thinking…", { show: true, tag: "div" });
+  // "Waiting for the reply", never "thinking": all the client knows is a round is in flight.
+  if (s.busy) return thinking("waiting for the architect's reply — a round can take a minute. Nothing needed; the interview keeps your place.", { show: true, tag: "div" });
   const answering = !!s.pendingAsk;
   const unsent = !!draft.say.trim();
   const foot = [`<span class="hint">↵ send · ⇧↵ new line</span>`];
@@ -545,17 +547,20 @@ function urgentHtml(s) {
 function roundNoteHtml(s) {
   const last = s.last;
   if (!last || isUrgent(s)) return "";
-  if (last.kind === "failed") return errorLine(`that round failed (${esc(last.error)}) — nothing changed`);
+  if (last.kind === "failed") return storyNote({ meaning: "That round failed — nothing changed. Try again, or say it smaller.",
+    detail: esc(last.error) });
   if (last.kind === "edits") {
     const note = last.note ? `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>` : "";
     const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
-    const ig = last.ignored.map(x => errorLine(`ignored ${esc(x)}`)).join("");
+    const ig = last.ignored.length ? storyNote({ tone: "warn", meaning: "Some edits were set aside.",
+      detail: last.ignored.map(x => esc(x)).join("<br>") }) : "";
     return `${note}<div class="said good">${changed}</div>${ig}`;
   }
   if (last.kind === "proposal" && last.note)
     return `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>`;
   if (last.kind === "nothing" && !/has not landed/.test(last.why || "") && !/checklist is complete/.test(last.why || ""))
-    return errorLine(`it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}`);
+    return storyNote({ meaning: "It didn't come back with anything — try saying who is in the scene and what is at stake.",
+      detail: esc(last.why || "") });
   return "";
 }
 
@@ -886,13 +891,15 @@ function bibleCardHtml(s) {
 function lastHtml(last) {
   if (!last) return "";
   const at = last.stage ? `<span class="hint">[${esc(last.stage)}] </span>` : "";
-  if (last.kind === "failed")  return errorLine(`${at}that round failed (${esc(last.error)}) — nothing changed`);
+  if (last.kind === "failed")  return storyNote({ meaning: `${at}That round failed — nothing changed. Try again, or say it smaller.`,
+    detail: esc(last.error) });
   if (last.kind === "nothing") {
     if (/review the draft and accept/.test(last.why))
       return `<div class="said good">${at}checklist complete — review the Blueprint, then accept</div>`;
     if (/has not landed/.test(last.why))
-      return errorLine(`${at}this stage has nothing yet — ${esc(last.why)}`);
-    return errorLine(`${at}it didn't come back with anything — ${esc(last.why || "try saying who is in the scene and what is at stake")}`);
+      return storyNote({ meaning: `${at}This stage has nothing yet.`, detail: esc(last.why) });
+    return storyNote({ meaning: `${at}It didn't come back with anything — try saying who is in the scene and what is at stake.`,
+      detail: esc(last.why || "") });
   }
   // A blocked gate is not a failure and not an empty round: the stage landed, and a judge says it
   // is not yet worth advancing past. It is the author's to overrule, so it reads as a judgement.
@@ -901,7 +908,8 @@ function lastHtml(last) {
       + hint(`refine the cast, or approve again to overrule this.`) + `</div>`;
   if (last.kind === "edits") {
     const changed = last.applied.length ? `changed: ${esc(last.applied.join(", "))}` : "it changed nothing";
-    const ig = last.ignored.map(x => errorLine(`ignored ${esc(x)}`)).join("");
+    const ig = last.ignored.length ? storyNote({ tone: "warn", meaning: "Some edits were set aside.",
+      detail: last.ignored.map(x => esc(x)).join("<br>") }) : "";
     const note = last.note ? `<div class="round-note"><span class="label">architect note</span><p>${esc(last.note)}</p></div>` : "";
     return `${note}<div class="said good">${at}${changed}</div>${ig}`;
   }
@@ -1120,7 +1128,7 @@ function folderHtml(s) {
     <div id="iv-folder-note">${folderNoteHtml()}</div>
     <div class="composer-foot">
       <span class="hint">nothing is written until Start writing answers</span>
-      ${thinking("writing &amp; preflighting…", { show: s.busy, tag: "span" })}
+      ${thinking("writing…", { show: s.busy, tag: "span" })}
     </div>
     <div class="side-actions">${button({ label: "Start writing →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}</div>
     <div class="side-actions secondary">
@@ -1469,7 +1477,8 @@ function openIdeaWorking(s) {
 function activePageHtml(s) {
   const open = stageOf(s);
   const cur = stageIndex(open);
-  const err = APP.scaffoldError ? errorLine(esc(APP.scaffoldError)) : "";
+  const err = APP.scaffoldError ? storyNote({ meaning: "Couldn't do that — nothing changed.",
+    detail: esc(APP.scaffoldError) }) : "";
 
   const statusText = s.busy ? "the architect is working…"
     : s.pendingAsk ? "a question stands — answer it to continue"

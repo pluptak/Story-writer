@@ -99,8 +99,12 @@ export function agentsPanelHtml(store = READV, state = APP) {
     : !state.agents.logs.length ? hint(`this run logged no model calls`)
     : state.agents.logs.map(l => `<div ${tid("agents.row")} class="agentrow" data-file="${esc(l.file)}">
         <div class="ag-name">${esc(l.agent || l.file)}<span class="tag ${esc(l.role)}">${esc(l.role)}</span></div>
-        <div class="ag-meta">${l.calls} call${l.calls === 1 ? "" : "s"} · ${abbrev(l.promptChars)} prompt · ${abbrev(l.responseChars)} response · ${esc((l.models || []).join(", "))}</div>
+        <div class="ag-meta">${l.calls} call${l.calls === 1 ? "" : "s"}</div>
+        <details class="engine-details" data-tid="agents.volumes"><summary>call detail</summary>
+          <div class="tech">${abbrev(l.promptChars)} prompt · ${abbrev(l.responseChars)} response · ${esc((l.models || []).join(", "))}</div>
+        </details>
         <button ${tid("agents.open-btn")} class="btn agentopen" data-file="${esc(l.file)}"
+          aria-label="open ${esc(l.agent || l.file)} transcript"
           >${openFile(state) === l.file ? "reading" : "open"}</button>
       </div>`).join("");
 

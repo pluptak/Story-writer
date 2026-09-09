@@ -1,6 +1,6 @@
 import { APP, FACET_LABELS } from "./state.js";
 import { esc, tid, postJson, reasonOr } from "./util.js";
-import { button, errorLine, hint, thinking, warnLine, confirmDialog } from "./ui.js";
+import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
 import { go } from "./nav.js";
 import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
@@ -22,7 +22,6 @@ function usageLine(label) {
   const u = APP.catalog.usage?.tags?.[folded(label)];
   if (!u) return "";
   const parts = [];
-  if (u.characters) parts.push(`${u.characters} character${u.characters === 1 ? "" : "s"}`);
   if (u.styles.length) parts.push(`${u.styles.length} style${u.styles.length === 1 ? "" : "s"}`);
   return parts.length ? `<i>used by ${parts.join(" · ")}</i>` : "";
 }
@@ -88,7 +87,8 @@ function editorHtml() {
 export function tagLibraryHtml() {
   const s = APP.tagLibrary;
   if (s.loading) return `<section class="lib-page lib-tags"><div class="lib-loading">${thinking("loading tag vocabulary…")}</div></section>`;
-  if (s.error && !s.entries.length) return `<section class="lib-page lib-tags"><div class="lib-loading">${errorLine(esc(s.error))}${button({label:"Try again", id:"taglib-retry", variant:"primary"})}</div></section>`;
+  if (s.error && !s.entries.length) return `<section class="lib-page lib-tags"><div class="lib-loading">${storyNote({ meaning: "Couldn't load the tag library — your stories are unaffected.",
+    detail: esc(s.error) })}${button({label:"Try again", id:"taglib-retry", variant:"primary"})}</div></section>`;
   return `${catalogPageOpen("tags", s.draft, tid("tag-library.page"))}
     <header class="lib-top"><div class="page-title"><p class="eyebrow">library · tags</p><h1>Tag Vocabulary <span class="lib-info">i</span></h1><p class="lede">Define a controlled vocabulary of story descriptors.</p></div><div class="lib-top-actions">${button({label:"＋ New tag", id:"taglib-new", variant:"primary"})}</div></header>
     <div class="lib-toolbar"><input class="lib-input" id="taglib-search" placeholder="⌕  Search tags…" value="${esc(s.search)}"><select class="lib-input" id="taglib-sort"><option value="updated"${s.sort === "updated" ? " selected" : ""}>Recently updated</option><option value="name"${s.sort === "name" ? " selected" : ""}>Name A–Z</option></select></div>

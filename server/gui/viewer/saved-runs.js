@@ -1,13 +1,13 @@
-import { $, fmtRun, tid } from "./util.js";
-import { APP, READV } from "./state.js";
+import { $, basename, esc, fmtRun, fmtWhen, runOutcome, tid } from "./util.js";
+import { APP, READV, storyName } from "./state.js";
 import { ingest } from "./events.js";
 import { setSrc } from "./hud.js";
 import { castChips } from "./shelf.js";
 import { loadAgentState, agentsPanelHtml, wireAgents } from "./agents.js";
-import { button } from "./ui.js";
+import { button, pageTitle } from "./ui.js";
 
 /** Fetch one retained run's log and load it into READV -- shared by a deep-linked reload (sse.js)
- *  and the story page's "read a previous run" rows (story-page.js). Returns false on failure, null
+ *  and the story page's history rows (story-page.js). Returns false on failure, null
  *  when superseded: a slower earlier fetch must never overwrite a newer click's run (reader.js's
  *  loadReader guards the same hazard by re-checking READER.dir). */
 export async function loadSavedRun(dir, id, store = READV, repaint = true, agentState = APP) {
@@ -17,7 +17,7 @@ export async function loadSavedRun(dir, id, store = READV, repaint = true, agent
     if (!r.ok || req !== store.loadReq) return req === store.loadReq ? false : null;
     const text = await r.text();
     if (req !== store.loadReq) return null;
-    setSrc(store, `${dir.replace(/^data\/stories\//, "")} · saved run`, false);
+    setSrc(store, `${dir.replace(/^data\/stories\//, "")} · history`, false);
     store.dir = dir; store.id = id;
     store.label = fmtRun((APP.stories?.find(s => s.dir === dir)?.runs || []).find(x => x.id === id) || {});
     ingest(text, store, repaint);
@@ -29,16 +29,60 @@ export async function loadSavedRun(dir, id, store = READV, repaint = true, agent
 export function loadRun(dir, id) { return loadSavedRun(dir, id); }
 
 // ---- the read tab's chrome --------------------------------------------------
-// Picking which run to read now happens on the story page -- its "previous runs" list -- so this
-// tab no longer needs a second copy of that picker. It shows the cast of whatever is loaded instead,
-// and stays the way in to open a log from disk.
+// A loaded run reads as a history entry, not a log file: what story, what chapter, when, how it
+// ended and how far it got -- with comparing as the primary action beside reading (the prose
+// below). The raw record stays one disclosure down (run id, disk path, the "open a saved log"
+// way in) and per-agent: model calls render as a panel, transcripts open on demand. Picking
+// which run to read happens on the story page -- its History list -- so this tab shows the cast
+// of whatever is loaded instead, and stays the way in to open a log from disk.
+function describeLoadedRun(store) {
+  const card = (APP.stories || []).find(s => s.dir === store.dir);
+  const fromCard = (card?.runs || []).find(x => x.id === store.id);
+  const evs = store.events || [];
+  const start = evs.find(e => e.t === "scene_start");
+  const end = [...evs].reverse().find(e => e.t === "scene_end");
+  const draftWords = evs.filter(e => e.t === "draft").reduce((n, e) => Math.max(n, e.words || 0), 0);
+  const shape = end || fromCard || (draftWords ? { words: draftWords } : {});
+  return {
+    name: card?.name || storyName(store.dir) || basename(store.dir) || "a story",
+    chapter: fromCard?.chapter ?? start?.chapter ?? end?.chapter ?? null,
+    when: fromCard?.mtimeMs != null ? fmtWhen(fromCard.mtimeMs) : "",
+    outcome: runOutcome(shape),
+    words: end?.words ?? fromCard?.words ?? (draftWords || null),
+    steps: end?.steps ?? fromCard?.steps ?? null,
+  };
+}
+
+function historyHeaderHtml(store) {
+  if (!store.dir || !store.id) return "";
+  const d = describeLoadedRun(store);
+  const where = d.chapter != null ? `chapter ${d.chapter}` : "a run";
+  const far = [d.words != null ? `${d.words} words` : "",
+               d.steps != null ? `${d.steps} steps` : ""].filter(Boolean).join(" · ");
+  return `<section ${tid("read.history")} class="picker run-history">
+    ${pageTitle({ eyebrow: "History", title: `${d.name} — ${where}`, dataTid: "read.history-title" })}
+    <p class="run-history-line"><span class="tag outcome-${d.outcome.key}" data-tid="read.outcome">${esc(d.outcome.label)}</span>
+      <span class="hint">${esc([d.when, far].filter(Boolean).join(" · "))}</span></p>
+    <div class="btns">${button({ label: "compare this run", id: "read-compare", tidName: "read.compare-btn", variant: "primary" })}</div>
+    <details class="engine-details runlog" data-tid="read.run-log"><summary>Run log</summary>
+      <div class="tech">run ${esc(store.id)}${store.dir ? ` · ${esc(store.dir)}` : ""}</div>
+      <p class="hint">The raw record: per-agent model calls below, full prompt/response transcripts one
+        click down, and the log on disk at out/${esc(store.id)}/writing-log.jsonl. Or open a different log:</p>
+      <div class="btns mt-sm">${button({ label: "open a saved log", id: "open-log", tidName: "read.open-log-btn" })}</div>
+    </details>
+  </section>`;
+}
+
 export function readChromeHtml(store = READV, includeAgents = store === READV, agentState = APP, includeOpen = store === READV) {
-  const cast = store.meta ? castChips(store.meta.characters, store.meta.story) : "";
-  return `<section ${tid("read.chrome")} class="picker readchrome">
+  const cast = store.meta ? castChips(store.meta.characters, store.meta.story, store.meta.chapter ?? null) : "";
+  const loaded = !!(store.dir && store.id);
+  return (includeOpen ? historyHeaderHtml(store) : "")
+  + `<section ${tid("read.chrome")} class="picker readchrome">
     <h2>Cast</h2>
     ${cast ? `<div class="row">${cast}</div>`
-           : `<p class="sub">open a story on the shelf, then "read" a previous run — or open one from disk</p>`}
-    ${includeOpen ? `<div class="btns mt-sm">${button({ label: "open a saved log", id: "open-log", tidName: "read.open-log-btn" })}</div>` : ""}
+           : loaded ? `<p class="sub">this run's cast arrives with its log</p>`
+           : `<p class="sub">open a story on the shelf, then "read" a run from its history — or open one from disk</p>`}
+    ${includeOpen && !loaded ? `<div class="btns mt-sm">${button({ label: "open a saved log", id: "open-log", tidName: "read.open-log-btn" })}</div>` : ""}
   </section>` + (includeAgents ? agentsPanelHtml(store, agentState) : "");
 }
 

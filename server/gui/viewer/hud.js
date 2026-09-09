@@ -48,12 +48,12 @@ function crumbsFor() {
                         : [shelf, { label: name(APP.editDir), view: "story", dir: APP.editDir }, { label: "edit story" }];
     case "handoff":   return [shelf, { label: name(APP.handoffDir), view: "story", dir: APP.handoffDir }, { label: "prepare chapter" }];
     case "compare":   return [shelf, { label: name(APP.compareDir), view: "story", dir: APP.compareDir }, { label: "compare runs" }];
-    case "readstory": return [shelf, { label: name(READER.dir), view: "story", dir: READER.dir }, { label: "read story" }];
+    case "readstory": return [shelf, { label: name(READER.dir), view: "story", dir: READER.dir }, { label: "manuscript" }];
     case "catalog":   return [{ label: "libraries" }, { label: CATALOG_CRUMB[APP.catalog.kind] || APP.catalog.kind }];
     case "read": {
       const d = READV.dir;
       if (!d) return [shelf, { label: (READV.source || "a run") + chapterSuffix(READV.meta) }];
-      return [shelf, { label: name(d), view: "story", dir: d }, { label: "saved run" + chapterSuffix(READV.meta) }];
+      return [shelf, { label: name(d), view: "story", dir: d }, { label: "history" + chapterSuffix(READV.meta) }];
     }
     case "live": {
       const d = LIVEV.meta?.story;
@@ -112,7 +112,7 @@ function titleContext() {
     case "handoff":   return "handoff · " + storyName(APP.handoffDir);
     case "scaffold":  return "new story";
     case "edit":      return APP.editNew ? "new story" : "editing " + storyName(APP.editDir);
-    case "readstory": return "reading " + (storyName(READER.dir) || basename(READER.dir));
+    case "readstory": return "manuscript · " + (storyName(READER.dir) || basename(READER.dir));
     case "compare":   return "compare · " + storyName(APP.compareDir);
     case "read":
     case "live": {
@@ -151,6 +151,31 @@ export function phaseOf(store) {
   return "writing";
 }
 
+/** One line under the phase name saying what it means for the author: why the run is where it
+ *  is, whether anything is needed, and whether looking elsewhere is safe. A run never holds the
+ *  viewer hostage -- browsing is always safe; only the editor's dirty guard interrupts, and that
+ *  is about unsaved edits, not the run. `blocks` is the same list the prose renders, so a retry
+ *  reads off the consult itself rather than a second record. */
+export function phaseSub(store, blocks) {
+  if (store !== LIVEV || !APP.live || !APP.session.running) return "";
+  const phase = phaseOf(store);
+  if (phase === "stopping") return "Finishing the current step, then ending.";
+  if (phase === "budget wait") return "Holding so it can't run on unbounded — give steps or stop; it waits either way.";
+  if (phase === "reader wait") return "Blocked on your choice — it waits as long as needed; safe to look around meanwhile.";
+  if (phase === "paused") return "Held at a step boundary — resume or stop from run controls; safe to leave.";
+  if (phase === "pausing") return "Finishing the current step, then holding.";
+  if (phase === "consulting" || phase === "judging" || phase === "clarifying") {
+    const who = APP.composing?.who;
+    const retried = (blocks || []).filter(b => b.kind === "consult" && b.attempts.length > 1).pop();
+    if (retried)
+      return `Re-asking ${retried.who} — the last reply didn't fit; still working, nothing needed.`;
+    return who ? `${who} is deciding — answer only if asked; safe to look around.`
+               : "A choice is being checked — nothing needed; safe to look around.";
+  }
+  if (phase === "writing") return "Nothing needed — safe to look around.";
+  return "";
+}
+
 /** Clear both rail containers (status card + engine disclosure). Non-live views call this
  *  instead of touching either div by hand, so the two can never disagree about a previous run. */
 export function clearRail() { $("railstatus").innerHTML = ""; $("railstats").innerHTML = ""; }
@@ -187,7 +212,9 @@ export function renderRail(store, blocks) {
   // line lives only here, not twice -- the disclosure below used to repeat it as a stat.
   const composing = store === LIVEV && APP.composing
     ? `<div class="composing" data-tid="rail.composing"><i></i><span class="who">${esc(APP.composing.who)}</span> composing… ${APP.composing.secs}s</div>` : "";
-  const status = live ? `<div class="railstatus" data-tid="rail.status"><span class="phasename">${esc(phaseOf(store))}</span>${composing}</div>` : composing;
+  const sub = live ? phaseSub(store, blocks) : "";
+  const status = live ? `<div class="railstatus" data-tid="rail.status"><span class="phasename">${esc(phaseOf(store))}</span>${composing}`
+    + (sub ? `<div class="phasesub" data-tid="rail.phasesub">${esc(sub)}</div>` : "") + `</div>` : composing;
   $("railstatus").innerHTML = `
     ${status}
     ${stat("words", target ? `${words} / ${target}` : words)}

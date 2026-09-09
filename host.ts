@@ -865,10 +865,8 @@ export const HOST: ServerHost = {
     const tagFor = (label: unknown) => {
       const key = String(label ?? "").trim().toLowerCase();
       if (!key) return null;
-      return usage.tags[key] ?? (usage.tags[key] = { characters: 0, styles: [] });
+      return usage.tags[key] ?? (usage.tags[key] = { styles: [] });
     };
-    for (const c of characters.entries as { tags?: string[] }[])
-      for (const t of c.tags ?? []) { const u = tagFor(t); if (u) u.characters++; }
     for (const s of styles.entries as { name?: string; tags?: string[] }[])
       for (const t of s.tags ?? []) { const u = tagFor(t); if (u) u.styles.push(String(s.name || "")); }
     // A skill is "used by" a character when resolution would find it: the name a character's

@@ -66,7 +66,6 @@ describe("saveEntry and loadCatalog", () => {
         belief: "The truth always emerges",
         impulse: "Investigate mysteries",
         voice: ["I see.", "Interesting.", "Tell me more."],
-        tags: ["mystery", "detective"],
         skills: ["logic"],
         restrictions: [],
       };
@@ -98,7 +97,6 @@ describe("saveEntry and loadCatalog", () => {
         belief: "Art is truth",
         impulse: "Create beauty",
         voice: ["Beautiful.", "Colors speak.", "Light matters."],
-        tags: ["artist"],
         skills: ["painting"],
         restrictions: [],
       };
@@ -114,7 +112,6 @@ describe("saveEntry and loadCatalog", () => {
         belief: "Art is life",
         impulse: "Teach painting",
         voice: ["Beautiful.", "Colors sing.", "Light transforms."],
-        tags: ["artist", "mentor"],
         skills: ["painting", "teaching"],
         restrictions: [],
       };
@@ -245,7 +242,6 @@ describe("checkEntry validation", () => {
       belief: "Something",
       impulse: "Do something",
       voice: ["One line."],
-      tags: [],
       skills: [],
       restrictions: [],
     });
@@ -266,7 +262,6 @@ describe("checkEntry validation", () => {
       belief: "Justice prevails",
       impulse: "Solve crimes",
       voice: ["Interesting."],
-      tags: [],
       skills: [],
       restrictions: [],
     });
@@ -298,7 +293,6 @@ describe("checkEntry validation", () => {
         belief: "X",
         impulse: "Y",
         voice: ["Z"],
-        tags: [],
         skills: [],
         restrictions: [],
       });
@@ -319,7 +313,6 @@ describe("checkEntry validation", () => {
       belief: "Something",
       impulse: "Something else",
       voice: ["Speech."],
-      tags: [],
       skills: [],
       restrictions: ["not-a-real-skill"],
     });
@@ -349,7 +342,6 @@ describe("saveEntry validation", () => {
         belief: "X",
         impulse: "Y",
         voice: ["Z"],
-        tags: [],
         skills: [],
         restrictions: [],
       };
@@ -481,7 +473,6 @@ describe("deleteEntry", () => {
         belief: "X",
         impulse: "Y",
         voice: ["Z"],
-        tags: [],
         skills: [],
         restrictions: [],
       };
@@ -530,7 +521,6 @@ describe("verification and corruption detection", () => {
         belief: "X",
         impulse: "Y",
         voice: ["Z"],
-        tags: [],
         skills: [],
         restrictions: [],
       };
@@ -570,7 +560,6 @@ describe("verification and corruption detection", () => {
         belief: "X",
         impulse: "Y",
         voice: ["Z"],
-        tags: [],
         skills: [],
         restrictions: [],
       };
@@ -610,7 +599,6 @@ describe("verification and corruption detection", () => {
         belief: "X",
         impulse: "Y",
         voice: ["Z"],
-        tags: [],
         skills: [],
         restrictions: [],
       };

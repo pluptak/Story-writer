@@ -14,7 +14,6 @@ export const LibraryCharacter = z.strictObject({
   id: z.string().min(1),
   version: z.number().int().min(1).default(1),
   name: z.string().min(1),
-  tags: z.array(z.string()).default([]),
   portablePersona: z.string().default(""),
   belief: z.string().default(""),
   impulse: z.string().default(""),

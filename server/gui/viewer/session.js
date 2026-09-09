@@ -29,6 +29,7 @@ export function renderSession() {
   const iv = $("interactive");
   iv.classList.toggle("off", !APP.session.interactive);
   iv.textContent = APP.session.interactive ? "interactive" : "hands off";
+  iv.setAttribute("aria-pressed", APP.session.interactive ? "true" : "false");
   const cm = $("consultMe");
   cm.disabled = !APP.session.running || APP.session.stopping || APP.session.armed || !APP.session.interactive;
   cm.textContent = APP.session.armed ? "consulting…" : "consult me";

@@ -22,10 +22,10 @@ function renderConsult(b) {
   const verdict = fin.judge?.verdict;
   // Summary state in story words: decided (kept), reasked (tried again), asked back (needed a
   // fact first), flagged (something about the reply needed attention). Attempt counts stay out
-  // of the collapsed line beyond the single reasked marker.
+  // of the collapsed line entirely -- the reasked marker says it happened, and How this was
+  // decided says how often.
   const state = retried ? "reasked" : asked ? "asked back" : flagged ? "flagged" : "decided";
-  const tags = `<span class="tag state" data-tid="consult.tag">${state}</span>` +
-    (retried ? `<span class="tag retry" data-tid="consult.tag">×${b.attempts.length}</span>` : "");
+  const tags = `<span class="tag state" data-tid="consult.tag">${state}</span>`;
 
   // What happens next, in one line off the final state. A capped retry was force-accepted by
   // the chapter-wide ceiling, so it reaches the page even though its own verdict still reads
@@ -182,7 +182,14 @@ export function renderBlock(b, interactive) {
     return `<button ${tid("prose.note-pill")} type="button" class="npill tone-${b.tone}"
               title="${esc(b.text)}" aria-label="${esc(b.text)}">${NOTE_ICON[b.tone] || ""} ${esc(b.label)}</button>`;
   }
-  if (b.kind === "end") return `<div ${tid("prose.end")} class="note end">${verdictText(b)} · ${esc(b.words)} words · ${esc(b.steps)} steps</div>`;
+  // Level 1 is the verdict and the words; the step count and per-character retries are
+  // engine accounting, disclosed one level down in the existing engine-details pattern.
+  if (b.kind === "end") {
+    const retried = Object.entries(b.retries || {}).filter(([, n]) => (Number(n) || 0) > 0);
+    return `<div ${tid("prose.end")} class="note end">${verdictText(b)} · ${esc(b.words)} words`
+      + ` <details class="engine-details" data-tid="prose.end-details"><summary>${esc(b.steps)} steps</summary>`
+      + `<div class="tech">${esc(b.steps)} steps${retried.length ? " · re-asked: " + retried.map(([w, n]) => `${esc(w)} ×${esc(n)}`).join(", ") : ""}</div></details></div>`;
+  }
   return "";
 }
 

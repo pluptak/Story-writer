@@ -13,6 +13,7 @@ import "./viewer/story-edit.js";
 import "./viewer/sse.js";
 import "./viewer/chrome.js";
 import "./viewer/character-card.js";
+import "./viewer/focus.js";
 
 APP.render = render;
 initLocator();

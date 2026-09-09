@@ -10,11 +10,13 @@
 <script>try { const t = localStorage.getItem("sw-theme");
   if (t) document.documentElement.setAttribute("data-theme", t); } catch {}</script>
 
-<div class="topbar">
+<a class="skip" href="#page">skip to content</a>
+<header class="topbar">
   <div class="brand"><h1 id="title">story-writer</h1><div class="q" id="question"></div></div>
   <button class="btn" id="expand" title="expand or collapse every block" aria-pressed="false">expand all</button>
   <button class="btn" id="theme" title="switch colour theme" aria-pressed="false">theme</button>
-</div>
+  <button class="btn" id="focusbtn" title="distraction-free writing — prose and decisions only (f)" aria-pressed="false" hidden>focus</button>
+</header>
 <div class="ribbon" id="ribbon" hidden></div>
 <div class="srcbar" data-tid="chrome.srcbar"><span class="dot" id="dot"></span><span id="src">nothing loaded</span><span id="where"></span>
   <span class="provchip" id="provchip" data-tid="chrome.provider" hidden></span>
@@ -46,7 +48,7 @@
       </details>
     </div>
   </nav>
-  <main class="page" id="page"></main>
+  <main class="page" id="page" tabindex="-1"></main>
   <aside class="rail" id="rail">
     <!-- Rail hierarchy (writer-first): scene status, cast, controls, engine details. The status
          card answers "what do I need to know while writing"; the engine's own numbers stay in
@@ -77,11 +79,12 @@
     <div id="railstats"></div>
   </aside>
 </div>
+<button class="btn primary" id="focusexit" title="leave focus mode (Esc)" hidden>exit focus · Esc</button>
 <div id="modalroot"></div>
 
 <div class="drop" id="drop">drop a writing-log.jsonl</div>
-<div class="prompt" id="prompt" data-tid="chrome.budget-prompt">
-  <span id="promptText">The step budget is spent.</span>
+<div class="prompt" id="prompt" data-tid="chrome.budget-prompt" role="status">
+  <span id="promptText">The step budget is spent — the run is holding. Give steps or stop; it waits either way.</span>
   <input id="promptN" type="number" min="0" value="8" aria-label="how many more steps to allow">
   <button class="btn" id="promptGo">give steps</button>
   <button class="btn" id="promptStop">stop</button>

@@ -7,7 +7,7 @@
 import { esc, post, makeLatest, parseLines, parseCommaSeparated } from "./util.js";
 import { APP } from "./state.js";
 import { go } from "./nav.js";
-import { button, hint, errorLine, warnLine, thinking, confirmDialog } from "./ui.js";
+import { button, hint, errorLine, warnLine, thinking, confirmDialog, storyNote } from "./ui.js";
 import { on, onInput } from "./wire.js";
 
 const latest = makeLatest();
@@ -128,8 +128,13 @@ function orphanIssuesHtml() {
   const orphans = (APP.editIssues || []).filter(i =>
     !FORM_ROOTS.includes(String(i.path || "").split(".")[0]));
   if (!orphans.length) return "";
-  return warnLine(orphans.map(i =>
-    esc(i.path && i.path !== "story" ? `${i.path}: ${i.message}` : i.message)).join("<br>"), "mt-xs");
+  // Continuity warnings: validation problems no field claims -- a bad top-level key, a renamed
+  // section -- rendered where the save button lives, since they block it. The paths stay
+  // machine-readable in the detail layer.
+  return storyNote({ tone: "warn", extraClass: "mt-xs",
+    meaning: "Parts of the file don't match anything on this form — they may be misplaced, renamed, or from a newer version. Saving stays off until they're resolved.",
+    detail: orphans.map(i =>
+      esc(i.path && i.path !== "story" ? `${i.path}: ${i.message}` : i.message)).join("<br>") });
 }
 
 function envWarningsHtml() {
@@ -139,7 +144,9 @@ function envWarningsHtml() {
 
 function errorBannerHtml() {
   if (!APP.editError) return "";
-  return errorLine(esc(APP.editError), "mb-md");
+  return storyNote({ extraClass: "mb-md",
+    meaning: "Couldn't finish that — nothing was written.",
+    detail: esc(APP.editError) });
 }
 
 function unsavedBannerHtml() {
@@ -296,13 +303,18 @@ function modelsHtml() {  const m = APP.editDraft?.models || {};
 function suggestResultHtml() {
   if (!APP.editSuggestResult) return "";
   const r = APP.editSuggestResult;
-  if (!r.ok) return errorLine(esc(r.error || "something went wrong"));
+  if (!r.ok) return storyNote({ meaning: "The architect couldn't suggest anything.",
+    detail: esc(r.error || "something went wrong") });
   if (r.kind === "question") return `<div class="asked">The architect asks: <em>${esc(r.ask)}</em></div>`;
   if (r.kind === "edits") {
     const parts = [];
     if (r.applied.length) parts.push(`<div class="said good">Suggested changes: ${r.applied.map(a => `<strong>${esc(a.field)}</strong>`).join(", ")}</div>`);
-    if (r.ignored.length) parts.push(errorLine(`Could not apply: ${r.ignored.map(i => esc(i)).join(", ")}`));
-    if (r.problems.length) parts.push(warnLine(r.problems.map(p => esc(p)).join("; ")));
+    if (r.ignored.length) parts.push(storyNote({
+      meaning: "Some suggested changes couldn't be applied — the rest are in the form below.",
+      detail: r.ignored.map(i => esc(i)).join("<br>") }));
+    if (r.problems.length) parts.push(storyNote({ tone: "warn",
+      meaning: "Some suggestions need a look before saving.",
+      detail: r.problems.map(p => esc(p)).join("<br>") }));
     if (r.note) parts.push(hint(esc(r.note)));
     parts.push(hint(`The changes are in the form now — review them, then save.`, { extraClass: "mt-xs" }));
     return parts.join("");

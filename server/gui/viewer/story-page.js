@@ -1,12 +1,12 @@
-import { esc, post, fmtRun, makeLatest, reasonOr, tid } from "./util.js";
+import { esc, post, fmtWhen, runOutcome, makeLatest, reasonOr, tid } from "./util.js";
 import { APP, READV, runningReason } from "./state.js";
-import { castChips } from "./shelf.js";
+import { castChips, isEnvWarning } from "./shelf.js";
 import { loadRun, loadStories } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { go } from "./nav.js";
 import { prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paras } from "./blocks.js";
-import { button, hint, errorLine, warnLine, divider, modelSelect, confirmDialog, pageTitle } from "./ui.js";
+import { button, hint, errorLine, warnLine, divider, modelSelect, confirmDialog, pageTitle, storyNote } from "./ui.js";
 
 const latest = makeLatest();
 
@@ -40,6 +40,19 @@ function modelSelectHtml(s) {
  *  list (which chapter gets the "next" tag) and the handoff row (which chapter it would prepare). */
 export const nextChapterOf = chapters => Math.max(0, ...chapters) + 1;
 
+/** Preflight warnings in two layers: story problems (scene/character issues the author can fix
+ *  via Edit) read inline; provider-environment notes (model availability, context windows) sit
+ *  collapsed under a setup line -- the shelf drops that half, this page keeps it one click away
+ *  because the model is chosen here. */
+function storyWarningsHtml(s) {
+  const warnings = s.warnings || [];
+  const story = warnings.filter(w => !isEnvWarning(w));
+  const env = warnings.filter(isEnvWarning);
+  return story.map(w => warnLine(`⚠ ${esc(w)}`)).join("")
+    + (env.length ? `<details class="sc-setup" data-tid="story.setup-warnings"><summary>Setup notes · ${env.length}</summary>`
+      + env.map(w => warnLine(esc(w))).join("") + `</details>` : "");
+}
+
 /** "~700 words" plus an optional "pov X" suffix -- the length/pov formatting a scene card needs,
  *  shared with the handoff's proposed-chapter card (handoff-view.js). */
 export const wordsPovHtml = scene => `~${scene.length ?? "?"} words${scene.pov ? " · pov " + esc(scene.pov) : ""}`;
@@ -65,14 +78,15 @@ const STATE_TAG = {
 };
 
 /** Who is in the scene, as inspectable chips: roster names that match the story's cast reuse the
- *  same pills the header uses (so the full character card opens); the rest stay plain labels.
- *  The card opens through the existing `[data-char-name]` handler -- no new wiring. */
-function sceneRosterHtml(names, characters, dir) {
+ *  same pills the header uses (so the full character card opens, with this scene as its context);
+ *  the rest stay plain labels. The card opens through the existing `[data-char-name]` handler --
+ *  no new wiring. */
+function sceneRosterHtml(names, characters, dir, scene) {
   if (!names?.length) return "";
   const byName = new Map((characters || []).map(c => [(c.name || "").toLowerCase(), c]));
   const chips = names.map(n => {
     const c = byName.get((n || "").toLowerCase());
-    return c ? castChips([c], dir) : `<span class="mchip">${esc(n)}</span>`;
+    return c ? castChips([c], dir, scene) : `<span class="mchip">${esc(n)}</span>`;
   }).join("");
   return `<div class="sc-roster" data-tid="story.scene-roster"><span class="hint">with</span> ${chips}</div>`;
 }
@@ -110,12 +124,12 @@ function sceneRowHtml(s, scene, chapters, canWrite, why, discardable, beats) {
   return `<div class="cardwrap"><div class="scenerow" data-tid="story.scene-row" data-chapter="${scene.n}" data-state="${state}">
     <div class="sc-q">${esc(scene.question || "(no scene question)")}${STATE_TAG[state]}</div>
     <div class="sc-meta">chapter ${scene.n}${scene.place ? " · " + esc(scene.place) : ""} · ${wordsPovHtml(scene)}</div>
-    ${sceneRosterHtml(scene.roster, s.characters, s.dir)}
+    ${sceneRosterHtml(scene.roster, s.characters, s.dir, scene.n)}
     <div class="sc-actions">
       <button ${tid("story.write-btn")} class="btn${state === "current" ? " primary" : ""} scenewrite" data-chapter="${scene.n}"${canWrite ? "" : " disabled"} title="${esc(why)}">${written ? "rewrite" : "write"} chapter ${scene.n}</button>
-      ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}">${open ? "close" : "read"}</button>` : ""}
+      ${written ? `<button ${tid("story.read-btn")} class="btn chapterread" data-chapter="${scene.n}" aria-label="${open ? "close" : "read"} chapter ${scene.n}">${open ? "close" : "read"}</button>` : ""}
       ${discardable ? `<button ${tid("story.discard-btn")} class="btn danger scenediscard" data-chapter="${scene.n}"${runWhy ? " disabled" : ""} title="${esc(runWhy || "remove this unwritten chapter's scene from the story")}">discard chapter ${scene.n}</button>` : ""}
-      <button ${tid("story.scene-edit-btn")} class="btn small sceneedit" data-chapter="${scene.n}" title="edit this story's scenes and cast">edit</button>
+      <button ${tid("story.scene-edit-btn")} class="btn small sceneedit" data-chapter="${scene.n}" title="edit this story's scenes and cast" aria-label="edit chapter ${scene.n} scenes and cast">edit</button>
     </div>
     ${detail ? `<details class="sc-context" data-tid="story.scene-context"><summary>Context</summary>${detail}</details>` : ""}
     ${open ? `<div class="prose mt-12">${paras(APP.chapter.text)}</div>` : ""}
@@ -152,17 +166,44 @@ function sceneDetailHtml(scene, beats) {
   return body ? `<div class="map-extra">${body}</div>` : "";
 }
 
-/** Runs filed under the chapter they wrote, ascending to match the scene list above, newest first
- *  inside each group. A run retained from before chapter numbers were logged has none and lands in
- *  its own group at the end. One group is no grouping, so a single-chapter story keeps the flat
- *  list it always had. */
+/** History, not a log browser: each run answers what chapter it wrote (with the scene's
+ *  place/question when the story still plans it), when it ran, how it ended, and how far it got --
+ *  with reading and comparing as the two primary actions. Runs file under the chapter they wrote,
+ *  ascending to match the scene list above, newest first inside each group. A run retained from
+ *  before chapter numbers were logged has none and lands in its own group at the end. One group
+ *  is no grouping, so a single-chapter story keeps the flat list it always had. The raw log stays
+ *  one disclosure down per run, and the full per-agent record lives on the read page. */
+function runRowHtml(s, r, scenes) {
+  const current = READV.dir === s.dir && READV.id === r.id;
+  const o = runOutcome(r);
+  const when = fmtWhen(r.mtimeMs);
+  const scene = typeof r.chapter === "number" ? scenes.find(sc => sc.n === r.chapter) : null;
+  const where = typeof r.chapter === "number"
+    ? `chapter ${r.chapter}${scene?.place ? " · " + scene.place : ""}` : "chapter unknown";
+  const far = [r.words != null ? `${r.words} words` : "",
+               r.steps != null ? `${r.steps} steps` : ""].filter(Boolean).join(" · ");
+  return `<div class="runrow" data-tid="story.run-row" data-run="${esc(r.id)}">
+    <div class="runrow-main">
+      <span class="runrow-title">${esc(where)}</span>
+      <span class="tag outcome-${o.key}" data-tid="story.run-outcome">${esc(o.label)}</span>
+      <span class="hint">${esc([when, far].filter(Boolean).join(" · "))}</span>
+      ${scene?.question ? `<div class="runrow-q hint">${esc(scene.question)}</div>` : ""}
+    </div>
+    <div class="runrow-actions">
+      <button ${tid("story.run-btn")} class="btn primary runbtn${current ? " current" : ""}" data-run="${esc(r.id)}"
+        aria-label="read ${esc(where)} run">${current ? "reading" : "read"}</button>
+      <button ${tid("story.run-compare-btn")} class="btn runcompare" data-run="${esc(r.id)}"
+        title="compare this run against another from the same chapter" aria-label="compare ${esc(where)} run">compare</button>
+    </div>
+    <details class="runrow-log" data-tid="story.run-log"><summary>Run log</summary>
+      <div class="tech">run ${esc(r.id)} · out/${esc(r.id)}/writing-log.jsonl</div>
+    </details>
+  </div>`;
+}
 function runsListHtml(s) {
   if (!s.runs?.length) return hint(`no retained runs yet`);
-  const btn = r => {
-    const current = READV.dir === s.dir && READV.id === r.id;
-    return `<button ${tid("story.run-btn")} class="btn runbtn${current ? " current" : ""}" data-run="${esc(r.id)}"
-         >${current ? "reading · " : "read · "}${esc(fmtRun(r))}</button>`;
-  };
+  const scenes = scenesOf(s);
+  const row = r => runRowHtml(s, r, scenes);
   const groups = new Map();
   for (const r of s.runs) {
     const k = typeof r.chapter === "number" ? r.chapter : Infinity;
@@ -170,10 +211,10 @@ function runsListHtml(s) {
     groups.get(k).push(r);
   }
   const keys = [...groups.keys()].sort((a, b) => a - b);
-  if (keys.length === 1) return `<div class="runs">${s.runs.map(btn).join("")}</div>`;
+  if (keys.length === 1) return `<div class="runs runhistory">${s.runs.map(row).join("")}</div>`;
   return keys.map(k => `<div class="rungroup">
       <span class="hint">${k === Infinity ? "unattributed" : `chapter ${k}`}</span>
-      <div class="runs">${groups.get(k).map(btn).join("")}</div>
+      <div class="runs runhistory">${groups.get(k).map(row).join("")}</div>
     </div>`).join("");
 }
 
@@ -202,7 +243,8 @@ export function storyPageHtml() {
 
   if (!s.ok) return `<section class="picker story">
     <h2>${esc(s.name)}</h2>
-    ${errorLine(`does not load — ${esc(s.error || "unknown error")}`)}
+    ${storyNote({ meaning: "This story can't be loaded, so nothing can be written from it. Fix the file, then come back.",
+      detail: esc(s.error || "unknown error") })}
     ${(s.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
     <div class="btns mt-sm">${button({ label: "back to shelf", id: "story-back" })}</div>
   </section>`;
@@ -224,9 +266,10 @@ export function storyPageHtml() {
       ${s.writerStyle ? `<div class="row mt-8"><span class="hint">style</span><span class="premise">${esc(s.writerStyle)}</span></div>` : ""}
       <div class="row mt-12"><span class="hint">model</span>${modelSelectHtml(s)}</div>
     </details>
-    ${APP.storyError ? errorLine(esc(APP.storyError)) : ""}
-    ${APP.runError ? errorLine(esc(APP.runError)) : ""}
-    ${(s.warnings || []).map(w => warnLine(`⚠ ${esc(w)}`)).join("")}
+    ${APP.storyError ? storyNote({ meaning: "Couldn't do that — nothing changed.",
+      detail: esc(APP.storyError) }) : ""}
+    ${APP.runError ? errorLine(`Couldn't start that run — ${esc(APP.runError)}. Nothing is running; safe to try again or pick another story.`) : ""}
+    ${storyWarningsHtml(s)}
 
     ${divider("scenes")}
     <div class="cards">${scenesOf(s).map((sc, i, arr) =>
@@ -236,7 +279,7 @@ export function storyPageHtml() {
 
     ${handoffRowHtml(s)}
 
-    ${divider("previous runs")}
+    ${divider("History")}
     ${runsListHtml(s)}
 
     <div class="btns mt-lg">
@@ -326,6 +369,15 @@ export function wireStoryPage(page) {
       if (ok === null) { b.disabled = false; return; }
       if (ok === false) { APP.storyError = "could not load that run"; APP.render(); return; }
       if (ok) { APP.storyError = ""; go("read"); }
+    });
+
+  // A row's compare action preselects that run: prepareComparison defaults the other side to a
+  // mate from the same chapter, so "compare" lands on a same-chapter pairing, not an empty picker.
+  for (const b of page.querySelectorAll(".runcompare"))
+    b.addEventListener("click", () => {
+      prepareComparison(APP.storyDir, b.dataset.run);
+      go("compare");
+      loadComparisonRuns();
     });
 }
 

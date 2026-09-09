@@ -49,7 +49,17 @@ export function confirmDialog({ title, body, confirmLabel = "confirm", danger = 
         + `</div></div>`,
     });
     const bd = wrap.firstElementChild;
-    const done = v => { bd.remove(); resolve(v); };
+    // Focus returns to whoever opened the confirm -- a repaint never touches #modalroot's
+    // detached node, so the opener is still there when the decision is a cancel (on confirm
+    // the navigation owns what happens next, and a removed opener simply skips the restore).
+    const invoker = document.activeElement;
+    const done = v => {
+      bd.remove();
+      if (invoker && document.contains(invoker)) {
+        try { invoker.focus(); } catch { /* a disabled opener keeps focus where it is */ }
+      }
+      resolve(v);
+    };
     bd.querySelector("#confirm-ok").addEventListener("click", () => done(true));
     bd.querySelector("#confirm-cancel").addEventListener("click", () => done(false));
     bd.addEventListener("click", e => { if (e.target === bd) done(false); });
@@ -91,6 +101,20 @@ export function errorLine(body, extraClass = "") {
  *  it themselves, since not every `.prob` line carries one. */
 export function warnLine(body, extraClass = "") {
   return `<div class="prob${extraClass ? " " + extraClass : ""}">${body}</div>`;
+}
+
+/** Two-layer failure presentation: what this means for the story first, the raw technical
+ *  detail behind a collapsed disclosure second. Nothing is hidden -- the detail stays in the
+ *  DOM, machine-readable and searchable -- but the author is never forced to interpret a server
+ *  or model error to know what happened. `meaning` and `detail` are raw HTML (escape before
+ *  calling, as with errorLine/warnLine); `tone` reuses the existing said/prob visual tokens. */
+export function storyNote({ tone = "bad", meaning, detail = "", tidName = "", extraClass = "" }) {
+  const cls = tone === "warn" ? "prob" : "said bad";
+  return `<div class="${cls}${extraClass ? " " + extraClass : ""}"${tidName ? tid(tidName) : ""}>`
+    + `<div class="meaning">${meaning}</div>`
+    + (detail ? `<details class="engine-details"><summary>Technical details</summary>`
+      + `<div class="tech">${detail}</div></details>` : "")
+    + `</div>`;
 }
 
 /** The `<i></i>…` thinking indicator; the element varies by where it sits (span inside a button

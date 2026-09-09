@@ -218,7 +218,8 @@ export function startSSE() {
 
 // ---- the out-of-budget prompt (live only) -------------------------------
 function showPrompt(p) {
-  $("promptText").textContent = `${p.steps} steps used and the scene is not finished.`;
+  // The budget is a holding pattern, not an error: the run waits either way, so leaving is safe.
+  $("promptText").textContent = `${p.steps} steps used and the scene is not finished — the run is holding. Give steps or stop; it waits either way.`;
   $("promptN").value = p.suggested || 8;
   $("prompt").classList.add("on");
   // The decision is one keypress now that Enter submits -- cursor in the field, text selected, so

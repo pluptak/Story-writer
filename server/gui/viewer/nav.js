@@ -1,6 +1,7 @@
 import { APP, READV, READER } from "./state.js";
 import { loadStories } from "./saved-runs.js";
 import { confirmDialog } from "./ui.js";
+import { scrollToEl } from "./util.js";
 
 // ---- pages and navigation --------------------------------------------------
 /** A scene is being written RIGHT NOW -- as opposed to paused, finished, or not yet started. */
@@ -93,6 +94,9 @@ export async function go(v) {
     APP.editDir = ""; APP.editNew = false; APP.editFor = ""; APP.editStory = null; APP.editDraft = null;
     APP.editDirty = false; APP.editError = ""; APP.editIssues = []; APP.editRaw = null;
   }
+  // Focus mode belongs to the prose views: leaving live/manuscript exits it, so a shelf or
+  // story page never inherits a hidden sidenav -- and returning starts unfocused, not mid-mode.
+  if (v !== "live" && v !== "readstory") APP.focus = false;
   APP.view = v;
   // Navigation-only enter animation (pages.js consumes it): SSE repaints call render() without
   // passing through go(), so streaming prose never re-animates.
@@ -105,8 +109,7 @@ export async function go(v) {
   APP.render();
   if (v === "live" && APP.wantReaderView) {
     APP.wantReaderView = false;
-    const q = document.querySelector(".reader.pending");
-    if (q) q.scrollIntoView({ block:"center", behavior:"smooth" });
+    scrollToEl(document.querySelector(".reader.pending"), "center");
   }
 }
 

@@ -11,6 +11,10 @@ import { noteFocus } from "./nav.js";
 export function renderTimeline(blocks) {
   const el = $("timeline");
   if (!el) return;
+  // The strip rebuilds on every render, mid-run included -- remember a focused marker so it
+  // can be put back below instead of dropping its keyboard user back to <body>.
+  const focusedSeq = document.activeElement?.classList?.contains("tl-marker")
+    ? document.activeElement.dataset.seq : "";
   const consults = blocks.filter(b => b.kind === "consult");
   if (!consults.length) { el.innerHTML = ""; el.hidden = true; return; }
 
@@ -20,8 +24,12 @@ export function renderTimeline(blocks) {
     const capped = !!b.capped;
     const cls = "tl-marker" + (retried ? " retried" : "") + (capped ? " capped" : "");
     const title = `${b.who}${retried ? ` · ${b.attempts.length - 1} retr${b.attempts.length > 2 ? "ies" : "y"}` : ""}${capped ? " · capped" : ""}`;
-    return `<button ${tid("timeline.marker")} class="${cls}" data-seq="${esc(b.seq)}" title="${esc(title)}">${esc(b.who)}</button>`;
+    // The tooltip text doubles as the accessible name: marker state (retried, capped) is
+    // otherwise color alone, and a bare character name says nothing about what it opens.
+    return `<button ${tid("timeline.marker")} class="${cls}" data-seq="${esc(b.seq)}" title="${esc(title)}" aria-label="${esc(title)}">${esc(b.who)}</button>`;
   }).join("");
+  if (focusedSeq && document.activeElement === document.body)
+    el.querySelector(`.tl-marker[data-seq="${focusedSeq}"]`)?.focus();
 }
 
 /** Wired from the strip's own element, not from `#page` -- it is a sibling of the layout, not a
