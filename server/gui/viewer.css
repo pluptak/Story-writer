@@ -1282,13 +1282,59 @@
   .scpage .side-copy { margin:0; color:var(--muted); font-size:var(--fs-12); }
   .scpage .side-actions { display:grid; gap:8px; margin-top:14px; }
   .scpage .side-actions .btn { text-align:center; }
-  /* Handoff secondaries sit a breath below the dominant action, quiet but reachable. */
-  .scpage .side-actions.secondary { margin-top:8px; }
-  .scpage .side-actions.secondary .btn { font-weight:400; }
+  /* Accept's secondaries (return to Blueprint, save and leave) sit a breath below the dominant
+     "Start writing" action, as quiet inline links rather than a second stack of full-width bars --
+     one obvious primary action, not three buttons reading as equally weighted choices. */
+  .scpage .side-actions.secondary { display:flex; flex-wrap:wrap; justify-content:center;
+    gap:6px 16px; margin-top:10px; }
+  .scpage .side-actions.secondary .btn { flex:none; width:auto; font-weight:400; color:var(--muted);
+    background:none; border-color:transparent; text-decoration:underline; text-underline-offset:2px; }
+  .scpage .side-actions.secondary .btn:hover { color:var(--accent); border-color:transparent; background:none; }
   /* the tension as its text, under the stats it used to be a "coined" row of */
   .scpage .side-tension { margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
   .scpage .side-tension .label { display:block; margin-bottom:4px; }
   .scpage .side-tension .side-copy { font-family:var(--serif); font-size:var(--fs-13); color:var(--ink); }
+
+  /* ── the six-stage progression + current/done/locked cards ────────────────────
+     interview.js now renders one active-stage card at a time (stagesHtml/activePageHtml) rather
+     than the .shell/.gate/.checklist stepper-rail above, which predates it and is unstyled for
+     these class names on purpose -- left alone rather than removed under a copy/hierarchy pass.
+     Un-styled, `.stages` reads as a bare run-on list and every stage card carries the same
+     shadow/border regardless of whether it is the one decision on screen -- exactly the "what
+     competes for attention" problem this fixes. */
+  .scpage .stages { list-style:none; margin:0 0 18px; padding:0; display:flex; flex-wrap:wrap;
+    align-items:center; gap:3px 4px; font-family:var(--mono); font-size:var(--fs-11); }
+  .scpage .stages .stage { display:inline-flex; align-items:center; gap:6px; padding:4px 10px 4px 6px;
+    border-radius:var(--r-pill); color:var(--faint); white-space:nowrap; }
+  .scpage .stages .stage-num { flex:none; width:17px; height:17px; border-radius:50%;
+    border:1.5px solid currentColor; display:grid; place-items:center; font-size:9px;
+    font-weight:600; line-height:1; }
+  .scpage .stages .stage-copy b { font-weight:600; }
+  /* Each stage's question repeats as that stage's own card heading below -- once there is enough,
+     so the strip itself only needs to name the stage, not re-ask its question. */
+  .scpage .stages .stage-copy small { display:none; }
+  .scpage .stages .stage.done { color:var(--good); }
+  .scpage .stages .stage.done .stage-num { border-style:solid; background:var(--good); color:var(--bg); }
+  .scpage .stages .stage.open { color:var(--ink); background:var(--accent-soft); }
+  .scpage .stages .stage.open .stage-num { border-color:var(--accent); color:var(--accent); background:var(--panel); }
+  .scpage .stages .stage.open .stage-copy b { color:var(--accent); }
+  /* The open stage is where the author's attention belongs -- an accent edge marks it without
+     shouting; the page's own heading (pageTitle, above) already carries its question, so the card
+     itself no longer repeats it (see stageSection()) and drops straight into why it matters. */
+  .scpage .stage-open { border-color:var(--accent); }
+  .scpage .stage-open > .card-head { display:flex; align-items:center; justify-content:space-between;
+    gap:12px; flex-wrap:wrap; }
+  /* Locked (future) and done (collapsed) stages are supporting information, not decisions in
+     progress -- flat, no shadow, so the one open card is the only thing that reads as "here". */
+  .scpage .stage-locked, .scpage .stage-done { box-shadow:none; background:var(--panel-2); }
+  .scpage .stage-locked .card-head { padding:12px 16px 10px; }
+  .scpage .stage-locked .card-head h3 { font-size:var(--fs-15); font-weight:400; color:var(--muted); }
+  .scpage .stage-locked .card-body { padding:0 16px 14px; }
+  .scpage .stage-done > summary { padding:13px 18px; cursor:pointer; display:flex; align-items:center;
+    gap:9px; flex-wrap:wrap; }
+  .scpage .stage-done > summary strong { font-weight:400; color:var(--muted); font-family:var(--serif);
+    font-size:var(--fs-15); }
+  .scpage .stage-done .card-body { padding:0 18px 16px; }
 
   /* ---- the story map's scene detail ----
      Roster, reach and the chapter's world beats, under the scene row they belong to. The mockup's
@@ -1334,6 +1380,17 @@
     .scpage .stepper-rail { display:none; }
     .scpage aside { position:static; order:2; }
     .iv .choice-grid { grid-template-columns:1fr; }
+    /* body[data-view="scaffold"/"catalog"] .layout (above) pins a 216px sidebar column at every
+       width -- an attribute+class selector always outranks the plain `.layout` media rule near the
+       top of this file, so Architect and Libraries never actually reached the single-column,
+       horizontal-nav layout every other view gets here. Same selector, later in the cascade,
+       restores it: the sidenav's own horizontal-strip rules (also above) can then use the full
+       width instead of being squeezed into a 216px column. */
+    body[data-view="scaffold"] .layout, body[data-view="catalog"] .layout { grid-template-columns:1fr; }
+    /* Narrow enough that "edit in full →" and "abandon" no longer fit their row -- wrap the row
+       rather than let the buttons themselves shrink and break their own label onto several lines. */
+    .scpage .statusbar { flex-wrap:wrap; }
+    .scpage .statusbar .spacer { margin-left:0; }
   }
   @media (max-width: 680px) {
     .scpage .composer-foot { flex-wrap:wrap; align-items:stretch; }

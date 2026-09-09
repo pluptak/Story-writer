@@ -180,7 +180,9 @@ function importPickerHtml(s) {
       </div>
     </details>`;
   }).join("")}</div>`;
-  return `<div class="cat-tags-row">${chips}</div>${preview}${cast}`
+  // Story-specific result first (who this story actually casts), the library candidates below
+  // it — the tray is an input into that result, not the headline.
+  return `${cast}<div class="cat-tags-row">${chips}</div>${preview}`
     + hint(`Removing here takes them out of this story only — the library entry is unchanged. `
       + `<button class="hint-link" data-goto-catalog="characters" type="button">Manage characters under Libraries</button>.`);
 }
@@ -239,7 +241,9 @@ function stylePickerHtml(s) {
         <div class="side-actions"><button class="btn" data-clear-style type="button">use no preset for this story</button></div>
       </div>
     </details>`;
-  return `<div class="cat-tags-row">${chips}</div>${preview}${detail}` + (picked
+  // Same ordering as the character tray: the story's own choice (or lack of one) first, the
+  // library presets to pick from underneath it.
+  return `${detail}<div class="cat-tags-row">${chips}</div>${preview}` + (picked
     ? hint(`The architect is handed this style and asked only what THIS cast and POV make impossible to narrate. `
       + `<button class="hint-link" data-goto-catalog="styles" type="button">Manage styles under Libraries</button>.`)
     : hint(`Pick none and the architect writes the house style itself. `
@@ -255,7 +259,7 @@ function directionPickersHtml(s) {
     ? warnLine(`not in the tag library: ${esc(c.unknownTags.join(", "))} — sent to the architect anyway`)
     : "";
   return `<div class="stage-pick" data-tid="scaffold.direction-pickers">
-    <label class="field-label">Story vocabulary <span class="hint">optional — reusable tags, chosen for this story</span></label>
+    <label class="field-label">Story tags <span class="hint">optional — reusable tags, chosen for this story</span></label>
     ${tagsLive ? tagChipsHtml(s) + warning : (c.tags || []).length
       ? hint(`Tags steered the direction and are now decided: ${esc(c.tags.join(", "))}.`) + warning : ""}
     ${trayLive ? `<label class="field-label">Characters for this story <span class="hint">optional — reusable characters, cast here before the cast exists</span></label>`
@@ -298,7 +302,7 @@ function castworldPickersHtml(s) {
       ? hint(`Cast for this story: ${esc((c.imported || []).map(i => i.name).join(", "))} — placed.`) : ""}
     ${styleLive ? `<label class="field-label">Story style <span class="hint">optional — a reusable style preset, telling this story</span></label>`
       + styleBlockHtml(s) : c.styleName
-      ? hint(`Voice for this story: ${esc(c.styleName)}.`) : ""}
+      ? hint(`Style for this story: ${esc(c.styleName)}.`) : ""}
   </div>`;
 }
 
@@ -591,9 +595,11 @@ function stageSection(s, key, { primary = "", action = "", next = "", advanced =
   const gates = meta.gates;
   const skipMissing = key === "review" || key === "handoff" || key === "idea";
   const st = artifactStatus(s, key);
+  // No <h3> here repeating the question: the page banner above already asks it, once, at full
+  // size -- this card only needs to say which stage that is and how it currently stands.
   return `<section class="card stage-open" data-tid="scaffold.stage-section" data-stage="${key}">
     <div class="card-head">
-      <div><span class="label">${esc(STAGE_LABELS[key])} · deciding now</span><h3>${esc(meta.q)}</h3></div>
+      <span class="label">${esc(STAGE_LABELS[key])} · deciding now</span>
       <span class="status-pill ${st.cls}" data-tid="scaffold.artifact-status">${esc(st.label)}</span>
     </div>
     <div class="card-body">
@@ -665,7 +671,7 @@ function decidedHtml(s, key) {
     const bits = [];
     if (spec.title) bits.push(`<strong>${esc(spec.title)}</strong>`);
     if (s.tension) bits.push(esc(s.tension));
-    if ((c.tags || []).length) bits.push(`vocabulary: ${esc(c.tags.join(", "))} <span class="tag prov-catalog">your library</span>`);
+    if ((c.tags || []).length) bits.push(`tags: ${esc(c.tags.join(", "))} <span class="tag prov-catalog">your library</span>`);
     if ((spec.facts || []).length) bits.push(`${spec.facts.length} fact(s)`);
     return bits.length ? `<p class="side-copy">${bits.join(" · ")}</p>` : "";
   }
@@ -1078,8 +1084,8 @@ function handoffSummaryHtml(s) {
   const flags = s.problems || [];
   const title = spec.title?.trim() || "(untitled)";
   return `<div data-tid="scaffold.handoff-summary">`
-    + `<p class="stage-copy"><strong>Your story is ready to write.</strong> `
-    + `Start writing opens “${esc(title)}” — chapter 1, written from the approved Blueprint exactly as it stands.</p>`
+    + `<p class="stage-copy"><strong>“${esc(title)}”</strong> — chapter 1, written from the approved `
+    + `Blueprint exactly as it stands.</p>`
     + (spec.premise ? `<p class="stage-copy">${esc(spec.premise)} <span class="tag prov-ai">proposed</span></p>` : "")
     + (cast.length
       ? `<div class="decision"><span class="label">main characters · ${cast.length}</span><ul class="decision-roles">`
@@ -1102,32 +1108,30 @@ function folderHtml(s) {
   // The folder is the story's identity on disk, and two stories built from one premise land on the
   // same title and so the same slug. accept() refuses a taken folder, but only after the click --
   // say it here, while the name is still being typed.
-  return `<section class="card" data-tid="scaffold.folder-card">
-    <div class="card-head">
-      <div><span class="label">accept</span><h3>Your story is ready to write</h3></div>
-      ${s.needsFolder ? `<span class="label">needs_folder</span>` : ""}
+  // Renders straight into the open stage's own card (stageSection already carries the "Accept the
+  // Blueprint and start writing" head) rather than nesting a second card inside it -- one heading
+  // for one decision, not two that say almost the same thing.
+  return `<div data-tid="scaffold.folder-card">
+    ${s.needsFolder ? `<p class="hint">Naming the folder is the one thing left before this can be written.</p>` : ""}
+    ${handoffSummaryHtml(s)}
+    ${acceptProvenanceHtml(s)}
+    <label class="field-label" for="f-folder">story folder</label>
+    <input type="text" id="f-folder" value="${esc(draft.folder)}">
+    <div id="iv-folder-note">${folderNoteHtml()}</div>
+    <div class="composer-foot">
+      <span class="hint">nothing is written until Start writing answers</span>
+      ${thinking("writing &amp; preflighting…", { show: s.busy, tag: "span" })}
     </div>
-    <div class="card-body">
-      ${handoffSummaryHtml(s)}
-      ${acceptProvenanceHtml(s)}
-      <label class="field-label" for="f-folder">story folder</label>
-      <input type="text" id="f-folder" value="${esc(draft.folder)}">
-      <div id="iv-folder-note">${folderNoteHtml()}</div>
-      <div class="composer-foot">
-        <span class="hint">nothing is written until Start writing answers</span>
-        ${thinking("writing &amp; preflighting…", { show: s.busy, tag: "span" })}
-      </div>
-      <div class="side-actions">${button({ label: "Start writing →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}</div>
-      <div class="side-actions secondary">
-        ${!s.needsFolder && APP.folderOpen ? button({ label: "← return to Blueprint", id: "iv-folder-back" }) : ""}
-        ${button({ label: "save and leave", id: "iv-save-leave" })}
-      </div>
-      <details class="card stage-done" data-tid="scaffold.handoff-details">
-        <summary><span class="label">complete Blueprint</span> <strong>Inspect details</strong></summary>
-        <div class="card-body">${reviewBlueprintDetails(s)}</div>
-      </details>
+    <div class="side-actions">${button({ label: "Start writing →", id: "iv-folder", variant: "primary", disabled: folderTaken() })}</div>
+    <div class="side-actions secondary">
+      ${!s.needsFolder && APP.folderOpen ? button({ label: "← return to Blueprint", id: "iv-folder-back" }) : ""}
+      ${button({ label: "save and leave", id: "iv-save-leave" })}
     </div>
-  </section>`;
+    <details class="engine-details" data-tid="scaffold.handoff-details">
+      <summary>complete Blueprint · inspect details</summary>
+      ${reviewBlueprintDetails(s)}
+    </details>
+  </div>`;
 }
 
 /** Whether the typed folder would land on a story that already exists. The engine refuses this
