@@ -28,7 +28,7 @@ import { ENGINE } from "./engine-state.ts";
 export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = []): string {
   return P.characterSystem({
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
-    belief: def.belief, impulse: def.impulse, voice: def.voice, reach,
+    belief: def.belief, impulse: def.impulse, voice: def.voice, reach, limits: def.limits,
   });
 }
 

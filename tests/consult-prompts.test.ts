@@ -32,6 +32,66 @@ describe("judgeRequest", () => {
   });
 });
 
+describe("the autonomous character format", () => {
+  const sys = () => P.characterSystem({
+    persona: "A night porter.",
+    place: "The lobby.",
+    skills: [{ name: "keys", meaning: "carrying every key" }],
+    limits: ["sight"],
+    knows: "The lock sticks.",
+    goal: "Keep the door shut.",
+  });
+
+  it("is structured as identity / capabilities / memory / situation / motivation", () => {
+    const s = sys();
+    for (const head of ["IDENTITY", "CAPABILITIES", "MEMORY", "CURRENT SITUATION", "MOTIVATION"])
+      assert.match(s, new RegExp(head));
+  });
+
+  it("states hard limits to the character for the first time, as absolute", () => {
+    const s = sys();
+    assert.match(s, /HARD LIMITS/);
+    assert.match(s, /sight/);
+    assert.match(s, /absolute/);
+  });
+
+  it("frames skills as tendencies, not a fence", () => {
+    assert.match(P.CHARACTER_FORMAT, /TENDENCIES, NOT A FENCE/);
+    assert.match(P.CHARACTER_FORMAT, /clumsily/);
+    assert.ok(!P.CHARACTER_FORMAT.includes("STAY INSIDE YOUR SKILLS"));
+  });
+
+  it("defaults to inference over asking, reserving need for load-bearing facts", () => {
+    assert.match(P.CHARACTER_FORMAT, /FIRST DECIDE: know it, infer it, assume it, or ask/);
+    assert.match(P.CHARACTER_FORMAT, /would change WHAT YOU DO/);
+  });
+
+  it("reserves note for material assumptions, not every inference", () => {
+    assert.match(P.CHARACTER_FORMAT, /MATERIALLY/);
+  });
+
+  it("permits surprising the writer and closes as the character, not the author's intention", () => {
+    assert.match(P.CHARACTER_FORMAT, /betray/);
+    assert.match(P.CHARACTER_FORMAT, /PLAY THE CHARACTER, DO NOT PLAY THE AUTHOR'S INTENTION/);
+  });
+
+  it("keeps the reply schema unchanged", () => {
+    assert.match(P.CHARACTER_FORMAT, /"thought"/);
+    assert.match(P.CHARACTER_FORMAT, /\{"need"/);
+  });
+
+  it("threads def.limits through wrapCharacter", async () => {
+    const { loadStory } = await import("../engine/story-format.ts");
+    const { wrapCharacter } = await import("../engine/scene-loop.ts");
+    const sc = await loadStory("tests/fixtures/doorway");
+    const merritt = sc.characters.find(c => c.name === "MERRITT")!;
+    assert.ok(merritt.limits.length > 0, "fixture needs a CANNOT for this to mean anything");
+    const p = wrapCharacter(merritt, sc.scenes[0].place);
+    assert.match(p, /HARD LIMITS/);
+    for (const l of merritt.limits) assert.ok(p.includes(l));
+  });
+});
+
 describe("memorySurfaced", () => {
   it("renders the memory text and reads as knowledge, not as news", () => {
     const s = P.memorySurfaced("the lighthouse keeps its beam on a half-minute swing");

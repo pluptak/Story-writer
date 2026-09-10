@@ -412,7 +412,11 @@ describe("prompt construction", () => {
     const p = wrapCharacter(merritt, sc.scenes[0].place);
     assert.match(p, /hearing/);
     assert.match(p, /Kessel/);                       // the place
-    assert.ok(!p.includes("sight"), "a character must not be shown a skill it lacks");
+    // Autonomous branch: the character IS told its CANNOT list now — stated for the first time
+    // under HARD LIMITS, absolute — but never as a skill it holds. "sight" may appear only there.
+    assert.match(p, /HARD LIMITS[\s\S]*sight/);
+    assert.ok(!p.split("HARD LIMITS")[0].includes("sight"),
+      "a character must not be shown a skill it lacks outside its hard limits");
     assert.ok(!p.includes(sc.premise.slice(0, 40)), "the premise is the author's, not the character's");
   });
 
