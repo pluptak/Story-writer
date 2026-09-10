@@ -139,8 +139,38 @@ describe("/next-chapter routes", () => {
 
       assert.equal(started.code, 409);
       assert.match(started.body.reason, /abandoned/);
+      assert.equal(LIVE.storyLock, null, "the abandoned round releases the lock on its way out");
       const state = await callRoute(handleNextChapterRoutes, "/next-chapter", {}, h, "GET");
       assert.equal(state.body.active, false);
+    } finally { LIVE.storyLock = null; }
+  });
+
+  it("claims the story lock before the session build awaits, not after", async () => {
+    let release!: (s: NextChapterSession) => void;
+    const gated = new Promise<NextChapterSession>(r => { release = r; });
+    const h = host(() => gated);
+    try {
+      const startP = quiet(() => callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, h));
+      await yieldMicrotasks();
+      assert.match(String(LIVE.storyLock), /handoff is open/,
+        "the lock is already held while the session is still being built");
+      release(session([{ edits: [] }]));
+      const started = await startP;
+
+      assert.equal(started.code, 200);
+      await callRoute(handleNextChapterRoutes, "/next-chapter/abandon", {}, h);
+      assert.equal(LIVE.storyLock, null, "abandoning the handoff releases the lock");
+    } finally { LIVE.storyLock = null; }
+  });
+
+  it("refuses a second story's handoff while another story's lock is held", async () => {
+    opened.length = 0;
+    LIVE.storyLock = "a chapter handoff is open for data/stories/other";
+    try {
+      const r = await callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "data/stories/doorway" }, host());
+      assert.equal(r.code, 409);
+      assert.match(r.body.reason, /handoff is open for data\/stories\/other/);
+      assert.deepEqual(opened, [], "no session build starts for the refused story");
     } finally { LIVE.storyLock = null; }
   });
 

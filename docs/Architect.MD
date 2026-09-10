@@ -322,7 +322,7 @@ The architect can edit the fields supported by `engine/story-spec.ts`:
   carried along) and `characters.<NAME>.learned` (folded into `knows` on arrival)
 - cast membership: `add_character` and `remove_character`
 - story facts: `add_fact`, `remove_fact`, and an indexed update of `fact_<n>`
-- the world-event ledger: `beat_<n>.chapter`, `at`, `hold`, `fired`, `state`, and `memories`
+- the world-event ledger: `beat_<n>.chapter`, `at`, `hold`, `fired`, `state`, `scope`, and `memories`
   (an object: `{"NAME": "what they have always known"}`, replacing the map wholesale), plus
   `add_beat` and `remove_beat`. The spelling follows `scene_<n>` and `fact_<n>` — the two other
   indexed collections an edit can address — rather than the schema's own `timeline` key
@@ -595,7 +595,11 @@ open an action rather than closing one (a memory that makes a character's plan p
 nowhere to go and their goal simply wins); and give it to whoever the scene's question turns on. Only
 characters in that chapter's roster — `timelineBeatProblems` warns for anyone else, because the loop
 resolves memory names against the scene roster and a memory for an absent character silently never
-implants. What a memory *is* from the character's side is `Character.MD`'s.
+implants, and neither does a blank one — an empty or whitespace-only value is skipped the same way.
+Each beat also carries a `scope`: `"world"` (the default) for something broadly knowable,
+`"scene"` for something only people physically present would know. A `"scene"`-scoped beat's memory
+does not implant for a character marked `"remote"` in that scene. What a memory *is* from the
+character's side is `Character.MD`'s.
 
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.

@@ -561,7 +561,7 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
     // thing to remember. `chapter` is editable like any other field — re-aiming a stranded beat at
     // the next chapter is the handoff's whole job with this, and nothing about an already-written
     // chapter depends on where a beat that never fired was pointing.
-    const beatMatch = field.match(/^beat_(\d+)\.(chapter|at|hold|fired|state|memories)$/);
+    const beatMatch = field.match(/^beat_(\d+)\.(chapter|at|hold|fired|state|scope|memories)$/);
     if (beatMatch) {
       const idx = Number(beatMatch[1]) - 1;
       if (idx < 0 || idx >= draft.timeline.length) {
@@ -757,6 +757,7 @@ export function timelineDrift(before: TimelineDef[], after: TimelineDef[]): stri
     if (was.hold.trim() !== now.hold.trim()) changed.push("held form");
     if (was.fired.trim() !== now.fired.trim()) changed.push("fired form");
     if (was.at !== now.at) changed.push("trigger");
+    if (was.scope !== now.scope) changed.push("scope");
     const wasMem = normMem(was.memories), nowMem = normMem(now.memories);
     if (wasMem.size !== nowMem.size || [...wasMem].some(([k, v]) => nowMem.get(k) !== v)) changed.push("memories");
     if (changed.length) diff.push(`beat ${i + 1} (${changed.join(", ")})`);

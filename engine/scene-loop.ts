@@ -516,6 +516,8 @@ export async function writeScene(run: SceneRun) {
       for (const [name, mem] of turn.memories) {
         const def = defOf(name);
         if (!def || !isActive(def.name)) continue;
+        if (!mem.trim()) continue;
+        if (turn.fired!.scope === "scene" && scenePresence(sd, def)?.mode === "remote") continue;
         const a = agents.get(nameKey(def.name));
         if (!a) continue;
         a.system += P.memorySurfaced(mem);

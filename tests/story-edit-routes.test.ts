@@ -15,7 +15,7 @@ const DOORWAY = {
   writerStyle: "Plain sentences.",
   writerStyleConstraints: [] as string[],
   facts: [] as string[],
-  timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
+  timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; scope: "scene" | "world"; state: "pending" | "fired" | "void" }[],
   characters: [
     { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: [] },
     { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: ["hearing"] },

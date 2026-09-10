@@ -6,7 +6,7 @@ import { createServer, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 
 import { C } from "../ansi.ts";
-import { LIVE, RUN, sseClients, liveHistory, runState } from "../live.ts";
+import { LIVE, RUN, sseClients, liveHistory, runState, storyWriteBlocked } from "../live.ts";
 import { HttpError, json, readJsonBody } from "./http-util.ts";
 import { handleRunControl } from "./run-control-routes.ts";
 import { handleScaffoldRoutes } from "./scaffold-routes.ts";
@@ -397,6 +397,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
       } else if (path === "/select" && req.method === "POST") {
         const o = await readJsonBody(req);
         if (!LIVE.awaitingPick || !LIVE.pickResolve) { json(res, 400, { ok: false, reason: "the session is not waiting on a choice" }); return; }
+        const blocked = storyWriteBlocked();
+        if (blocked) { json(res, 409, { ok: false, reason: `cannot pick while ${blocked}` }); return; }
         const dir = await host.selectableStory(String(o.dir ?? ""));
         if (!dir) { json(res, 400, { ok: false, reason: `no such story: ${String(o.dir ?? "")}` }); return; }
         const asked = Number(o.chapter ?? 1);

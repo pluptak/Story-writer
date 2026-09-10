@@ -92,6 +92,9 @@ timeline[].fired    -- what has happened, once it does. One or two sentences, co
 timeline[].memories -- OPTIONAL, and where the event gets its teeth. Keyed by character name: a
                        thing that character has ALWAYS known and had no reason to think about until
                        now. It stays hidden until the event fires, then it is theirs.
+timeline[].scope    -- OPTIONAL, "world" for something broadly knowable, "scene" for something only
+                       people physically present would know. Default "world" if omitted: a "scene"
+                       beat's memory does not implant for a character marked "remote" in that scene.
 
 WHAT MAKES A MEMORY WORK -- each of these is a way one has already failed:
 
@@ -237,8 +240,8 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
      add_scene          (value is a whole scene object: place, question, pov, length, roster)
      remove_scene       (value is the scene number)
      add_fact · remove_fact (the fact number) · fact_<n> (the replacement text)
-     beat_<n>.chapter · .at · .hold · .fired · .state   (the world-event ledger; .state is
-                                                        "pending", "fired" or "void")
+     beat_<n>.chapter · .at · .hold · .fired · .state · .scope   (the world-event ledger; .state is
+                                                             "pending", "fired" or "void")
      beat_<n>.memories  (an object: {"NAME": "what they have always known"} -- replaces the map)
      add_beat           (value is a whole beat object: chapter, at, hold, fired, memories)
      remove_beat        (value is the beat number)
@@ -649,7 +652,7 @@ ${specSoFar}
 
 YOUR STAGE: the world events, and nothing else --
 
-{"timeline": [{"chapter": 1, "at": 0.45, "hold": "...", "fired": "...",
+{"timeline": [{"chapter": 1, "at": 0.45, "hold": "...", "fired": "...", "scope": "world",
                "memories": {"NAME": "..."}}],
  "ask": "",
  "note": ""}
@@ -913,8 +916,8 @@ Reply with edits only, and nothing else:
     scene_<n>.presence  (an object: {"NAME": "remote :: the via" | "partial :: the via"})
     add_scene          (a whole scene object: place, question, pov, length, roster)
    remove_scene       (the scene number)
-   beat_<n>.chapter · .at · .hold · .fired · .state          (the world-event ledger; .state is
-                                                             "pending", "fired" or "void")
+   beat_<n>.chapter · .at · .hold · .fired · .state · .scope          (the world-event ledger; .state is
+                                                                  "pending", "fired" or "void")
    beat_<n>.memories   (an object: {"NAME": "what they have always known"} -- replaces the map)
    remove_beat        (the beat number)
    add_fact           (value is the fact text)

@@ -176,14 +176,6 @@ under Measurement owed.
   so a written chapter whose `reach` was hand-edited afterwards re-authors silently and the warning
   that exists to report exactly that kind of drift never fires. One comparison, once it is decided
   what a reach drift means for the chapter that already ran under the old grant.
-- **The story.json lock does not cover the span it claims.** The lock runs "from the pick through
-  the handoff" ([live.ts](../live.ts)), with three holes. `/select` never consults `storyWriteBlocked`,
-  and the shelf's play button is enabled during a handoff, so a run can start on the very story a
-  handoff holds. `newHandoffSession` checks the lock before a multi-await session build and sets it
-  only after it returns — an editor save in that gap wins. And the handoff's `abandoned()` path
-  clears `LIVE.storyLock` unconditionally, so a stale round landing after the user abandoned and
-  opened a new handoff wipes the newer session's lock. Each hole is a small fix; the second wants
-  the check and the set inside `newHandoffSession` itself.
 
 ### In the architect's prompts
 
@@ -377,16 +369,6 @@ fix is not decided. Nothing here should be built before its question is answered
 characters face interdependent choices without seeing each other's reasoning. Each is a place where
 the engine permits something the asymmetry forbids.
 
-- **A character present but not in the room has no representation.** A live scene wanted one
-  participant on a speakerphone: rostered, so consulted; not in the room, so unable to perceive it
-  directly. The engine has no way to say that. `wrapCharacter` hands the character agent the scene's
-  `place`, so they believe they are standing in it; `reach` grants an interface but cannot establish
-  absence; and the roster is binary — in it means in the room, out of it means never consulted. The
-  scaffold reached for `restrictions: ["sight"]` as the nearest available thing, which makes the
-  character blind rather than elsewhere, and the writer duly seated them on a bench in the room for
-  the whole scene while the judge spent its effort policing their eyelids. This is a design question
-  about the roster, not a bug in reach. Scoped as a concrete direction in *Presence, and the
-  visibility question it exposes*, under "The world timeline."
 - **A bespoke capability one character holds can only ever be an absence on another, never a CANNOT.**
   `parseRestrictions` resolves a restriction naming a general skill, a bible skill, one of that
   character's own skills, or a scene reach grant — so "B cannot sign the line that is A's to sign" is
@@ -792,78 +774,32 @@ that was known. What replaces it:
 - **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
   question rather than at the planned path. Without this the entity is a rail.
 
-### Presence, and the visibility question it exposes
+### An information authority
 
-**Not a block yet — a prerequisite the timeline's own beats exposed, not decided.** A fired beat's
-`memories` already pick one specific character out of the roster; they have no idea whether that
-character could have perceived what it's being told it always knew, because the roster is binary. A
-live scene wanted one participant on a speakerphone — rostered, so consulted, but not in the room, so
-unable to perceive it directly — and the engine had no way to say that: `wrapCharacter` hands every
-rostered character the scene's `place` as where they stand, the scaffold reached for
-`restrictions: ["sight"]` as the nearest available thing (making the character blind rather than
-elsewhere), and the writer duly seated them on a bench for the whole scene. This is the same gap
-named above as *a character present but not in the room has no representation* — the timeline work is
-what makes it concrete enough to design against.
+**Undecided, and deliberately left open.** The timeline work exposed a gap `Character.MD`'s existing
+model can't answer: a fired beat's `memories` pick one specific character out of the roster, with no
+way to say whether that character could plausibly have perceived what it now always knew — a live
+scene wanted one participant on a speakerphone, rostered so consulted but not in the room. Presence
+(`SceneDef.presence`, `"here"`/`"remote"`/`"partial"`) and its two mechanical consumers — memory
+implantation gated by a beat's `scope`, and the consult situation-bounds check for a `"remote"`
+character's dynamic senses — have since shipped and are documented in [`Architect.MD`](Architect.MD)
+and [`Character.MD`](Character.MD). `"partial"` presence ships with no consumer at all yet, on
+purpose: the risk is it becomes a silent excuse for "can perceive whatever is narratively
+convenient."
 
-**The shape that fits the existing precedent.** `reach` is the model: scene-scoped, resolved fresh
-per scene, never written into `CharacterDef` (invariant I4). A parallel field,
-`SceneDef.presence?: Record<name, PresenceMode>`, absent-means-`"here"` so no existing scene changes
-behaviour:
+What's still open: whether a character's actual visibility into a world event ever needs a third
+model-based agent alongside the repair entity above, or stays a mechanical extension of the two
+shipped gates. What is settled: it is not the repair entity's job (that reads whether the *question*
+is still live, never who can perceive what), and it must never hand a character an inference —
+*"Bob cannot see the envelope"* is a fact this layer may withhold; *"Bob should therefore suspect Y"*
+is the character's territory, not this layer's — the same restrict-only, never-add shape the
+invariant against `consult()` touching `agent.history` already models for a different boundary.
 
-```ts
-type PresenceMode =
-  | { mode: "here" }
-  | { mode: "remote"; via: string }
-  | { mode: "partial"; via?: string };
-```
-
-`place` keeps meaning where the *scene* is; `presence` is a character's relationship to it — the
-character system prompt's WHERE YOU ARE line renders both (`wrapCharacter` / `prompts/consult.ts`),
-combined rather than one replacing the other. `"partial"` is deliberately underspecified: the risk is
-it becomes a silent excuse for "can perceive whatever is narratively convenient," so it ships with no
-consumer until one is designed on purpose.
-
-**Two existing mechanical gates are its first consumers**, extended rather than replaced:
-
-- **Memory implantation** ([`engine/scene-loop.ts`](../engine/scene-loop.ts), the fired-beat handler)
-  already gates on `rostered && active` — and on inspection, presence should *not* add a third
-  condition there. `Character.MD` frames a fired beat's memory as *prior knowledge becoming
-  relevant*, not newly perceived information, so blocking it by physical presence doesn't follow the
-  same logic as blocking a situation's sensory claims. The refined question is the *beat's* scope:
-  a `"world"` event (broadly knowable) should implant for a remote character, a local/`"scene"`
-  event (a power cut that only cuts the door open for people actually there) should not — keyed on
-  the beat, not the character's presence. That needs a new concept on `TimelineDef` (or similar),
-  not a presence check, and is still not built.
-- **Consult situation bounds** (`normalizeConsult` → `lintRestrictedSituation`,
-  [`engine/consult.ts`](../engine/consult.ts)) already refuses a situation built around a sense a
-  character has permanently lost (their authored CANNOT list); presence adds the dynamic half — a
-  situation describing something only perceivable in-room, handed to a `"remote"` character, fails
-  the same way. This stays author-side validation, not arbitration: it never decides what a character
-  knows, only refuses to let the writer assert a physically impossible interaction —
-  [`Character.MD`](Character.MD)'s "Bounds" section already states the principle this extends:
-  "ground truth a character cannot have is exactly what a situation must not be."
-
-**Where this sits relative to the rest of the feature**, now four blocks rather than one:
-
-1. **Presence** — this. Deterministic scene metadata, no model call, independently useful and
-   independently testable even if nothing past it ever ships.
-2. **The world timeline mechanism** — shipped; only the repair entity (above) remains.
-3. **An information authority** — undecided, and deliberately left undecided here. Whether a
-   character's actual visibility into a world event needs a third model-based agent alongside the
-   repair entity, or stays a mechanical extension of (1)'s two gates, is not resolved by anything in
-   this section. What is settled: it is not the repair entity's job (that reads whether the
-   *question* is still live, never who can perceive what), and it must never hand a character an
-   inference — *"Bob cannot see the envelope"* is a fact this layer may withhold; *"Bob should
-   therefore suspect Y"* is the character's territory, not this layer's — the same restrict-only,
-   never-add shape the invariant against `consult()` touching `agent.history` already models for a
-   different boundary.
-4. **The character agent** — shipped, unchanged; still reasons only from what legitimately reaches it.
-
-**Explicitly out of scope here:** the writer's own beat delivery. `[WORLD]`/`[HOLD]` reaches the
-single shared writer instruction unfiltered today, and [`Writer.MD`](Writer.MD) already documents
-that as a deliberate, accepted trust ("nothing checks the event reached the page"). Gating that
-channel by presence would be a much larger, riskier change than either of the two gates above, and
-nothing here argues for starting there.
+**Explicitly out of scope:** the writer's own beat delivery. `[WORLD]`/`[HOLD]` reaches the single
+shared writer instruction unfiltered today, and [`Writer.MD`](Writer.MD) already documents that as a
+deliberate, accepted trust ("nothing checks the event reached the page"). Gating that channel by
+presence would be a much larger, riskier change than either shipped gate, and nothing here argues for
+starting there.
 
 ## Polish and cost
 

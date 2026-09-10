@@ -58,7 +58,8 @@ knew and had no reason to think about until the event happened. The memory is ap
 prompt (**WHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT**), never to history: history is
 trimmed into a rolling digest, and a memory summarized away mid-scene is a bug. One history marker
 records the moment (`[YOU REMEMBER] …`) — trimmable like any other message, and the character is
-told not to narrate the remembering. `fork()` copies the system prompt, so a retried instance keeps
+told not to narrate the remembering. A `"scene"`-scoped beat's memory does not implant for a
+character marked `"remote"` in that scene. `fork()` copies the system prompt, so a retried instance keeps
 the memory without learning it was a retry. The run log records that a memory surfaced and to whom;
 its wording reaches nobody but the character it belongs to.
 

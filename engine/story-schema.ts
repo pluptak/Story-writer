@@ -77,6 +77,8 @@ export const TimelineDef = z.strictObject({
   fired: z.string().min(1),
   at: z.number().min(0).max(1).default(0.45),
   memories: z.record(z.string(), z.string()).default({}),
+  /** Broadly-knowable events implant regardless of presence; locally-knowable ones don't implant for a "remote" character. */
+  scope: z.enum(["world", "scene"]).default("world"),
   state: z.enum(["pending", "fired", "void"]).default("pending"),
 });
 

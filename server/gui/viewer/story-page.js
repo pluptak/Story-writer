@@ -252,6 +252,7 @@ export function storyPageHtml() {
   // The client-side mirror of what /select and /model would refuse anyway (server.ts, run-control-
   // routes.ts) -- said here so the button explains itself instead of round-tripping.
   const why = runningReason()
+            || (APP.handoff.active ? "a chapter handoff is open — writing unlocks when it ends" : "")
             || (!APP.session.picking ? "not ready to start a run right now"
               : APP.picked ? "starting…" : "");
   const canWrite = !why;
