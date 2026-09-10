@@ -765,6 +765,30 @@ export function timelineDrift(before: TimelineDef[], after: TimelineDef[]): stri
   return diff;
 }
 
+/** Which ledger entry a recorded beat outcome refers to, for the handoff's repair
+ *  adjudication. Correlates a snapshot against the live spec — the same family as
+ *  sceneDrift/timelineDrift — by the same fragile-but-precedented content-keying
+ *  readUnfiredBeats already relies on: the beat's `fired` text plus its `at` trigger, among
+ *  entries still aimed at that chapter (`chapter === c.n && state !== "void"`).
+ *
+ *  Returns the 1-based ledger number (the `beat_<n>` the handoff's edit surface addresses),
+ *  or null when nothing matches. `skip` claims already-resolved entries so two recorded beats
+ *  with identical text can never resolve to the same ledger row. */
+export function ledgerBeatIndex(
+  timeline: TimelineDef[], chapter: number, text: string, at: number,
+  skip: ReadonlySet<number> = new Set(),
+): number | null {
+  const want = text.trim();
+  if (!want || !Number.isFinite(at)) return null;
+  for (let i = 0; i < timeline.length; i++) {
+    const b = timeline[i];
+    if (b.chapter !== chapter || b.state === "void") continue;
+    if (skip.has(i + 1)) continue;
+    if (b.fired.trim() === want && b.at === at) return i + 1;
+  }
+  return null;
+}
+
 /** The spec rendered to a plain StoryJson-shaped object — no `scene` alias, no exploded skills,
  *  exactly what StoryJson.safeParse expects. Shared by `renderStory` (which stringifies it to disk)
  *  and the scaffold route's live editor draft, so the browser is handed this shape directly instead

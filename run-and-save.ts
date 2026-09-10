@@ -11,9 +11,30 @@ import { runChapter, type RunEvent } from "./engine/scene-loop.ts";
 import { warn } from "./engine/warnings.ts";
 import { writeRunManifest } from "./run-manifest.ts";
 import { persistedCatalogData } from "./engine/catalog.ts";
-import type { StoryConfig } from "./engine/story-format.ts";
+import type { StoryConfig, ChapterBeatOutcome } from "./engine/story-format.ts";
 
 const MAX_RUNS = 10;
+
+/** What one chapter's run established about its beats, for the handoff's repair adjudication —
+ *  pure over the run's own events, so tests feed it a RunEvent[] directly. `judged` is whether
+ *  the done judge returned a verdict; `doneFlagged` is true when it said the question is NOT
+ *  answered (still live) — the questionLive proxy is doneFlagged, not its negation. `fired`
+ *  carries every world_beat the chapter fired, content-keyed the same way beat_stranded is. */
+export function buildChapterBeatOutcome(events: RunEvent[], chapter: number): ChapterBeatOutcome {
+  const flagged = events.find(e => e.t === "done_flagged" && e.chapter === chapter) as
+    { why: string } | undefined;
+  const confirmed = events.some(e => e.t === "done_confirmed" && e.chapter === chapter);
+  return {
+    judged: Boolean(flagged ?? confirmed),
+    doneFlagged: Boolean(flagged),
+    doneFlaggedWhy: flagged ? String(flagged.why ?? "") : "",
+    fired: events
+      .filter(e => e.t === "world_beat" && e.chapter === chapter)
+      .map(e => ({ beat: String((e as { beat: string }).beat ?? "").trim(),
+                   at: Number((e as { at: number }).at) }))
+      .filter(b => b.beat && Number.isFinite(b.at)),
+  };
+}
 
 export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
                                  opts: { serving: boolean; serve: () => void }) {
@@ -163,6 +184,20 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
       } catch (e) {
         console.log(`${C.dim}chapter ${chapter}'s unfired world events were not recorded — ${(e as Error).message}${C.reset}`);
       }
+    }
+
+    // What this chapter's run established about its beats, for the handoff's repair adjudication.
+    // Written unconditionally (not only when non-empty): its absence then cleanly means "written
+    // before this shipped", matching readChapterSpec/readChapterCatalogs's null-on-missing
+    // convention. `doneFlagged` is the questionLive proxy — true means the judge said "not
+    // answered" (still live) — and `fired` is content-keyed the same way beat_stranded already is.
+    // Losing it, like every sidecar here, must never cost the chapter already safely written.
+    try {
+      const outcome = buildChapterBeatOutcome(events, chapter);
+      await writeFile(joinPath(chaptersDir, `${chapter}.beats.json`),
+                      JSON.stringify(outcome, null, 2) + "\n", "utf8");
+    } catch (e) {
+      console.log(`${C.dim}chapter ${chapter}'s beat outcome was not recorded — ${(e as Error).message}${C.reset}`);
     }
   } else {
     const why = r.stopped ? "the run was stopped"

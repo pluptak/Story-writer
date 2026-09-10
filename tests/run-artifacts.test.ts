@@ -6,6 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadStory } from "../engine/story-format.ts";
+import { readChapterBeatOutcome } from "../engine/story-format.ts";
+import type { RunEvent } from "../engine/scene-loop.ts";
+import { buildChapterBeatOutcome } from "../run-and-save.ts";
 import { chapterStartRefusal } from "../app.ts";
 import { llmFilenameFor, llmLogEntry, writeLlmRecord, Agent } from "../engine/agent.ts";
 import { ENGINE } from "../engine/engine-state.ts";
@@ -652,6 +655,107 @@ describe("chapterStartRefusal", () => {
       await mkdir(join(dir, "chapters"), { recursive: true });
       await writeFile(join(dir, "chapters", "1.md"), "chapter one\n", "utf8");
       assert.equal(await chapterStartRefusal(dir, 2, false), null, "contiguous and unwritten is the normal case");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- CHAPTER BEAT OUTCOMES (chapters/<n>.beats.json) --------------------------
+// What a chapter's run established about its beats, for the handoff's repair adjudication.
+// Written unconditionally beside the prose, so its absence cleanly means "written before this
+// shipped". These tests feed the pure builder a RunEvent[] directly.
+describe("buildChapterBeatOutcome", () => {
+  it("records a cleanly closed chapter: judged, unflagged, with its fired beats", () => {
+    const events: RunEvent[] = [
+      { t: "world_beat", beat: "The alarm sounds.", hold: "the panel going into alarm", at: 0.45, step: 3, chapter: 1 },
+      { t: "done_confirmed", chapter: 1 },
+    ];
+    assert.deepEqual(buildChapterBeatOutcome(events, 1), {
+      judged: true, doneFlagged: false, doneFlaggedWhy: "",
+      fired: [{ beat: "The alarm sounds.", at: 0.45 }],
+    });
+  });
+
+  it("records a flagged chapter with the judge's why", () => {
+    const events: RunEvent[] = [
+      { t: "done_flagged", why: "neither of them has moved off the door", chapter: 1 },
+    ];
+    const out = buildChapterBeatOutcome(events, 1);
+    assert.equal(out.judged, true);
+    assert.equal(out.doneFlagged, true);
+    assert.equal(out.doneFlaggedWhy, "neither of them has moved off the door");
+    assert.deepEqual(out.fired, []);
+  });
+
+  it("leaves an unjudged chapter unjudged, and never leaks another chapter's events", () => {
+    const events: RunEvent[] = [
+      { t: "world_beat", beat: "The alarm sounds.", hold: "the panel going into alarm", at: 0.45, step: 3, chapter: 2 },
+      { t: "done_confirmed", chapter: 2 },
+    ];
+    assert.deepEqual(buildChapterBeatOutcome(events, 1), {
+      judged: false, doneFlagged: false, doneFlaggedWhy: "", fired: [],
+    });
+  });
+
+  it("records nothing judged on a forced end, where no judge was ever called", () => {
+    const events: RunEvent[] = [
+      { t: "scene_start", story: "x", characters: [], target: 700, chapter: 1 },
+      { t: "beat_stranded", beat: "The alarm sounds.", at: 0.45, chapter: 1 },
+      { t: "forced_end", words: 1500, target: 700, chapter: 1 },
+    ];
+    const out = buildChapterBeatOutcome(events, 1);
+    assert.equal(out.judged, false);
+    assert.equal(out.doneFlagged, false);
+  });
+
+  it("drops malformed fired entries rather than recording them", () => {
+    const events = [
+      { t: "world_beat", beat: "  ", hold: "h", at: 0.45, step: 1, chapter: 1 },
+      { t: "world_beat", beat: "The alarm sounds.", hold: "h", step: 2, chapter: 1 },
+    ] as unknown as RunEvent[];
+    assert.deepEqual(buildChapterBeatOutcome(events, 1).fired, []);
+  });
+});
+
+describe("readChapterBeatOutcome", () => {
+  async function storyDirWith(outcome: unknown): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "beats-"));
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    if (outcome !== undefined)
+      await writeFile(join(dir, "chapters", "1.beats.json"), typeof outcome === "string" ? outcome : JSON.stringify(outcome), "utf8");
+    return dir;
+  }
+
+  it("reads back what the run wrote", async () => {
+    const dir = await storyDirWith(
+      { judged: true, doneFlagged: true, doneFlaggedWhy: "still open", fired: [{ beat: "The alarm sounds.", at: 0.45 }] });
+    try {
+      assert.deepEqual(await readChapterBeatOutcome(dir, 1), {
+        judged: true, doneFlagged: true, doneFlaggedWhy: "still open",
+        fired: [{ beat: "The alarm sounds.", at: 0.45 }],
+      });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("returns null for a chapter written before outcomes shipped, or one that will not parse", async () => {
+    const bare = await storyDirWith(undefined);
+    try {
+      assert.equal(await readChapterBeatOutcome(bare, 1), null);
+    } finally { await rm(bare, { recursive: true, force: true }); }
+    for (const bad of ["{ not json", [], { judged: "yes", doneFlagged: false }]) {
+      const dir = await storyDirWith(bad);
+      try {
+        assert.equal(await readChapterBeatOutcome(dir, 1), null);
+      } finally { await rm(dir, { recursive: true, force: true }); }
+    }
+  });
+
+  it("drops fired entries that cannot content-key a ledger row", async () => {
+    const dir = await storyDirWith(
+      { judged: true, doneFlagged: false, doneFlaggedWhy: "",
+        fired: [{ beat: "The alarm sounds.", at: 0.45 }, { beat: "", at: 0.5 }, { beat: "Ghost.", at: "soon" }] });
+    try {
+      assert.deepEqual((await readChapterBeatOutcome(dir, 1))?.fired,
+        [{ beat: "The alarm sounds.", at: 0.45 }]);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

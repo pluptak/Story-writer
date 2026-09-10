@@ -9,8 +9,10 @@ import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
 import { slugify, nameKey } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, splitMeaning, canonSkill, type BibleLookup, type Catalogs } from "./skills.ts";
-import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readChapterCatalogs, readUnfiredBeats, type Defaults } from "./story-format.ts";
-import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, canonicalField, type StorySpec } from "./story-spec.ts";
+import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readChapterCatalogs, readUnfiredBeats, readChapterBeatOutcome, type Defaults } from "./story-format.ts";
+import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, canonicalField, ledgerBeatIndex, type StorySpec } from "./story-spec.ts";
+import { adjudicateBeat, adjudicateChapter, type BeatStanding } from "./world-repair.ts";
+import type { TimelineDef } from "./story-schema.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
 import { PROVIDER } from "./provider.ts";
@@ -957,10 +959,18 @@ export class NextChapterSession {
 
   constructor(public architect: Agent, public defaults: Defaults, public dir: string,
               public spec: StorySpec, public chapters: { n: number; text: string }[],
-              /** World events a written chapter was set up for and never reached. The architect
-               *  cannot read this off the prose -- an event that never happened leaves no trace --
-               *  so it arrives as its own list rather than as something to infer. */
-              public unfired: { n: number; beat: string; at: number }[] = []) {}
+              /** Stranded beats the repair entity re-aimed at a written chapter's still-live
+               *  pressure, resolved to their ledger rows. The architect cannot read these off the
+               *  prose — an event that never happened leaves no trace — so each arrives carrying
+               *  its beat_<n> index rather than as text to fuzzy-match against the ledger. */
+              public stranded: P.HandoffBeat[] = [],
+              /** Beats that fired into a written chapter, resolved the same way, for the architect
+               *  to judge possible/questionLive on (its beat_checks reply). */
+              public firedBeats: P.HandoffBeat[] = [],
+              /** Mechanical voids the repair entity already decided (spent beats): applied silently
+               *  via applyEdits at the top of propose(), before the prompt is built, so they show
+               *  up as ordinary applied edits in round 1 — visible, not gated on a confirmation. */
+              public autoVoids: { field: string; value: unknown }[] = []) {}
 
   /** The chapter this handoff is preparing: the one after the last written. */
   get chapter(): number { return this.chapters.reduce((m, c) => Math.max(m, c.n), 0) + 1; }
@@ -993,6 +1003,55 @@ export class NextChapterSession {
     return { edits: kept, refused };
   }
 
+  /** Route the architect's fired-beat judgment into the repair entity. The architect already
+   *  reads every chapter's full prose, so its one-shot reply also judges fired beats — since a
+   *  contradicted beat can then be caught (revise), not just a stranded one.
+   *
+   *  The blindness invariant stays intact: only the two booleans (possible/questionLive) cross
+   *  into adjudicateBeat; the why string stays a human-facing string in flags and never reaches
+   *  the repair entity's parameters. On revise(contradicted) with no matching edit in the same
+   *  round's edits (the model did not author the replacement itself), an advisory string goes
+   *  onto the existing flags channel — no new ScaffoldRound kind. none needs no action. */
+  private routeBeatChecks(out: Record<string, any>, edits: any[]): { flags: string[]; ignored: string[] } {
+    const flags: string[] = [];
+    const ignored: string[] = [];
+    const checks = (out as { beat_checks?: unknown }).beat_checks;
+    if (checks === undefined) return { flags, ignored };
+    if (!Array.isArray(checks)) {
+      ignored.push(`beat_checks — expected a list of {"beat", "possible", "questionLive"} judgments`);
+      return { flags, ignored };
+    }
+    for (const check of checks) {
+      const c = (check && typeof check === "object" ? check : {}) as Record<string, unknown>;
+      const beatNum = Number(c.beat);
+      const candidate = this.firedBeats.find(f => f.beatIndex === beatNum);
+      const beatDef = Number.isInteger(beatNum) ? this.spec.timeline[beatNum - 1] : undefined;
+      if (!Number.isInteger(beatNum) || !candidate || !beatDef) {
+        ignored.push(`beat_checks beat ${String((c as { beat?: unknown }).beat ?? "(missing)")} — no such fired beat was listed`);
+        continue;
+      }
+      if (typeof c.possible !== "boolean" || typeof c.questionLive !== "boolean") {
+        ignored.push(`beat_checks beat ${beatNum} — "possible" and "questionLive" must both be true/false`);
+        continue;
+      }
+      const repair = adjudicateBeat(beatDef, {
+        fired: true, landed: null, ended: true,
+        possible: c.possible, questionLive: c.questionLive,
+      });
+      if (repair.op !== "revise") continue;
+      const authored = edits.some(e => {
+        const m = canonicalField(String(e?.field ?? "").trim()).match(/^beat_(\d+)\.(hold|fired|memories)$/);
+        return m !== null && Number(m[1]) === beatNum;
+      });
+      if (authored) continue;
+      const why = String(c.why ?? "").trim();
+      flags.push(`beat ${beatNum} (chapter ${candidate.chapter}) fired as "${candidate.text}" but what was `
+        + `written contradicts it while its question is still live${why ? ` — ${why}` : ""} — re-author its `
+        + `hold/fired/memories for the same obligation through a different route, or say how it landed.`);
+    }
+    return { flags, ignored };
+  }
+
   private take(r: { out: Record<string, any>; raw: string } | { error: string }): ScaffoldRound {
     if ("error" in r) return { kind: "failed", error: r.error };
     if (!Array.isArray(r.out.edits)) {
@@ -1006,18 +1065,32 @@ export class NextChapterSession {
     this.spec = e.spec; this.problems = e.problems; this.pendingAsk = "";
     this.edited = true;
     this.refusedLastRound = [...guarded.refused, ...e.ignored];
-    const flags = Array.isArray(r.out.flags)
+    const routed = this.routeBeatChecks(r.out, r.out.edits);
+    const flags = [...(Array.isArray(r.out.flags)
       ? r.out.flags.filter((flag): flag is string => typeof flag === "string")
         .map(flag => flag.trim()).filter(Boolean)
-      : [];
-    return { kind: "edits", applied: e.applied, ignored: [...guarded.refused, ...e.ignored], flags, note: withAsk(r.out) };
+      : []), ...routed.flags];
+    return { kind: "edits", applied: e.applied, ignored: [...guarded.refused, ...e.ignored, ...routed.ignored], flags, note: withAsk(r.out) };
   }
 
   /** The handoff request itself: the premise, the chapters as written, and the story as it stands.
-   *  A successful edits round is then run through the same fill-gaps/verify passes as the scaffold,
-   *  targeting the scene this handoff is preparing -- never an earlier, already-written one. */
+   *  Mechanical voids the repair entity already decided apply first, before the prompt is built,
+   *  so round 1 carries them as ordinary applied edits. A successful edits round is then run
+   *  through the same fill-gaps/verify passes as the scaffold, targeting the scene this handoff
+   *  is preparing -- never an earlier, already-written one. */
   async propose(onStage?: (stage: AutoStage) => void): Promise<ScaffoldRound> {
-    const prompt = P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters, this.unfired);
+    let autoApplied: { field: string; before: unknown; after: unknown }[] = [];
+    let autoIgnored: string[] = [];
+    if (this.autoVoids.length) {
+      // refuse() never blocks beat_<n>.* edits on any chapter, so these always land; a beat
+      // voided here has state "void", which adjudicateChapter's filter skips, so it can never
+      // resurface in a later round's call.
+      const v = applyEdits(this.spec, { edits: this.autoVoids }, this.catalogs);
+      this.spec = v.spec; this.problems = v.problems; this.edited = true;
+      autoApplied = v.applied; autoIgnored = v.ignored;
+      this.autoVoids = [];
+    }
+    const prompt = P.architectNextChapter(this.spec.premise, this.specJson(), this.chapters, this.stranded, this.firedBeats);
     const info = await modelInfo();
     const short = info && contextShortfall(info.get(this.architect.model),
                                            estimateTokens(this.architect.system + prompt), ENGINE.maxTokens);
@@ -1031,7 +1104,7 @@ export class NextChapterSession {
     this.spec = r.spec; this.problems = r.problems;
     if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
     this.pendingAsk = "";
-    return { ...base, auto: r.auto };
+    return { ...base, applied: [...autoApplied, ...base.applied], ignored: [...autoIgnored, ...base.ignored], auto: r.auto };
   }
 
   /** A follow-up from the author, in the same edits-only format. */
@@ -1074,10 +1147,59 @@ export async function openNextChapter(d: Defaults, dir: string, bible: Readonly<
   const raw = JSON.parse(await readFile(joinPath(resolveStoryDir(dir), "story.json"), "utf8"));
   const catalogs: Catalogs = { bible: bibleFrom(bible), generals };
   const n = normalizeSpec(raw, catalogs);
-  const unfired: { n: number; beat: string; at: number }[] = [];
-  for (const c of chapters)
-    for (const b of await readUnfiredBeats(dir, c.n)) unfired.push({ n: c.n, ...b });
-  const s = new NextChapterSession(await buildArchitect(d, false, bible, generals), d, dir, n.spec, chapters, unfired);
+  // Mechanical stranded-beat handling: resolve each written chapter's recorded beats against the
+  // live ledger and adjudicate them, instead of dumping every unfired beat into the prompt as
+  // text and hoping the model decides re-aim vs. void correctly.
+  //
+  // questionLive is doneFlagged, not its negation: done_flagged fires exactly when the done judge
+  // thinks the scene's question is NOT answered (still live). Unjudged defaults to live — never
+  // silently drops a beat. possible is hardcoded true (no reader for it), so this call can only
+  // ever reach void(spent) / re-aim(stranded) / none.
+  const stranded: P.HandoffBeat[] = [];
+  const firedBeats: P.HandoffBeat[] = [];
+  const autoVoids: { field: string; value: unknown }[] = [];
+  for (const c of chapters) {
+    const outcome = await readChapterBeatOutcome(dir, c.n);
+    // A chapter written before outcomes shipped has no fired record: only its unfired sidecar
+    // speaks, exactly like the old prompt did, but now carrying the resolved beat index.
+    const questionLive = outcome ? (outcome.judged ? outcome.doneFlagged : true) : true;
+    const claimed = new Set<number>();
+    const unfiredIdx = new Set<number>();
+    for (const b of await readUnfiredBeats(dir, c.n)) {
+      const idx = ledgerBeatIndex(n.spec.timeline, c.n, b.beat, b.at, claimed);
+      if (idx === null) continue;
+      claimed.add(idx);
+      unfiredIdx.add(idx);
+    }
+    const firedIdx = new Set<number>();
+    if (outcome) {
+      for (const f of outcome.fired) {
+        const idx = ledgerBeatIndex(n.spec.timeline, c.n, f.beat, f.at, claimed);
+        if (idx === null) continue;
+        claimed.add(idx);
+        firedIdx.add(idx);
+        const def = n.spec.timeline[idx - 1];
+        firedBeats.push({ beatIndex: idx, chapter: c.n, text: def.fired, at: def.at });
+      }
+    }
+    const standingOf = (beat: TimelineDef): BeatStanding => {
+      const idx = n.spec.timeline.indexOf(beat) + 1;
+      // A beat neither sidecar records (a chapter from before outcomes shipped, whose fired
+      // beats were never written down) reads as fired-awaiting-check, never as stranded: with
+      // no landing reader built, re-aiming it would duplicate an event that may already be prose.
+      if (!unfiredIdx.has(idx))
+        return { fired: true, landed: null, possible: true, questionLive, ended: true };
+      return { fired: false, landed: null, possible: true, questionLive, ended: true };
+    };
+    for (const { beat, repair } of adjudicateChapter(n.spec.timeline, c.n, standingOf)) {
+      const idx = n.spec.timeline.indexOf(beat) + 1;
+      if (repair.op === "void")
+        autoVoids.push({ field: `beat_${idx}.state`, value: "void" });
+      else if (repair.op === "re-aim")
+        stranded.push({ beatIndex: idx, chapter: c.n, text: beat.fired, at: beat.at });
+    }
+  }
+  const s = new NextChapterSession(await buildArchitect(d, false, bible, generals), d, dir, n.spec, chapters, stranded, firedBeats, autoVoids);
   s.catalogs = catalogs;
   s.problems = n.problems;
 

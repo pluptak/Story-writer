@@ -330,6 +330,45 @@ export async function readUnfiredBeats(storyDir: string, n: number): Promise<{ b
   }
 }
 
+/** What one chapter's run established about its world beats, for the handoff's repair
+ *  adjudication (engine/world-repair.ts). Written unconditionally beside the chapter prose, so its
+ *  absence cleanly means "written before this shipped" — the same null-on-missing convention as
+ *  readChapterSpec/readChapterCatalogs. `judged` is whether the done judge returned a verdict;
+ *  `doneFlagged` is true when it said the question is NOT answered (still live) — the questionLive
+ *  proxy is doneFlagged, not its negation. `fired` is content-keyed the same way beat_stranded
+ *  already is (beat text + at). */
+export interface ChapterBeatOutcome {
+  judged: boolean;
+  doneFlagged: boolean;
+  doneFlaggedWhy: string;
+  fired: { beat: string; at: number }[];
+}
+
+/** The chapter's beat outcome, or null for a chapter written before outcomes were recorded (or
+ *  one whose sidecar will not parse). */
+export async function readChapterBeatOutcome(storyDir: string, n: number): Promise<ChapterBeatOutcome | null> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const parsed = JSON.parse(await readFile(joinPath(base, "chapters", `${n}.beats.json`), "utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    if (typeof parsed.judged !== "boolean" || typeof parsed.doneFlagged !== "boolean") return null;
+    const fired = Array.isArray(parsed.fired)
+      ? parsed.fired
+          .map((b: unknown) => ({ beat: String((b as { beat?: unknown })?.beat ?? "").trim(),
+                                  at: Number((b as { at?: unknown })?.at) }))
+          .filter((b: { beat: string; at: number }) => b.beat && Number.isFinite(b.at))
+      : [];
+    return {
+      judged: parsed.judged,
+      doneFlagged: parsed.doneFlagged,
+      doneFlaggedWhy: String(parsed.doneFlaggedWhy ?? ""),
+      fired,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** The story definition a chapter was written from, or null for a chapter written before snapshots
  *  existed (or one whose snapshot will not parse). */
 export async function readChapterSpec(storyDir: string, n: number): Promise<unknown | null> {

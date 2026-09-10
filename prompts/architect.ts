@@ -816,10 +816,24 @@ export const castAsymmetryRequest = (
 
 // -- THE HANDOFF -----------------------------------------------------------
 
-/** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one. */
+/** One beat the handoff asks the architect about, resolved to its ledger row: `beatIndex`
+ *  is the 1-based `beat_<n>` the edit surface addresses, `chapter` the written chapter it was
+ *  aimed at, `text` its `fired` form, `at` its trigger. */
+export interface HandoffBeat {
+  beatIndex: number;
+  chapter: number;
+  text: string;
+  at: number;
+}
+
+/** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one.
+ *  `stranded` are unfired beats the repair entity re-aimed at a written chapter's still-live
+ *  pressure — already-voided beats never reach the prompt at all. `fired` are beats that fired
+ *  into a written chapter, for the architect to judge possible/questionLive on. */
 export function architectNextChapter(
   premise: string, specJson: string, chaptersSoFar: { n: number; text: string }[],
-  unfired: { n: number; beat: string; at: number }[] = [],
+  stranded: HandoffBeat[] = [],
+  fired: HandoffBeat[] = [],
 ): string {
   const last = chaptersSoFar.reduce((m, c) => Math.max(m, c.n), 0);
   const next = last + 1;
@@ -865,9 +879,9 @@ ${written}
 
 [THE STORY AS IT STANDS]
 ${specJson}
-${unfired.length ? `
-[WORLD EVENTS THAT NEVER HAPPENED]
-${unfired.map(u => `  - chapter ${u.n}, set for ${u.at} of the way in: ${u.beat}`).join("\n")}
+${stranded.length ? `
+[STRANDED WORLD EVENTS]
+${stranded.map(s => `  - beat ${s.beatIndex} (chapter ${s.chapter}, set for ${s.at} of the way in): "${s.text}"`).join("\n")}
 
 These are in the ledger above, still aimed at chapters that are now written. The chapter ended
 before each one's trigger, so none of them is anywhere in the prose -- do not look for it, and do
@@ -875,12 +889,22 @@ not treat the story as though it happened. Each is now yours to settle, and leav
 is the one thing that does nothing: a beat aimed at a written chapter can never fire.
 
   - Still wanted, and the next chapter is where it belongs? Re-aim it: beat_<n>.chapter, and
-    beat_<n>.at if the new scene wants it earlier or later.
+    beat_<n>.at if the new scene wants it earlier or later. The beat number above IS the <n>.
   - Overtaken by what the people actually did -- someone already left, the thing it would have
     threatened is settled -- then it is spent. beat_<n>.state "void" keeps it in the ledger as
     something that was considered; remove_beat drops it outright. Prefer void.
 
 Its memories go with it either way; they are the beat's, not the chapter's.
+` : ""}${fired.length ? `
+[FIRED WORLD EVENTS TO CHECK]
+For each, say whether it's still possible (not contradicted by what was actually written) and
+whether the question it served is still live (open) or settled by what happened. Judge only the
+beats listed.
+${fired.map(f => `  - beat ${f.beatIndex} (chapter ${f.chapter}, fired at ${f.at} of the way in): "${f.text}"`).join("\n")}
+
+If a beat is contradicted (possible: false) and its question is still live, also author its
+replacement in THIS reply's edits: beat_<n>.hold / beat_<n>.fired / beat_<n>.memories for the same
+obligation through a different route. The beat number above IS the <n>.
 ` : ""}
 CHAPTER ${next} ITSELF. If the story above already defines a scene ${next}, re-author it in place with
 scene_${next}.place / .question / .pov / .length / .roster -- it was sketched before chapter ${last}
@@ -900,7 +924,14 @@ an edit: surface the observation for the author to resolve instead.
 
 Reply with edits only, and nothing else:
 
-{"edits": [{"field": "characters.NAME.goal", "value": "..."}], "flags": [], "ask": "", "note": ""}
+{"edits": [{"field": "characters.NAME.goal", "value": "..."}],
+ "beat_checks": [{"beat": 5, "possible": true, "questionLive": true, "why": "..."}],
+ "flags": [], "ask": "", "note": ""}
+
+"beat_checks" carries one entry per fired beat listed above --
+"beat" is its beat number, "possible" whether it is contradicted by what was actually written,
+"questionLive" whether the question it served is still live or settled by what happened, "why"
+one line for the author. Omit it (or send []) when no fired beats are listed.
 
   title · premise · writer_style
   characters.<NAME>.persona · .knows · .goal · .belief · .impulse · .skills · .restrictions

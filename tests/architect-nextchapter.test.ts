@@ -304,6 +304,11 @@ describe("NextChapterSession.accept", () => {
 
 describe("openNextChapter", () => {
   const storyJson = () => renderStory(normalizeSpec(STORY).spec, { default: "none" })["story.json"];
+  // A story with one world beat aimed at chapter 2, so sidecar entries resolve to a ledger row.
+  const storyJsonWithBeat = () => renderStory(normalizeSpec({
+    ...STORY,
+    timeline: [{ chapter: 2, hold: "the panel going into alarm", fired: "The sounder takes over.", at: 0.45 }],
+  }).spec, { default: "none" })["story.json"];
 
   it("refuses a story with no chapters written — there is nothing to hand off from", async () => {
     const dir = await mkdtemp(join(tmpdir(), "handoff-"));
@@ -332,16 +337,20 @@ describe("openNextChapter", () => {
   it("picks up each chapter's unfired world events and carries them into the round", async () => {
     const dir = await mkdtemp(join(tmpdir(), "handoff-"));
     try {
-      await writeFile(join(dir, "story.json"), storyJson(), "utf8");
+      await writeFile(join(dir, "story.json"), storyJsonWithBeat(), "utf8");
       await mkdir(join(dir, "chapters"), { recursive: true });
       for (const n of [1, 2]) await writeFile(join(dir, "chapters", `${n}.md`), `chapter ${n}\n`, "utf8");
       await writeFile(join(dir, "chapters", "2.unfired.json"),
         JSON.stringify([{ beat: "The sounder takes over.", at: 0.45 }]), "utf8");
 
       const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
-      assert.deepEqual(s.unfired, [{ n: 2, beat: "The sounder takes over.", at: 0.45 }]);
-      assert.match(architectNextChapter(s.spec.premise, "{}", s.chapters, s.unfired),
-                   /chapter 2, set for 0\.45 of the way in: The sounder takes over\./);
+      // No .beats.json: a chapter from before outcomes shipped. The unfired sidecar still speaks,
+      // exactly like the old prompt did, but now carrying the resolved beat index.
+      assert.deepEqual(s.stranded, [{ beatIndex: 1, chapter: 2, text: "The sounder takes over.", at: 0.45 }]);
+      assert.deepEqual(s.firedBeats, []);
+      assert.deepEqual(s.autoVoids, []);
+      assert.match(architectNextChapter(s.spec.premise, "{}", s.chapters, s.stranded, s.firedBeats),
+                   /beat 1 \(chapter 2, set for 0\.45 of the way in\): "The sounder takes over\."/);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -353,7 +362,9 @@ describe("openNextChapter", () => {
       await writeFile(join(dir, "chapters", "1.md"), "chapter 1\n", "utf8");
       await writeFile(join(dir, "chapters", "1.unfired.json"), "{ not json", "utf8");
       const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
-      assert.deepEqual(s.unfired, [], "a broken sidecar must not cost the handoff its opening");
+      assert.deepEqual(s.stranded, [], "a broken sidecar must not cost the handoff its opening");
+      assert.deepEqual(s.firedBeats, []);
+      assert.deepEqual(s.autoVoids, []);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -430,25 +441,25 @@ describe("the scene question names stakes, not mechanisms", () => {
 
 // -- THE HANDOFF AND THE WORLD-EVENT LEDGER --------------------------------
 // A beat that never fired leaves no trace in the prose, so the architect cannot read it off the
-// chapter the way it reads everything else. It arrives as its own list or not at all.
+// chapter the way it reads everything else. It arrives carrying its resolved beat_<n> index.
 describe("stranded world events in the handoff", () => {
   const CH = [{ n: 1, text: "Chapter one prose." }];
-  const beat = { n: 1, beat: "The wing evacuation sounder takes over.", at: 0.45 };
+  const stranded = [{ beatIndex: 2, chapter: 1, text: "The wing evacuation sounder takes over.", at: 0.45 }];
 
-  it("names each unfired beat with the chapter and trigger it was waiting on", () => {
-    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
-    assert.match(t, /\[WORLD EVENTS THAT NEVER HAPPENED]/);
-    assert.match(t, /chapter 1, set for 0\.45 of the way in: The wing evacuation sounder takes over\./);
+  it("names each stranded beat with its beat number, chapter and trigger", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, stranded);
+    assert.match(t, /\[STRANDED WORLD EVENTS]/);
+    assert.match(t, /beat 2 \(chapter 1, set for 0\.45 of the way in\): "The wing evacuation sounder takes over\."/);
   });
 
   it("tells the architect not to look for it in the prose", () => {
-    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    const t = P.architectNextChapter("A depot.", "{}", CH, stranded);
     assert.match(t, /none of them is anywhere in the prose/);
     assert.match(t, /a beat aimed at a written chapter can never fire/);
   });
 
   it("offers re-aim and void, and prefers void to removal", () => {
-    const t = P.architectNextChapter("A depot.", "{}", CH, [beat]);
+    const t = P.architectNextChapter("A depot.", "{}", CH, stranded);
     assert.match(t, /Re-aim it: beat_<n>\.chapter/);
     assert.match(t, /beat_<n>\.state "void"/);
     assert.match(t, /Prefer void\./);
@@ -456,17 +467,180 @@ describe("stranded world events in the handoff", () => {
 
   it("says nothing at all when no beat was stranded", () => {
     const t = P.architectNextChapter("A depot.", "{}", CH);
-    assert.doesNotMatch(t, /WORLD EVENTS THAT NEVER HAPPENED/);
+    assert.doesNotMatch(t, /STRANDED WORLD EVENTS/);
     assert.doesNotMatch(t, /never fire/);
   });
 
   it("lists the ledger's edit fields either way — a beat may be edited without being stranded", () => {
     for (const t of [P.architectNextChapter("A depot.", "{}", CH),
-                     P.architectNextChapter("A depot.", "{}", CH, [beat])]) {
+                     P.architectNextChapter("A depot.", "{}", CH, stranded)]) {
       assert.match(t, /beat_<n>\.chapter/);
       assert.match(t, /beat_<n>\.memories/);
       assert.match(t, /remove_beat/);
     }
+  });
+});
+
+// -- FIRED WORLD EVENTS IN THE HANDOFF --------------------------------------
+// The architect already reads every chapter's full prose, so its one-shot reply also judges
+// fired beats — since a contradicted beat can then be caught (revise), not just a stranded one.
+describe("fired world events in the handoff", () => {
+  const CH = [{ n: 1, text: "Chapter one prose." }];
+  const fired = [{ beatIndex: 5, chapter: 2, text: "The alarm sounds.", at: 0.45 }];
+
+  it("names each fired beat with its beat number, chapter and trigger, and asks for both judgments", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [], fired);
+    assert.match(t, /\[FIRED WORLD EVENTS TO CHECK]/);
+    assert.match(t, /beat 5 \(chapter 2, fired at 0\.45 of the way in\): "The alarm sounds\."/);
+    assert.match(t, /whether it's still possible/);
+    assert.match(t, /whether the question it served is still live/);
+    assert.match(t, /Judge only the\nbeats listed/);
+  });
+
+  it("tells the architect to author the replacement in the same reply when contradicted and live", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [], fired);
+    assert.match(t, /beat_<n>\.hold \/ beat_<n>\.fired \/ beat_<n>\.memories/);
+  });
+
+  it("carries beat_checks in the reply schema", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [], fired);
+    assert.match(t, /"beat_checks": \[\{"beat": 5, "possible": true, "questionLive": true/);
+  });
+
+  it("says nothing at all when no beat fired", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH);
+    assert.doesNotMatch(t, /FIRED WORLD EVENTS TO CHECK/);
+    // The reply schema still names the field — a stable format, like edits/flags/ask/note —
+    // with omit-when-unlisted as its instruction.
+    assert.match(t, /Omit it \(or send \[\]\) when no fired beats are listed/);
+  });
+});
+
+// -- MECHANICAL BEAT REPAIR --------------------------------------------------
+// Stranded beats no longer ride into the prompt as prose for the model to guess re-aim vs.
+// void over: openNextChapter adjudicates them, voids apply silently in round 1, and only
+// re-aim candidates reach the architect.
+describe("mechanical beat repair", () => {
+  const storyJsonWithChapterOneBeat = () => renderStory(normalizeSpec({
+    ...STORY,
+    timeline: [{ chapter: 1, hold: "the panel going into alarm", fired: "The sounder takes over.", at: 0.45 }],
+  }).spec, { default: "none" })["story.json"];
+
+  async function chapterOneWith(outcome: unknown): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "handoff-"));
+    await writeFile(join(dir, "story.json"), storyJsonWithChapterOneBeat(), "utf8");
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    await writeFile(join(dir, "chapters", "1.md"), "chapter 1\n", "utf8");
+    await writeFile(join(dir, "chapters", "1.unfired.json"),
+      JSON.stringify([{ beat: "The sounder takes over.", at: 0.45 }]), "utf8");
+    await writeFile(join(dir, "chapters", "1.beats.json"), JSON.stringify(outcome), "utf8");
+    return dir;
+  }
+
+  it("auto-applies void in round 1 for a stranded beat whose question settled", async () => {
+    const dir = await chapterOneWith(
+      { judged: true, doneFlagged: false, doneFlaggedWhy: "", fired: [] });
+    try {
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.deepEqual(s.autoVoids, [{ field: "beat_1.state", value: "void" }]);
+      assert.deepEqual(s.stranded, [], "a voided beat never reaches the prompt at all");
+
+      // The model's own reply is empty: the void must come from the adjudication, not from it.
+      const agent = new ScriptedAgent([{ edits: [] }, { edits: [] }, { edits: [] }].map(x => JSON.stringify(x)));
+      const t = new NextChapterSession(agent, SCAFFOLD_DEFAULTS, dir, s.spec, s.chapters,
+                                       s.stranded, s.firedBeats, s.autoVoids);
+      const r = await quiet(() => t.propose());
+      assert.equal(r.kind, "edits");
+      assert.ok((r as { applied: { field: string }[] }).applied.some(a => a.field === "beat_1.state"));
+      assert.equal(t.spec.timeline[0].state, "void");
+      assert.doesNotMatch(agent.history[0].content, /STRANDED WORLD EVENTS/);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("re-aims, never voids, when the judge left the question live", async () => {
+    // The direction that matters: doneFlagged means the judge thinks the question is NOT
+    // answered (still live). The naive negation would silently void most ordinary stranded
+    // beats — every chapter that closed cleanly — so this gets its own explicit case.
+    const dir = await chapterOneWith(
+      { judged: true, doneFlagged: true, doneFlaggedWhy: "neither of them has moved off the door", fired: [] });
+    try {
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.deepEqual(s.autoVoids, []);
+      assert.deepEqual(s.stranded,
+        [{ beatIndex: 1, chapter: 1, text: "The sounder takes over.", at: 0.45 }]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("defaults an unjudged chapter to live — never silently drops a beat", async () => {
+    const dir = await chapterOneWith(
+      { judged: false, doneFlagged: false, doneFlaggedWhy: "", fired: [] });
+    try {
+      const s = await openNextChapter(SCAFFOLD_DEFAULTS, dir);
+      assert.deepEqual(s.autoVoids, []);
+      assert.equal(s.stranded.length, 1, "unjudged re-aims rather than voids");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- FIRED-BEAT JUDGMENT ------------------------------------------------------
+// The one-shot reply also judges fired beats: a contradicted beat with a live question is
+// caught (revise), not silently ignored.
+describe("fired-beat judgment", () => {
+  const specWithBeat = () => normalizeSpec({
+    ...STORY,
+    timeline: [{ chapter: 1, hold: "the panel going into alarm", fired: "The alarm sounds.", at: 0.45 }],
+  }).spec;
+  const fired = [{ beatIndex: 1, chapter: 1, text: "The alarm sounds.", at: 0.45 }];
+  const session = (script: unknown[]) =>
+    new NextChapterSession(new ScriptedAgent(script.map(x => JSON.stringify(x))),
+                           SCAFFOLD_DEFAULTS, "data/stories/doorway",
+                           specWithBeat(), [{ n: 1, text: "Chapter one prose." }], [], fired);
+
+  it("flags a contradicted live beat the reply did not re-author", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 1, possible: false, questionLive: true, why: "the door was sealed shut" }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.match((r as { flags: string[] }).flags.join("\n"), /beat 1 \(chapter 1\) fired as "The alarm sounds\."/);
+    assert.match((r as { flags: string[] }).flags.join("\n"), /contradicts/);
+    assert.match((r as { flags: string[] }).flags.join("\n"), /the door was sealed shut/);
+  });
+
+  it("stays quiet when the same round already authored the replacement", async () => {
+    const s = session([
+      { edits: [{ field: "beat_1.fired", value: "The alarm shrieks through a broken grille." }],
+        beat_checks: [{ beat: 1, possible: false, questionLive: true, why: "the door was sealed shut" }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, [], "the model did its job — nothing to escalate");
+  });
+
+  it("takes no action when the beat is uncontradicted or its question settled", async () => {
+    for (const check of [{ beat: 1, possible: true, questionLive: true },
+                         { beat: 1, possible: false, questionLive: false }]) {
+      const s = session([{ edits: [], beat_checks: [check] }, { edits: [] }, { edits: [] }]);
+      const r = await quiet(() => s.propose());
+      assert.equal(r.kind, "edits");
+      assert.deepEqual((r as { flags: string[] }).flags, []);
+      assert.deepEqual((r as { ignored: string[] }).ignored, []);
+    }
+  });
+
+  it("ignores a judgment for a beat that was never listed, or one without both verdicts", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 9, possible: false, questionLive: true },
+                                 { beat: 1, possible: false }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, []);
+    assert.match((r as { ignored: string[] }).ignored.join("\n"), /beat_checks beat 9 — no such fired beat/);
+    assert.match((r as { ignored: string[] }).ignored.join("\n"), /beat_checks beat 1 — "possible" and "questionLive"/);
   });
 });
 

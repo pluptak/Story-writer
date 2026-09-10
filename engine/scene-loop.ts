@@ -189,6 +189,7 @@ export type RunEvent =
   | { t: "lint_failed"; why: string; chapter: number }
   | { t: "done_judge_failed"; why: string; chapter: number }
   | { t: "done_flagged"; why: string; chapter: number }
+  | { t: "done_confirmed"; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
@@ -208,7 +209,7 @@ export type RunEvent =
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "exit_refused"; character: string; chapter: number }
-  | { t: "world_beat"; beat: string; hold: string; step: number; chapter: number }
+  | { t: "world_beat"; beat: string; hold: string; at: number; step: number; chapter: number }
   | { t: "beat_stranded"; beat: string; at: number; chapter: number }
   | { t: "memory_surfaced"; character: string; chapter: number }
   | { t: "repeat_strip"; chars: number; words: number; whole: boolean; chapter: number }
@@ -524,7 +525,7 @@ export async function writeScene(run: SceneRun) {
     if (turn.fired) {
       beatFired.add(turn.fired);
       console.log(`\n${C.cyan}(world beat fired at step ${steps + 1}, ${words}/${sd.length} words)${C.reset}`);
-      log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, step: steps + 1, chapter });
+      log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, at: turn.fired.at, step: steps + 1, chapter });
       for (const [name, mem] of turn.memories) {
         const def = defOf(name);
         if (!def || !isActive(def.name)) continue;
@@ -820,6 +821,7 @@ export async function writeScene(run: SceneRun) {
           const verdict = parseLintVerdict(extractJson(raw));
           if (verdict) {
             if (!verdict.ok) unanswered = verdict.why || "the scene's question is not answered";
+            else log({ t: "done_confirmed", chapter });
             break;
           }
           // Asked twice with no verdict: nothing is recorded, as on an outage. A check nobody made

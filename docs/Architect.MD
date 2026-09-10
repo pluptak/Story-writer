@@ -288,6 +288,10 @@ inside a scene run.
   answer the question: the snapshot beside it records what was *aimed* at that chapter, never what
   happened, and an event that never fired leaves nothing in the prose to read. Written only when
   there is something to say, and losing it costs no more than the snapshot does.
+- Every run that saves a chapter also writes `chapters/<n>.beats.json` unconditionally — whether
+  the done judge returned a verdict and what it said, plus every world beat the chapter fired with
+  its trigger. Its absence cleanly means "written before this shipped". Losing it costs no more
+  than the snapshot does.
 - A stopped or incomplete run does not replace an existing accepted chapter file.
 - The handoff reads the highest numbered accepted chapter and prepares the next number.
 - The architect proposes edits; it never writes directly during a conversation.
@@ -295,17 +299,29 @@ inside a scene run.
   validation fails.
 - The handoff does not start a run. The user starts the prepared chapter separately.
 
-**Stranded world events.** `openNextChapter` reads every written chapter's `.unfired.json` and the
-session carries the result into the round; absent, empty and unparseable are all treated as nothing
-to re-aim. When any exist the request gains a `[WORLD EVENTS THAT NEVER HAPPENED]` block naming each
-with its chapter and trigger, and the architect is told plainly that none of them is in the prose —
-otherwise it goes looking for an event that never occurred — and that leaving one where it is does
-nothing, since a beat aimed at a written chapter can never fire. Two ways out: re-aim it with
-`beat_<n>.chapter`, or `beat_<n>.state "void"`. **Void is preferred to `remove_beat`** — a beat that
-was considered and dropped is worth keeping in the ledger. Its memories travel with it either way;
-they belong to the beat, not the chapter. The block is absent entirely when nothing was stranded,
-while the beat edit fields stay in the `[CHANGE]` list either way, since a beat may need editing for
-other reasons.
+**Stranded world events.** `openNextChapter` resolves every written chapter's recorded beats
+against the live ledger (by beat text plus trigger, skipping already-voided rows) and adjudicates
+them with `engine/world-repair.ts` instead of listing every unfired beat for the model to guess
+re-aim vs. void over. The standing is mechanical: unfired and chapter-ended, still possible,
+question-live exactly when the chapter's `.beats.json` says the done judge left the question
+unanswered (unjudged defaults to live — never silently drops a beat). A `void(spent)` applies
+silently as an ordinary `beat_<n>.state` edit in round 1, before the prompt is built; only
+`re-aim(stranded)` candidates reach the architect, in a `[STRANDED WORLD EVENTS]` block naming
+each with its beat number, chapter and trigger — already-voided beats never reach the prompt at
+all. `beat_<n>.state "void"` is still preferred to `remove_beat`, and a beat's memories travel
+with it either way; they belong to the beat, not the chapter. The block is absent entirely when
+nothing was stranded, while the beat edit fields stay in the `[CHANGE]` list either way, since a
+beat may need editing for other reasons. Chapters written before `.beats.json` shipped surface
+their `.unfired.json` entries the old way — every one of them, now carrying its resolved beat
+number — because with no fired record a beat that may already be prose must never read as stranded.
+
+**Fired world events.** The same round also judges beats that fired into a written chapter: a
+`[FIRED WORLD EVENTS TO CHECK]` block names each with its beat number, and the reply carries one
+`beat_checks` entry per beat — whether it is still possible (not contradicted by what was
+actually written) and whether its question is still live. A contradicted beat with a live
+question the reply did not already re-author (`beat_<n>.hold`/`.fired`/`.memories` in the same
+round) comes back as an advisory flag for the author, not a silent pass. Only the two booleans
+ever reach the repair entity; the `why` stays a human-facing string in flags.
 
 ### Edit surface
 

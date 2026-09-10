@@ -256,6 +256,40 @@ describe("an answer still owed the page", () => {
     assert.ok(!events.some(e => e.t === "done_flagged"));
   });
 
+  it("logs done_confirmed when the judge says the question is answered", async () => {
+    // The positive sibling of done_flagged: the handoff reads it as the question settled, so a
+    // stranded beat from this chapter voids rather than re-aims.
+    const { events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: "Merritt steps back and lets the door swing wide.", scene_done: true }],
+      doneReplies: [{ ok: true }],
+    });
+
+    assert.equal(calls.doneCall, 1);
+    const confirmed = events.find(e => e.t === "done_confirmed") as any;
+    assert.ok(confirmed, "the run record carries the positive verdict");
+    assert.equal(confirmed.chapter, 1);
+    assert.ok(!events.some(e => e.t === "done_flagged"));
+  });
+
+  it("logs neither verdict on a hard-cap forced end, where no judge is ever called", async () => {
+    // Only an ending the writer chose is checked: the hard cap is budget, not judgement. The cap
+    // is read off the page at the top of the turn after the overrun, so the run needs a second
+    // reply for the forced end to land on.
+    const page = Array(1500).fill("stone").join(" ");
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: page }, { prose: "The door holds." }],
+    });
+
+    assert.equal(calls.doneCall, 0, "the judge never saw the page");
+    assert.ok(events.some(e => e.t === "forced_end"), "the scene was forced shut instead");
+    assert.ok(!events.some(e => e.t === "done_flagged" || e.t === "done_confirmed"),
+      "a check nobody made is neither verdict");
+    assert.ok(!events.some(e => e.t === "schema_mismatch" && (e as any).call === "done"));
+    assert.equal(r.done, true);
+  });
+
   it("records nothing when the judge answers in no shape at all", async () => {
     const { r, events, calls } = await runIt({
       maxSteps: 10,
