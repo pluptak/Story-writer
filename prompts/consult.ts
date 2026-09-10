@@ -317,6 +317,11 @@ export const badReaction = {
 
   namelessReactor: () =>
     `Every entry in "reactors" needs a "name". One of them had none.`,
+
+  remoteSharedSituation: (character: string, via: string) =>
+    `${character} is not physically there right now, connected only by ${via}, so the shared `
+    + `room-perspective situation cannot be theirs. Give ${character} their own "situation" `
+    + `describing only what actually reaches them through that connection.`,
 };
 
 export const AUTHOR_TOOK_YOUR_ACTION =

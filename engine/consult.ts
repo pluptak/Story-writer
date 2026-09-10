@@ -148,7 +148,9 @@ export type ReactionCheck = { ok: true; reqs: ConsultRequest[] } | { ok: false; 
  * Validate a reaction fan-out: a shared situation/question asked of several reactors at once. Each
  * reactor resolves to an ordinary `ConsultRequest` through `normalizeConsult`'s gate, so a reactor
  * with too thin a situation is refused just as a lone consult would be. A per-reactor `situation`
- * overrides the shared one (someone who only heard it).
+ * overrides the shared one (someone who only heard it) — and a reactor the scene marks `"remote"`
+ * MUST carry one: the shared text is written from inside the room, and nothing about the room
+ * reaches them except through their connection.
  *
  * A name listed twice is a slip, not a second character — the fan-out asks one shared moment, and
  * asking it twice would let the second answer see the first — so duplicates collapse
@@ -173,7 +175,16 @@ export function normalizeReactionConsult(raw: {
     if (!name) return { ok: false, why: P.badReaction.namelessReactor() };
     if (seen.has(nameKey(name))) continue;
     seen.add(nameKey(name));
-    const situation = String((r as any)?.situation ?? "").trim() || shared;
+    // A remote reactor cannot take the shared room-perspective situation: nothing about where
+    // they are not standing reaches them except through their connection, so the projection has
+    // to be written explicitly as their own override. Presence is an input to this boundary, not
+    // knowledge of its own — the override's content is still the writer's, still gated below, and
+    // nothing here adds, removes, or judges what the reactor already knows.
+    const own = String((r as any)?.situation ?? "").trim();
+    const member = cast?.find(c => sameName(c.name, name));
+    if (!own && member?.presenceState?.mode === "remote")
+      return { ok: false, why: P.badReaction.remoteSharedSituation(name, member.presenceState.via) };
+    const situation = own || shared;
     // A fan-out is the several-at-once form of the writer's own ask, so it comes through the same
     // open door: one shared situation, no question, and no `wants` — what the moment lands on them
     // as is what a shared moment asks for without being told to.

@@ -428,10 +428,22 @@ export async function writeScene(run: SceneRun) {
     // The asking character's own `knows` rides in the transient payload, never folded into the
     // clarifier's history: the instructions tell it to reveal only what this character could
     // perceive or already know, and that boundary is uncheckable without the field itself.
+    // The ledger boundary rides along verbatim: outstanding holds are not-yet-true (the clarifier
+    // must neither confirm nor deny them into canon) and fired beats are settled fact. Presence is
+    // not consulted here and nothing is erased — this restricts what may be settled, never what
+    // the character already knows or should conclude.
     const extra: Msg[] = [{
       role: "user",
       content: P.clarifyRequest(r.character, q, r.situation,
-                                pieces[pieces.length - 1] ?? "", defOf(r.character)?.knows ?? ""),
+                                pieces[pieces.length - 1] ?? "", defOf(r.character)?.knows ?? "",
+                                {
+                                  held: timeline
+                                    .filter(b => b.chapter === chapter && b.state !== "void" && !beatFired.has(b))
+                                    .map(b => b.hold),
+                                  established: [...beatFired]
+                                    .filter(b => b.chapter === chapter)
+                                    .map(b => b.fired),
+                                }),
     }];
     let a = "";
     try {
