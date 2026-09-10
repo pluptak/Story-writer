@@ -1,43 +1,35 @@
-The sodium lamp casts a harsh yellow pool on the service corridor floor. The air smells of stale grease and damp brick. Riven stands near the steel door, its mechanical lock solid in the quiet night. A couple of industrial bins sit nearby. Across the narrow space, Merritt sits on an upturned crate.
+The sodium lamp casts a sick yellow stain onto the rough brick wall. Riven holds the package—a heavy, unmarked cardboard box wrapped in brown tape—tucked close to their side. The steel service door is across the narrow passage, its mechanical lock dull under the grime. Beside it sits Merritt, a silhouette against the harsher shadows of the night-side building wall. They are still. The corridor smells of damp earth and stale fryer oil from Kessel's.
 
-Riven settles into stillness near the door, positioning their body slightly between Merritt and the steel entrance. The silence is heavy, broken only by the distant drone of city traffic and the soft shift of metal in the bins. Riven focuses on the lock mechanism.
+Riven stops six feet from the steel door, resting a hand on the adjacent brick wall. The silence stretches, punctuated only by the low hum of the sodium lamp overhead. Merritt does not shift their position on the crate, but they acknowledge Riven's movement with a subtle tilt of their head. The package remains heavy against Riven’s side.
 
-Merritt shifts on the crate, moving slowly toward the brick wall of the corridor. The movement is quiet against the hard surface. Riven remains fixed near the steel door, their attention focused on the lock. Merritt's slow adjustment changes the distance between them.
+Riven shifts their weight, facing Merritt obliquely as they take a slow step toward the steel door. "Just passing through. Delivery at five," Riven says, keeping the volume low enough not to carry past the bins. The package nudges against Riven's hip. Merritt remains seated on the upturned crate, watching the movement.
 
-Riven takes a single step back, increasing the distance between them and Merritt. The movement shifts Riven's position slightly away from the immediate proximity of the door. While maintaining awareness of Merritt's location, Riven returns their focus to the solid steel surface of the entrance.
+Merritt allows a small adjustment of their posture on the crate, sinking their weight slightly lower onto the concrete floor. It is not a movement toward the door, but rather a settling in place. The air between the two figures remains thick and quiet. Riven continues to advance slowly, now closer than before, the metallic scent of the lock becoming more pronounced.
 
-Merritt stretches out a hand and presses it against the cool surface of the brick wall beside the crate. The pressure is steady, grounding Merritt in that spot. Riven continues to observe the door and its lock from their current position.
+Riven moves quickly toward the steel door, dropping into a crouch so that their body blocks Merritt’s view of the action. The weight of the package shifts slightly as Riven brings their attention to the keyhole. Fingers begin working on the tumblers. A faint click sounds from within the lock mechanism.
 
-Riven speaks, their voice low against the corridor's quiet. "You shouldn't be here at three in the morning." Riven keeps one hand near a satchel resting close to them, but does not touch it.
+Riven continues their careful manipulation of the lock. The sound of metal against metal is almost imperceptible, lost beneath the low thrum of the sodium lamp. Every movement requires absolute focus on the mechanism. They feel the tumblers give way slightly to pressure, and then they pause, waiting for the resistance to yield completely. A fragile quiet hangs between them.
 
-Merritt replies simply: "It's where I need to be." The statement holds no inflection, only a declaration of necessary presence.
+Riven’s hands move with meticulous precision within the keyhole. The tension wrench holds firm against the cylinder, and the pick slides into place, testing each pin. Time feels taut in the small corridor. With a final, deliberate nudge of the tool, the resistance vanishes completely. A satisfying, definitive *thunk* reverberates through the steel door.
 
-Riven nods slightly, acknowledging the statement without conceding ground. "Right. Look, I've got a delivery. Just need a moment with that door." Riven takes another small step closer to the entrance, allowing their fingers to brush against the cold steel of the lock mechanism.
+The sudden shift of weight from the crate breaks the corridor's static quiet. Merritt moves slowly, a deliberate, controlled advance. They position themselves near the edge of your shadow, close enough to be perceived but not immediately threateningly in front of you. The scent of bin refuse and stale coffee drifts toward them. The steel door waits, unlocked, beneath your hands.
 
-Riven’s fingers trace the edges of the lock cylinder. The metal is cold beneath their touch, stiff with disuse. Riven pauses after touching it, waiting for a response or movement from Merritt, the quiet only broken by the low hum of the sodium lamp.
+Riven shoves the heavy door open just enough—a narrow gap that allows passage but keeps the security of the corridor behind you. You slip through, pivoting immediately toward the interior space beyond the threshold, package held tight. The movement takes you past Merritt's proximity in a swift arc. The weight of the delivery is a constant anchor.
 
-The corridor remains quiet save for the distant thrumming of city traffic and the low buzz of the sodium lamp overhead. Riven maintains their focus on the lock, a silent assessment taking place between them and the steel mechanism.
+Riven steps fully into the interior space, turning their back on the corridor's sodium glare as they reach for the heavy door handle to close it behind them. The weight of the package feels substantial against your side. You begin to pull the steel door shut, easing the mechanism until it catches near the frame. A faint scrape of metal against brick is the only sound in the sudden quiet.
 
-Riven feels the silence settle around them, a heavy blanket punctuated by the lamp's hum. The lock remains unresponsive beneath their touch. Merritt slowly lifts their hand from the rough surface of the brick wall, settling into absolute stillness.
+The door clicks shut with a solid, final thud, sealing out the sodium light of the corridor. The air inside is cooler, smelling faintly of old industrial cleaning agents and dry storage. You take that last step inward, the package now resting against your side as you pivot slightly toward the entrance to check the space behind you.
 
-The subtle scrape of wood against metal breaks the silence as Merritt shifts their weight slightly on the upturned crate. Riven takes one deliberate step backward, increasing the distance between them while keeping their focus fixed on the steel door.
+You turn your back to the closed service door, leaving the corridor and Merritt behind you in the dim light. You adjust the satchel strap on your shoulder, feeling the weight of the package shift against your hip. The interior space stretches away from you—a maze of storage racks and shadowed hallways—and you begin moving deeper into the building.
 
-Riven lowers their body slightly and gently places their fingers around the keyhole area. A precise, delicate movement begins as they start the process of picking the lock.
+The shadows swallow your increased pace. The building feels vast and suddenly silent around your quickening steps, the echoes of footsteps swallowed by concrete and stacked goods. You are moving toward the vague promise of an exit point, yet every turn leads to more deep gloom. Merritt remains outside the closed door.
 
-The gentle click of metal on metal is barely audible above the hum of the sodium lamp. Riven's concentration is absolute, their breath held steady as they work the pins.
+The quiet of the corridor settles back over the sodium lamp, undisturbed by Riven's departure. Merritt turns away from the service door and slowly walks back to the upturned crate, resuming their position in the silence.
 
-Riven works slowly, meticulously feeding tension into the pins. The soft sounds of their effort seem deafening in the confined space. A tiny shift, then another.
+You maintain your fluid pace, letting the shadows of the storage racks become a cloak against observation. The farther you move from the service door, the less distinct the sounds become—the distant hum of refrigeration units, the slight drip somewhere in the far reaches of the building. You approach what appears to be an internal loading bay area.
 
-The tumblers give way with a soft, yielding sigh. The lock is open. Riven pauses their delicate work, fingers resting lightly on the mechanism. The steel door remains closed.
+The hallway ahead is a dense ribbon of stacked pallets and low-hanging pipes. It stretches out before you, marked only by shifts in the gloom; the loading bay exit point remains obscured by the clutter and distance. You continue your deliberate movement through the maze.
 
-Riven observes that the lock yields completely, clicking into a state of readiness. The door is openable, their objective now within reach. Merritt shifts back onto the crate, settling deeper against the brick wall.
+The hallway continues its monotonous sprawl of brickwork and stacked cargo. The silence here is heavier than the sound in the corridor; it feels pressurized, thick with expectation. You keep moving, your focus fixed on the direction of the loading bay exit, trying to gauge when the clutter will finally give way to open space.
 
-Riven slips swiftly through the door, moving quickly past the threshold and immediately depositing the contents of the satchel inside the building. The sound of the package hitting the interior surface is dull but definite.
-
-Riven stands just inside the threshold of the service door, having placed the package down within the interior space. The corridor is quiet again; only the hum of the sodium lamp persists.
-
-The service door closes with a soft, muted sound against the frame. Riven makes sure the lock mechanism engages silently, sealing the package inside and securing themselves on the outside.
-
-The silence settles back into the corridor, broken only by the low buzz of the sodium lamp overhead. The mechanical lock holds fast.
-
-Riven begins walking down the service corridor, putting distance between themselves and Merritt. The quiet of the late hour presses in around them.
+The oppressive silence stretches on. The narrow corridor of stacked goods continues its reach into the building’s depths. You keep your trajectory fixed toward where you believe the exit must be.

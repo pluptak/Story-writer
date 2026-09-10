@@ -72,12 +72,12 @@ describe("replaying a recorded chapter", () => {
 
     // The pair is the key: both characters answer at `character.consult` and are told apart by name
     // alone. Were that ever to collapse to the site, one of these would eat the other's replies.
-    assert.equal(replay.used("MERRITT|character.consult"), 23);
-    assert.equal(replay.used("RIVEN|character.consult"), 10);
-    // The writer's two sites share one transcript and interleave — 23 drafts against 9 redrafts — so
+    assert.equal(replay.used("MERRITT|character.consult"), 14);
+    assert.equal(replay.used("RIVEN|character.consult"), 13);
+    // The writer's two sites share one transcript and interleave — 19 drafts against 6 redrafts — so
     // order alone would hand a redraft's reply to a draft. Per-queue keeps them straight.
-    assert.equal(replay.used("WRITER|writer.draft"), 23);
-    assert.equal(replay.used("WRITER|writer.redraft"), 9);
-    assert.equal(replay.total(), 122);
+    assert.equal(replay.used("WRITER|writer.draft"), 19);
+    assert.equal(replay.used("WRITER|writer.redraft"), 6);
+    assert.equal(replay.total(), 98);
   });
 });

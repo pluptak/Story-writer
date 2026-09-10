@@ -1,27 +1,22 @@
 {
-  "run": "2026-08-31T22-06-47-039Z",
+  "run": "2026-09-10T22-31-36-110Z",
   "story": "data/stories/doorway",
   "chapter": 1,
-  "engine": "cb13bb7c2494",
+  "engine": "6f107fb79c5b",
   "git": {
-    "revision": "a46184c",
-    "branch": "pov-thought-withholding",
+    "revision": "7f02078",
+    "branch": "Autonomous_Character_Test",
     "dirty": true
   },
   "models": {
     "writer": "google/gemma-4-e4b",
     "summary": "google/gemma-4-e4b"
   },
-  "effectiveSteps": 32,
-  "budgetGrants": [
-    {
-      "added": 8,
-      "budget": 32
-    }
-  ],
+  "effectiveSteps": 24,
+  "budgetGrants": [],
   "outcome": {
-    "steps": 32,
-    "words": 777,
-    "done": true
+    "steps": 25,
+    "words": 994,
+    "done": false
   }
 }
