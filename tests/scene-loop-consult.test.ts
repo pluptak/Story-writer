@@ -556,6 +556,38 @@ describe("an answer still owed the page", () => {
       assert.ok(!/^RIVEN\s*$/m.test(withLedger!), "no bare-name entries");
     });
 
+  it("the POV character's speech-and-thought answer still lands the thought as felt evidence",
+    async () => {
+      // Sibling of the thought-only case above: a POV reply carrying both a line and interiority
+      // must grant both, like the fan-out path already does — otherwise the writer rendering the
+      // thought is flagged for inventing what it was handed.
+      const POV_REACT = {
+        character: "RIVEN",
+        situation: "The lock has given way under your hands and the door stands open on the dark.",
+        question: "What does the give of it land on you as, this early?",
+        wants: "reaction",
+      };
+      const lintPayloads: string[] = [];
+      const { events } = await runIt({
+        maxSteps: 10,
+        lintPayloads,
+        characterReplies: [{
+          speech: "Steady now.",
+          thought: "Too easy. That is the part I do not like.",
+        }],
+        writerReplies: [
+          { prose: "Riven crouches by the door.", consult: POV_REACT, scene_done: false },
+          { prose: "The dark past the doorway does not move.", scene_done: true },
+        ],
+      });
+
+      assert.ok(events.some(e => e.t === "accept"), "the speech-and-thought answer was accepted");
+      const withLedger = lintPayloads.find(p => p.includes("ALREADY GRANTED") && !p.includes("(nobody yet)"));
+      assert.ok(withLedger, "the lint saw a populated ledger");
+      assert.match(withLedger!, /felt: Too easy/,
+        "the interiority the writer was handed is on the record as authorization");
+    });
+
   it("gives a non-POV reaction one chance to surface, and takes it when it does", async () => {
     // The hole this closes: "reaction" (not a deliberate act, not spoken words) is right for the
     // POV character and unanswerable for anyone else, so the ask was spent for nothing. Now a

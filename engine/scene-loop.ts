@@ -722,7 +722,7 @@ export async function writeScene(run: SceneRun) {
                           speech: reply.speech, action: reply.action };
           writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question));
           lastAsked.set(nameKey(def.name), steps);
-          // An answer joins the lint's ledger as whatever the writer actually got. A thought-only
+          // An answer joins the lint's ledger as whatever the writer actually got. An
           // answer from the POV character lands as a felt entry, like a fan-out's bundle — without
           // it, the writer rendering that interiority is flagged for using exactly what it was
           // handed. A withheld thought grants nothing: it never reached the desk.
@@ -731,7 +731,7 @@ export async function writeScene(run: SceneRun) {
               character: def.name,
               speech: reply.speech,
               action: reply.action,
-              ...(!reply.speech && !reply.action && shown.thought ? { thought: shown.thought } : {}),
+              ...(shown.thought ? { thought: shown.thought } : {}),
             });
           }
           owed.push(def.name);

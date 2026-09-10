@@ -115,6 +115,12 @@ describe("lintQuotations", () => {
     const hit = lintQuotations(prose, granted("I know the rhythm"), ["He"]);
     assert.ok(hit && !hit.ok);
   });
+
+  it("passes a quoted rendering of a granted thought — felt interiority is a granted line too", () => {
+    const g = [{ character: "Riven", speech: "", thought: "Too easy. That is the part I do not like." }];
+    const prose = 'Riven thought, "Too easy."';
+    assert.equal(lintQuotations(prose, g, ["Riven"]), null);
+  });
 });
 
 describe("world furniture — sourced quotes", () => {

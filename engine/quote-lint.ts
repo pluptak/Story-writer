@@ -9,8 +9,8 @@
  *
  * This file imports nothing from the engine: pure text matching, so it stays a leaf. */
 
-// Re-declared locally to keep this file a leaf (it only needs the two fields it reads).
-export interface GrantedLine { character: string; speech: string; }
+// Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
+export interface GrantedLine { character: string; speech: string; thought?: string; }
 
 export interface QuoteLintHit { ok: false; why: string; quote: string; character: string; }
 
@@ -74,15 +74,15 @@ function seqContains(outer: string[], inner: string[]): boolean {
   return false;
 }
 
-/** A quote matches a granted speech when it is near-verbatim: a contiguous token run in either
+/** A quote matches a granted line when it is near-verbatim: a contiguous token run in either
  *  direction, or (failing that) a Dice-coefficient overlap of at least 0.8 — a lightly edited quote
  *  (one word swapped in six) still passes, a wholly invented one does not. Dice rather than Jaccard
  *  because it does not punish a single substitution as harshly. */
-function matchQuote(q: string, speeches: string[]): boolean {
+function matchQuote(q: string, lines: string[]): boolean {
   const qn = norm(q);
   if (!qn) return true;
   const qt = qn.split(" ");
-  for (const sp of speeches) {
+  for (const sp of lines) {
     const sn = norm(sp);
     if (!sn) continue;
     const st = sn.split(" ");
@@ -161,6 +161,12 @@ const hasSourceFrame = (prose: string, index: number) =>
 
 const sameCharacter = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** Every renderable line a set of grants offers to match against: what was said, and what was
+ *  felt — a quoted rendering of granted interiority is exempted the same way granted dialogue is
+ *  (Judge.MD, "a felt entry"), so the mechanical check must see both. */
+const linesOf = (entries: ReadonlyArray<GrantedLine>): string[] =>
+  entries.flatMap(g => [g.speech, g.thought].filter((s): s is string => !!s));
+
 /** The mechanical quotation check. Returns null when there is nothing to check (no quotes, only
  *  labels, only sourced furniture, or every quote matched a granted line) — the caller then runs
  *  the LLM lint for deeds/senses/situation. Returns a hit the moment one unmatched quote is found.
@@ -183,18 +189,18 @@ export function lintQuotations(
 
     const character = attribute(prose, q, names);
     if (character === "unknown") {
-      const speeches = granted.map(g => g.speech).filter(Boolean);
-      if (!matchQuote(q.text, speeches)) {
+      const lines = linesOf(granted);
+      if (!matchQuote(q.text, lines)) {
         return { ok: false, quote: q.text, character,
           why: `unmatched quotation: "${q.text}" — no character was granted that line` };
       }
       continue;
     }
 
-    const own = granted.filter(g => sameCharacter(g.character, character)).map(g => g.speech).filter(Boolean);
+    const own = linesOf(granted.filter(g => sameCharacter(g.character, character)));
     if (matchQuote(q.text, own)) continue;
 
-    const others = granted.filter(g => !sameCharacter(g.character, character)).map(g => g.speech).filter(Boolean);
+    const others = linesOf(granted.filter(g => !sameCharacter(g.character, character)));
     const reassigned = matchQuote(q.text, others);
     return {
       ok: false,

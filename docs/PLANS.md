@@ -163,14 +163,6 @@ passing silently. Tests for all four shapes (own line, reassigned line, unattrib
 attribution orders) are in `tests/quote-lint.test.ts`. The per-character match's live-run risk is
 under Measurement owed.
 
-- **The mechanical half and the LLM half disagree on rendered interiority.** `matchQuote` reads only
-  `g.speech`, but the narration lint's own format and `narrationLintRequest` explicitly exempt a
-  granted POV thought rendered in quotation marks — and the loop's two grant paths do not agree with
-  each other either: the fan-out path grants a thought-and-speech reply as both, while the POV path
-  grants only the speech (engine/scene-loop.ts). So the writer can be handed interiority the
-  mechanical half then flags as fabricated, spending the scene's one redraft on a false positive.
-  Grant `felt` into the mechanical ledger — after the two grant paths are made to agree about which
-  replies carry it.
 - **`sceneDrift` does not compare `reach`.** The snapshot-desync warning that guards the handoff
   compares place, question, pov, length and roster — but not the field the capability layer added,
   so a written chapter whose `reach` was hand-edited afterwards re-authors silently and the warning
