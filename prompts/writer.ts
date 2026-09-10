@@ -137,7 +137,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
 export function writerSystem(p: {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
-  cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[];
+  cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string }[];
   facts: string[];
   style: string;
 }): string {

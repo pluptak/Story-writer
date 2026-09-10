@@ -12,7 +12,7 @@ import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
-import { wrapCharacter, wrapWriter, writerCast, sceneReach } from "../engine/scene-loop.ts";
+import { wrapCharacter, wrapWriter, writerCast, sceneReach, scenePresence } from "../engine/scene-loop.ts";
 import { fingerprint, LOADED, writeRunManifest } from "../run-manifest.ts";
 import { quiet, warnings } from "./helpers.ts";
 
@@ -567,6 +567,41 @@ describe("reach boundaries", () => {
       try { await loadStory(dir); } finally { WARN.sink = origSink; }
       assert.ok(got.some(x => /grants reach to "NOBODY"/.test(x)));
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- PRESENCE BOUNDARIES (I4-style) ------------------------------------------
+describe("presence boundaries", () => {
+  const CARTER: import("../engine/story-format.ts").CharacterDef = {
+    name: "CARTER", model: "", persona: "A fixer.", knows: "", goal: "", belief: "",
+    impulse: "", voice: [], origin: "",
+    skills: [{ name: "lockpicking", meaning: "opening locks", source: "custom" }],
+    limits: [],
+  };
+  const sceneOf = (presence: Record<string, string>) =>
+    ({ place: "the chapel", question: "Does CARTER answer?", pov: "CARTER", length: 700, roster: ["CARTER"], reach: {}, presence }) as never;
+
+  it("I4-style — presence disappears at the scene boundary, from both the situation line and the cast block", async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const sd = sceneOf({ CARTER: "remote :: the phone line" });
+    const remote = wrapCharacter(CARTER, "the chapel", [], scenePresence(sd, CARTER) ?? undefined);
+    const here = wrapCharacter(CARTER, "the chapel");
+    assert.match(remote, /you are not physically there, connected only by the phone line/);
+    assert.ok(!here.includes("not physically there"), "the default is here, with no presence note");
+
+    const granted = wrapWriter(sc.premise, sc.scenes[0],
+      writerCast([CARTER], [], {}, { CARTER: scenePresence(sd, CARTER)! }), "");
+    const after = wrapWriter(sc.premise, sc.scenes[0], writerCast([CARTER], []), "");
+    assert.match(granted, /PRESENCE: remote -- the phone line/);
+    assert.ok(!after.includes("PRESENCE:"), "and the cast block carries no PRESENCE line when nobody is remote");
+  });
+
+  it("a partial grant renders the partial wording on both surfaces", () => {
+    const sd = sceneOf({ carter: "partial :: can hear but not see" });
+    const p = wrapCharacter(CARTER, "the chapel", [], scenePresence(sd, CARTER) ?? undefined);
+    assert.match(p, /your presence here is only partial: can hear but not see/);
+    const cast = writerCast([CARTER], [], {}, { CARTER: scenePresence(sd, CARTER)! });
+    assert.equal(cast[0].presence, "partial -- can hear but not see");
   });
 });
 

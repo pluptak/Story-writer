@@ -11,7 +11,7 @@ import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 const DOORWAY = {
   title: "The Fog Signal",
   premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
-  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]> }],
+  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]>, presence: {} as Record<string, string> }],
   writerStyle: "Plain sentences.",
   writerStyleConstraints: [] as string[],
   facts: [] as string[],

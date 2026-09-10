@@ -54,6 +54,9 @@ export function rosterNameNotACharacter(prefix: string, name: string): string {
 export function reachNotInRoster(prefix: string, who: string): string {
   return `${prefix} grants reach to "${who}", who is not in its roster`;
 }
+export function presenceNotInRoster(prefix: string, who: string): string {
+  return `${prefix} sets presence for "${who}", who is not in its roster`;
+}
 
 /** The timeline-beat problems that are pure string work, shared by the load path (which warns and
  *  keeps the beat) and the proposal path (which reports it), so the wording has one home — the same
@@ -213,6 +216,33 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       });
       if (ok.length) reach[ch.name] = ok;
     }
+    const rawPresence = (s.presence && typeof s.presence === "object" && !Array.isArray(s.presence))
+      ? Object.fromEntries(Object.entries(s.presence)
+          .map(([k, v]) => [k.trim(), String(v ?? "").trim()] as const)
+          .filter(([k, v]) => k.length > 0 && v.length > 0))
+      : {};
+    // Presence is one string per character, not a list: "mode :: via" with mode remote or
+    // partial. The roster is the likelier thing to be wrong, so a grant to someone absent from
+    // it is reported and kept, exactly like reach. A remote entry with no ":: via" is dropped —
+    // "not there, connected somehow, unspecified" is reach's missing-meaning problem over again —
+    // while a partial entry keeps its via optional, its semantics deliberately underspecified.
+    const presence: SceneDef["presence"] = {};
+    for (const [who, raw] of Object.entries(rawPresence)) {
+      const ch = characters.find(c => c.name.toLowerCase() === who.toLowerCase());
+      if (!ch) { problems.push(`${prefix} sets presence for "${who}", who is not one of the characters — dropped`); continue; }
+      if (roster.length && !roster.some(r => r.toLowerCase() === who.toLowerCase()))
+        problems.push(presenceNotInRoster(prefix, who));
+      const { text, meaning } = splitMeaning(raw);
+      if (text !== "remote" && text !== "partial") {
+        problems.push(`${ch.name}'s presence "${text}" is not "remote" or "partial" — dropped`);
+        continue;
+      }
+      if (text === "remote" && !meaning.trim()) {
+        problems.push(`${ch.name}'s presence "remote" carries no ":: via" detail — dropped`);
+        continue;
+      }
+      presence[ch.name] = raw;
+    }
     return {
       place: String(s.place ?? "").trim(),
       question: String(s.question ?? "").trim(),
@@ -220,6 +250,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       length: Number.isFinite(lengthRaw) && lengthRaw >= 1 ? Math.round(lengthRaw) : 700,
       roster,
       reach,
+      presence,
       ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
       ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
         ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),
@@ -361,7 +392,7 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
       continue;
     }
 
-    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster|reach)$/);
+    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster|reach|presence)$/);
     if (sceneMatch) {
       const idx = sceneMatch[2] ? Number(sceneMatch[2]) - 1 : 0;
       if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
@@ -372,6 +403,13 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
         draft.scenes[idx].reach = (value && typeof value === "object" && !Array.isArray(value))
           ? Object.fromEntries(Object.entries(value)
               .map(([k, v]) => [k.trim(), asStrings(v)] as const)
+              .filter(([k, v]) => k.length > 0 && v.length > 0))
+          : {};
+      }
+      else if (sceneField === "presence") {
+        draft.scenes[idx].presence = (value && typeof value === "object" && !Array.isArray(value))
+          ? Object.fromEntries(Object.entries(value)
+              .map(([k, v]) => [k.trim(), String(v ?? "").trim()] as const)
               .filter(([k, v]) => k.length > 0 && v.length > 0))
           : {};
       }

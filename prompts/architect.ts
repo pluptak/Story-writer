@@ -185,6 +185,15 @@ scene.reach  -- OPTIONAL. An interface the WORLD offers one of these characters 
                  exists at all is the place's or the facts' job to establish. Name the INTERFACE,
                  never the sense it substitutes for: "cameras", never "sight" -- a blind character's
                  camera feed still works.
+scene.presence -- OPTIONAL. Where one of these characters IS while this scene is being written --
+                 most of the cast is simply here, and needs nothing said. Set it only for someone
+                 elsewhere: {"AURA": "remote :: the phone line"} or {"AURA": "partial :: can hear
+                 the room but not see it"}. The mode is "remote" (not physically there, connected
+                 only by the via -- a remote via is REQUIRED) or "partial" (only partly here; the
+                 via may say how). It exists only while THIS scene is being written and vanishes at
+                 its edge, so never use it for anything intrinsic. And it changes what the WRITER
+                 narrates, not just what the character believes: a remote character is not seated
+                 in the room, never handed something, never caught by a glance across it.
 writer_style -- house style: person, tense, what to do with dialogue, what to leave out.
 characters   -- Every character costs consults out of a fixed step budget, so add a third or fourth
                 only when they have their own stake in what happens -- not because a scene feels thin
@@ -212,6 +221,7 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
     title · premise · writer_style
     scene.place · scene.question · scene.pov · scene.length · scene.roster
     scene.reach   (an object: {"NAME": ["thing :: what they can do through it"]} -- see scene.reach above)
+    scene.presence   (an object: {"NAME": "remote :: the via" | "partial :: the via"} -- see scene.presence above)
     scene_<n>.place · ...      (the same fields on the nth scene; scene_1 and scene are the same one)
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.belief · characters.<NAME>.impulse · characters.<NAME>.voice   (voice: a list)
@@ -616,8 +626,12 @@ scene.pov      -- whose perception we are inside. One of the character names, an
                   people actually present in the room.
 scene.length   -- words. 600-900 unless the idea demands otherwise.
 scene.reach    -- OPTIONAL; see its full description in your instructions above. An interface the
-                  world offers one character HERE -- situational, never carried between scenes,
-                  named after the interface and not the sense it substitutes for.
+                   world offers one character HERE -- situational, never carried between scenes,
+                   named after the interface and not the sense it substitutes for.
+scene.presence -- OPTIONAL; see its full description in your instructions above. Where one
+                   character IS while this scene is being written -- "remote" (elsewhere, via
+                   required) or "partial"; situational, never carried between scenes, and it
+                   changes what the writer narrates, not just what the character believes.
 later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"question": "..."}
                  and NOTHING else. Provisional pressure points, so the author can see the arc --
                  not commitments. No place, no pov, no length, no outcomes: whatever the chapters
@@ -836,6 +850,9 @@ these people, you write into their definitions now or it is lost:
   - whatever an earlier scene's reach granted -- an interface the world offered someone THERE --
     is gone now; reach never travels with a person. If where they stand in chapter ${next} still
     offers it, re-grant it with scene_${next}.reach; if not, grant nothing.
+  - whatever an earlier scene's presence set -- where someone was while THAT scene was written --
+    is gone now; presence never travels with a person. If they are still elsewhere in chapter
+    ${next}, re-set it with scene_${next}.presence; if not, set nothing.
 
 [THE PREMISE]
 ${premise}
@@ -892,7 +909,8 @@ Reply with edits only, and nothing else:
                       belief, impulse, voice, skills, restrictions)
   remove_character   (the name)
    scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
-   scene_<n>.reach     (an object: {"NAME": ["thing :: what they can do through it"]})
+    scene_<n>.reach     (an object: {"NAME": ["thing :: what they can do through it"]})
+    scene_<n>.presence  (an object: {"NAME": "remote :: the via" | "partial :: the via"})
     add_scene          (a whole scene object: place, question, pov, length, roster)
    remove_scene       (the scene number)
    beat_<n>.chapter · .at · .hold · .fired · .state          (the world-event ledger; .state is

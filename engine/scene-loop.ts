@@ -5,7 +5,8 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
-import { resolveReach, type Catalogs, type Skill } from "./skills.ts";
+import { resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
+import { warn } from "./warnings.ts";
 import {
   normalizeConsult,
   parseClarifyAnswer, parseLintVerdict, nonPovThoughtOnly,
@@ -25,11 +26,27 @@ import { ENGINE } from "./engine-state.ts";
 /** One character agent's system prompt: persona, place, skills, knowledge, goal, belief, impulse, voice.
  *  `reach` is this scene's grant only (I1/I4): it comes from per-scene resolution and is empty on
  *  every character-level view. */
-export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = []): string {
+export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = [], presence?: Presence): string {
   return P.characterSystem({
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
     belief: def.belief, impulse: def.impulse, voice: def.voice, reach, limits: def.limits,
+    ...(presence ? { presence } : {}),
   });
+}
+
+export interface Presence { mode: "remote" | "partial"; via: string }
+
+/** One character's presence in ONE scene: null is "here", the default. Keys match case-insensitively,
+ *  like reach and roster. An unrecognised mode warns and is treated as "here". */
+export function scenePresence(sd: SceneDef, def: CharacterDef): Presence | null {
+  const raw = Object.entries(sd.presence ?? {}).find(([who]) => sameName(who, def.name))?.[1];
+  if (!raw) return null;
+  const { text, meaning } = splitMeaning(raw);
+  if (text !== "remote" && text !== "partial") {
+    warn(`   (character ${def.name}: presence "${text}" is not "remote" or "partial" — ignored, treated as here)`);
+    return null;
+  }
+  return { mode: text, via: meaning };
 }
 
 /** One character's reach in ONE scene: the scene's grant, minus what restrictions remove (I2) and
@@ -43,15 +60,15 @@ export function sceneReach(sd: SceneDef, def: CharacterDef, catalogs?: Catalogs)
 }
 
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
-export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = []): Agent {
-  const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach), 0.9);
+export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = [], presence?: Presence): Agent {
+  const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach, presence), 0.9);
   a.think = think;
   return a;
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[], style: string, facts: string[] = [], constraints: string[] = []): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string }[], style: string, facts: string[] = [], constraints: string[] = []): string {
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
@@ -72,16 +89,21 @@ export const rosterOf = (characters: CharacterDef[], rostered: string[]): Charac
  *  the writer's attention. `reach` is the scene's per-character grant (I4: the only place outside
  *  the character agents that ever sees it), shown as its own line. */
 export function writerCast(characters: CharacterDef[], rostered: string[],
-                           reach: Record<string, Skill[]> = {}): { name: string; can: string[]; reach: string[]; cannot: string[] }[] {
+                           reach: Record<string, Skill[]> = {},
+                           presence: Record<string, Presence> = {}): { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string }[] {
   return rosterOf(characters, rostered)
-    .map(c => ({
-      name: c.name,
-      can: c.skills
-        .filter(s => s.source !== "general" && s.source !== "reach")
-        .map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
-      reach: (reach[c.name] ?? []).map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
-      cannot: c.limits,
-    }));
+    .map(c => {
+      const pres = presence[c.name];
+      return {
+        name: c.name,
+        can: c.skills
+          .filter(s => s.source !== "general" && s.source !== "reach")
+          .map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
+        reach: (reach[c.name] ?? []).map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
+        cannot: c.limits,
+        ...(pres ? { presence: pres.via ? `${pres.mode} -- ${pres.via}` : pres.mode } : {}),
+      };
+    });
 }
 
 // -- THE WRITER'S REPLY -----------------------------------------------------
@@ -276,7 +298,8 @@ export async function writeScene(run: SceneRun) {
   const rosterNames = roster.map(c => c.name);
   const active = new Set(rosterNames);          // the cast still in the scene; shrinks as one exits
   const isActive = (name: string) => [...active].some(n => sameName(n, name));
-  const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])));
+  const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])),
+    Object.fromEntries(roster.map(c => [c.name, scenePresence(sd, c)] as const).filter(([, v]) => v !== null)) as Record<string, Presence>);
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
@@ -861,7 +884,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
   const agents = new Map<string, Agent>();
 
   for (const def of rosterOf(sc.characters, sd.roster)) {
-    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def, sc.catalogs)));
+    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def, sc.catalogs), scenePresence(sd, def) ?? undefined));
   }
 
   LIVE.agents = agents;

@@ -312,8 +312,10 @@ other reasons.
 The architect can edit the fields supported by `engine/story-spec.ts`:
 
 - story metadata: `title`, `premise`, `writerStyle`, and `writerStyleConstraints`
-- scenes: `scene_<n>.place`, `question`, `pov`, `length`, `roster`, and `reach`
-  (an object: `{"NAME": ["thing :: what they can do through it"]}`)
+- scenes: `scene_<n>.place`, `question`, `pov`, `length`, `roster`, `reach`
+  (an object: `{"NAME": ["thing :: what they can do through it"]}`), and `presence`
+  (an object: `{"NAME": "mode :: via"}` with mode `remote` or `partial` — where someone is
+  while that scene is being written, scene-scoped like `reach`; a `remote` entry needs its `via`)
 - scene structure: `add_scene` and `remove_scene`
 - characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`,
   `restrictions`, `origin`, and `lacks`, plus `name` (rename, with roster/pov references

@@ -95,6 +95,7 @@ export function characterSystem(p: {
   place: string;
   skills: { name: string; meaning: string }[];
   reach?: { name: string; meaning: string }[];
+  presence?: { mode: "remote" | "partial"; via: string };
   limits?: string[];
   knows: string;
   goal: string;
@@ -111,8 +112,13 @@ export function characterSystem(p: {
     + (reachLines ? `\nREACH -- yours only through where you are standing right now; it leaves with this place:\n${reachLines}` : "");
   const hardLimits = (p.limits ?? []).filter(l => l.trim());
   const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
+  const presenceNote = p.presence
+    ? p.presence.mode === "remote"
+      ? ` -- you are not physically there${p.presence.via ? `, connected only by ${p.presence.via}` : ""}`
+      : ` -- your presence here is only partial${p.presence.via ? `: ${p.presence.via}` : ""}`
+    : "";
   const extras = [
-    p.place ? `CURRENT SITUATION: ${p.place}` : "",
+    p.place ? `CURRENT SITUATION: ${p.place}${presenceNote}` : "",
     `CAPABILITIES -- what you are good at, not a fence around what you may attempt:\n${menu}`
       + (hardLimits.length
         ? `\nHARD LIMITS -- absolute, whatever the moment asks; you cannot do these:\n${hardLimits.map(l => `  - ${l.trim()}`).join("\n")}`

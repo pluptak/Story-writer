@@ -62,10 +62,10 @@ describe("specView against the story schema", () => {
 });
 
 describe("sceneDrift", () => {
-  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
+  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
 
   it("returns [] for identical scenes", () => {
-    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
+    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 
@@ -75,7 +75,7 @@ describe("sceneDrift", () => {
   });
 
   it("returns multiple changed fields in stable order", () => {
-    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"], reach: {} };
+    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
     assert.deepEqual(sceneDrift(base, after), ["place", "pov", "length"]);
   });
 
@@ -101,7 +101,7 @@ describe("sceneDrift", () => {
   });
 
   it("ignores whitespace differences in strings", () => {
-    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
+    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 });
