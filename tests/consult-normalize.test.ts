@@ -510,6 +510,25 @@ describe("normalizeConsult, the judge's directed ask", () => {
     assert.equal(r.req.situation, sightLeaning);
   });
 
+  const remoteCast = [{ name: "RIVEN", cannot: [] as string[],
+    presenceState: { mode: "remote" as const, via: "the phone line" } }];
+  const remoteWatching = "You watch Riven sign the ledger and slide it back across the scarred counter toward you.";
+
+  it("refuses a remote addressee a situation their position rules out, naming the connection", () => {
+    const r = normalizeConsult({ character: "RIVEN", situation: remoteWatching }, remoteCast);
+    assert.ok(!r.ok);
+    assert.match(r.why, /not physically there/);
+    assert.match(r.why, /the phone line/);
+    assert.doesNotMatch(r.why, /CANNOT/, "no authored restriction is involved");
+  });
+
+  it("does not refuse a remote addressee a situation naming only what the channel carries", () => {
+    const r = normalizeConsult({ character: "RIVEN", situation:
+      "You hear Riven's voice crackle through the phone line as he reads the ledger entries aloud to you now." },
+      remoteCast);
+    assert.ok(r.ok);
+  });
+
   it("matches the addressee case-insensitively against the cast", () => {
     const r = normalizeConsult({ character: "Merritt", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
     assert.ok(!r.ok);

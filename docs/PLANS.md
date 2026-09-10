@@ -826,8 +826,14 @@ consumer until one is designed on purpose.
 **Two existing mechanical gates are its first consumers**, extended rather than replaced:
 
 - **Memory implantation** ([`engine/scene-loop.ts`](../engine/scene-loop.ts), the fired-beat handler)
-  already gates on `rostered && active`; presence adds a third condition. Exactly what `"partial"`
-  permits here is left undecided on purpose — see above.
+  already gates on `rostered && active` — and on inspection, presence should *not* add a third
+  condition there. `Character.MD` frames a fired beat's memory as *prior knowledge becoming
+  relevant*, not newly perceived information, so blocking it by physical presence doesn't follow the
+  same logic as blocking a situation's sensory claims. The refined question is the *beat's* scope:
+  a `"world"` event (broadly knowable) should implant for a remote character, a local/`"scene"`
+  event (a power cut that only cuts the door open for people actually there) should not — keyed on
+  the beat, not the character's presence. That needs a new concept on `TimelineDef` (or similar),
+  not a presence check, and is still not built.
 - **Consult situation bounds** (`normalizeConsult` → `lintRestrictedSituation`,
   [`engine/consult.ts`](../engine/consult.ts)) already refuses a situation built around a sense a
   character has permanently lost (their authored CANNOT list); presence adds the dynamic half — a

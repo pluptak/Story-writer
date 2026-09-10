@@ -303,6 +303,12 @@ export const badConsult = {
     `The situation you gave ${character} is phrased around ${sense} — "${fragment}" — and their `
     + `CANNOT removes it: they would receive it as ground truth they cannot have. Rebuild the `
     + `situation from what they can actually perceive without ${sense}, in their own terms.`,
+
+  restrictedByPresence: (character: string, sense: string, fragment: string, via: string) =>
+    `The situation you gave ${character} is phrased around ${sense} — "${fragment}" — but they are `
+    + `not physically there right now, connected only by ${via}: they would receive it as ground truth `
+    + `their position rules out. Rebuild the situation around what actually reaches them through that `
+    + `connection.`,
 };
 
 export const badReaction = {

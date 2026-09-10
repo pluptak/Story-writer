@@ -350,6 +350,38 @@ describe("lintRestrictedSituation", () => {
       "You give Riven a long look at the satchel before speaking.",
       "MERRITT", merritt.cannot), null);
   });
+
+  it("blocks sight for a remote addressee with no authored CANNOT at all", () => {
+    const hit = lintRestrictedSituation(
+      "You watch Riven sign the ledger and slide it back across the counter.",
+      "RIVEN", [], { mode: "remote", via: "the phone line" });
+    assert.ok(hit);
+    assert.equal(hit.sense, "sight");
+    assert.equal(hit.cause, "presence");
+    assert.match(hit.why, /remote \(the phone line\)/);
+    assert.doesNotMatch(hit.why, /CANNOT/, "no authored restriction is named — there is none");
+  });
+
+  it("leaves hearing alone for a remote addressee — the channel carries it", () => {
+    assert.equal(lintRestrictedSituation(
+      "You hear Riven's voice crackle as he reads the ledger entries aloud.",
+      "RIVEN", [], { mode: "remote", via: "the phone line" }), null);
+  });
+
+  it("triggers nothing for a partial addressee — those semantics are still deferred", () => {
+    assert.equal(lintRestrictedSituation(
+      "You watch Riven sign the ledger and slide it back across the counter.",
+      "RIVEN", [], { mode: "partial", via: "can hear the room" }), null);
+  });
+
+  it("an authored CANNOT still reads as authored, and first, when presence is also remote", () => {
+    const hit = lintRestrictedSituation(
+      "You watch Riven sign the ledger and slide it back across the counter.",
+      "MERRITT", merritt.cannot, { mode: "remote", via: "the phone line" });
+    assert.ok(hit);
+    assert.equal(hit.cause, undefined, "absent cause means the authored case — the old callers' contract");
+    assert.match(hit.why, /CANNOT sight/);
+  });
 });
 
 describe("doorway run-3 evidence — the five lines PLANS.md item 3 put on the page", () => {

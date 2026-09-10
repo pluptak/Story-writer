@@ -90,7 +90,7 @@ export const rosterOf = (characters: CharacterDef[], rostered: string[]): Charac
  *  the character agents that ever sees it), shown as its own line. */
 export function writerCast(characters: CharacterDef[], rostered: string[],
                            reach: Record<string, Skill[]> = {},
-                           presence: Record<string, Presence> = {}): { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string }[] {
+                           presence: Record<string, Presence> = {}): { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence }[] {
   return rosterOf(characters, rostered)
     .map(c => {
       const pres = presence[c.name];
@@ -101,7 +101,10 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
           .map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
         reach: (reach[c.name] ?? []).map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
         cannot: c.limits,
-        ...(pres ? { presence: pres.via ? `${pres.mode} -- ${pres.via}` : pres.mode } : {}),
+        // The rendered string is the writer's display; the raw object rides alongside under a
+        // different key for the consult gate's dynamic half (CannotCast.presenceState) — additive
+        // only, every reader of `presence` is untouched.
+        ...(pres ? { presence: pres.via ? `${pres.mode} -- ${pres.via}` : pres.mode, presenceState: pres } : {}),
       };
     });
 }

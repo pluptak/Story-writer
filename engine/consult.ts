@@ -8,8 +8,13 @@ import { lintRestrictedSituation } from "./sense-lint.ts";
 import { nameKey, sameName } from "./config-util.ts";
 
 /** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can
- *  be checked against its addressee. Scene-loop resolves the same thing for the narration lint. */
-export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[] }>;
+ *  be checked against its addressee, plus their structured presence (when the scene sets one) for
+ *  the same gate's dynamic half — a "remote" addressee refused a situation their position rules out.
+ *  `presenceState` is inline-typed rather than imported so this module gains no dependency on the
+ *  engine above it; it is named for the state, not `presence`, which the writer's cast block already
+ *  uses for the rendered string. Scene-loop resolves the same thing for the narration lint. */
+export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[];
+  presenceState?: { mode: "remote" | "partial"; via: string } }>;
 
 /** What the writer sends when it wants a character's take: who, the situation as given to them, the question, and what shape of answer is wanted. */
 export interface ConsultRequest {
@@ -85,14 +90,16 @@ export type ConsultMode = "open" | "directed";
 
 /** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step.
  *
- *  With the cast given, the situation is also linted against the addressee's own CANNOT list: the
- *  situation is the only author-side string that enters a character as ground truth, and one phrased
- *  around a sense they have lost would be received as fact. This runs here, not in the scene loop,
+ *  With the cast given, the situation is also linted against the addressee's own CANNOT list — and,
+ *  when the scene sets one, their presence: a "remote" addressee is refused a situation phrased
+ *  around a sense their position rules out. The situation is the only author-side string that enters
+ *  a character as ground truth, and one phrased around a sense they have lost would be received as
+ *  fact. This runs here, not in the scene loop,
  *  so every situation-entry path passes the same door: the writer's first ask, the judge's `revised`
  *  on a retry (reviseConsult), and each reactor of a fan-out (normalizeReactionConsult). */
 export function normalizeConsult(raw: {
   character: string; situation?: unknown; question?: unknown; wants?: unknown;
-}, cast?: ReadonlyArray<{ name: string; cannot: readonly string[] }>,
+}, cast?: CannotCast,
    mode: ConsultMode = "open"): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
@@ -122,10 +129,13 @@ export function normalizeConsult(raw: {
   }
 
   const member = cast?.find(c => sameName(c.name, character));
-  if (member?.cannot?.length) {
-    const hit = lintRestrictedSituation(situation, character, member.cannot);
-    if (hit)
-      return { ok: false, why: P.badConsult.restrictedSense(character, hit.sense, hit.match) };
+  if (member && (member.cannot?.length || member.presenceState?.mode === "remote")) {
+    const hit = lintRestrictedSituation(situation, character, member.cannot ?? [], member.presenceState);
+    if (hit) {
+      return { ok: false, why: hit.cause === "presence"
+        ? P.badConsult.restrictedByPresence(character, hit.sense, hit.match, member.presenceState!.via)
+        : P.badConsult.restrictedSense(character, hit.sense, hit.match) };
+    }
   }
 
   return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants } };
