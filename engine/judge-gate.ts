@@ -84,7 +84,7 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     const judgeExtra: Msg[] = [{
       role: "user",
       content: P.judgeRequest({
-        name: def.name, situation: req.situation, question: req.question, wants: req.wants,
+        name: def.name, situation: req.situation, question: req.question,
         thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note,
         flags, pov: o.pov,
       }),

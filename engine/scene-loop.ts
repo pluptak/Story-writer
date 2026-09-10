@@ -8,7 +8,7 @@ import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
 import { resolveReach, type Catalogs, type Skill } from "./skills.ts";
 import {
   normalizeConsult,
-  parseClarifyAnswer, parseLintVerdict, missingShape,
+  parseClarifyAnswer, parseLintVerdict, nonPovThoughtOnly,
   type ConsultEvent, type Clarifier,
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
@@ -663,18 +663,16 @@ export async function writeScene(run: SceneRun) {
         if (RUN.stopped) break;
 
         const stalled = !!reply && !reply.thought && !reply.speech && !reply.action;
-        // A thought with nothing said and nothing done answers a "reaction" and nothing else. Taken
-        // as an accept it is worse than a refusal: it costs the attempts, marks the character as
-        // freshly consulted, and hands the writer an answer with nothing in it to write.
-        // POV decides what a "reaction" has to carry: from anyone else a thought alone reaches the
-        // writer as nothing, which is the same empty answer the other three shapes are refused for.
-        const shortOf = reply && !stalled ? missingShape(req.wants, reply, isPov(def.name)) : null;
+        // The only shape floor left: a thought with nothing said and nothing done reaches the
+        // writer as nothing from anyone but the POV character. Taken as an accept it is worse
+        // than a refusal: it costs the attempts, marks the character as freshly consulted, and
+        // hands the writer an answer with nothing in it to write.
+        const shortOf = reply && !stalled ? nonPovThoughtOnly(reply, isPov(def.name)) : null;
         if (failed || !reply || stalled || shortOf) {
           const why = failed
             || (stalled ? reply!.note || "did not answer"
             : shortOf === "reaction"
               ? "reacted from behind their eyes, and the scene is not written from theirs"
-            : shortOf ? `was asked for ${shortOf} and gave none`
             : "no reply");
           console.log(`${C.red}${def.name}: ${why}.${C.reset}`);
           writer.hear(P.noAnswer(def.name, why));

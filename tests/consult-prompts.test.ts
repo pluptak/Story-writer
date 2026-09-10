@@ -4,16 +4,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  CONSULT_WANTS,
-} from "../engine/consult.ts";
 import * as P from "../prompts.ts";
 
 // -- WHAT THE JUDGE IS SHOWN ----------------------------------------------
 describe("judgeRequest", () => {
   const p = {
     name: "RIVEN", situation: "You are kneeling by the steel service door.",
-    question: "Do you turn it now?", wants: "decision", thought: "t", speech: "s", action: "a",
+    question: "Do you turn it now?", thought: "t", speech: "s", action: "a",
     note: "", flags: "",
   };
 
@@ -22,8 +19,11 @@ describe("judgeRequest", () => {
     assert.match(P.judgeRequest(p), /You are kneeling by the steel service door\./);
   });
 
-  it("names the shape that was asked for, so a short answer is visible as one", () => {
-    assert.match(P.judgeRequest({ ...p, wants: "speech" }), /needed from them: speech/);
+  it("names no wanted shape — the judge repairs contradictions, not output shapes", () => {
+    // Block B: wants left the retry format, so showing one would invite judging against it.
+    const s = P.judgeRequest({ ...p } as typeof p & { wants?: string });
+    assert.ok(!/needed from them/.test(s), "the old wants line is gone");
+    assert.ok(!/"wants"/.test(s));
   });
 
   it("keeps the question and the answer alongside it", () => {
@@ -214,8 +214,9 @@ describe("what the character is sent", () => {
   });
 
   it("still names the shape the answer has to arrive in", () => {
-    // Kept deliberately: missingShape refuses an answer for lacking a shape, and refusing one the
-    // character was never asked for would be a trap, not a check.
+    // Kept deliberately on the character side: directed retries still carry the inert wants
+    // record, and refusing an answer for lacking a shape the character was never asked for
+    // would be a trap, not a check. The judge, not the ask, is what stopped judging shapes.
     assert.match(P.askBlock(req), /What they need from you: speech/);
   });
 
@@ -248,23 +249,38 @@ describe("the retry template", () => {
   it("tells the judge that only the situation reaches them", () => {
     // Without this the judge sharpens the question on retry, the character sees an identical ask,
     // and a fresh instance answers identically — a retry spent on nothing.
-    assert.match(P.JUDGE_FORMAT, /ONLY ONE OF THE THREE THEY WILL READ/);
+    assert.match(P.JUDGE_FORMAT, /ONLY ONE OF THE TWO THEY WILL READ/);
   });
 
-  it("does not let the judge retry an answer for taking a fork it had not planned", () => {
-    assert.match(P.JUDGE_FORMAT, /is NOT unusable/);
-    assert.match(P.JUDGE_FORMAT, /the moment was theirs to read/);
+  it("defines acceptance positively — valid unless it contradicts established reality", () => {
+    assert.match(P.JUDGE_FORMAT, /valid unless it contradicts reality already established/);
+    assert.match(P.JUDGE_FORMAT, /protect continuity, not authorial intention/);
+    assert.match(P.JUDGE_FORMAT, /A surprising choice is evidence about the character, not an error/);
   });
 
-  it("names every field a retry has to carry", () => {
-    // A field missing from the template is a field the model does not send: `wants` was missing from
-    // 17 of 17 logged retries, and `note` came back empty in 13 of them.
-    for (const field of ["revised", "situation", "question", "wants", "note"])
+  it("decides through one explicit path to RETRY with everything else falling to ACCEPT", () => {
+    assert.match(P.JUDGE_FORMAT, /DECIDE LIKE THIS/);
+    for (const ground of ["an established fact about this character", "one of their CANNOTs",
+                           "physically impossible", "no way to perceive",
+                           "another character's private thoughts"]) {
+      assert.ok(P.JUDGE_FORMAT.includes(ground), `missing retry ground: ${ground}`);
+    }
+  });
+
+  it("names the not-grounds plainly, so no euphemism for dislike survives", () => {
+    for (const ng of [/the wrong fork/, /the unexpected move/, /the inconvenient\s+choice/,
+                       /what the writer intended/, /outside a listed skill/,
+                       /more\s+elaboration than was asked for/]) {
+      assert.match(P.JUDGE_FORMAT, ng, `missing not-ground: ${ng}`);
+    }
+  });
+
+  it("names every field a retry has to carry — and wants is not one of them", () => {
+    for (const field of ["revised", "situation", "question", "note"])
       assert.match(P.JUDGE_FORMAT, new RegExp(`"${field}"`));
-  });
-
-  it("spells out the four wants", () => {
-    for (const w of CONSULT_WANTS) assert.match(P.JUDGE_FORMAT, new RegExp(w));
+    assert.ok(!/"wants"/.test(P.JUDGE_FORMAT), "wants left the retry schema");
+    assert.ok(!/EXACTLY ONE of these four words/.test(P.JUDGE_FORMAT),
+      "and the shape menu went with it — a listed skill is now a not-ground, not a verdict");
   });
 
   it("tells the judge not to paste the prose back as a situation", () => {
@@ -274,6 +290,10 @@ describe("the retry template", () => {
   it("tells the judge a thought alone answers only from inside the point of view", () => {
     assert.match(P.JUDGE_FORMAT, /a thought alone is a complete answer/);
     assert.match(P.JUDGE_FORMAT, /has to surface as a word or a movement/);
+  });
+
+  it("still refuses a retry that renames the contradiction and leaves the situation alone", () => {
+    assert.match(P.JUDGE_FORMAT, /leaves the\s+situation alone re-sends them/);
   });
 });
 

@@ -265,20 +265,22 @@ export const badConsult = {
     + `${floor} words. Give them the moment, not a label for it.`,
 
   noQuestion: (character: string) =>
-    `You asked ${character} nothing — "question" was empty.`,
+    `You asked ${character} nothing — "question" was empty. A retry repairs a contradiction, and `
+    + `the question is the record of which one: without it there is nothing on record to repair.`,
 
   degenerate: (question: string) =>
-    `"${question}" names no fork and no stake, so the safest answer is always `
-    + `the right one and the scene stops moving. Ask one open question that names what hangs on `
-    + `the choice: "Do you say the name, knowing what it admits?" or "What do you say to the `
-    + `group about the state of the hardware?" -- not a menu of options (a question carrying `
+    `"${question}" names no contradiction and no repair, so there is nothing for a fresh instance `
+    + `to answer differently and the scene stops moving. Ask one open question that names the `
+    + `established fact the answer broke and what would repair it: "Do you turn it, knowing the `
+    + `cylinder you just felt give?" -- not a menu of options (a question carrying `
     + `"or" is refused too), and not a shrug wearing a subject.`,
 
   carriesAnswers: (question: string) =>
     `"${question}" hands the character both branches of the fork and asks them to pick one. `
-    + `A pre-written menu is answered by picking: nothing is left for them to ask for, and no `
-    + `third way can reach the scene through it. Ask one open question about the fork instead -- `
-    + `name what hangs on their choice, not the options you have already imagined for them, and `
+    + `A pre-written menu is answered by picking: nothing genuinely new can reach the scene through `
+    + `it, and no repair of what actually broke is named. Ask one open question naming the `
+    + `contradiction instead -- the established fact the answer broke and what would repair it, not `
+    + `the options you have already imagined for them, and `
     + `do not over-correct into a shrug: "What do you choose regarding X?" is refused too.`,
 
   noNewSituation: () =>
@@ -287,9 +289,9 @@ export const badConsult = {
     + `already answered — and a fresh instance answers it the same way. A retry that is to buy `
     + `anything has to change what they can perceive.`,
 
-  badWants: (allowed: readonly string[], sent: string) =>
-    `"wants" must be exactly one of: ${allowed.join(", ")}. `
-    + `You sent ${JSON.stringify(sent)}.`,
+  // badWants is gone: the judge no longer names an output shape, so there is nothing to
+  // validate here. "wants" survives on the wire (ConsultRequest.wants, the GUI's "needs:" badge)
+  // as an inert record of what older runs asked for, never a requirement on a new one.
 
   restrictedSense: (character: string, sense: string, fragment: string) =>
     `The situation you gave ${character} is phrased around ${sense} — "${fragment}" — and their `

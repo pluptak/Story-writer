@@ -115,10 +115,10 @@ export function normalizeConsult(raw: {
       return { ok: false, why: P.badConsult.degenerate(question) };
     if (QUESTION_CARRIES_ANSWERS.test(question))
       return { ok: false, why: P.badConsult.carriesAnswers(question) };
-    const asked = canonWants(raw.wants);
-    if (!asked)
-      return { ok: false, why: P.badConsult.badWants(CONSULT_WANTS, String(raw.wants ?? "")) };
-    wants = asked;
+    // "wants" is inert: the judge no longer names an output shape, so whatever arrives (or does
+    // not) is carried as a record, never a requirement. A hallucinated wants must not silently
+    // reinstate the shape-dictation the retry rules removed.
+    wants = canonWants(raw.wants) ?? "";
   }
 
   const member = cast?.find(c => sameName(c.name, character));
@@ -183,28 +183,25 @@ export type Revision =
  * The judge's `revised` folded over the request it replaces, and checked by exactly the same gate a
  * first consult goes through — a field the judge left out keeps its previous value.
  *
- * `wants` is pinned to the original — the judge may reframe a fork it asked badly, not turn one
- * fork into another. (The one exception is escalating an open beat, below.) A changed `wants` is
- * drift to record, not an instruction to honor: whether a rewritten *question* is still the same
- * fork needs a model, and the run record carrying what each retry replaced is the check.
+ * `wants` is inert — carried, never changed: the judge names no output shape, so there is no shape
+ * to reframe and no drift to record. `wantsRefused` survives on the type as always-"" so the run
+ * record stays structurally comparable across branches.
  *
  * The cast, when given, travels with it: the judge's `revised.situation` passes the same CANNOT
  * gate the first ask did.
  */
 export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>,
   cast?: CannotCast): Revision {
-  const asked = canonWants(rev.wants);
-  // An open beat carries no question, so a judge retrying one is escalating: it may name the fork
-  // in words for the first time, and `wants` comes with it. Once a fork is named the old pin holds
-  // — the judge may reframe a question it asked badly, never turn one fork into another. Every
+  // An open beat carries no question, so a judge retrying one is escalating: it may name the
+  // contradiction in words for the first time. Once named the record holds — a revision that drops
+  // the question again would decay an escalated ask back into an open beat. Every
   // revision is checked as directed whichever it was, so an ask that has been escalated can never
   // decay back into an open beat by omitting the fields again.
-  const escalating = !prev.question;
   const checked = normalizeConsult({
     character: prev.character,
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
-    wants: escalating ? (asked ?? "") : prev.wants,
+    wants: prev.wants,
   }, cast, "directed");
   if (!checked.ok) return checked;
   // The character is shown the situation and not the question, so a revision that sharpens the
@@ -215,34 +212,26 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
   // answer already in hand, which is what the caller does with every other unusable revision.
   if (checked.req.situation.trim() === prev.situation.trim())
     return { ok: false, why: P.badConsult.noNewSituation() };
-  return { ok: true, req: checked.req,
-           wantsRefused: !escalating && asked && asked !== prev.wants ? asked : "" };
+  return { ok: true, req: checked.req, wantsRefused: "" };
 }
 /**
- * What the asked-for shape must actually be in the reply, or null when the reply satisfies it.
+ * The only shape floor left now that the judge names no output shape: a thought from outside the
+ * POV reaches the writer as nothing — the scene never receives it — so an answer with neither
+ * speech nor action from a non-POV character is refused. Reported as "reaction" because that is
+ * the repair the character needs: let it reach the outside.
  *
- * `reaction` is the one shape a thought alone answers — it asks what something lands on them as,
- * and that happens behind the eyes. Every other shape asks for something that reaches the page; a
- * thought alone leaves the scene where it was: an answer in form, nothing in substance.
+ * Everything else the old wants-keyed check refused is now accepted on purpose: an answer that
+ * departs from what was wanted but breaks nothing established is valid, and a character reaching
+ * outside a listed skill (but not through a CANNOT) is the autonomous behaviour working, not a
+ * shape violation. Keeping the old branches would let a hallucinated wants silently reinstate the
+ * exact shape-dictation this design removes, even though nothing prompts for it any more.
  *
- * That exception holds only from inside the POV. A thought is the writer's to render for the POV
- * character and nobody else, so a `reaction` answered from anyone else's head reaches the writer
- * as nothing — the same empty answer this check refuses. Asked of anyone else, a reaction has to
- * land where the room could see it. `pov` defaults true, so a caller that does not know whose
- * scene this is asks for no more than the four shapes always did.
+ * `pov` defaults true, so a caller that does not know whose scene this is asks for nothing more.
  */
-export function missingShape(
-  wants: ConsultWants | "", r: { speech: string; action: string }, pov = true,
-): ConsultWants | null {
-  if (wants === "speech" && !r.speech) return "speech";
-  if (wants === "action" && !r.action) return "action";
-  if (wants === "decision" && !r.speech && !r.action) return "decision";
-  if (wants === "reaction" && !pov && !r.speech && !r.action) return "reaction";
-  // An open beat names no shape, so the POV rule is the only floor left — and it is the same floor:
-  // whatever was asked, a thought from outside the POV reaches the writer as nothing, so an answer
-  // with neither speech nor action is an answer the scene never receives. Reported as "reaction"
-  // because that is the repair the character needs: let it reach the outside.
-  if (!wants && !pov && !r.speech && !r.action) return "reaction";
+export function nonPovThoughtOnly(
+  r: { speech: string; action: string }, pov = true,
+): "reaction" | null {
+  if (!pov && !r.speech && !r.action) return "reaction";
   return null;
 }
 
@@ -393,9 +382,9 @@ export async function consult(
     const speech  = String(o.speech ?? "").trim();
     const action  = String(o.action ?? "").trim();
     const note    = String(o.note ?? "").trim();
-    const shortOf = missingShape(req.wants, { speech, action }, pov);
+    const shortOf = nonPovThoughtOnly({ speech, action }, pov);
     const why = !thought && !speech && !action ? "returned nothing usable"
-              : shortOf ? `was asked for ${shortOf} and gave none`
+              : shortOf ? "kept it behind their eyes, where the room could not catch it"
               : "";
     if (why && !repaired) {
       repaired = true;

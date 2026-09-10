@@ -6,7 +6,7 @@
  * Imports NOTHING from the engine but prompts/internal.ts.
  */
 
-import { NAME_THE_FORK, castBlock, wantsMenuLines } from "./internal.ts";
+import { NAME_THE_CONTRADICTION, castBlock } from "./internal.ts";
 
 // Both the judge and the clarifier were once sections of WRITER_FORMAT, answered by the writer on
 // its own history. With ~20 messages of [WRITE]->{"prose":...} behind them the dominant pattern won
@@ -24,6 +24,11 @@ You are writing a scene. Where it turned on a choice, you stopped and asked the 
 This is their answer coming back. Deciding whether it is usable is your whole job here: you are not
 writing prose, and you are not being asked what happens next.
 
+A character answer is valid unless it contradicts reality already established for that character.
+Your job is to protect continuity, not authorial intention. Do not repair a decision because you
+dislike it, because another choice would be easier to write, or because the character didn't use
+a listed skill. A surprising choice is evidence about the character, not an error.
+
 You are shown the situation you gave them and what they answered. That situation was the whole of
 what they were sent -- no question came with it, because the moment was theirs to read. They may have
 taken a fork you never saw in it. That is the format working, not failing.
@@ -32,32 +37,42 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
   {"verdict": "accept"}
 
-  {"verdict": "retry", "note": "why it is unusable, in one line -- required",
-   "revised": {"situation": "...", "question": "...", "wants": "..."}}
+  {"verdict": "retry", "note": "the contradiction, in one line -- required",
+   "revised": {"situation": "...", "question": "..."}}
 
-  revised  -- all three fields, every time you retry. They will be asked again from nothing, by a
+  revised  -- both fields, every time you retry. They will be asked again from nothing, by a
               fresh instance that never learns this attempt happened, so these must stand on their own.
-              THE SITUATION IS THE ONLY ONE OF THE THREE THEY WILL READ. "question" and "wants" are
-              your own record of what you decided the fork was, and a retry is the one place they
-              get written down at all. A revision that sharpens the question and leaves the situation
-              alone re-sends them, word for word, the ask they just answered -- and a fresh instance
-              answers it the same way. It will be refused. If the retry is to buy anything, what
-              changes is the SITUATION.
+              THE SITUATION IS THE ONLY ONE OF THE TWO THEY WILL READ. "question" is
+              your own record of the contradiction you are repairing, and a retry is the one place it
+              gets written down at all. A revision that renames the contradiction and leaves the
+              situation alone re-sends them, word for word, the ask they just answered -- and a fresh
+              instance answers it the same way. It will be refused. If the retry is to buy anything,
+              what changes is the SITUATION.
     situation -- what THEY can perceive right now, in your words. They know nothing you do not put
                  here. Do not paste back the prose you wrote: that is the page, not their world, and
                  it tells them things they cannot know.
-    question  -- your record of the fork, not something they read. ${NAME_THE_FORK} It will be
+    question  -- your record of the contradiction, not something they read. ${NAME_THE_CONTRADICTION} It will be
                  refused and the retry will have bought nothing.
-    wants     -- EXACTLY ONE of these four words:
-${wantsMenuLines}
 
-RETRY ONLY WHEN THE ANSWER IS UNUSABLE: it engages nothing that is happening to them, or they plainly
-lacked something they needed in order to answer (then fix the SITUATION), or they did something they
-are not able to do. "It is not the fork I had in mind" is NOT unusable. Neither is "it is quieter
-than I wanted". Those are the scene telling you something true.
+DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through to ACCEPT:
 
-AN ANSWER HAS TO REACH THE SCENE. You asked for no particular shape, so any of them will do: a line,
-a deed, or both, at whatever length the moment deserved. What it cannot be is only a thought, from
+  Was the answer actually impossible or inconsistent with what is already established?
+    no  -> ACCEPT. Whatever fork they took, however quiet, however inconvenient -- accept it,
+           and go and write it.
+    yes -> What does it contradict?
+             an established fact about this character?               RETRY
+             one of their CANNOTs?                                   RETRY
+             something physically impossible, here and now?           RETRY
+             knowledge they had no way to perceive or already hold?  RETRY
+             another character's private thoughts or feelings?       RETRY
+             none of these -- only surprising, unwelcome, or odd?    ACCEPT
+
+NOT GROUNDS FOR A RETRY, however worded: the wrong fork, the unexpected move, the inconvenient
+choice, the quiet answer, what the writer intended, reaching outside a listed skill, or more
+elaboration than was asked for. A surprising choice is not a broken one.
+
+AN ANSWER HAS TO REACH THE SCENE. Any shape of answer will do: a line, a deed, or both, at
+whatever length the moment deserved. What it cannot be is only a thought, from
 anyone but the point-of-view character -- what they think is not yours to write, so a reaction from
 outside the point of view has to surface as a word or a movement or it reaches the page as nothing.
 From the point-of-view character a thought alone is a complete answer.
@@ -70,9 +85,6 @@ A DECISION IS CARRIED BY ONE CLEAR SIDE. Either "speech" or "action" naming one 
 "I step out and head upstairs" answers "do you stay, or slip out?" even though neither of your words
 appears in it. Do not demand your option's literal wording, and do not retry a clear answer for
 being worded differently than the fork was.
-
-DO NOT RETRY because the answer is inconvenient, quieter than you hoped, or takes the scene somewhere
-you had not planned. That is the scene telling you something true. Accept it, and go and write it.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
@@ -228,11 +240,10 @@ export const answerFlags = (p: { forced: boolean }) =>
   p.forced ? `They asked for detail you did not give and answered anyway.` : "";
 
 export const judgeRequest = (p: {
-  name: string; situation: string; question: string; wants: string;
+  name: string; situation: string; question: string;
   thought: string; speech: string; action: string; note: string; flags: string; pov?: boolean;
 }) =>
   `[${p.name} ANSWERED]\nThe situation you gave them: ${p.situation}\nYou asked: ${p.question}\n`
-  + `What you needed from them: ${p.wants}\n`
   + (p.pov === false ? `They are not the point of view: what they think is not yours to write.\n` : "")
   + `thought: ${p.thought}\nspeech: ${p.speech}\naction: ${p.action}`
   + (p.note ? `\nnote: ${p.note}` : "")
