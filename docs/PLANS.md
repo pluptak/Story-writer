@@ -540,20 +540,27 @@ below: **The world timeline**.
   editing and leaves unrelated fields byte-for-byte unchanged. No character request or persisted entry
   contains `tags`.
 
+- **A chapter-summary review step in the handoff.** The handoff sends every accepted chapter as
+  full prose (~1,100 tokens each). Insert a step before the re-authoring round: the architect
+  compresses the most recently accepted chapter into three fixed fields (progression, scene
+  changes, characters), the author confirms-or-abandons it, and the round runs with the summary
+  in place of that chapter's prose — earlier chapters still travel as full text.
+
 ## The world timeline
 
-**Shipped, except the landing check.** The ledger, the zero-inference firing mechanism, the
+**Shipped.** The ledger, the zero-inference firing mechanism, the
 architect's world gate, the handoff's re-aim, and `adjudicateBeat`/`adjudicateChapter`
 ([`engine/world-repair.ts`](../engine/world-repair.ts),
 [`tests/world-repair.test.ts`](../tests/world-repair.test.ts)) are wired into the handoff: a stranded
 beat is adjudicated mechanically (`questionLive` read from the done judge's verdict — a settled
 question voids it silently, a live one still surfaces to re-aim), and a fired beat is judged by the
-architect's own one-shot reply (`possible`/`questionLive`, routed through `adjudicateBeat` to catch a
-contradiction) — see [`Architect.MD`](Architect.MD)'s "Stranded world events" and "Fired world
-events". `landed`/`escalate` are still unbuilt: nothing computes whether a fired beat actually landed
-on the page, and this file still says not to build that reader without live evidence (see *A
-mechanical landing check was built and removed*, under *Blocks* below). The mechanism was spiked and
-measured first — see *What the spike established* below before designing against this. The architect authors
+architect's own one-shot reply (`possible`/`questionLive`/`landed`, routed through `adjudicateBeat`
+to catch a contradiction or an unlanded-but-live beat) — see [`Architect.MD`](Architect.MD)'s
+"Stranded world events" and "Fired world events". What is still unmeasured is whether the
+architect's landing judgement is any good, which needs live runs; the removed mechanical reader
+stays removed (see *A mechanical landing check was built and removed*, under *Blocks* below).
+The mechanism was spiked and measured first — see *What the spike established* below before
+designing against this. The architect authors
 a timeline of **world
 events** — a fault alarm firing, an incoming call, the thing in the dark reaching the door — and an
 author-side agent fires them into the writer one at a time, revising what remains when a character's
@@ -701,16 +708,17 @@ own lesson about handing over run commands with holes in them.
   the spike ran on a fixed fractional trigger with zero inference. Only *repair* needs a model, and
   repair is rare. This kills the per-step cost concern and means a working timeline ships before any
   agent exists.
-- **Who decides a beat landed** — still open, and now open on both halves. "Landed" meant only *the
-  writer wrote it*; it never meant *it changed a decision*, and those came apart in every run. The
-  *wrote it* half looked mechanical and is not — see block 1 below for the measurements that killed
-  the bigram check. The *changed a decision* half no mechanical check can reach at all; the
-  `done_flagged` verdict from the done judge ([`Judge.MD`](Judge.MD)) is the closest instrument the
-  engine has, but it reads the scene's question, not the beat. This is now literally
-  `BeatStanding.landed` in [`engine/world-repair.ts`](../engine/world-repair.ts) — the entity takes it
-  as an opaque input (`true` / `false` / `null` for "no check has run") and refuses to derive it
-  itself, so this question is still exactly as open as it was, just pushed to whoever writes the
-  caller.
+- **~~Who decides a beat landed.~~ The architect judges it; whether its judgement is any good
+  is unmeasured.** "Landed" meant only *the writer wrote it*; it never meant *it changed a
+  decision*, and those came apart in every run. The *wrote it* half looked mechanical and is not
+  — see block 1 below for the measurements that killed the bigram check — so the handoff asks
+  the model instead: the architect already reads every chapter's full prose, and its
+  `beat_checks` reply carries `landed` as a three-state judgement (true / false / omitted when
+  it cannot tell), routed through `adjudicateBeat` like the other two verdicts. The *changed a
+  decision* half no mechanical check can reach at all; the `done_flagged` verdict from the done
+  judge ([`Judge.MD`](Judge.MD)) is the closest instrument the engine has, but it reads the
+  scene's question, not the beat. **Done when** live runs have been read for whether the
+  architect's landing calls match what the page shows.
 - **~~History or none, for the repair entity.~~ Neither — no model call at all.**
   [`engine/world-repair.ts`](../engine/world-repair.ts) adjudicates a beat's repair
   (`void`/`re-aim`/`revise`/`escalate`) as a pure function of the `BeatStanding` the caller supplies —
@@ -725,25 +733,12 @@ own lesson about handing over run commands with holes in them.
 
 ### Blocks
 
-Only the landing check is left. Everything else in this feature has shipped and its behaviour has
-moved to the document that owns it: the ledger and the schema to [`Architect.MD`](Architect.MD), what
+All four repairs are wired and their behaviour has moved to the document that owns it
+([`Architect.MD`](Architect.MD)'s "Stranded world events" and "Fired world events"), alongside the
+rest of this feature: the ledger and the schema to [`Architect.MD`](Architect.MD), what
 the writer receives to [`Writer.MD`](Writer.MD), what a memory is to [`Character.MD`](Character.MD),
-and the events to [`GUI-SPEC.md`](GUI-SPEC.md).
-
-**Landing, and the four repairs — three wired, one still needs a reader.**
-[`engine/world-repair.ts`](../engine/world-repair.ts)'s `adjudicateBeat` covers all four cases —
-preempted / contradicted / fired-but-did-not-land / stranded — as a pure function; the "history or
-none" question above resolved to neither, so this cost nothing to ship. `openNextChapter`
-(`engine/architect.ts`) now builds each written chapter's `BeatStanding` from
-`readChapterBeatOutcome`'s sidecar (`run-and-save.ts`'s `buildChapterBeatOutcome`, written
-unconditionally beside the chapter as `chapters/<n>.beats.json`) and the architect's own fired-beat
-judgment, turning the result into `beat_<n>.state`/`beat_<n>.chapter` edits — preempted, contradicted
-and stranded are covered. `fired-but-did-not-land` (`escalate`) is the one still missing: nothing
-reads whether a fired beat actually reached the page as established fact, so `landed` is never
-anything but `null` (awaiting-check) in every call made today. The old separate `beat_stranded` /
-`.unfired.json` path still exists as the fallback for a chapter written before `.beats.json` shipped
-(no fired record to adjudicate against) — not a second thing left to build, just the necessary
-backward-compatible case.
+and the events to [`GUI-SPEC.md`](GUI-SPEC.md). What stays here are the two warnings and the
+missing live evidence, not the mechanism.
 
 **A mechanical landing check was built and removed — do not rebuild it the same way.** It scored
 character-bigram Dice between the fired text and every window of the piece the injection asked
@@ -798,40 +793,21 @@ that was known. What replaces it:
 
 ### An information authority
 
-**Two more mechanical gates have shipped since, and no model-based agent has been needed yet.** The
-timeline work exposed a gap `Character.MD`'s existing model can't answer: a fired beat's `memories`
-pick one specific character out of the roster, with no way to say whether that character could
-plausibly have perceived what it now always knew — a live scene wanted one participant on a
-speakerphone, rostered so consulted but not in the room. Presence (`SceneDef.presence`,
-`"here"`/`"remote"`/`"partial"`) and its two mechanical consumers — memory implantation gated by a
-beat's `scope`, and the consult situation-bounds check for a `"remote"` character's dynamic senses —
-have since shipped and are documented in [`Architect.MD`](Architect.MD) and
-[`Character.MD`](Character.MD). Two further mechanical extensions of the same restrict-only shape
-have shipped alongside the repair entity's logic: a `"remote"` reactor in a reaction fan-out can no
-longer inherit the shared room-perspective `situation` —
-[`engine/consult.ts`](../engine/consult.ts)'s `normalizeReactionConsult` refuses it
-(`P.badReaction.remoteSharedSituation`) unless the writer gives that reactor their own override — and
-the clarifier now receives a verbatim, un-paraphrased `[WHAT HAS NOT HAPPENED]` / `[ALREADY TRUE]`
-block (`worldBounds` in [`prompts/writer.ts`](../prompts/writer.ts), fed from
-[`engine/scene-loop.ts`](../engine/scene-loop.ts)) built from the chapter's outstanding holds and
-fired beats, so it can no longer confirm or deny an unfired world event into canon when asked about it
-obliquely. Both are covered by [`tests/info-boundary.test.ts`](../tests/info-boundary.test.ts) and
-[`tests/autonomy-adversarial.test.ts`](../tests/autonomy-adversarial.test.ts). `"partial"` presence
-still ships with no consumer at all, on purpose: the risk is it becomes a silent excuse for "can
-perceive whatever is narratively convenient."
+Four mechanical gates have shipped, each restrict-only, each documented where it lives: presence
+and `"scene"`-scoped memory implantation ([`Character.MD`](Character.MD)), the consult
+situation-bounds check and the fan-out's remote-reactor refusal (same document's Bounds and
+fan-out sections), and the clarifier's verbatim `[WHAT HAS NOT HAPPENED]` / `[ALREADY TRUE]`
+block ([`Clarifier.MD`](Clarifier.MD)).
 
 What's still open: whether a character's actual visibility into a world event ever needs a
-model-based agent beyond these four mechanical gates. What is settled: it is not the repair entity's
-job (that reads whether the *question* is still live, never who can perceive what), and it must never
-hand a character an inference —
-*"Bob cannot see the envelope"* is a fact this layer may withhold; *"Bob should therefore suspect Y"*
-is the character's territory, not this layer's — the same restrict-only, never-add shape the
-invariant against `consult()` touching `agent.history` already models for a different boundary.
+model-based agent beyond these four gates — and if it does, it stays restrict-only, never an
+inference handed to the character: *"Bob cannot see the envelope"* is a fact such a layer may
+withhold; *"Bob should therefore suspect Y"* is the character's territory, not its.
 
 **Explicitly out of scope:** the writer's own beat delivery. `[WORLD]`/`[HOLD]` reaches the single
 shared writer instruction unfiltered today, and [`Writer.MD`](Writer.MD) already documents that as a
 deliberate, accepted trust ("nothing checks the event reached the page"). Gating that channel by
-presence would be a much larger, riskier change than either shipped gate, and nothing here argues for
+presence would be a much larger, riskier change than any shipped gate, and nothing here argues for
 starting there.
 
 ## Polish and cost

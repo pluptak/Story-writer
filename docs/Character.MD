@@ -32,7 +32,8 @@ The system prompt is `CHARACTER_FORMAT` followed by the persona and the definiti
 rendered as a labelled block (`prompts/consult.ts`):
 
 - `persona` — the character itself, verbatim.
-- **WHERE YOU ARE** — the scene's `place`.
+- **WHERE YOU ARE** — the scene's `place`, plus the presence note when the scene sets one
+  (below).
 - **YOUR SKILLS (all of what you can do; nothing else)** — the resolved skill menu: the general
   skills their `origin` starts them with (all of them when they name no origin), the character's
   own, and — in a `REACH` sub-heading when the scene grants any — what it has
@@ -62,6 +63,28 @@ told not to narrate the remembering. A `"scene"`-scoped beat's memory does not i
 character marked `"remote"` in that scene. `fork()` copies the system prompt, so a retried instance keeps
 the memory without learning it was a retry. The run log records that a memory surfaced and to whom;
 its wording reaches nobody but the character it belongs to.
+
+### Presence
+
+Presence is where someone is while one scene is being written — `SceneDef.presence`, an object of
+`{"NAME": "mode :: via"}` entries. It is scene-scoped like reach and never persisted at character
+level (invariant I4): it never merges into a character, and no character-level surface (preflight
+cards, the story editor, the handoff) ever shows it — `/cast` carries it per scene, labelled with
+its scene, the way it carries reach. Keys match case-insensitively like roster and reach, and an
+unrecognised mode warns and is treated as here. Absence means "here", so every scene written
+before presence existed is unchanged.
+
+Two modes ship. `remote` needs its `via` — the connection that still reaches them, e.g. `remote ::
+the phone line` — and renders onto the WHERE YOU ARE line above (`characterSystem`,
+`prompts/consult.ts`): *you are not physically there, connected only by …*. `partial` carries an
+optional `via`, is parsed and rendered the same way (*your presence here is only partial …*), but
+deliberately gates nothing.
+
+Two consumers touch the character. The WHERE YOU ARE line, above. And world-beat memory
+implantation: a `"scene"`-scoped beat's memory is skipped for a `remote` character
+(`engine/scene-loop.ts`); a `"world"`-scoped beat implants regardless of presence. `partial`
+having no consumer is deliberate: it must not become a silent "can perceive whatever is
+narratively convenient".
 
 ### What it is never shown
 
@@ -181,7 +204,10 @@ author confirmed it.
 The situation is the only channel into a character, which is why every situation-entry path — the
 writer's first ask, a fan-out's shared text, a judge's `revised` — passes the same gate
 (`normalizeConsult`): a situation phrased around a sense its addressee has lost is refused, because
-ground truth a character cannot have is exactly what a situation must not be. One character's
+ground truth a character cannot have is exactly what a situation must not be. The same gate reads
+presence: a `remote` addressee is refused a situation phrased around a sense their position rules
+out (`cause: "presence"` rather than the CANNOT wording), and a `remote` reactor in a fan-out is
+refused the shared room-perspective situation unless the writer gives them their own override. One character's
 answer never becomes part of another's situation: the second one asked blind, and a fan-out's
 shared text may only hold facts that predate every answer in the beat. When a consult is refused,
 the character is never sent anything — the refusal is a message to the writer, and the character

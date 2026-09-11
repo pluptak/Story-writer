@@ -408,10 +408,12 @@ GET /cast?dir=...  → { ok:true, characters[], scenes[] }
 
 Available while a run is in flight (the live rail needs it exactly then). Each character carries
 `name`, `persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `origin`, `skills` (as `{text, meaning}`),
-and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants as
-`{ n: number, reach: { NAME: ["thing :: what they can do through it"] } }`. **Reach never merges into
-a character's `skills`** ([Architect.MD](Architect.MD) I4): the GUI labels each grant with its scene,
-so it can never read as intrinsic.
+and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants and presence
+positions as `{ n: number, reach: { NAME: ["thing :: what they can do through it"] },
+presence: { NAME: "remote :: the via" } }` — the raw `SceneDef` maps, carried exactly. **Neither
+ever merges into a character** ([Architect.MD](Architect.MD) I4): the GUI labels each grant and each
+position with its scene, so neither can ever read as intrinsic. A character with no entry in a
+scene's `presence` is "here", the unmarked default — the GUI renders no chip for that.
 
 ## Run control
 

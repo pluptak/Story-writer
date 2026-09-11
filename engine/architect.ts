@@ -965,7 +965,7 @@ export class NextChapterSession {
                *  its beat_<n> index rather than as text to fuzzy-match against the ledger. */
               public stranded: P.HandoffBeat[] = [],
               /** Beats that fired into a written chapter, resolved the same way, for the architect
-               *  to judge possible/questionLive on (its beat_checks reply). */
+               *  to judge possible/questionLive/landed on (its beat_checks reply). */
               public firedBeats: P.HandoffBeat[] = [],
               /** Mechanical voids the repair entity already decided (spent beats): applied silently
                *  via applyEdits at the top of propose(), before the prompt is built, so they show
@@ -1005,20 +1005,22 @@ export class NextChapterSession {
 
   /** Route the architect's fired-beat judgment into the repair entity. The architect already
    *  reads every chapter's full prose, so its one-shot reply also judges fired beats — since a
-   *  contradicted beat can then be caught (revise), not just a stranded one.
+   *  contradicted beat can then be caught (revise), not just a stranded one, and a beat that
+   *  fired without landing can be re-armed (escalate).
    *
-   *  The blindness invariant stays intact: only the two booleans (possible/questionLive) cross
-   *  into adjudicateBeat; the why string stays a human-facing string in flags and never reaches
-   *  the repair entity's parameters. On revise(contradicted) with no matching edit in the same
-   *  round's edits (the model did not author the replacement itself), an advisory string goes
-   *  onto the existing flags channel — no new ScaffoldRound kind. none needs no action. */
+   *  The blindness invariant stays intact: only the booleans (possible/questionLive, plus landed
+   *  when the architect judged it) cross into adjudicateBeat; the why string stays a human-facing
+   *  string in flags and never reaches the repair entity's parameters. On revise(contradicted)
+   *  or escalate(unlanded) with no matching edit in the same round's edits (the model did not
+   *  author the replacement itself), an advisory string goes onto the existing flags channel —
+   *  no new ScaffoldRound kind. none needs no action. */
   private routeBeatChecks(out: Record<string, any>, edits: any[]): { flags: string[]; ignored: string[] } {
     const flags: string[] = [];
     const ignored: string[] = [];
     const checks = (out as { beat_checks?: unknown }).beat_checks;
     if (checks === undefined) return { flags, ignored };
     if (!Array.isArray(checks)) {
-      ignored.push(`beat_checks — expected a list of {"beat", "possible", "questionLive"} judgments`);
+      ignored.push(`beat_checks — expected a list of {"beat", "possible", "questionLive", "landed?"} judgments`);
       return { flags, ignored };
     }
     for (const check of checks) {
@@ -1034,20 +1036,34 @@ export class NextChapterSession {
         ignored.push(`beat_checks beat ${beatNum} — "possible" and "questionLive" must both be true/false`);
         continue;
       }
+      // Three-state: true/false when the architect can tell, absent/null when it cannot.
+      // Anything else is not a verdict — note it and fall back to awaiting-check, never to false.
+      let landed: boolean | null = null;
+      if (c.landed !== undefined && c.landed !== null) {
+        if (typeof c.landed !== "boolean")
+          ignored.push(`beat_checks beat ${beatNum} — "landed" must be true/false when given; treating it as unchecked`);
+        else landed = c.landed;
+      }
       const repair = adjudicateBeat(beatDef, {
-        fired: true, landed: null, ended: true,
+        fired: true, landed, ended: true,
         possible: c.possible, questionLive: c.questionLive,
       });
-      if (repair.op !== "revise") continue;
+      if (repair.op !== "revise" && repair.op !== "escalate") continue;
       const authored = edits.some(e => {
         const m = canonicalField(String(e?.field ?? "").trim()).match(/^beat_(\d+)\.(hold|fired|memories)$/);
         return m !== null && Number(m[1]) === beatNum;
       });
       if (authored) continue;
       const why = String(c.why ?? "").trim();
-      flags.push(`beat ${beatNum} (chapter ${candidate.chapter}) fired as "${candidate.text}" but what was `
-        + `written contradicts it while its question is still live${why ? ` — ${why}` : ""} — re-author its `
-        + `hold/fired/memories for the same obligation through a different route, or say how it landed.`);
+      if (repair.op === "revise") {
+        flags.push(`beat ${beatNum} (chapter ${candidate.chapter}) fired as "${candidate.text}" but what was `
+          + `written contradicts it while its question is still live${why ? ` — ${why}` : ""} — re-author its `
+          + `hold/fired/memories for the same obligation through a different route, or say how it landed.`);
+        continue;
+      }
+      flags.push(`beat ${beatNum} (chapter ${candidate.chapter}) fired as "${candidate.text}" but changed `
+        + `nothing on the page — still possible, question still live${why ? ` — ${why}` : ""} — re-arm the `
+        + `same beat with more force; the rewording is the handoff's to author.`);
     }
     return { flags, ignored };
   }

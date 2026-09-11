@@ -897,10 +897,17 @@ is the one thing that does nothing: a beat aimed at a written chapter can never 
 Its memories go with it either way; they are the beat's, not the chapter's.
 ` : ""}${fired.length ? `
 [FIRED WORLD EVENTS TO CHECK]
-For each, say whether it's still possible (not contradicted by what was actually written) and
-whether the question it served is still live (open) or settled by what happened. Judge only the
+For each, say whether it's still possible (not contradicted by what was actually written),
+whether the question it served is still live (open) or settled by what happened, and whether
+it landed. Judge only the
 beats listed.
 ${fired.map(f => `  - beat ${f.beatIndex} (chapter ${f.chapter}, fired at ${f.at} of the way in): "${f.text}"`).join("\n")}
+
+"landed" is a three-state judgement: true when the beat reached the page as established fact,
+false when it was written but changed nothing -- background scenery the story stepped around --
+and omitted when you cannot tell. "The beat was written" is not the same as "the beat changed
+the story": ask whether anything in the chapter is different because the beat happened. Omit
+the field rather than guess.
 
 If a beat is contradicted (possible: false) and its question is still live, also author its
 replacement in THIS reply's edits: beat_<n>.hold / beat_<n>.fired / beat_<n>.memories for the same
@@ -924,13 +931,15 @@ an edit: surface the observation for the author to resolve instead.
 
 Reply with edits only, and nothing else:
 
-{"edits": [{"field": "characters.NAME.goal", "value": "..."}],
- "beat_checks": [{"beat": 5, "possible": true, "questionLive": true, "why": "..."}],
- "flags": [], "ask": "", "note": ""}
+ {"edits": [{"field": "characters.NAME.goal", "value": "..."}],
+  "beat_checks": [{"beat": 5, "possible": true, "questionLive": true, "landed": true, "why": "..."}],
+  "flags": [], "ask": "", "note": ""}
 
 "beat_checks" carries one entry per fired beat listed above --
 "beat" is its beat number, "possible" whether it is contradicted by what was actually written,
-"questionLive" whether the question it served is still live or settled by what happened, "why"
+"questionLive" whether the question it served is still live or settled by what happened,
+"landed" whether the fired beat reached the page as established fact (true/false, or omit it
+when you cannot tell -- never guess), "why"
 one line for the author. Omit it (or send []) when no fired beats are listed.
 
   title · premise · writer_style

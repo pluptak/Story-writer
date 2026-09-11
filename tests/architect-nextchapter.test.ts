@@ -505,6 +505,13 @@ describe("fired world events in the handoff", () => {
   it("carries beat_checks in the reply schema", () => {
     const t = P.architectNextChapter("A depot.", "{}", CH, [], fired);
     assert.match(t, /"beat_checks": \[\{"beat": 5, "possible": true, "questionLive": true/);
+    assert.match(t, /"landed": true/);
+  });
+
+  it("asks whether the beat changed the story, and to omit rather than guess", () => {
+    const t = P.architectNextChapter("A depot.", "{}", CH, [], fired);
+    assert.match(t, /"The beat was written" is not the same as "the beat changed/);
+    assert.match(t, /Omit\nthe field rather than guess/);
   });
 
   it("says nothing at all when no beat fired", () => {
@@ -641,6 +648,79 @@ describe("fired-beat judgment", () => {
     assert.deepEqual((r as { flags: string[] }).flags, []);
     assert.match((r as { ignored: string[] }).ignored.join("\n"), /beat_checks beat 9 — no such fired beat/);
     assert.match((r as { ignored: string[] }).ignored.join("\n"), /beat_checks beat 1 — "possible" and "questionLive"/);
+  });
+
+  it("flags an unlanded live beat the reply did not re-arm", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 1, possible: true, questionLive: true, landed: false,
+        why: "the alarm stayed a background chime" }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    const flags = (r as { flags: string[] }).flags;
+    assert.equal(flags.length, 1, "exactly one escalate flag");
+    assert.match(flags.join("\n"), /beat 1 \(chapter 1\) fired as "The alarm sounds\."/);
+    assert.match(flags.join("\n"), /changed nothing on the page/);
+    assert.match(flags.join("\n"), /more force/);
+    assert.match(flags.join("\n"), /the alarm stayed a background chime/);
+  });
+
+  it("stays quiet when the same round already re-armed the unlanded beat", async () => {
+    const s = session([
+      { edits: [{ field: "beat_1.fired", value: "The alarm shrieks through a broken grille." }],
+        beat_checks: [{ beat: 1, possible: true, questionLive: true, landed: false }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, [], "the model did its job — nothing to escalate");
+  });
+
+  it("a landed beat raises nothing", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 1, possible: true, questionLive: true, landed: true }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, []);
+    assert.deepEqual((r as { ignored: string[] }).ignored, []);
+  });
+
+  it("an omitted landed reads as awaiting-check, never escalation", async () => {
+    // The removed mechanical check's defect, pinned: a beat awaiting its check is not a beat
+    // that failed one, so no verdict on landing must never re-arm the beat.
+    for (const check of [{ beat: 1, possible: true, questionLive: true },
+                         { beat: 1, possible: true, questionLive: true, landed: null }]) {
+      const s = session([{ edits: [], beat_checks: [check] }, { edits: [] }, { edits: [] }]);
+      const r = await quiet(() => s.propose());
+      assert.equal(r.kind, "edits");
+      assert.deepEqual((r as { flags: string[] }).flags, []);
+      assert.deepEqual((r as { ignored: string[] }).ignored, []);
+    }
+  });
+
+  it("a non-boolean landed lands on ignored and still adjudicates as awaiting-check", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 1, possible: true, questionLive: true, landed: "yes" }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, [], "awaiting-check escalates nothing");
+    assert.match((r as { ignored: string[] }).ignored.join("\n"), /beat_checks beat 1 — "landed" must be true\/false/);
+  });
+
+  it("a settled question retires an unlanded beat rather than escalating it", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 1, possible: true, questionLive: false, landed: false }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, []);
+    assert.deepEqual((r as { ignored: string[] }).ignored, []);
   });
 });
 

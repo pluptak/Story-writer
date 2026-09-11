@@ -318,10 +318,17 @@ number — because with no fired record a beat that may already be prose must ne
 **Fired world events.** The same round also judges beats that fired into a written chapter: a
 `[FIRED WORLD EVENTS TO CHECK]` block names each with its beat number, and the reply carries one
 `beat_checks` entry per beat — whether it is still possible (not contradicted by what was
-actually written) and whether its question is still live. A contradicted beat with a live
-question the reply did not already re-author (`beat_<n>.hold`/`.fired`/`.memories` in the same
-round) comes back as an advisory flag for the author, not a silent pass. Only the two booleans
-ever reach the repair entity; the `why` stays a human-facing string in flags.
+actually written), whether its question is still live, and whether it landed: true when the beat
+reached the page as established fact, false when it was written but changed nothing, omitted
+when the architect cannot tell. "Written" is not "landed" — the judgement is whether anything in
+the chapter is different because the beat happened, and the prompt says to omit rather than
+guess. A contradicted beat with a live question the reply did not already re-author
+(`beat_<n>.hold`/`.fired`/`.memories` in the same round) comes back as an advisory flag for the
+author, not a silent pass; an unlanded-but-possible beat with a live question the reply did not
+already re-arm comes back the same way — re-arm the same beat with more force, the rewording the
+handoff's to author. Only the booleans ever reach the repair entity; the `why` stays a
+human-facing string in flags. An omitted or malformed `landed` reads as awaiting-check, never as
+failure: a beat awaiting its check is not a beat that failed one.
 
 ### Edit surface
 

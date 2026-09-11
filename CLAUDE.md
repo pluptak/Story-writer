@@ -90,7 +90,9 @@ re-authors the cast for the next one ([Architect.MD](docs/Architect.MD)). The ne
 handoff are browser-only; passing their old console flags (`--new`, `--oneshot`, `--idea`,
 `--next-chapter`) is rejected with a pointer at `--serve`. `--headless` starts the server alone — no
 story argument, no console picker, no one-shot — with the browser driving from the shelf and Ctrl-C
-stopping any run in flight gracefully before exit.
+stopping any run in flight gracefully before exit. `--open-consult` (beside `--consult` on the
+same console entry point) is a CLI-only prototype: a freetext pressure-test chat with one
+character fork that leaves the gated consult path untouched.
 
 Requires a **local inference server** with the story's models loaded: **LM Studio** by default at
 `http://localhost:1234/v1`, with the **Ollama** and **llama.cpp** adapters also built in. Selection is
@@ -153,12 +155,13 @@ way.**
 | [engine/preflight.ts](engine/preflight.ts) | checking a story loads and its models are available; the story-card listing |
 | [engine/run-gate.ts](engine/run-gate.ts) | the startup gate between a picked story and its run: refuse when the provider is unreachable, its catalog is empty, or a wanted model is unknown to it, warn when a model exists but is not loaded, start anyway when the provider stands but its list cannot be read |
 | [engine/consult.ts](engine/consult.ts) | the writer↔character consult protocol |
+| [engine/open-consult.ts](engine/open-consult.ts) | the `--open-consult` prototype: a CLI-only freetext pressure-test chat with one character fork, gated path untouched |
 | [engine/judge-gate.ts](engine/judge-gate.ts) | the per-answer gate's attempt cycle — consult, judge, retry on a fresh fork, ceiling — extracted from the scene loop |
 | [engine/fanout.ts](engine/fanout.ts) | the reaction fan-out — one shared beat, isolated per-reactor consults, the writer's bundle, and the batch judge's promotable flags |
 | [engine/narration-lint.ts](engine/narration-lint.ts) | the three checks on a drafted piece run alongside each other — quotation, restricted sense, and the narration judge's read |
 | [engine/architect.ts](engine/architect.ts) | building the architect agent, the interactive story-building conversation, and the between-chapters handoff that re-authors the cast |
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
-| [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, internal, architect, consult, writer, judge, clarify, catalog-assist), which match one engine caller each |
+| [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, internal, architect, consult, writer, judge, clarify, catalog-assist, open-consult), which match one engine caller each |
 | [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: static files (from `server/gui/`), SSE, and dispatch to the route modules |
 | [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
 | [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side: wire validation and dispatch to `ServerHost.scaffold*()`, nothing else — it never touches a `ScaffoldSession` |

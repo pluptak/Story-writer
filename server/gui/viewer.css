@@ -1003,6 +1003,9 @@
   .charcard .cast-tags .yes { font-family:var(--mono); font-size:var(--fs-10); color:var(--good); }
   .charcard .cast-tags .no { font-family:var(--mono); font-size:var(--fs-10); color:var(--bad); }
   .charcard .cast-tags .reach { font-family:var(--mono); font-size:var(--fs-10); color:var(--accent); }
+  /* presence is a position, not a grant: the same mono tag shape, but the muted voice -- never
+     the accent a capability wears, never the good/bad a skill/restriction wears. */
+  .charcard .cast-tags .presence { font-family:var(--mono); font-size:var(--fs-10); color:var(--muted); }
   .charcard .cast-voice { font-size:var(--fs-13); color:var(--muted); font-style:italic; margin:3px 0 0; line-height:1.45; }
 
   .compare-panes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }

@@ -745,9 +745,11 @@ export const HOST: ServerHost = {
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
       })),
-      // Reach stays per scene and never merges into a character's skills (I4): the GUI labels it
-      // with the scene it comes from so it can never read as intrinsic.
-      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {} })),
+      // Reach and presence stay per scene and never merge into a character's skills or any
+      // other character-level field (I4): the GUI labels each with the scene it comes from so
+      // neither can ever read as intrinsic. A missing presence entry means "here", the unmarked
+      // default, and travels as absence — never as a "here" value.
+      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {}, presence: s.presence ?? {} })),
     };
   },
   checkStory: (story) => {

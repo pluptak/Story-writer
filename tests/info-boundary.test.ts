@@ -155,6 +155,15 @@ describe("6. the mechanism generates no inference for the character", () => {
     assert.doesNotMatch(json, INFERENCE_WORDS);
     assert.ok(!json.includes("fault alarm sounds"));
   });
+
+  it("an escalate repair carries causes, never inference words or beat prose", () => {
+    const repair = adjudicateBeat(beat(),
+      { fired: true, landed: false, possible: true, questionLive: true, ended: true });
+    assert.deepEqual(repair, { op: "escalate", cause: "unlanded" });
+    const json = JSON.stringify(repair);
+    assert.doesNotMatch(json, INFERENCE_WORDS);
+    assert.ok(!json.includes("fault alarm sounds"));
+  });
 });
 
 describe("7. an unexpected character choice remains valid", () => {
