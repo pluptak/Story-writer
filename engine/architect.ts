@@ -1049,21 +1049,22 @@ export class NextChapterSession {
         possible: c.possible, questionLive: c.questionLive,
       });
       if (repair.op !== "revise" && repair.op !== "escalate") continue;
-      const authored = edits.some(e => {
-        const m = canonicalField(String(e?.field ?? "").trim()).match(/^beat_(\d+)\.(hold|fired|memories)$/);
+      const reaimed = edits.some(e => {
+        const m = canonicalField(String(e?.field ?? "").trim()).match(/^beat_(\d+)\.chapter$/);
         return m !== null && Number(m[1]) === beatNum;
       });
-      if (authored) continue;
+      if (reaimed) continue;
       const why = String(c.why ?? "").trim();
       if (repair.op === "revise") {
         flags.push(`beat ${beatNum} (chapter ${candidate.chapter}) fired as "${candidate.text}" but what was `
           + `written contradicts it while its question is still live${why ? ` — ${why}` : ""} — re-author its `
-          + `hold/fired/memories for the same obligation through a different route, or say how it landed.`);
+          + `hold/fired/memories for the same obligation through a different route and re-aim it with `
+          + `beat_${beatNum}.chapter at the chapter being opened, since a beat aimed at a written chapter can never fire, or say how it landed.`);
         continue;
       }
       flags.push(`beat ${beatNum} (chapter ${candidate.chapter}) fired as "${candidate.text}" but changed `
         + `nothing on the page — still possible, question still live${why ? ` — ${why}` : ""} — re-arm the `
-        + `same beat with more force; the rewording is the handoff's to author.`);
+        + `same beat with stronger hold/fired/memories wording and re-aim it with beat_${beatNum}.chapter at the chapter being opened, since a beat aimed at a written chapter can never fire.`);
     }
     return { flags, ignored };
   }

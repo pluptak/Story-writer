@@ -15,6 +15,8 @@ import * as P from "../prompts.ts";
 import { ScaffoldSession, NextChapterSession, openNextChapter, suggestEdits, buildArchitect } from "../engine/architect.ts";
 import { architectNextChapter } from "../prompts.ts";
 import { Agent } from "../engine/agent.ts";
+import { TimelineDef } from "../engine/story-schema.ts";
+import { timelineTurn } from "../engine/world-timeline.ts";
 import { quiet, quietSync, ScriptedAgent } from "./helpers.ts";
 
 // -- SCAFFOLD SUPPORT -------------------------------------------------------
@@ -615,7 +617,7 @@ describe("fired-beat judgment", () => {
     assert.match((r as { flags: string[] }).flags.join("\n"), /the door was sealed shut/);
   });
 
-  it("stays quiet when the same round already authored the replacement", async () => {
+  it("still flags when the same round reworded without re-aiming the replacement", async () => {
     const s = session([
       { edits: [{ field: "beat_1.fired", value: "The alarm shrieks through a broken grille." }],
         beat_checks: [{ beat: 1, possible: false, questionLive: true, why: "the door was sealed shut" }] },
@@ -623,7 +625,34 @@ describe("fired-beat judgment", () => {
     ]);
     const r = await quiet(() => s.propose());
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { flags: string[] }).flags, [], "the model did its job — nothing to escalate");
+    const flags = (r as { flags: string[] }).flags;
+    assert.equal(flags.length, 1, "rewording without beat_1.chapter leaves the beat dead — still flag");
+    assert.match(flags.join("\n"), /beat_1\.chapter/);
+  });
+
+  it("stays quiet when the same round re-aimed the replacement at the chapter being opened", async () => {
+    const s = session([
+      { edits: [{ field: "beat_1.chapter", value: 2 },
+                { field: "beat_1.fired", value: "The alarm shrieks through a broken grille." }],
+        beat_checks: [{ beat: 1, possible: false, questionLive: true, why: "the door was sealed shut" }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, [], "the re-aim is what suppresses the flag");
+  });
+
+  it("names the re-aim on the revise flag", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 1, possible: false, questionLive: true, why: "the door was sealed shut" }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    const flags = (r as { flags: string[] }).flags;
+    assert.equal(flags.length, 1);
+    assert.match(flags.join("\n"), /beat_1\.chapter/);
+    assert.match(flags.join("\n"), /can never fire/);
   });
 
   it("takes no action when the beat is uncontradicted or its question settled", async () => {
@@ -662,11 +691,11 @@ describe("fired-beat judgment", () => {
     assert.equal(flags.length, 1, "exactly one escalate flag");
     assert.match(flags.join("\n"), /beat 1 \(chapter 1\) fired as "The alarm sounds\."/);
     assert.match(flags.join("\n"), /changed nothing on the page/);
-    assert.match(flags.join("\n"), /more force/);
+    assert.match(flags.join("\n"), /stronger hold\/fired\/memories wording/);
     assert.match(flags.join("\n"), /the alarm stayed a background chime/);
   });
 
-  it("stays quiet when the same round already re-armed the unlanded beat", async () => {
+  it("still flags when the same round reworded the unlanded beat without re-aiming", async () => {
     const s = session([
       { edits: [{ field: "beat_1.fired", value: "The alarm shrieks through a broken grille." }],
         beat_checks: [{ beat: 1, possible: true, questionLive: true, landed: false }] },
@@ -674,7 +703,34 @@ describe("fired-beat judgment", () => {
     ]);
     const r = await quiet(() => s.propose());
     assert.equal(r.kind, "edits");
-    assert.deepEqual((r as { flags: string[] }).flags, [], "the model did its job — nothing to escalate");
+    const flags = (r as { flags: string[] }).flags;
+    assert.equal(flags.length, 1, "rewording without beat_1.chapter leaves the beat dead — still flag");
+    assert.match(flags.join("\n"), /beat_1\.chapter/);
+  });
+
+  it("stays quiet when the same round re-aimed the unlanded beat at the chapter being opened", async () => {
+    const s = session([
+      { edits: [{ field: "beat_1.chapter", value: 2 }],
+        beat_checks: [{ beat: 1, possible: true, questionLive: true, landed: false }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.deepEqual((r as { flags: string[] }).flags, [], "the re-aim is what suppresses the flag");
+  });
+
+  it("names the re-aim on the escalate flag", async () => {
+    const s = session([
+      { edits: [], beat_checks: [{ beat: 1, possible: true, questionLive: true, landed: false,
+        why: "the alarm stayed a background chime" }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    const flags = (r as { flags: string[] }).flags;
+    assert.equal(flags.length, 1);
+    assert.match(flags.join("\n"), /beat_1\.chapter/);
+    assert.match(flags.join("\n"), /can never fire/);
   });
 
   it("a landed beat raises nothing", async () => {
@@ -721,6 +777,20 @@ describe("fired-beat judgment", () => {
     assert.equal(r.kind, "edits");
     assert.deepEqual((r as { flags: string[] }).flags, []);
     assert.deepEqual((r as { ignored: string[] }).ignored, []);
+  });
+
+  it("a reworded beat still aimed at a written chapter never fires in the next one", () => {
+    // The rule both flags rest on, with no architect involved: timelineTurn filters on
+    // b.chapter === chapter, so only a chapter re-aim fires the beat again.
+    const reworded = TimelineDef.parse({
+      chapter: 1, hold: "the panel going into alarm",
+      fired: "The alarm shrieks through a broken grille.", at: 0.45,
+    });
+    assert.equal(timelineTurn([reworded], 2, 700, 700, new Set()).fired, null,
+      "new wording, old chapter — dead");
+    const reaimed = TimelineDef.parse({ ...reworded, chapter: 2 });
+    assert.equal(timelineTurn([reaimed], 2, 700, 700, new Set()).fired, reaimed,
+      "the chapter re-aim is what fires it");
   });
 });
 

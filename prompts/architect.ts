@@ -911,7 +911,13 @@ the field rather than guess.
 
 If a beat is contradicted (possible: false) and its question is still live, also author its
 replacement in THIS reply's edits: beat_<n>.hold / beat_<n>.fired / beat_<n>.memories for the same
-obligation through a different route. The beat number above IS the <n>.
+obligation through a different route, AND beat_<n>.chapter aimed at chapter ${next} -- a beat aimed
+at a written chapter can never fire, so rewording alone leaves it dead. The beat number above IS
+the <n>.
+If a beat fired but changed nothing (landed: false) and its question is still live, re-arm it in
+THIS reply's edits with stronger wording -- beat_<n>.hold / beat_<n>.fired / beat_<n>.memories with
+more force -- AND beat_<n>.chapter aimed at chapter ${next}, for the same reason: a beat aimed at a
+written chapter can never fire.
 ` : ""}
 CHAPTER ${next} ITSELF. If the story above already defines a scene ${next}, re-author it in place with
 scene_${next}.place / .question / .pov / .length / .roster -- it was sketched before chapter ${last}
