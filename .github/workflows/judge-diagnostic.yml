@@ -1,0 +1,115 @@
+# JUDGE DIAGNOSTIC (dev, manual) — a temporary stand-in for a local LM Studio run, for use only
+# while the owner is away from a machine that has one. Never auto-triggered: workflow_dispatch
+# only, exactly like a live run is the owner's to start. Routes scripts/judge-diagnostic.ts at a
+# hosted OpenAI-compatible provider instead of a local server — the engine's `llamacpp` adapter is
+# the right shape for this (engine/provider-llamacpp.ts: no native model-state API, so nothing here
+# needs LM Studio- or Ollama-specific introspection; engine/provider-util.ts's authHeaders() sends
+# LLM_API_KEY as a bearer token, which is the scheme OpenRouter and most hosted providers use).
+#
+# The model run here is NOT the story's own model (google/gemma-4-e4b, local-only) — it is
+# whatever `model` names below, so these numbers are not comparable to docs/PLANS.md's tables, the
+# same caveat that already applies to that doc's seven-model cross-comparison. What this validates
+# is that the --cannot-* arms move a real model's behaviour in the intended direction, and it
+# leaves a working harness ready for the moment a real LM Studio run is possible again.
+#
+
+# Requires a repository secret named OPENROUTER_API_KEY (Settings -> Secrets and variables ->
+# Actions -> New repository secret). Nothing runs without it.
+
+name: Judge diagnostic (dev, manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: >-
+          Model id on OpenRouter. This default is a guess and may be stale or non-free by the
+          time you run this -- check https://openrouter.ai/models and override if so. A
+          non-":free" model bills your OpenRouter account per token.
+        required: true
+        default: "google/gemma-2-9b-it:free"
+      samples:
+        description: "Samples per case. Kept low by default for a first, cheap pass -- raise it once you've seen one run's cost/latency."
+        required: true
+        default: "5"
+      story:
+        description: "Story dir the cast is loaded from."
+        required: true
+        default: "tests/fixtures/doorway"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # cast mode: never touches judgeRequest, so --cannot-testimony has no effect here --
+          # left out of these three legs rather than run for nothing.
+          - name: baseline-cast
+            mode: cast
+            flags: ""
+          - name: cannot-meaning
+            mode: cast
+            flags: "--cannot-meaning"
+          - name: cannot-meaning-none
+            mode: cast
+            flags: "--cannot-meaning --cannot-none"
+          # verdict mode: where --cannot-testimony actually renders. --cannot-none included in the
+          # testimony leg too, since it is RIVEN (no restrictions) that Finding 1 is about, and
+          # --cannot-testimony only states that when --cannot-none is also on.
+          - name: baseline-verdict
+            mode: verdict
+            flags: ""
+          - name: cannot-testimony
+            mode: verdict
+            flags: "--cannot-meaning --cannot-none --cannot-testimony"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci
+
+      - name: Run judge-diagnostic (${{ matrix.name }})
+        env:
+          LLM_PROVIDER: llamacpp
+          LLM_BASE_URL: https://openrouter.ai/api/v1
+          LLM_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is not set as a repository secret. Add it under Settings > Secrets and variables > Actions, then re-run."
+            exit 1
+          fi
+          npx tsx scripts/judge-diagnostic.ts \
+            --mode=${{ matrix.mode }} \
+            --model="${{ inputs.model }}" \
+            --samples=${{ inputs.samples }} \
+            --story=${{ inputs.story }} \
+            --out=result-${{ matrix.name }}.json \
+            ${{ matrix.flags }} \
+            2>&1 | tee output-${{ matrix.name }}.log
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## judge-diagnostic — ${{ matrix.name }}"
+            echo '```'
+            cat output-${{ matrix.name }}.log 2>/dev/null || echo "(no output captured -- see the step log above)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: judge-diagnostic-${{ matrix.name }}
+          path: |
+            result-${{ matrix.name }}.json
+            output-${{ matrix.name }}.log
+          if-no-files-found: warn
