@@ -11,11 +11,11 @@ import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 const DOORWAY = {
   title: "The Fog Signal",
   premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
-  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]> }],
+  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]>, presence: {} as Record<string, string> }],
   writerStyle: "Plain sentences.",
   writerStyleConstraints: [] as string[],
   facts: [] as string[],
-  timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
+  timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; scope: "scene" | "world"; state: "pending" | "fired" | "void" }[],
   characters: [
     { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: [] },
     { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: ["hearing"] },

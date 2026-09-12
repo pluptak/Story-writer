@@ -193,4 +193,27 @@ describe("startServer's handle", () => {
     await handle.close();
     liveHandles.splice(liveHandles.indexOf(handle), 1);
   });
+
+  it("/select refuses while the story-write lock is held, and keeps the pick", async () => {
+    resetLive();
+    const handle = startServer(0, noopHost);
+    liveHandles.push(handle);
+    await waitUntilListening(await handle.bound);
+    LIVE.awaitingPick = true;
+    LIVE.pickResolve = () => { throw new Error("the pick must not be consumed while locked"); };
+    LIVE.storyLock = "a chapter handoff is open for data/stories/doorway";
+    try {
+      const r = await fetch(`http://localhost:${await handle.bound}/select`,
+                            { method: "POST", headers: { "content-type": "application/json" },
+                              body: JSON.stringify({ dir: "data/stories/doorway" }) });
+      assert.equal(r.status, 409);
+      const body = (await r.json()) as { reason: string };
+      assert.equal(body.reason, "cannot pick while a chapter handoff is open for data/stories/doorway");
+      assert.equal(LIVE.awaitingPick, true, "the pick survives for a retry once the lock clears");
+    } finally {
+      LIVE.awaitingPick = false; LIVE.pickResolve = null; LIVE.storyLock = null;
+      await handle.close();
+      liveHandles.splice(liveHandles.indexOf(handle), 1);
+    }
+  });
 });

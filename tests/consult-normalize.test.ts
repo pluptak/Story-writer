@@ -5,8 +5,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  normalizeConsult, normalizeReactionConsult, parseVerdict, parseLintVerdict, parseBatchVerdict, parseClarifyAnswer, missingShape,
-  reviseConsult, consult, CONSULT_WANTS, type ConsultEvent, type ConsultRequest,
+  normalizeConsult, normalizeReactionConsult, parseVerdict, parseLintVerdict, parseBatchVerdict, parseClarifyAnswer, nonPovThoughtOnly,
+  reviseConsult, consult, type ConsultEvent, type ConsultRequest,
 } from "../engine/consult.ts";
 import * as P from "../prompts.ts";
 import { ScriptedAgent } from "./helpers.ts";
@@ -161,7 +161,7 @@ describe("reviseConsult", () => {
   it("keeps what the judge left out", () => {
     const r = reviseConsult(prev, { situation: moved, question: "Do you turn it, knowing what it wakes?" });
     assert.ok(r.ok);
-    assert.equal(r.req.wants, "decision", "an omitted field falls back, it does not blank");
+    assert.equal(r.req.wants, "decision", "the inert record is carried, never blanked");
     assert.equal(r.req.question, "Do you turn it, knowing what it wakes?");
   });
 
@@ -185,7 +185,7 @@ describe("reviseConsult", () => {
     assert.ok(r.ok);
     assert.match(r.req.situation, /corridor has gone quiet/);
     assert.equal(r.req.question, "Do you call out first?");
-    assert.equal(r.wantsRefused, "", "it kept the shape, so there is no drift to record");
+    assert.equal(r.wantsRefused, "", "wants is inert — nothing to record");
   });
 
   it("refuses a revision the front door would have refused", () => {
@@ -193,28 +193,28 @@ describe("reviseConsult", () => {
     // as a retry because the revision skipped the check.
     const r = reviseConsult(prev, { question: "What do you do?" });
     assert.ok(!r.ok);
-    assert.match(r.why, /fork|stake/);
+    assert.match(r.why, /contradiction|repair/);
   });
 
   it("refuses a revision that guts the situation", () => {
     assert.ok(!reviseConsult(prev, { situation: "It is dark." }).ok);
   });
 
-  // The judge may reframe a fork it asked badly. It may not turn one fork into another: "which way
-  // do you go" and "what do you say about it" are different moments, and a judge that answers an
-  // inconvenient reply by changing the shape has replaced the choice, not re-put it.
-  it("pins the shape asked for, and records the one the judge wanted", () => {
+  // The judge names no output shape any more. A `wants` arriving on a revision — from an
+  // older record, a paraphrase, or a hallucination — is carried as the inert record it is, never
+  // honored and never refused over: there is no shape to reframe and no drift to record.
+  it("ignores a shape the judge sends, keeping the inert record untouched", () => {
     const r = reviseConsult(prev, { situation: moved, question: "Do you turn it slowly now?", wants: "speech" });
     assert.ok(r.ok);
-    assert.equal(r.req.wants, "decision", "the original shape stands");
-    assert.equal(r.wantsRefused, "speech", "and what the judge asked for is on the record");
+    assert.equal(r.req.wants, "decision", "the original record stands");
+    assert.equal(r.wantsRefused, "", "and there is no drift to record any more");
   });
 
-  it("reads a reworded shape as the same shape, not as drift", () => {
+  it("reads a reworded shape as nothing at all, not as drift", () => {
     const r = reviseConsult({ ...prev, wants: "speech" }, { situation: moved, wants: "what they say" });
     assert.ok(r.ok);
     assert.equal(r.req.wants, "speech");
-    assert.equal(r.wantsRefused, "", "'what they say' canonicalizes to speech — nothing changed");
+    assert.equal(r.wantsRefused, "");
   });
 
   it("treats an unreadable wants as the judge not naming one", () => {
@@ -256,66 +256,50 @@ describe("reviseConsult", () => {
   });
 });
 
-// -- THE SHAPE THAT WAS ASKED FOR -----------------------------------------
-describe("missingShape", () => {
-  it("holds each shape to what it asked for", () => {
-    assert.equal(missingShape("speech", { speech: "", action: "I turn away." }), "speech");
-    assert.equal(missingShape("action", { speech: "Not tonight.", action: "" }), "action");
-    assert.equal(missingShape("decision", { speech: "", action: "" }), "decision");
+// -- THE ONLY SHAPE FLOOR LEFT ---------------------------------------------
+describe("nonPovThoughtOnly", () => {
+  it("accepts every shape of answer from inside the point of view", () => {
+    // No output shape is dictated any more: a thought alone, a line, a deed — all valid.
+    assert.equal(nonPovThoughtOnly({ speech: "", action: "" }, true), null);
+    assert.equal(nonPovThoughtOnly({ speech: "Not tonight.", action: "" }, true), null);
+    assert.equal(nonPovThoughtOnly({ speech: "", action: "I turn away." }, true), null);
   });
 
-  it("is satisfied by the thing it asked for", () => {
-    assert.equal(missingShape("speech", { speech: "Not tonight.", action: "" }), null);
-    assert.equal(missingShape("action", { speech: "", action: "I turn away." }), null);
-    assert.equal(missingShape("decision", { speech: "I stay.", action: "" }), null);
-    assert.equal(missingShape("decision", { speech: "", action: "I stay put." }), null);
+  it("accepts a line or a deed from anyone, whatever was once wanted", () => {
+    assert.equal(nonPovThoughtOnly({ speech: "Who's there?", action: "" }, false), null);
+    assert.equal(nonPovThoughtOnly({ speech: "", action: "goes still" }, false), null);
   });
 
-  it("lets a reaction be answered by a thought alone, from inside the point of view", () => {
-    // The one shape that happens behind the eyes; holding it to speech or action would be wrong.
-    assert.equal(missingShape("reaction", { speech: "", action: "" }, true), null);
+  it("refuses only a thought kept behind the eyes of someone the scene is not written from", () => {
+    // Their thought never reaches the writer, so it is the same empty answer as nothing at all.
+    assert.equal(nonPovThoughtOnly({ speech: "", action: "" }, false), "reaction");
   });
 
-  it("makes anyone else's reaction reach the outside", () => {
-    // Their thought never reaches the writer, so a reaction kept behind their eyes is the same
-    // empty answer the other three shapes are refused for -- the ask would be spent on nothing.
-    assert.equal(missingShape("reaction", { speech: "", action: "" }, false), "reaction");
-    assert.equal(missingShape("reaction", { speech: "Who's there?", action: "" }, false), null);
-    assert.equal(missingShape("reaction", { speech: "", action: "goes still" }, false), null);
-  });
-
-  it("asks no more than the four shapes always did when the point of view is unknown", () => {
-    assert.equal(missingShape("reaction", { speech: "", action: "" }), null);
-    assert.equal(missingShape("", { speech: "", action: "" }), null);
-  });
-
-  it("holds an open beat to the same floor, since it names no shape of its own", () => {
-    // Stage 3 sends no `wants`, so the POV rule is all that is left -- and it is the same rule: a
-    // thought from outside the POV reaches the writer as if nothing at all was asked.
-    assert.equal(missingShape("", { speech: "", action: "" }, false), "reaction");
-    assert.equal(missingShape("", { speech: "I stay put.", action: "" }, false), null);
-    assert.equal(missingShape("", { speech: "", action: "goes still" }, false), null);
+  it("asks nothing when the point of view is unknown", () => {
+    assert.equal(nonPovThoughtOnly({ speech: "", action: "" }), null);
   });
 });
 
-describe("consult, on the shape it was asked for", () => {
+describe("consult, with no shape to hold it to", () => {
   const REQ: ConsultRequest = { character: "TESTER", situation: "s", question: "q", wants: "" };
-  const ask = (wants: ConsultRequest["wants"], script: string[]) => {
+  const ask = (wants: ConsultRequest["wants"], script: string[], pov = true) => {
     const events: ConsultEvent[] = [];
     const agent = new ScriptedAgent(script);
     return consult(agent, { ...REQ, wants }, {
       clarifications: 2, clarify: async () => "two paces", log: (e: ConsultEvent) => events.push(e),
+      pov,
     }).then(reply => ({ reply, events, agent }));
   };
 
-  it("re-asks a character that thought about it instead of answering", async () => {
+  it("accepts a thought-only answer outright — departing from the want breaks nothing", async () => {
+    // The case that tests whether the shape-dictation removal took: under the old missingShape
+    // this spent a repair; now the answer stands as given.
     const { reply, events, agent } = await ask("speech", [
       `{"thought":"I weigh it up.","speech":"","action":""}`,
-      `{"thought":"Enough.","speech":"Not tonight."}`,
     ]);
-    assert.equal(agent.calls, 2);
-    assert.equal(reply.speech, "Not tonight.");
-    assert.ok(events.some(e => e.t === "repair" && /asked for speech/.test(e.why)));
+    assert.equal(agent.calls, 1);
+    assert.equal(reply.thought, "I weigh it up.");
+    assert.ok(!events.some(e => e.t === "repair"));
   });
 
   it("does not re-ask a reaction that came back as a thought", async () => {
@@ -325,14 +309,82 @@ describe("consult, on the shape it was asked for", () => {
     assert.ok(!events.some(e => e.t === "repair"));
   });
 
-  it("still returns the short answer when the re-ask does not fix it", async () => {
-    // The caller decides what to do with it; consult's job is to have asked once more.
-    const { reply, events } = await ask("action", [
-      `{"thought":"I consider it."}`, `{"thought":"I am still considering it."}`,
+  it("still re-asks a thought kept behind the eyes of someone the scene is not written from", async () => {
+    const { reply, events, agent } = await ask("", [
+      `{"thought":"It lands like cold water."}`,
+      `{"thought":"It lands like cold water.","speech":"Who's there?"}`,
+    ], false);
+    assert.equal(agent.calls, 2);
+    assert.equal(reply.speech, "Who's there?");
+    assert.ok(events.some(e => e.t === "repair" && /behind their eyes/.test(e.why)));
+  });
+
+  it("still repairs a reply with nothing in it at all", async () => {
+    const { reply, events, agent } = await ask("", [
+      `{"thought":"","speech":"","action":""}`,
+      `{"thought":"Enough.","speech":"Not tonight."}`,
     ]);
-    assert.equal(reply.action, "");
-    assert.equal(missingShape("action", reply), "action");
-    assert.ok(events.some(e => e.t === "repair"));
+    assert.equal(agent.calls, 2);
+    assert.equal(reply.speech, "Not tonight.");
+    assert.ok(events.some(e => e.t === "repair" && /nothing usable/.test(e.why)));
+  });
+});
+
+// -- THE CONTRADICTION-ONLY DECISION PROCEDURE -------------------------------
+// Wording assertions (tests/consult-prompts.test.ts, "the retry template") pin what the judge is
+// told. These pin the mechanics behind each leg of the procedure — the parts checkable without a
+// model. The model-side half of each case (what a live judge actually verdicts) is the owner's
+// live A/B runs; the scenario for each is named in the comment.
+describe("the contradiction-only decision procedure", () => {
+  it("a departure that breaks nothing established is accepted — e.g. leaving when staying was expected", () => {
+    // Live: a character expected to stay instead leaves the room, with nothing on record saying
+    // they would not. The judge must ACCEPT; "wrong fork" is a not-ground, not a verdict.
+    assert.equal(nonPovThoughtOnly({ speech: "", action: "She walks out without a word." }, true), null);
+    assert.match(P.JUDGE_FORMAT, /only surprising, unwelcome, or odd\?\s+ACCEPT/);
+    assert.match(P.JUDGE_FORMAT, /the wrong fork/);
+  });
+
+  it("reaching through a CANNOT stays retry ground — e.g. magic against cannot: magic", () => {
+    // Live: the answer uses magic with cannot: magic on record. The judge must RETRY; I2 does not
+    // move, so the cast block and the absolute rule still reach the judge byte-identical.
+    const s = P.judgeSystem([{ name: "RIVEN", can: [], cannot: ["magic"] }]);
+    assert.match(s, /CANNOT: magic/);
+    assert.match(s, /A CANNOT is absolute/);
+    assert.match(P.JUDGE_FORMAT, /one of their CANNOTs\?\s+RETRY/);
+  });
+
+  it("unknowable knowledge stays retry ground — e.g. a fact nobody told them and they could not witness", () => {
+    // Live: the answer states a fact the character had no way to perceive or already hold. The
+    // judge must RETRY. No mechanical gate can see this — it is model-side — so the prompt leg is
+    // the whole checkable claim here.
+    assert.match(P.JUDGE_FORMAT, /no way to perceive or already hold\?\s+RETRY/);
+  });
+
+  it("reaching outside a listed skill but not a CANNOT is accepted — the fence-removal check", () => {
+    // Live: no lockpicking skill on the list, but the character tries the lock anyway. The judge
+    // must ACCEPT. This is the case that actually tests whether the skill-fence removal took: the
+    // floor function takes only the reply and the POV — no skill list, no wants — so no skill can
+    // fail it, and the judge is told outright that an unlisted skill is not a ground.
+    assert.equal(nonPovThoughtOnly.length, 1, "reply and POV only: nothing to consult a skill list with");
+    assert.equal(nonPovThoughtOnly({ speech: "", action: "She works the lock with a bent pin, slowly." }, true), null);
+    assert.match(P.JUDGE_FORMAT, /outside a listed skill/);
+  });
+
+  it("a natural-reading inference needs no need and no note — e.g. the coat hanging nearby in the rain", async () => {
+    // Live: rain outside, a coat hanging nearby, the character takes it and goes without asking
+    // need for it. The ask-first default is gone (Block A), and the only floor left accepts the
+    // deed: no clarification is spent and no repair fires.
+    const events: ConsultEvent[] = [];
+    const agent = new ScriptedAgent([
+      `{"thought":"Rain. That coat will do.","speech":"","action":"She takes the hanging coat and steps out into the rain."}`,
+    ]);
+    const reply = await consult(agent,
+      { character: "TESTER", situation: "Rain hammers the windows; a coat hangs by the door.", question: "q", wants: "" },
+      { clarifications: 2, clarify: async () => "two paces", log: (e: ConsultEvent) => events.push(e) });
+    assert.equal(agent.calls, 1);
+    assert.equal(reply.action, "She takes the hanging coat and steps out into the rain.");
+    assert.equal(reply.note, "");
+    assert.ok(!events.some(e => e.t === "need" || e.t === "repair"));
   });
 });
 
@@ -349,12 +401,12 @@ describe("parseClarifyAnswer", () => {
 });
 
 describe("normalizeConsult, the judge's directed ask", () => {
-  // Stage 3 did not remove the question gates; it narrowed them to the one path that still carries
-  // a question — the judge escalating an open beat into a named fork.
+  // The directed door still carries a question — the judge's internal record of the contradiction
+  // it is repairing — but no longer any output shape: wants is an inert record, never a refusal.
   const good = { character: "RIVEN", situation: "You are kneeling by the steel service door, wrench in the cylinder.",
                  question: "Do you turn it now?", wants: "decision" };
 
-  it("passes a real consult through, canonicalizing wants", () => {
+  it("passes a real consult through, carrying wants as an inert record", () => {
     const r = normalizeConsult({ ...good, wants: "what they decide" }, undefined, "directed");
     assert.ok(r.ok);
     assert.equal(r.req.wants, "decision");
@@ -385,11 +437,11 @@ describe("normalizeConsult, the judge's directed ask", () => {
                      "What do you decide to do with the current snag?"]) {
       const r = normalizeConsult({ ...good, question: q }, undefined, "directed");
       assert.ok(!r.ok, `"${q}" should have been refused`);
-      assert.match(r.why, /fork|stake/);
+      assert.match(r.why, /contradiction|repair/);
     }
   });
 
-  it("keeps the questions that name a fork or a cost", () => {
+  it("keeps the questions that name a contradiction and its repair", () => {
     for (const q of ["Do you type the abort command?",
                      "Do you wake him, knowing what the noise wakes with it?",
                      "Do you shift to get more comfortable?",
@@ -419,14 +471,21 @@ describe("normalizeConsult, the judge's directed ask", () => {
     assert.ok(r.ok);
   });
 
-  it("refuses a wants it cannot make sense of, and names the four", () => {
-    const r = normalizeConsult({ ...good, wants: "" }, undefined, "directed");
-    assert.ok(!r.ok);
-    for (const w of CONSULT_WANTS) assert.match(r.why, new RegExp(w));
+  it("accepts a missing or unreadable wants — the shape requirement is gone", () => {
+    // The inversion at the heart of Block B: this assertion used to refuse. wants is inert now,
+    // so every one of these passes, carrying "" or whatever canonicalized.
+    for (const wants of ["", "???", "speech", "what they decide"]) {
+      const r = normalizeConsult({ ...good, wants }, undefined, "directed");
+      assert.ok(r.ok, `"${wants}" should no longer be refused`);
+    }
+    const carried = normalizeConsult({ ...good, wants: "" }, undefined, "directed");
+    assert.ok(carried.ok);
+    assert.equal(carried.req.wants, "");
   });
 
   it("says what is wrong in terms the writer can act on", () => {
-    for (const bad of [{ situation: "" }, { situation: "Dark." }, { question: "What do you do?" }, { wants: "" }]) {
+    for (const bad of [{ situation: "" }, { situation: "Dark." }, { question: "What do you do?" },
+                        { question: "" }]) {
       const r = normalizeConsult({ ...good, ...bad }, undefined, "directed");
       assert.ok(!r.ok);
       assert.ok(r.why.length > 60, "a one-word complaint teaches nothing");
@@ -449,6 +508,25 @@ describe("normalizeConsult, the judge's directed ask", () => {
     const r = normalizeConsult({ character: "RIVEN", situation: sightLeaning, question: forkQuestion, wants: "decision" }, cast, "directed");
     assert.ok(r.ok);
     assert.equal(r.req.situation, sightLeaning);
+  });
+
+  const remoteCast = [{ name: "RIVEN", cannot: [] as string[],
+    presenceState: { mode: "remote" as const, via: "the phone line" } }];
+  const remoteWatching = "You watch Riven sign the ledger and slide it back across the scarred counter toward you.";
+
+  it("refuses a remote addressee a situation their position rules out, naming the connection", () => {
+    const r = normalizeConsult({ character: "RIVEN", situation: remoteWatching }, remoteCast);
+    assert.ok(!r.ok);
+    assert.match(r.why, /not physically there/);
+    assert.match(r.why, /the phone line/);
+    assert.doesNotMatch(r.why, /CANNOT/, "no authored restriction is involved");
+  });
+
+  it("does not refuse a remote addressee a situation naming only what the channel carries", () => {
+    const r = normalizeConsult({ character: "RIVEN", situation:
+      "You hear Riven's voice crackle through the phone line as he reads the ledger entries aloud to you now." },
+      remoteCast);
+    assert.ok(r.ok);
   });
 
   it("matches the addressee case-insensitively against the cast", () => {

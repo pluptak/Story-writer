@@ -336,7 +336,9 @@ then the prose in a card whose head carries only a phase-derived title and one q
 the prose itself is the dominant thing on the page, in the same serif the manuscript reads in. The
 cast is the header's "cast in scene" chips and nothing more — there is no second cast panel in the
 rail. Clicking a chip opens a character card whose authored half (persona, knows, goal, belief,
-impulse, voice, and the capabilities with reach labelled per scene) is the `/cast` fetch for the run's
+impulse, voice, and the capabilities with reach and presence labelled per scene — a position chip
+in the card's own scene, a labelled chip per scene in the sheet; no entry means "here" and renders
+nothing) is the `/cast` fetch for the run's
 story, live-screen only; elsewhere the card shows just what its pill knew. Two deliberate decisions
 behind it:
 

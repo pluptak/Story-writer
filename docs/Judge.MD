@@ -51,10 +51,15 @@ one: only an explicit verdict is a verdict.
 ## JUDGE — the per-answer gate
 
 When a consult comes back, one judge call decides whether the answer is usable. It is shown the
-situation the character was given, the question asked of them, what the author needed from the
-answer (`wants`), the answer itself (thought, speech, action, note), any forced-answer flags, and
-whether the answerer is the point-of-view character — the cast's limits ride along in the system
-prompt. It is **not** shown the scene's prose: it judges the answer, not the page.
+situation the character was given, the question asked of them, the answer itself (thought, speech,
+action, note), any forced-answer flags, and whether the answerer is the point-of-view character —
+the cast's limits ride along in the system prompt. It is **not** shown the scene's prose: it judges
+the answer, not the page.
+
+Most beats are open and carry no question, so the ask line says so in words rather than printing an
+empty label; and the non-POV flag is bracketed, like the `[FLAGGED]` line beside it. Both are there
+because the bare label used to leave the flag sitting in the question's own slot, where it read as
+the question — see [`PLANS.md`](PLANS.md) for what that cost.
 
 The verdict is one of two shapes:
 
@@ -93,6 +98,67 @@ as **directed**, since a revision is always a named fork:
 
 A revision that cannot be sent keeps the answer in hand; spending the attempt on an ask the gate
 has already refused would buy nothing.
+
+### The split, as a prototype — `--split-judge`
+
+Deciding the retry and authoring its revision are one completion, and they are not one skill.
+`scripts/judge-diagnostic.ts` scored them apart: three of four measured models author a revision that
+survives `reviseConsult` 87–100% of the time when the contradiction is handed to them, against 13%
+when they have to find it and write it in the same breath. `--split-judge` runs the gate as two calls
+on that evidence — a **JUDGE** call over `VERDICT_JUDGE_FORMAT`, which holds the same cast block and
+the same decision ladder with the revision taken out of its job entirely, and a **REPAIR-JUDGE** call,
+made only on a retry, which is given the verdict's own `note` as its reason and asked for the
+situation and question alone (`REPAIR_ONLY_FORMAT`, shared with the diagnostic that motivated it).
+
+Nothing downstream knows which path ran: whatever the second call returns lands where an inline
+`revised` would and passes the identical `reviseConsult` gate. Everything that goes wrong returns no
+revision, which is the unusable-revision path the gate already had — the answer in hand is kept and
+the attempt is not spent — and says so under `repair_failed`, including the one case the split alone
+can reach, a retry whose note named no contradiction for the second call to work from. The repair
+call fails open like every other judge here; it never throws into the gate.
+
+It is a **run-level CLI toggle, off by default** and never persisted to `story.json`, the same shape
+`--open-consult` and `--free-consult` take. What it does not fix, and what the flag exists to measure:
+the second call is conditioned on the first call's diagnosis, and the diagnostic's three findings
+(`PLANS.md`) are that the diagnosis itself is wrong or unstable a meaningful fraction of the time.
+Splitting isolates the load per call; it does not stop a wrong reason from reaching a repair stage
+that is now better at acting on one.
+
+### What the CANNOT says, as prototypes — `--cannot-meaning`, `--cannot-none`, `--cannot-testimony`
+
+The judge's cast block renders a restriction as its bare canon name, `CANNOT: sight`, and renders a
+character with no restrictions as nothing at all — the segment is dropped for an empty list. Both
+are implicated in measured failures (`PLANS.md`): a bare token says nothing about what the absence
+*leaves*, and the sight-into-hearing collapse is a model reading it as removing perception
+generally; and an absence that renders as no tokens has nothing for the model to weigh, which is how
+a `CANNOT: sight` got invented for a character whose `restrictions` is `[]` — a fact every measured
+model states correctly, 20/20, when asked in isolation.
+
+A restriction may therefore carry `:: what its absence leaves`, the way a skill carries `:: what it
+does`. `splitMeaning` always parsed it and the resolver used to discard it; it now travels to the
+prompt renderers on `CharacterDef.limitMeanings`, beside — never inside — the `limits` list. That
+separation is structural, not conventional: `limits` is the matching key every CANNOT check reads and
+the sense lints canon-key off, so the meaning reaches no matcher, and I2 stays literal. `sight ::
+cannot perceive light` removes `sight`, never `light`. A restriction authored without a meaning
+warns once per load (`restrictionMeanings`, never the per-scene `resolveReach` path) and is otherwise
+unchanged.
+
+Three arms switch independently, because they target different findings and a bundle cannot be
+attributed to one of them:
+
+- **`--cannot-meaning`** renders each restriction's authored meaning, in the same `name -- meaning`
+  idiom `can:` and `REACH:` already use, in the cast block and in the character's own HARD LIMITS.
+- **`--cannot-none`** gives an unrestricted character `CANNOT: (none)`. Author-side only: an absence
+  that renders as nothing is what the judge failed to weigh, and a character has no measured reason
+  to be told it has no limits.
+- **`--cannot-testimony`** restates the answerer's own limits in the judge's payload, beside the
+  answer rather than only in the system prompt ~700 words above it, and marks the answer as the
+  character's own account rather than as established fact.
+
+All three are **run-level CLI toggles, off by default** and never persisted to `story.json`, the
+shape `--open-consult`, `--free-consult` and `--split-judge` take. With every arm off every prompt is
+byte-identical to the pre-arm engine, including for a story that authors meanings — a test pins that,
+because without it there is no baseline the arms can be measured against.
 
 ### Ceilings
 

@@ -6,6 +6,15 @@
  * prompts/internal.ts, which the barrel skips.
  */
 
+// -- CAST RENDERING TOKENS -------------------------------------------------
+
+/** What a character with no restrictions has under CANNOT, when the arm that makes an absence
+ *  visible is on (--cannot-none). castBlock omits the whole segment for an empty list, so without
+ *  this an unrestricted character's CANNOT reaches the model as no tokens at all — nothing to weigh
+ *  against a claim in the answer being judged. It lives here because it is a word a model reads;
+ *  `engine/scene-loop.ts` puts it in the display list it hands the prompt builders. */
+export const NO_RESTRICTIONS = "(none)";
+
 // -- AGENT SCAFFOLDING -----------------------------------------------------
 
 export const digestHeader = (digest: string) =>

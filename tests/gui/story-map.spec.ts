@@ -4,8 +4,18 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { LIVE, setWhere } from "../../live.ts";
-import { arrive, cardFromStory, copyFixtureStory, expect, registerStory, test } from "./harness.ts";
+import { arrive, cardFromStory, copyFixtureStory, expect, registerStory, setHandoffFactory, test } from "./harness.ts";
 import type { FixtureStory } from "./harness.ts";
+import { NextChapterSession } from "../../engine/architect.ts";
+import { normalizeSpec } from "../../engine/story-spec.ts";
+import { ScriptedAgent } from "../helpers.ts";
+import type { Defaults } from "../../engine/story-format.ts";
+
+const SCAFFOLD_DEFAULTS: Defaults = {
+  models: { default: "none", architect: "none", assistant: "none" },
+  thinking: { architect: "low", assistant: "low" },
+  requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: false, debug: false,
+};
 
 /** A temp story with three scenes: chapter 1 written, 2 and 3 planned, RIVEN in scene 2. */
 async function threeSceneStory() {
@@ -126,6 +136,44 @@ test("a run in flight parks the current chapter as waiting", async ({ page, serv
     await expect(page.locator('[data-tid="story.scene-row"][data-chapter="2"]')
       .getByTestId("story.write-btn")).toBeDisabled();
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an open handoff disables starting a run until it ends", async ({ page, served }) => {
+  const dir = await threeSceneStory();
+  try {
+    LIVE.awaitingPick = true;
+    setHandoffFactory(async d => new NextChapterSession(
+      new ScriptedAgent([JSON.stringify({ edits: [] })]),
+      SCAFFOLD_DEFAULTS, d,
+      normalizeSpec(JSON.parse(await readFile(join(dir, "story.json"), "utf8"))).spec,
+      [{ n: 1, text: "The corridor keeps its silence while Riven waits at the door." }]));
+
+    // The map with nothing blocking it: the current chapter's write button is live.
+    await arrive(page, served, "#/story?dir=" + encodeURIComponent(dir));
+    const write = page.locator('[data-tid="story.scene-row"][data-chapter="2"]')
+      .getByTestId("story.write-btn");
+    await expect(write).toBeEnabled();
+
+    // Open a real handoff in a second tab, through the app rather than by faking state.
+    const handoff = await page.context().newPage();
+    try {
+      await arrive(handoff, served, "#/handoff?dir=" + encodeURIComponent(dir));
+      await handoff.locator("#h-start").click();
+      await expect(handoff.locator("#h-accept")).toBeEnabled();
+
+      // The map hears about it over SSE and parks the write button with the reason on it.
+      await expect(write).toBeDisabled();
+      await expect(write).toHaveAttribute("title", /handoff is open/);
+      await expect(page.getByTestId("story.map-blocked")).toContainText("handoff is open");
+
+      await handoff.request.post(`http://127.0.0.1:${served}/next-chapter/abandon`);
+      await expect(write).toBeEnabled();
+    } finally { await handoff.close(); }
+  } finally {
+    LIVE.awaitingPick = false;
+    setHandoffFactory(null);
     await rm(dir, { recursive: true, force: true });
   }
 });

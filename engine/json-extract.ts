@@ -45,9 +45,17 @@ const PROSE_KEYS = ["prose", "question", "situation", "need", "speech", "action"
                     "verdict", "note", "answer", "character"] as const;
 const PROSE_ALT = PROSE_KEYS.join("|");
 
-/** The reply as the reader should see it: <think> blocks removed. What is left when no JSON did. */
+/** The reply as the reader should see it: thinking blocks removed. What is left when no JSON did.
+ *  Two marker shapes are stripped: `<think>...</think>` (Qwen-style) and the loose channel pair
+ *  `<|channel>...<channel|>` some servers pass through inside content — the block between them is
+ *  the trace, the answer follows outside it. A trailing opener with no close is cut to end of text.
+ *  Strict Harmony tokens (`<|channel|>`, `<|message|>`) are left alone: there the answer sits
+ *  between the markers, so stripping the block would eat it. */
 export function visibleReply(raw: string): string {
-  const stripped = raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const noThink = raw.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  const noChannel = noThink.replace(/<\|channel>[\s\S]*?<channel\|>/gi, "");
+  const cutOpen = noChannel.replace(/<\|channel>[\s\S]*$/gi, "");
+  const stripped = cutOpen.trim();
   return stripped.includes("</think>")
     ? stripped.slice(stripped.lastIndexOf("</think>") + 8).trim()
     : stripped;

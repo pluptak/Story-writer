@@ -137,7 +137,7 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
 export function writerSystem(p: {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
-  cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[];
+  cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string }[];
   facts: string[];
   style: string;
 }): string {
@@ -273,12 +273,36 @@ export const characterAsks = (name: string, question: string) =>
 /** `recent` is the last piece of prose written. The clarifier remembers what it has answered but not
  *  what the scene narrated, and a fact settled here must not contradict the page. `knows` is what
  *  the asking character walks in holding — the one field that lets "only what they could perceive
- *  or already know" be checked against something instead of guessed at. */
+ *  or already know" be checked against something instead of guessed at. `world` is the ledger
+ *  boundary, rendered verbatim, never paraphrased: what has not happened yet (so the clarifier
+ *  cannot settle it early into canon) and what already fired (so it stays consistent with it).
+ *  It restricts what may be settled, never what the character should conclude — the answer is
+ *  still the clarifier's, and the character's reading of it still their own. */
 export const clarifyRequest = (name: string, question: string, situation: string,
-                               recent = "", knows = "") =>
+                               recent = "", knows = "",
+                               world: { held?: string[]; established?: string[] } = {}) =>
   `${characterAsks(name, question)}\n\n[THE SITUATION YOU GAVE THEM] ${situation}`
   + (knows ? `\n\n[WHAT ${name.toUpperCase()} KNOWS COMING IN] ${knows}` : "")
-  + (recent ? `\n\n[THE LAST THING YOU WROTE] ${recent}` : "");
+  + (recent ? `\n\n[THE LAST THING YOU WROTE] ${recent}` : "")
+  + worldBounds(world);
+
+/** The ledger state as the clarifier is allowed to see it: outstanding holds are not-yet-true and
+ *  must be neither confirmed nor denied (either shape of answer would settle hidden state into
+ *  canon); fired beats are settled fact. Verbatim projection — the strings arrive exactly as
+ *  authored, so this block can carry no belief, suspicion, intention, or conclusion of its own. */
+export const worldBounds = (world: { held?: string[]; established?: string[] } = {}) => {
+  const held = (world.held ?? []).map(s => String(s ?? "").trim()).filter(Boolean);
+  const established = (world.established ?? []).map(s => String(s ?? "").trim()).filter(Boolean);
+  return (held.length
+      ? `\n\n[WHAT HAS NOT HAPPENED IN THIS SCENE — never confirm, deny, preview, or settle any of `
+      + `these, whether asked directly or obliquely. If asked, answer only what this character can `
+      + `perceive right now:\n${held.map(h => `- ${h}`).join("\n")}]`
+      : "")
+    + (established.length
+      ? `\n\n[ALREADY TRUE IN THIS SCENE — settled fact, stay consistent with it:\n`
+      + `${established.map(e => `- ${e}`).join("\n")}]`
+      : "");
+};
 
 export const answerBody = (p: { thought: string; speech: string; action: string }) =>
   [p.thought && `thought: ${p.thought}`,

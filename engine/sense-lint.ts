@@ -44,7 +44,7 @@
  */
 import { canonSkill } from "./skills.ts";
 
-export interface SenseLintHit { ok: false; why: string; character: string; sense: string; verb: string; match: string; }
+export interface SenseLintHit { ok: false; why: string; character: string; sense: string; verb: string; match: string; cause?: "presence"; }
 
 /** Verbs that can only mean perceiving through the sense they are filed under, keyed by the
  *  canonical sense name in SKILL_CATALOG. Nouns sharing a spelling with their verb (`eye`, `glance`
@@ -77,6 +77,12 @@ const SENSE_NOUNS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   taste: [],
   touch: [],
 });
+
+/** Senses "remote" rules out regardless of what "via" says — no channel this story is likely to
+ *  author gives someone touch, taste, or smell of a room they are not in, or sight of it unless the
+ *  via specifically says otherwise (a video call would be reach-through-a-camera, not this). Hearing
+ *  is deliberately absent: a phone/radio channel routinely carries it. */
+const REMOTE_BLOCKED_SENSES = ["sight", "touch", "taste", "smell"] as const;
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -251,17 +257,38 @@ export function lintRestrictedSenses(
  * Third-person clauses about OTHER characters are deliberately out of scope: a situation may describe
  * anyone doing anything, and their perceiving is checked in their own consult or on the page, not
  * here.
+ *
+ * The optional `presence` is the dynamic half of the same check: a character who is "remote" cannot
+ * currently perceive through REMOTE_BLOCKED_SENSES no matter what their authored list says, and a
+ * situation asserting otherwise is refused with `cause: "presence"` instead of the CANNOT wording —
+ * there is no authored restriction to name. "partial" triggers nothing here; its semantics are still
+ * deliberately deferred. The parameter is typed inline (not imported from scene-loop) so this leaf
+ * module gains no dependency on the engine above it.
  */
 export function lintRestrictedSituation(
   situation: string,
   character: string,
   cannot: readonly string[],
+  presence?: { mode: "remote" | "partial"; via: string },
 ): SenseLintHit | null {
   const s = situation.trim();
   if (!s || !character.trim()) return null;
 
-  for (const limit of cannot) {
-    const sense = canonSkill(limit);
+  // The authored limits first, then the presence-blocked senses minus anything the authored list
+  // already covers — one table, two causes, so the first violation reads the same way whichever
+  // half it came from.
+  const senses: { sense: string; label: string; cause?: "presence" }[] =
+    cannot.map(limit => ({ sense: canonSkill(limit), label: limit }));
+  if (presence?.mode === "remote") {
+    const authored = new Set(senses.map(e => e.sense));
+    for (const blocked of REMOTE_BLOCKED_SENSES) {
+      if (!authored.has(blocked)) senses.push({ sense: blocked, label: blocked, cause: "presence" });
+    }
+  }
+
+  for (const { sense, label, cause } of senses) {
+    const via = cause === "presence" ? ` is remote (${presence!.via}) and cannot currently` : "";
+    const tail = cause === "presence" ? "" : ` but CANNOT ${label}`;
 
     const verbs = verbSource(sense);
     if (verbs) {
@@ -281,11 +308,12 @@ export function lintRestrictedSituation(
         if (INCAPACITY_TAIL.test(m[1])) continue;
         return {
           ok: false,
-          why: `restricted sense: ${character}'s situation says "${m[0].trim()}" but CANNOT ${limit}`,
+          why: `restricted sense: ${character}'s situation says "${m[0].trim()}"${via}${tail}`,
           character,
-          sense: limit,
+          sense: label,
           verb: m[2],
           match: m[0].trim(),
+          ...(cause ? { cause } : {}),
         };
       }
     }
@@ -297,11 +325,12 @@ export function lintRestrictedSituation(
       while ((m = re.exec(s))) {
         return {
           ok: false,
-          why: `restricted sense: ${character}'s situation says "${m[0]}" but CANNOT ${limit}`,
+          why: `restricted sense: ${character}'s situation says "${m[0]}"${via}${tail}`,
           character,
-          sense: limit,
+          sense: label,
           verb: m[1],
           match: m[0],
+          ...(cause ? { cause } : {}),
         };
       }
     }

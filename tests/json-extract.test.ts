@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { extractJson, balancedObjectEnd, salvageProse, topLevelObjects } from "../engine/json-extract.ts";
+import { extractJson, balancedObjectEnd, salvageProse, topLevelObjects, visibleReply } from "../engine/json-extract.ts";
 
 // -- JSON EXTRACTION -------------------------------------------------------
 describe("extractJson", () => {
@@ -20,6 +20,19 @@ describe("extractJson", () => {
 
   it("strips <think> blocks", () => {
     assert.deepEqual(extractJson(`<think>I should say...</think>{"answer":"two paces"}`), { answer: "two paces" });
+  });
+
+  it("strips loose channel thinking, keeping the answer outside it", () => {
+    assert.deepEqual(
+      extractJson(`<|channel>thought\nThinking Process:\n1. Analyze.\n<channel|>{"answer":"two paces"}`),
+      { answer: "two paces" });
+    assert.equal(visibleReply(`<|channel>thought\ntrace\n<channel|>Early enough.`), "Early enough.");
+  });
+
+  it("cuts an unclosed channel opener to end of text, and leaves strict Harmony tokens alone", () => {
+    assert.equal(visibleReply(`<|channel>thought\ntrace with no close`), "");
+    assert.ok(visibleReply(`<|channel|>final<|message|>Early enough.`).includes("Early enough."),
+              "strict tokens wrap the answer — stripping the block would eat it");
   });
 
   it("falls back to labelled prose using THIS mode's keys", () => {

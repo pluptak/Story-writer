@@ -5,10 +5,11 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
-import { resolveReach, type Catalogs, type Skill } from "./skills.ts";
+import { cannotDisplay, resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
+import { warn } from "./warnings.ts";
 import {
   normalizeConsult,
-  parseClarifyAnswer, parseLintVerdict, missingShape,
+  parseClarifyAnswer, parseLintVerdict, nonPovThoughtOnly,
   type ConsultEvent, type Clarifier,
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
@@ -25,11 +26,37 @@ import { ENGINE } from "./engine-state.ts";
 /** One character agent's system prompt: persona, place, skills, knowledge, goal, belief, impulse, voice.
  *  `reach` is this scene's grant only (I1/I4): it comes from per-scene resolution and is empty on
  *  every character-level view. */
-export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = []): string {
-  return P.characterSystem({
+export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = [], presence?: Presence): string {
+  const args = {
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
     belief: def.belief, impulse: def.impulse, voice: def.voice, reach,
-  });
+    // HARD LIMITS renders one `- name -- meaning` per line already, exactly like the skills menu
+    // above it, so the meaning arm needs nothing in prompts/consult.ts. Arm C is deliberately NOT
+    // applied here: an absent CANNOT is the author side's problem (the judge weighing a claim
+    // against nothing), and "HARD LIMITS: (none)" would be a new sentence said to a character for
+    // no measured reason.
+    limits: cannotDisplay(def.limits, def.limitMeanings, ENGINE.cannotMeaning),
+    ...(presence ? { presence } : {}),
+  };
+  // v3 keeps v2's ladder addendum (only its askBlock differs, in engine/consult.ts) — same format.
+  return ENGINE.freeConsult === "v2" || ENGINE.freeConsult === "v3" ? P.freeCharacterSystemV2(args)
+    : ENGINE.freeConsult === "v1" ? P.freeCharacterSystem(args)
+    : P.characterSystem(args);
+}
+
+export interface Presence { mode: "remote" | "partial"; via: string }
+
+/** One character's presence in ONE scene: null is "here", the default. Keys match case-insensitively,
+ *  like reach and roster. An unrecognised mode warns and is treated as "here". */
+export function scenePresence(sd: SceneDef, def: CharacterDef): Presence | null {
+  const raw = Object.entries(sd.presence ?? {}).find(([who]) => sameName(who, def.name))?.[1];
+  if (!raw) return null;
+  const { text, meaning } = splitMeaning(raw);
+  if (text !== "remote" && text !== "partial") {
+    warn(`   (character ${def.name}: presence "${text}" is not "remote" or "partial" — ignored, treated as here)`);
+    return null;
+  }
+  return { mode: text, via: meaning };
 }
 
 /** One character's reach in ONE scene: the scene's grant, minus what restrictions remove (I2) and
@@ -43,15 +70,15 @@ export function sceneReach(sd: SceneDef, def: CharacterDef, catalogs?: Catalogs)
 }
 
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
-export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = []): Agent {
-  const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach), 0.9);
+export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = [], presence?: Presence): Agent {
+  const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach, presence), 0.9);
   a.think = think;
   return a;
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[] }[], style: string, facts: string[] = [], constraints: string[] = []): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string }[], style: string, facts: string[] = [], constraints: string[] = []): string {
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
@@ -72,16 +99,37 @@ export const rosterOf = (characters: CharacterDef[], rostered: string[]): Charac
  *  the writer's attention. `reach` is the scene's per-character grant (I4: the only place outside
  *  the character agents that ever sees it), shown as its own line. */
 export function writerCast(characters: CharacterDef[], rostered: string[],
-                           reach: Record<string, Skill[]> = {}): { name: string; can: string[]; reach: string[]; cannot: string[] }[] {
+                           reach: Record<string, Skill[]> = {},
+                           presence: Record<string, Presence> = {}): { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence }[] {
   return rosterOf(characters, rostered)
-    .map(c => ({
-      name: c.name,
-      can: c.skills
-        .filter(s => s.source !== "general" && s.source !== "reach")
-        .map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
-      reach: (reach[c.name] ?? []).map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
-      cannot: c.limits,
-    }));
+    .map(c => {
+      const pres = presence[c.name];
+      // `cannot` below is display only, like the `can` and `reach` beside it — the list every
+      // CANNOT check actually matches on is `CannotCast.cannot`, built straight from `c.limits`.
+      // That is what lets both rendering arms live here rather than in prompts/, which imports no
+      // engine state, and it is why NO_RESTRICTIONS may appear in this array at all:
+      //  - --cannot-meaning renders the restriction's authored meaning in the same `name -- meaning`
+      //    idiom the two lines below use. Off, it is `c.limits` untouched, so arm A is byte-identical.
+      //  - --cannot-none names an empty list, because castBlock drops the segment entirely for one
+      //    and an unrestricted character's absence of limits then reaches the model as no tokens at
+      //    all — nothing to weigh against a vivid in-context claim. That is the Finding 1 mechanism:
+      //    the judge invented a `CANNOT: sight` for a character whose `restrictions` is `[]`, a fact
+      //    every measured model states correctly 20/20 when asked in isolation.
+      const cannot = cannotDisplay(c.limits, c.limitMeanings, ENGINE.cannotMeaning,
+                                   ENGINE.cannotNone ? P.NO_RESTRICTIONS : undefined);
+      return {
+        name: c.name,
+        can: c.skills
+          .filter(s => s.source !== "general" && s.source !== "reach")
+          .map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
+        reach: (reach[c.name] ?? []).map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
+        cannot,
+        // The rendered string is the writer's display; the raw object rides alongside under a
+        // different key for the consult gate's dynamic half (CannotCast.presenceState) — additive
+        // only, every reader of `presence` is untouched.
+        ...(pres ? { presence: pres.via ? `${pres.mode} -- ${pres.via}` : pres.mode, presenceState: pres } : {}),
+      };
+    });
 }
 
 // -- THE WRITER'S REPLY -----------------------------------------------------
@@ -159,11 +207,13 @@ export type RunEvent =
   | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
-  | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint" | "done"; character: string; chapter: number }
+  | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint" | "done" | "repair"; character: string; chapter: number }
   | { t: "judge_failed"; character: string; why: string; chapter: number }
+  | { t: "repair_failed"; character: string; why: string; chapter: number }
   | { t: "lint_failed"; why: string; chapter: number }
   | { t: "done_judge_failed"; why: string; chapter: number }
   | { t: "done_flagged"; why: string; chapter: number }
+  | { t: "done_confirmed"; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
@@ -183,7 +233,7 @@ export type RunEvent =
   | { t: "promote"; character: string; action: string; chapter: number }
   | { t: "exit"; character: string; pov: boolean; chapter: number }
   | { t: "exit_refused"; character: string; chapter: number }
-  | { t: "world_beat"; beat: string; hold: string; step: number; chapter: number }
+  | { t: "world_beat"; beat: string; hold: string; at: number; step: number; chapter: number }
   | { t: "beat_stranded"; beat: string; at: number; chapter: number }
   | { t: "memory_surfaced"; character: string; chapter: number }
   | { t: "repeat_strip"; chars: number; words: number; whole: boolean; chapter: number }
@@ -276,7 +326,8 @@ export async function writeScene(run: SceneRun) {
   const rosterNames = roster.map(c => c.name);
   const active = new Set(rosterNames);          // the cast still in the scene; shrinks as one exits
   const isActive = (name: string) => [...active].some(n => sameName(n, name));
-  const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])));
+  const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])),
+    Object.fromEntries(roster.map(c => [c.name, scenePresence(sd, c)] as const).filter(([, v]) => v !== null)) as Record<string, Presence>);
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
@@ -298,7 +349,11 @@ export async function writeScene(run: SceneRun) {
     a.think = writer.think;
     return a;
   };
-  const newJudge = () => newJudgeFor("JUDGE", P.judgeSystem(cast));
+  const newJudge = () => newJudgeFor("JUDGE",
+    ENGINE.splitJudge ? P.verdictJudgeSystem(cast) : P.judgeSystem(cast));
+  // --split-judge only: the retry's second call, which authors the revision from the verdict
+  // call's own note. Never reached on the single-call path.
+  const newRepairJudge = () => newJudgeFor("REPAIR-JUDGE", P.repairOnlySystem(cast));
   // Stateless like the judge, but it weighs many volunteered deeds in one call and returns a
   // promotable flag each — so a reaction beat costs at most one judge call, and none when nobody acted.
   const newBatchJudge = () => newJudgeFor("BATCH-JUDGE", P.batchJudgeSystem(cast));
@@ -402,10 +457,22 @@ export async function writeScene(run: SceneRun) {
     // The asking character's own `knows` rides in the transient payload, never folded into the
     // clarifier's history: the instructions tell it to reveal only what this character could
     // perceive or already know, and that boundary is uncheckable without the field itself.
+    // The ledger boundary rides along verbatim: outstanding holds are not-yet-true (the clarifier
+    // must neither confirm nor deny them into canon) and fired beats are settled fact. Presence is
+    // not consulted here and nothing is erased — this restricts what may be settled, never what
+    // the character already knows or should conclude.
     const extra: Msg[] = [{
       role: "user",
       content: P.clarifyRequest(r.character, q, r.situation,
-                                pieces[pieces.length - 1] ?? "", defOf(r.character)?.knows ?? ""),
+                                pieces[pieces.length - 1] ?? "", defOf(r.character)?.knows ?? "",
+                                {
+                                  held: timeline
+                                    .filter(b => b.chapter === chapter && b.state !== "void" && !beatFired.has(b))
+                                    .map(b => b.hold),
+                                  established: [...beatFired]
+                                    .filter(b => b.chapter === chapter)
+                                    .map(b => b.fired),
+                                }),
     }];
     let a = "";
     try {
@@ -486,14 +553,16 @@ export async function writeScene(run: SceneRun) {
     if (turn.fired) {
       beatFired.add(turn.fired);
       console.log(`\n${C.cyan}(world beat fired at step ${steps + 1}, ${words}/${sd.length} words)${C.reset}`);
-      log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, step: steps + 1, chapter });
+      log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, at: turn.fired.at, step: steps + 1, chapter });
       for (const [name, mem] of turn.memories) {
         const def = defOf(name);
         if (!def || !isActive(def.name)) continue;
+        if (!mem.trim()) continue;
+        if (turn.fired!.scope === "scene" && scenePresence(sd, def)?.mode === "remote") continue;
         const a = agents.get(nameKey(def.name));
         if (!a) continue;
         a.system += P.memorySurfaced(mem);
-        a.hear(P.memoryMarker(mem));
+        a.hear(ENGINE.freeConsult ? P.freeMemoryMarker(mem) : P.memoryMarker(mem));
         log({ t: "memory_surfaced", character: def.name, chapter });
         if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
       }
@@ -657,24 +726,22 @@ export async function writeScene(run: SceneRun) {
         const { reply, failed, usedAttempt, req } = await judgeGate({
           def, agent: persistent, req: check!.req, cast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
-          retryCounts, newJudge, beginAttempt, dropClarifications, log,
+          retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
         });
 
         if (RUN.stopped) break;
 
         const stalled = !!reply && !reply.thought && !reply.speech && !reply.action;
-        // A thought with nothing said and nothing done answers a "reaction" and nothing else. Taken
-        // as an accept it is worse than a refusal: it costs the attempts, marks the character as
-        // freshly consulted, and hands the writer an answer with nothing in it to write.
-        // POV decides what a "reaction" has to carry: from anyone else a thought alone reaches the
-        // writer as nothing, which is the same empty answer the other three shapes are refused for.
-        const shortOf = reply && !stalled ? missingShape(req.wants, reply, isPov(def.name)) : null;
+        // The only shape floor left: a thought with nothing said and nothing done reaches the
+        // writer as nothing from anyone but the POV character. Taken as an accept it is worse
+        // than a refusal: it costs the attempts, marks the character as freshly consulted, and
+        // hands the writer an answer with nothing in it to write.
+        const shortOf = reply && !stalled ? nonPovThoughtOnly(reply, isPov(def.name)) : null;
         if (failed || !reply || stalled || shortOf) {
           const why = failed
             || (stalled ? reply!.note || "did not answer"
             : shortOf === "reaction"
               ? "reacted from behind their eyes, and the scene is not written from theirs"
-            : shortOf ? `was asked for ${shortOf} and gave none`
             : "no reply");
           console.log(`${C.red}${def.name}: ${why}.${C.reset}`);
           writer.hear(P.noAnswer(def.name, why));
@@ -696,7 +763,7 @@ export async function writeScene(run: SceneRun) {
                           speech: reply.speech, action: reply.action };
           writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question));
           lastAsked.set(nameKey(def.name), steps);
-          // An answer joins the lint's ledger as whatever the writer actually got. A thought-only
+          // An answer joins the lint's ledger as whatever the writer actually got. An
           // answer from the POV character lands as a felt entry, like a fan-out's bundle — without
           // it, the writer rendering that interiority is flagged for using exactly what it was
           // handed. A withheld thought grants nothing: it never reached the desk.
@@ -705,7 +772,7 @@ export async function writeScene(run: SceneRun) {
               character: def.name,
               speech: reply.speech,
               action: reply.action,
-              ...(!reply.speech && !reply.action && shown.thought ? { thought: shown.thought } : {}),
+              ...(shown.thought ? { thought: shown.thought } : {}),
             });
           }
           owed.push(def.name);
@@ -782,6 +849,7 @@ export async function writeScene(run: SceneRun) {
           const verdict = parseLintVerdict(extractJson(raw));
           if (verdict) {
             if (!verdict.ok) unanswered = verdict.why || "the scene's question is not answered";
+            else log({ t: "done_confirmed", chapter });
             break;
           }
           // Asked twice with no verdict: nothing is recorded, as on an outage. A check nobody made
@@ -863,7 +931,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
   const agents = new Map<string, Agent>();
 
   for (const def of rosterOf(sc.characters, sd.roster)) {
-    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def, sc.catalogs)));
+    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def, sc.catalogs), scenePresence(sd, def) ?? undefined));
   }
 
   LIVE.agents = agents;

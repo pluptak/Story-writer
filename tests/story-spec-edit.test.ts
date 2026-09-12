@@ -149,6 +149,54 @@ describe("normalizeSpec", () => {
     assert.deepEqual(fine.spec.scenes[0].reach, { RIVEN: ["cameras :: perceiving through the feed"] });
   });
 
+  it("carries scene presence through, keyed by the character's own spelling of their name", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene,
+        presence: { riven: "remote :: the phone line", GHOST: "remote :: down the hall" } } });
+    assert.deepEqual(spec.scenes[0].presence, { RIVEN: "remote :: the phone line" });
+    assert.match(problems.join(" "), /GHOST/, "presence for a non-character is dropped and reported");
+  });
+
+  it("drops a remote presence entry with no :: via, but keeps a partial one without it", () => {
+    const remote = normalizeSpec({ ...base, scene: { ...base.scene, presence: { RIVEN: "remote" } } });
+    assert.deepEqual(remote.spec.scenes[0].presence, {}, "a remote entry naming no via is dropped");
+    assert.match(remote.problems.join(" "), /carries no ":: via" detail/);
+
+    const partial = normalizeSpec({ ...base, scene: { ...base.scene, presence: { RIVEN: "partial" } } });
+    assert.deepEqual(partial.spec.scenes[0].presence, { RIVEN: "partial" });
+    assert.deepEqual(partial.problems, [], "a bare partial is the mode as designed, not a mistake");
+  });
+
+  it("drops a presence entry naming an unrecognised mode", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene, presence: { RIVEN: "nearby :: down the hall" } } });
+    assert.deepEqual(spec.scenes[0].presence, {});
+    assert.match(problems.join(" "), /not "remote" or "partial"/);
+  });
+
+  it("reports (and keeps) a presence entry for someone absent from the roster", () => {
+    const twoChar = { ...base, characters: [{ ...base.characters[0] }, { ...base.characters[0], name: "MERRITT" }] };
+    const { spec, problems } = normalizeSpec({ ...twoChar, scene: { ...base.scene,
+      roster: ["MERRITT"], presence: { RIVEN: "remote :: the phone line" } } });
+    assert.deepEqual(spec.scenes[0].presence, { RIVEN: "remote :: the phone line" });
+    assert.match(problems.join(" "), /sets presence for "RIVEN", who is not in its roster/);
+  });
+
+  it("an edit to scene.presence replaces that scene's map", () => {
+    const withPresence = normalizeSpec({
+      ...base, scene: { ...base.scene, presence: { RIVEN: "remote :: the phone line" } } }).spec;
+    const r = quietSync(() => applyEdits(withPresence, { edits: [
+      { field: "scene.presence", value: { RIVEN: "partial :: can hear the room" } }] }));
+    assert.deepEqual(r.spec.scenes[0].presence, { RIVEN: "partial :: can hear the room" });
+    assert.equal(r.applied.length, 1);
+    // scene_1 addresses the same scene
+    const numbered = quietSync(() => applyEdits(r.spec, { edits: [{ field: "scene_1.presence", value: {} }] }));
+    assert.deepEqual(numbered.spec.scenes[0].presence, {});
+    // a non-object value clears it rather than crashing
+    const junk = quietSync(() => applyEdits(withPresence, { edits: [{ field: "scene.presence", value: "nope" }] }));
+    assert.deepEqual(junk.spec.scenes[0].presence, {});
+  });
+
   it("an edit to scene.reach replaces that scene's grants", () => {
     const withReach = normalizeSpec({
       ...base, scene: { ...base.scene, reach: { RIVEN: ["cameras :: seeing"] } } }).spec;
@@ -260,7 +308,7 @@ describe("applyEdits", () => {
     const added = edit("add_scene", { place: "  yard ", length: 801.4, question: "Follow?" });
     assert.deepEqual(added.applied[0].before, undefined);
     assert.deepEqual(added.applied[0].after, {
-      place: "yard", question: "Follow?", pov: "", length: 801, roster: [], reach: {},
+      place: "yard", question: "Follow?", pov: "", length: 801, roster: [], reach: {}, presence: {},
     });
     const removed = quietSync(() => applyEdits(added.spec, { edits: [{ field: "remove_scene", value: 2 }] }));
     assert.deepEqual(removed.applied[0].before, added.spec.scenes[1]);

@@ -4,12 +4,18 @@ import { C } from "../ansi.ts";
 import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
+import { ENGINE } from "./engine-state.ts";
 import { lintRestrictedSituation } from "./sense-lint.ts";
 import { nameKey, sameName } from "./config-util.ts";
 
 /** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can
- *  be checked against its addressee. Scene-loop resolves the same thing for the narration lint. */
-export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[] }>;
+ *  be checked against its addressee, plus their structured presence (when the scene sets one) for
+ *  the same gate's dynamic half — a "remote" addressee refused a situation their position rules out.
+ *  `presenceState` is inline-typed rather than imported so this module gains no dependency on the
+ *  engine above it; it is named for the state, not `presence`, which the writer's cast block already
+ *  uses for the rendered string. Scene-loop resolves the same thing for the narration lint. */
+export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[];
+  presenceState?: { mode: "remote" | "partial"; via: string } }>;
 
 /** What the writer sends when it wants a character's take: who, the situation as given to them, the question, and what shape of answer is wanted. */
 export interface ConsultRequest {
@@ -85,14 +91,16 @@ export type ConsultMode = "open" | "directed";
 
 /** Validate and canonicalize a consult before it is sent, so a bad one is refused instead of wasting a step.
  *
- *  With the cast given, the situation is also linted against the addressee's own CANNOT list: the
- *  situation is the only author-side string that enters a character as ground truth, and one phrased
- *  around a sense they have lost would be received as fact. This runs here, not in the scene loop,
+ *  With the cast given, the situation is also linted against the addressee's own CANNOT list — and,
+ *  when the scene sets one, their presence: a "remote" addressee is refused a situation phrased
+ *  around a sense their position rules out. The situation is the only author-side string that enters
+ *  a character as ground truth, and one phrased around a sense they have lost would be received as
+ *  fact. This runs here, not in the scene loop,
  *  so every situation-entry path passes the same door: the writer's first ask, the judge's `revised`
  *  on a retry (reviseConsult), and each reactor of a fan-out (normalizeReactionConsult). */
 export function normalizeConsult(raw: {
   character: string; situation?: unknown; question?: unknown; wants?: unknown;
-}, cast?: ReadonlyArray<{ name: string; cannot: readonly string[] }>,
+}, cast?: CannotCast,
    mode: ConsultMode = "open"): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
@@ -115,17 +123,20 @@ export function normalizeConsult(raw: {
       return { ok: false, why: P.badConsult.degenerate(question) };
     if (QUESTION_CARRIES_ANSWERS.test(question))
       return { ok: false, why: P.badConsult.carriesAnswers(question) };
-    const asked = canonWants(raw.wants);
-    if (!asked)
-      return { ok: false, why: P.badConsult.badWants(CONSULT_WANTS, String(raw.wants ?? "")) };
-    wants = asked;
+    // "wants" is inert: the judge no longer names an output shape, so whatever arrives (or does
+    // not) is carried as a record, never a requirement. A hallucinated wants must not silently
+    // reinstate the shape-dictation the retry rules removed.
+    wants = canonWants(raw.wants) ?? "";
   }
 
   const member = cast?.find(c => sameName(c.name, character));
-  if (member?.cannot?.length) {
-    const hit = lintRestrictedSituation(situation, character, member.cannot);
-    if (hit)
-      return { ok: false, why: P.badConsult.restrictedSense(character, hit.sense, hit.match) };
+  if (member && (member.cannot?.length || member.presenceState?.mode === "remote")) {
+    const hit = lintRestrictedSituation(situation, character, member.cannot ?? [], member.presenceState);
+    if (hit) {
+      return { ok: false, why: hit.cause === "presence"
+        ? P.badConsult.restrictedByPresence(character, hit.sense, hit.match, member.presenceState!.via)
+        : P.badConsult.restrictedSense(character, hit.sense, hit.match) };
+    }
   }
 
   return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants } };
@@ -138,7 +149,9 @@ export type ReactionCheck = { ok: true; reqs: ConsultRequest[] } | { ok: false; 
  * Validate a reaction fan-out: a shared situation/question asked of several reactors at once. Each
  * reactor resolves to an ordinary `ConsultRequest` through `normalizeConsult`'s gate, so a reactor
  * with too thin a situation is refused just as a lone consult would be. A per-reactor `situation`
- * overrides the shared one (someone who only heard it).
+ * overrides the shared one (someone who only heard it) — and a reactor the scene marks `"remote"`
+ * MUST carry one: the shared text is written from inside the room, and nothing about the room
+ * reaches them except through their connection.
  *
  * A name listed twice is a slip, not a second character — the fan-out asks one shared moment, and
  * asking it twice would let the second answer see the first — so duplicates collapse
@@ -163,7 +176,16 @@ export function normalizeReactionConsult(raw: {
     if (!name) return { ok: false, why: P.badReaction.namelessReactor() };
     if (seen.has(nameKey(name))) continue;
     seen.add(nameKey(name));
-    const situation = String((r as any)?.situation ?? "").trim() || shared;
+    // A remote reactor cannot take the shared room-perspective situation: nothing about where
+    // they are not standing reaches them except through their connection, so the projection has
+    // to be written explicitly as their own override. Presence is an input to this boundary, not
+    // knowledge of its own — the override's content is still the writer's, still gated below, and
+    // nothing here adds, removes, or judges what the reactor already knows.
+    const own = String((r as any)?.situation ?? "").trim();
+    const member = cast?.find(c => sameName(c.name, name));
+    if (!own && member?.presenceState?.mode === "remote")
+      return { ok: false, why: P.badReaction.remoteSharedSituation(name, member.presenceState.via) };
+    const situation = own || shared;
     // A fan-out is the several-at-once form of the writer's own ask, so it comes through the same
     // open door: one shared situation, no question, and no `wants` — what the moment lands on them
     // as is what a shared moment asks for without being told to.
@@ -183,28 +205,25 @@ export type Revision =
  * The judge's `revised` folded over the request it replaces, and checked by exactly the same gate a
  * first consult goes through — a field the judge left out keeps its previous value.
  *
- * `wants` is pinned to the original — the judge may reframe a fork it asked badly, not turn one
- * fork into another. (The one exception is escalating an open beat, below.) A changed `wants` is
- * drift to record, not an instruction to honor: whether a rewritten *question* is still the same
- * fork needs a model, and the run record carrying what each retry replaced is the check.
+ * `wants` is inert — carried, never changed: the judge names no output shape, so there is no shape
+ * to reframe and no drift to record. `wantsRefused` survives on the type as always-"" so the run
+ * record stays structurally comparable across branches.
  *
  * The cast, when given, travels with it: the judge's `revised.situation` passes the same CANNOT
  * gate the first ask did.
  */
 export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>,
   cast?: CannotCast): Revision {
-  const asked = canonWants(rev.wants);
-  // An open beat carries no question, so a judge retrying one is escalating: it may name the fork
-  // in words for the first time, and `wants` comes with it. Once a fork is named the old pin holds
-  // — the judge may reframe a question it asked badly, never turn one fork into another. Every
+  // An open beat carries no question, so a judge retrying one is escalating: it may name the
+  // contradiction in words for the first time. Once named the record holds — a revision that drops
+  // the question again would decay an escalated ask back into an open beat. Every
   // revision is checked as directed whichever it was, so an ask that has been escalated can never
   // decay back into an open beat by omitting the fields again.
-  const escalating = !prev.question;
   const checked = normalizeConsult({
     character: prev.character,
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
-    wants: escalating ? (asked ?? "") : prev.wants,
+    wants: prev.wants,
   }, cast, "directed");
   if (!checked.ok) return checked;
   // The character is shown the situation and not the question, so a revision that sharpens the
@@ -215,34 +234,26 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
   // answer already in hand, which is what the caller does with every other unusable revision.
   if (checked.req.situation.trim() === prev.situation.trim())
     return { ok: false, why: P.badConsult.noNewSituation() };
-  return { ok: true, req: checked.req,
-           wantsRefused: !escalating && asked && asked !== prev.wants ? asked : "" };
+  return { ok: true, req: checked.req, wantsRefused: "" };
 }
 /**
- * What the asked-for shape must actually be in the reply, or null when the reply satisfies it.
+ * The only shape floor left now that the judge names no output shape: a thought from outside the
+ * POV reaches the writer as nothing — the scene never receives it — so an answer with neither
+ * speech nor action from a non-POV character is refused. Reported as "reaction" because that is
+ * the repair the character needs: let it reach the outside.
  *
- * `reaction` is the one shape a thought alone answers — it asks what something lands on them as,
- * and that happens behind the eyes. Every other shape asks for something that reaches the page; a
- * thought alone leaves the scene where it was: an answer in form, nothing in substance.
+ * Everything else the old wants-keyed check refused is now accepted on purpose: an answer that
+ * departs from what was wanted but breaks nothing established is valid, and a character reaching
+ * outside a listed skill (but not through a CANNOT) is the autonomous behaviour working, not a
+ * shape violation. Keeping the old branches would let a hallucinated wants silently reinstate the
+ * exact shape-dictation this design removes, even though nothing prompts for it any more.
  *
- * That exception holds only from inside the POV. A thought is the writer's to render for the POV
- * character and nobody else, so a `reaction` answered from anyone else's head reaches the writer
- * as nothing — the same empty answer this check refuses. Asked of anyone else, a reaction has to
- * land where the room could see it. `pov` defaults true, so a caller that does not know whose
- * scene this is asks for no more than the four shapes always did.
+ * `pov` defaults true, so a caller that does not know whose scene this is asks for nothing more.
  */
-export function missingShape(
-  wants: ConsultWants | "", r: { speech: string; action: string }, pov = true,
-): ConsultWants | null {
-  if (wants === "speech" && !r.speech) return "speech";
-  if (wants === "action" && !r.action) return "action";
-  if (wants === "decision" && !r.speech && !r.action) return "decision";
-  if (wants === "reaction" && !pov && !r.speech && !r.action) return "reaction";
-  // An open beat names no shape, so the POV rule is the only floor left — and it is the same floor:
-  // whatever was asked, a thought from outside the POV reaches the writer as nothing, so an answer
-  // with neither speech nor action is an answer the scene never receives. Reported as "reaction"
-  // because that is the repair the character needs: let it reach the outside.
-  if (!wants && !pov && !r.speech && !r.action) return "reaction";
+export function nonPovThoughtOnly(
+  r: { speech: string; action: string }, pov = true,
+): "reaction" | null {
+  if (!pov && !r.speech && !r.action) return "reaction";
   return null;
 }
 
@@ -327,7 +338,11 @@ export async function consult(
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
   const pov = opts.pov ?? true;
-  const extra: Msg[] = [{ role: "user", content: P.askBlock(req, opts.attempt ?? 1, pov) }];
+  const extra: Msg[] = [{ role: "user", content: ENGINE.freeConsult === "v3"
+    ? P.freeAskBlockV3(req, opts.attempt ?? 1, pov)
+    : ENGINE.freeConsult
+    ? P.freeAskBlock(req, opts.attempt ?? 1, pov)
+    : P.askBlock(req, opts.attempt ?? 1, pov) }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
 
@@ -393,9 +408,9 @@ export async function consult(
     const speech  = String(o.speech ?? "").trim();
     const action  = String(o.action ?? "").trim();
     const note    = String(o.note ?? "").trim();
-    const shortOf = missingShape(req.wants, { speech, action }, pov);
+    const shortOf = nonPovThoughtOnly({ speech, action }, pov);
     const why = !thought && !speech && !action ? "returned nothing usable"
-              : shortOf ? `was asked for ${shortOf} and gave none`
+              : shortOf ? "kept it behind their eyes, where the room could not catch it"
               : "";
     if (why && !repaired) {
       repaired = true;

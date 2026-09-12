@@ -35,8 +35,8 @@ describe("the world timeline in the loop", () => {
     const rivenMem = "the wing is insured on occupancy, and her name is on the policy";
     const timeline = [{
       chapter: 1, hold, fired: firedText, at: 0.5,
-      memories: { RIVEN: rivenMem, NOBODY: "keyed to nobody — never implanted" },
-      state: "pending" as const,
+      memories: { RIVEN: rivenMem, NOBODY: "keyed to nobody — never implanted", MERRITT: "   " },
+      state: "pending" as const, scope: "world" as const,
     }];
     const events: RunEvent[] = [];
     const log = (e: RunEvent) => events.push(e);
@@ -71,7 +71,8 @@ describe("the world timeline in the loop", () => {
 
       const memories = events.filter(e => e.t === "memory_surfaced") as any[];
       assert.deepEqual(memories.map(m => m.character), ["RIVEN"],
-        "implanted for the one present character the beat names; NOBODY is skipped quietly");
+        "implanted for the one present character the beat names; NOBODY is skipped quietly, "
+        + "and so is MERRITT's blank (whitespace-only) memory");
 
       const riven = agents.get("riven")!;
       assert.match(riven.system, /WHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT: /);
@@ -92,13 +93,74 @@ describe("the world timeline in the loop", () => {
     }
   });
 
+  it("gates a fired beat's memory on the beat's scope for a remote character", async () => {
+    // A "scene"-scoped beat is locally knowable: it must not implant for a character marked
+    // "remote" in that scene. A "world" beat (or one with scope omitted, which defaults to
+    // today's unconditional-implant behavior) still implants for them.
+    for (const scope of [undefined, "world", "scene"] as const) {
+      const sc = await sc0();
+      const sd = { ...sc.scenes[0], length: 40, roster: [],
+        presence: { RIVEN: "remote :: the phone line" } };
+      const rivenMem = "the wing is insured on occupancy, and her name is on the policy";
+      const timeline: any[] = [{
+        chapter: 1, hold: "the fault alarm sounding", fired: "the fault alarm sounds", at: 0.5,
+        memories: { RIVEN: rivenMem }, state: "pending" as const,
+        ...(scope === undefined ? {} : { scope }),
+      }];
+      const events: RunEvent[] = [];
+      const log = (e: RunEvent) => events.push(e);
+      const agents = new Map(sc.characters.map(c => [c.name.toLowerCase(), newCharacterAgent(c, sd.place, "low" as const)]));
+
+      const origFetch = globalThis.fetch;
+      const origStream = ENGINE.stream;
+      ENGINE.stream = false;
+      globalThis.fetch = scriptedFetch([
+        { prose: "word ".repeat(25).trim(), scene_done: false },
+        { prose: "another piece", scene_done: true },
+      ]);
+      armRun();
+      try {
+        await writeScene({
+          scene: sd, chapter: 1, characters: sc.characters, agents: agents,
+          premise: sc.premise, writerStyle: sc.writerStyle, writerStyleConstraints: sc.writerStyleConstraints,
+          writerModel: sc.models.writer, summaryModel: sc.models.summary,
+          thinking: { writer: "low", summary: sc.thinking.summary },
+          maxSteps: 10, maxProseWords: sc.maxProseWords,
+          retries: sc.retries, clarifications: sc.clarifications,
+          dir: sc.dir, log, timeline,
+        });
+
+        const label = scope === undefined ? "(scope omitted)" : `(scope: "${scope}")`;
+        assert.ok(events.some(e => e.t === "world_beat"), `${label}: the beat still fires`);
+        const memories = events.filter(e => e.t === "memory_surfaced") as any[];
+        const riven = agents.get("riven")!;
+        if (scope === "scene") {
+          assert.deepEqual(memories, [], `${label}: no implant for a remote character`);
+          assert.ok(!riven.system.includes(rivenMem), `${label}: the memory never reaches system`);
+          assert.equal(riven.history.filter(m => m.content.includes("[YOU REMEMBER]")).length, 0,
+            `${label}: no history marker either`);
+        } else {
+          assert.deepEqual(memories.map(m => m.character), ["RIVEN"], `${label}: world implants even remote`);
+          assert.ok(riven.system.includes(rivenMem), `${label}: the memory rides in system`);
+          assert.equal(riven.history.filter(m => m.content.includes("[YOU REMEMBER]")).length, 1,
+            `${label}: one history marker`);
+        }
+      } finally {
+        globalThis.fetch = origFetch;
+        ENGINE.stream = origStream;
+        armRun();
+        resetLive();
+      }
+    }
+  });
+
   it("records a beat whose trigger the scene never reached, and says nothing about other chapters", async () => {
     // The scene closes at 3 words against a 40-word target, so a beat set at 0.9 never fires. Only
     // a firing leaves a mark otherwise, so silence would read exactly like a beat that had landed.
     const { events } = await runWith(
       [{ ...beatAt(0.9), fired: "the roof gives way" },
-       { chapter: 2, hold: "h2", fired: "a beat for the next chapter", at: 0, memories: {}, state: "pending" as const },
-       { chapter: 1, hold: "h3", fired: "a beat nobody wants", at: 0.9, memories: {}, state: "void" as const }],
+       { chapter: 2, hold: "h2", fired: "a beat for the next chapter", at: 0, memories: {}, scope: "world" as const, state: "pending" as const },
+       { chapter: 1, hold: "h3", fired: "a beat nobody wants", at: 0.9, memories: {}, scope: "world" as const, state: "void" as const }],
       [{ prose: "a quiet piece", scene_done: true }]);
 
     const stranded = events.filter(e => e.t === "beat_stranded") as any[];
@@ -121,7 +183,7 @@ describe("the world timeline in the loop", () => {
     const log = (e: RunEvent) => events.push(e);
     const timeline = [{
       chapter: 2, hold: "held elsewhere", fired: "fired elsewhere", at: 0,
-      memories: { RIVEN: "never" }, state: "pending" as const,
+      memories: { RIVEN: "never" }, state: "pending" as const, scope: "world" as const,
     }];
 
     const origFetch = globalThis.fetch;
@@ -153,10 +215,10 @@ describe("the world timeline in the loop", () => {
   const filler = "word ".repeat(25).trim();
   const beatAt = (at: number) => ({
     chapter: 1, hold: "the fault alarm sounding", fired: "the fault alarm sounds", at,
-    memories: {}, state: "pending" as const,
+    memories: {}, state: "pending" as const, scope: "world" as const,
   });
   const runWith = async (
-    timeline: { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; state: "pending" | "fired" | "void" }[],
+    timeline: { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; scope: "scene" | "world"; state: "pending" | "fired" | "void" }[],
     replies: Record<string, unknown>[],
   ) => {
     const sc = await sc0();

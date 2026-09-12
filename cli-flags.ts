@@ -25,6 +25,25 @@ const OPTIONS = {
   situation: { type: "string" },
   question: { type: "string" },
   wants: { type: "string" },
+  // Open-chat Consult spike (CLI-only prototype): freetext pressure-test chat.
+  "open-consult": { type: "boolean" },
+  pressure: { type: "string" },
+  // Free Consult spike (CLI-only prototype): strip authorial behavioral steering. v2 adds the
+  // uncertainty-vs-missing-fact distinction the v1 comparison run showed was missing; v3 keeps
+  // v2's ladder and puts back just the attempt-3 nudge, isolating pressure from instruction.
+  // Priority when more than one is passed: v3 > v2 > v1.
+  "free-consult": { type: "boolean" },
+  "free-consult-v2": { type: "boolean" },
+  "free-consult-v3": { type: "boolean" },
+  // Split-judge spike (CLI-only prototype): the per-answer judge as a verdict call plus a
+  // separate repair call, instead of one completion carrying both.
+  "split-judge": { type: "boolean" },
+  // CANNOT-rendering arms (CLI-only prototype), independently switchable so each can be attributed
+  // to the finding it targets: the restriction's authored meaning, the explicit empty state, and
+  // marking a judged answer as the character's own testimony.
+  "cannot-meaning": { type: "boolean" },
+  "cannot-none": { type: "boolean" },
+  "cannot-testimony": { type: "boolean" },
   // Architect tracing.
   "architect-debug": { type: "boolean" },
   "architect-debug-log": { type: "string" },

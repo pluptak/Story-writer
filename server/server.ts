@@ -6,7 +6,7 @@ import { createServer, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 
 import { C } from "../ansi.ts";
-import { LIVE, RUN, sseClients, liveHistory, runState } from "../live.ts";
+import { LIVE, RUN, sseClients, liveHistory, runState, storyWriteBlocked } from "../live.ts";
 import { HttpError, json, readJsonBody } from "./http-util.ts";
 import { handleRunControl } from "./run-control-routes.ts";
 import { handleScaffoldRoutes } from "./scaffold-routes.ts";
@@ -240,14 +240,15 @@ export interface ServerHost {
   }>;
   /** A story's full authored cast for the live screen's read-only character sheet. Same load and
    *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted.
-   *  `scenes[].reach` is the per-scene grant, kept OUT of the characters (I4: reach is
-   *  character-in-place, never intrinsic). Origin is intrinsic and travels with the character. On a story that will not parse, returns `{ ok:false, error }`. */
+   *  `scenes[].reach` is the per-scene grant and `scenes[].presence` the per-scene position, both
+   *  kept OUT of the characters (I4: scene-scoped, never intrinsic — a missing presence entry means
+   *  "here" and travels as absence). Origin is intrinsic and travels with the character. On a story that will not parse, returns `{ ok:false, error }`. */
   fullCast(dir: string): Promise<{
     ok: true; characters: {
       name: string; persona: string; knows: string; goal: string;
       belief: string; impulse: string; voice: string[]; origin: string;
       skills: { text: string; meaning: string }[]; restrictions: string[];
-    }[]; scenes?: { n: number; reach: Record<string, string[]> }[];
+    }[]; scenes?: { n: number; reach: Record<string, string[]>; presence: Record<string, string> }[];
   } | {
     ok: false; error: string;
   }>;
@@ -397,6 +398,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
       } else if (path === "/select" && req.method === "POST") {
         const o = await readJsonBody(req);
         if (!LIVE.awaitingPick || !LIVE.pickResolve) { json(res, 400, { ok: false, reason: "the session is not waiting on a choice" }); return; }
+        const blocked = storyWriteBlocked();
+        if (blocked) { json(res, 409, { ok: false, reason: `cannot pick while ${blocked}` }); return; }
         const dir = await host.selectableStory(String(o.dir ?? ""));
         if (!dir) { json(res, 400, { ok: false, reason: `no such story: ${String(o.dir ?? "")}` }); return; }
         const asked = Number(o.chapter ?? 1);

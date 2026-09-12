@@ -45,6 +45,14 @@ situation they were sent, **the last piece of prose written**, and the asking ch
 the instructions tell it to reveal only what *this* character could perceive or already know, and
 that boundary is uncheckable without the field itself being present at ask time.
 
+Each request also carries the chapter's ledger state as the clarifier is allowed to see it
+(`worldBounds`, `prompts/writer.ts`): outstanding holds arrive verbatim under `[WHAT HAS NOT
+HAPPENED …]` — not-yet-true, never to be confirmed, denied, previewed or settled, whether asked
+directly or obliquely — and fired beats arrive verbatim under `[ALREADY TRUE …]` as settled fact.
+Verbatim is the point: the strings arrive exactly as authored, so the block can carry no belief or
+conclusion of its own. With no ledger state the block is empty and the request is byte-identical
+to before it existed (`tests/info-boundary.test.ts`).
+
 ## Its bounds
 
 - **Answer plainly, briefly, and only what was asked.** If the author had not decided yet, the
@@ -53,6 +61,9 @@ that boundary is uncheckable without the field itself being present at ask time.
 - **Bounded by who is asking, not by what is true.** A fact real but out of that character's reach
   does not reach them: it answers with what they would actually perceive in their place, and leaves
   the rest unsaid.
+- **Never settle an unfired world event into canon.** A question asked obliquely about something
+  in `[WHAT HAS NOT HAPPENED]` gets only what this character can perceive right now — confirming
+  it and denying it would both settle hidden state, so neither is allowed.
 - **Never words in another character's mouth.** What anyone else says, or decides, is theirs, and
   nobody has consulted them yet. If the honest answer is that they hear someone speak, they hear a
   voice they cannot yet make out — not what it said. An answer that quoted another character would

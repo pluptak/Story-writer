@@ -33,7 +33,8 @@ export interface FanoutOpts {
   reactors: unknown;
   situation: unknown;
   question: unknown;
-  cast: ReadonlyArray<{ name: string; cannot: readonly string[] }>;
+  cast: ReadonlyArray<{ name: string; cannot: readonly string[];
+    presenceState?: { mode: "remote" | "partial"; via: string } }>;
   defOf: (name: string) => CharacterDef | undefined;
   agents: Map<string, Agent>;
   isActive: (name: string) => boolean;

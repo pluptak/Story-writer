@@ -42,8 +42,10 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
             restrictions: ["hearing"],
           },
         ],
-        // Reach arrives per scene and never merged into a character's skills (I4).
-        scenes: [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] } }],
+        // Reach arrives per scene and never merged into a character's skills (I4); presence
+        // rides the same way, as the raw SceneDef map.
+        scenes: [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] },
+                         presence: { BRAE: "remote :: the stairwell phone" } }],
       };
     },
     ...overrides,
@@ -99,7 +101,15 @@ describe("/cast (GET)", () => {
       assert.ok(!ch.skills.some((s: { text: string }) => s.text.includes("cameras")),
         `${ch.name} must not carry reach on their skills`);
     assert.deepEqual(r.json().scenes,
-                     [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] } }]);
+                      [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] },
+                               presence: { BRAE: "remote :: the stairwell phone" } }]);
+  });
+
+  it("presents presence per scene, never as a character field", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    for (const ch of r.json().characters)
+      assert.ok(!("presence" in ch), `${ch.name} must not carry presence on their character`);
+    assert.deepEqual(r.json().scenes[0].presence, { BRAE: "remote :: the stairwell phone" });
   });
 
   it("reports a story that will not load", async () => {

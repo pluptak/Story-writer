@@ -23,6 +23,10 @@ export const SceneDef = z.strictObject({
    *  `{"AURA": ["cameras :: perceiving through the lobby cameras"]}`. Exists only while this scene
    *  is being written; never carried between scenes, never merged into a character's skills. */
   reach: z.record(z.string(), z.array(z.string())).default({}),
+  /** Per-character presence (scene-scoped like reach; I4-style — never persisted at character level).
+   *  Absent means "here" — every existing scene is unchanged. An authored entry is "mode :: via",
+   *  mode one of "remote"/"partial" — e.g. {"CARTER": "remote :: the phone line"}. */
+  presence: z.record(z.string(), z.string()).default({}),
   /** Writer-only overrides for this one scene; unset falls back to `models.writer` / `thinking.writer`. */
   writerModel: z.string().optional(),
   writerThink: thinkLevel.optional(),
@@ -73,6 +77,8 @@ export const TimelineDef = z.strictObject({
   fired: z.string().min(1),
   at: z.number().min(0).max(1).default(0.45),
   memories: z.record(z.string(), z.string()).default({}),
+  /** Broadly-knowable events implant regardless of presence; locally-knowable ones don't implant for a "remote" character. */
+  scope: z.enum(["world", "scene"]).default("world"),
   state: z.enum(["pending", "fired", "void"]).default("pending"),
 });
 

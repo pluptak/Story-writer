@@ -11,7 +11,7 @@ import { LIVE, setWhere, sseWrite, runState, stopRun, releaseForStop } from "./l
 import { startServer, type ServerHandle } from "./server/server.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { NET } from "./engine/llm-client.ts";
-import { loadStory, chooseStory, writtenChapters, readChapterCatalogs, type StoryConfig } from "./engine/story-format.ts";
+import { loadStory, chooseStory, resolveCliStoryDir, writtenChapters, readChapterCatalogs, type StoryConfig } from "./engine/story-format.ts";
 import { startupRefusal } from "./engine/run-gate.ts";
 import { warn } from "./engine/warnings.ts";
 import { runAndSave } from "./run-and-save.ts";
@@ -194,7 +194,7 @@ export async function appMain(cli: CliConfig): Promise<void> {
   }
 
   let next: Picked =
-    cli.storyDir ? { dir: cli.storyDir, chapter: 1 }
+    cli.storyDir ? { dir: resolveCliStoryDir(cli.storyDir), chapter: 1 }
     : await pickStory();
   for (;;) {
     try {

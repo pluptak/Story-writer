@@ -58,9 +58,10 @@ function sceneContext(dir, n) {
   return { story: storyName(dir) || card.name || dir, scene };
 }
 
-/** "In this scene": role, place, dramatic question, and what this scene grants them -- every one
- *  of them true only here. Reach entries are `name :: meaning`; the meaning rides as a tooltip
- *  so the grant reads in one line. */
+/** "In this scene": role, place, dramatic question, what this scene grants them, and where
+ *  they are in it -- every one of them true only here. Reach entries are `name :: meaning`; the
+ *  meaning rides as a tooltip so the grant reads in one line. Presence is `mode :: via`; the via
+ *  rides as a tooltip, and absence renders nothing ("here" is the default). */
 function sceneSectionHtml(name, ctx) {
   const { story, scene } = ctx;
   const roster = scene.roster || [];
@@ -79,14 +80,30 @@ function sceneSectionHtml(name, ctx) {
     const meaning = i < 0 ? "" : String(e).slice(i + 2).trim();
     return `<span class="reach" title="${esc(`only here — granted by this scene${meaning ? `: ${meaning}` : ""}`)}">⇢ ${esc(rname)}</span>`;
   }).join(" ");
+  // Presence is this scene's alone (I4): a set entry renders one position chip, scoped to the
+  // card's own scene -- no scene number needed, the eyebrow already names the chapter. Absence
+  // renders nothing: "here" is the unmarked default.
+  const presenceRaw = Object.entries(scene.presence || {})
+    .find(([who]) => (who || "").toLowerCase() === name.toLowerCase())?.[1];
+  const presenceTag = (() => {
+    if (presenceRaw == null) return "";
+    const text = String(presenceRaw);
+    const i = text.indexOf("::");
+    const mode = (i < 0 ? text : text.slice(0, i)).trim();
+    const via = i < 0 ? "" : text.slice(i + 2).trim();
+    if (!mode) return "";
+    return `<span class="presence" title="${esc(`position in this scene only — ${mode}${via ? ` via ${via}` : ""}`)}">◌ ${esc(mode)}${via ? ` — ${esc(via)}` : ""}</span>`;
+  })();
+  const sceneTags = grantTags || presenceTag
+    ? `<div class="cast-tags">${grantTags}${grantTags && presenceTag ? " " : ""}${presenceTag}</div>`
+      + `<p class="hint">Only in this scene — not part of who they are.</p>` : "";
   return `<section data-tid="charcard.scene">`
     + `<p class="charcard-eyebrow">${esc(inScene || isPov ? `In this scene · Chapter ${scene.n}` : `Chapter ${scene.n}`)}${story ? ` · ${esc(story)}` : ""}</p>`
     + `<p class="charcard-role">${esc(role)}</p>`
     + (scene.place || scene.question
       ? `<div class="charcard-scene">${scene.place ? `<span>${esc(scene.place)}</span>` : ""}`
         + `${scene.question ? `<p>“${esc(scene.question)}”</p>` : ""}</div>` : "")
-    + (grantTags ? `<div class="cast-tags">${grantTags}</div>`
-      + `<p class="hint">Only in this scene — not part of who they are.</p>` : "")
+    + sceneTags
     + `</section>`;
 }
 

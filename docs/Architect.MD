@@ -288,6 +288,10 @@ inside a scene run.
   answer the question: the snapshot beside it records what was *aimed* at that chapter, never what
   happened, and an event that never fired leaves nothing in the prose to read. Written only when
   there is something to say, and losing it costs no more than the snapshot does.
+- Every run that saves a chapter also writes `chapters/<n>.beats.json` unconditionally — whether
+  the done judge returned a verdict and what it said, plus every world beat the chapter fired with
+  its trigger. Its absence cleanly means "written before this shipped". Losing it costs no more
+  than the snapshot does.
 - A stopped or incomplete run does not replace an existing accepted chapter file.
 - The handoff reads the highest numbered accepted chapter and prepares the next number.
 - The architect proposes edits; it never writes directly during a conversation.
@@ -295,32 +299,53 @@ inside a scene run.
   validation fails.
 - The handoff does not start a run. The user starts the prepared chapter separately.
 
-**Stranded world events.** `openNextChapter` reads every written chapter's `.unfired.json` and the
-session carries the result into the round; absent, empty and unparseable are all treated as nothing
-to re-aim. When any exist the request gains a `[WORLD EVENTS THAT NEVER HAPPENED]` block naming each
-with its chapter and trigger, and the architect is told plainly that none of them is in the prose —
-otherwise it goes looking for an event that never occurred — and that leaving one where it is does
-nothing, since a beat aimed at a written chapter can never fire. Two ways out: re-aim it with
-`beat_<n>.chapter`, or `beat_<n>.state "void"`. **Void is preferred to `remove_beat`** — a beat that
-was considered and dropped is worth keeping in the ledger. Its memories travel with it either way;
-they belong to the beat, not the chapter. The block is absent entirely when nothing was stranded,
-while the beat edit fields stay in the `[CHANGE]` list either way, since a beat may need editing for
-other reasons.
+**Stranded world events.** `openNextChapter` resolves every written chapter's recorded beats
+against the live ledger (by beat text plus trigger, skipping already-voided rows) and adjudicates
+them with `engine/world-repair.ts` instead of listing every unfired beat for the model to guess
+re-aim vs. void over. The standing is mechanical: unfired and chapter-ended, still possible,
+question-live exactly when the chapter's `.beats.json` says the done judge left the question
+unanswered (unjudged defaults to live — never silently drops a beat). A `void(spent)` applies
+silently as an ordinary `beat_<n>.state` edit in round 1, before the prompt is built; only
+`re-aim(stranded)` candidates reach the architect, in a `[STRANDED WORLD EVENTS]` block naming
+each with its beat number, chapter and trigger — already-voided beats never reach the prompt at
+all. `beat_<n>.state "void"` is still preferred to `remove_beat`, and a beat's memories travel
+with it either way; they belong to the beat, not the chapter. The block is absent entirely when
+nothing was stranded, while the beat edit fields stay in the `[CHANGE]` list either way, since a
+beat may need editing for other reasons. Chapters written before `.beats.json` shipped surface
+their `.unfired.json` entries the old way — every one of them, now carrying its resolved beat
+number — because with no fired record a beat that may already be prose must never read as stranded.
+
+**Fired world events.** The same round also judges beats that fired into a written chapter: a
+`[FIRED WORLD EVENTS TO CHECK]` block names each with its beat number, and the reply carries one
+`beat_checks` entry per beat — whether it is still possible (not contradicted by what was
+actually written), whether its question is still live, and whether it landed: true when the beat
+reached the page as established fact, false when it was written but changed nothing, omitted
+when the architect cannot tell. "Written" is not "landed" — the judgement is whether anything in
+the chapter is different because the beat happened, and the prompt says to omit rather than
+guess. A contradicted beat with a live question the reply did not already re-author
+(`beat_<n>.hold`/`.fired`/`.memories` in the same round) comes back as an advisory flag for the
+author, not a silent pass; an unlanded-but-possible beat with a live question the reply did not
+already re-arm comes back the same way — re-arm the same beat with more force, the rewording the
+handoff's to author. Only the booleans ever reach the repair entity; the `why` stays a
+human-facing string in flags. An omitted or malformed `landed` reads as awaiting-check, never as
+failure: a beat awaiting its check is not a beat that failed one.
 
 ### Edit surface
 
 The architect can edit the fields supported by `engine/story-spec.ts`:
 
 - story metadata: `title`, `premise`, `writerStyle`, and `writerStyleConstraints`
-- scenes: `scene_<n>.place`, `question`, `pov`, `length`, `roster`, and `reach`
-  (an object: `{"NAME": ["thing :: what they can do through it"]}`)
+- scenes: `scene_<n>.place`, `question`, `pov`, `length`, `roster`, `reach`
+  (an object: `{"NAME": ["thing :: what they can do through it"]}`), and `presence`
+  (an object: `{"NAME": "mode :: via"}` with mode `remote` or `partial` — where someone is
+  while that scene is being written, scene-scoped like `reach`; a `remote` entry needs its `via`)
 - scene structure: `add_scene` and `remove_scene`
 - characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`,
   `restrictions`, `origin`, and `lacks`, plus `name` (rename, with roster/pov references
   carried along) and `characters.<NAME>.learned` (folded into `knows` on arrival)
 - cast membership: `add_character` and `remove_character`
 - story facts: `add_fact`, `remove_fact`, and an indexed update of `fact_<n>`
-- the world-event ledger: `beat_<n>.chapter`, `at`, `hold`, `fired`, `state`, and `memories`
+- the world-event ledger: `beat_<n>.chapter`, `at`, `hold`, `fired`, `state`, `scope`, and `memories`
   (an object: `{"NAME": "what they have always known"}`, replacing the map wholesale), plus
   `add_beat` and `remove_beat`. The spelling follows `scene_<n>` and `fact_<n>` — the two other
   indexed collections an edit can address — rather than the schema's own `timeline` key
@@ -593,7 +618,11 @@ open an action rather than closing one (a memory that makes a character's plan p
 nowhere to go and their goal simply wins); and give it to whoever the scene's question turns on. Only
 characters in that chapter's roster — `timelineBeatProblems` warns for anyone else, because the loop
 resolves memory names against the scene roster and a memory for an absent character silently never
-implants. What a memory *is* from the character's side is `Character.MD`'s.
+implants, and neither does a blank one — an empty or whitespace-only value is skipped the same way.
+Each beat also carries a `scope`: `"world"` (the default) for something broadly knowable,
+`"scene"` for something only people physically present would know. A `"scene"`-scoped beat's memory
+does not implant for a character marked `"remote"` in that scene. What a memory *is* from the
+character's side is `Character.MD`'s.
 
 The idea's FIRST DECIDE gate lives at the story stage: if it does not explain who is in the scene
 and what is at stake between them, the architect asks instead of proposing.

@@ -357,6 +357,11 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
       character it names gets an accent-coloured `⇢ name · scene N` tag with a tooltip explaining it
       is available only through where they are standing here — visibly distinct from both `+skill`
       and `no restriction`, never merged into either list.
+- [ ] **Presence shows per scene, labelled — and absence shows nothing.** On a story whose scene
+      carries a `presence` entry, the character it names gets a muted `◌ mode · scene N` tag (mode
+      and via on hover) in the sheet, and a `◌ mode — via` chip in the card's own scene half —
+      visibly a position, never an accent-coloured capability. A character with no entry shows no
+      chip at all: "here" is the unmarked default.
 - [ ] **Read-only.** No inputs, no edit affordances — it is for the human reviewing what a consult
       was working from, never an edit surface.
 - [ ] **Live only.** The same pill on the shelf or the History view opens the card with the pill's own

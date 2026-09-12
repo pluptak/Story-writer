@@ -92,6 +92,9 @@ timeline[].fired    -- what has happened, once it does. One or two sentences, co
 timeline[].memories -- OPTIONAL, and where the event gets its teeth. Keyed by character name: a
                        thing that character has ALWAYS known and had no reason to think about until
                        now. It stays hidden until the event fires, then it is theirs.
+timeline[].scope    -- OPTIONAL, "world" for something broadly knowable, "scene" for something only
+                       people physically present would know. Default "world" if omitted: a "scene"
+                       beat's memory does not implant for a character marked "remote" in that scene.
 
 WHAT MAKES A MEMORY WORK -- each of these is a way one has already failed:
 
@@ -185,6 +188,15 @@ scene.reach  -- OPTIONAL. An interface the WORLD offers one of these characters 
                  exists at all is the place's or the facts' job to establish. Name the INTERFACE,
                  never the sense it substitutes for: "cameras", never "sight" -- a blind character's
                  camera feed still works.
+scene.presence -- OPTIONAL. Where one of these characters IS while this scene is being written --
+                 most of the cast is simply here, and needs nothing said. Set it only for someone
+                 elsewhere: {"AURA": "remote :: the phone line"} or {"AURA": "partial :: can hear
+                 the room but not see it"}. The mode is "remote" (not physically there, connected
+                 only by the via -- a remote via is REQUIRED) or "partial" (only partly here; the
+                 via may say how). It exists only while THIS scene is being written and vanishes at
+                 its edge, so never use it for anything intrinsic. And it changes what the WRITER
+                 narrates, not just what the character believes: a remote character is not seated
+                 in the room, never handed something, never caught by a glance across it.
 writer_style -- house style: person, tense, what to do with dialogue, what to leave out.
 characters   -- Every character costs consults out of a fixed step budget, so add a third or fourth
                 only when they have their own stake in what happens -- not because a scene feels thin
@@ -212,6 +224,7 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
     title · premise · writer_style
     scene.place · scene.question · scene.pov · scene.length · scene.roster
     scene.reach   (an object: {"NAME": ["thing :: what they can do through it"]} -- see scene.reach above)
+    scene.presence   (an object: {"NAME": "remote :: the via" | "partial :: the via"} -- see scene.presence above)
     scene_<n>.place · ...      (the same fields on the nth scene; scene_1 and scene are the same one)
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.belief · characters.<NAME>.impulse · characters.<NAME>.voice   (voice: a list)
@@ -227,8 +240,8 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
      add_scene          (value is a whole scene object: place, question, pov, length, roster)
      remove_scene       (value is the scene number)
      add_fact · remove_fact (the fact number) · fact_<n> (the replacement text)
-     beat_<n>.chapter · .at · .hold · .fired · .state   (the world-event ledger; .state is
-                                                        "pending", "fired" or "void")
+     beat_<n>.chapter · .at · .hold · .fired · .state · .scope   (the world-event ledger; .state is
+                                                             "pending", "fired" or "void")
      beat_<n>.memories  (an object: {"NAME": "what they have always known"} -- replaces the map)
      add_beat           (value is a whole beat object: chapter, at, hold, fired, memories)
      remove_beat        (value is the beat number)
@@ -616,8 +629,12 @@ scene.pov      -- whose perception we are inside. One of the character names, an
                   people actually present in the room.
 scene.length   -- words. 600-900 unless the idea demands otherwise.
 scene.reach    -- OPTIONAL; see its full description in your instructions above. An interface the
-                  world offers one character HERE -- situational, never carried between scenes,
-                  named after the interface and not the sense it substitutes for.
+                   world offers one character HERE -- situational, never carried between scenes,
+                   named after the interface and not the sense it substitutes for.
+scene.presence -- OPTIONAL; see its full description in your instructions above. Where one
+                   character IS while this scene is being written -- "remote" (elsewhere, via
+                   required) or "partial"; situational, never carried between scenes, and it
+                   changes what the writer narrates, not just what the character believes.
 later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"question": "..."}
                  and NOTHING else. Provisional pressure points, so the author can see the arc --
                  not commitments. No place, no pov, no length, no outcomes: whatever the chapters
@@ -635,7 +652,7 @@ ${specSoFar}
 
 YOUR STAGE: the world events, and nothing else --
 
-{"timeline": [{"chapter": 1, "at": 0.45, "hold": "...", "fired": "...",
+{"timeline": [{"chapter": 1, "at": 0.45, "hold": "...", "fired": "...", "scope": "world",
                "memories": {"NAME": "..."}}],
  "ask": "",
  "note": ""}
@@ -799,10 +816,24 @@ export const castAsymmetryRequest = (
 
 // -- THE HANDOFF -----------------------------------------------------------
 
-/** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one. */
+/** One beat the handoff asks the architect about, resolved to its ledger row: `beatIndex`
+ *  is the 1-based `beat_<n>` the edit surface addresses, `chapter` the written chapter it was
+ *  aimed at, `text` its `fired` form, `at` its trigger. */
+export interface HandoffBeat {
+  beatIndex: number;
+  chapter: number;
+  text: string;
+  at: number;
+}
+
+/** The handoff request: what happened in the chapters written so far, and re-author the cast for the next one.
+ *  `stranded` are unfired beats the repair entity re-aimed at a written chapter's still-live
+ *  pressure — already-voided beats never reach the prompt at all. `fired` are beats that fired
+ *  into a written chapter, for the architect to judge possible/questionLive on. */
 export function architectNextChapter(
   premise: string, specJson: string, chaptersSoFar: { n: number; text: string }[],
-  unfired: { n: number; beat: string; at: number }[] = [],
+  stranded: HandoffBeat[] = [],
+  fired: HandoffBeat[] = [],
 ): string {
   const last = chaptersSoFar.reduce((m, c) => Math.max(m, c.n), 0);
   const next = last + 1;
@@ -836,6 +867,9 @@ these people, you write into their definitions now or it is lost:
   - whatever an earlier scene's reach granted -- an interface the world offered someone THERE --
     is gone now; reach never travels with a person. If where they stand in chapter ${next} still
     offers it, re-grant it with scene_${next}.reach; if not, grant nothing.
+  - whatever an earlier scene's presence set -- where someone was while THAT scene was written --
+    is gone now; presence never travels with a person. If they are still elsewhere in chapter
+    ${next}, re-set it with scene_${next}.presence; if not, set nothing.
 
 [THE PREMISE]
 ${premise}
@@ -845,9 +879,9 @@ ${written}
 
 [THE STORY AS IT STANDS]
 ${specJson}
-${unfired.length ? `
-[WORLD EVENTS THAT NEVER HAPPENED]
-${unfired.map(u => `  - chapter ${u.n}, set for ${u.at} of the way in: ${u.beat}`).join("\n")}
+${stranded.length ? `
+[STRANDED WORLD EVENTS]
+${stranded.map(s => `  - beat ${s.beatIndex} (chapter ${s.chapter}, set for ${s.at} of the way in): "${s.text}"`).join("\n")}
 
 These are in the ledger above, still aimed at chapters that are now written. The chapter ended
 before each one's trigger, so none of them is anywhere in the prose -- do not look for it, and do
@@ -855,12 +889,35 @@ not treat the story as though it happened. Each is now yours to settle, and leav
 is the one thing that does nothing: a beat aimed at a written chapter can never fire.
 
   - Still wanted, and the next chapter is where it belongs? Re-aim it: beat_<n>.chapter, and
-    beat_<n>.at if the new scene wants it earlier or later.
+    beat_<n>.at if the new scene wants it earlier or later. The beat number above IS the <n>.
   - Overtaken by what the people actually did -- someone already left, the thing it would have
     threatened is settled -- then it is spent. beat_<n>.state "void" keeps it in the ledger as
     something that was considered; remove_beat drops it outright. Prefer void.
 
 Its memories go with it either way; they are the beat's, not the chapter's.
+` : ""}${fired.length ? `
+[FIRED WORLD EVENTS TO CHECK]
+For each, say whether it's still possible (not contradicted by what was actually written),
+whether the question it served is still live (open) or settled by what happened, and whether
+it landed. Judge only the
+beats listed.
+${fired.map(f => `  - beat ${f.beatIndex} (chapter ${f.chapter}, fired at ${f.at} of the way in): "${f.text}"`).join("\n")}
+
+"landed" is a three-state judgement: true when the beat reached the page as established fact,
+false when it was written but changed nothing -- background scenery the story stepped around --
+and omitted when you cannot tell. "The beat was written" is not the same as "the beat changed
+the story": ask whether anything in the chapter is different because the beat happened. Omit
+the field rather than guess.
+
+If a beat is contradicted (possible: false) and its question is still live, also author its
+replacement in THIS reply's edits: beat_<n>.hold / beat_<n>.fired / beat_<n>.memories for the same
+obligation through a different route, AND beat_<n>.chapter aimed at chapter ${next} -- a beat aimed
+at a written chapter can never fire, so rewording alone leaves it dead. The beat number above IS
+the <n>.
+If a beat fired but changed nothing (landed: false) and its question is still live, re-arm it in
+THIS reply's edits with stronger wording -- beat_<n>.hold / beat_<n>.fired / beat_<n>.memories with
+more force -- AND beat_<n>.chapter aimed at chapter ${next}, for the same reason: a beat aimed at a
+written chapter can never fire.
 ` : ""}
 CHAPTER ${next} ITSELF. If the story above already defines a scene ${next}, re-author it in place with
 scene_${next}.place / .question / .pov / .length / .roster -- it was sketched before chapter ${last}
@@ -880,7 +937,16 @@ an edit: surface the observation for the author to resolve instead.
 
 Reply with edits only, and nothing else:
 
-{"edits": [{"field": "characters.NAME.goal", "value": "..."}], "flags": [], "ask": "", "note": ""}
+ {"edits": [{"field": "characters.NAME.goal", "value": "..."}],
+  "beat_checks": [{"beat": 5, "possible": true, "questionLive": true, "landed": true, "why": "..."}],
+  "flags": [], "ask": "", "note": ""}
+
+"beat_checks" carries one entry per fired beat listed above --
+"beat" is its beat number, "possible" whether it is contradicted by what was actually written,
+"questionLive" whether the question it served is still live or settled by what happened,
+"landed" whether the fired beat reached the page as established fact (true/false, or omit it
+when you cannot tell -- never guess), "why"
+one line for the author. Omit it (or send []) when no fired beats are listed.
 
   title · premise · writer_style
   characters.<NAME>.persona · .knows · .goal · .belief · .impulse · .skills · .restrictions
@@ -892,11 +958,12 @@ Reply with edits only, and nothing else:
                       belief, impulse, voice, skills, restrictions)
   remove_character   (the name)
    scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
-   scene_<n>.reach     (an object: {"NAME": ["thing :: what they can do through it"]})
+    scene_<n>.reach     (an object: {"NAME": ["thing :: what they can do through it"]})
+    scene_<n>.presence  (an object: {"NAME": "remote :: the via" | "partial :: the via"})
     add_scene          (a whole scene object: place, question, pov, length, roster)
    remove_scene       (the scene number)
-   beat_<n>.chapter · .at · .hold · .fired · .state          (the world-event ledger; .state is
-                                                             "pending", "fired" or "void")
+   beat_<n>.chapter · .at · .hold · .fired · .state · .scope          (the world-event ledger; .state is
+                                                                  "pending", "fired" or "void")
    beat_<n>.memories   (an object: {"NAME": "what they have always known"} -- replaces the map)
    remove_beat        (the beat number)
    add_fact           (value is the fact text)

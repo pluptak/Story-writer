@@ -62,10 +62,10 @@ describe("specView against the story schema", () => {
 });
 
 describe("sceneDrift", () => {
-  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
+  const base: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
 
   it("returns [] for identical scenes", () => {
-    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
+    const after: SceneDef = { place: "A room", question: "Does she leave?", pov: "MAYA", length: 700, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 
@@ -75,7 +75,7 @@ describe("sceneDrift", () => {
   });
 
   it("returns multiple changed fields in stable order", () => {
-    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"], reach: {} };
+    const after: SceneDef = { place: "Outside", question: "Does she leave?", pov: "IVAN", length: 800, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
     assert.deepEqual(sceneDrift(base, after), ["place", "pov", "length"]);
   });
 
@@ -101,7 +101,7 @@ describe("sceneDrift", () => {
   });
 
   it("ignores whitespace differences in strings", () => {
-    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {} };
+    const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {}, presence: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
 });
@@ -127,6 +127,7 @@ describe("timeline", () => {
     assert.equal(spec.timeline.length, 1);
     assert.equal(spec.timeline[0].at, 0.45);
     assert.equal(spec.timeline[0].state, "pending");
+    assert.equal(spec.timeline[0].scope, "world");
   });
 
   it("reports a memory keyed to nobody and a beat aimed past the last scene, keeping both", () => {
@@ -152,14 +153,14 @@ describe("timeline", () => {
   it("survives an edit round: applyEdits round-trips a ledger it has no edits for", () => {
     const { spec } = normalizeSpec({ ...base, timeline: [beat] });
     const r = applyEdits(spec, { edits: [{ field: "title", value: "Alarm, revised" }] });
-    assert.deepEqual(r.spec.timeline, [{ ...beat, at: 0.45, memories: beat.memories, state: "pending" }]);
+    assert.deepEqual(r.spec.timeline, [{ ...beat, at: 0.45, memories: beat.memories, scope: "world", state: "pending" }]);
     assert.deepEqual(r.ignored, []);
   });
 
   it("renders into story.json, and omits the field entirely when the ledger is empty", () => {
     const models = { default: "m" };
     const withBeat = JSON.parse(renderStory(normalizeSpec({ ...base, timeline: [beat] }).spec, models)["story.json"]);
-    assert.deepEqual(withBeat.timeline, [{ ...beat, at: 0.45, memories: beat.memories, state: "pending" }]);
+    assert.deepEqual(withBeat.timeline, [{ ...beat, at: 0.45, memories: beat.memories, scope: "world", state: "pending" }]);
 
     const without = JSON.parse(renderStory(normalizeSpec(base).spec, models)["story.json"]);
     assert.equal("timeline" in without, false, "no timeline field on stories that never had one");
@@ -246,9 +247,9 @@ describe("timeline", () => {
 
 describe("timelineBeatProblems", () => {
   const beat = (over: Partial<{ chapter: number; hold: string; fired: string; at: number;
-                                memories: Record<string, string>; state: "pending" | "fired" | "void" }> = {}) => ({
+                                 memories: Record<string, string>; scope: "scene" | "world"; state: "pending" | "fired" | "void" }> = {}) => ({
     chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds",
-    at: 0.45, memories: {}, state: "pending" as const, ...over,
+    at: 0.45, memories: {}, scope: "world" as const, state: "pending" as const, ...over,
   });
   const cast = ["HALE", "ODUYA", "WREN"];
   const scenes = (...rosters: string[][]) => rosters.map(roster => ({ roster }));
@@ -299,16 +300,16 @@ describe("timelineBeatProblems", () => {
 describe("timelineOrderProblems", () => {
   it("reports nothing when beats descend across a chapter boundary — each chapter queues alone", () => {
     const beats = [
-      { chapter: 1, hold: "h", fired: "f", at: 0.8, memories: {}, state: "pending" as const },
-      { chapter: 2, hold: "h", fired: "f", at: 0.2, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.8, memories: {}, scope: "world" as const, state: "pending" as const },
+      { chapter: 2, hold: "h", fired: "f", at: 0.2, memories: {}, scope: "world" as const, state: "pending" as const },
     ];
     assert.deepEqual(timelineOrderProblems(beats), []);
   });
 
   it("reports a descending pair within one chapter", () => {
     const beats = [
-      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, state: "pending" as const },
-      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, scope: "world" as const, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, scope: "world" as const, state: "pending" as const },
     ];
     const problems = timelineOrderProblems(beats);
     assert.equal(problems.length, 1);
@@ -317,8 +318,8 @@ describe("timelineOrderProblems", () => {
 
   it("reports nothing for ascending beats in the same chapter", () => {
     const beats = [
-      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, state: "pending" as const },
-      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, scope: "world" as const, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, scope: "world" as const, state: "pending" as const },
     ];
     const problems = timelineOrderProblems(beats);
     assert.deepEqual(problems, []);
@@ -326,8 +327,8 @@ describe("timelineOrderProblems", () => {
 
   it("ignores void beats", () => {
     const beats = [
-      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, state: "void" as const },
-      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.6, memories: {}, scope: "world" as const, state: "void" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.3, memories: {}, scope: "world" as const, state: "pending" as const },
     ];
     const problems = timelineOrderProblems(beats);
     assert.deepEqual(problems, [], "void beats are not checked for ordering");
@@ -335,8 +336,8 @@ describe("timelineOrderProblems", () => {
 
   it("reports nothing for equal at values in the same chapter", () => {
     const beats = [
-      { chapter: 1, hold: "h", fired: "f", at: 0.5, memories: {}, state: "pending" as const },
-      { chapter: 1, hold: "h", fired: "f", at: 0.5, memories: {}, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.5, memories: {}, scope: "world" as const, state: "pending" as const },
+      { chapter: 1, hold: "h", fired: "f", at: 0.5, memories: {}, scope: "world" as const, state: "pending" as const },
     ];
     const problems = timelineOrderProblems(beats);
     assert.deepEqual(problems, []);
@@ -399,6 +400,17 @@ describe("editing the world-event ledger", () => {
     assert.equal(removed.spec.timeline[0].fired, "A second event.");
   });
 
+  it("edits the beat scope, defaulting to world when unset", () => {
+    const r = edit(withLedger(beat()), "beat_1.scope", "scene");
+    assert.equal(r.spec.timeline[0].scope, "scene");
+    assert.equal(r.applied[0].before, "world");
+    assert.equal(r.applied[0].after, "scene");
+    assert.deepEqual(r.ignored, []);
+
+    const back = edit(r.spec, "beat_1.scope", "world");
+    assert.equal(back.spec.timeline[0].scope, "world");
+  });
+
   it("ignores an edit to a beat that is not there, and says which", () => {
     for (const [field, value, why] of [
       ["beat_3.chapter", 2, /beat 3 does not exist/],
@@ -415,7 +427,7 @@ describe("editing the world-event ledger", () => {
 describe("timelineDrift", () => {
   const beat = {
     chapter: 1, hold: "the panel going into alarm", fired: "the fault alarm sounds",
-    at: 0.45, memories: { HALE: "the wing is insured on occupancy" }, state: "pending" as const,
+    at: 0.45, memories: { HALE: "the wing is insured on occupancy" }, scope: "world" as const, state: "pending" as const,
   };
 
   it("returns [] for identical ledgers", () => {
@@ -439,6 +451,11 @@ describe("timelineDrift", () => {
 
   it("is case-insensitive about memory keys and whitespace about values", () => {
     assert.deepEqual(timelineDrift([beat], [{ ...beat, memories: { hale: "  the wing is insured on occupancy  " } }]), []);
+  });
+
+  it("names a scope change", () => {
+    assert.deepEqual(timelineDrift([beat], [{ ...beat, scope: "scene" as const }]),
+      ["beat 1 (scope)"]);
   });
 
   it("detects an added and a removed beat positionally", () => {

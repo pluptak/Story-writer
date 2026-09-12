@@ -13,7 +13,8 @@ async function setupTwoSceneStory() {
   const raw = JSON.parse(await readFile(join(dir, "story.json"), "utf8")) as FixtureStory;
   raw.scenes = [
     { place: "The service corridor", question: "Does Riven get through the door?", pov: "RIVEN",
-      length: 700, roster: ["RIVEN", "MERRITT"], reach: { MERRITT: ["keys :: the porter's own ring"] } },
+      length: 700, roster: ["RIVEN", "MERRITT"], reach: { MERRITT: ["keys :: the porter's own ring"] },
+      presence: { MERRITT: "remote :: the phone line" } },
     { place: "The stairwell", question: "Does Merritt follow?", pov: "MERRITT",
       length: 700, roster: ["MERRITT"] },
   ];
@@ -39,6 +40,8 @@ test("a scene roster pill opens a card led by that scene", async ({ page, served
     await expect(scene).toContainText("Does Riven get through the door?");
     await expect(scene).toContainText("keys");
     await expect(scene).toContainText("Only in this scene");
+    // MERRITT is remote in this scene: the scene half positions them, scoped to chapter 1.
+    await expect(scene.locator(".presence")).toContainText("remote");
     // Then the persistent definition, labelled as such.
     await expect(page.getByTestId("charcard.cast-summary")).toContainText("saved in the story");
 
@@ -115,6 +118,46 @@ test("a shelf pill opens the card without a scene section", async ({ page, serve
     await page.keyboard.press("Escape");
     await expect(modal).toHaveCount(0);
     await expect(page).toHaveURL(/#\/shelf$/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("presence shows per scene, labelled — and absence shows nothing", async ({ page, served }) => {
+  const dir = await setupTwoSceneStory();
+  try {
+    await expect.poll(() => sseClients.size, { timeout: 5_000 }).toBeGreaterThan(0);
+    LIVE.meta = {
+      story: dir, chapter: 1, chapters: 2, target: 700,
+      question: "Does Riven get through the door?",
+      characters: [{ name: "RIVEN", skills: [], restrictions: [] },
+                   { name: "MERRITT", skills: [], restrictions: [] }],
+    };
+    publish({ t: "scene_start", story: dir, characters: ["RIVEN", "MERRITT"], target: 700, chapter: 1 });
+    // Via the shelf first: the card's scene half resolves against the loaded
+    // shelf cards, which a direct #/live arrival never fetches.
+    await arrive(page, served, "#/shelf");
+    await expect(page.locator(".cardwrap", { hasText: "Card context" })).toBeVisible();
+    await page.locator("#nav-live").click();
+
+    // MERRITT is remote in scene 1: the sheet names the mode and its scene, the via on hover.
+    await page.locator('[data-tid="cast.chip"][data-char-name="MERRITT"]').first().click();
+    await expect(page.getByTestId("charcard.modal")).toBeVisible();
+    await expect(page.getByTestId("charcard.cast-summary")).toContainText("saved in the story");
+    const sheetTag = page.getByTestId("charcard.cast-summary").locator(".presence");
+    await expect(sheetTag).toHaveCount(1);
+    await expect(sheetTag).toContainText("remote · scene 1");
+    await expect(sheetTag).toHaveAttribute("title", /the phone line/);
+    // The card's own scene half positions them too, scoped to chapter 1 with no scene number.
+    await expect(page.getByTestId("charcard.scene").locator(".presence")).toContainText("remote");
+    await page.keyboard.press("Escape");
+
+    // RIVEN has no entry: "here" is the unmarked default, so no chip anywhere on the card.
+    await page.locator('[data-tid="cast.chip"][data-char-name="RIVEN"]').first().click();
+    await expect(page.getByTestId("charcard.modal")).toBeVisible();
+    await expect(page.getByTestId("charcard.cast-summary")).toContainText("saved in the story");
+    await expect(page.locator(".charcard .presence")).toHaveCount(0);
+    await page.keyboard.press("Escape");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

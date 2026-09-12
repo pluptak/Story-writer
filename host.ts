@@ -508,18 +508,19 @@ export function handoffState(): HandoffState { return handoffSnapshot(); }
 
 export async function handoffStart(dir: string, model: string): Promise<HandoffActionResult> {
   if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
-  const blocked = storyWriteBlocked(LIVE.storyLock);
+  const blocked = storyWriteBlocked();
   if (blocked) return { ok: false, reason: blocked, status: 409 };
   const gen = handoffGen;
   handoffBusy = true; handoffLast = null;
+  LIVE.storyLock = `a chapter handoff is open for ${dir}`;
+  // The session will hold a snapshot it writes back on accept: hold the story-write lock from
+  // before the session build (which awaits) until the handoff ends (accept, abandon, or failure),
+  // so neither a second handoff nor an editor save can interleave.
   try {
     const session = await (handoffTestHooks?.session ?? newHandoffSession)(dir, model);
     // Abandoned while the session was being built: it must not resurrect itself.
     if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
     HANDOFF = session;
-    // The session now holds a snapshot it will write back on accept: hold the story-write lock
-    // until the handoff ends (accept, abandon, or failure), so an editor save cannot interleave.
-    LIVE.storyLock = `a chapter handoff is open for ${dir}`;
     setWhere(`preparing chapter ${HANDOFF.chapter} of ${dir}`, false);
     publishHandoffState();
     const last = await HANDOFF.propose(stage => { handoffStage = stage; publishHandoffState(); });
@@ -744,9 +745,11 @@ export const HOST: ServerHost = {
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
       })),
-      // Reach stays per scene and never merges into a character's skills (I4): the GUI labels it
-      // with the scene it comes from so it can never read as intrinsic.
-      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {} })),
+      // Reach and presence stay per scene and never merge into a character's skills or any
+      // other character-level field (I4): the GUI labels each with the scene it comes from so
+      // neither can ever read as intrinsic. A missing presence entry means "here", the unmarked
+      // default, and travels as absence — never as a "here" value.
+      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {}, presence: s.presence ?? {} })),
     };
   },
   checkStory: (story) => {

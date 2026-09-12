@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { loadStory, type CharacterDef } from "../engine/story-format.ts";
 import { StoryJson, SceneDef } from "../engine/story-schema.ts";
 import { consult, type ConsultEvent, type ConsultRequest } from "../engine/consult.ts";
-import { runChapter, writeScene, newCharacterAgent, sceneReach, type RunEvent } from "../engine/scene-loop.ts";
+import { runChapter, writeScene, newCharacterAgent, sceneReach, scenePresence, type RunEvent } from "../engine/scene-loop.ts";
 import { Agent, setFitWarning } from "../engine/agent.ts";
 import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
@@ -249,7 +249,7 @@ describe("pause/resume handshake", () => {
 describe("sceneReach", () => {
   const reachDef = (limits: string[]): CharacterDef => ({
     name: "MERRITT", model: "", persona: "", knows: "", goal: "", belief: "", impulse: "",
-    voice: [], origin: "", skills: [], limits,
+    voice: [], origin: "", skills: [], limits, limitMeanings: limits.map(name => ({ name, meaning: "" })),
   });
   const grant = ["cameras :: reading the fire panel's fault codes"];
 
@@ -326,6 +326,40 @@ describe("sceneReach", () => {
               "must warn about unknown restriction when no bible is given");
     assert.equal(warningsWith.length, 0,
                  "must not warn about a restriction when the bible knows it");
+  });
+});
+
+// -- SCENE PRESENCE -----------------------------------------------------------
+describe("scenePresence", () => {
+  const presenceDef = (): CharacterDef => ({
+    name: "CARTER", model: "", persona: "", knows: "", goal: "", belief: "", impulse: "",
+    voice: [], origin: "", skills: [], limits: [], limitMeanings: [],
+  });
+
+  it("resolves a remote grant keyed with the character's exact name", () => {
+    const sd = SceneDef.parse({ presence: { CARTER: "remote :: the phone line" } });
+    assert.deepEqual(scenePresence(sd, presenceDef()), { mode: "remote", via: "the phone line" });
+  });
+
+  it("resolves a mis-cased grant key — presence behaves like roster and reach", () => {
+    const sd = SceneDef.parse({ presence: { carter: "partial :: can hear but not see" } });
+    assert.deepEqual(scenePresence(sd, presenceDef()), { mode: "partial", via: "can hear but not see" });
+  });
+
+  it("returns null (here) when absent or keyed to nobody", () => {
+    assert.equal(scenePresence(SceneDef.parse({}), presenceDef()), null);
+    assert.equal(scenePresence(SceneDef.parse({ presence: { NOBODY: "remote :: the phone line" } }), presenceDef()), null);
+  });
+
+  it("treats an unrecognised mode as here and warns", () => {
+    const sd = SceneDef.parse({ presence: { CARTER: "nearby :: the hallway" } });
+    const got: string[] = [];
+    const prev = WARN.sink;
+    WARN.sink = (m: string) => { got.push(m); };
+    try {
+      assert.equal(scenePresence(sd, presenceDef()), null);
+    } finally { WARN.sink = prev; }
+    assert.ok(got.some(x => /presence "nearby" is not "remote" or "partial"/.test(x)));
   });
 });
 

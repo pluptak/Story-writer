@@ -31,7 +31,7 @@ export const FIXTURE_DIR = "tests/fixtures/doorway";
 
 export type FixtureStory = {
   title: string; premise: string; writerStyle: string;
-  scenes: { place: string; question: string; pov: string; length: number; roster: string[]; reach?: Record<string, string[]> }[];
+  scenes: { place: string; question: string; pov: string; length: number; roster: string[]; reach?: Record<string, string[]>; presence?: Record<string, string> }[];
   characters: { name: string; persona: string; knows: string; goal: string; belief: string;
                 impulse: string; voice: string[]; origin?: string; skills: string[]; restrictions: string[] }[];
   config: { maxSteps: number };
@@ -60,7 +60,7 @@ export function cardFromStory(dir: string, raw: FixtureStory, name = dir): Story
     },
     scenes: raw.scenes.map(s => ({
       place: s.place, question: s.question, pov: s.pov, length: s.length,
-      roster: s.roster, reach: s.reach ?? {},
+      roster: s.roster, reach: s.reach ?? {}, presence: s.presence ?? {},
     })),
     characters: raw.characters.map(c => ({
       name: c.name, skills: c.skills.map(skillName), restrictions: c.restrictions,

@@ -3,10 +3,10 @@ import { APP, LIVEV } from "./state.js";
 
 // ---- the authored character sheet ------------------------------------------
 // The full authored cast a live run works from -- origin, persona, knows, goal, belief, impulse, voice,
-// skills, restrictions, and (labelled with its scene) reach -- fetched from /cast, keyed by story
-// dir, and rendered into the character card a cast pill opens. Authored data shown to the human;
-// it never travels back to any agent. Reach stays per scene, never merged into a character's
-// skills. Live-screen only: elsewhere the card shows just what its pill knew.
+// skills, restrictions, and (each labelled with its scene) reach and presence -- fetched from /cast,
+// keyed by story dir, and rendered into the character card a cast pill opens. Authored data shown to
+// the human; it never travels back to any agent. Reach and presence stay per scene, never merged
+// into a character's skills. Live-screen only: elsewhere the card shows just what its pill knew.
 
 /** Fetch the cast for one story into APP.cast. Guarded by APP.cast.dir + .loading so the render
  *  loop that kicks it (every frame on the live screen) cannot start a second fetch for the same
@@ -22,8 +22,8 @@ export async function loadCast(dir) {
   }
   if (APP.cast?.dir !== dir) return;            // a newer story's run took over mid-fetch
   APP.cast = j.ok
-    ? { dir, characters: j.characters || [], loading: false, error: "" }
-    : { dir, characters: [], loading: false, error: j.error || "could not load cast" };
+    ? { dir, characters: j.characters || [], scenes: j.scenes || [], loading: false, error: "" }
+    : { dir, characters: [], scenes: [], loading: false, error: j.error || "could not load cast" };
   APP.render();
 }
 
@@ -62,6 +62,14 @@ export function castCharacterSheet(name) {
     for (const [who, entries] of Object.entries(sc.reach || {}))
       (reachByChar[who.toLowerCase()] = reachByChar[who.toLowerCase()] || [])
         .push(...(Array.isArray(entries) ? entries : []).map(e => ({ n: sc.n, e })));
+  // Presence arrives per scene and stays per scene (I4), grouped the same way: each tag names the
+  // scene it positions the character in, so it can never read as intrinsic. A character with no
+  // entry in a scene's presence is "here" -- the unmarked default -- and renders no chip.
+  const presenceByChar = {};
+  for (const sc of (APP.cast.scenes || []))
+    for (const [who, raw] of Object.entries(sc.presence || {}))
+      (presenceByChar[who.toLowerCase()] = presenceByChar[who.toLowerCase()] || [])
+        .push({ n: sc.n, raw: String(raw ?? "") });
   const skills = (c.skills || []).map(s =>
     `<span class="yes" title="${esc(s.meaning || "")}">+${esc(s.text)}</span>`).join(" ");
   const restr = (c.restrictions || []).map(r =>
@@ -72,8 +80,18 @@ export function castCharacterSheet(name) {
     const meaning = i < 0 ? "" : e.slice(i + 2).trim();
     return `<span class="reach" title="${esc(`scene ${n} — available only through where they are standing here${meaning ? `: ${meaning}` : ""}`)}">⇢ ${esc(rname)} · scene ${n}</span>`;
   }).join(" ");
-  const tags = skills || restr || reach
-    ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}${skills || restr ? " " : ""}${reach}</div>` : "";
+  // A position, not a grant: the mode (remote/partial) labels the chip and the via rides in the
+  // tooltip, the way a reach meaning does -- and the muted .presence style keeps it from reading
+  // as a capability.
+  const presence = (presenceByChar[c.name.toLowerCase()] || []).map(({ n, raw }) => {
+    const i = raw.indexOf("::");
+    const mode = (i < 0 ? raw : raw.slice(0, i)).trim();
+    const via = i < 0 ? "" : raw.slice(i + 2).trim();
+    if (!mode) return "";
+    return `<span class="presence" title="${esc(`scene ${n} — ${mode}${via ? ` via ${via}` : ""}`)}">◌ ${esc(mode)} · scene ${n}</span>`;
+  }).join(" ");
+  const tags = skills || restr || reach || presence
+    ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}${(skills || restr) && (reach || presence) ? " " : ""}${reach}${reach && presence ? " " : ""}${presence}</div>` : "";
   const voice = (c.voice || []).map(v => `<p class="cast-voice">“${esc(v)}”</p>`).join("");
   const fields = [
     field("origin", c.origin),

@@ -1,10 +1,11 @@
 /** STORY FORMAT — loads and validates story.json, and discovers stories on disk. */
 import { readFile, readdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills,
-         type Catalogs, type Skill } from "./skills.ts";
+import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills, restrictionMeanings,
+         type Catalogs, type RemovedCapability, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
@@ -15,7 +16,13 @@ export type { SceneDef } from "./story-schema.ts";
 /** A loaded character: everything the agents need, with skills already resolved to the final list,
  *  and `limits` carrying what the authored restrictions took away as explicit negative facts —
  *  general AND special skills, so a removed lockpicking is nameable, not merely absent. `origin` is
- *  kept for display and round-trip; `skills` and `limits` are already resolved against it. */
+ *  kept for display and round-trip; `skills` and `limits` are already resolved against it.
+ *
+ *  `limitMeanings` is the same list as `limits`, in the same order, each entry carrying the
+ *  restriction's authored `:: meaning` (empty when none was written, and always empty for a general
+ *  the origin withheld). It is a parallel field rather than a richer `limits` on purpose: `limits`
+ *  is the matching key the sense lints canon-key off and that `scene-loop.ts` re-serialises into a
+ *  `restrictionsRaw`, so putting prose in it would break both. Only the prompt renderers read it. */
 export interface CharacterDef {
   name: string;
   model: string;
@@ -28,6 +35,7 @@ export interface CharacterDef {
   origin: string;
   skills: Skill[];
   limits: string[];
+  limitMeanings: RemovedCapability[];
   maxRetries?: number;
 }
 
@@ -118,6 +126,7 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       // Reach empty on both (I4): a character-level view never sees a scene's grant.
       skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
+      limitMeanings: restrictionMeanings(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       maxRetries: c.maxRetries,
     });
   }
@@ -236,6 +245,21 @@ export async function selectableStory(dir: string): Promise<string | null> {
   return choices.find(c => c === want || c === `data/stories/${want}`) ?? null;
 }
 
+/** Resolve a console-given story directory the way the viewer already does: a
+ *  bare name like `doorway` means `data/stories/doorway` when that exists. A
+ *  path that already points at a story.json (relative or absolute) passes
+ *  through untouched, as does anything unresolvable — loadStory reports that. */
+export function resolveCliStoryDir(dir: string): string {
+  const want = String(dir ?? "").trim();
+  if (!want) return want;
+  const norm = want.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (norm && existsSync(joinPath(resolveStoryDir(norm), "story.json"))) return norm;
+  const bare = norm.replace(/^(data\/stories\/|\/+)/, "");
+  if (bare && existsSync(joinPath(ROOT, "data", "stories", bare, "story.json")))
+    return `data/stories/${bare}`;
+  return want;
+}
+
 const BUILTIN_MODEL = "qwen3.6-35b-a3b";
 /** The scaffold interview's knobs: models, architect thinking, and the request retry settings.
  *  `models.assistant` is deliberately unlike `architect` — it does NOT fall back to `default` when
@@ -311,6 +335,45 @@ export async function readUnfiredBeats(storyDir: string, n: number): Promise<{ b
       .filter(b => b.beat);
   } catch {
     return [];
+  }
+}
+
+/** What one chapter's run established about its world beats, for the handoff's repair
+ *  adjudication (engine/world-repair.ts). Written unconditionally beside the chapter prose, so its
+ *  absence cleanly means "written before this shipped" — the same null-on-missing convention as
+ *  readChapterSpec/readChapterCatalogs. `judged` is whether the done judge returned a verdict;
+ *  `doneFlagged` is true when it said the question is NOT answered (still live) — the questionLive
+ *  proxy is doneFlagged, not its negation. `fired` is content-keyed the same way beat_stranded
+ *  already is (beat text + at). */
+export interface ChapterBeatOutcome {
+  judged: boolean;
+  doneFlagged: boolean;
+  doneFlaggedWhy: string;
+  fired: { beat: string; at: number }[];
+}
+
+/** The chapter's beat outcome, or null for a chapter written before outcomes were recorded (or
+ *  one whose sidecar will not parse). */
+export async function readChapterBeatOutcome(storyDir: string, n: number): Promise<ChapterBeatOutcome | null> {
+  const base = resolveStoryDir(storyDir);
+  try {
+    const parsed = JSON.parse(await readFile(joinPath(base, "chapters", `${n}.beats.json`), "utf8"));
+    if (!parsed || typeof parsed !== "object") return null;
+    if (typeof parsed.judged !== "boolean" || typeof parsed.doneFlagged !== "boolean") return null;
+    const fired = Array.isArray(parsed.fired)
+      ? parsed.fired
+          .map((b: unknown) => ({ beat: String((b as { beat?: unknown })?.beat ?? "").trim(),
+                                  at: Number((b as { at?: unknown })?.at) }))
+          .filter((b: { beat: string; at: number }) => b.beat && Number.isFinite(b.at))
+      : [];
+    return {
+      judged: parsed.judged,
+      doneFlagged: parsed.doneFlagged,
+      doneFlaggedWhy: String(parsed.doneFlaggedWhy ?? ""),
+      fired,
+    };
+  } catch {
+    return null;
   }
 }
 

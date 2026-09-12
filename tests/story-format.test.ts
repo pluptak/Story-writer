@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  loadStory, discoverStories, chooseStory, selectableStory, loadDefaults, readChapters, writtenChapters, readChapterSpec, readChapterCatalogs, ROOT,
+  loadStory, discoverStories, chooseStory, selectableStory, resolveCliStoryDir, loadDefaults, readChapters, writtenChapters, readChapterSpec, readChapterCatalogs, ROOT,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
 import { WARN } from "../engine/warnings.ts";
@@ -25,7 +25,7 @@ describe("StoryJson schema", () => {
     assert.equal(r.title, "");
     assert.equal(r.premise, "");
     assert.equal(r.scenes.length, 1);
-    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [], reach: {} });
+    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [], reach: {}, presence: {} });
     assert.equal(r.config.maxSteps, 24);
     assert.equal(r.config.thinking.writer, "low");
     assert.equal(r.models.default, "qwen3.6-35b-a3b");
@@ -654,6 +654,16 @@ describe("story discovery", () => {
       assert.equal(await selectableStory(bad), null, `must refuse ${JSON.stringify(bad)}`);
     }
   });
+
+  it("resolveCliStoryDir maps a bare console name to data/stories/, passing the rest through", async () => {
+    assert.equal(resolveCliStoryDir("__discovery_probe__"), probe);
+    assert.equal(resolveCliStoryDir(probe), probe);
+    assert.equal(resolveCliStoryDir(`${probe}/`), probe);
+    assert.equal(resolveCliStoryDir("data/stories\\__discovery_probe__"), probe);
+    // Unresolvable input is not rewritten — loadStory reports it, unchanged.
+    assert.equal(resolveCliStoryDir("no-such-story"), "no-such-story");
+    assert.equal(resolveCliStoryDir(""), "");
+  });
 });
 
 // -- THE INJECTED BIBLE ------------------------------------------------------
@@ -706,7 +716,10 @@ describe("loadStory with an injected bible", () => {
       try { withBible = await loadStory(dir, undefined, { bible }); } finally { WARN.sink = keep; }
       assert.deepEqual(withBible.characters[0].limits, ["telepathy"],
                        "a bible skill the author removed is nameable, not merely absent");
-      assert.ok(!kept.some(w => w.includes("telepathy")),
+      // Matched on the warning's own wording rather than the bare skill name: a resolved
+      // restriction with no `:: meaning` now draws its own (unrelated) nudge that also names
+      // telepathy, and this assertion is about the removes-nothing warning specifically.
+      assert.ok(!kept.some(w => /nothing to remove/.test(w)),
                 "and the restriction resolves, so nothing warns that it removes nothing");
 
       const warns: string[] = [];
@@ -716,7 +729,8 @@ describe("loadStory with an injected bible", () => {
       try { without = await loadStory(dir); } finally { WARN.sink = orig; }
       assert.deepEqual(without.characters[0].limits, [],
                        "without the bible there is nothing by that name to remove");
-      assert.match(warns.join(" "), /telepathy/);
+      assert.match(warns.join(" "), /telepathy[\s\S]*nothing to remove/,
+                   "and that is the warning the author gets, named as such");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
