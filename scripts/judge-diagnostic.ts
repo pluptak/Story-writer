@@ -76,7 +76,15 @@ function parseArgs() {
   };
 }
 
-/** One isolated call, repaired once against `wrongShape` if the first reply carries no `key`. */
+/** One isolated call, repaired once against `wrongShape` if the first reply carries no `key`.
+ *  A transport failure is caught here rather than left to propagate: `agent.generate` has already
+ *  spent llm-client.ts's own retry/backoff budget by the time it throws, so a further retry here
+ *  would only repeat that. Against a stable local server this never fires; against a rate-limited
+ *  hosted endpoint one dropped call would otherwise crash the whole run out from under `main()` --
+ *  losing every sample gathered so far in this mode, not just this one, since `--out` is written
+ *  only once at the very end. Folded into the same `{ raw }` shape a wrong-shape reply already
+ *  takes, so every caller's existing `unparseable(...)`/`REFUSED:` fallback shows it inline with no
+ *  new branch anywhere. */
 async function callOnce(
   system: string, model: string, think: Agent["think"], payload: string,
   key: string, wrongShape: string,
@@ -84,11 +92,15 @@ async function callOnce(
   const agent = new Agent("JUDGE", model, system, 0.3);
   agent.think = think;
   const extra = [{ role: "user" as const, content: payload }];
-  for (let tries = 0; ; tries++) {
-    const raw = await agent.generate("JUDGE", "bench.judge-diagnostic", extra);
-    const reply = extractJson(raw);
-    if (key in reply || tries) return key in reply ? reply : { raw: raw.slice(0, 200) };
-    extra.push({ role: "assistant", content: raw.trim() }, { role: "user", content: wrongShape });
+  try {
+    for (let tries = 0; ; tries++) {
+      const raw = await agent.generate("JUDGE", "bench.judge-diagnostic", extra);
+      const reply = extractJson(raw);
+      if (key in reply || tries) return key in reply ? reply : { raw: raw.slice(0, 200) };
+      extra.push({ role: "assistant", content: raw.trim() }, { role: "user", content: wrongShape });
+    }
+  } catch (e) {
+    return { raw: `ERROR: ${(e as Error).message}` };
   }
 }
 
