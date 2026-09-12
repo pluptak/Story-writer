@@ -44,6 +44,13 @@ ENGINE.serve = SERVE || HEADLESS;
 ENGINE.echoConsole = !SERVE || HEADLESS;
 // --no-cast-echo trims just the characters' acts/reactions/answers from that echo; prose stays.
 ENGINE.echoCast = flag("no-cast-echo") === undefined;
+// --free-consult / --free-consult-v2 / --free-consult-v3: run-level CLI toggle only (like
+// --open-consult), never persisted to story.json. v3 wins if more than one is passed.
+ENGINE.freeConsult = flag("free-consult-v3") !== undefined ? "v3"
+  : flag("free-consult-v2") !== undefined ? "v2"
+  : flag("free-consult") !== undefined ? "v1" : false;
+// --split-judge: same run-level-toggle-only rule; the gated path is byte-identical without it.
+ENGINE.splitJudge = flag("split-judge") !== undefined;
 configureArchitectDebug(ARCHITECT_DEBUG || !!ARCHITECT_DEBUG_LOG, ARCHITECT_DEBUG_LOG);
 
 async function runPreflightCli() {

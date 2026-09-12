@@ -323,6 +323,315 @@ would settle it, and several gate work in the sections below.
   distinct: that one is several characters answering alike, this one is a single character rendered
   alike every time. Worth measuring before it is worth fixing — count repeated body-move phrasings
   per chapter first.
+- **Judge-conditioned revision: a real but low and lopsided capability, not the flat zero it first
+  looked like.** Surfaced chasing the Free Consult spike's v3 (see Directions): traced every judge
+  "retry" verdict across nine live doorway ch.1 runs and found 0 of 6 revisions ever survived
+  `reviseConsult`'s gate — always a menu question, an unchanged repeat, a bare "what do you do?"
+  shrug, or a sight-boundary violation. Read as "the model cannot do this task at all" until
+  `scripts/revision-benchmark.ts` (built for exactly this) replayed the same six real cases 5x each
+  in isolation. On `google/gemma-4-e4b` (the model all nine runs shared for every role): **4/30
+  samples produced a usable revision (13%), 25/30 at least recognized the answer was unusable
+  (verdict=retry)**. So the true per-attempt success rate is low but nonzero — 0/6 in production was
+  within ordinary binomial variance of a ~13% rate (≈38% chance of seeing zero successes in six
+  tries at that rate), not evidence of zero capability. It also explains why `attempt` essentially
+  never reaches 3 without needing to invoke "the model can't do this at all": two independent ~13%
+  events landing consecutively is itself rare.
+
+  The rate is not evenly spread, though, and that is the more useful reading: **all 4 successes
+  came from 1 of the 6 cases** (`seq78`, an open-beat RIVEN situation needing a genuinely new
+  situation plus a freshly-authored question — 3/5) plus a single hit on a second case (`seq38`,
+  1/5). The other four cases — every one where MERRITT's sight-CANNOT is what made the original
+  answer unusable and the fix is an open, non-degenerate question *about* that limitation — never
+  produced a working revision across 20 combined tries. That's a specific, repeatable weak spot
+  (constructing an open question around a stated sensory restriction), not a uniform 13%-everywhere
+  unreliability.
+
+  **Cross-model comparison (same 6 cases, 5 samples each, same benchmark):**
+
+  | model | recognized the issue (retry) | revision survived |
+  | --- | ---: | ---: |
+  | `google/gemma-4-e4b` (the story's own model) | 25/30 (83%) | 4/30 (13%) |
+  | `zai-org/glm-4.7-flash` | 1/30 (3%) | 0/30 (0%) |
+  | `gemma-4-12b-it-qat-uncensored-heretic` | 0/30 (0%) | 0/30 (0%) |
+  | `qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive` | 2/30 (7%) | 0/30 (0%) |
+  | `gemma-the-writer-n-restless-quill-10b-uncensored` | 0/30 (0%)* | 0/30 (0%) |
+  | `qwen/qwen3-8b` (stock, no fine-tune) | 0/30 (0%) | 0/30 (0%) |
+  | `qwen/qwen2.5-coder-14b` (stock, coding-specialized) | 8/30 (27%) | 0/30 (0%) |
+
+  Four for four, every alternative tried is a worse judge than the story's own small model — and
+  a pattern in *why* has emerged that reframes the earlier "abliteration suppresses refusal"
+  reading. Three of the four alternatives are community "uncensored" fine-tunes, and their names
+  say what they're tuned for: `heretic`, `hauhaucs-aggressive`, and a roleplay-branded
+  "the-writer...-quill" model — permissive, in-character creative writing, not rule-checking.
+  A judge's entire job is to refuse: decide an answer is unusable and say so. That is close to
+  the opposite disposition these tunes are optimized to have, so defaulting almost entirely to
+  "accept" (0-7% recognition) may not be a side effect of abliteration specifically so much as a
+  direct consequence of nobody having built these models to critique anything. `glm-4.7-flash`
+  is the one non-"uncensored" alternative tried and still underperforms (3%), so this doesn't
+  fully explain the gap — but it does mean the useful next model to try is one selected for
+  instruction-following/critique strength on its own terms, not "bigger" or "less restricted,"
+  and the four tried so far were not that.
+
+  *`gemma-the-writer-n-restless-quill-10b-uncensored` is a distinct failure mode, not more of the
+  same, and worth separating out: its `note` text is the most substantively correct reasoning
+  observed from any model tested — e.g. catching that "RIVEN's chosen action of speaking presumes
+  they can HEAR a response, which is NOT ESTABLISHED as guaranteed" and that MERRITT's thought
+  "shows knowledge of the task, not its in-the-moment progress sense." But its JSON consistently
+  corrupts the `verdict` key itself (`{"uxxxx: "retry", ...`, repeated near-identically across
+  independent samples, surviving even the one-shot `VERDICT_ONLY` repair), so the benchmark counts
+  it as 0/30 recognized purely on parseability — the reasoning underneath may be the best of the
+  five, undeliverable through a broken schema. Worth a second pass with a stricter JSON-mode
+  setting if this model is considered again, rather than writing it off on this number alone.
+
+  **`qwen/qwen3-8b` (stock, no fine-tune) was a clean miss on the "pick for instruction-following/
+  critique strength" advice above — 0/30, worse than the reasoning-strong-but-JSON-broken model,
+  tying the worst outright-uninterested scores.** General instruction-following/structured-output
+  benchmarks (what that recommendation was based on) apparently do not predict this specific
+  skill — noticing a narrative-continuity contradiction against an established cast fact — at all.
+  The obvious confound was ruled out, not left open: `thinking.writer` defaults to `"low"` for this
+  story, which LM Studio forwards as `reasoning_effort` on the wire (`engine/llm-client.ts:82`), so
+  `--think=<level>` was added to `scripts/revision-benchmark.ts` and the same 30 samples were
+  re-run at `--think=high`. LM Studio's own log showed this model only supports a binary
+  `on`/`off` for reasoning and clamped `"high"` up to `"on"` — full reasoning enabled — and the
+  result was byte-identical: 0/30, every sample "accept" on all six cases, same as the original
+  run. Reasoning budget made no difference; this is a real gap for this model at this size on this
+  task, not a suppressed-thinking artifact. The instruction-following-benchmark-based picks are not
+  vindicated by either result and should not be trusted further without direct measurement — this
+  entry's own throughline, now demonstrated twice.
+
+  **`qwen/qwen2.5-coder-14b` (stock, coding-specialized, `--think=off`)** is the second-best
+  recognizer tried after the story's own model — 8/30 (27%), ahead of every other alternative —
+  but still 0/30 on revision survival, the same complete failure every non-`gemma-4-e4b` model has
+  shown on that specific sub-task regardless of size, specialty, or tuning. Six alternatives across
+  four size classes (8B-35B), three specialties (general instruct, roleplay, coding) and three
+  tunings (stock, uncensored, coding-fine-tuned) have now been tried; not one has produced a single
+  surviving revision. "Recognizing the answer is unusable" and "authoring a valid open, non-menu,
+  non-repeated replacement" keep separating cleanly across every model tested — better recognition
+  (`qwen2.5-coder-14b`'s 27%, `gemma-4-e4b`'s 83%) does not carry over to the harder sub-task at
+  anything like the same rate, and for six of seven models it does not carry over at all.
+
+  **Recognition itself turned out to be less reliable than the 83%/25-of-30 number suggests — this
+  is the more important correction.** Reading the six real retry verdicts against the doorway
+  cast's actual `restrictions`/`skills` arrays (not just the judge's own stated reasoning) found
+  two of six retries were flatly, checkably wrong: `seq6` retried RIVEN for "no listed skills that
+  allow bypassing a mechanical lock" while RIVEN's skills literally list `lockpicking`; `seq78`
+  retried RIVEN for "CANNOT: sight" while RIVEN's `restrictions` array is `[]` — there is no such
+  CANNOT to invoke, and situational darkness ("you are deep inside the dark neighboring building")
+  is not an authored restriction. Two more (`seq121`, `seq38`) are defensible but imprecise: the
+  situation genuinely leaks a sight-only detail to the blind character (Merritt "perceives the
+  minute movements of Riven's hands"; Riven "squatting," a detail with no auditory analogue), but
+  the judge's note over-generalizes the fix to banning perception of the whole event rather than
+  the one leaked detail — the same underlying mechanism (collapsing `CANNOT: sight` into a blanket
+  perception ban) as the clean errors, just landing on a retry that happens to be warranted for a
+  narrower reason than stated. Only two of six (`seq110`, `seq52`, both non-POV thought-only
+  answers) are unambiguously correct against `JUDGE_FORMAT`'s own explicit rule.
+
+  That splits judge failure into two independent stages, not one: **constraint interpretation**
+  (does the verdict/reasoning correctly apply the cast's actual `can`/`CANNOT`/baseline-ability
+  facts) and **repair construction** (does the `revised` field survive `reviseConsult`, covered
+  above). Both have to work for a retry to buy anything, and this run only measured the second one
+  cleanly — the 83% "recognized the issue" figure conflates a real detection with a confidently
+  wrong one, and the two are indistinguishable from the aggregate number alone.
+
+  **Where this leaves things:** judge-retry-based measurements (recognition rate, sustained
+  retries, attempt counts, `RETRY_NUDGE_FIRM`/v3's premise, judge revision acceptance) should not
+  be trusted as evidence about anything else — including the Free Consult character-behavior
+  findings — until the judge's constraint-interpretation accuracy has its own validated benchmark
+  separate from the full retry pipeline. The Free Consult results remain sound specifically because
+  they were read from first-pass consult content (`need` rate, answer tone, scene progression), not
+  from judge/retry behavior — that distinction is now load-bearing, not incidental. A three-part
+  diagnostic (cast fact retrieval, verdict-only classification, repair-only construction, each
+  scored independently) is the next concrete step, tracked as its own entry below rather than
+  folded into this one.
+
+- **Judge diagnostic matrix — cast-fact retrieval, verdict-only classification, and repair-only
+  construction, scored independently.** Follows directly from the entry above: the aggregate
+  "recognized the issue" number conflates correct detection with confidently wrong detection, and
+  a whole-pipeline benchmark can't separate them. `scripts/judge-diagnostic.ts` isolates three
+  sub-skills that the full judge call currently bundles into one completion:
+  - **A. Cast comprehension** — no character answer at all, just closed yes/no questions against
+    the doorway cast's actual `skills`/`restrictions` (e.g. "Can RIVEN pick a mechanical lock
+    without its key?", "Does RIVEN have a restriction on sight?" — the last one aimed directly at
+    the `seq78` confusion). Ground truth is mechanical: read straight from `story.json`.
+  - **C. Repair construction** — a handful of hand-authored, unambiguous contradictions (not the
+    six real cases, whose "correct" fix is itself contested for four of six per the entry above)
+    paired with a known-valid situation/question shape, asking only for the `revised` fields and
+    checking them through the real `reviseConsult`.
+  - **B. Verdict-only classification** was considered and scoped down: grading it against the six
+    real cases needs a ground-truth verdict per case, and the entry above shows four of six don't
+    have an uncontested one. Built instead only where ground truth is mechanical — the two
+    unambiguous non-POV-thought cases (expect `retry`) plus a couple of clearly-fine synthetic
+    answers (expect `accept`) — rather than asserting a contested ground truth to get a bigger N.
+
+  **Run across four models, 5 samples/case (`google/gemma-4-e4b`, `qwen/qwen2.5-coder-14b`,
+  `qwen/qwen3-8b`, `zai-org/glm-4.7-flash`):**
+
+  | model | A. cast comprehension | B. verdict-only | C. repair (diagnosis given) |
+  | --- | ---: | ---: | ---: |
+  | `google/gemma-4-e4b` | 45/55 (82%) | 14/20 (70%) | 13/15 (87%) |
+  | `qwen/qwen2.5-coder-14b` | 50/55 (91%) | 2/20 (10%)* | 15/15 (100%) |
+  | `qwen/qwen3-8b` | 50/55 (91%) | 10/20 (50%) | 13/15 (87%) |
+  | `zai-org/glm-4.7-flash` | 47/55 (85%) | 10/20 (50%) | 1/15 (7%) |
+
+  *`qwen2.5-coder-14b`'s 2/20 is mostly a JSON-formatting artifact, not a reasoning signal —
+  most of its replies came back as `{verdict: "accept"}` (unquoted key), which fails
+  `extractJson`/`parseVerdict` regardless of whether the underlying verdict was right. Not
+  comparable to the other three numbers as-is.
+
+  **Finding 1 — the `seq78` case was misdiagnosed in the entry above, and this benchmark is what
+  caught it.** `riven-sight-restriction` ("Does RIVEN have a restriction on sight?", expect false)
+  scored **20/20 across all four models** — every model, every sample, gets this fact right in
+  isolation, including `gemma-4-e4b`. So `seq78`'s live error ("contradiction with CANNOT: sight
+  -- required" against a character with `restrictions: []`) was never a fact-retrieval gap; the
+  model demonstrably knows the fact when asked cleanly. What's actually happening is closer to
+  fact application overridden by narrative content: the character's own answer said "I am blind
+  in this dark place," and something about that phrase, embedded in the fuller judging task,
+  displaced a fact the same model states correctly in isolation. That's a different, and honestly
+  more concerning, failure mode than "doesn't know the cast" — it means correct knowledge is not
+  reliably load-bearing once it has to compete with salient narrative language in context.
+
+  **Finding 2 — the sight-into-hearing collapse is real, model-specific, and near-total for
+  `gemma-4-e4b` specifically.** `merritt-hearing-baseline` and `merritt-infers-from-sound` (both
+  expect true — Merritt's only restriction is sight, hearing is untouched baseline) scored **0/10
+  for `gemma-4-e4b`** — it says false on both, every single sample, no variance at all. This is a
+  clean, deterministic-looking bug, not stochastic noise, and it's exactly the `seq38`-type
+  mechanism named in the entry above, now isolated from the ambiguous real case: this model
+  specifically treats `CANNOT: sight` as removing perception generally, not just seeing. The other
+  three models mostly get the raw hearing-capability fact right (`qwen2.5-coder-14b` 5/5,
+  `qwen3-8b` 5/5, `glm-4.7-flash` 3/5) but two of them — `qwen2.5-coder-14b` and `qwen3-8b` — still
+  score 0/5 on the *inference* version ("can Merritt conclude from sound alone that work is
+  happening?") despite believing Merritt can hear the sound. That's a narrower, sharper gap than
+  `gemma-4-e4b`'s: not "can't perceive it" but "won't reason from a perception it agrees is real."
+
+  **Finding 3 — verdict classification has a third failure mode, independent of cast semantics
+  entirely: unstable application of the judge's own explicit, unambiguous rules.**
+  `real-seq110-merritt-thought-only-nonpov` and `real-seq52-merritt-thought-only-nonpov` are the
+  same violation (a non-POV thought-only answer, which `JUDGE_FORMAT` forbids in so many words) —
+  `gemma-4-e4b` scored 0/5 on `seq110` and 4/5 on `seq52`. Structurally identical inputs, opposite
+  outcomes, no cast-semantics ambiguity involved at all. `qwen3-8b` and `glm-4.7-flash` show a
+  cleaner but more permissive pattern: 0/10 combined on both real retry cases (always "accept")
+  against 10/10 on the two synthetic clearly-fine answers — a consistent, reproducible
+  under-sensitivity to this exact rule, confirming the "defaults to accept" disposition from the
+  cross-model table above directly, rather than by inference from aggregate retry rates.
+
+  **Finding 4 — repair construction improves dramatically once detection is handed over for
+  free, which locates the earlier bottleneck precisely.** With the contradiction and its reason
+  given rather than self-discovered, `gemma-4-e4b` jumped from 4/30 (13%) in the full bundled
+  judge call to **13/15 (87%)** on repair alone; `qwen2.5-coder-14b` hit 15/15 (100%);
+  `qwen3-8b` hit 13/15 (87%). Three of four models are substantially better at *authoring* a valid
+  revision than the original benchmark suggested — the bottleneck in the full pipeline is
+  concentrated in detection, not repair-writing, for those three. `glm-4.7-flash` is the
+  exception: 1/15 even with the diagnosis handed to it, confirming its weakness is specifically in
+  repair construction itself, not detection (it also scored respectably, 47/55 and 10/20, on the
+  other two axes).
+
+  **What this changes:** splitting the judge's single call into two — one that only decides
+  accept/retry and names the contradiction, a second (invoked only on retry) that authors the
+  revision given the first call's own stated reason — is now a concrete, evidence-backed candidate
+  fix worth prototyping, not a guess. The caveat that keeps it from being a sure thing: this
+  benchmark fed the repair stage a hand-authored, *correct* diagnosis. In a real two-call pipeline
+  the second call would be conditioned on the first call's own reasoning, which Findings 1-3 show
+  is wrong or unstable a meaningful fraction of the time — splitting the calls isolates the
+  cognitive load per call (plausibly still a real improvement) but does not by itself fix a wrong
+  diagnosis feeding a now-more-capable repair stage.
+
+- **The split judge is built as `--split-judge`, and is unmeasured.** The prototype the entry above
+  ends by calling for: the per-answer gate as a JUDGE call over `VERDICT_JUDGE_FORMAT` (the same cast
+  block and decision ladder, revision removed from its job) plus a REPAIR-JUDGE call, made only on a
+  retry, handed the verdict's own `note` as its reason and asked for the situation and question alone
+  — reusing `REPAIR_ONLY_FORMAT`, which the diagnostic wrote and which is no longer diagnostic-only.
+  Run-level CLI toggle, off by default, gated path byte-identical without it; behaviour is in
+  [`Judge.MD`](Judge.MD), under the per-answer gate. Deterministic tests cover the wiring: that a
+  verdict carrying a note and no revision still retries, that the note is what reaches the second
+  call, that the default path makes no second call at all, and that a repair outage keeps the answer
+  in hand under `repair_failed` rather than spending the attempt.
+
+  **Measured in the harness** (`scripts/revision-benchmark.ts --split`, 5 samples over the same six
+  real failures the single-call numbers came from, same `reviseConsult` scoring), against the
+  single-call mode on identical cases:
+
+  | model | mode | recognized | revision survived | of all samples |
+  | --- | --- | ---: | ---: | ---: |
+  | `google/gemma-4-e4b` | single | 28/30 | 6/28 (21%) | 6/30 (20%) |
+  | `google/gemma-4-e4b` | **split** | 17/30 | **9/17 (53%)** | **9/30 (30%)** |
+  | `qwen/qwen2.5-coder-14b` | single | 10/30 | 0/10 (0%) | 0/30 (0%) |
+  | `qwen/qwen2.5-coder-14b` | **split** | 15/30 | **14/15 (93%)** | **14/30 (47%)** |
+
+  **The drop in `gemma-4-e4b`'s recognition rate is the result, not a cost — read per case.** Two of
+  the six cases (`seq6`, `seq78`) are the clean errors this record already identified: retries the
+  judge should never have issued, one citing "no listed skill to bypass a lock" against a RIVEN whose
+  skills list `lockpicking`, one inventing a `CANNOT: sight` against a character with
+  `restrictions: []`. Three (`seq121`, `seq110`, `seq52`) are genuine. Retries by group, out of ten
+  false-positive and fifteen true-positive samples:
+
+  | model | mode | on the 2 false-positive cases | on the 3 genuine cases |
+  | --- | --- | ---: | ---: |
+  | `gemma-4-e4b` | single | 8/10 | 15/15 |
+  | `gemma-4-e4b` | **split** | **0/10** | **15/15** |
+  | `qwen2.5-coder-14b` | single | 3/10 | 5/15 |
+  | `qwen2.5-coder-14b` | **split** | **1/10** | **10/15** |
+
+  `gemma-4-e4b`'s verdict call stopped issuing the false-positive retries *entirely* while holding
+  detection on the genuine ones at 15/15 — so the aggregate 28→17 is almost exactly the eight bad
+  retries going away. That is a precision gain the summary line hides, and it was invisible to every
+  earlier measurement. It also rules out the obvious alternative reading, that `VERDICT_JUDGE_FORMAT`
+  is simply more permissive: a uniformly permissive prompt does not hold 15/15 on the true positives.
+  `qwen2.5-coder-14b` improved on both axes at once.
+
+  **But the notes show the predicted failure mode is real, and the gate cannot see it.** Roughly half
+  of `qwen2.5-coder-14b`'s fourteen surviving revisions rest on a diagnosis that is wrong or empty:
+  four on `seq38` say Merritt "cannot see, so they have no way to perceive the noise of tools on
+  metal" (Finding 2's sight-into-hearing collapse, intact); one on `seq78` says "Merritt cannot see"
+  about a case whose answerer is RIVEN; one on `seq121` says "Riven's private thoughts" for a MERRITT
+  answer; and one on `seq110` is the schema's own placeholder text, `"the contradiction, in one line
+  -- required"`, echoed back verbatim. Every one of those produced a revision that **passed**
+  `reviseConsult`. The gate checks that a revision is new, unforked, non-degenerate and does not reach
+  through a CANNOT — none of which is a check that the repair addresses a contradiction that exists.
+  So the 93% is a repair-construction number, not a correctness number, and the two must not be
+  conflated.
+
+  **A second, new finding: the split made the notes materially worse as prose, exactly when they
+  became load-bearing.** In single-call mode the note is decorative and came back as full sentences
+  ("The character's thought contradicts the established CANNOT (sight) as they perceive the minute
+  movements of Riven's hands"). Under `VERDICT_JUDGE_FORMAT` it is the entire input to call two, and
+  `gemma-4-e4b` returned the bare fragment "Merritt CANNOT sight" on all five `seq110` samples, and
+  "thoughts of non-POV characters" on `seq52`. The gloss said what the note was *for* without
+  demanding the collision be stated.
+
+  **`qwen/qwen3-30b-a3b-2507` scored 0/30 in both modes** — it never issued a single retry on any of
+  the six cases, single-call or split. It is the largest model measured here and the only one at
+  floor, which kills "a bigger model fixes this" as a reading; and since single-call is equally
+  blind, it is not a split artifact. Its LM Studio logs also show `reasoning_effort` is a no-op for
+  it (`No valid custom reasoning fields found`, `reasoning_tokens: 0`) — it is the non-thinking
+  instruct release, so `--think` is not a lever, unlike `qwen3-8b`.
+
+- **A defect in what the judge was shown, found by reading those logs, and fixed.** `judgeRequest`
+  emitted `You asked: ${question}` unconditionally. An open beat carries no question — which is
+  nearly all of them, and all six benchmark cases — so every judge call in every live run rendered
+  a bare `You asked: ` followed immediately by `They are not the point of view: what they think is
+  not yours to write.` The non-POV flag landed exactly in the question's slot and read as the thing
+  the author had asked. That sat directly on top of the rule the under-detecting models all miss
+  (`seq52`, `seq110`, `seq121` are non-POV thought-only violations). It is a plausible mechanism for
+  those misses, not a demonstrated cause — but it was in the shipped prompt, not just the benchmark.
+  Now: the no-question case says so explicitly, and the flag is bracketed `[NOT THE POINT OF VIEW]`
+  like the `[FLAGGED]` line beside it, so it cannot be read as content. `repairOnlyRequest` carried
+  the same bug and took the same fix.
+
+  **Every number above was measured on the pre-fix prompt and is superseded.** Two changes shipped
+  together — this payload fix and a tightened `note` gloss that now demands both halves of the
+  collision (what the answer said, in its own words, and what it collides with, with the observed
+  half-notes named as counterexamples). They are separable in the reading even though they shipped
+  together, because they move different numbers: the payload fix should move **detection on the
+  three non-POV cases**, and the gloss should move **the share of surviving revisions resting on a
+  wrong or empty note**. If detection moves and note quality does not, the gloss did nothing, and
+  the reverse likewise. Re-run `gemma-4-e4b` and `qwen2.5-coder-14b` in both modes to re-establish
+  the table before anything else is concluded.
+
+  **What a live run still owes, and what it cannot settle.** Whether this helps a whole chapter is a
+  different question, worth asking once the baselines are re-established. What no live run can settle
+  is diagnosis correctness, for the same reason the harness cannot score it: `reviseConsult` is
+  mechanical and the only judge of whether a reason is true is the model being judged. Reading the
+  `retry` events' notes by hand is the check, and it is the check.
 
 ## Open design questions
 
@@ -392,6 +701,88 @@ the engine permits something the asymmetry forbids.
 
 Big, unbuilt, and shaping rather than corrective. One carries enough design to have its own section
 below: **The world timeline**.
+
+- **Free Consult — strip authorial behavioral steering from the character prompt (spike).**
+  The character prompt conflates two constraint kinds: epistemic/physical boundaries (`WHAT YOU
+  KNOW`, `HARD LIMITS`, `REACH`, presence, memories, "don't invent world facts") and
+  behavioral-steering prose ("PLAY THE CHARACTER, DO NOT PLAY THE AUTHOR'S INTENTION", "this is
+  your moment", "not a request you owe compliance to", the narrate-remembering suppression, the
+  attempt-3 compliance nudge). v1 is a parallel prompt variant (`FREE_CHARACTER_FORMAT`,
+  `freeCharacterSystem`, `freeAskBlock`, `freeMemoryMarker` in `prompts/consult.ts`) that keeps the
+  JSON protocol and every boundary intact and strips only the steering. `REACTION_OUTWARD` is
+  deliberately excluded from both v1 and v2 — an architectural boundary about interiority
+  propagation, not prose style, and mixing it in would make results uninterpretable. CLI-only
+  (`--free-consult` / `--free-consult-v2`, `ENGINE.freeConsult`, default `false`), fully reversible,
+  no persisted story-level switch, gated consult mechanics untouched — the `--open-consult`
+  precedent.
+
+  **First live comparison (2026-09-11, doorway ch.1, both runs hit the 24-step ceiling before a
+  natural end, so word counts are directly comparable — 637 gated vs. 663 free):** the gated prompt
+  asked `need` 0 times across 17 consults; v1 asked 13 times across 16 — not clustered on one
+  character or moment, but sustained for nearly the entire run (every consult from the third one
+  onward asked, split evenly RIVEN/MERRITT). Read turn-by-turn, v1's dialogue also trended more
+  cooperative/de-escalatory ("I should offer a genuine explanation," "find common ground") against
+  the gated run's more adversarial one ("this feels like a setup," "I don't trust them at all").
+  Recorded as an observed behavioral difference, not yet an attribution — n=1 per condition, a small
+  local model, and a stochastic writer draft that isn't held constant between runs. The likely
+  reading: `FIRST DECIDE: know it, infer it, assume it, or ask?` was already in both prompts, but
+  the removed steering ("this is your moment," "not a request you owe compliance to," the attempt-3
+  nudge) was functioning as an anti-stalling counterweight to it, not just rhetorical flourish —
+  removing it exposed a more assistant-like "ask rather than commit" default underneath.
+
+  **v2** (`FREE_CHARACTER_FORMAT_V2`, `freeCharacterSystemV2`) tested one specific fix rather than
+  reintroducing the removed steering: one paragraph inserted into the `FIRST DECIDE` ladder itself,
+  distinguishing "missing fact -> ask" from "uncertain interpretation -> act on it, carrying the
+  risk of being wrong." v1's `freeAskBlock`/`freeMemoryMarker` are unchanged for v2 — the ladder
+  paragraph is the only variable.
+
+  **Six `--free-consult-v2`-equivalent live comparisons (2026-09-11, doorway ch.1, same 24-step
+  ceiling each time except where noted):**
+
+  | run | consults | `need` | rate | pattern |
+  | --- | ---: | ---: | ---: | --- |
+  | gated (1 run) | 17 | 0 | 0% | never asks |
+  | v1 (1 run) | 16 | 13 | 81% | sustained — asks nearly every consult from the third one on |
+  | v2 batch1 run1 | 13 | 10 | 77% | sustained, same shape as v1 |
+  | v2 batch1 run2 | 16 | 5 | 31% | **scattered** — `CCNCCNCNCCCCCCCNCCCCN`, no sustained streak |
+  | v2 batch1 run3 | 16 | 12 | 75% | sustained, same shape as v1 |
+  | v2 batch2 run1 | 19 | 12 | 63% | sustained; the only run of all nine that reached `"done": true` |
+  | v2 batch2 run2 | 18 | 11 | 61% | sustained |
+  | v2 batch2 run3 | 15 | 10 | 67% | sustained |
+  | v2 pooled (6 runs) | 97 | 60 | 62% | 5 of 6 sustained, 1 scattered |
+
+  ("v2 batch2" was launched as `--free-consult-v3` — see the v3 note below for why its runs
+  landed here instead.) With n=6, the sustained-asking pattern reads as the dominant mode (5/6)
+  rather than a coin flip; the one scattered/low-rate run looks like an occasional outlier, not
+  a second stable regime. One further data point: `v2 batch2 run1` is the only run across all
+  nine (gated + v1 + v2) that reached a natural scene end — Riven finishes picking the lock and
+  steps through, and the corridor settles — at a 63% ask rate. Heavy asking clearly doesn't by
+  itself prevent a scene from resolving.
+
+  **Verdict on v2:** falsified the "it's just anti-stalling rhetoric" reading of the removed
+  lines — `FIRST DECIDE: know it, infer it, assume it, or ask?` plus a stated
+  uncertainty-vs-missing-fact distinction does not reliably reproduce the gated prompt's near-zero
+  ask rate, and with n=6 the sustained-high-rate result looks like the norm, not one arm of a
+  genuine 50/50 split. Whatever "this is your moment" / "not a request you owe compliance to" /
+  the attempt-3 nudge were doing, restating the ladder's own logic more explicitly is at best an
+  unreliable substitute for it.
+
+  **v3** (`freeAskBlockV3`, `--free-consult-v3`) tried to isolate the next-cheapest lever: keep
+  v2's ladder addendum and put back *only* the attempt-3 nudge (`RETRY_NUDGE_FIRM`). **The
+  mechanism never fired.** `RETRY_NUDGE_FIRM` only appends when `opts.attempt >= 3`
+  (`engine/judge-gate.ts:68-154`), and reaching attempt 3 needs two consecutive judge "retry"
+  verdicts whose revised re-ask each survives `reviseConsult`'s own gate — one failure anywhere in
+  that chain breaks out as a `bad_consult` and keeps the standing answer without advancing the
+  attempt counter. Checked the logged `attempt` field across all nine runs plus one earlier
+  historical run: it never exceeded 1 in eight of them and reached 2 exactly once, never 3. So the
+  three `--free-consult-v3` runs sent the character byte-identical prompts to plain v2 the entire
+  time (`freeAskBlockV3` only differs from `freeAskBlock` at attempt >= 3) and are folded into the
+  v2 pool above rather than treated as a v3 result — they're real data, just not data about the
+  pressure hypothesis. Why attempt never reaches 3 turned out to be its own, broader finding, not
+  specific to Free Consult — see "Judge-conditioned revision may be a task this model cannot do at
+  all" under Measurement owed. **Unresolved:** whether the nudge would matter is still untested;
+  it needs that revision defect understood first, since reaching attempt 3 at all currently depends
+  on a step that fails every time it's been tried.
 
 - **"Prefer an existing skill" is still advice, not a rule.** Promotion is built — the architect
   reads the author's bible on both sides, a bespoke `name :: meaning` in a landed cast is derived as

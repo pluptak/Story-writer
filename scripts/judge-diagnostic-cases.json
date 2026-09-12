@@ -1,0 +1,85 @@
+{
+  "castQuestions": [
+    { "id": "riven-lockpicking", "question": "Can RIVEN pick a mechanical lock without its key?", "expected": true },
+    { "id": "riven-climbing", "question": "Can RIVEN climb over a wall or a stack of crates?", "expected": true },
+    { "id": "riven-sight-restriction", "question": "Does RIVEN have a restriction on sight?", "expected": false, "note": "probes the seq78 confusion: darkness is not an authored CANNOT" },
+    { "id": "riven-sees-in-lit-room", "question": "If nothing in RIVEN's cast entry restricts sight, can RIVEN see in an ordinarily lit room?", "expected": true, "note": "ordinary baseline ability, not a listed skill" },
+    { "id": "riven-electronic-lock", "question": "Does RIVEN's lockpicking skill cover bypassing a digital keypad with no mechanical lock?", "expected": false, "note": "the skill is explicitly a mechanical-lock skill" },
+    { "id": "merritt-keys", "question": "Can MERRITT identify a key by feel?", "expected": true },
+    { "id": "merritt-hearing-baseline", "question": "Can MERRITT hear a mechanical lock being worked on nearby?", "expected": true, "note": "ordinary baseline ability; MERRITT's only restriction is sight, not hearing" },
+    { "id": "merritt-sees-hands", "question": "Can MERRITT see RIVEN's hands moving on a lock?", "expected": false, "note": "CANNOT: sight" },
+    { "id": "merritt-hearing-restriction", "question": "Does MERRITT have a restriction on hearing?", "expected": false },
+    { "id": "merritt-sees-squatting", "question": "Can MERRITT see that RIVEN is squatting near a door?", "expected": false, "note": "probes the seq38 confusion: squatting has no auditory analogue" },
+    { "id": "merritt-infers-from-sound", "question": "Can MERRITT infer from sound alone that someone is working on a lock, without seeing it?", "expected": true, "note": "hearing is baseline; the inference is legitimate even though sight is not" }
+  ],
+  "verdictCases": [
+    {
+      "id": "real-seq110-merritt-thought-only-nonpov",
+      "character": "MERRITT", "pov": false,
+      "situation": "You are standing near the threshold, having heard Riven's clear voice. You notice a subtle movement from the dark interior—a sudden shift of weight against the wall, followed by quick motion toward the designated spot.",
+      "question": "", "wants": "",
+      "thought": "That shift in weight was deliberate, meaning they are preparing to act on something important. I should watch them finish whatever this movement means.",
+      "speech": "", "action": "", "note": "",
+      "expectedVerdict": "retry",
+      "why": "thought-only from a non-POV character; JUDGE_FORMAT's own rule requires speech or action to surface for anyone but the POV character"
+    },
+    {
+      "id": "real-seq52-merritt-thought-only-nonpov",
+      "character": "MERRITT", "pov": false,
+      "situation": "Merritt continues to listen intently as Riven pauses their work on the lock. A slight, subtle movement and the sound of metal being withdrawn and lightly touched are distinct noises in the quiet corridor.",
+      "question": "", "wants": "",
+      "thought": "He's paused his effort at the door. I need to know if he gave up or is about to try something else.",
+      "speech": "", "action": "", "note": "",
+      "expectedVerdict": "retry",
+      "why": "thought-only from a non-POV character, same rule as above"
+    },
+    {
+      "id": "synth-riven-clean-lockpicking",
+      "character": "RIVEN", "pov": true,
+      "situation": "You stand before the locked service door, satchel in hand.",
+      "question": "", "wants": "",
+      "thought": "This lock will take patience.",
+      "speech": "", "action": "I kneel and begin working the tension wrench into the mechanism.",
+      "note": "",
+      "expectedVerdict": "accept",
+      "why": "uses RIVEN's own listed lockpicking skill, contradicts nothing established"
+    },
+    {
+      "id": "synth-merritt-clean-speech",
+      "character": "MERRITT", "pov": false,
+      "situation": "You hear Riven's footsteps stop near the door.",
+      "question": "", "wants": "",
+      "thought": "",
+      "speech": "Careful with that lock, it likes to bite fingers.",
+      "action": "", "note": "",
+      "expectedVerdict": "accept",
+      "why": "speech satisfies the non-POV shape floor; nothing violates CANNOT: sight since it's speech, not a sight claim"
+    }
+  ],
+  "repairCases": [
+    {
+      "id": "repair-merritt-sight-leak",
+      "character": "MERRITT", "pov": false,
+      "situation": "You watch Riven's hands moving carefully over the lock, tracing every motion they make.",
+      "question": "", "wants": "",
+      "thought": "", "speech": "", "action": "I nod slowly, watching them work.", "note": "",
+      "why": "The situation itself gives Merritt sight-based perception of Riven's hands, which their CANNOT: sight removes -- the action confirms it by having them watch."
+    },
+    {
+      "id": "repair-riven-invented-skill",
+      "character": "RIVEN", "pov": true,
+      "situation": "You stand before a reinforced steel vault door with a digital keypad, no visible seams.",
+      "question": "", "wants": "",
+      "thought": "", "speech": "", "action": "I quickly bypass the keypad's circuitry and the door clicks open.", "note": "",
+      "why": "No skill on RIVEN's list covers bypassing digital or electronic security -- lockpicking is a mechanical-lock skill only."
+    },
+    {
+      "id": "repair-merritt-shrug-question",
+      "character": "MERRITT", "pov": false,
+      "situation": "Riven has stopped working the lock and is standing very still, listening.",
+      "question": "What do you do?", "wants": "",
+      "thought": "", "speech": "", "action": "", "note": "",
+      "why": "\"What do you do?\" names no contradiction and no repair, so a fresh instance has nothing to answer differently and the scene stops moving."
+    }
+  ]
+}

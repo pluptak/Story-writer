@@ -4,6 +4,7 @@
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
 import { type Agent } from "./agent.ts";
+import { ENGINE } from "./engine-state.ts";
 import { extractJson } from "./json-extract.ts";
 import {
   consult, parseVerdict, reviseConsult,
@@ -17,10 +18,11 @@ import { nameKey } from "./config-util.ts";
  *  RunEvent members the gate itself emits, declared here so this module needs no scene-loop import. */
 export type GateEvent =
   | ConsultEvent
-  | { t: "schema_mismatch"; call: "judge"; character: string; chapter: number }
+  | { t: "schema_mismatch"; call: "judge" | "repair"; character: string; chapter: number }
   | { t: "judge_failed"; character: string; why: string; chapter: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
+  | { t: "repair_failed"; character: string; why: string; chapter: number }
   | { t: "retry_capped"; character: string; count: number; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string;
       was: string; wantsRefused: string; chapter: number };
@@ -40,6 +42,9 @@ export interface JudgeGateOpts {
   /** Chapter-wide retry tally, keyed by lowercased name — mutated as retries are spent. */
   retryCounts: Map<string, number>;
   newJudge: () => Agent;
+  /** The split judge's repair call (--split-judge only). Absent on the single-call path, where the
+   *  revision arrives inside the verdict's own reply. */
+  newRepairJudge?: () => Agent;
   /** Marks the clarifier (and the attempt's clarifications) before each attempt, and unwinds them
    *  when an attempt is abandoned for a retry — the caller owns that ledger. */
   beginAttempt: () => void;
@@ -55,6 +60,46 @@ export interface JudgeGateResult {
   failed: string;
   usedAttempt: number;
   req: ConsultRequest;
+}
+
+/** The split judge's second call: the retry is already decided and its contradiction already named,
+ *  so this asks for the revision alone. Anything that goes wrong returns `{}`, which reviseConsult
+ *  refuses like any other unusable revision — the answer in hand is kept and the attempt is not
+ *  spent. It never throws: a repair outage must not cost the gate the answer it already has. */
+async function repairRevision(
+  o: JudgeGateOpts, req: ConsultRequest, reply: ConsultReply, why: string,
+): Promise<Record<string, unknown>> {
+  const { def, chapter, log } = o;
+  if (!o.newRepairJudge) return {};
+  if (!why) {
+    // A retry with no note is the one thing the split cannot carry: the second call's whole input
+    // is the first call's diagnosis, so there is nothing to author a repair from.
+    log({ t: "repair_failed", character: def.name, why: "the verdict named no contradiction", chapter });
+    return {};
+  }
+  const agent = o.newRepairJudge();
+  const extra: Msg[] = [{ role: "user", content: P.repairOnlyRequest({
+    name: def.name, situation: req.situation, question: req.question,
+    thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note,
+    pov: o.pov, why,
+  }) }];
+  try {
+    for (let tries = 0; ; tries++) {
+      const raw = await agent.generate(`${C.magenta}REPAIR-JUDGE${C.reset}`, "judge.repair", extra);
+      const out = extractJson(raw);
+      if (typeof out.situation === "string") return out;
+      if (tries) {
+        log({ t: "repair_failed", character: def.name, why: "no revision in the repair reply", chapter });
+        return {};
+      }
+      log({ t: "schema_mismatch", call: "repair", character: def.name, chapter });
+      extra.push({ role: "assistant", content: raw.trim() },
+                 { role: "user", content: P.REPAIR_SHAPE_ONLY });
+    }
+  } catch (e) {
+    log({ t: "repair_failed", character: def.name, why: (e as Error).message, chapter });
+    return {};
+  }
 }
 
 /** Run one ask through the gate. */
@@ -97,7 +142,7 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
         if (judged || tries) break;
         log({ t: "schema_mismatch", call: "judge", character: def.name, chapter });
         judgeExtra.push({ role: "assistant", content: judgeRaw.trim() },
-                        { role: "user", content: P.VERDICT_ONLY });
+                        { role: "user", content: ENGINE.splitJudge ? P.VERDICT_NOTE_ONLY : P.VERDICT_ONLY });
       }
     } catch (e) {
       log({ t: "judge_failed", character: def.name, why: (e as Error).message, chapter });
@@ -126,8 +171,13 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     // A revision goes through the same gate as the first ask. It used to skip the check,
     // which is how a re-ask of "What do you do?" — refused at the front door — reached a
     // character anyway and drew the do-nothing answer the guard exists to prevent.
-    const rev = (judgeReply.revised && typeof judgeReply.revised === "object")
-      ? judgeReply.revised as Record<string, unknown> : {};
+    // Under --split-judge the verdict call was told to name the contradiction and stop; a second
+    // call authors the revision from that note. Either way what comes out lands in `rev` and goes
+    // through exactly the same reviseConsult gate, so nothing downstream knows which path ran.
+    const rev = ENGINE.splitJudge
+      ? await repairRevision(o, req, reply, note)
+      : (judgeReply.revised && typeof judgeReply.revised === "object")
+        ? judgeReply.revised as Record<string, unknown> : {};
     const revised = reviseConsult(req, rev, o.cast);
     if (!revised.ok) {
       // Asking again with a question that cannot be sent would spend the attempt on nothing,

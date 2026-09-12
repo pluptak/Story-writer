@@ -27,11 +27,15 @@ import { ENGINE } from "./engine-state.ts";
  *  `reach` is this scene's grant only (I1/I4): it comes from per-scene resolution and is empty on
  *  every character-level view. */
 export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = [], presence?: Presence): string {
-  return P.characterSystem({
+  const args = {
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
     belief: def.belief, impulse: def.impulse, voice: def.voice, reach, limits: def.limits,
     ...(presence ? { presence } : {}),
-  });
+  };
+  // v3 keeps v2's ladder addendum (only its askBlock differs, in engine/consult.ts) — same format.
+  return ENGINE.freeConsult === "v2" || ENGINE.freeConsult === "v3" ? P.freeCharacterSystemV2(args)
+    : ENGINE.freeConsult === "v1" ? P.freeCharacterSystem(args)
+    : P.characterSystem(args);
 }
 
 export interface Presence { mode: "remote" | "partial"; via: string }
@@ -184,8 +188,9 @@ export type RunEvent =
   | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
-  | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint" | "done"; character: string; chapter: number }
+  | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint" | "done" | "repair"; character: string; chapter: number }
   | { t: "judge_failed"; character: string; why: string; chapter: number }
+  | { t: "repair_failed"; character: string; why: string; chapter: number }
   | { t: "lint_failed"; why: string; chapter: number }
   | { t: "done_judge_failed"; why: string; chapter: number }
   | { t: "done_flagged"; why: string; chapter: number }
@@ -325,7 +330,11 @@ export async function writeScene(run: SceneRun) {
     a.think = writer.think;
     return a;
   };
-  const newJudge = () => newJudgeFor("JUDGE", P.judgeSystem(cast));
+  const newJudge = () => newJudgeFor("JUDGE",
+    ENGINE.splitJudge ? P.verdictJudgeSystem(cast) : P.judgeSystem(cast));
+  // --split-judge only: the retry's second call, which authors the revision from the verdict
+  // call's own note. Never reached on the single-call path.
+  const newRepairJudge = () => newJudgeFor("REPAIR-JUDGE", P.repairOnlySystem(cast));
   // Stateless like the judge, but it weighs many volunteered deeds in one call and returns a
   // promotable flag each — so a reaction beat costs at most one judge call, and none when nobody acted.
   const newBatchJudge = () => newJudgeFor("BATCH-JUDGE", P.batchJudgeSystem(cast));
@@ -534,7 +543,7 @@ export async function writeScene(run: SceneRun) {
         const a = agents.get(nameKey(def.name));
         if (!a) continue;
         a.system += P.memorySurfaced(mem);
-        a.hear(P.memoryMarker(mem));
+        a.hear(ENGINE.freeConsult ? P.freeMemoryMarker(mem) : P.memoryMarker(mem));
         log({ t: "memory_surfaced", character: def.name, chapter });
         if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
       }
@@ -698,7 +707,7 @@ export async function writeScene(run: SceneRun) {
         const { reply, failed, usedAttempt, req } = await judgeGate({
           def, agent: persistent, req: check!.req, cast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
-          retryCounts, newJudge, beginAttempt, dropClarifications, log,
+          retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
         });
 
         if (RUN.stopped) break;

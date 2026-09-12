@@ -4,6 +4,7 @@ import { C } from "../ansi.ts";
 import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
+import { ENGINE } from "./engine-state.ts";
 import { lintRestrictedSituation } from "./sense-lint.ts";
 import { nameKey, sameName } from "./config-util.ts";
 
@@ -337,7 +338,11 @@ export async function consult(
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
   const pov = opts.pov ?? true;
-  const extra: Msg[] = [{ role: "user", content: P.askBlock(req, opts.attempt ?? 1, pov) }];
+  const extra: Msg[] = [{ role: "user", content: ENGINE.freeConsult === "v3"
+    ? P.freeAskBlockV3(req, opts.attempt ?? 1, pov)
+    : ENGINE.freeConsult
+    ? P.freeAskBlock(req, opts.attempt ?? 1, pov)
+    : P.askBlock(req, opts.attempt ?? 1, pov) }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
 

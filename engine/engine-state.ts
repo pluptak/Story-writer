@@ -10,6 +10,18 @@ export const ENGINE = {
   stream: true,
   debug: false,
   serve: false,
+  /** Free Consult spike (CLI-only, --free-consult / --free-consult-v2 / --free-consult-v3): strip
+   *  authorial behavioral steering from the character prompt while keeping every information/
+   *  physical boundary intact. "v1" is the strip-only condition; "v2" adds one paragraph to the
+   *  ladder distinguishing "missing fact -> ask" from "uncertain interpretation -> act on it";
+   *  "v3" keeps v2's ladder and puts back just the attempt-3 anti-stalling nudge, isolating
+   *  whether pressure (not clearer instruction) was the missing ingredient (prompts/consult.ts). */
+  freeConsult: false as false | "v1" | "v2" | "v3",
+  /** Split-judge prototype (CLI-only, --split-judge): the per-answer gate as two calls instead of
+   *  one -- a verdict call that only decides accept/retry and names the contradiction, and a repair
+   *  call, made only on a retry, that authors the revision from that note alone. Measured motive
+   *  and caveat in docs/PLANS.md ("Judge diagnostic matrix"). */
+  splitJudge: false,
   /** What the scene loop echoes to the console: the draft prose and the characters' acts and
    *  replies. `serve` only means the HTTP surface is up — a headless process serves AND echoes,
    *  because its console is the monitor there is; plain --serve goes quiet because the viewer is. */

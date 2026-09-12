@@ -30,6 +30,27 @@ describe("judgeRequest", () => {
     const s = P.judgeRequest(p);
     for (const part of [p.question, "thought: t", "speech: s", "action: a"]) assert.ok(s.includes(part));
   });
+
+  it("says so when there was no question, rather than leaving the label empty", () => {
+    const s = P.judgeRequest({ ...p, question: "", pov: false });
+    assert.ok(!/You asked: *\n/.test(s), "the bare label is gone");
+    assert.match(s, /You asked no question -- this was an open beat/);
+  });
+
+  it("marks the non-POV line as a flag, so it cannot read as the question's text", () => {
+    // What it looked like before: "You asked: \nThey are not the point of view: ..." -- the flag
+    // landed in the question's own slot and read as the thing the author had asked.
+    const s = P.judgeRequest({ ...p, question: "", pov: false });
+    assert.match(s, /\[NOT THE POINT OF VIEW\]/);
+    const asked = s.split("\n").find(l => l.startsWith("You asked"))!;
+    assert.ok(!asked.includes("point of view"), "the flag is its own line, not trailing the ask");
+  });
+
+  it("repairOnlyRequest renders the ask the same way — it is shown the same payload", () => {
+    const s = P.repairOnlyRequest({ ...p, question: "", pov: false, why: "w" });
+    assert.match(s, /You asked no question -- this was an open beat/);
+    assert.match(s, /\[NOT THE POINT OF VIEW\]/);
+  });
 });
 
 describe("the autonomous character format", () => {
@@ -346,5 +367,175 @@ describe("narrationLintSystem", () => {
     const s = P.narrationLintSystem([{ name: "RIVEN", can: ["lockpicking"], cannot: ["sight"] }]);
     assert.match(s, /RIVEN -- can: lockpicking/);
     assert.match(s, /CANNOT: sight/);
+  });
+});
+
+describe("free consult (behavioral-steering strip spike)", () => {
+  const sysArgs = {
+    persona: "A night porter.",
+    place: "The lobby.",
+    skills: [{ name: "keys", meaning: "carrying every key" }],
+    reach: [{ name: "the lobby doors", meaning: "they swing inward" }],
+    limits: ["sight"],
+    knows: "The lock sticks.",
+    goal: "Keep the door shut.",
+  };
+  const req = { situation: "The alarm has been going for a minute and nobody has moved.",
+                question: "Do you say the name, knowing what it admits?", wants: "speech" };
+
+  it("defaults to the gated path — ENGINE.freeConsult is false", async () => {
+    const { ENGINE } = await import("../engine/engine-state.ts");
+    assert.equal(ENGINE.freeConsult, false);
+  });
+
+  it("FREE_CHARACTER_FORMAT drops only the play-the-character steering line", () => {
+    assert.doesNotMatch(P.FREE_CHARACTER_FORMAT, /PLAY THE CHARACTER/);
+    assert.ok(!P.FREE_CHARACTER_FORMAT.includes("You are not a writing assistant"),
+      "the whole steering paragraph goes with the line");
+    // Boundary content survives: protocol, ladder, knowledge, drives, tendencies, hard limits.
+    for (const kept of [/YOUR OUTPUT FORMAT/, /"thought"/, /\{"need"/,
+                         /FIRST DECIDE: know it, infer it, assume it, or ask/,
+                         /WHAT YOU KNOW/, /WHAT YOU WANT IS THE POINT/,
+                         /TENDENCIES, NOT A FENCE/, /HARD LIMIT/]) {
+      assert.match(P.FREE_CHARACTER_FORMAT, kept);
+    }
+  });
+
+  it("freeCharacterSystem renders the boundaries and drops the MOTIVATION closer", () => {
+    const s = P.freeCharacterSystem(sysArgs);
+    assert.ok(!s.includes("MOTIVATION:"), "the redundant steering closer is gone");
+    assert.ok(!/PLAY THE CHARACTER/.test(s));
+    for (const kept of ["IDENTITY", "CAPABILITIES", "MEMORY", "CURRENT SITUATION",
+                        "HARD LIMITS", "sight", "the lobby doors", "Keep the door shut"]) {
+      assert.ok(s.includes(kept), `boundary content lost: ${kept}`);
+    }
+  });
+
+  it("freeMemoryMarker keeps the knowledge and drops the remembering suppression", () => {
+    const mem = "the lighthouse keeps its beam on a half-minute swing";
+    const s = P.freeMemoryMarker(mem);
+    assert.match(s, /\[YOU REMEMBER\]/);
+    assert.match(s, new RegExp(mem));
+    assert.match(s, /You have always known this/);
+    assert.match(s, /Act on it when it bears on what you are asked/);
+    assert.doesNotMatch(s, /narrate remembering/);
+  });
+
+  it("freeAskBlock keeps the ask and drops the steering plus the attempt-3 nudge", () => {
+    const s = P.freeAskBlock(req, 1);
+    assert.match(s, /The alarm has been going/, "the situation is still their whole world");
+    assert.match(s, /What they need from you: speech/, "the wanted shape still arrives");
+    assert.match(s, /Ask for it instead/, "the ask-for-a-fact reminder stays");
+    assert.ok(!s.includes("not a request you owe compliance to"));
+    assert.ok(!/nobody is going to hand you a better one/.test(s), "THE_MOMENT_IS_YOURS is gone");
+    const s3 = P.freeAskBlock(req, 3);
+    assert.ok(!/This ask needs an answer/.test(s3), "no RETRY_NUDGE_FIRM append at attempt 3");
+  });
+
+  it("freeAskBlock keeps the REACTION_OUTWARD gloss for non-POV reactions", () => {
+    const s = P.freeAskBlock({ situation: "Glass breaks across the room.", wants: "reaction" }, 1, false);
+    assert.match(s, /surfacing where the room could catch it/);
+  });
+});
+
+describe("free consult v2 (uncertainty-vs-missing-fact addendum)", () => {
+  const sysArgs = {
+    persona: "A night porter.",
+    place: "The lobby.",
+    skills: [{ name: "keys", meaning: "carrying every key" }],
+    reach: [{ name: "the lobby doors", meaning: "they swing inward" }],
+    limits: ["sight"],
+    knows: "The lock sticks.",
+    goal: "Keep the door shut.",
+  };
+
+  it("FREE_CHARACTER_FORMAT_V2 is v1 plus exactly the uncertainty paragraph", () => {
+    assert.doesNotMatch(P.FREE_CHARACTER_FORMAT_V2, /PLAY THE CHARACTER/);
+    assert.match(P.FREE_CHARACTER_FORMAT_V2, /NOT KNOWING WHAT IS TRUE IS NOT THE SAME AS NOT KNOWING WHAT TO DO/);
+    assert.match(P.FREE_CHARACTER_FORMAT_V2, /suspect, guess, or\n  believe something/);
+    // Every other line survives untouched — the only diff from v1 is the one inserted paragraph.
+    const v1Lines = P.FREE_CHARACTER_FORMAT.split("\n");
+    const v2Lines = P.FREE_CHARACTER_FORMAT_V2.split("\n");
+    for (const line of v1Lines) assert.ok(v2Lines.includes(line), `v1 line dropped from v2: ${line}`);
+  });
+
+  it("freeCharacterSystemV2 renders over FREE_CHARACTER_FORMAT_V2 with the same boundary content as v1", () => {
+    const s = P.freeCharacterSystemV2(sysArgs);
+    assert.match(s, /NOT KNOWING WHAT IS TRUE IS NOT THE SAME AS NOT KNOWING WHAT TO DO/);
+    assert.ok(!s.includes("MOTIVATION:"));
+    for (const kept of ["IDENTITY", "CAPABILITIES", "MEMORY", "CURRENT SITUATION",
+                        "HARD LIMITS", "sight", "the lobby doors", "Keep the door shut"]) {
+      assert.ok(s.includes(kept), `boundary content lost: ${kept}`);
+    }
+  });
+});
+
+describe("free consult v3 (attempt-3 nudge reinstated, isolated from instruction)", () => {
+  const req = { situation: "The alarm has been going for a minute and nobody has moved.",
+                question: "Do you say the name, knowing what it admits?", wants: "speech" };
+
+  it("freeAskBlockV3 matches freeAskBlock at attempt 1 — no nudge yet", () => {
+    const v1 = P.freeAskBlock(req, 1);
+    const v3 = P.freeAskBlockV3(req, 1);
+    assert.equal(v3, v1, "attempt 1 should be identical to v1's askBlock");
+  });
+
+  it("freeAskBlockV3 appends the attempt-3 nudge that freeAskBlock omits", () => {
+    const v1 = P.freeAskBlock(req, 3);
+    const v3 = P.freeAskBlockV3(req, 3);
+    assert.ok(!/This ask needs an answer/.test(v1), "v1/v2 stay nudge-free at attempt 3");
+    assert.match(v3, /This ask needs an answer if there is any honest way to give one/);
+    assert.ok(!v3.includes("not a request you owe compliance to"),
+      "THE_MOMENT_IS_YOURS / compliance line stay gone — only the nudge comes back");
+  });
+
+  it("freeAskBlockV3 keeps the REACTION_OUTWARD gloss for non-POV reactions", () => {
+    const s = P.freeAskBlockV3({ situation: "Glass breaks across the room.", wants: "reaction" }, 1, false);
+    assert.match(s, /surfacing where the room could catch it/);
+  });
+});
+
+// -- THE SPLIT JUDGE (--split-judge) ---------------------------------------
+describe("split judge (verdict call and repair call, prototype)", () => {
+  it("VERDICT_JUDGE_FORMAT keeps the decision ladder but drops the revision from its job", () => {
+    assert.match(P.VERDICT_JUDGE_FORMAT, /DECIDE LIKE THIS/);
+    assert.match(P.VERDICT_JUDGE_FORMAT, /one of their CANNOTs\?\s+RETRY/);
+    assert.match(P.VERDICT_JUDGE_FORMAT, /only surprising, unwelcome, or odd\?\s+ACCEPT/);
+    assert.match(P.VERDICT_JUDGE_FORMAT, /a thought alone is a complete answer/);
+    assert.ok(!/"revised"/.test(P.VERDICT_JUDGE_FORMAT), "the verdict call still asks for a revision");
+    assert.ok(!/"situation"/.test(P.VERDICT_JUDGE_FORMAT), "the verdict call still asks for a situation");
+  });
+
+  it("the verdict call's note is stated as the repair's only input", () => {
+    assert.match(P.VERDICT_JUDGE_FORMAT, /the whole of what the repair is written from/);
+    assert.match(P.VERDICT_JUDGE_FORMAT, /"note": "the contradiction, in one line -- required"/);
+  });
+
+  it("the note gloss demands both halves of the collision, not one", () => {
+    // Measured: under the looser gloss models returned "Merritt CANNOT sight" (a fact, no
+    // collision) and "thoughts of non-POV characters" (a rule, no answer), and one echoed the
+    // schema's own placeholder back. The note is the repair call's entire input.
+    assert.match(P.VERDICT_JUDGE_FORMAT, /BOTH halves/);
+    assert.match(P.VERDICT_JUDGE_FORMAT, /what the answer actually said, in its own words/);
+    assert.match(P.VERDICT_JUDGE_FORMAT, /Half a note is a note the repair cannot use/);
+  });
+
+  it("verdictJudgeSystem carries the cast block and the CANNOT absolute, like judgeSystem", () => {
+    const s = P.verdictJudgeSystem([{ name: "RIVEN", can: ["lockpicking"], cannot: ["magic"] }]);
+    assert.match(s, /RIVEN/);
+    assert.match(s, /magic/);
+    assert.match(s, /A CANNOT is absolute/);
+  });
+
+  it("the two wrong-shape nudges ask for their own call's shape, not each other's", () => {
+    assert.ok(!/revised/.test(P.VERDICT_NOTE_ONLY), "the split verdict nudge still mentions revised");
+    assert.match(P.VERDICT_NOTE_ONLY, /\{"verdict":"retry","note":"\.\.\."\}/);
+    assert.match(P.REPAIR_SHAPE_ONLY, /\{"situation": "\.\.\.", "question": "\.\.\."\}/);
+    assert.ok(!/verdict/.test(P.REPAIR_SHAPE_ONLY), "the repair nudge still mentions a verdict");
+  });
+
+  it("defaults to the single-call path — ENGINE.splitJudge is false", async () => {
+    const { ENGINE } = await import("../engine/engine-state.ts");
+    assert.equal(ENGINE.splitJudge, false);
   });
 });

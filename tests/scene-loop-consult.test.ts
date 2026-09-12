@@ -769,6 +769,140 @@ describe("a clarification on a rejected attempt", () => {
   });
 });
 
+// -- THE SPLIT JUDGE (--split-judge) ------------------------------------------
+// The prototype's whole claim is that a retry can be decided by one call and authored by another.
+// What has to be true for that to be the same gate: the verdict call is asked for no revision, the
+// repair call is made only on a retry and is handed the verdict's own note as its reason, and what
+// it returns goes through the identical reviseConsult check an inline revision does.
+describe("the split judge", () => {
+  /** One consult that draws a retry, then an accept — the writer/character/clarifier side of it is
+   *  the same either way, so only the judge routing differs between the two tests below. */
+  const splitRun = async (routes: Record<string, any>) => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    const events: RunEvent[] = [];
+    const agents = new Map(sc.characters.map(c =>
+      [c.name.toLowerCase(), newCharacterAgent(c, sc.scenes[0].place, "low")] as const));
+
+    const writerReplies: Record<string, unknown>[] = [
+      { prose: "Riven's palm finds the door.",
+        consult: {
+          character: "MERRITT",
+          situation: "Riven has the package under one arm and a hand flat on the service door.",
+          question: "Do you let them through?",
+          wants: "decision",
+        },
+        scene_done: false },
+      { prose: `Merritt stands. "No."`, scene_done: true },
+    ];
+    const characterReplies: Record<string, unknown>[] = [
+      { speech: "I watch their hands work the lock." },
+      { speech: "No.", action: "stands up off the crate" },
+    ];
+
+    let writerCall = 0, characterCall = 0;
+    const nextWriter = () => writerReplies[Math.min(writerCall++, 1)];
+    const fake = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.done": { ok: true },
+      "character.consult": () => characterReplies[Math.min(characterCall++, 1)],
+      "writer.ask": nextWriter,
+      "writer.draft": nextWriter,
+      "writer.redraft": nextWriter,
+      ...routes,
+    });
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    const origSplit = ENGINE.splitJudge;
+    const origRetries = NET.retries;
+    ENGINE.stream = false;
+    NET.retries = 0;   // an outage route must fail at once, not back off through the retry ladder
+    globalThis.fetch = fake.fetchMock;
+    armRun();
+    try {
+      await quiet(() => writeScene(sceneRun(sc, {
+        scene: sc.scenes[0], agents, log: (e: RunEvent) => events.push(e),
+      })));
+      return { events, fake };
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      ENGINE.splitJudge = origSplit;
+      NET.retries = origRetries;
+      armRun();
+      resetLive();
+    }
+  };
+
+  const NOTE = "MERRITT cannot see: watching their hands reaches through CANNOT: sight.";
+  const REPAIR = {
+    situation: "The door has stopped rattling and someone is breathing on the other side of it.",
+    question: "Do you stand up to let them pass?",
+    wants: "decision",
+  };
+
+  it("retries from a verdict that carries a note and no revision, via a second call", async () => {
+    ENGINE.splitJudge = true;
+    let judgeCall = 0;
+    const { events, fake } = await splitRun({
+      // The verdict call names the contradiction and stops — there is no `revised` here at all.
+      "judge.answer": () => judgeCall++ === 0 ? { verdict: "retry", note: NOTE } : { verdict: "accept" },
+      "judge.repair": REPAIR,
+    });
+
+    const retry = events.find(e => e.t === "retry") as any;
+    assert.ok(retry, "a verdict carrying no revision still produced a retry");
+    assert.equal(retry.situation, REPAIR.situation, "the second call's situation is what was re-asked");
+    assert.equal(retry.question, REPAIR.question, "and its question is the record of what was repaired");
+    assert.ok(events.some(e => e.t === "accept"), "the re-ask was answered and taken");
+    assert.ok(!events.some(e => e.t === "bad_consult"), "the authored revision passed reviseConsult");
+
+    assert.equal(fake.count("judge.repair"), 1, "one repair call, on the retry only — not on the accept");
+    // The pipe the whole split rests on: call two's reason is call one's own note.
+    assert.ok(fake.messagesOf("judge.repair", 0).join("\n").includes(NOTE),
+      "the verdict's note reached the repair call as its stated reason");
+    // And call one was asked for a verdict alone.
+    const verdictSystem = fake.messagesOf("judge.answer", 0)[0];
+    assert.ok(!verdictSystem.includes(`"revised"`), "the verdict call was still asked for a revision");
+    assert.ok(verdictSystem.includes("you are not repairing anything"),
+      "the verdict call is not running the single-call format");
+  });
+
+  it("is off by default: the gate makes one call and reads the revision out of it", async () => {
+    ENGINE.splitJudge = false;
+    let judgeCall = 0;
+    const { events, fake } = await splitRun({
+      "judge.answer": () => judgeCall++ === 0
+        ? { verdict: "retry", note: NOTE, revised: REPAIR } : { verdict: "accept" },
+      "judge.repair": REPAIR,
+    });
+
+    assert.ok(events.some(e => e.t === "retry"), "the inline revision still drives the retry");
+    assert.equal(fake.count("judge.repair"), 0, "the default path made no second call");
+    assert.ok(fake.messagesOf("judge.answer", 0)[0].includes(`"revised"`),
+      "the default path still asks one call for both");
+  });
+
+  it("keeps the answer in hand when the repair call cannot produce a revision", async () => {
+    ENGINE.splitJudge = true;
+    const { events, fake } = await splitRun({
+      "judge.answer": { verdict: "retry", note: NOTE },
+      "judge.repair": () => { throw new Error("simulated repair outage"); },
+    });
+
+    const failed = events.find(e => e.t === "repair_failed") as any;
+    assert.ok(failed, "the repair outage is on the record under its own event");
+    // The transport turns a dead route into its own message, so what matters is that the why is
+    // carried at all — a repair that died silently would be the failure this event exists to prevent.
+    assert.ok(failed.why.length > 0, "and it carries why");
+    assert.ok(events.some(e => e.t === "bad_consult"),
+      "a repair that produced nothing lands on the unusable-revision path");
+    assert.ok(!events.some(e => e.t === "retry"), "and no attempt was spent on an ask that cannot be sent");
+    assert.ok(events.some(e => e.t === "accept"), "the answer already in hand still reached the scene");
+    assert.ok(fake.count("judge.repair") > 0, "the repair call was actually attempted");
+  });
+});
+
 // -- WHAT THE LINT IS SHOWN AS EVIDENCE --------------------------------------
 describe("a deed promoted in the same reply that renders it", () => {
   it("is in evidence when the lint checks that piece, not one beat later", async () => {
