@@ -5,7 +5,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { splitMeaning, resolveSkills, resolveReach, removedCapabilities, capabilityProblems,
-         resolveOrigin, originsFrom, bibleMeaningOf, SKILL_CATALOG, SPECIAL_SKILL_CATALOG,
+         resolveOrigin, originsFrom, bibleMeaningOf, restrictionMeanings, cannotDisplay,
+         SKILL_CATALOG, SPECIAL_SKILL_CATALOG,
          type Skill } from "../engine/skills.ts";
 import { quietSync, warnings } from "./helpers.ts";
 
@@ -212,6 +213,92 @@ describe("removedCapabilities", () => {
     const w = warnings(() => removedCapabilities("X", "", "telepathy"));
     assert.equal(w.length, 1);
     assert.deepEqual(removedCapabilities("X", "", ""), []);
+  });
+});
+
+// -- RESTRICTION MEANINGS ---------------------------------------------------
+// A restriction may carry `:: what its absence leaves`, the way a skill carries `:: what it does`.
+// splitMeaning always parsed it and parseRestrictions used to drop it on the floor, so `CANNOT:
+// sight` was the whole of what any model ever saw. These pin that the meaning now survives, and —
+// more importantly — that it reaches no matcher: it is evidence for a reader, never a second
+// matching language (I2).
+describe("restriction meanings", () => {
+  it("keeps the authored meaning, and agrees with removedCapabilities on order and membership", () => {
+    const skills = "", restrictions = "sight :: cannot perceive visual information | hearing";
+    const names = quietSync(() => removedCapabilities("X", skills, restrictions));
+    const pairs = quietSync(() => restrictionMeanings("X", skills, restrictions));
+    assert.deepEqual(pairs.map(r => r.name), names, "same list, same order");
+    assert.deepEqual(pairs, [
+      { name: "sight", meaning: "cannot perceive visual information" },
+      { name: "hearing", meaning: "" },
+    ]);
+  });
+
+  it("warns for a restriction with no :: meaning, and changes nothing about what it removes", () => {
+    const w = warnings(() => restrictionMeanings("X", "", "sight"));
+    assert.equal(w.length, 1);
+    assert.match(w[0], /no ":: meaning"/);
+    // The warning is the whole of the change: the removal itself is exactly as it always was.
+    assert.deepEqual(quietSync(() => removedCapabilities("X", "", "sight")), ["sight"]);
+    assert.deepEqual(quietSync(() => restrictionMeanings("X", "", "sight")),
+                     [{ name: "sight", meaning: "" }]);
+  });
+
+  it("nudges once per load, never once per scene — the per-scene path stays silent", () => {
+    // restrictionMeanings runs once per character in loadStory; resolveReach runs again for every
+    // scene and shares parseRestrictions with it. Warning inside the shared parser put an authoring
+    // nudge on the per-scene path, which is the noise the I3 reach tests pin against.
+    const resolved = quietSync(() => resolveSkills("MERRITT", "keys :: by feel", "sight"));
+    assert.deepEqual(warnings(() => resolveReach("MERRITT", resolved, "sight", "panel :: the codes")), []);
+    assert.deepEqual(warnings(() => removedCapabilities("MERRITT", "", "sight")), []);
+    assert.equal(warnings(() => restrictionMeanings("MERRITT", "", "sight")).length, 1);
+  });
+
+  it("leaves an origin-withheld general with an empty meaning — there was nowhere to author one", () => {
+    const bird = quietSync(() => resolveOrigin("PIP", "bird", { origins: originsFrom({ bird: ["hearing"] }) }))!;
+    const pairs = quietSync(() => restrictionMeanings("PIP", "", "", "", bird));
+    assert.ok(pairs.length > 0, "the origin withholds most of the catalog");
+    assert.ok(pairs.every(r => r.meaning === ""), "withheld, not restricted — no authored entry exists");
+  });
+
+  it("removes only the capability it names, never anything its meaning mentions (I2)", () => {
+    const restrictions = "sight :: no perceiving of light, shape or colour";
+    const reach = "cameras :: reading the lobby feed";
+    // The meaning names light, shape and colour. None of them is a capability, and the reach entry
+    // the blind-AI corollary protects is untouched — the meaning is prose, not a matching language.
+    const removed = quietSync(() => removedCapabilities("A", "", restrictions, reach));
+    assert.deepEqual(removed, ["sight"]);
+    const resolved = quietSync(() => resolveReach("A", [], restrictions, reach));
+    assert.ok(resolved.some(s => s.name === "cameras"), "cameras survives a sight restriction");
+    assert.ok(!resolved.some(s => s.name === "sight"), "sight itself is still gone");
+  });
+
+  it("cannotDisplay off is the authored spellings unchanged; on is the name -- meaning idiom", () => {
+    const limits = ["sight"];
+    const meanings = [{ name: "sight", meaning: "cannot perceive light" }];
+    // Off has to be the identical array contents, or arm A is not a baseline.
+    assert.deepEqual(cannotDisplay(limits, meanings, false), ["sight"]);
+    assert.deepEqual(cannotDisplay(limits, meanings, true), ["sight -- cannot perceive light"]);
+    // A meaningless entry falls back to the bare name rather than rendering a dangling separator.
+    assert.deepEqual(cannotDisplay(["recall"], [{ name: "recall", meaning: "" }], true), ["recall"]);
+  });
+
+  it("cannotDisplay takes membership from limits, so a CANNOT can never be dropped", () => {
+    // The loader keeps the two lists in step, but a hand-built CharacterDef can disagree, and
+    // losing a limit the character really has is the direction that lets an answer through.
+    assert.deepEqual(cannotDisplay(["sight"], [], true), ["sight"]);
+    assert.deepEqual(cannotDisplay(["sight"], [{ name: "hearing", meaning: "deaf" }], true), ["sight"]);
+    // Spelling-insensitively matched, like every other capability comparison.
+    assert.deepEqual(cannotDisplay(["Sight"], [{ name: "sight", meaning: "blind" }], true),
+                     ["Sight -- blind"]);
+  });
+
+  it("cannotDisplay names an empty list only when asked to", () => {
+    assert.deepEqual(cannotDisplay([], [], false), []);
+    assert.deepEqual(cannotDisplay([], [], true), []);
+    assert.deepEqual(cannotDisplay([], [], false, "(none)"), ["(none)"]);
+    // And a non-empty list is never replaced by the empty token.
+    assert.deepEqual(cannotDisplay(["sight"], [], false, "(none)"), ["sight"]);
   });
 });
 

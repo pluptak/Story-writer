@@ -16,6 +16,11 @@
  * `restrictions: ["sight"]` does NOT remove `reach: ["cameras :: ..."]`, because `cameras` and
  * `sight` are different capabilities. Authoring rule: name the interface, never the sense it
  * substitutes for.
+ * A restriction's own `:: meaning` is held to the same line: it is shown to a model as
+ * clarification of what the named capability's absence leaves intact, and it participates in no
+ * matching. `sight :: cannot perceive light` removes `sight`, never `light`, `visual` or `observe`.
+ * Structurally, not by convention — `removedCapabilities` stays `string[]`, so the matching key and
+ * the meaning travel on different fields and no matcher can reach the prose.
  *
  * **I3 — Intrinsic beats granted on collision.**
  * A reach entry may not reuse a canon name the general catalog or that character's own skills
@@ -192,21 +197,33 @@ const generalKeys = (origin?: Origin, catalogs?: Catalogs) => {
  *  restriction removes is keyed by canon name to its authored spelling. A restriction must name a
  *  general skill their origin grants, a bible skill, one of that character's own skills, or — since
  *  restrictions negate over the whole capability set (I2) — something the scene's `reach` grants.
- *  Anything else warns here, exactly as resolveSkills has always warned, and removes nothing. */
+ *  Anything else warns here, exactly as resolveSkills has always warned, and removes nothing.
+ *
+ *  A restriction may carry a `:: meaning` saying what being without that capability is like for this
+ *  character. It is collected here and travels on its own map, never on `restricted` — matching keys
+ *  on the authored spelling alone is what keeps I2 literal, so the meaning must reach no matcher.
+ *  Restrictions authored without one come back under `unexplained` but are NOT warned about here:
+ *  this function runs again for every scene through `resolveReach`, and an authoring nudge that
+ *  repeats per scene per character is the noise the I3 reach tests already pin against.
+ *  `restrictionMeanings` does the warning, once per character per load. */
 function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: string, granted = new Set<string>(), catalogs?: Catalogs, origin?: Origin) {
   const { bible, generals } = use(catalogs);
   const split = (s: string) => s.split("|").map(x => x.trim()).filter(Boolean);
   const restricted = new Map<string, string>();          // canon -> authored spelling of what removed it
+  const meanings = new Map<string, string>();            // canon -> authored `:: meaning`, "" when none
   const unresolved: string[] = [];
+  const unexplained: string[] = [];
   const declared = new Set(
     split(skillsRaw).map(e => canonSkill(splitMeaning(e).text)).filter(Boolean)); // so a bespoke custom skill can be self-restricted by name
   const general = new Set(generalKeys(origin, catalogs));
   for (const entry of split(restrictionsRaw)) {
-    const { text } = splitMeaning(entry);
+    const { text, meaning } = splitMeaning(entry);
     if (!text) continue;
     const key = canonSkill(text);
     if (general.has(key) || bible(text) !== undefined || declared.has(key) || granted.has(key)) {
       restricted.set(key, text);
+      meanings.set(key, meaning);
+      if (!meaning) unexplained.push(text);
     } else {
       unresolved.push(text);
     }
@@ -215,7 +232,7 @@ function parseRestrictions(who: string, skillsRaw: string, restrictionsRaw: stri
   if (unresolved.length)
     warn(`   (character ${who}: restrictions "${unresolved.join('", "')}" — not a known skill, so there is nothing to remove; general skills: ${[...general].join(", ")})`);
 
-  return { split, declared, restricted };
+  return { split, declared, restricted, meanings, unexplained };
 }
 
 // A scene's reach entries, parsed once per reader: canon key, authored name, and the meaning that
@@ -354,25 +371,29 @@ export function capabilityProblems(
   return { restrictions, problems };
 }
 
-/**
- * What the authored restrictions took away, as explicit negative facts: the authored spelling of
- * every known capability removed — general AND special/bible AND reach — followed by the general
- * skills the character's origin never granted. This is the writer-side CANNOT list, because
- * absence-from-`can` hides a withheld capability exactly the way it hides a restricted one.
- * A skill named directly in both lists is one they HAVE and is not a cannot.
- */
-export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", origin?: Origin, catalogs?: Catalogs): string[] {
+/** One removed capability: the authored spelling the CANNOT list names, and what the author said
+ *  its absence leaves this character. `meaning` is "" for a restriction authored without a
+ *  `:: meaning`, and for an origin-withheld general — those were never restricted, so there was
+ *  nowhere to author one. An empty meaning is normal, not a defect. */
+export interface RemovedCapability { name: string; meaning: string }
+
+/** The CANNOT list and its meanings in one pass, so `removedCapabilities` and
+ *  `restrictionMeanings` cannot disagree about order or membership. `nudge` asks for the
+ *  missing-`:: meaning` warning, which only the once-per-load caller wants. */
+function removedWithMeanings(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw: string, origin?: Origin, catalogs?: Catalogs, nudge = false): RemovedCapability[] {
   const { generals } = use(catalogs);
   const reach = parseReach(who, reachRaw);
-  const { declared, restricted } = parseRestrictions(who, skillsRaw, restrictionsRaw,
+  const { declared, restricted, meanings, unexplained } = parseRestrictions(who, skillsRaw, restrictionsRaw,
     new Set(reach.list.map(r => r.key)), catalogs, origin);
-  const out: string[] = [];
+  if (nudge && unexplained.length)
+    warn(`   (character ${who}: restrictions "${unexplained.join('", "')}" carry no ":: meaning" — nobody can tell what its absence leaves them)`);
+  const out: RemovedCapability[] = [];
   const seen = new Set<string>();
   for (const [key, spelling] of restricted) {
     if (seen.has(key)) continue;
     seen.add(key);
     if (declared.has(key)) continue;   // named in both lists — they HAVE it
-    out.push(spelling);
+    out.push({ name: spelling, meaning: meanings.get(key) ?? "" });
   }
   if (origin) {
     const granted = new Set(origin.skills);
@@ -380,8 +401,57 @@ export function removedCapabilities(who: string, skillsRaw: string, restrictions
       const key = canonSkill(name);
       if (granted.has(key) || seen.has(key) || declared.has(key)) continue;
       seen.add(key);
-      out.push(name);
+      // Withheld by the origin rather than restricted: there is no authored entry to carry a meaning.
+      out.push({ name, meaning: "" });
     }
   }
   return out;
+}
+
+/**
+ * What the authored restrictions took away, as explicit negative facts: the authored spelling of
+ * every known capability removed — general AND special/bible AND reach — followed by the general
+ * skills the character's origin never granted. This is the writer-side CANNOT list, because
+ * absence-from-`can` hides a withheld capability exactly the way it hides a restricted one.
+ * A skill named directly in both lists is one they HAVE and is not a cannot.
+ *
+ * Deliberately still `string[]`: this list is the matching key every CANNOT check reads — the
+ * situation and prose sense lints canon-key off it, and `scene-loop.ts` re-serialises it back into
+ * a `restrictionsRaw` for per-scene reach resolution. Meanings travel beside it on
+ * `restrictionMeanings`, never inside these strings.
+ */
+export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", origin?: Origin, catalogs?: Catalogs): string[] {
+  return removedWithMeanings(who, skillsRaw, restrictionsRaw, reachRaw, origin, catalogs).map(r => r.name);
+}
+
+/** The same list as `removedCapabilities`, in the same order, each entry carrying what the author
+ *  said its absence leaves the character. For the prompt renderers that show a CANNOT to a model;
+ *  nothing that resolves or matches a capability reads this.
+ *
+ *  This is also where a restriction authored without a `:: meaning` is warned about, because
+ *  `loadStory` calls it exactly once per character — the per-scene `resolveReach` path shares
+ *  `parseRestrictions` but never comes through here, so the nudge cannot repeat per scene. */
+export function restrictionMeanings(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", origin?: Origin, catalogs?: Catalogs): RemovedCapability[] {
+  return removedWithMeanings(who, skillsRaw, restrictionsRaw, reachRaw, origin, catalogs, true);
+}
+
+/** A CANNOT list flattened for display, in the same `name -- meaning` idiom `writerCast` already
+ *  uses for `can` and `reach`. `withMeaning` off returns the bare authored spellings, which is the
+ *  pre-arm rendering exactly; `emptyAs`, when given, is what an empty list renders as instead of
+ *  nothing. Lives here so the scene loop and the judge gate share one implementation — the gate
+ *  cannot import the loop, which imports the gate.
+ *
+ *  Membership comes from `limits`, never from `meanings`, and the meanings are looked up by canon
+ *  name. `meanings` is the same list in the same order everywhere the loader built it, but a
+ *  hand-built `CharacterDef` can disagree, and the dangerous direction is dropping a CANNOT the
+ *  character really has — so a limit with no matching meaning renders bare rather than vanishing. */
+export function cannotDisplay(limits: string[], meanings: RemovedCapability[], withMeaning: boolean,
+                              emptyAs?: string): string[] {
+  if (!limits.length) return emptyAs ? [emptyAs] : [];
+  if (!withMeaning) return limits;
+  const byName = new Map(meanings.map(r => [canonSkill(r.name), r.meaning]));
+  return limits.map(name => {
+    const meaning = byName.get(canonSkill(name));
+    return meaning ? `${name} -- ${meaning}` : name;
+  });
 }

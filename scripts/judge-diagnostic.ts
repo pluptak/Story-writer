@@ -37,6 +37,7 @@ import { extractJson } from "../engine/json-extract.ts";
 import { reviseConsult, parseVerdict, type CannotCast, type ConsultRequest, type ConsultWants } from "../engine/consult.ts";
 import { loadStory } from "../engine/story-format.ts";
 import { writerCast } from "../engine/scene-loop.ts";
+import { sameName } from "../engine/config-util.ts";
 import { THINK_LEVELS, type ThinkLevel } from "../engine/story-schema.ts";
 
 ENGINE.stream = false;
@@ -58,6 +59,7 @@ function parseArgs() {
     const hit = args.find(a => a.startsWith(`--${name}=`));
     return hit ? hit.slice(name.length + 3) : undefined;
   };
+  const has = (name: string) => args.includes(`--${name}`);
   return {
     mode: (get("mode") ?? "all") as "cast" | "verdict" | "repair" | "all",
     model: get("model"),
@@ -65,6 +67,12 @@ function parseArgs() {
     story: get("story") ?? "data/stories/doorway",
     think: get("think") as ThinkLevel | undefined,
     out: get("out"),
+    // The CANNOT-rendering arms, one flag each so a delta can be attributed to one of them. These
+    // set the same ENGINE fields the CLI sets, because the rendering lives in the engine's cast
+    // flattening (writerCast / wrapCharacter), not in a prompt argument.
+    cannotMeaning: has("cannot-meaning"),
+    cannotNone: has("cannot-none"),
+    cannotTestimony: has("cannot-testimony"),
   };
 }
 
@@ -110,9 +118,13 @@ async function runVerdictMode(model: string, think: ThinkLevel, samples: number,
   let correct = 0, total = 0;
   for (const c of cases) {
     const flags = P.answerFlags({ forced: false });
+    // The cast entry's `cannot` is already the arm-rendered display list, so arm D shows the judge
+    // the same CANNOT wording arms B/C put in the cast block, restated beside the answer.
+    const own = cast.find(e => sameName(e.name, c.character))?.cannot ?? [];
     const payload = P.judgeRequest({
       name: c.character, situation: c.situation, question: c.question,
       thought: c.thought, speech: c.speech, action: c.action, note: c.note, flags, pov: c.pov,
+      ...(ENGINE.cannotTestimony ? { limits: own } : {}),
     }) + `\n\n[REPLY WITH VERDICT ONLY -- no "revised" field is needed for this question.]`;
     const outcomes: string[] = [];
     for (let s = 1; s <= samples; s++) {
@@ -163,13 +175,24 @@ async function main() {
     process.exit(1);
   }
 
+  // Set before writerCast: the arms act on the engine's cast flattening, not on a prompt argument,
+  // so they have to be in place by the time the cast is built. `cannotCast` below is deliberately
+  // built from `c.limits` and never from the display list -- that one is the matching key (I2).
+  ENGINE.cannotMeaning = opts.cannotMeaning;
+  ENGINE.cannotNone = opts.cannotNone;
+  ENGINE.cannotTestimony = opts.cannotTestimony;
+
   const sc = await loadStory(opts.story);
   const cast = writerCast(sc.characters, []);
   const cannotCast: CannotCast = sc.characters.map(c => ({ name: c.name, cannot: c.limits }));
   const model = opts.model ?? sc.models.writer;
   const think = opts.think ?? sc.thinking.writer;
 
-  console.log(`model=${model}  think=${think}  samples/case=${opts.samples}  mode=${opts.mode}`);
+  // The arms are named in the header, so a captured run's output says which condition produced it.
+  const arms = [opts.cannotMeaning && "cannot-meaning", opts.cannotNone && "cannot-none",
+                opts.cannotTestimony && "cannot-testimony"].filter(Boolean);
+  console.log(`model=${model}  think=${think}  samples/case=${opts.samples}  mode=${opts.mode}`
+    + `  arms=${arms.length ? arms.join("+") : "none (baseline)"}`);
 
   const results: Record<string, unknown> = {};
   if (opts.mode === "cast" || opts.mode === "all")
@@ -183,7 +206,9 @@ async function main() {
   console.log(JSON.stringify(results, null, 2));
 
   if (opts.out) {
-    writeFileSync(opts.out, JSON.stringify({ model, think, samplesPerCase: opts.samples, results }, null, 2));
+    writeFileSync(opts.out, JSON.stringify({ model, think, samplesPerCase: opts.samples,
+      arms: { cannotMeaning: opts.cannotMeaning, cannotNone: opts.cannotNone, cannotTestimony: opts.cannotTestimony },
+      results }, null, 2));
     console.log(`\nraw results written to ${opts.out}`);
   }
 }

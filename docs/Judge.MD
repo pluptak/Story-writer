@@ -124,6 +124,42 @@ the second call is conditioned on the first call's diagnosis, and the diagnostic
 Splitting isolates the load per call; it does not stop a wrong reason from reaching a repair stage
 that is now better at acting on one.
 
+### What the CANNOT says, as prototypes — `--cannot-meaning`, `--cannot-none`, `--cannot-testimony`
+
+The judge's cast block renders a restriction as its bare canon name, `CANNOT: sight`, and renders a
+character with no restrictions as nothing at all — the segment is dropped for an empty list. Both
+are implicated in measured failures (`PLANS.md`): a bare token says nothing about what the absence
+*leaves*, and the sight-into-hearing collapse is a model reading it as removing perception
+generally; and an absence that renders as no tokens has nothing for the model to weigh, which is how
+a `CANNOT: sight` got invented for a character whose `restrictions` is `[]` — a fact every measured
+model states correctly, 20/20, when asked in isolation.
+
+A restriction may therefore carry `:: what its absence leaves`, the way a skill carries `:: what it
+does`. `splitMeaning` always parsed it and the resolver used to discard it; it now travels to the
+prompt renderers on `CharacterDef.limitMeanings`, beside — never inside — the `limits` list. That
+separation is structural, not conventional: `limits` is the matching key every CANNOT check reads and
+the sense lints canon-key off, so the meaning reaches no matcher, and I2 stays literal. `sight ::
+cannot perceive light` removes `sight`, never `light`. A restriction authored without a meaning
+warns once per load (`restrictionMeanings`, never the per-scene `resolveReach` path) and is otherwise
+unchanged.
+
+Three arms switch independently, because they target different findings and a bundle cannot be
+attributed to one of them:
+
+- **`--cannot-meaning`** renders each restriction's authored meaning, in the same `name -- meaning`
+  idiom `can:` and `REACH:` already use, in the cast block and in the character's own HARD LIMITS.
+- **`--cannot-none`** gives an unrestricted character `CANNOT: (none)`. Author-side only: an absence
+  that renders as nothing is what the judge failed to weigh, and a character has no measured reason
+  to be told it has no limits.
+- **`--cannot-testimony`** restates the answerer's own limits in the judge's payload, beside the
+  answer rather than only in the system prompt ~700 words above it, and marks the answer as the
+  character's own account rather than as established fact.
+
+All three are **run-level CLI toggles, off by default** and never persisted to `story.json`, the
+shape `--open-consult`, `--free-consult` and `--split-judge` take. With every arm off every prompt is
+byte-identical to the pre-arm engine, including for a story that authors meanings — a test pins that,
+because without it there is no baseline the arms can be measured against.
+
 ### Ceilings
 
 Retries are bounded by one effective ceiling per character: the story's per-character `maxRetries`

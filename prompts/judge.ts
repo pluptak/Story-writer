@@ -332,6 +332,10 @@ export const answerFlags = (p: { forced: boolean }) =>
 export const judgeRequest = (p: {
   name: string; situation: string; question: string;
   thought: string; speech: string; action: string; note: string; flags: string; pov?: boolean;
+  /** --cannot-testimony only: this answerer's own CANNOT list, already rendered, to stand beside
+   *  the answer instead of only in the cast block ~700 words up the system prompt. Absent on every
+   *  other path, which is what keeps the default payload byte-identical. */
+  limits?: string[];
 }) =>
   `[${p.name} ANSWERED]\nThe situation you gave them: ${p.situation}\n`
   // An open beat carries no question, which is most of them. Emitting the label bare left the next
@@ -341,6 +345,19 @@ export const judgeRequest = (p: {
       ? `You asked: ${p.question}\n`
       : `You asked no question -- this was an open beat, and the situation was the whole of it.\n`)
   + (p.pov === false ? `[NOT THE POINT OF VIEW] What they think is not yours to write.\n` : "")
+  // The established facts, restated next to the answer they govern, and the answer marked as the
+  // character's account of itself rather than as fact. Both halves address the same measured
+  // mechanism: the judge invented a CANNOT for a character that has none, and cited it because the
+  // ANSWER said "I am blind in this dark place" -- a fact the same model states correctly 20/20
+  // when asked cleanly lost to a vivid claim sitting closer in the window.
+  + (p.limits?.length
+      ? `\n[WHAT IS ESTABLISHED ABOUT ${p.name}]\n`
+        + `CANNOT: ${p.limits.join(", ")}\n`
+        + `A restriction's stated meaning is the authority on what it removes, and it removes only `
+        + `what it names -- nothing else about ${p.name} is taken away by it. This list is the whole `
+        + `of it: a limit not named here is not one, however the answer below describes itself.\n`
+        + `\n[WHAT ${p.name} SAID -- their own account, not established fact]\n`
+      : "")
   + `thought: ${p.thought}\nspeech: ${p.speech}\naction: ${p.action}`
   + (p.note ? `\nnote: ${p.note}` : "")
   + (p.flags ? `\n\n[FLAGGED] ${p.flags}` : "");

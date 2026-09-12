@@ -22,6 +22,22 @@ export const ENGINE = {
    *  call, made only on a retry, that authors the revision from that note alone. Measured motive
    *  and caveat in docs/PLANS.md ("Judge diagnostic matrix"). */
   splitJudge: false,
+  /** CANNOT-rendering arms (CLI-only, --cannot-meaning / --cannot-none / --cannot-testimony), one
+   *  flag each because they target different measured findings and a bundle cannot be attributed.
+   *  With all three off, every prompt is byte-identical to the pre-arm engine.
+   *   - `cannotMeaning`: render each restriction's authored `:: meaning` beside its name, instead of
+   *     the bare canon token. Aimed at Finding 2 -- `gemma-4-e4b` reads `CANNOT: sight` as removing
+   *     perception generally, 0/10 on MERRITT's untouched hearing, deterministically.
+   *   - `cannotNone`: render `CANNOT: (none)` for a character with no restrictions, instead of
+   *     omitting the segment. Aimed at Finding 1 -- the judge invented a `CANNOT: sight` for a
+   *     character whose `restrictions` is `[]`, a fact every model states correctly (20/20) when
+   *     asked cleanly; absence currently reaches the model as no tokens at all.
+   *   - `cannotTestimony`: mark the judged answer as the character's own words rather than
+   *     established fact, and show the answerer's own limits beside it in the payload.
+   *  docs/PLANS.md ("Judge diagnostic matrix") carries both findings. */
+  cannotMeaning: false,
+  cannotNone: false,
+  cannotTestimony: false,
   /** What the scene loop echoes to the console: the draft prose and the characters' acts and
    *  replies. `serve` only means the HTTP surface is up — a headless process serves AND echoes,
    *  because its console is the monitor there is; plain --serve goes quiet because the viewer is. */

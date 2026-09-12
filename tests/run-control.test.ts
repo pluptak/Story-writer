@@ -249,7 +249,7 @@ describe("pause/resume handshake", () => {
 describe("sceneReach", () => {
   const reachDef = (limits: string[]): CharacterDef => ({
     name: "MERRITT", model: "", persona: "", knows: "", goal: "", belief: "", impulse: "",
-    voice: [], origin: "", skills: [], limits,
+    voice: [], origin: "", skills: [], limits, limitMeanings: limits.map(name => ({ name, meaning: "" })),
   });
   const grant = ["cameras :: reading the fire panel's fault codes"];
 
@@ -333,7 +333,7 @@ describe("sceneReach", () => {
 describe("scenePresence", () => {
   const presenceDef = (): CharacterDef => ({
     name: "CARTER", model: "", persona: "", knows: "", goal: "", belief: "", impulse: "",
-    voice: [], origin: "", skills: [], limits: [],
+    voice: [], origin: "", skills: [], limits: [], limitMeanings: [],
   });
 
   it("resolves a remote grant keyed with the character's exact name", () => {

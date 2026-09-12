@@ -16,6 +16,7 @@ import { WARN } from "../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
 import { wrapCharacter, wrapWriter, writerCast, sceneReach, scenePresence } from "../engine/scene-loop.ts";
+import { judgeRequest } from "../prompts.ts";
 import { fingerprint, LOADED, writeRunManifest } from "../run-manifest.ts";
 import { quiet, warnings } from "./helpers.ts";
 
@@ -509,7 +510,7 @@ describe("reach boundaries", () => {
     name: "AURA", model: "", persona: "The building's AI.", knows: "", goal: "", belief: "",
     impulse: "", voice: [], origin: "",
     skills: [{ name: "speech", meaning: "saying things aloud over the intercom", source: "general" }],
-    limits: [],
+    limits: [], limitMeanings: [],
   };
   const CAMERAS = [{ name: "cameras", meaning: "perceiving through the lobby cameras", source: "reach" as const }];
   // As authored on the scene: raw "name :: meaning" strings.
@@ -579,7 +580,7 @@ describe("presence boundaries", () => {
     name: "CARTER", model: "", persona: "A fixer.", knows: "", goal: "", belief: "",
     impulse: "", voice: [], origin: "",
     skills: [{ name: "lockpicking", meaning: "opening locks", source: "custom" }],
-    limits: [],
+    limits: [], limitMeanings: [],
   };
   const sceneOf = (presence: Record<string, string>) =>
     ({ place: "the chapel", question: "Does CARTER answer?", pov: "CARTER", length: 700, roster: ["CARTER"], reach: {}, presence }) as never;
@@ -757,5 +758,107 @@ describe("readChapterBeatOutcome", () => {
       assert.deepEqual((await readChapterBeatOutcome(dir, 1))?.fired,
         [{ beat: "The alarm sounds.", at: 0.45 }]);
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+// -- THE CANNOT-RENDERING ARMS ----------------------------------------------
+// Three independently switchable prompt arms (--cannot-meaning / --cannot-none / --cannot-testimony)
+// aimed at two measured judge failures recorded in docs/PLANS.md: a restriction rendered as a bare
+// canon token says nothing about what its absence leaves (the sight-into-hearing collapse), and an
+// absent restriction renders as no tokens at all (the judge invented a CANNOT for a character whose
+// `restrictions` is `[]`). The load-bearing test here is the first one: with every arm off, an
+// authored meaning must be incapable of reaching a prompt, or there is no baseline to measure from.
+describe("CANNOT-rendering arms", () => {
+  /** Run `fn` with a given arm set, restoring whatever the flags were. */
+  function withArms<T>(arms: Partial<Pick<typeof ENGINE, "cannotMeaning" | "cannotNone" | "cannotTestimony">>, fn: () => T): T {
+    const was = { cannotMeaning: ENGINE.cannotMeaning, cannotNone: ENGINE.cannotNone, cannotTestimony: ENGINE.cannotTestimony };
+    Object.assign(ENGINE, { cannotMeaning: false, cannotNone: false, cannotTestimony: false }, arms);
+    try { return fn(); } finally { Object.assign(ENGINE, was); }
+  }
+
+  const doorway = () => quiet(() => loadStory("tests/fixtures/doorway"));
+  const merritt = (sc: Awaited<ReturnType<typeof doorway>>) => sc.characters.find(c => c.name === "MERRITT")!;
+
+  it("with every arm off, an authored meaning cannot reach the writer prompt at all", async () => {
+    const sc = await doorway();
+    assert.ok(merritt(sc).limitMeanings.some(r => r.meaning), "the fixture authors a meaning to hide");
+    // The same cast with every meaning blanked. If the arms are genuinely off, the two prompts are
+    // byte-identical -- which is what makes the unflagged engine a baseline the arms measure against.
+    const stripped = sc.characters.map(c => ({ ...c, limitMeanings: c.limitMeanings.map(r => ({ ...r, meaning: "" })) }));
+    const [withMeaning, without] = withArms({}, () => [
+      wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle),
+      wrapWriter(sc.premise, sc.scenes[0], writerCast(stripped, sc.scenes[0].roster), sc.writerStyle),
+    ]);
+    assert.equal(withMeaning, without);
+    assert.match(withMeaning, /CANNOT: sight\n/, "and the bare token is what it still renders");
+    assert.ok(!withMeaning.includes("(none)"), "nor does an unrestricted character gain a CANNOT");
+  });
+
+  it("--cannot-meaning renders the restriction's meaning in the same idiom as a skill's", async () => {
+    const sc = await doorway();
+    const p = withArms({ cannotMeaning: true },
+      () => wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle));
+    assert.match(p, /CANNOT: sight -- Merritt is blind/);
+    assert.match(p, /hearing, touch, smell, taste and recall are untouched/,
+                 "the half the sight-into-hearing collapse gets wrong is now stated outright");
+  });
+
+  it("--cannot-none gives an unrestricted character a CANNOT that says so", async () => {
+    const sc = await doorway();
+    assert.deepEqual(sc.characters.find(c => c.name === "RIVEN")!.limits, [], "RIVEN is the unrestricted one");
+    const p = withArms({ cannotNone: true },
+      () => wrapWriter(sc.premise, sc.scenes[0], writerCast(sc.characters, sc.scenes[0].roster), sc.writerStyle));
+    assert.match(p, /RIVEN[\s\S]{0,300}CANNOT: \(none\)/);
+    assert.match(p, /CANNOT: sight/, "and a character who does have one is untouched by this arm");
+  });
+
+  it("--cannot-testimony restates the answerer's limits beside the answer and marks it as their account", async () => {
+    const sc = await doorway();
+    const cast = withArms({ cannotMeaning: true }, () => writerCast(sc.characters, []));
+    const args = {
+      name: "MERRITT", situation: "You hear tools on metal.", question: "",
+      thought: "I watch their hands move on the lock.", speech: "", action: "", note: "",
+      flags: "", pov: false,
+    };
+    const on = judgeRequest({ ...args, limits: cast.find(c => c.name === "MERRITT")!.cannot });
+    assert.match(on, /\[WHAT IS ESTABLISHED ABOUT MERRITT\]/);
+    assert.match(on, /CANNOT: sight -- Merritt is blind/);
+    assert.match(on, /removes only what it names/);
+    assert.match(on, /\[WHAT MERRITT SAID -- their own account, not established fact\]/);
+    // Off, the payload is what it always was: no established block, no testimony marking.
+    const off = judgeRequest(args);
+    assert.ok(!off.includes("WHAT IS ESTABLISHED ABOUT"));
+    assert.ok(!off.includes("their own account"));
+    assert.match(off, /^\[MERRITT ANSWERED\]/);
+  });
+
+  it("--cannot-testimony with --cannot-none states an unrestricted answerer's absence too", async () => {
+    // The case Finding 1 actually is: RIVEN has no restrictions, so without the empty token this
+    // arm renders nothing at all for them -- and a judge inventing a CANNOT for RIVEN is the very
+    // failure being chased. The gate honours --cannot-none for exactly that reason.
+    const sc = await doorway();
+    const riven = sc.characters.find(c => c.name === "RIVEN")!;
+    const cast = withArms({ cannotNone: true }, () => writerCast([riven], []));
+    const p = judgeRequest({
+      name: "RIVEN", situation: "The lock gives under your fingers.", question: "",
+      thought: "", speech: "", action: "I turn the handle.", note: "", flags: "", pov: true,
+      limits: cast[0].cannot,
+    });
+    assert.match(p, /\[WHAT IS ESTABLISHED ABOUT RIVEN\]\nCANNOT: \(none\)/);
+    assert.match(p, /a limit not named here is not one/,
+                 "the sentence that has to do the work when the list is empty");
+  });
+
+  it("the character's own HARD LIMITS carry the meaning, and never gain a (none) line", async () => {
+    const sc = await doorway();
+    const withMeaning = withArms({ cannotMeaning: true }, () => wrapCharacter(merritt(sc), "a corridor"));
+    assert.match(withMeaning, /HARD LIMITS[\s\S]{0,120}- sight -- Merritt is blind/);
+    // Arm C is scoped to the author side on purpose: an absence that renders as nothing is the
+    // judge's problem, and "HARD LIMITS: (none)" would be a new sentence said to a character for
+    // no measured reason.
+    const riven = sc.characters.find(c => c.name === "RIVEN")!;
+    const bothOn = withArms({ cannotMeaning: true, cannotNone: true }, () => wrapCharacter(riven, "a corridor"));
+    assert.ok(!bothOn.includes("(none)"), "no (none) reaches a character prompt");
+    assert.ok(!bothOn.includes("HARD LIMITS"), "an unrestricted character still has no limits section");
   });
 });
