@@ -4,8 +4,8 @@ import { existsSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills,
-         type Catalogs, type Skill } from "./skills.ts";
+import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills, restrictionMeanings,
+         type Catalogs, type RemovedCapability, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
@@ -16,7 +16,13 @@ export type { SceneDef } from "./story-schema.ts";
 /** A loaded character: everything the agents need, with skills already resolved to the final list,
  *  and `limits` carrying what the authored restrictions took away as explicit negative facts —
  *  general AND special skills, so a removed lockpicking is nameable, not merely absent. `origin` is
- *  kept for display and round-trip; `skills` and `limits` are already resolved against it. */
+ *  kept for display and round-trip; `skills` and `limits` are already resolved against it.
+ *
+ *  `limitMeanings` is the same list as `limits`, in the same order, each entry carrying the
+ *  restriction's authored `:: meaning` (empty when none was written, and always empty for a general
+ *  the origin withheld). It is a parallel field rather than a richer `limits` on purpose: `limits`
+ *  is the matching key the sense lints canon-key off and that `scene-loop.ts` re-serialises into a
+ *  `restrictionsRaw`, so putting prose in it would break both. Only the prompt renderers read it. */
 export interface CharacterDef {
   name: string;
   model: string;
@@ -29,6 +35,7 @@ export interface CharacterDef {
   origin: string;
   skills: Skill[];
   limits: string[];
+  limitMeanings: RemovedCapability[];
   maxRetries?: number;
 }
 
@@ -119,6 +126,7 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       // Reach empty on both (I4): a character-level view never sees a scene's grant.
       skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
+      limitMeanings: restrictionMeanings(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       maxRetries: c.maxRetries,
     });
   }

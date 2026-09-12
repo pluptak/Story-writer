@@ -38,6 +38,12 @@ const OPTIONS = {
   // Split-judge spike (CLI-only prototype): the per-answer judge as a verdict call plus a
   // separate repair call, instead of one completion carrying both.
   "split-judge": { type: "boolean" },
+  // CANNOT-rendering arms (CLI-only prototype), independently switchable so each can be attributed
+  // to the finding it targets: the restriction's authored meaning, the explicit empty state, and
+  // marking a judged answer as the character's own testimony.
+  "cannot-meaning": { type: "boolean" },
+  "cannot-none": { type: "boolean" },
+  "cannot-testimony": { type: "boolean" },
   // Architect tracing.
   "architect-debug": { type: "boolean" },
   "architect-debug-log": { type: "string" },

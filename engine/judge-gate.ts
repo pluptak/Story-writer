@@ -12,6 +12,7 @@ import {
 } from "./consult.ts";
 import { type Msg } from "./llm-client.ts";
 import type { CharacterDef } from "./story-format.ts";
+import { cannotDisplay } from "./skills.ts";
 import { nameKey } from "./config-util.ts";
 
 /** Everything the gate can report, as one tagged event each — the consult's own events plus the
@@ -132,6 +133,15 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
         name: def.name, situation: req.situation, question: req.question,
         thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note,
         flags, pov: o.pov,
+        // --cannot-testimony: the answerer's own established limits restated beside the answer, and
+        // the answer marked as their account rather than fact. Omitted otherwise, so the payload is
+        // byte-identical off the arm. --cannot-meaning decides whether meanings render in it, and
+        // --cannot-none is honoured here too: an unrestricted answerer is the whole of Finding 1,
+        // so "CANNOT: (none)" stated beside their answer is the case this arm most needs to cover.
+        ...(ENGINE.cannotTestimony
+          ? { limits: cannotDisplay(def.limits, def.limitMeanings, ENGINE.cannotMeaning,
+                                    ENGINE.cannotNone ? P.NO_RESTRICTIONS : undefined) }
+          : {}),
       }),
     }];
     try {

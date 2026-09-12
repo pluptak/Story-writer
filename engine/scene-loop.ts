@@ -5,7 +5,7 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
-import { resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
+import { cannotDisplay, resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
 import { warn } from "./warnings.ts";
 import {
   normalizeConsult,
@@ -29,7 +29,13 @@ import { ENGINE } from "./engine-state.ts";
 export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = [], presence?: Presence): string {
   const args = {
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
-    belief: def.belief, impulse: def.impulse, voice: def.voice, reach, limits: def.limits,
+    belief: def.belief, impulse: def.impulse, voice: def.voice, reach,
+    // HARD LIMITS renders one `- name -- meaning` per line already, exactly like the skills menu
+    // above it, so the meaning arm needs nothing in prompts/consult.ts. Arm C is deliberately NOT
+    // applied here: an absent CANNOT is the author side's problem (the judge weighing a claim
+    // against nothing), and "HARD LIMITS: (none)" would be a new sentence said to a character for
+    // no measured reason.
+    limits: cannotDisplay(def.limits, def.limitMeanings, ENGINE.cannotMeaning),
     ...(presence ? { presence } : {}),
   };
   // v3 keeps v2's ladder addendum (only its askBlock differs, in engine/consult.ts) — same format.
@@ -98,13 +104,26 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
   return rosterOf(characters, rostered)
     .map(c => {
       const pres = presence[c.name];
+      // `cannot` below is display only, like the `can` and `reach` beside it — the list every
+      // CANNOT check actually matches on is `CannotCast.cannot`, built straight from `c.limits`.
+      // That is what lets both rendering arms live here rather than in prompts/, which imports no
+      // engine state, and it is why NO_RESTRICTIONS may appear in this array at all:
+      //  - --cannot-meaning renders the restriction's authored meaning in the same `name -- meaning`
+      //    idiom the two lines below use. Off, it is `c.limits` untouched, so arm A is byte-identical.
+      //  - --cannot-none names an empty list, because castBlock drops the segment entirely for one
+      //    and an unrestricted character's absence of limits then reaches the model as no tokens at
+      //    all — nothing to weigh against a vivid in-context claim. That is the Finding 1 mechanism:
+      //    the judge invented a `CANNOT: sight` for a character whose `restrictions` is `[]`, a fact
+      //    every measured model states correctly 20/20 when asked in isolation.
+      const cannot = cannotDisplay(c.limits, c.limitMeanings, ENGINE.cannotMeaning,
+                                   ENGINE.cannotNone ? P.NO_RESTRICTIONS : undefined);
       return {
         name: c.name,
         can: c.skills
           .filter(s => s.source !== "general" && s.source !== "reach")
           .map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
         reach: (reach[c.name] ?? []).map(s => !s.meaning ? s.name : `${s.name} -- ${s.meaning}`),
-        cannot: c.limits,
+        cannot,
         // The rendered string is the writer's display; the raw object rides alongside under a
         // different key for the consult gate's dynamic half (CannotCast.presenceState) — additive
         // only, every reader of `presence` is untouched.

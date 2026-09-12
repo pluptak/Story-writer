@@ -716,7 +716,10 @@ describe("loadStory with an injected bible", () => {
       try { withBible = await loadStory(dir, undefined, { bible }); } finally { WARN.sink = keep; }
       assert.deepEqual(withBible.characters[0].limits, ["telepathy"],
                        "a bible skill the author removed is nameable, not merely absent");
-      assert.ok(!kept.some(w => w.includes("telepathy")),
+      // Matched on the warning's own wording rather than the bare skill name: a resolved
+      // restriction with no `:: meaning` now draws its own (unrelated) nudge that also names
+      // telepathy, and this assertion is about the removes-nothing warning specifically.
+      assert.ok(!kept.some(w => /nothing to remove/.test(w)),
                 "and the restriction resolves, so nothing warns that it removes nothing");
 
       const warns: string[] = [];
@@ -726,7 +729,8 @@ describe("loadStory with an injected bible", () => {
       try { without = await loadStory(dir); } finally { WARN.sink = orig; }
       assert.deepEqual(without.characters[0].limits, [],
                        "without the bible there is nothing by that name to remove");
-      assert.match(warns.join(" "), /telepathy/);
+      assert.match(warns.join(" "), /telepathy[\s\S]*nothing to remove/,
+                   "and that is the warning the author gets, named as such");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 

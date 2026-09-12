@@ -46,7 +46,7 @@
         "keys :: knowing by feel which key on the ring opens which door in this building"
       ],
       "restrictions": [
-        "sight"
+        "sight :: Merritt is blind — no perceiving of light, shape or colour, and nothing sight alone could tell them; hearing, touch, smell, taste and recall are untouched and ordinary"
       ]
     }
   ],
