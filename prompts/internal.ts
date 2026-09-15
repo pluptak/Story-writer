@@ -44,12 +44,13 @@ export const wantsMenuLines = WANTS_MENU.map(([w, d]) => `                    ${
  *  header states the baseline and glosses the three labels explicitly (they are confusable):
  *  `can:` is intrinsic, beyond the baseline; `REACH:` is situational, granted by this scene only;
  *  `CANNOT:` is unavailable whatever its source would have been (I2). */
-export const castBlock = (cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string }[]) =>
+export const castBlock = (cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[]) =>
   `THE CAST -- every character below has the ordinary human abilities (speaking,\n`
   + `hearing, seeing, touching, tasting, smelling) unless their CANNOT removes one. Each\n`
   + `character's line lists ONLY what is beyond that baseline or taken from it -- can: is an ability\n`
   + `they carry with them; REACH: is available to them ONLY through where they are standing right now;\n`
-  + `CANNOT: is unavailable whatever its source would have been:\n`
+  + `CANNOT: is unavailable whatever its source would have been; CONSTRAINED: holds only for this\n`
+  + `scene, on top of everything else -- it is not a standing CANNOT, but it is just as absolute here:\n`
   + cast.map(c => {
       const head = `  ${c.name}`;
       const tails = [
@@ -57,6 +58,7 @@ export const castBlock = (cast: { name: string; can: string[]; reach?: string[];
         c.reach?.length ? `REACH: ${c.reach.join(", ")}` : "",
         c.cannot.length ? `CANNOT: ${c.cannot.join(", ")}` : "",
         c.presence?.length ? `PRESENCE: ${c.presence}` : "",
+        c.constraint?.length ? `CONSTRAINED: ${c.constraint.join(", ")}` : "",
       ].filter(Boolean);
       if (!tails.length) return head;
       const pad = " ".repeat(2 + c.name.length);

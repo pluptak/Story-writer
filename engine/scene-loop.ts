@@ -26,7 +26,7 @@ import { ENGINE } from "./engine-state.ts";
 /** One character agent's system prompt: persona, place, skills, knowledge, goal, belief, impulse, voice.
  *  `reach` is this scene's grant only (I1/I4): it comes from per-scene resolution and is empty on
  *  every character-level view. */
-export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = [], presence?: Presence): string {
+export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] = [], presence?: Presence, constraint: { name: string; meaning: string }[] = []): string {
   const args = {
     persona: def.persona, place, skills: def.skills, knows: def.knows, goal: def.goal,
     belief: def.belief, impulse: def.impulse, voice: def.voice, reach,
@@ -37,6 +37,7 @@ export function wrapCharacter(def: CharacterDef, place: string, reach: Skill[] =
     // no measured reason.
     limits: cannotDisplay(def.limits, def.limitMeanings, ENGINE.cannotMeaning),
     ...(presence ? { presence } : {}),
+    ...(constraint.length ? { constraint } : {}),
   };
   // v3 keeps v2's ladder addendum (only its askBlock differs, in engine/consult.ts) — same format.
   return ENGINE.freeConsult === "v2" || ENGINE.freeConsult === "v3" ? P.freeCharacterSystemV2(args)
@@ -59,6 +60,22 @@ export function scenePresence(sd: SceneDef, def: CharacterDef): Presence | null 
   return { mode: text, via: meaning };
 }
 
+/** One character's situational constraint in ONE scene: the negative twin of sceneReach, never
+ *  resolved against a catalog since it's prose by nature (SceneDef.constraint's own docstring) —
+ *  a scene names whatever it needs to and the meaning is the whole of it. Keys match
+ *  case-insensitively, like reach, presence and roster. A missing `:: meaning` warns: unlike a
+ *  restriction's authored meaning there is no catalog fallback to soften a bare name here, so
+ *  nothing tells anyone what it takes away. */
+export function sceneConstraint(sd: SceneDef, def: CharacterDef): { name: string; meaning: string }[] {
+  const raw = Object.entries(sd.constraint ?? {}).find(([who]) => sameName(who, def.name))?.[1] ?? [];
+  return raw.map(entry => {
+    const { text, meaning } = splitMeaning(entry);
+    if (!meaning)
+      warn(`   (character ${def.name}: constraint "${text}" carries no ":: meaning" — nobody can tell what it takes away)`);
+    return { name: text, meaning };
+  }).filter(c => c.name);
+}
+
 /** One character's reach in ONE scene: the scene's grant, minus what restrictions remove (I2) and
  *  what an intrinsic skill already covers (I3). Never called for a character-level view.
  *  Grant keys match case-insensitively, like roster and pov: a mis-cased key must warn at load,
@@ -70,15 +87,15 @@ export function sceneReach(sd: SceneDef, def: CharacterDef, catalogs?: Catalogs)
 }
 
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
-export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = [], presence?: Presence): Agent {
-  const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach, presence), 0.9);
+export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = [], presence?: Presence, constraint: { name: string; meaning: string }[] = []): Agent {
+  const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach, presence, constraint), 0.9);
   a.think = think;
   return a;
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string }[], style: string, facts: string[] = [], constraints: string[] = []): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[], style: string, facts: string[] = [], constraints: string[] = []): string {
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
@@ -100,10 +117,13 @@ export const rosterOf = (characters: CharacterDef[], rostered: string[]): Charac
  *  the character agents that ever sees it), shown as its own line. */
 export function writerCast(characters: CharacterDef[], rostered: string[],
                            reach: Record<string, Skill[]> = {},
-                           presence: Record<string, Presence> = {}): { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence }[] {
+                           presence: Record<string, Presence> = {},
+                           constraint: Record<string, { name: string; meaning: string }[]> = {}):
+    { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence; constraint?: string[] }[] {
   return rosterOf(characters, rostered)
     .map(c => {
       const pres = presence[c.name];
+      const cons = (constraint[c.name] ?? []).filter(x => x.name);
       // `cannot` below is display only, like the `can` and `reach` beside it — the list every
       // CANNOT check actually matches on is `CannotCast.cannot`, built straight from `c.limits`.
       // That is what lets both rendering arms live here rather than in prompts/, which imports no
@@ -128,6 +148,7 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
         // different key for the consult gate's dynamic half (CannotCast.presenceState) — additive
         // only, every reader of `presence` is untouched.
         ...(pres ? { presence: pres.via ? `${pres.mode} -- ${pres.via}` : pres.mode, presenceState: pres } : {}),
+        ...(cons.length ? { constraint: cons.map(x => x.meaning ? `${x.name} -- ${x.meaning}` : x.name) } : {}),
       };
     });
 }
@@ -327,7 +348,8 @@ export async function writeScene(run: SceneRun) {
   const active = new Set(rosterNames);          // the cast still in the scene; shrinks as one exits
   const isActive = (name: string) => [...active].some(n => sameName(n, name));
   const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])),
-    Object.fromEntries(roster.map(c => [c.name, scenePresence(sd, c)] as const).filter(([, v]) => v !== null)) as Record<string, Presence>);
+    Object.fromEntries(roster.map(c => [c.name, scenePresence(sd, c)] as const).filter(([, v]) => v !== null)) as Record<string, Presence>,
+    Object.fromEntries(roster.map(c => [c.name, sceneConstraint(sd, c)])));
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
@@ -727,6 +749,7 @@ export async function writeScene(run: SceneRun) {
           def, agent: persistent, req: check!.req, cast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
           retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
+          constraint: sceneConstraint(sd, def),
         });
 
         if (RUN.stopped) break;
@@ -931,7 +954,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
   const agents = new Map<string, Agent>();
 
   for (const def of rosterOf(sc.characters, sd.roster)) {
-    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def, sc.catalogs), scenePresence(sd, def) ?? undefined));
+    agents.set(nameKey(def.name), newCharacterAgent(def, sd.place, sc.thinking.character, sceneReach(sd, def, sc.catalogs), scenePresence(sd, def) ?? undefined, sceneConstraint(sd, def)));
   }
 
   LIVE.agents = agents;

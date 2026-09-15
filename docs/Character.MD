@@ -86,6 +86,22 @@ implantation: a `"scene"`-scoped beat's memory is skipped for a `remote` charact
 having no consumer is deliberate: it must not become a silent "can perceive whatever is
 narratively convenient".
 
+### Constraint
+
+`SceneDef.constraint` is reach's negative twin and presence's sibling: scene-scoped, I4-style,
+`{"NAME": ["name :: meaning"]}`, absent from every character-level view. It exists for the kind of
+restriction `CharacterDef.restrictions` cannot honestly model — bound to a chair still permits a
+shrug, so it is never total the way a restriction is, and it belongs to the scene that imposes it,
+not the character. Unlike a restriction its name is not resolved against any catalog: the vocabulary
+a physical or situational hold needs cannot be closed the way a sense can, so it is free prose end to
+end and the meaning is the whole of it.
+
+It renders as its own block, **CONSTRAINED HERE**, beside HARD LIMITS — absolute for this scene, but
+explicitly not a standing HARD LIMIT, so the character does not confuse a temporary hold with an
+intrinsic one. There is no mechanical enforcement (`Judge.MD`'s `SceneDef.constraint` section): the
+judge is the only thing that checks an answer against it, the same way it checks a restriction's
+meaning.
+
 ### What it is never shown
 
 - The premise, the story-level `facts`, the writer's prose, any other character's answer.

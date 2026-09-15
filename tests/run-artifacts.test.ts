@@ -15,7 +15,7 @@ import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../engine/preflight.ts";
 import { CONSULT_WANTS } from "../engine/consult.ts";
-import { wrapCharacter, wrapWriter, writerCast, sceneReach, scenePresence } from "../engine/scene-loop.ts";
+import { wrapCharacter, wrapWriter, writerCast, sceneReach, scenePresence, sceneConstraint } from "../engine/scene-loop.ts";
 import { judgeRequest } from "../prompts.ts";
 import { fingerprint, LOADED, writeRunManifest } from "../run-manifest.ts";
 import { quiet, warnings } from "./helpers.ts";
@@ -606,6 +606,103 @@ describe("presence boundaries", () => {
     assert.match(p, /your presence here is only partial: can hear but not see/);
     const cast = writerCast([CARTER], [], {}, { CARTER: scenePresence(sd, CARTER)! });
     assert.equal(cast[0].presence, "partial -- can hear but not see");
+  });
+});
+
+// -- CONSTRAINT BOUNDARIES (I4-style) ----------------------------------------
+// The negative twin of reach: a situational restriction that is only ever partial or temporary,
+// scene-scoped like presence, never authored on the character. Prose-only, not resolved against
+// any catalog -- there is no mechanical enforcement, so what matters here is that it actually
+// reaches the character, the writer and the judge, and reaches no further than this one scene.
+describe("constraint boundaries", () => {
+  const CARTER: import("../engine/story-format.ts").CharacterDef = {
+    name: "CARTER", model: "", persona: "A fixer.", knows: "", goal: "", belief: "",
+    impulse: "", voice: [], origin: "",
+    skills: [{ name: "lockpicking", meaning: "opening locks", source: "custom" }],
+    limits: [], limitMeanings: [],
+  };
+  const sceneOf = (constraint: Record<string, string[]>) =>
+    ({ place: "the chapel", question: "Does CARTER answer?", pov: "CARTER", length: 700, roster: ["CARTER"], reach: {}, presence: {}, constraint }) as never;
+
+  it("I4-style — constraint disappears at the scene boundary, from both the character's own prompt and the cast block", () => {
+    const sd = sceneOf({ CARTER: ["hands :: bound to the chair, cannot reach or handle anything"] });
+    const bound = wrapCharacter(CARTER, "the chapel", [], undefined, sceneConstraint(sd, CARTER));
+    const free = wrapCharacter(CARTER, "the chapel");
+    assert.match(bound, /CONSTRAINED HERE -- only for this scene, and only what is named; nothing else about you changes:\n {2}- hands -- bound to the chair, cannot reach or handle anything/);
+    assert.ok(!free.includes("CONSTRAINED HERE"), "the default carries no constraint at all");
+
+    const cast = writerCast([CARTER], [], {}, {}, { CARTER: sceneConstraint(sd, CARTER) });
+    const after = writerCast([CARTER], []);
+    assert.deepEqual(cast[0].constraint, ["hands -- bound to the chair, cannot reach or handle anything"]);
+    assert.ok(!("constraint" in after[0]), "and the cast entry carries no constraint key when none was authored");
+  });
+
+  it("renders in the writer's CAST block as CONSTRAINED:, distinct from CANNOT:", () => {
+    const sd = sceneOf({ CARTER: ["hands :: bound to the chair"] });
+    const p = wrapWriter("A premise.", sd, writerCast([CARTER], [], {}, {}, { CARTER: sceneConstraint(sd, CARTER) }), "");
+    assert.match(p, /CONSTRAINED: hands -- bound to the chair/);
+    assert.match(p, /CONSTRAINED: holds only for this/, "the header glosses what CONSTRAINED means, like CANNOT and REACH beside it");
+  });
+
+  it("multiple entries for one character all reach the prompt", () => {
+    const sd = sceneOf({ CARTER: ["hands :: bound to the chair", "speech :: gagged, cannot speak above a whisper"] });
+    const p = wrapCharacter(CARTER, "the chapel", [], undefined, sceneConstraint(sd, CARTER));
+    assert.match(p, /- hands -- bound to the chair/);
+    assert.match(p, /- speech -- gagged, cannot speak above a whisper/);
+  });
+
+  it("a missing :: meaning warns — there is no catalog fallback to soften a bare name", () => {
+    const sd = sceneOf({ CARTER: ["hands"] });
+    const w = warnings(() => sceneConstraint(sd, CARTER));
+    assert.match(w.join(" "), /constraint "hands" carries no ":: meaning" — nobody can tell what it takes away/);
+  });
+
+  it("keys match case-insensitively, like reach and presence", () => {
+    const sd = sceneOf({ carter: ["hands :: bound to the chair"] });
+    const c = sceneConstraint(sd, CARTER);
+    assert.deepEqual(c, [{ name: "hands", meaning: "bound to the chair" }]);
+  });
+
+  it("is not required to name a real skill — free prose, unlike a restriction", () => {
+    const sd = sceneOf({ CARTER: ["left arm :: pinned under the fallen beam"] });
+    const c = sceneConstraint(sd, CARTER);
+    assert.deepEqual(c, [{ name: "left arm", meaning: "pinned under the fallen beam" }]);
+  });
+
+  it("the judge payload states it beside the answer, and marks the answer as testimony", () => {
+    const p = judgeRequest({
+      name: "CARTER", situation: "You reach for the latch.", question: "",
+      thought: "", speech: "", action: "I pull it free.", note: "", flags: "", pov: true,
+      constraint: [{ name: "hands", meaning: "bound to the chair, cannot reach or handle anything" }],
+    });
+    assert.match(p, /\[WHAT IS ESTABLISHED ABOUT CARTER\]/);
+    assert.match(p, /CONSTRAINED HERE \(this scene only\): hands -- bound to the chair, cannot reach or handle anything/);
+    assert.match(p, /\[WHAT CARTER SAID -- their own account, not established fact\]/);
+  });
+
+  it("with no constraint the judge payload is exactly what it was before this field existed", () => {
+    const args = {
+      name: "CARTER", situation: "You reach for the latch.", question: "",
+      thought: "", speech: "", action: "I pull it free.", note: "", flags: "", pov: true,
+    };
+    const p = judgeRequest(args);
+    assert.ok(!p.includes("WHAT IS ESTABLISHED ABOUT"));
+    assert.ok(!p.includes("CONSTRAINED HERE"));
+    assert.match(p, /^\[CARTER ANSWERED\]/);
+  });
+
+  it("a restriction's CANNOT and a scene's CONSTRAINED can both appear, each in its own paragraph", () => {
+    const p = judgeRequest({
+      name: "MERRITT", situation: "You hear tools on metal.", question: "",
+      thought: "I listen for the lock.", speech: "", action: "", note: "", flags: "", pov: false,
+      limits: ["sight -- Merritt is blind"],
+      constraint: [{ name: "hands", meaning: "gripping the crate to keep from falling" }],
+    });
+    assert.match(p, /CANNOT: sight -- Merritt is blind\n/);
+    assert.match(p, /CONSTRAINED HERE \(this scene only\): hands -- gripping the crate to keep from falling\n/);
+    // One established block, one testimony marker -- not one pair per source.
+    assert.equal((p.match(/\[WHAT IS ESTABLISHED ABOUT MERRITT\]/g) ?? []).length, 1);
+    assert.equal((p.match(/their own account, not established fact/g) ?? []).length, 1);
   });
 });
 

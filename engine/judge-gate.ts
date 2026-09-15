@@ -34,6 +34,10 @@ export interface JudgeGateOpts {
   agent: Agent;
   req: ConsultRequest;
   cast: CannotCast;
+  /** This answerer's own constraint in the current scene, if any (SceneDef.constraint via
+   *  sceneConstraint) -- restated beside their answer in the judge payload. Always passed, never
+   *  behind an arm: an empty list (every scene without one) renders nothing. */
+  constraint: { name: string; meaning: string }[];
   retries: number;
   maxCharacterRetries?: number;
   clarifications: number;
@@ -142,6 +146,7 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
           ? { limits: cannotDisplay(def.limits, def.limitMeanings, ENGINE.cannotMeaning,
                                     ENGINE.cannotNone ? P.NO_RESTRICTIONS : undefined) }
           : {}),
+        constraint: o.constraint,
       }),
     }];
     try {

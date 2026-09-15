@@ -27,6 +27,15 @@ export const SceneDef = z.strictObject({
    *  Absent means "here" — every existing scene is unchanged. An authored entry is "mode :: via",
    *  mode one of "remote"/"partial" — e.g. {"CARTER": "remote :: the phone line"}. */
   presence: z.record(z.string(), z.string()).default({}),
+  /** Per-character constraint (scene-scoped like reach; I4-style — never persisted at character
+   *  level): the negative twin of reach, for the kind of restriction that is only ever partial or
+   *  temporary rather than the total, source-independent kind `restrictions` models (I2) — bound to
+   *  a chair still permits a shrug, which is why this is never authored on the character. Free
+   *  prose, not resolved against any catalog, since the vocabulary can't be closed the way a sense
+   *  can: `"name :: meaning"`, e.g. {"MERRITT": ["hands :: bound to the chair, cannot reach or
+   *  handle anything"]}. Judge-mediated only, like a restriction's own meaning — there is no
+   *  mechanical enforcement. */
+  constraint: z.record(z.string(), z.array(z.string())).default({}),
   /** Writer-only overrides for this one scene; unset falls back to `models.writer` / `thinking.writer`. */
   writerModel: z.string().optional(),
   writerThink: thinkLevel.optional(),

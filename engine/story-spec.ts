@@ -251,6 +251,10 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       roster,
       reach,
       presence,
+      // The architect does not author constraint yet (deferred: this is the scene-scoped, negative
+      // twin of reach, and authoring/verify-pass support is its own block) — always empty here so a
+      // proposed scene validates, never a silent drop of something the architect never emits.
+      constraint: {},
       ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
       ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
         ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),

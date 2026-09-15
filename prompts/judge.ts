@@ -336,31 +336,47 @@ export const judgeRequest = (p: {
    *  the answer instead of only in the cast block ~700 words up the system prompt. Absent on every
    *  other path, which is what keeps the default payload byte-identical. */
   limits?: string[];
-}) =>
-  `[${p.name} ANSWERED]\nThe situation you gave them: ${p.situation}\n`
-  // An open beat carries no question, which is most of them. Emitting the label bare left the next
-  // line -- the non-POV flag -- sitting exactly where the question's text would be, so it read as
-  // the question. Every judge call in a live run looked like that.
-  + (p.question
-      ? `You asked: ${p.question}\n`
-      : `You asked no question -- this was an open beat, and the situation was the whole of it.\n`)
-  + (p.pov === false ? `[NOT THE POINT OF VIEW] What they think is not yours to write.\n` : "")
+  /** This scene's own constraint on the answerer, if any (SceneDef.constraint) -- the negative
+   *  twin of reach, restated beside the answer for the same reason `limits` is: established fact
+   *  belongs closer to the claim it governs than the cast block ~700 words up. Unlike `limits` this
+   *  is not behind an arm -- a scene with none authored renders nothing, so the payload is
+   *  unaffected until a story actually uses the field. */
+  constraint?: { name: string; meaning: string }[];
+}) => {
   // The established facts, restated next to the answer they govern, and the answer marked as the
   // character's account of itself rather than as fact. Both halves address the same measured
   // mechanism: the judge invented a CANNOT for a character that has none, and cited it because the
   // ANSWER said "I am blind in this dark place" -- a fact the same model states correctly 20/20
   // when asked cleanly lost to a vivid claim sitting closer in the window.
-  + (p.limits?.length
-      ? `\n[WHAT IS ESTABLISHED ABOUT ${p.name}]\n`
-        + `CANNOT: ${p.limits.join(", ")}\n`
-        + `A restriction's stated meaning is the authority on what it removes, and it removes only `
-        + `what it names -- nothing else about ${p.name} is taken away by it. This list is the whole `
-        + `of it: a limit not named here is not one, however the answer below describes itself.\n`
-        + `\n[WHAT ${p.name} SAID -- their own account, not established fact]\n`
-      : "")
-  + `thought: ${p.thought}\nspeech: ${p.speech}\naction: ${p.action}`
-  + (p.note ? `\nnote: ${p.note}` : "")
-  + (p.flags ? `\n\n[FLAGGED] ${p.flags}` : "");
+  const cannotLine = p.limits?.length
+    ? `CANNOT: ${p.limits.join(", ")}\n`
+      + `A restriction's stated meaning is the authority on what it removes, and it removes only `
+      + `what it names -- nothing else about ${p.name} is taken away by it. This list is the whole `
+      + `of it: a limit not named here is not one, however the answer below describes itself.\n`
+    : "";
+  const constraintLine = p.constraint?.length
+    ? `CONSTRAINED HERE (this scene only): `
+      + `${p.constraint.map(c => c.meaning ? `${c.name} -- ${c.meaning}` : c.name).join(", ")}\n`
+      + `This holds only for this scene, on top of everything else true of ${p.name} -- it removes `
+      + `only what it names, and nothing not named here is affected.\n`
+    : "";
+  const established = cannotLine + constraintLine;
+  return `[${p.name} ANSWERED]\nThe situation you gave them: ${p.situation}\n`
+    // An open beat carries no question, which is most of them. Emitting the label bare left the
+    // next line -- the non-POV flag -- sitting exactly where the question's text would be, so it
+    // read as the question. Every judge call in a live run looked like that.
+    + (p.question
+        ? `You asked: ${p.question}\n`
+        : `You asked no question -- this was an open beat, and the situation was the whole of it.\n`)
+    + (p.pov === false ? `[NOT THE POINT OF VIEW] What they think is not yours to write.\n` : "")
+    + (established
+        ? `\n[WHAT IS ESTABLISHED ABOUT ${p.name}]\n${established}`
+          + `\n[WHAT ${p.name} SAID -- their own account, not established fact]\n`
+        : "")
+    + `thought: ${p.thought}\nspeech: ${p.speech}\naction: ${p.action}`
+    + (p.note ? `\nnote: ${p.note}` : "")
+    + (p.flags ? `\n\n[FLAGGED] ${p.flags}` : "");
+};
 
 // -- JUDGE DIAGNOSTIC (scripts/judge-diagnostic.ts) --------------------------
 // Isolates two sub-skills JUDGE_FORMAT bundles into one completion: does the verdict/reasoning

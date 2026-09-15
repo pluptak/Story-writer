@@ -308,7 +308,7 @@ describe("applyEdits", () => {
     const added = edit("add_scene", { place: "  yard ", length: 801.4, question: "Follow?" });
     assert.deepEqual(added.applied[0].before, undefined);
     assert.deepEqual(added.applied[0].after, {
-      place: "yard", question: "Follow?", pov: "", length: 801, roster: [], reach: {}, presence: {},
+      place: "yard", question: "Follow?", pov: "", length: 801, roster: [], reach: {}, presence: {}, constraint: {},
     });
     const removed = quietSync(() => applyEdits(added.spec, { edits: [{ field: "remove_scene", value: 2 }] }));
     assert.deepEqual(removed.applied[0].before, added.spec.scenes[1]);

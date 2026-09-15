@@ -160,6 +160,35 @@ shape `--open-consult`, `--free-consult` and `--split-judge` take. With every ar
 byte-identical to the pre-arm engine, including for a story that authors meanings — a test pins that,
 because without it there is no baseline the arms can be measured against.
 
+### `SceneDef.constraint` — the negative twin of reach
+
+A restriction (`CharacterDef.restrictions`) is the total, source-independent kind: bound to the
+character, true in every scene, never partial. A scene sometimes needs the other kind — bound to a
+chair still permits a shrug, so `CANNOT: movement` would be the wrong statement even if `movement`
+were still a general skill (it isn't — see `engine/skills.ts`'s catalog). `constraint` gives that
+situational kind a home on the scene instead of forcing it onto the character: `{"MERRITT": ["hands
+:: bound to the chair, cannot reach or handle anything"]}`, scene-scoped and I4-style like `reach`
+and `presence` — never persisted at character level, absent from every character-level view.
+
+Unlike a restriction, its name is not resolved against any catalog — the vocabulary a physical or
+situational constraint needs can't be closed the way a sense can, so it is free prose end to end,
+`"name :: meaning"`, and the meaning is the whole of it. It reaches three surfaces: the answering
+character's own prompt (`CONSTRAINED HERE`, beside HARD LIMITS, so the character itself answers
+consistently with it), the writer's cast block (`CONSTRAINED:`, beside `CANNOT:`, so the writer does
+not write an action it forecloses), and the judge's payload (`CONSTRAINED HERE (this scene only)`,
+restated beside the answer under the same `[WHAT IS ESTABLISHED ABOUT name]` /
+`[WHAT name SAID -- their own account, not established fact]` framing `--cannot-testimony` uses).
+
+It is **judge-mediated only — there is no mechanical enforcement.** `quote-lint.ts` and
+`sense-lint.ts` are the engine's only deterministic checks, and both depend on a closed vocabulary
+(the granted ledger; the five perception senses) that a constraint's free-prose name does not have.
+Whether an answer actually honours a constraint is the judge's call to make, the same call it already
+makes for a restriction's meaning — measuring that call is `--cannot-testimony`'s job, not a new
+arm's, since the rendering is unconditional rather than behind a flag: a scene with no `constraint`
+authored renders nothing on any of the three surfaces, so this is safe as a default rather than a
+prototype. The architect does not yet author `constraint` — `normalizeSpec` always emits `{}` — so a
+story gets one only by hand-editing `story.json` until that lands.
+
 ### Ceilings
 
 Retries are bounded by one effective ceiling per character: the story's per-character `maxRetries`

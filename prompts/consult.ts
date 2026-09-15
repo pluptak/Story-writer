@@ -272,6 +272,7 @@ export function characterSystem(p: {
   reach?: { name: string; meaning: string }[];
   presence?: { mode: "remote" | "partial"; via: string };
   limits?: string[];
+  constraint?: { name: string; meaning: string }[];
   knows: string;
   goal: string;
   belief?: string;
@@ -286,6 +287,7 @@ export function characterSystem(p: {
   const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n")
     + (reachLines ? `\nREACH -- yours only through where you are standing right now; it leaves with this place:\n${reachLines}` : "");
   const hardLimits = (p.limits ?? []).filter(l => l.trim());
+  const constraintLines = (p.constraint ?? []).filter(c => c.name);
   const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
   const presenceNote = p.presence
     ? p.presence.mode === "remote"
@@ -297,6 +299,9 @@ export function characterSystem(p: {
     `CAPABILITIES -- what you are good at, not a fence around what you may attempt:\n${menu}`
       + (hardLimits.length
         ? `\nHARD LIMITS -- absolute, whatever the moment asks; you cannot do these:\n${hardLimits.map(l => `  - ${l.trim()}`).join("\n")}`
+        : "")
+      + (constraintLines.length
+        ? `\nCONSTRAINED HERE -- only for this scene, and only what is named; nothing else about you changes:\n${constraintLines.map(c => `  - ${c.name}${c.meaning ? ` -- ${c.meaning}` : ""}`).join("\n")}`
         : ""),
     p.knows ? `MEMORY -- what you knew coming into this: ${p.knows}` : "",
     [
@@ -319,6 +324,7 @@ export function freeCharacterSystem(p: {
   reach?: { name: string; meaning: string }[];
   presence?: { mode: "remote" | "partial"; via: string };
   limits?: string[];
+  constraint?: { name: string; meaning: string }[];
   knows: string;
   goal: string;
   belief?: string;
@@ -330,6 +336,7 @@ export function freeCharacterSystem(p: {
   const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n")
     + (reachLines ? `\nREACH -- yours only through where you are standing right now; it leaves with this place:\n${reachLines}` : "");
   const hardLimits = (p.limits ?? []).filter(l => l.trim());
+  const constraintLines = (p.constraint ?? []).filter(c => c.name);
   const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
   const presenceNote = p.presence
     ? p.presence.mode === "remote"
@@ -341,6 +348,9 @@ export function freeCharacterSystem(p: {
     `CAPABILITIES -- what you are good at, not a fence around what you may attempt:\n${menu}`
       + (hardLimits.length
         ? `\nHARD LIMITS -- absolute, whatever the moment asks; you cannot do these:\n${hardLimits.map(l => `  - ${l.trim()}`).join("\n")}`
+        : "")
+      + (constraintLines.length
+        ? `\nCONSTRAINED HERE -- only for this scene, and only what is named; nothing else about you changes:\n${constraintLines.map(c => `  - ${c.name}${c.meaning ? ` -- ${c.meaning}` : ""}`).join("\n")}`
         : ""),
     p.knows ? `MEMORY -- what you knew coming into this: ${p.knows}` : "",
     [
@@ -362,6 +372,7 @@ export function freeCharacterSystemV2(p: {
   reach?: { name: string; meaning: string }[];
   presence?: { mode: "remote" | "partial"; via: string };
   limits?: string[];
+  constraint?: { name: string; meaning: string }[];
   knows: string;
   goal: string;
   belief?: string;
@@ -373,6 +384,7 @@ export function freeCharacterSystemV2(p: {
   const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n")
     + (reachLines ? `\nREACH -- yours only through where you are standing right now; it leaves with this place:\n${reachLines}` : "");
   const hardLimits = (p.limits ?? []).filter(l => l.trim());
+  const constraintLines = (p.constraint ?? []).filter(c => c.name);
   const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
   const presenceNote = p.presence
     ? p.presence.mode === "remote"
@@ -384,6 +396,9 @@ export function freeCharacterSystemV2(p: {
     `CAPABILITIES -- what you are good at, not a fence around what you may attempt:\n${menu}`
       + (hardLimits.length
         ? `\nHARD LIMITS -- absolute, whatever the moment asks; you cannot do these:\n${hardLimits.map(l => `  - ${l.trim()}`).join("\n")}`
+        : "")
+      + (constraintLines.length
+        ? `\nCONSTRAINED HERE -- only for this scene, and only what is named; nothing else about you changes:\n${constraintLines.map(c => `  - ${c.name}${c.meaning ? ` -- ${c.meaning}` : ""}`).join("\n")}`
         : ""),
     p.knows ? `MEMORY -- what you knew coming into this: ${p.knows}` : "",
     [

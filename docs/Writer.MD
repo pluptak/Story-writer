@@ -27,13 +27,15 @@ shows only each character's **delta** from the human baseline: `can:` lists non-
 omitted entirely when empty, `REACH:` names what the scene grants through where the character is
 standing right now, and `CANNOT:` names authored restrictions. The general skills are not listed —
 since every removal is named as a CANNOT, absence-from-CANNOT already implies presence, so printing
-`can: movement, speech, hearing, touch, taste, smell, recall` was seven things the model already
+`can: speech, hearing, sight, touch, taste, smell` was six things the model already
 assumed, burying the one signal-carrying special skill at the end of the line. The block's header
 states the baseline explicitly, so a short `can:` never reads as a short leash.
 
-The three labels are glossed in the header because they are confusable: `can:` is intrinsic (carried
+The labels are glossed in the header because they are confusable: `can:` is intrinsic (carried
 between scenes), `REACH:` is situational (granted by this scene only, gone when it ends), `CANNOT:`
-is unavailable whatever its source would have been. A situational capability is never emitted on a
+is unavailable whatever its source would have been, and `CONSTRAINED:` — `SceneDef.constraint`,
+`Character.MD`'s "Constraint" section — holds only for this scene, on top of everything else, and is
+just as absolute here without being a standing CANNOT. A situational capability is never emitted on a
 `can:` line; the character's own menu still lists its generals, because that is where the
 "all of what you can do; nothing else" fence needs them.
 
