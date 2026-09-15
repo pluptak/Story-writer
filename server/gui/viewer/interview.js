@@ -365,10 +365,15 @@ function castHtml(spec, catalog, scoped = false, entries = []) {
   // -- never as an intrinsic skill.
   const reachOf = name => (spec.scenes?.[0]?.reach || {})[name]
     || Object.entries(spec.scene?.reach || {}).find(([k]) => k === name)?.[1] || [];
+  // Constraint is reach's negative twin, scene-scoped the same way -- shown per character,
+  // labelled with the scene that holds them, never as a standing restriction.
+  const constraintOf = name => (spec.scenes?.[0]?.constraint || {})[name]
+    || Object.entries(spec.scene?.constraint || {}).find(([k]) => k === name)?.[1] || [];
   return `<div class="cast">${spec.characters.map(c => {
     const tag = (t, cls = "") => `<span class="tag${cls}">${t}</span>`;
     const skills = c.skills.map(s => esc(s.text) + (s.meaning ? ` :: ${esc(s.meaning)}` : "")).join(", ");
     const reach = reachOf(c.name);
+    const constraint = constraintOf(c.name);
     const fromCatalog = catalog && catalog.has(String(c.name || "").toLowerCase());
     const busy = !!APP.scaffold?.busy;
     return `<div class="person" data-tid="scaffold.person" data-name="${esc(c.name)}">
@@ -388,6 +393,8 @@ function castHtml(spec, catalog, scoped = false, entries = []) {
       ${skills ? tag(`skills: ${skills}`) : ""}
       ${(Array.isArray(reach) ? reach : []).map(r =>
         tag(`reach · scene 1: ${esc(r)}`, " reach")).join("")}
+      ${(Array.isArray(constraint) ? constraint : []).map(r =>
+        tag(`constraint · scene 1: ${esc(r)}`, " warn")).join("")}
       ${c.restrictions.map(r => tag(`restriction: ${esc(r)}`, " warn")).join("")}
     </div>`;
   }).join("")}</div>`;
@@ -764,6 +771,9 @@ const FINDING_RULES = [
   { sev: "attention", re: /grants reach to "[^"]+", who is not/i, where: "the Blueprint",
     why: "A capability granted to someone absent never reaches a run.",
     fix: "Grant it to a roster member, or place them in the scene." },
+  { sev: "attention", re: /sets a constraint for "[^"]+", who is not/i, where: "the Blueprint",
+    why: "A constraint set on someone absent never reaches a run.",
+    fix: "Set it on a roster member, or place them in the scene." },
   { sev: "attention", re: /keys a memory to "[^"]+", who is not/i, where: "the Blueprint",
     why: "A memory for someone absent silently never implants.",
     fix: "Key it to a roster member, or place them in the chapter." },
@@ -1238,7 +1248,7 @@ function revertOp(field, before, after, snapshot) {
     const i = Number(m[1]) - 1;
     return { ok: true, verify: () => ({ ok: true }), apply: d => { d.facts.splice(i, 0, before); return { ok: true }; } };
   }
-  if ((m = field.match(/^scene(?:_(\d+))?\.(place|question|pov|length|roster|reach|writerThink|writerModel)$/))) {
+  if ((m = field.match(/^scene(?:_(\d+))?\.(place|question|pov|length|roster|reach|constraint|writerThink|writerModel)$/))) {
     const i = m[1] ? Number(m[1]) - 1 : 0, k = m[2];
     return scalar(d => (d.scenes || [])[i]?.[k], (d, v) => { d.scenes[i][k] = v; });
   }

@@ -76,6 +76,13 @@ const parseReach = text => {
   return out;
 };
 
+/** Constraint, reach's negative twin and just as scene-scoped (I4): same grain, same shape,
+ *  same one-line-per-entry form field -- `NAME: thing :: meaning`. */
+const constraintLines = constraint => Object.entries(constraint || {}).flatMap(([who, entries]) =>
+  (Array.isArray(entries) ? entries : []).map(e => `${who}: ${e}`)).join("\n");
+
+const parseConstraint = parseReach;
+
 /** Deep clone by serialising -- Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -191,6 +198,8 @@ function sceneRowsHtml() {
       ${fld(`scene-${n}-roster`, "Roster (comma-separated)", roster)}
       ${fld(`scene-${n}-reach`, "Reach — one per line: NAME: thing :: meaning (granted by this scene only)",
            reachLines(sc.reach), "textarea")}
+      ${fld(`scene-${n}-constraint`, "Constraint — one per line: NAME: thing :: meaning (holds only for this scene)",
+           constraintLines(sc.constraint), "textarea")}
       ${issuesHtml(`scenes.${i}`)}
     </div>`;
   }).join("");
@@ -515,6 +524,8 @@ function applyField(id, value) {
       APP.editDraft.scenes[idx].roster = value ? parseCommaSeparated(value) : [];
     } else if (field === "reach") {
       APP.editDraft.scenes[idx].reach = parseReach(value);
+    } else if (field === "constraint") {
+      APP.editDraft.scenes[idx].constraint = parseConstraint(value);
     } else if (field === "length") {
       const n = toNum(value);
       APP.editDraft.scenes[idx].length = n === undefined ? APP.editorConfig.defaults.sceneLength : Math.max(1, n);

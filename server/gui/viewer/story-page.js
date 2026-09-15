@@ -154,6 +154,16 @@ function sceneDetailHtml(scene, beats) {
           return `<span class="mchip"${meaning ? ` title="${esc(meaning)}"` : ""}>${esc(who)} · ${esc(thing)}${meaning ? ` — ${esc(meaning)}` : ""}</span>`;
         }).join("")).join("")}</div></div>`
     : "";
+  const constraintRows = Object.entries(scene.constraint || {}).filter(([, g]) => (g || []).length);
+  const constraint = constraintRows.length
+    ? `<div class="mapfield"><span>constrained here</span>
+        <div class="mapchips">${constraintRows.map(([who, holds]) => (holds || []).map(g => {
+          const at = g.indexOf("::");
+          const thing = (at >= 0 ? g.slice(0, at) : g).trim();
+          const meaning = at >= 0 ? g.slice(at + 2).trim() : "";
+          return `<span class="mchip warn"${meaning ? ` title="${esc(meaning)}"` : ""}>${esc(who)} · ${esc(thing)}${meaning ? ` — ${esc(meaning)}` : ""}</span>`;
+        }).join("")).join("")}</div></div>`
+    : "";
   const mine = beats.filter(b => b.chapter === scene.n);
   const beatRows = mine.length
     ? `<div class="mapfield"><span>world events</span>
@@ -162,7 +172,7 @@ function sceneDetailHtml(scene, beats) {
           <span class="hold">${esc(b.hold)}</span>
         </div>`).join("")}</div></div>`
     : "";
-  const body = reach + beatRows;
+  const body = reach + constraint + beatRows;
   return body ? `<div class="map-extra">${body}</div>` : "";
 }
 

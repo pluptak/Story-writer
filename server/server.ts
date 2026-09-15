@@ -240,15 +240,16 @@ export interface ServerHost {
   }>;
   /** A story's full authored cast for the live screen's read-only character sheet. Same load and
    *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted.
-   *  `scenes[].reach` is the per-scene grant and `scenes[].presence` the per-scene position, both
-   *  kept OUT of the characters (I4: scene-scoped, never intrinsic — a missing presence entry means
-   *  "here" and travels as absence). Origin is intrinsic and travels with the character. On a story that will not parse, returns `{ ok:false, error }`. */
+   *  `scenes[].reach` is the per-scene grant, `scenes[].presence` the per-scene position, and
+   *  `scenes[].constraint` the per-scene hold (reach's negative twin) — all three kept OUT of the
+   *  characters (I4: scene-scoped, never intrinsic — a missing presence or constraint entry means
+   *  "unaffected" and travels as absence). Origin is intrinsic and travels with the character. On a story that will not parse, returns `{ ok:false, error }`. */
   fullCast(dir: string): Promise<{
     ok: true; characters: {
       name: string; persona: string; knows: string; goal: string;
       belief: string; impulse: string; voice: string[]; origin: string;
       skills: { text: string; meaning: string }[]; restrictions: string[];
-    }[]; scenes?: { n: number; reach: Record<string, string[]>; presence: Record<string, string> }[];
+    }[]; scenes?: { n: number; reach: Record<string, string[]>; presence: Record<string, string>; constraint: Record<string, string[]> }[];
   } | {
     ok: false; error: string;
   }>;

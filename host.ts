@@ -692,6 +692,10 @@ const storyWarnings = (parsed: StoryJson): string[] => [
     ...Object.keys(s.reach ?? {})
       .filter(who => !parsed.characters.some(c => sameName(c.name, who)))
       .map(who => `Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`),
+    // Constraint is reach's negative twin and gets the same orphan check.
+    ...Object.keys(s.constraint ?? {})
+      .filter(who => !parsed.characters.some(c => sameName(c.name, who)))
+      .map(who => `Scene ${i + 1} sets a constraint for "${who}", who is not one of the characters — ignored`),
   ]),
   ...parsed.timeline.flatMap((beat, i) =>
     timelineBeatProblems(`timeline beat ${i + 1}`, beat, parsed.characters.map(c => c.name), parsed.scenes)),
@@ -745,11 +749,11 @@ export const HOST: ServerHost = {
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
       })),
-      // Reach and presence stay per scene and never merge into a character's skills or any
-      // other character-level field (I4): the GUI labels each with the scene it comes from so
-      // neither can ever read as intrinsic. A missing presence entry means "here", the unmarked
-      // default, and travels as absence — never as a "here" value.
-      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {}, presence: s.presence ?? {} })),
+      // Reach, presence and constraint stay per scene and never merge into a character's skills or
+      // any other character-level field (I4): the GUI labels each with the scene it comes from so
+      // none of them can ever read as intrinsic. A missing presence or constraint entry means
+      // "unaffected", the unmarked default, and travels as absence — never as a value.
+      scenes: loaded.story.scenes.map((s, i) => ({ n: i + 1, reach: s.reach ?? {}, presence: s.presence ?? {}, constraint: s.constraint ?? {} })),
     };
   },
   checkStory: (story) => {

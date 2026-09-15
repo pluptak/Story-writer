@@ -269,6 +269,13 @@ The handoff turns consequences in accepted prose into durable story state:
 - **Reach is re-authored per chapter.** Whatever an earlier scene granted is gone — reach never
   travels with a person (I1). If where a character stands in the next chapter still offers an
   interface, it is re-granted on the new scene with `scene_<n>.reach`; if not, nothing is granted.
+- **Constraint is re-authored per chapter, the same way.** `scene_<n>.constraint` is reach's
+  negative twin — a restriction only ever partial or temporary (bound to a chair still permits a
+  shrug), so it lives on the scene, never the character, and does not travel with a person either.
+  If the next chapter still holds them the same way, re-author it; if not, author nothing. A
+  capability lost for good is `characters[].restrictions` instead, per the bullet above. Unlike
+  reach it is not resolved against any catalog — its name is free prose — and there is no
+  mechanical enforcement behind it; see [`Judge.MD`](Judge.MD)'s `SceneDef.constraint` section.
 
 The architect must not invent an unsupported consequence. If the chapters do not establish whether a
 character changed, it should ask rather than put an unverified fact into the story.
@@ -336,9 +343,11 @@ The architect can edit the fields supported by `engine/story-spec.ts`:
 
 - story metadata: `title`, `premise`, `writerStyle`, and `writerStyleConstraints`
 - scenes: `scene_<n>.place`, `question`, `pov`, `length`, `roster`, `reach`
-  (an object: `{"NAME": ["thing :: what they can do through it"]}`), and `presence`
+  (an object: `{"NAME": ["thing :: what they can do through it"]}`), `presence`
   (an object: `{"NAME": "mode :: via"}` with mode `remote` or `partial` — where someone is
-  while that scene is being written, scene-scoped like `reach`; a `remote` entry needs its `via`)
+  while that scene is being written, scene-scoped like `reach`; a `remote` entry needs its `via`),
+  and `constraint` (an object: `{"NAME": ["thing :: what it takes away"]}` — reach's negative
+  twin, scene-scoped the same way, free prose with no catalog behind it)
 - scene structure: `add_scene` and `remove_scene`
 - characters: `persona`, `knows`, `goal`, `belief`, `impulse`, `voice` (a list), `skills`,
   `restrictions`, `origin`, and `lacks`, plus `name` (rename, with roster/pov references

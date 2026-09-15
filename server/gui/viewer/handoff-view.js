@@ -233,11 +233,13 @@ export function handoffPageHtml() {
   body.push(divider("cast"));
   if (s.spec?.characters?.length) {
     // Reach is per scene and labelled with the chapter that grants it, so it never reads as
-    // intrinsic to the character.
+    // intrinsic to the character. Constraint is its negative twin, shown the same way.
     const grants = s.spec.scenes?.[(s.chapter || 1) - 1]?.reach || {};
+    const holds = s.spec.scenes?.[(s.chapter || 1) - 1]?.constraint || {};
     body.push(`<div class="hcast">`);
     for (const c of s.spec.characters) {
       const reach = grants[c.name] || [];
+      const constraint = holds[c.name] || [];
       body.push(`<div ${tid("handoff.cast-row")} class="who" data-name="${esc(c.name)}">
         <div class="nm">${esc(c.name)}</div>
         ${c.origin ? `<div class="line"><span class="k">origin</span>${esc(c.origin)}</div>` : ""}
@@ -248,6 +250,8 @@ export function handoffPageHtml() {
         ${(c.voice || []).map(v => `<div class="line"><span class="k">says</span>“${esc(v)}”</div>`).join("")}
         ${(Array.isArray(reach) ? reach : []).map(r =>
           `<div class="line"><span class="k reach" title="granted by this scene, not intrinsic">reach · ch ${s.chapter || 1}</span>${esc(r)}</div>`).join("")}
+        ${(Array.isArray(constraint) ? constraint : []).map(r =>
+          `<div class="line"><span class="k no" title="holds only for this scene, not a standing restriction">constraint · ch ${s.chapter || 1}</span>${esc(r)}</div>`).join("")}
         ${c.restrictions?.length ? `<div class="line"><span class="k no">cannot</span>${esc(c.restrictions.join(", "))}</div>` : ""}
       </div>`);
     }

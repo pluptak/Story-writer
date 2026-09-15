@@ -70,6 +70,13 @@ export function castCharacterSheet(name) {
     for (const [who, raw] of Object.entries(sc.presence || {}))
       (presenceByChar[who.toLowerCase()] = presenceByChar[who.toLowerCase()] || [])
         .push({ n: sc.n, raw: String(raw ?? "") });
+  // Constraint is reach's negative twin, grouped the same way: each tag names the scene it holds
+  // the character in, so it can never read as a standing restriction.
+  const constraintByChar = {};
+  for (const sc of (APP.cast.scenes || []))
+    for (const [who, entries] of Object.entries(sc.constraint || {}))
+      (constraintByChar[who.toLowerCase()] = constraintByChar[who.toLowerCase()] || [])
+        .push(...(Array.isArray(entries) ? entries : []).map(e => ({ n: sc.n, e })));
   const skills = (c.skills || []).map(s =>
     `<span class="yes" title="${esc(s.meaning || "")}">+${esc(s.text)}</span>`).join(" ");
   const restr = (c.restrictions || []).map(r =>
@@ -90,8 +97,14 @@ export function castCharacterSheet(name) {
     if (!mode) return "";
     return `<span class="presence" title="${esc(`scene ${n} — ${mode}${via ? ` via ${via}` : ""}`)}">◌ ${esc(mode)} · scene ${n}</span>`;
   }).join(" ");
-  const tags = skills || restr || reach || presence
-    ? `<div class="cast-tags">${skills}${skills && restr ? " " : ""}${restr}${(skills || restr) && (reach || presence) ? " " : ""}${reach}${reach && presence ? " " : ""}${presence}</div>` : "";
+  const constraint = (constraintByChar[c.name.toLowerCase()] || []).map(({ n, e }) => {
+    const i = e.indexOf("::");
+    const cname = (i < 0 ? e : e.slice(0, i)).trim();
+    const meaning = i < 0 ? "" : e.slice(i + 2).trim();
+    return `<span class="no" title="${esc(`scene ${n} — holds only for this scene${meaning ? `: ${meaning}` : ""}`)}">✕ ${esc(cname)} · scene ${n}</span>`;
+  }).join(" ");
+  const tags = skills || restr || reach || constraint || presence
+    ? `<div class="cast-tags">${[skills, restr, reach, constraint, presence].filter(Boolean).join(" ")}</div>` : "";
   const voice = (c.voice || []).map(v => `<p class="cast-voice">“${esc(v)}”</p>`).join("");
   const fields = [
     field("origin", c.origin),

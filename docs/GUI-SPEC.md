@@ -289,7 +289,9 @@ The story editor renders each scene's `reach` — the scene-scoped capability gr
 ([Architect.MD](Architect.MD), I1) — as one textarea per scene, one
 `NAME: thing :: meaning` per line. Reach round-trips through `/story/check` and `/story/save`
 inside `StoryJson`'s scenes; it is character-in-place data and never appears on a character card in
-the editor.
+the editor. `constraint` — reach's negative twin ([Judge.MD](Judge.MD)'s `SceneDef.constraint`
+section) — gets its own textarea right below Reach's, same grain, same round-trip, same absence
+from any character card.
 
 ## Character catalog
 
@@ -408,12 +410,14 @@ GET /cast?dir=...  → { ok:true, characters[], scenes[] }
 
 Available while a run is in flight (the live rail needs it exactly then). Each character carries
 `name`, `persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `origin`, `skills` (as `{text, meaning}`),
-and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants and presence
-positions as `{ n: number, reach: { NAME: ["thing :: what they can do through it"] },
-presence: { NAME: "remote :: the via" } }` — the raw `SceneDef` maps, carried exactly. **Neither
-ever merges into a character** ([Architect.MD](Architect.MD) I4): the GUI labels each grant and each
-position with its scene, so neither can ever read as intrinsic. A character with no entry in a
-scene's `presence` is "here", the unmarked default — the GUI renders no chip for that.
+and `restrictions`; `model` is omitted. `scenes` carries the per-scene reach grants, presence
+positions and constraints as `{ n: number, reach: { NAME: ["thing :: what they can do through it"] },
+presence: { NAME: "remote :: the via" }, constraint: { NAME: ["thing :: what it takes away"] } }` —
+the raw `SceneDef` maps, carried exactly. **None of the three ever merges into a character**
+([Architect.MD](Architect.MD) I4): the GUI labels each grant, position and hold with its scene, so
+none of them can ever read as intrinsic. A character with no entry in a scene's `presence` is
+"here", the unmarked default; no entry in `constraint` is unaffected — the GUI renders no chip for
+either.
 
 ## Run control
 

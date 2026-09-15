@@ -1572,6 +1572,8 @@
   .mapchips { display:flex; flex-wrap:wrap; gap:5px; }
   .mchip { display:inline-block; padding:2px 9px; border:1px solid var(--line); border-radius:var(--r-pill);
            background:var(--panel-2); font-size:var(--fs-11); color:var(--muted); }
+  /* constrained-here chips read as a removal, like a restriction, not a grant like reach's plain .mchip */
+  .mchip.warn { color:var(--warn); border-color:var(--warn); background:var(--warn-soft); }
   .mapbeats { display:grid; gap:8px; }
   .mapbeat { border-left:2px solid var(--warn); padding-left:10px; display:grid; gap:2px; }
   .mapbeat .when { font-family:var(--mono); font-size:var(--fs-10); letter-spacing:.07em;

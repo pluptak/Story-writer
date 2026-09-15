@@ -136,17 +136,20 @@ for r in data/stories/<THE SERIAL>/out/*/; do echo -n "$(basename $r) "; grep -o
       check above had nothing to group, this one proves nothing either — write a second chapter
       (section 2) and come back.
 
-The map's scene detail — who is here, reach, world beats. The doorway fixture carries none of these,
-so a story that does (or a scratch story.json with a `roster`, a `reach` entry and one timeline beat
-aimed at its chapter) stands in:
+The map's scene detail — who is here, reach, constraint, world beats. The doorway fixture carries
+none of these, so a story that does (or a scratch story.json with a `roster`, a `reach` entry, a
+`constraint` entry and one timeline beat aimed at its chapter) stands in:
 
 - [ ] Each scene row shows **who is here** as chips and its **reach here** as per-character chips —
       a reach grant reads as `NAME · thing — meaning`, under the scene, never inside a character's
       own skill list.
+- [ ] The same row shows **constrained here** as per-character chips, styled as a removal (the
+      restriction colour, not reach's) — a constraint reads as `NAME · thing — meaning`, under the
+      scene, never inside a character's `restrictions`.
 - [ ] A chapter's **world event** renders under its scene as *N% through the scene* with the hold
       text, and **no memories** — the interview is the only screen that sees them. A beat the
       handoff voided still shows, struck through.
-- [ ] A story with none of the three shows scene rows exactly as before — no empty labelled blocks.
+- [ ] A story with none of the four shows scene rows exactly as before — no empty labelled blocks.
 
 *If labels are missing everywhere:* `RunSummary.chapter` is not reaching the story card.
 *If a single-scene story shows a label:* the one-group flat fallback is wrong.
@@ -255,14 +258,22 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Save.** Change the premise, click **save**. The save button briefly shows "saving…" then returns to "save". The "unsaved changes" banner disappears. Reload the page to confirm the edit persisted.
 - [ ] **Dirty guard.** With unsaved changes, click **back to story**. A styled confirm modal warns about unsaved changes. Cancel (button, backdrop, or Escape) stays on the editor; discard navigates away, and the address bar follows — it never shows the refused page.
 - [ ] **Scene editor.** Change a scene's question, length, or roster. Verify the value is reflected after save.
+- [ ] **Scene editor's Constraint field.** Type `NAME: hands :: bound to the chair` into a scene's
+      Constraint textarea (the field right below Reach), save, and reload: the line survives
+      round-trip exactly, the same grain reach's own field uses.
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
       still there, labelled by scene everywhere it shows.
+- [ ] **Constraint survives a handoff**, the same way reach does above: a constraint saved on the
+      next unwritten scene is still there after accept, labelled by scene everywhere it shows.
 - [ ] **Reach never reads as intrinsic.** Open a cast pill's character card on the live screen (§7)
       for a story whose
       scenes carry reach: each grant appears as its own accent-coloured tag naming its scene
       (`⇢ cameras · scene N`), separate from skills (`+…`) and restrictions (`no …`), and never as a
       `+skill` on the same card.
+- [ ] **Constraint never reads as a standing restriction.** Same card, for a story whose scenes
+      carry a `constraint` entry: each hold appears as its own removal-coloured tag naming its
+      scene (`✕ hands · scene N`), separate from `restrictions` (`no …`), and never merged into it.
 - [ ] **Character editor.** Change a character's persona, knows, or goal. Set a belief, an impulse, and one or two voice lines (one per line in the voice box). Add a skill. Verify after save.
 - [ ] **Character card warnings.** Clear a character's belief, impulse, and voice. After ~400ms `/story/check` shows the three "has no …" warnings; refilling them clears them again.
 - [ ] **Config editor.** Expand the config section. Change `retries` to 5, save, reload, confirm it stuck.
@@ -362,6 +373,11 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
       and via on hover) in the sheet, and a `◌ mode — via` chip in the card's own scene half —
       visibly a position, never an accent-coloured capability. A character with no entry shows no
       chip at all: "here" is the unmarked default.
+- [ ] **Constraint shows per scene, labelled, and reads as a removal.** On a story whose scene
+      carries a `constraint` entry, the character it names gets a `✕ name · scene N` tag (the
+      `restrictions` colour, not reach's accent) with a tooltip naming the meaning, in both the
+      sheet and the card's own scene half — visibly a removal, never merged into `restrictions`
+      or shown as a capability. A character with no entry shows no chip at all.
 - [ ] **Read-only.** No inputs, no edit affordances — it is for the human reviewing what a consult
       was working from, never an edit surface.
 - [ ] **Live only.** The same pill on the shelf or the History view opens the card with the pill's own
@@ -459,8 +475,9 @@ a *new* story folder — so it can go anywhere in the pass.
       `#/catalog?kind=skills` and the candidate disappears — it is re-derived from the cast, not
       removed by the page, so the only way for it to vanish is for the bible to really hold it now.
       Check the skills catalog afterwards. Two things that should NOT happen: a bare skill with no
-      `:: meaning` offered as a candidate, and a scene's `reach` entry offered as one — reach is
-      never promotable (I4). **A promoted skill does not appear in the architect's own list until
+      `:: meaning` offered as a candidate, and a scene's `reach` or `constraint` entry offered as
+      one — both are scene-scoped and never promotable (I4). **A promoted skill does not appear in
+      the architect's own list until
       the next session**, because the system prompt is sent once; validation accepts it immediately,
       which is the part to check.
 - [ ] **Revising after a reload.** Reload the page mid-session and open **revise concept** without

@@ -42,10 +42,11 @@ function makeHost(overrides?: Partial<ServerHost>): ServerHost {
             restrictions: ["hearing"],
           },
         ],
-        // Reach arrives per scene and never merged into a character's skills (I4); presence
-        // rides the same way, as the raw SceneDef map.
+        // Reach arrives per scene and never merged into a character's skills (I4); presence and
+        // constraint ride the same way, as the raw SceneDef map.
         scenes: [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] },
-                         presence: { BRAE: "remote :: the stairwell phone" } }],
+                         presence: { BRAE: "remote :: the stairwell phone" },
+                         constraint: { BRAE: ["hands :: bound to the chair"] } }],
       };
     },
     ...overrides,
@@ -102,7 +103,8 @@ describe("/cast (GET)", () => {
         `${ch.name} must not carry reach on their skills`);
     assert.deepEqual(r.json().scenes,
                       [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] },
-                               presence: { BRAE: "remote :: the stairwell phone" } }]);
+                               presence: { BRAE: "remote :: the stairwell phone" },
+                               constraint: { BRAE: ["hands :: bound to the chair"] } }]);
   });
 
   it("presents presence per scene, never as a character field", async () => {
@@ -110,6 +112,15 @@ describe("/cast (GET)", () => {
     for (const ch of r.json().characters)
       assert.ok(!("presence" in ch), `${ch.name} must not carry presence on their character`);
     assert.deepEqual(r.json().scenes[0].presence, { BRAE: "remote :: the stairwell phone" });
+  });
+
+  it("presents constraint per scene, never as a character field or a restriction", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    for (const ch of r.json().characters) {
+      assert.ok(!("constraint" in ch), `${ch.name} must not carry constraint on their character`);
+      assert.ok(!ch.restrictions.includes("hands"), `${ch.name} must not carry constraint on restrictions`);
+    }
+    assert.deepEqual(r.json().scenes[0].constraint, { BRAE: ["hands :: bound to the chair"] });
   });
 
   it("reports a story that will not load", async () => {

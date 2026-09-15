@@ -80,6 +80,17 @@ function sceneSectionHtml(name, ctx) {
     const meaning = i < 0 ? "" : String(e).slice(i + 2).trim();
     return `<span class="reach" title="${esc(`only here — granted by this scene${meaning ? `: ${meaning}` : ""}`)}">⇢ ${esc(rname)}</span>`;
   }).join(" ");
+  // Constraint is reach's negative twin, shown the same way but reading as a removal (the same
+  // .no colour a restriction wears) rather than a grant.
+  const holds = Object.entries(scene.constraint || {})
+    .filter(([who]) => (who || "").toLowerCase() === name.toLowerCase())
+    .flatMap(([, entries]) => Array.isArray(entries) ? entries : []);
+  const constraintTags = holds.map(e => {
+    const i = String(e).indexOf("::");
+    const cname = (i < 0 ? String(e) : String(e).slice(0, i)).trim();
+    const meaning = i < 0 ? "" : String(e).slice(i + 2).trim();
+    return `<span class="no" title="${esc(`only here — holds only for this scene${meaning ? `: ${meaning}` : ""}`)}">✕ ${esc(cname)}</span>`;
+  }).join(" ");
   // Presence is this scene's alone (I4): a set entry renders one position chip, scoped to the
   // card's own scene -- no scene number needed, the eyebrow already names the chapter. Absence
   // renders nothing: "here" is the unmarked default.
@@ -94,8 +105,8 @@ function sceneSectionHtml(name, ctx) {
     if (!mode) return "";
     return `<span class="presence" title="${esc(`position in this scene only — ${mode}${via ? ` via ${via}` : ""}`)}">◌ ${esc(mode)}${via ? ` — ${esc(via)}` : ""}</span>`;
   })();
-  const sceneTags = grantTags || presenceTag
-    ? `<div class="cast-tags">${grantTags}${grantTags && presenceTag ? " " : ""}${presenceTag}</div>`
+  const sceneTags = grantTags || constraintTags || presenceTag
+    ? `<div class="cast-tags">${[grantTags, constraintTags, presenceTag].filter(Boolean).join(" ")}</div>`
       + `<p class="hint">Only in this scene — not part of who they are.</p>` : "";
   return `<section data-tid="charcard.scene">`
     + `<p class="charcard-eyebrow">${esc(inScene || isPov ? `In this scene · Chapter ${scene.n}` : `Chapter ${scene.n}`)}${story ? ` · ${esc(story)}` : ""}</p>`
