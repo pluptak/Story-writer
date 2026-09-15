@@ -57,6 +57,9 @@ export function reachNotInRoster(prefix: string, who: string): string {
 export function presenceNotInRoster(prefix: string, who: string): string {
   return `${prefix} sets presence for "${who}", who is not in its roster`;
 }
+export function constraintNotInRoster(prefix: string, who: string): string {
+  return `${prefix} sets a constraint for "${who}", who is not in its roster`;
+}
 
 /** The timeline-beat problems that are pure string work, shared by the load path (which warns and
  *  keeps the beat) and the proposal path (which reports it), so the wording has one home — the same
@@ -243,6 +246,29 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       }
       presence[ch.name] = raw;
     }
+    const rawConstraint = (s.constraint && typeof s.constraint === "object" && !Array.isArray(s.constraint))
+      ? Object.fromEntries(Object.entries(s.constraint)
+          .map(([k, v]) => [k.trim(), asStrings(v)] as const)
+          .filter(([k]) => k.length > 0))
+      : {};
+    // Constraint is the negative twin of reach and gets the same two problems: never in any
+    // catalog, so every entry must carry its own ":: meaning", and a constraint on someone who
+    // does not exist would silently bind nobody. Unlike reach there is no I3 collision check —
+    // constraint's name is free prose by design, not an interface that could be confused with a
+    // sense or capability.
+    const constraint: SceneDef["constraint"] = {};
+    for (const [who, entries] of Object.entries(rawConstraint)) {
+      const ch = characters.find(c => c.name.toLowerCase() === who.toLowerCase());
+      if (!ch) { problems.push(`${prefix} sets a constraint for "${who}", who is not one of the characters — dropped`); continue; }
+      if (roster.length && !roster.some(r => r.toLowerCase() === who.toLowerCase()))
+        problems.push(constraintNotInRoster(prefix, who));
+      const ok = entries.filter(e => {
+        const { meaning } = splitMeaning(e);
+        if (!meaning.trim()) { problems.push(`${ch.name}'s constraint "${e}" carries no ":: meaning" — dropped`); return false; }
+        return true;
+      });
+      if (ok.length) constraint[ch.name] = ok;
+    }
     return {
       place: String(s.place ?? "").trim(),
       question: String(s.question ?? "").trim(),
@@ -251,10 +277,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       roster,
       reach,
       presence,
-      // The architect does not author constraint yet (deferred: this is the scene-scoped, negative
-      // twin of reach, and authoring/verify-pass support is its own block) — always empty here so a
-      // proposed scene validates, never a silent drop of something the architect never emits.
-      constraint: {},
+      constraint,
       ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
       ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
         ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),
@@ -396,7 +419,7 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
       continue;
     }
 
-    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster|reach|presence)$/);
+    const sceneMatch = field.match(/^(scene(?:_(\d+))?)\.(place|question|pov|length|roster|reach|presence|constraint)$/);
     if (sceneMatch) {
       const idx = sceneMatch[2] ? Number(sceneMatch[2]) - 1 : 0;
       if (idx >= draft.scenes.length) { ignored.push(`${field} — scene ${idx + 1} does not exist`); continue; }
@@ -414,6 +437,13 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
         draft.scenes[idx].presence = (value && typeof value === "object" && !Array.isArray(value))
           ? Object.fromEntries(Object.entries(value)
               .map(([k, v]) => [k.trim(), String(v ?? "").trim()] as const)
+              .filter(([k, v]) => k.length > 0 && v.length > 0))
+          : {};
+      }
+      else if (sceneField === "constraint") {
+        draft.scenes[idx].constraint = (value && typeof value === "object" && !Array.isArray(value))
+          ? Object.fromEntries(Object.entries(value)
+              .map(([k, v]) => [k.trim(), asStrings(v)] as const)
               .filter(([k, v]) => k.length > 0 && v.length > 0))
           : {};
       }

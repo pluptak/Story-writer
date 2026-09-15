@@ -572,6 +572,37 @@ describe("reach boundaries", () => {
       assert.ok(got.some(x => /grants reach to "NOBODY"/.test(x)));
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
+
+  it("loadStory warns when constraint names nobody who could receive it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "constraint-"));
+    try {
+      const raw = JSON.parse(await readFile("tests/fixtures/doorway/story.json", "utf8"));
+      raw.scenes = [{ place: "the lobby", question: "Q?", pov: "", length: 700,
+        roster: [raw.characters[0].name], constraint: { NOBODY: ["hands :: bound to the chair"] } }];
+      await writeFile(join(dir, "story.json"), JSON.stringify(raw), "utf8");
+      const got: string[] = [];
+      const origSink = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { got.push(a.map(String).join(" ")); };
+      try { await loadStory(dir); } finally { WARN.sink = origSink; }
+      assert.ok(got.some(x => /sets a constraint for "NOBODY"/.test(x)));
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("loadStory warns when constraint names a real character absent from a non-empty roster", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "constraint-roster-"));
+    try {
+      const raw = JSON.parse(await readFile("tests/fixtures/doorway/story.json", "utf8"));
+      const [riven, merritt] = raw.characters;
+      raw.scenes = [{ place: "the lobby", question: "Q?", pov: "", length: 700,
+        roster: [merritt.name], constraint: { [riven.name]: ["hands :: bound to the chair"] } }];
+      await writeFile(join(dir, "story.json"), JSON.stringify(raw), "utf8");
+      const got: string[] = [];
+      const origSink = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { got.push(a.map(String).join(" ")); };
+      try { await loadStory(dir); } finally { WARN.sink = origSink; }
+      assert.ok(got.some(x => new RegExp(`sets a constraint for "${riven.name}", who is not in its roster`).test(x)));
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
 });
 
 // -- PRESENCE BOUNDARIES (I4-style) ------------------------------------------

@@ -197,6 +197,16 @@ scene.presence -- OPTIONAL. Where one of these characters IS while this scene is
                  its edge, so never use it for anything intrinsic. And it changes what the WRITER
                  narrates, not just what the character believes: a remote character is not seated
                  in the room, never handed something, never caught by a glance across it.
+scene.constraint -- OPTIONAL. A restriction that only holds for THIS scene, unlike a character's own
+                 "restrictions" -- for the kind that is never total the way blindness is: bound to a
+                 chair still permits a shrug, gagged still permits a nod. Never put this on the
+                 character; put it here. {"MERRITT": ["hands :: bound to the chair, cannot reach or
+                 handle anything"]}. Name whatever the scene actually needs -- there is no catalog
+                 to match against, so "hands", "left arm", "voice" are all fine as long as the
+                 ":: meaning" says what it takes away. It exists only while THIS scene is being
+                 written and vanishes at its edge; a later scene that wants the same hold repeats it.
+                 There is no mechanical check behind this one (unlike a CANNOT, which the engine
+                 enforces) -- only author it when it actually matters to what the scene turns on.
 writer_style -- house style: person, tense, what to do with dialogue, what to leave out.
 characters   -- Every character costs consults out of a fixed step budget, so add a third or fourth
                 only when they have their own stake in what happens -- not because a scene feels thin
@@ -225,6 +235,7 @@ WHEN ASKED FOR A CHANGE -- [CHANGE]:
     scene.place · scene.question · scene.pov · scene.length · scene.roster
     scene.reach   (an object: {"NAME": ["thing :: what they can do through it"]} -- see scene.reach above)
     scene.presence   (an object: {"NAME": "remote :: the via" | "partial :: the via"} -- see scene.presence above)
+    scene.constraint   (an object: {"NAME": ["thing :: what it takes away"]} -- see scene.constraint above)
     scene_<n>.place · ...      (the same fields on the nth scene; scene_1 and scene are the same one)
     characters.<NAME>.persona · characters.<NAME>.knows · characters.<NAME>.goal
     characters.<NAME>.belief · characters.<NAME>.impulse · characters.<NAME>.voice   (voice: a list)
@@ -635,6 +646,10 @@ scene.presence -- OPTIONAL; see its full description in your instructions above.
                    character IS while this scene is being written -- "remote" (elsewhere, via
                    required) or "partial"; situational, never carried between scenes, and it
                    changes what the writer narrates, not just what the character believes.
+scene.constraint -- OPTIONAL; see its full description in your instructions above. A restriction
+                   that only holds for this scene -- never total the way a character's own
+                   "restrictions" are, never carried between scenes, and only worth authoring when
+                   it actually bears on what the scene turns on.
 later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"question": "..."}
                  and NOTHING else. Provisional pressure points, so the author can see the arc --
                  not commitments. No place, no pov, no length, no outcomes: whatever the chapters
@@ -765,6 +780,9 @@ ${knownProblems.map(p => `  - ${p}`).join("\n")}
   - reach naming something neither ${sceneField}.place nor "facts" ever establishes -- reach `
     + `describes access THROUGH something; that the thing is there has to come from where the scene `
     + `is or what the world holds. This one is a judgement, and you are the judge.
+  - a constraint that cannot actually bite in this scene -- it forecloses nothing the scene's fork `
+    + `puts to use, or it names someone the roster does not include. Color for its own sake belongs `
+    + `in the persona, not here.
   - anything else you would flag if an author put this in front of you and asked whether `
     + `it holds together.
 
@@ -870,6 +888,11 @@ these people, you write into their definitions now or it is lost:
   - whatever an earlier scene's presence set -- where someone was while THAT scene was written --
     is gone now; presence never travels with a person. If they are still elsewhere in chapter
     ${next}, re-set it with scene_${next}.presence; if not, set nothing.
+  - whatever an earlier scene's constraint held -- something that took away part of what someone
+    could do only for THAT scene, never total the way a restriction is -- is gone now; constraint
+    never travels with a person. If chapter ${next} still holds them the same way, re-author it
+    with scene_${next}.constraint; if not, author nothing. A capability lost for good belongs on
+    "restrictions" instead, per the bullet above.
 
 [THE PREMISE]
 ${premise}
@@ -960,6 +983,7 @@ one line for the author. Omit it (or send []) when no fired beats are listed.
    scene_<n>.place · .question · .pov · .length · .roster                (roster: a list of names)
     scene_<n>.reach     (an object: {"NAME": ["thing :: what they can do through it"]})
     scene_<n>.presence  (an object: {"NAME": "remote :: the via" | "partial :: the via"})
+    scene_<n>.constraint  (an object: {"NAME": ["thing :: what it takes away"]})
     add_scene          (a whole scene object: place, question, pov, length, roster)
    remove_scene       (the scene number)
    beat_<n>.chapter · .at · .hold · .fired · .state · .scope          (the world-event ledger; .state is

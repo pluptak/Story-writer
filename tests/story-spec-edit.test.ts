@@ -212,6 +212,52 @@ describe("normalizeSpec", () => {
     assert.deepEqual(junk.spec.scenes[0].reach, {});
   });
 
+  it("carries scene constraint through, keyed by the character's own spelling of their name", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene,
+        constraint: { riven: ["hands :: bound to the chair"], GHOST: ["voice :: gagged"] } } });
+    assert.deepEqual(spec.scenes[0].constraint, { RIVEN: ["hands :: bound to the chair"] });
+    assert.match(problems.join(" "), /GHOST/, "a constraint on a non-character is dropped and reported");
+  });
+
+  it("drops a constraint entry with no :: meaning — constraint is never in any catalog", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene,
+        constraint: { RIVEN: ["hands :: bound to the chair", "voice"] } } });
+    assert.deepEqual(spec.scenes[0].constraint, { RIVEN: ["hands :: bound to the chair"] });
+    assert.match(problems.join(" "), /voice/);
+  });
+
+  it("does not check a constraint's name against any skill, unlike reach", () => {
+    const { spec, problems } = normalizeSpec({
+      ...base, scene: { ...base.scene, constraint: { RIVEN: ["sight :: dazzled by the flare, seeing nothing but white"] } } });
+    assert.ok(!problems.some(p => /collides/.test(p)), "constraint has no I3 check — its name is free prose");
+    assert.deepEqual(spec.scenes[0].constraint, { RIVEN: ["sight :: dazzled by the flare, seeing nothing but white"] });
+  });
+
+  it("reports (and keeps) a constraint on someone absent from the roster", () => {
+    const twoChar = { ...base, characters: [{ ...base.characters[0] }, { ...base.characters[0], name: "MERRITT" }] };
+    const { spec, problems } = normalizeSpec({ ...twoChar, scene: { ...base.scene,
+      roster: ["MERRITT"], constraint: { RIVEN: ["hands :: bound to the chair"] } } });
+    assert.deepEqual(spec.scenes[0].constraint, { RIVEN: ["hands :: bound to the chair"] });
+    assert.match(problems.join(" "), /sets a constraint for "RIVEN", who is not in its roster/);
+  });
+
+  it("an edit to scene.constraint replaces that scene's holds", () => {
+    const withConstraint = normalizeSpec({
+      ...base, scene: { ...base.scene, constraint: { RIVEN: ["hands :: bound to the chair"] } } }).spec;
+    const r = quietSync(() => applyEdits(withConstraint, { edits: [
+      { field: "scene.constraint", value: { RIVEN: ["voice :: gagged, cannot speak above a whisper"] } }] }));
+    assert.deepEqual(r.spec.scenes[0].constraint, { RIVEN: ["voice :: gagged, cannot speak above a whisper"] });
+    assert.equal(r.applied.length, 1);
+    // an empty object clears it entirely
+    const cleared = quietSync(() => applyEdits(r.spec, { edits: [{ field: "scene_1.constraint", value: {} }] }));
+    assert.deepEqual(cleared.spec.scenes[0].constraint, {});
+    // a malformed value is not a crash
+    const junk = quietSync(() => applyEdits(withConstraint, { edits: [{ field: "scene.constraint", value: "nope" }] }));
+    assert.deepEqual(junk.spec.scenes[0].constraint, {});
+  });
+
   it("enforces the cast bounds and rejects duplicates", () => {
     const many = Array.from({ length: 6 }, (_, i) => ({ ...base.characters[0], name: `C${i}` }));
     const { spec, problems } = normalizeSpec({ ...base, scene: { ...base.scene, pov: "" }, characters: many });

@@ -9,7 +9,7 @@ import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills, restri
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
-import { rosterNameNotACharacter, reachNotInRoster, timelineBeatProblems, timelineOrderProblems } from "./story-spec.ts";
+import { rosterNameNotACharacter, reachNotInRoster, constraintNotInRoster, timelineBeatProblems, timelineOrderProblems } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -150,6 +150,14 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       if (!ch) warn(`Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`);
       else if (s.roster.length && !s.roster.some(r => sameName(r, who)))
         warn(reachNotInRoster(`Scene ${i + 1}`, who) + " — the grant never reaches a run");
+    }
+    // Constraint is scene-scoped like reach (I4), so the same well-formedness check applies: a
+    // constraint on nobody in the roster is dead weight nobody would ever see rendered.
+    for (const [who] of Object.entries(s.constraint ?? {})) {
+      const ch = characters.find(c => sameName(c.name, who));
+      if (!ch) warn(`Scene ${i + 1} sets a constraint for "${who}", who is not one of the characters — ignored`);
+      else if (s.roster.length && !s.roster.some(r => sameName(r, who)))
+        warn(constraintNotInRoster(`Scene ${i + 1}`, who) + " — the constraint never reaches a run");
     }
   }
 
