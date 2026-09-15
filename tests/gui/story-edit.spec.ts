@@ -436,3 +436,29 @@ test("a reach grant round-trips through save, and a line with no colon is droppe
       await expect.poll(async () => (await readStory(dir)).scenes[0].reach?.RIVEN).toBeUndefined();
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
+
+test("a constraint round-trips through save, the same grain reach's own field uses",
+  async ({ page, served }) => {
+    const dir = await copyFixtureStory();
+    registerLive(dir);
+    const HOLD = "hands :: bound to the chair, cannot reach or handle anything";
+    try {
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await page.locator("#scene-1-constraint").fill(`MERRITT: ${HOLD}\nthis line has no colon`);
+      await page.locator("#edit-save").click();
+
+      // Constraint is scene-scoped (I4), reach's negative twin: it lands under the scene and
+      // never on the character.
+      await expect.poll(async () => (await readStory(dir)).scenes[0].constraint).toEqual({ MERRITT: [HOLD] });
+      expect(JSON.stringify(await readStory(dir))).not.toContain("no colon");
+
+      // It comes back as the same text it was typed as.
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await expect(page.locator("#scene-1-constraint")).toHaveValue(`MERRITT: ${HOLD}`);
+
+      // And clearing it takes the hold off the scene rather than leaving the name behind empty.
+      await page.locator("#scene-1-constraint").fill("");
+      await page.locator("#edit-save").click();
+      await expect.poll(async () => (await readStory(dir)).scenes[0].constraint?.MERRITT).toBeUndefined();
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
