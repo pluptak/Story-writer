@@ -662,9 +662,9 @@ test("the skill library lists origins apart from the special skills", async ({ p
   // its own badge; a special skill carries neither, because it is the ordinary case.
   const ai = page.locator(".lib-row").filter({ hasText: "ai" });
   await expect(ai).toContainText("Origin");
-  await expect(ai).toContainText("starts with speech, recall");
+  await expect(ai).toContainText("starts with speech");
   const human = page.locator(".lib-row").filter({ hasText: "human" });
-  await expect(human).toContainText("starts with movement");
+  await expect(human).toContainText("starts with speech");
   const sight = page.locator(".lib-row").filter({ hasText: "sight" }).first();
   await expect(sight).toContainText("General");
   const lockpicking = page.locator(".lib-row").filter({ hasText: "lockpicking" });
@@ -681,19 +681,19 @@ test("an origin can be created and saved with its general skills", async ({ page
   await page.locator('[data-skill-kind="origin"]').click();
   await page.locator("#skilllib-name").fill("Bird");
   await page.locator("#skilllib-meaning").fill("a small bird: it flies, sees and hears, and cannot speak");
-  await page.locator('[data-general-skill="movement"]').click();
+  await page.locator('[data-general-skill="hearing"]').click();
   await page.locator('[data-general-skill="sight"]').click();
   await expect(page.locator("#skilllib-save")).toBeEnabled();
   await page.locator("#skilllib-save").click();
 
   // The row says what the origin grants, and the editor still shows the two chips picked.
-  await expect(page.locator(".lib-row").filter({ hasText: "Bird" })).toContainText("starts with movement, sight");
+  await expect(page.locator(".lib-row").filter({ hasText: "Bird" })).toContainText("starts with hearing, sight");
 
   // Persisted for real: a fresh load still has the origin with its coverage.
   await arrive(page, served, "#/catalog?kind=skills");
   await page.locator(".lib-row").filter({ hasText: "Bird" }).click();
   await expect(page.locator('[data-skill-kind="origin"]')).toHaveClass(/on/);
-  await expect(page.locator('[data-general-skill="movement"]')).toHaveClass(/on/);
+  await expect(page.locator('[data-general-skill="hearing"]')).toHaveClass(/on/);
   await expect(page.locator('[data-general-skill="sight"]')).toHaveClass(/on/);
   await expect(page.locator('[data-general-skill="speech"]')).not.toHaveClass(/on/);
 });

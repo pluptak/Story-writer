@@ -27,9 +27,8 @@
  *    pronoun possessive stays with the LLM half — and prose only: in a situation the second-person
  *    possessive is already incriminating, and this pass leaves `your` alone.
  *
- * Scope is the five perception senses. `speech` and `movement` are restrictable too but are not
- * here: dialogue is already the quote lint's, and a movement verb list would catch every metaphor
- * that walks or steps.
+ * Scope is the five perception senses. `speech` is restrictable too but is not here: dialogue is
+ * already the quote lint's.
  *
  * The situation sibling, `lintRestrictedSituation`, points the same tables at a consult's
  * situation, where the addressee is known and only their own limits apply. The anchor is second

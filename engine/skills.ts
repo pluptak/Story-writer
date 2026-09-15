@@ -76,16 +76,21 @@ export const catalogsFrom = (d: CatalogData): Catalogs => ({
   origins: originsFrom(d.origins),
 });
 
-/** The general skill list: every character has all of these unless a story's `restrictions` removes them. */
+/** The general skill list: every character has all of these unless a story's `restrictions` removes
+ *  them. `movement` and `recall` were both dropped from here: a restriction on either was never the
+ *  total, faculty-shaped kind this catalog models — `movement` is in practice always partial (bound
+ *  to a chair still permits a shrug), which belongs on the scene as a situational constraint, not on
+ *  the character as a standing absence; `recall` is an index over content, not a channel, and a
+ *  character not knowing something is already `knows`'s and the facts block's job. Either name is
+ *  still available as a bespoke `skills: ["recall :: ..."]` entry with its own authored meaning —
+ *  just no longer a default-granted, blanket-restrictable general faculty. */
 export const SKILL_CATALOG: Readonly<Record<string, string>> = Object.freeze({
-  movement: "moving your own body through the space you are in",
   speech:   "saying things aloud",
   hearing:  "perceiving sound",
   sight:    "perceiving light, shape and colour",
   touch:    "perceiving and handling things by contact",
   taste:    "perceiving flavour",
   smell:    "perceiving scent",
-  recall:   "drawing on your own memory of what you have lived through",
 });
 
 /**
@@ -140,7 +145,7 @@ export const ORIGIN_SKILL_GROUPS: Readonly<Record<string, OriginGroup>> = Object
   human: { meaning: "a person: a body in the room, and every ordinary sense",
            skills: Object.freeze(Object.keys(SKILL_CATALOG)) },
   ai:    { meaning: "a program: it speaks through whatever it is wired to and remembers, and has no body at all",
-           skills: Object.freeze(["speech", "recall"]) },
+           skills: Object.freeze(["speech"]) },
 });
 
 /** An origin lookup: the general skills an origin name grants, or undefined if it names none. */

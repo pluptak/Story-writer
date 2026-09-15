@@ -240,7 +240,7 @@ describe("a persisted origin reaching a story", () => {
       await writeFile(catalog, JSON.stringify({ entries: [
         { id: "bird", version: 1, name: "bird", kind: "origin",
           meaning: "a small bird: it flies, sees and hears, and cannot speak or handle anything",
-          general: ["movement", "sight", "hearing"], tags: [] },
+          general: ["sight", "hearing"], tags: [] },
       ] }), "utf8");
       await writeFile(join(dir, "story.json"), JSON.stringify({
         title: "T", premise: "A premise.",
@@ -251,8 +251,8 @@ describe("a persisted origin reaching a story", () => {
       const origins = await skillOrigins(catalog);
       const sc = await quiet(() => loadStory(dir, undefined, { origins }));
       const pip = sc.characters[0];
-      assert.deepEqual(pip.skills.map(s => s.name), ["movement", "hearing", "sight"]);
-      assert.deepEqual(pip.limits, ["speech", "touch", "taste", "smell", "recall"]);
+      assert.deepEqual(pip.skills.map(s => s.name), ["hearing", "sight"]);
+      assert.deepEqual(pip.limits, ["speech", "touch", "taste", "smell"]);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

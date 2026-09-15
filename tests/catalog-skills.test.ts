@@ -138,8 +138,8 @@ describe("skills seeding", () => {
         WARN.sink = orig;
       }
 
-      // Should have entries from the seed (8 general + 3 special + 2 origins = 13)
-      assert.equal(result.entries.length, 13, "seed should have 8 general + 3 special + 2 origins");
+      // Should have entries from the seed (6 general + 3 special + 2 origins = 11)
+      assert.equal(result.entries.length, 11, "seed should have 6 general + 3 special + 2 origins");
       // Check that lockpicking (special) is in the seed
       const lockpicking = result.entries.find((e: any) => e.id === "lockpicking");
       assert.ok(lockpicking, "seed should include lockpicking");
@@ -147,9 +147,9 @@ describe("skills seeding", () => {
       assert.equal(lockpicking.name, "lockpicking", "lockpicking name should match id");
       assert.ok(lockpicking.meaning.includes("lock"), "lockpicking meaning should mention lock");
       // Check that a general skill is in the seed
-      const movement = result.entries.find((e: any) => e.id === "movement");
-      assert.ok(movement, "seed should include movement");
-      assert.equal(movement.kind, "general", "movement should be a general skill");
+      const sight = result.entries.find((e: any) => e.id === "sight");
+      assert.ok(sight, "seed should include sight");
+      assert.equal(sight.kind, "general", "sight should be a general skill");
       // Check that an origin is in the seed
       const human = result.entries.find((e: any) => e.id === "human");
       assert.ok(human, "seed should include human origin");
@@ -208,7 +208,7 @@ describe("skills save/load boundary (seed materialization)", () => {
 
       // Load should return all seed entries with the edited one included
       const loaded = await loadCatalog("skills", path);
-      assert.equal(loaded.entries.length, 13, "the whole seed is materialized by the first save (8 general + 3 special + 2 origins)");
+      assert.equal(loaded.entries.length, 11, "the whole seed is materialized by the first save (6 general + 3 special + 2 origins)");
 
       // The edited skill should be in the loaded catalog
       const found = loaded.entries.find((e: any) => e.id === "lockpicking");
@@ -226,7 +226,7 @@ describe("skills save/load boundary (seed materialization)", () => {
       // Load fresh (gets seed)
       const fresh = await loadCatalog("skills", path);
       const seedCount = fresh.entries.length;
-      assert.equal(seedCount, 13, "the seed is the in-code catalog (8 general + 3 special + 2 origins)");
+      assert.equal(seedCount, 11, "the seed is the in-code catalog (6 general + 3 special + 2 origins)");
 
       // Delete a seed skill
       const del = await deleteEntry("skills", "lockpicking", path);

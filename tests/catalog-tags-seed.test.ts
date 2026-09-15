@@ -378,7 +378,7 @@ describe("separate catalogs per kind", () => {
       assert.equal(charData.entries.length, 1, "character catalog should have 1 entry");
       assert.equal(tagData.entries.length, 25, "tag catalog should have seed (24) + new tag (1)");
       assert.equal(styleData.entries.length, 1, "style catalog should have 1 entry (no seed)");
-      assert.equal(skillData.entries.length, 14, "skill catalog should have seed (8 general + 3 special + 2 origins) + new skill (1)");
+      assert.equal(skillData.entries.length, 12, "skill catalog should have seed (6 general + 3 special + 2 origins) + new skill (1)");
 
       // Verify each entry is the correct one
       assert.equal(charData.entries[0].id, "char-1");
@@ -406,15 +406,15 @@ describe("origins seeding and functions", () => {
     try {
       const result = await loadCatalog("skills", path);
 
-      assert.equal(result.entries.length, 13, "should have general (8) + special (3) + origins (2) from seed");
+      assert.equal(result.entries.length, 11, "should have general (6) + special (3) + origins (2) from seed");
 
       const lockpicking = result.entries.find((e: any) => e.id === "lockpicking");
       assert.ok(lockpicking, "lockpicking should be in seed");
       assert.equal(lockpicking.kind, "special");
 
-      const movement = result.entries.find((e: any) => e.id === "movement");
-      assert.ok(movement, "movement should be in seed");
-      assert.equal(movement.kind, "general");
+      const sight = result.entries.find((e: any) => e.id === "sight");
+      assert.ok(sight, "sight should be in seed");
+      assert.equal(sight.kind, "general");
 
       const human = result.entries.find((e: any) => e.id === "human");
       assert.ok(human, "human origin should be in seed");
@@ -424,7 +424,7 @@ describe("origins seeding and functions", () => {
       const ai = result.entries.find((e: any) => e.id === "ai");
       assert.ok(ai, "ai origin should be in seed");
       assert.equal(ai.kind, "origin");
-      assert.deepEqual(ai.general, ["speech", "recall"]);
+      assert.deepEqual(ai.general, ["speech"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -455,11 +455,11 @@ describe("origins seeding and functions", () => {
 
       const humanSkills = origins["human"];
       assert.ok(humanSkills.includes("speech"), "human should have speech");
-      assert.ok(humanSkills.includes("movement"), "human should have movement");
+      assert.ok(humanSkills.includes("hearing"), "human should have hearing");
       assert.ok(humanSkills.includes("sight"), "human should have sight");
 
       const aiSkills = origins["ai"];
-      assert.deepEqual(aiSkills.sort(), ["recall", "speech"]);
+      assert.deepEqual(aiSkills.sort(), ["speech"]);
 
       assert.equal(origins["lockpicking"], undefined, "should not include special skills");
     } finally {
@@ -475,7 +475,7 @@ describe("origins seeding and functions", () => {
 
       const aiSkills = origins("ai");
       assert.ok(aiSkills, "should find ai origin");
-      assert.deepEqual(aiSkills, ["speech", "recall"]);
+      assert.deepEqual(aiSkills, ["speech"]);
 
       assert.equal(origins("unknown"), undefined);
 

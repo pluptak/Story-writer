@@ -126,7 +126,7 @@ describe("reach", () => {
     const s = quietSync(() => resolveSkills("AURA", "", "", "cameras :: perceiving through the lobby cameras"));
     assert.equal(sources(s)["cameras"], "reach");
     assert.equal(s.find(x => x.name === "cameras")!.meaning, "perceiving through the lobby cameras");
-    assert.equal(sources(s)["movement"], "general", "the grant leaves the intrinsic layers alone");
+    assert.equal(sources(s)["speech"], "general", "the grant leaves the intrinsic layers alone");
     // and with no grant, no reach layer exists
     assert.ok(!names(resolveSkills("AURA", "", "")).includes("cameras"));
   });
@@ -354,7 +354,7 @@ describe("origins", () => {
 
   it("an origin narrows the general layer to its own group, keeping catalog order", () => {
     const s = resolveSkills("AURA", "", "", "", ai());
-    assert.deepEqual(names(s), ["speech", "recall"]);
+    assert.deepEqual(names(s), ["speech"]);
     assert.ok(s.every(x => x.source === "general"));
     assert.equal(s.find(x => x.name === "speech")!.meaning, SKILL_CATALOG.speech,
       "the meaning still comes from the catalog");
@@ -362,7 +362,7 @@ describe("origins", () => {
 
   it("what the origin withholds becomes a cannot, since absence alone is invisible", () => {
     const limits = removedCapabilities("AURA", "", "", "", ai());
-    assert.deepEqual(limits, ["movement", "hearing", "sight", "touch", "taste", "smell"]);
+    assert.deepEqual(limits, ["hearing", "sight", "touch", "taste", "smell"]);
   });
 
   it("a withheld general the character declares anyway is not a cannot", () => {

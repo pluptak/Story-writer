@@ -376,7 +376,7 @@ export const CAST_QUIZ_FORMAT = `YOU ARE ANSWERING ONE FACTUAL QUESTION ABOUT TH
 Reply with ONE JSON object and nothing else: {"answer": true} or {"answer": false}.
 
 Answer strictly from what the cast states: every character has the ordinary human abilities
-(moving, speaking, hearing, seeing, touching, tasting, smelling, recalling) unless a CANNOT removes
+(speaking, hearing, seeing, touching, tasting, smelling) unless a CANNOT removes
 one; "can:" is an ability beyond that baseline, not a replacement for it; a CANNOT is the only thing
 that removes an ability, and it removes only what it names. Nothing else is true of a character that
 these three things do not state or directly imply.
