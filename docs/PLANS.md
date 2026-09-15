@@ -633,6 +633,102 @@ would settle it, and several gate work in the sections below.
   mechanical and the only judge of whether a reason is true is the model being judged. Reading the
   `retry` events' notes by hand is the check, and it is the check.
 
+- **Restriction meanings (`--cannot-meaning`/`--cannot-none`/`--cannot-testimony`) — measured against
+  the story's own model, and the verdict-mode result is the strongest single number this record
+  holds.** Mechanism is in [`Judge.MD`](Judge.MD) under the per-answer gate: a restriction's authored
+  `:: meaning` now travels to the prompt renderers on `CharacterDef.limitMeanings`
+  (`engine/skills.ts`), never inside `limits` itself, so I2 stays literal; three independently
+  switchable arms render it, state an unrestricted character's absence explicitly, and restate the
+  answerer's own limits beside their answer in the judge payload. Built to test Finding 1 and
+  Finding 2 above directly — `merritt-hearing-baseline`/`merritt-infers-from-sound` are Finding 2's
+  own cases, and `riven-sight-restriction` is Finding 1's.
+
+  **First attempt was a CI detour that produced two unusable datasets before a usable one, and both
+  failures are worth recording so neither gets repeated.** With the owner away from the machine that
+  runs `google/gemma-4-e4b`, `scripts/judge-diagnostic.ts` was routed at a hosted OpenAI-compatible
+  provider from a GitHub Actions workflow (`.github/workflows/judge-diagnostic.yml`,
+  `workflow_dispatch` only — confirmed from `engine/provider-llamacpp.ts`'s capability shape that
+  `LLM_PROVIDER=llamacpp` needs no code change to point at one). First run, model `openrouter/free`:
+  every leg completed, but the rate-limit error bodies named at least three different backing models
+  answering different calls in the same run (`poolside/laguna-s-2.1:free`,
+  `poolside/laguna-xs-2.1:free`, `google/gemma-4-26b-a4b-it:free`) — `openrouter/free` is an
+  auto-router across a pool, not one model, so no two legs' numbers were measuring the same thing and
+  the whole run was uninterpretable. Second run pinned to the one confirmed-real id seen in those
+  errors, `google/gemma-4-26b-a4b-it:free` — and every leg scored a flat **0**: OpenRouter's free
+  tier shares one 20-requests/minute quota across whatever free model a key uses, and five matrix
+  legs firing concurrently at the same pinned model exhausted it before any retry window could
+  recover, so every sample in every leg came back `unparseable(ERROR: ...429...)`. (One thing that
+  *did* hold up under this: `scripts/judge-diagnostic.ts`'s `callOnce` had no catch around
+  `agent.generate` before this, so one dropped call would have crashed `main()` and lost every sample
+  already gathered in that mode, not just the failed one — fixed and verified in isolation
+  (a monkeypatched always-throwing `generate` now returns `{ raw: "ERROR: ..." }` from `callOnce`
+  rather than propagating) before the CI runs above, which is the only reason they degraded to a
+  legible `0/N` instead of a crashed job with no output at all.) Lesson for next time: a shared
+  free-tier quota and matrix concurrency are a bad combination regardless of which model is pinned —
+  serialize the legs (`max-parallel: 1`) or use a funded key before trusting a parallel run's numbers.
+
+  **The real measurement** (`google/gemma-4-e4b`, `tests/fixtures/doorway`, `--samples=20`, run
+  2026-09-15 once LM Studio was available again):
+
+  | case (cast mode, expect) | baseline | `--cannot-meaning` | `+ --cannot-none` |
+  | --- | ---: | ---: | ---: |
+  | `merritt-hearing-baseline` (true) | **0/20** | **20/20** | 20/20 |
+  | `merritt-infers-from-sound` (true) | **0/20** | **10/20** | **0/20** |
+  | `riven-sight-restriction` (false) | 20/20 | 20/20 | 20/20 |
+  | other 8 cases | 20/20 each | 20/20 each | 20/20 each |
+  | **total** | **180/220** | **210/220** | **200/220** |
+
+  | case (verdict mode, expect) | baseline | full testimony arm |
+  | --- | ---: | ---: |
+  | `real-seq110-merritt-thought-only-nonpov` (retry) | **0/20** | **20/20** |
+  | `real-seq52-merritt-thought-only-nonpov` (retry) | **0/20** | **20/20** |
+  | `synth-riven-clean-lockpicking` (accept) | 20/20 | 20/20 |
+  | `synth-merritt-clean-speech` (accept) | 20/20 | 20/20 |
+  | **total** | **40/80** | **80/80** |
+
+  (full testimony arm = `--cannot-meaning --cannot-none --cannot-testimony`; `--cannot-testimony`
+  renders into `judgeRequest`'s payload, which cast mode never calls, so it was tested only in
+  verdict mode.)
+
+  **Finding 2's cast-mode floor is not soft — it is a complete, deterministic 0/20 in isolation, on
+  the real model, at double PLANS.md's original sample size.** `merritt-hearing-baseline` recovered
+  to an equally deterministic 20/20 under `--cannot-meaning` alone: every sample wrong, then every
+  sample right, nothing in between. That is the cleanest before/after this record has produced for
+  any intervention.
+
+  **Verdict mode is the decisive result.** The baseline judge never once caught either genuine
+  non-POV thought-only violation across 40 combined samples — a complete miss, worse than any
+  earlier measurement of this rule, including the confounded OpenRouter runs above (which is exactly
+  why those don't count: 13/20 there read as a mild baseline, this reads as a floor). The full arm
+  caught every one of the 40, while the two already-perfect accept cases stayed at 20/20 — complete
+  recovery, zero regression, zero variance in either direction. This is the opposite result from the
+  confounded CI run's reading (`13/20` → `11/20`, apparently a regression); against the real model
+  the same arm is a clean win, which is the whole reason the earlier number was never trustworthy in
+  the first place.
+
+  **One real, unexplained regression, not folded into the headline.** `merritt-infers-from-sound`
+  went 0/20 → 10/20 under `--cannot-meaning` alone, then back to 0/20 once `--cannot-none` was added
+  — a complete reversal, not a drift. `--cannot-none` only changes an *unrestricted* character's
+  rendering (`engine/scene-loop.ts`'s `cannotDisplay(..., ENGINE.cannotNone ? P.NO_RESTRICTIONS :
+  undefined)` fires only when a character's own limits list is empty), so RIVEN's line is the only
+  thing that changed between these two runs — MERRITT's CANNOT line is byte-identical in both. A
+  change to a different character's rendering coinciding with a complete flip on MERRITT's hardest
+  inference case is either a real cross-character interference effect (plausible reading: making
+  "CANNOT" more visually salient elsewhere reinforced the over-generalization Finding 2 already
+  describes, rather than curbing it) or one unlucky draw landing on the one case in the whole dataset
+  that wasn't already at a floor or ceiling. Not settled — worth one repeat run of
+  `--cannot-meaning --cannot-none` alone on this case before trusting either reading.
+
+  **What this changes.** The verdict-mode arm (`--cannot-meaning --cannot-none --cannot-testimony`)
+  has gone from an untested prototype to the best-evidenced fix in this document — worth promoting
+  toward a default rather than staying a flag, on this evidence alone. `--cannot-meaning` alone in
+  cast mode is real but incomplete (fixes the clean case, not the inference one), and `--cannot-none`
+  specifically needs the repeat run above before it is bundled in by default anywhere the inference
+  case matters. All of this was measured against `tests/fixtures/doorway`'s authored meaning
+  (`sight :: Merritt is blind...`) — promoting any arm to a default would mean every story's
+  restrictions need one, which is exactly what `restrictionMeanings`' missing-`:: meaning` warning
+  exists to push authors toward, but is not yet enforced.
+
 ## Open design questions
 
 The engine permits something it should not, or has no representation for something it needs, and the
