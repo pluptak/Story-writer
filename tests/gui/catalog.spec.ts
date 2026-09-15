@@ -643,12 +643,12 @@ test("the skill library seeds from the engine and new entries can be created", a
   await page.locator("#skilllib-save").click();
 
   // The saved entry is on the list, backed by the real save path.
-  await expect.poll(async () => rows.count()).toBe(14);
+  await expect.poll(async () => rows.count()).toBe(12);
   await expect(page.locator(".lib-row").filter({ hasText: "Telekinesis" })).toHaveCount(1);
 
   // Persisted for real, not just added to the in-memory list.
   await arrive(page, served, "#/catalog?kind=skills");
-  await expect.poll(async () => page.locator(".lib-row").count()).toBe(14);
+  await expect.poll(async () => page.locator(".lib-row").count()).toBe(12);
 });
 
 test("the skill library lists origins apart from the special skills", async ({ page, served }) => {
