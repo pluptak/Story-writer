@@ -629,11 +629,11 @@ test("the skill library seeds from the engine and new entries can be created", a
   await arrive(page, served, "#/catalog?kind=skills");
 
   await expect(page.locator(".lib-skills")).toBeVisible();
-  // The engine's seed: 8 general skills, 3 special ones (lockpicking, climbing, sleight-of-hand)
+  // The engine's seed: 6 general skills, 3 special ones (lockpicking, climbing, sleight-of-hand)
   // and 2 origins (human, ai) — all three kinds live in this one catalog.
   const rows = page.locator(".lib-row");
   await expect(rows.first()).toBeVisible();
-  await expect.poll(async () => rows.count()).toBe(13);
+  await expect.poll(async () => rows.count()).toBe(11);
   await expect(page).toHaveURL(/kind=skills/);
 
   await page.locator("#skilllib-new").click();
@@ -813,7 +813,7 @@ test("every skill row lines its actions up in the same column", async ({ page, s
   // A special skill carries no badge, so its row has one child fewer than the grid has columns —
   // without pinning, its ••• parks a column short of every other row's. Measured in one pass: the
   // list re-renders when the usage fetch lands, and a handle taken before that is stale after it.
-  await expect(page.locator(".lib-row")).toHaveCount(13);
+  await expect(page.locator(".lib-row")).toHaveCount(11);
   const lefts = await page.evaluate(() => {
     const xOf = (name: string) => {
       const row = [...document.querySelectorAll(".lib-row")]
