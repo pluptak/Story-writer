@@ -706,28 +706,34 @@ would settle it, and several gate work in the sections below.
   the same arm is a clean win, which is the whole reason the earlier number was never trustworthy in
   the first place.
 
-  **One real, unexplained regression, not folded into the headline.** `merritt-infers-from-sound`
-  went 0/20 → 10/20 under `--cannot-meaning` alone, then back to 0/20 once `--cannot-none` was added
-  — a complete reversal, not a drift. `--cannot-none` only changes an *unrestricted* character's
-  rendering (`engine/scene-loop.ts`'s `cannotDisplay(..., ENGINE.cannotNone ? P.NO_RESTRICTIONS :
-  undefined)` fires only when a character's own limits list is empty), so RIVEN's line is the only
-  thing that changed between these two runs — MERRITT's CANNOT line is byte-identical in both. A
-  change to a different character's rendering coinciding with a complete flip on MERRITT's hardest
-  inference case is either a real cross-character interference effect (plausible reading: making
-  "CANNOT" more visually salient elsewhere reinforced the over-generalization Finding 2 already
-  describes, rather than curbing it) or one unlucky draw landing on the one case in the whole dataset
-  that wasn't already at a floor or ceiling. Not settled — worth one repeat run of
-  `--cannot-meaning --cannot-none` alone on this case before trusting either reading.
+  **A real, repeatable regression — confirmed by a second run, not folded into the headline.**
+  `merritt-infers-from-sound` went 0/20 → 10/20 under `--cannot-meaning` alone, then back to 0/20
+  once `--cannot-none` was added — a complete reversal, not a drift. `--cannot-none` only changes an
+  *unrestricted* character's rendering (`engine/scene-loop.ts`'s `cannotDisplay(..., ENGINE.cannotNone
+  ? P.NO_RESTRICTIONS : undefined)` fires only when a character's own limits list is empty), so
+  RIVEN's line is the only thing that changed between these two runs — MERRITT's CANNOT line is
+  byte-identical in both. A repeat of `--cannot-meaning --cannot-none` alone on this one case landed
+  **0/20 again**, everything else unchanged (still 20/20 including `merritt-hearing-baseline`), which
+  rules out one unlucky draw: two independent 20-sample runs, same result both times. A change to a
+  *different* character's rendering (RIVEN gaining an explicit `CANNOT: (none)` line) is coinciding
+  with a complete, reproducible flip on MERRITT's hardest inference case. The mechanism is still a
+  hypothesis, not demonstrated — plausible reading is that making "CANNOT" more visually salient
+  elsewhere reinforces the over-generalization Finding 2 already describes, rather than curbing it —
+  but the effect itself is no longer in question.
 
   **What this changes.** The verdict-mode arm (`--cannot-meaning --cannot-none --cannot-testimony`)
   has gone from an untested prototype to the best-evidenced fix in this document — worth promoting
   toward a default rather than staying a flag, on this evidence alone. `--cannot-meaning` alone in
-  cast mode is real but incomplete (fixes the clean case, not the inference one), and `--cannot-none`
-  specifically needs the repeat run above before it is bundled in by default anywhere the inference
-  case matters. All of this was measured against `tests/fixtures/doorway`'s authored meaning
-  (`sight :: Merritt is blind...`) — promoting any arm to a default would mean every story's
-  restrictions need one, which is exactly what `restrictionMeanings`' missing-`:: meaning` warning
-  exists to push authors toward, but is not yet enforced.
+  cast mode is real but incomplete (fixes the clean case, not the inference one). `--cannot-none`
+  should **not** be bundled with `--cannot-meaning` by default wherever the inference case matters —
+  confirmed, not merely suspected, to cost `merritt-infers-from-sound` its partial recovery, for a
+  character the flag does not even touch directly. That it still helps verdict mode (where it also
+  covers RIVEN's own testimony-arm case) and hurts cast mode is itself worth a targeted follow-up:
+  same flag, opposite direction, on two different call sites. All of this was measured against
+  `tests/fixtures/doorway`'s authored meaning (`sight :: Merritt is blind...`) — promoting any arm to
+  a default would mean every story's restrictions need one, which is exactly what
+  `restrictionMeanings`' missing-`:: meaning` warning exists to push authors toward, but is not yet
+  enforced.
 
 ## Open design questions
 
