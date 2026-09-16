@@ -37,6 +37,7 @@ export interface CharacterDef {
   limits: string[];
   limitMeanings: RemovedCapability[];
   maxRetries?: number;
+  pronouns?: { subject: string; object: string; possessive: string; reflexive: string };
 }
 
 /** A story as loaded and validated: the engine's view of story.json, with defaults filled in. */
@@ -128,6 +129,7 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       limitMeanings: restrictionMeanings(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
       maxRetries: c.maxRetries,
+      pronouns: c.pronouns,
     });
   }
 

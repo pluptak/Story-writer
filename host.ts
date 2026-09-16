@@ -749,6 +749,7 @@ export const HOST: ServerHost = {
         belief: c.belief, impulse: c.impulse, voice: c.voice, origin: c.origin,
         skills: c.skills.map(s => splitMeaning(s)),
         restrictions: c.restrictions,
+        pronouns: c.pronouns,
       })),
       // Reach, presence and constraint stay per scene and never merge into a character's skills or
       // any other character-level field (I4): the GUI labels each with the scene it comes from so

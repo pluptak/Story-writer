@@ -28,7 +28,13 @@
         "lockpicking :: opening a mechanical lock without its key, given time and quiet",
         "climbing :: getting up and over a wall or a stack of crates"
       ],
-      "restrictions": []
+      "restrictions": [],
+      "pronouns": {
+        "subject": "they",
+        "object": "them",
+        "possessive": "their",
+        "reflexive": "themself"
+      }
     },
     {
       "name": "MERRITT",
@@ -47,7 +53,13 @@
       ],
       "restrictions": [
         "sight :: Merritt is blind — no perceiving of light, shape or colour, and nothing sight alone could tell them; hearing, touch, smell, taste and recall are untouched and ordinary"
-      ]
+      ],
+      "pronouns": {
+        "subject": "he",
+        "object": "him",
+        "possessive": "his",
+        "reflexive": "himself"
+      }
     }
   ],
   "config": {

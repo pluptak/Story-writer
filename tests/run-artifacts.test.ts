@@ -478,7 +478,7 @@ describe("prompt construction", () => {
 
   it("the cast block states the baseline, so a short can list does not read as a short leash", async () => {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
-    const bare = { ...sc.characters[0], skills: [] };
+    const bare = { ...sc.characters[0], skills: [], pronouns: undefined };
     const p = wrapWriter(sc.premise, sc.scenes[0], writerCast([bare], []), sc.writerStyle);
     assert.match(p, /ordinary human abilities/);
     assert.ok(!/RIVEN -- can:/.test(p), "a character with nothing beyond the baseline has no can line");

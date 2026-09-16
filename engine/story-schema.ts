@@ -67,6 +67,13 @@ export const CharacterDef = z.strictObject({
   restrictions: z.array(z.string()).default([]),
   /** This character's chapter-wide retry ceiling; unset falls back to `config.maxCharacterRetries`. */
   maxRetries: z.number().int().min(0).optional(),
+  /** Pronouns for this character: subject, object, possessive, and reflexive forms. */
+  pronouns: z.strictObject({
+    subject: z.string().min(1),
+    object: z.string().min(1),
+    possessive: z.string().min(1),
+    reflexive: z.string().min(1),
+  }).optional(),
 });
 
 export type CharacterDef = z.infer<typeof CharacterDef>;

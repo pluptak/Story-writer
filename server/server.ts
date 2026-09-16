@@ -249,6 +249,7 @@ export interface ServerHost {
       name: string; persona: string; knows: string; goal: string;
       belief: string; impulse: string; voice: string[]; origin: string;
       skills: { text: string; meaning: string }[]; restrictions: string[];
+      pronouns?: { subject: string; object: string; possessive: string; reflexive: string };
     }[]; scenes?: { n: number; reach: Record<string, string[]>; presence: Record<string, string>; constraint: Record<string, string[]> }[];
   } | {
     ok: false; error: string;

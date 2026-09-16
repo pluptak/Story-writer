@@ -10,20 +10,32 @@ import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone
 const invalidateLibrary = loadLibrary.invalidate;
 
 const emptyDraft = () => ({
-  id:"", name:"", portablePersona:"", belief:"", impulse:"", voice:"", origin:"", skills:"", restrictions:"",
+  id:"", name:"", portablePersona:"", belief:"", impulse:"", voice:"", origin:"", skills:"", restrictions:"", pronouns:"",
 });
 
 const draftOf = c => ({
   id:c?.id || "", name:c?.name || "", portablePersona:c?.portablePersona || "",
   belief:c?.belief || "", impulse:c?.impulse || "", voice:(c?.voice || []).join("\n"),
   origin:c?.origin || "", skills:(c?.skills || []).join("\n"), restrictions:(c?.restrictions || []).join("\n"),
+  pronouns:c?.pronouns ? `${c.pronouns.subject}/${c.pronouns.object}/${c.pronouns.possessive}/${c.pronouns.reflexive}` : "",
 });
 
-const entryOf = d => ({
-  id:d.id, name:d.name.trim(), portablePersona:d.portablePersona.trim(), belief:d.belief.trim(),
-  impulse:d.impulse.trim(), voice:parseLines(d.voice).slice(0, 3), origin:d.origin.trim(),
-  skills:parseLines(d.skills), restrictions:parseLines(d.restrictions),
-});
+const entryOf = d => {
+  const pronounsTrimmed = String(d.pronouns || "").trim();
+  let pronouns;
+  if (pronounsTrimmed) {
+    const parts = pronounsTrimmed.split("/").map(p => p.trim()).filter(Boolean);
+    if (parts.length === 4) {
+      pronouns = { subject: parts[0], object: parts[1], possessive: parts[2], reflexive: parts[3] };
+    }
+  }
+  return {
+    id:d.id, name:d.name.trim(), portablePersona:d.portablePersona.trim(), belief:d.belief.trim(),
+    impulse:d.impulse.trim(), voice:parseLines(d.voice).slice(0, 3), origin:d.origin.trim(),
+    skills:parseLines(d.skills), restrictions:parseLines(d.restrictions),
+    ...(pronouns ? { pronouns } : {}),
+  };
+};
 
 const initials = name => String(name || "?").split(/\s+/).filter(Boolean).map(x => x[0]).join("").slice(0, 2).toUpperCase();
 const excerpt = value => String(value || "Start with a short, portable identity.").replace(/\s+/g, " ").trim().slice(0, 100);
@@ -31,10 +43,10 @@ const excerpt = value => String(value || "Start with a short, portable identity.
 // The fields a temporary revision can name -- content only, never id/version/hidden/updatedAt.
 // The assistant's own diff (below) shares this list and these labels, so the two look like one
 // mechanism to the reader even though only this one is a real change history.
-const DIFF_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "origin", "skills", "restrictions"];
+const DIFF_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "origin", "skills", "restrictions", "pronouns"];
 const FIELD_LABELS = {
   name:"Name", portablePersona:"Portable persona", belief:"Belief", impulse:"Impulse",
-  voice:"Voice samples", origin:"Origin", skills:"Skills", restrictions:"Restrictions",
+  voice:"Voice samples", origin:"Origin", skills:"Skills", restrictions:"Restrictions", pronouns:"Pronouns",
 };
 // A field's DOM id suffix, where it differs from its own key -- portablePersona's control is
 // #charlib-persona (predates this file's other ids). Every reader of a #charlib-<field> id goes
@@ -43,8 +55,12 @@ const FIELD_DOM_ID = key => key === "portablePersona" ? "persona" : key;
 
 // Arrays (voice/skills/restrictions) render and compare as one line-per-entry block -- the same
 // shape the textarea holds them in -- so a change is never reported for formatting entryOf() would
-// have normalized away anyway (a trailing blank line, inconsistent spacing).
-const displayValue = v => Array.isArray(v) ? v.join("\n") : v;
+// have normalized away anyway (a trailing blank line, inconsistent spacing). pronouns is the one
+// object-shaped field entryOf() produces (or omits) -- rendered back to the same slash form the
+// textbox holds, so two freshly-built objects with identical content compare equal instead of by
+// reference, and esc() downstream always gets a string.
+const displayValue = v => Array.isArray(v) ? v.join("\n")
+  : v && typeof v === "object" ? `${v.subject}/${v.object}/${v.possessive}/${v.reflexive}` : v;
 
 /** What changed between the persisted baseline and the current draft, field by field. Both sides
  *  go through entryOf(draftOf(...)) so the comparison is apples to apples -- a baseline is a
@@ -199,6 +215,7 @@ function editorHtml() {
   ${section("Capabilities", "Reusable capabilities, one per line. Skills may use <code>name :: meaning</code>.", `
     ${originField(d)}
     ${field("charlib-skills", "Skills", d.skills)}${field("charlib-restrictions", "Restrictions", d.restrictions, "textarea", "One restriction per line.")}
+    ${field("charlib-pronouns", "Pronouns (subject/object/possessive/reflexive)", d.pronouns, "input")}
   `)}
   <div class="lib-assistant"><div><strong>✦ Character assistant</strong></div><p>Create, revise, or review a subset of this character's fields from a plain-language instruction, on its own model.</p>${button({label:"Open AI assistant →", id:"charlib-ai-open", extraClass:"small"})}</div>
   ${editorFooter(`${button({label:"Cancel", id:"charlib-cancel", disabled:!s.dirty || s.saving})}${button({label:s.saving ? "Saving…" : "Save changes", id:"charlib-save", variant:"primary", disabled:!needsSave(s) || s.saving})}`)}

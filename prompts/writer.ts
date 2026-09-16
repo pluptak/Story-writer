@@ -153,7 +153,7 @@ second-one-asked-blind rule covers this field too, and an answer leaked into som
 export function writerSystem(p: {
   premise: string;
   scene: { place: string; question: string; pov: string; length: number };
-  cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[];
+  cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[];
   facts: string[];
   style: string;
   /** Stale-character `since` enforcement (--consult-since): with it on, the writer is told the

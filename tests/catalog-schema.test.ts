@@ -120,6 +120,130 @@ describe("LibraryCharacter schema", () => {
     });
     assert.equal(result.success, false);
   });
+
+  it("parses an entry with pronouns", () => {
+    const char = LibraryCharacter.parse({
+      id: "char-pronouns",
+      name: "Diana",
+      pronouns: {
+        subject: "she",
+        object: "her",
+        possessive: "her",
+        reflexive: "herself",
+      },
+    });
+    assert.deepEqual(char.pronouns, {
+      subject: "she",
+      object: "her",
+      possessive: "her",
+      reflexive: "herself",
+    });
+  });
+
+  it("parses an entry without pronouns as undefined", () => {
+    const char = LibraryCharacter.parse({
+      id: "char-no-pronouns",
+      name: "Edward",
+    });
+    assert.equal(char.pronouns, undefined);
+  });
+
+  it("parses pronouns with they/them/their/themself", () => {
+    const char = LibraryCharacter.parse({
+      id: "char-they",
+      name: "Faye",
+      pronouns: {
+        subject: "they",
+        object: "them",
+        possessive: "their",
+        reflexive: "themself",
+      },
+    });
+    assert.equal(char.pronouns?.subject, "they");
+    assert.equal(char.pronouns?.object, "them");
+    assert.equal(char.pronouns?.possessive, "their");
+    assert.equal(char.pronouns?.reflexive, "themself");
+  });
+
+  it("rejects pronouns missing subject", () => {
+    const result = LibraryCharacter.safeParse({
+      id: "char-bad-pronouns",
+      name: "Grumpy",
+      pronouns: {
+        object: "him",
+        possessive: "his",
+        reflexive: "himself",
+      },
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects pronouns missing object", () => {
+    const result = LibraryCharacter.safeParse({
+      id: "char-bad-pronouns",
+      name: "Grumpy",
+      pronouns: {
+        subject: "he",
+        possessive: "his",
+        reflexive: "himself",
+      },
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects pronouns missing possessive", () => {
+    const result = LibraryCharacter.safeParse({
+      id: "char-bad-pronouns",
+      name: "Grumpy",
+      pronouns: {
+        subject: "he",
+        object: "him",
+        reflexive: "himself",
+      },
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects pronouns missing reflexive", () => {
+    const result = LibraryCharacter.safeParse({
+      id: "char-bad-pronouns",
+      name: "Grumpy",
+      pronouns: {
+        subject: "he",
+        object: "him",
+        possessive: "his",
+      },
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects pronouns with empty subject", () => {
+    const result = LibraryCharacter.safeParse({
+      id: "char-empty-pronouns",
+      name: "Happy",
+      pronouns: {
+        subject: "",
+        object: "him",
+        possessive: "his",
+        reflexive: "himself",
+      },
+    });
+    assert.equal(result.success, false);
+  });
+
+  it("rejects pronouns with empty object", () => {
+    const result = LibraryCharacter.safeParse({
+      id: "char-empty-pronouns",
+      name: "Happy",
+      pronouns: {
+        subject: "he",
+        object: "",
+        possessive: "his",
+        reflexive: "himself",
+      },
+    });
+    assert.equal(result.success, false);
+  });
 });
 
 // -- CHARACTER CATALOG SCHEMA -----------------------------------------------

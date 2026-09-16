@@ -95,7 +95,7 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[], style: string, facts: string[] = [], constraints: string[] = [], sinceEnforced = false): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[], style: string, facts: string[] = [], constraints: string[] = [], sinceEnforced = false): string {
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
@@ -119,7 +119,7 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
                            reach: Record<string, Skill[]> = {},
                            presence: Record<string, Presence> = {},
                            constraint: Record<string, { name: string; meaning: string }[]> = {}):
-    { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence; constraint?: string[] }[] {
+    { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[] {
   return rosterOf(characters, rostered)
     .map(c => {
       const pres = presence[c.name];
@@ -149,6 +149,7 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
         // only, every reader of `presence` is untouched.
         ...(pres ? { presence: pres.via ? `${pres.mode} -- ${pres.via}` : pres.mode, presenceState: pres } : {}),
         ...(cons.length ? { constraint: cons.map(x => x.meaning ? `${x.name} -- ${x.meaning}` : x.name) } : {}),
+        ...(c.pronouns ? { pronouns: c.pronouns } : {}),
       };
     });
 }
