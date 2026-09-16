@@ -16,7 +16,7 @@ import { StoryJson, THINK_LEVELS, VOICE_SAMPLE_CAP } from "./engine/story-schema
 import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
   buildArchitect, ScaffoldSession, openNextChapter, suggestEdits as statelessSuggest,
-  type NextChapterSession, type ImportedCharacter, type StylePreset,
+  type NextChapterSession, type ImportedCharacter, type StylePreset, type AutoStage,
   type ScaffoldRound, type ScaffoldAccept, type HandoffAccept,
 } from "./engine/architect.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, skillBibleEntries, skillOrigins, originSkillGroups, persistedCatalogs, generalSkillEntries } from "./engine/catalog.ts";
@@ -240,6 +240,40 @@ async function applyStyleTo(session: ScaffoldSession, styleId: string): Promise<
   return found ? "" : styleId;
 }
 
+/** The stage callback every scaffold round hands its session: records the auto-pass stage
+ *  and publishes, named once so the rounds cannot drift apart. */
+function onScaffoldStage(stage: AutoStage): void {
+  scaffoldStage = stage; publishScaffold();
+}
+
+/** The ok-tail every scaffold op answers with: publish, then hand back a full snapshot. */
+function scaffoldOk(): ScaffoldActionResult {
+  publishScaffold();
+  return { ok: true, state: scaffoldSnapshot() };
+}
+
+/** One model round behind the scaffold lock: entry guards, the busy window with its
+ *  abandon-generation check, and folding the round into scaffoldLast. scaffoldStart (which
+ *  re-checks the generation after every await) and scaffoldAccept (which commits a write) keep
+ *  their bespoke flows; say/approve/regenerate are exactly this shape. */
+async function runScaffoldRound(
+  run: (session: ScaffoldSession, onStage: (stage: AutoStage) => void) => Promise<ScaffoldRound>,
+): Promise<ScaffoldActionResult> {
+  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
+  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
+  const gen = scaffoldGen;
+  const session = SCAFFOLD;
+  scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
+  try {
+    const r = await run(session, onScaffoldStage);
+    if (gen === scaffoldGen) scaffoldLast = r;
+  } catch (e) {
+    if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
+  } finally { scaffoldBusy = false; scaffoldStage = ""; }
+  if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
+  return scaffoldOk();
+}
+
 export async function scaffoldStart(input: {
   idea: string; model: string; mode: "oneshot" | "staged"; concept: Concept; importIds: string[];
 }): Promise<ScaffoldActionResult> {
@@ -264,48 +298,21 @@ export async function scaffoldStart(input: {
     if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
     setWhere("building a new story", false);
     publishScaffold();
-    const last = await SCAFFOLD.propose(stage => { scaffoldStage = stage; publishScaffold(); });
+    const last = await SCAFFOLD.propose(onScaffoldStage);
     if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
     scaffoldLast = last;
   } catch (e) {
     scaffoldLast = { kind: "failed", error: (e as Error).message };
   } finally { scaffoldBusy = false; scaffoldStage = ""; }
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return scaffoldOk();
 }
 
 export async function scaffoldSay(text: string): Promise<ScaffoldActionResult> {
-  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
-  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
-  const gen = scaffoldGen;
-  const session = SCAFFOLD;
-  scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
-  try {
-    const r = await session.say(text, stage => { scaffoldStage = stage; publishScaffold(); });
-    if (gen === scaffoldGen) scaffoldLast = r;
-  } catch (e) {
-    if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
-  } finally { scaffoldBusy = false; scaffoldStage = ""; }
-  if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return runScaffoldRound((s, onStage) => s.say(text, onStage));
 }
 
 export async function scaffoldApprove(override: boolean): Promise<ScaffoldActionResult> {
-  if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
-  if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
-  const gen = scaffoldGen;
-  const session = SCAFFOLD;
-  scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
-  try {
-    const r = await session.approve(stage => { scaffoldStage = stage; publishScaffold(); }, override);
-    if (gen === scaffoldGen) scaffoldLast = r;
-  } catch (e) {
-    if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
-  } finally { scaffoldBusy = false; scaffoldStage = ""; }
-  if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return runScaffoldRound((s, onStage) => s.approve(onStage, override));
 }
 
 export async function scaffoldRegenerate(scope?: RegenScope): Promise<ScaffoldActionResult> {
@@ -313,22 +320,12 @@ export async function scaffoldRegenerate(scope?: RegenScope): Promise<ScaffoldAc
   if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
   // The name is validated against the live cast before anything runs: a scoped re-run for a
   // stranger would otherwise spend a model round to discover there is nobody to reconsider.
+  // Stays ahead of the shared round (rather than inside it) so the refusal precedes the lock.
   if (scope && !SCAFFOLD.spec.characters.some(c => sameName(c.name, scope.name)))
     return { ok: false, reason: `there is no cast member named "${scope.name}"`, status: 400 };
-  const gen = scaffoldGen;
-  const session = SCAFFOLD;
-  scaffoldBusy = true; scaffoldFolderAsk = ""; publishScaffold();
-  try {
-    const r = scope
-      ? await session.rerunScoped(scope, stage => { scaffoldStage = stage; publishScaffold(); })
-      : await session.rerun(stage => { scaffoldStage = stage; publishScaffold(); });
-    if (gen === scaffoldGen) scaffoldLast = r;
-  } catch (e) {
-    if (gen === scaffoldGen) scaffoldLast = { kind: "failed", error: (e as Error).message };
-  } finally { scaffoldBusy = false; scaffoldStage = ""; }
-  if (gen !== scaffoldGen) return { ok: false, reason: SCAFFOLD_ABANDONED, status: 409 };
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return runScaffoldRound((s, onStage) => scope
+    ? s.rerunScoped(scope, onStage)
+    : s.rerun(onStage));
 }
 
 export async function scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult> {
@@ -341,8 +338,7 @@ export async function scaffoldConcept(concept: Concept): Promise<ScaffoldActionR
   SCAFFOLD.castSize = concept.castSize;
   scaffoldUnknownTags = concept.tags.length ? await (scaffoldTestHooks?.tags ?? unknownTags)(concept.tags) : [];
   scaffoldMissingStyle = await applyStyleTo(SCAFFOLD, concept.styleId);
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return scaffoldOk();
 }
 
 export async function scaffoldImport(ids: string[]): Promise<ScaffoldActionResult> {
@@ -353,8 +349,7 @@ export async function scaffoldImport(ids: string[]): Promise<ScaffoldActionResul
   const resolved = await (scaffoldTestHooks?.imports ?? importCharacters)(ids);
   SCAFFOLD.imported = resolved.imported;
   scaffoldMissingImports = resolved.missing;
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return scaffoldOk();
 }
 
 export async function scaffoldPromote(name: string): Promise<ScaffoldActionResult> {
@@ -367,8 +362,7 @@ export async function scaffoldPromote(name: string): Promise<ScaffoldActionResul
   const r = await (scaffoldTestHooks?.promote ?? promoteSkill)(found.name, found.meaning);
   if (!r.ok) return { ok: false, reason: r.reason ?? "", status: 400, issues: r.issues };
   SCAFFOLD.catalogs = { ...SCAFFOLD.catalogs, bible: r.bible };
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return scaffoldOk();
 }
 
 export function scaffoldSet(input: { story?: unknown; field?: string; value?: unknown; source?: string }): ScaffoldActionResult {
@@ -382,15 +376,13 @@ export function scaffoldSet(input: { story?: unknown; field?: string; value?: un
     const note = input.source === "revert" ? "reverted a round"
       : input.source === "role" ? "updated a character's role" : "updated from the story editor";
     scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note };
-    publishScaffold();
-    return { ok: true, state: scaffoldSnapshot() };
+    return scaffoldOk();
   }
   const r = directEdit(SCAFFOLD.spec, String(input.field ?? ""), input.value);
   if (!r.ok) return { ok: false, reason: r.reason, status: 400 };
   SCAFFOLD.spec = r.spec; SCAFFOLD.problems = r.problems;
   scaffoldLast = { kind: "edits", applied: r.applied, ignored: [], flags: [], note: "" };
-  publishScaffold();
-  return { ok: true, state: scaffoldSnapshot() };
+  return scaffoldOk();
 }
 
 export async function scaffoldAccept(folder: string): Promise<ScaffoldAcceptResult> {
@@ -506,6 +498,44 @@ export function setHandoffTestHooks(hooks: typeof handoffTestHooks): void {
 
 export function handoffState(): HandoffState { return handoffSnapshot(); }
 
+/** The stage callback every handoff round hands its session, mirroring onScaffoldStage. */
+function onHandoffStage(stage: AutoStage): void {
+  handoffStage = stage; publishHandoffState();
+}
+
+/** The ok-tail every handoff op answers with: publish, then hand back a full snapshot. */
+function handoffOk(): HandoffActionResult {
+  publishHandoffState();
+  return { ok: true, state: handoffSnapshot() };
+}
+
+/** One model round behind the handoff lock: entry guards (including the story-write lock the
+ *  session holds from build to accept/abandon), the busy window with its abandon-generation
+ *  check, and folding the round into handoffLast. handoffStart (which builds the session and
+ *  takes the lock) and handoffAccept (which commits the write and releases it) keep their
+ *  bespoke flows; say/regenerate are exactly this shape — except say's finally, which
+ *  deliberately leaves handoffStage alone (resetStage: false), while regenerate clears it. */
+async function runHandoffRound(
+  resetStage: boolean,
+  run: (session: NextChapterSession) => Promise<ScaffoldRound>,
+): Promise<HandoffActionResult> {
+  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  const blocked = storyWriteBlocked(LIVE.storyLock);
+  if (blocked) return { ok: false, reason: blocked, status: 409 };
+  if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
+  const gen = handoffGen;
+  const session = HANDOFF;
+  handoffBusy = true; publishHandoffState();
+  try {
+    const r = await run(session);
+    if (gen === handoffGen) handoffLast = r;
+  } catch (e) {
+    if (gen === handoffGen) handoffLast = { kind: "failed", error: (e as Error).message };
+  } finally { handoffBusy = false; if (resetStage) handoffStage = ""; }
+  if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
+  return handoffOk();
+}
+
 export async function handoffStart(dir: string, model: string): Promise<HandoffActionResult> {
   if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
   const blocked = storyWriteBlocked();
@@ -523,7 +553,7 @@ export async function handoffStart(dir: string, model: string): Promise<HandoffA
     HANDOFF = session;
     setWhere(`preparing chapter ${HANDOFF.chapter} of ${dir}`, false);
     publishHandoffState();
-    const last = await HANDOFF.propose(stage => { handoffStage = stage; publishHandoffState(); });
+    const last = await HANDOFF.propose(onHandoffStage);
     if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
     handoffLast = last;
   } catch (e) {
@@ -533,46 +563,17 @@ export async function handoffStart(dir: string, model: string): Promise<HandoffA
     publishHandoffState();
     return { ok: false, reason: (e as Error).message, status: 400 };
   } finally { handoffBusy = false; handoffStage = ""; }
-  publishHandoffState();
-  return { ok: true, state: handoffSnapshot() };
+  return handoffOk();
 }
 
 export async function handoffSay(text: string): Promise<HandoffActionResult> {
-  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
-  const blocked = storyWriteBlocked(LIVE.storyLock);
-  if (blocked) return { ok: false, reason: blocked, status: 409 };
-  if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
-  const gen = handoffGen;
-  const session = HANDOFF;
-  handoffBusy = true; publishHandoffState();
-  try {
-    const r = await session.say(text);
-    if (gen === handoffGen) handoffLast = r;
-  } catch (e) {
-    if (gen === handoffGen) handoffLast = { kind: "failed", error: (e as Error).message };
-  } finally { handoffBusy = false; }
-  if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
-  publishHandoffState();
-  return { ok: true, state: handoffSnapshot() };
+  // resetStage: false — say refines within the open round, so unlike regenerate it leaves the
+  // auto-pass stage marker alone.
+  return runHandoffRound(false, s => s.say(text));
 }
 
 export async function handoffRegenerate(): Promise<HandoffActionResult> {
-  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
-  const blocked = storyWriteBlocked(LIVE.storyLock);
-  if (blocked) return { ok: false, reason: blocked, status: 409 };
-  if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
-  const gen = handoffGen;
-  const session = HANDOFF;
-  handoffBusy = true; publishHandoffState();
-  try {
-    const r = await session.propose(stage => { handoffStage = stage; publishHandoffState(); });
-    if (gen === handoffGen) handoffLast = r;
-  } catch (e) {
-    if (gen === handoffGen) handoffLast = { kind: "failed", error: (e as Error).message };
-  } finally { handoffBusy = false; handoffStage = ""; }
-  if (gen !== handoffGen) return handoffAbandonedResult(HANDOFF_ABANDONED);
-  publishHandoffState();
-  return { ok: true, state: handoffSnapshot() };
+  return runHandoffRound(true, s => s.propose(onHandoffStage));
 }
 
 export async function handoffAccept(): Promise<HandoffAcceptResult> {
