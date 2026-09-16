@@ -51,6 +51,8 @@ ENGINE.freeConsult = flag("free-consult-v3") !== undefined ? "v3"
   : flag("free-consult") !== undefined ? "v1" : false;
 // --split-judge: same run-level-toggle-only rule; the gated path is byte-identical without it.
 ENGINE.splitJudge = flag("split-judge") !== undefined;
+// --consult-since: same rule again; stale consults without one are refused only with it on.
+ENGINE.consultSince = flag("consult-since") !== undefined;
 // --cannot-meaning / --cannot-none / --cannot-testimony: same rule again, one flag per arm so a
 // measured delta can be attributed to one of them. Every prompt is byte-identical with all off.
 ENGINE.cannotMeaning = flag("cannot-meaning") !== undefined;

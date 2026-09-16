@@ -95,12 +95,12 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[], style: string, facts: string[] = [], constraints: string[] = []): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[], style: string, facts: string[] = [], constraints: string[] = [], sinceEnforced = false): string {
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
   const houseStyle = [style.trim(), ...constraints.map(c => c.trim()).filter(Boolean)].join("\n").trim();
-  return P.writerSystem({ premise, scene, cast, facts, style: houseStyle });
+  return P.writerSystem({ premise, scene, cast, facts, style: houseStyle, ...(sinceEnforced ? { since: true as const } : {}) });
 }
 
 /** The cast actually in a scene; an empty roster means the whole cast. */
@@ -160,12 +160,17 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
  *  reactors, which the gate refuses, not a single consult. Each reactor keeps its own `situation`
  *  override where the writer gave one (a reactor who only heard, not saw, an event) — flattening
  *  this to bare names would hand every reactor the shared situation regardless of what the writer
- *  wrote for them, including past a restricted sense normalizeReactionConsult exists to guard. */
+ *  wrote for them, including past a restricted sense normalizeReactionConsult exists to guard.
+ *  `since` is what reached a lone consultee since they were last asked (--consult-since); with
+ *  the flag on it joins the situation before the gate, with the flag off it is parsed, recorded,
+ *  and logged but never required and never joined. Fan-out reactors carry
+ *  none: a shared moment is not anyone's decision continuity. */
 export interface DraftConsult {
   character: string;
   situation: string;
   question: string;
   wants: string;
+  since: string;
   reactors: { name: string; situation?: string }[] | null;
 }
 
@@ -206,6 +211,7 @@ export function parseDraftReply(raw: string, onProseFallback?: () => void): Draf
       situation: String(c.situation ?? "").trim(),
       question: String(c.question ?? "").trim(),
       wants: String(c.wants ?? "").trim(),
+      since: String(c.since ?? "").trim(),
       reactors: Array.isArray(c.reactors)
         ? c.reactors
             .map((r: unknown) => {
@@ -270,6 +276,13 @@ const OVERRUN_SLACK = 1.5;
 const REPEAT_TAIL_CHARS = 2000;
 
 const NEGLECT_GAP = 3;
+
+// A lone consult opened for a character with this many prose pieces since their last consult is
+// stale (--consult-since): what reached them in between must arrive in `since`, or the consult is
+// refused. One piece back is immediate continuation, already carried by ordinary situations
+// (the coverage measurement: every +1pc re-consult in the fixture continued the previous turn);
+// two is where the character starts answering from a scene that no longer exists.
+const SINCE_STALE_PIECES = 2;
 
 // A scene told repeatedly that it is at length and still not ending (PLANS.md: a 750-word chapter
 // ran to 2,237) needs a hard stop under the soft nudges. Twice the target is the last piece the
@@ -350,7 +363,7 @@ export async function writeScene(run: SceneRun) {
   const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])),
     Object.fromEntries(roster.map(c => [c.name, scenePresence(sd, c)] as const).filter(([, v]) => v !== null)) as Record<string, Presence>,
     Object.fromEntries(roster.map(c => [c.name, sceneConstraint(sd, c)])));
-  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints), 0.8);
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints, ENGINE.consultSince), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
   // A thought reaches the writer only from inside the POV. The narration lint already holds that
@@ -404,17 +417,42 @@ export async function writeScene(run: SceneRun) {
   // the repetition is named rather than answered with the same words again. Keyed on the SITUATION
   // and its addressee, because that is the ask now: the question is absent altogether from an open
   // beat, and keying on it would quietly never match.
+  // What a lone consultee actually receives: `since` joined onto the situation before the
+  // gate (--consult-since only; fan-out reactors carry none). The narration lint reads this too,
+  // so it judges the ask as sent, not as drafted. With the flag off this is the identity.
+  const joinedSituation = (a: DraftConsult) =>
+    ENGINE.consultSince && a.since && !a.reactors ? P.withSince(a.situation, a.since) : a.situation;
+
   const refusedAsks = new Map<string, number>();
   const refusalFor = (why: string, name: string, situation: string) => {
     const key = `${nameKey(name)}|${situation.trim().toLowerCase()}`;
     const times = situation.trim() ? (refusedAsks.get(key) ?? 0) + 1 : 1;
     if (situation.trim()) refusedAsks.set(key, times);
-    return times > 1 ? P.consultRepeated(why, name, times) : P.consultNotSent(why, name);
+    const text = times > 1 ? P.consultRepeated(why, name, times) : P.consultNotSent(why, name);
+    return { text, times };
+  };
+
+  // Lectures are for the writer, not for history. A refusal's full text — the craft lecture on
+  // what was wrong with the ask — has one job: make the NEXT draft fix it. A one-line tag is what
+  // stays in history permanently; the lecture itself rides the next writer.draft call as a
+  // transient extra (B's pattern, one loop boundary later). Deliberate placement change: today the
+  // lecture sits before [WRITE]; as an extra it lands after it, closest to generation.
+  const pendingWriterExtras: Msg[] = [];
+  const refuseForLater = (why: string, name: string, situation: string): string => {
+    const { text, times } = refusalFor(why, name, situation);
+    pendingWriterExtras.push({ role: "user", content: text });
+    const gist = why.split(". ")[0].trim().replace(/\.+$/, "");
+    return `[CONSULT NOT SENT${times > 1 ? ` — REPEAT ×${times}` : ""}] ${name}: ${gist}.`;
   };
 
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   const lastAsked = new Map<string, number>();
+  // Prose-piece count at each character's last SENT lone consult (--consult-since staleness base).
+  // A fan-out reaction does not reset it: reacting to a shared moment is not decision continuity,
+  // and the refusal that follows points at the one field that fixes it. First consults have no
+  // base and are never stale.
+  const sinceBase = new Map<string, number>();
   const retryCounts = new Map<string, number>();
   // Deeds volunteered by the last reaction fan-out (lowercased name → action), waiting for the
   // writer's next reply to promote at most one. A one-shot offer: cleared as the next reply is read.
@@ -433,6 +471,11 @@ export async function writeScene(run: SceneRun) {
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
+
+  // Neglected-nag throttle: the furniture lecture + fan-out upsell re-sent every turn while its
+  // set holds. Emit only when the set changes or every third nagged turn — the steady state is a
+  // scene the writer already knows is neglecting someone.
+  let lastNeglectedKey = "", neglectedNags = 0;
 
   // A `scene_done` on an empty page ends a scene that never happened. The first one is refused with
   // a message and a flag, so the writer cannot be trapped by its own declaration; a second is
@@ -460,9 +503,10 @@ export async function writeScene(run: SceneRun) {
     clarifierMark = clarifier?.history.length ?? 0;
   };
   const keepClarifications = () => {
-    for (const cl of attemptClarifications) {
-      writer.hear(P.characterAsks(cl.character, cl.question));
-      writer.said(JSON.stringify({ answer: cl.answer }));
+    // One message for the whole attempt, not a question/answer pair per fact: the pairs cost two
+    // history slots per clarification and push story prose into the digest within a few turns.
+    if (attemptClarifications.length) {
+      writer.hear(P.clarificationsSettled(attemptClarifications));
     }
     attemptClarifications = [];
   };
@@ -565,7 +609,11 @@ export async function writeScene(run: SceneRun) {
     }
 
     const words = wordCount();
-    const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
+    const neglectedFull = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
+    const neglectedKey = neglectedFull.join("|");
+    if (neglectedKey !== lastNeglectedKey) { lastNeglectedKey = neglectedKey; neglectedNags = 0; }
+    const neglected = neglectedKey && neglectedNags % 3 === 0 ? neglectedFull : [];
+    if (neglectedKey) neglectedNags++;
     const hardCap = words >= sd.length * HARD_CAP_MULT;
     // The world timeline: a held event the writer may not start, and — at the trigger — a fired
     // event injected as already true. Zero inference; the decision is world-timeline.ts's, and the
@@ -596,7 +644,10 @@ export async function writeScene(run: SceneRun) {
     }));
     let draftRaw: string;
     try {
-      draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.draft");
+      // A queued refusal lecture goes out here and only here — the one call site that drains
+      // pendingWriterExtras, so a lecture is delivered exactly once, on the next draft.
+      draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.draft",
+        pendingWriterExtras.splice(0));
     } catch (e) {
       if (e instanceof StoppedError || RUN.stopped) break;
       console.log(`\n${C.red}Writer call failed (${(e as Error).message}) — stopping with what we have.${C.reset}`);
@@ -620,7 +671,7 @@ export async function writeScene(run: SceneRun) {
       const outgoingConsult = ask ? {
         character: ask.character || undefined,
         reactors: ask.reactors?.length ? ask.reactors.map(r => r.name) : undefined,
-        situation: ask.situation,
+        situation: joinedSituation(ask),
         question: ask.question,
       } : null;
 
@@ -645,9 +696,12 @@ export async function writeScene(run: SceneRun) {
       console.log(`${C.yellow}(narration flagged — ${flagged.split(". ")[0]}.)${C.reset}`);
       if (retried) break;   // one redraft only — accept whatever comes back next
 
-      writer.hear(P.narrationFlagged(flagged));
+      // Transient by design: the flag critiques a draft that never entered history, so keeping
+      // it would leave a criticism with no object — and on a redraft-call throw, a criticism of
+      // prose history records as uncorrected. It rides the redraft call only.
       try {
-        draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft");
+        draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft",
+          [{ role: "user", content: P.narrationFlagged(flagged) }]);
       } catch (e) {
         if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
         console.log(`\n${C.red}Writer redraft call failed (${(e as Error).message}) — keeping the flagged piece.${C.reset}`);
@@ -692,6 +746,7 @@ export async function writeScene(run: SceneRun) {
       ...(ask.situation ? { situation: ask.situation } : {}),
       ...(ask.question ? { question: ask.question } : {}),
       ...(ask.wants ? { wants: ask.wants } : {}),
+      ...(ask.since ? { since: ask.since } : {}),
     } : null;
     writer.said(JSON.stringify({ prose: reply.prose,
       ...(askedRecord ? { consult: askedRecord } : {}),
@@ -726,25 +781,39 @@ export async function writeScene(run: SceneRun) {
         reactors: ask.reactors, situation: ask.situation, question: ask.question, cast,
         defOf, agents, isActive, isPov, writerSees,
         clarifications, clarify, beginAttempt, keepClarifications, dropClarifications,
-        refusalFor, writer, granted, pendingReactionActions, lastAsked, owed,
+        refusalFor: refuseForLater, writer, granted, pendingReactionActions, lastAsked, owed,
         step: steps, chapter, newBatchJudge, log, stopped: () => RUN.stopped,
       });
     } else if (ask?.character) {
       const who = ask.character;
       const def = defOf(who);
       const persistent = agents.get(nameKey(who));
-      const check = def ? normalizeConsult({ ...ask, character: def.name }, cast) : null;
+      // Stale-character `since` (--consult-since): prose pieces since their last SENT consult.
+      // Unknown base (never asked) is never stale; a fan-out reaction does not reset the base.
+      const base = def ? sinceBase.get(nameKey(def.name)) : undefined;
+      const stalePieces = base === undefined ? 0 : pieces.length - base;
+      const missingSince = !!def && ENGINE.consultSince
+        && stalePieces >= SINCE_STALE_PIECES && !ask.since;
+      const check = def && !missingSince
+        ? normalizeConsult({ ...ask, character: def.name, situation: joinedSituation(ask) }, cast)
+        : null;
       if (!def || !persistent) {
         writer.hear(P.noSuchCharacter(who, [...active]));
       } else if (!isActive(def.name)) {
         console.log(`${C.yellow}(not sent to ${def.name} — they have left the scene.)${C.reset}`);
         writer.hear(P.consultExited(def.name));
+      } else if (missingSince) {
+        const why = P.badConsult.missingSince(def.name, stalePieces);
+        log({ t: "bad_consult", character: def.name, why, chapter });
+        console.log(`${C.yellow}(not sent to ${def.name} — stale, no "since".)${C.reset}`);
+        writer.hear(refuseForLater(why, def.name, ask.situation));
       } else if (!check!.ok) {
         log({ t: "bad_consult", character: def.name, why: check!.why, chapter });
         console.log(`${C.yellow}(not sent to ${def.name} — ${check!.why.split(". ")[0]}.)${C.reset}`);
-        writer.hear(refusalFor(check!.why, def.name, ask.situation));
+        writer.hear(refuseForLater(check!.why, def.name, ask.situation));
       } else {
         asked = true;
+        sinceBase.set(nameKey(def.name), pieces.length);
         const { reply, failed, usedAttempt, req } = await judgeGate({
           def, agent: persistent, req: check!.req, cast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
@@ -784,7 +853,8 @@ export async function writeScene(run: SceneRun) {
           keepClarifications();   // before the answer: the writer settled these facts to get it
           const shown = { thought: writerSees(def.name, reply.thought),
                           speech: reply.speech, action: reply.action };
-          writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question));
+          writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question,
+            ask?.question ?? ""));
           lastAsked.set(nameKey(def.name), steps);
           // An answer joins the lint's ledger as whatever the writer actually got. An
           // answer from the POV character lands as a felt entry, like a fan-out's bundle — without

@@ -530,6 +530,15 @@ export const foldedAsk = (req: { situation: string; wants: string }) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
   + (req.wants ? `\nWhat they need from you: ${req.wants}` : "");
 
+/** `since` joined onto the situation before the consult gate: one ground-truth channel, not
+ *  two, so the CANNOT/presence gate, the narration lint's situation read, and the accepted-answer
+ *  fold all read exactly what the character reads. The joiner line addresses them as "you", matching
+ *  the shape `lintRestrictedSituation` validates; the `since` text itself is writer-authored under
+ *  the SINCE_FIELD instruction (prompts/writer.ts) to do the same, and the gate reads the joined
+ *  result either way. */
+export const withSince = (situation: string, since: string) =>
+  `${situation.trim()}\n\nSince you were last asked: ${since.trim()}`;
+
 export const authorAnswers = (answer: string) => `[THE AUTHOR ANSWERS] ${answer}`;
 
 export const AUTHOR_DONE_ANSWERING =
@@ -606,6 +615,16 @@ export const badConsult = {
     + `so re-asking from the same situation sends a fresh instance the identical message it has `
     + `already answered — and a fresh instance answers it the same way. A retry that is to buy `
     + `anything has to change what they can perceive.`,
+
+  missingSince: (character: string, pieces: number) =>
+    `${character} has gone ${pieces} pieces of prose since they were last asked, and this consult `
+    + `carries no "since". They hold no durable memory of the page — everything that reached them `
+    + `in between has to arrive in this ask, or they answer from a scene that no longer exists. `
+    + `Say what has reached them since they were last asked, in their own perceivable terms, in `
+    + `"since" — what their last answer came to, and anything else around them they could perceive. `
+    + `If nothing new reached them, say that plainly instead of omitting the field. Never fold `
+    + `another character's answer into it: the second one asked blind, and an answer leaked into `
+    + `someone else's "since" decides the moment for them.`,
 
   // badWants is gone: the judge no longer names an output shape, so there is nothing to
   // validate here. "wants" survives on the wire (ConsultRequest.wants, the GUI's "needs:" badge)

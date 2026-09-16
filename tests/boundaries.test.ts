@@ -32,11 +32,11 @@ describe("server/ never imports engine/ at runtime", () => {
   }
 });
 
-// Blocks 5-6 (PLANS.md, the decoupling program): the scaffold AND handoff domains are fully behind
-// ServerHost now — no route module knows what a ScaffoldSession or a NextChapterSession is, not
-// even as a type, and neither engine/architect.ts nor engine/story-spec.ts (the last of it retired
-// once host.ts's own snapshot builders stopped needing specView/storyJsonShape as ServerHost
-// methods) is imported anywhere under server/ at all.
+// The decoupling program's one shipped piece (CLAUDE.md's ServerHost rule): the scaffold AND
+// handoff domains are fully behind ServerHost — no route module knows what a ScaffoldSession or
+// a NextChapterSession is, not even as a type, and neither engine/architect.ts nor
+// engine/story-spec.ts (the last of it retired once host.ts's own snapshot builders stopped needing
+// specView/storyJsonShape as ServerHost methods) is imported anywhere under server/ at all.
 describe("server/ has no dependency on engine/architect.ts or engine/story-spec.ts, even as a type", () => {
   for (const file of serverFiles()) {
     it(`${file} does not import either module`, () => {
@@ -47,7 +47,7 @@ describe("server/ has no dependency on engine/architect.ts or engine/story-spec.
         const [, , spec] = m;
         assert.ok(!spec.includes("/engine/architect.ts") && !spec.includes("/engine/story-spec.ts"),
           `server/${file}:${i + 1} imports "${spec}" — the scaffold and handoff domains are `
-          + `supposed to be entirely behind ServerHost now (PLANS.md, Blocks 5-6)`);
+          + `supposed to be entirely behind ServerHost (CLAUDE.md: routes never import engine/)`);
       });
     });
   }

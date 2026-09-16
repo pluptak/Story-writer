@@ -703,7 +703,9 @@ sequence, live/current/retained:
 
 ```
 ConsultEvent (engine/consult.ts):
-  { t:"consult"; character; situation; question; wants; attempt }
+  { t:"consult"; character; situation; question; wants; attempt; since }
+     — `since` is what reached them since they were last asked (`""` unless the writer sent one,
+        which only `--consult-since` ever asks for)
   { t:"need"; character; question }
   { t:"clarify"; character; question; answer }
   { t:"clarify_failed"; character; question }    — the call to answer this never came back;

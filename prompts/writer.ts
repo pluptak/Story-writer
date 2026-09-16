@@ -129,10 +129,26 @@ WHEN ASKED FOR DIRECTIONS -- [ASK READER]:
               same beat worded three ways, and none of them a line or a choice already decided for a
               character -- those are still theirs to give, not yours to hand the reader.
 
-  Whatever comes back is the direction the scene takes from here. Write it the way you would any
-  other answer you were given.
+   Whatever comes back is the direction the scene takes from here. Write it the way you would any
+   other answer you were given.
 
-CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+ CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+/** Stale-character `since` (--consult-since only): the consult's third field. Appended after
+ *  WRITER_FORMAT rather than woven into it, so the format itself — and every prompt with the flag
+ *  off — stays byte-identical. */
+export const SINCE_FIELD = `SINCE -- a consult carries a third field beside character and situation:
+
+  "consult": {"character": "NAME", "situation": "...", "since": "..."}
+
+"since" is what has reached them since they were last asked, in their own perceivable terms --
+what their last answer came to, and anything else around them they could perceive. It is required
+once they have gone two or more pieces of prose without being asked: a stale consult without it is
+refused like a thin situation, and each attempt costs the scene a step it does not get back. When
+nothing new reached them, say so plainly ("nothing has reached you since") rather than omitting
+the field. Address them as "you"; never fold another character's answer into it -- the
+second-one-asked-blind rule covers this field too, and an answer leaked into someone else's
+"since" decides the moment for them.`;
 
 export function writerSystem(p: {
   premise: string;
@@ -140,6 +156,9 @@ export function writerSystem(p: {
   cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[];
   facts: string[];
   style: string;
+  /** Stale-character `since` enforcement (--consult-since): with it on, the writer is told the
+   *  consult carries a third field. Absent or off, the prompt is byte-identical to before. */
+  since?: boolean;
 }): string {
   const cast = castBlock(p.cast);
   const scene = [
@@ -153,7 +172,7 @@ export function writerSystem(p: {
     `Length: about ${p.scene.length} words.`,
   ].filter(Boolean).join("\n");
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
-  return `${WRITER_FORMAT}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
+  return `${WRITER_FORMAT}${p.since ? `\n\n${SINCE_FIELD}` : ""}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
     + `${cast}\n\n`
     + factsBlock(p.facts)
     + `A CANNOT is absolute, and it governs your narration as much as their answers: no watching, `
@@ -270,6 +289,14 @@ export const narrationFlagged = (why: string) =>
 export const characterAsks = (name: string, question: string) =>
   `[${name} ASKS] ${question}`;
 
+/** Facts the writer settled to get an accepted answer, folded as one message for the whole attempt
+ *  rather than a question/answer pair per fact. Only accepted attempts reach the writer (rejected
+ *  branches are rewound), so everything listed here is what the character was told — the narration
+ *  must stay consistent with it. */
+export const clarificationsSettled = (facts: { character: string; question: string; answer: string }[]) =>
+  `[SETTLED]\n${facts.map(f => `${characterAsks(f.character, f.question)}\nSettled: ${f.answer}`).join("\n")}`
+  + `\n\nWrite consistently with these — they are what the character was told.`;
+
 /** `recent` is the last piece of prose written. The clarifier remembers what it has answered but not
  *  what the scene narrated, and a fact settled here must not contradict the page. `knows` is what
  *  the asking character walks in holding — the one field that lets "only what they could perceive
@@ -309,10 +336,18 @@ export const answerBody = (p: { thought: string; speech: string; action: string 
    p.speech  && `speech: ${p.speech}`,
    p.action  && `action: ${p.action}`].filter(Boolean).join("\n");
 
-/** The question travels with the answer it produced. A retry may have revised what was finally
- *  asked, and a bare "No." or "The left one." is unreadable against a draft several turns back. */
-export const characterAnswered = (name: string, body: string, question = "") =>
-  `[${name} ANSWERED]` + (question ? ` (asked: ${question})` : "") + `\n${body}`;
+/** The question travels with the answer only when the writer cannot already read it back: the
+ *  draft's own `said()` a few messages back carries the original question, so re-echoing an
+ *  unchanged one doubles tokens every accepted consult. A retry may have revised what was finally
+ *  asked (`req` vs the `said()` record) — then both are named, or a bare "No." is unreadable and
+ *  the substitution is silent. An empty original means `said()` carried no echo to dedup against,
+ *  so the question is kept. */
+export const characterAnswered = (name: string, body: string, question = "", originalQuestion = "") => {
+  const q = question.trim(), o = originalQuestion.trim();
+  if (q && o && o !== q) return `[${name} ANSWERED] (asked: ${q}; originally: ${o})\n${body}`;
+  if (q && !o) return `[${name} ANSWERED] (asked: ${q})\n${body}`;
+  return `[${name} ANSWERED]\n${body}`;
+};
 
 /** A reactor arrives without a `thought` when the scene is not written from inside them: what it
  *  landed on them as is their own, and rendering it would hand the writer an inner life nobody gave

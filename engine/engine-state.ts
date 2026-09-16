@@ -19,9 +19,18 @@ export const ENGINE = {
   freeConsult: false as false | "v1" | "v2" | "v3",
   /** Split-judge prototype (CLI-only, --split-judge): the per-answer gate as two calls instead of
    *  one -- a verdict call that only decides accept/retry and names the contradiction, and a repair
-   *  call, made only on a retry, that authors the revision from that note alone. Measured motive
-   *  and caveat in docs/PLANS.md ("Judge diagnostic matrix"). */
+  *  call, made only on a retry, that authors the revision from that note alone. Measured motive
+  *  and caveat in docs/PLANS.md ("Judge diagnostic matrix"). */
   splitJudge: false,
+  /** Stale-character `since` enforcement (CLI-only, --consult-since): a lone consult opened for a
+   *  character with two or more prose pieces since their last consult must carry `since` — what
+   *  reached them in between — or it is refused like a thin situation. When present, the `since`
+   *  text joins the situation before the consult gate, so no new channel and no new model call.
+   *  Off, it is never required and never joined: the writer is never told the field exists, so in
+   *  practice nothing sends it — but a `since` arriving anyway is still parsed, recorded, and
+   *  logged, just never enforced. Prompts and call sequences are byte-identical
+   *  (docs/PLANS.md). */
+  consultSince: false,
   /** CANNOT-rendering arms (CLI-only, --cannot-meaning / --cannot-none / --cannot-testimony), one
    *  flag each because they target different measured findings and a bundle cannot be attributed.
    *  With all three off, every prompt is byte-identical to the pre-arm engine.

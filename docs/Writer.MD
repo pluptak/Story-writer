@@ -52,10 +52,15 @@ writer's loop does around them.
 The loop's contract with them: an answer is judged before the writer ever sees it, and every
 situation-entry path — the writer's first ask, a fan-out's shared text, a judge's revision on a
 retry — is checked against its addressee's own CANNOT list before it leaves. A refused ask is never
-sent; the writer is told why instead. When an answer is unusable, the retry's re-ask is re-authored
+sent; the writer is told why instead — a one-line tag stays in history permanently, and the full
+lecture rides the next `[WRITE]` draft call as a transient extra, landing after the instruction,
+closest to generation. When an answer is unusable, the retry's re-ask is re-authored
 by the judge and passes the same gate before it reaches a fresh character instance that never learns
 it was rejected — and when the revision cannot be sent, the answer already in hand is the one the
-scene gets. What the clarifier settles on the way folds into the writer's history as it goes, and an
+scene gets. A folded answer names only what the writer cannot read back: the echoed question is
+dropped when it matches the draft's own record, and when a retry revised it, both the asked and
+the original question travel with the answer, so the substitution is never silent. What the clarifier settles on the way folds into the writer's history as it goes — one
+`[SETTLED]` message per attempt, not a question/answer pair per fact — and an
 attempt whose answer is thrown away is rewound out of both histories: the writer is told nothing at
 all until the answer is the one the scene takes.
 
@@ -97,6 +102,14 @@ When several characters face the same fork, each is asked from the same shared m
 never becomes part of another's situation — the second one asked blind, and an answer leaked into
 someone else's situation decides the moment for them (`prompts.ts`, `WRITER_FORMAT`). The situation
 is the only channel there is, so it is also the only place such a leak can happen.
+
+A character re-consulted after two or more pieces of prose carries no memory of the page between,
+so under `--consult-since` the consult carries a third field, `since`: what reached them since they
+were last asked — what their last answer came to, and anything else around them they could perceive,
+or a plain statement that nothing new did. It joins the situation before the consult gate (one
+channel, not two) and the blind rule covers it like any other ground truth. A stale consult without
+it is refused like a thin situation. Fan-out reactors carry none: a shared moment is not anyone's
+decision continuity.
 
 The writer may describe setting, atmosphere, time passing, physical reactions without deliberate
 choice, established facts, and POV perception within the character's capabilities.
@@ -149,12 +162,14 @@ attempts, mark the character freshly consulted, and hand the writer an answer wi
 A reaction fan-out whose every reactor ends up there hands over no bundle, and the writer is told so
 plainly — silence would read as an unanswered fan-out and get the same beat asked again.
 
-The engine nudges as well as gates: a character gone unconsulted too long is named in the next
-`[WRITE]`, and that nudge tells the writer to put the moment to them *whether it turns on a choice of
+The engine nudges as well as gates: a character gone unconsulted too long is named in `[WRITE]`,
+and that nudge tells the writer to put the moment to them *whether it turns on a choice of
 theirs or they are simply standing in it* (`prompts.ts`'s `writeInstruction`) — the case that
 otherwise produces a degenerate "What do you do?". It names no shape, because the writer's ask has
 none to name; more than one neglected character turns the nudge into a fan-out instruction instead,
-since that costs one step rather than a step apiece.
+since that costs one step rather than a step apiece. The nudge is throttled — re-sent only when the
+neglected set changes or every third nagged turn — so a stuck scene does not pay the furniture
+lecture on every turn.
 
 ### Group reactions
 
@@ -223,7 +238,9 @@ was granted; did it hand a deed or meaningful stillness to someone not already g
 if the same reply opens a consult or reaction fan-out, does the `situation` it hands the character
 name the concrete fact just established rather than only its consequence. A flag sends the writer back for one
 redraft from the same `[WRITE]` instruction — nothing has reached `pieces[]`, the writer's own history,
-or the log yet, so this is a clean redo, not an undo. A retry that is also flagged, or that fails
+or the log yet, so this is a clean redo, not an undo. The flag itself rides the redraft call as a
+transient extra and never enters history: a criticism of a draft history never held would otherwise
+linger past the correction. A retry that is also flagged, or that fails
 outright, is accepted anyway and logged as `narration_flag` — the lint warns; it never blocks the scene
 (`engine/scene-loop.ts`'s `NARRATION_LINT_RETRIES`).
 

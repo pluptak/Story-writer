@@ -23,6 +23,11 @@ export interface ConsultRequest {
   situation: string;
   question: string;
   wants: ConsultWants | "";
+  /** What reached them since they were last asked (--consult-since): carried as a record on the
+   *  run log, never a requirement here — the staleness refusal lives with the caller, which owns
+   *  the page count. Joined onto `situation` before this gate by the caller, so this is the raw
+   *  field back, the same way `question` travels beside the ask the character actually reads. */
+  since?: string;
 }
 
 // -- WHAT A CONSULT MUST CONTAIN TO BE WORTH SENDING -----------------------
@@ -99,12 +104,13 @@ export type ConsultMode = "open" | "directed";
  *  so every situation-entry path passes the same door: the writer's first ask, the judge's `revised`
  *  on a retry (reviseConsult), and each reactor of a fan-out (normalizeReactionConsult). */
 export function normalizeConsult(raw: {
-  character: string; situation?: unknown; question?: unknown; wants?: unknown;
+  character: string; situation?: unknown; question?: unknown; wants?: unknown; since?: unknown;
 }, cast?: CannotCast,
    mode: ConsultMode = "open"): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
   const question  = String(raw.question ?? "").trim();
+  const since = String(raw.since ?? "").trim();
   const words = situation.split(/\s+/).filter(Boolean).length;
   const floor = mode === "open" ? MIN_OPEN_SITUATION_WORDS : MIN_SITUATION_WORDS;
 
@@ -139,7 +145,7 @@ export function normalizeConsult(raw: {
     }
   }
 
-  return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants } };
+  return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants, since } };
 }
 
 /** The outcome of checking a reaction fan-out: one sendable request per reactor, or a single refusal. */
@@ -224,6 +230,9 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
     wants: prev.wants,
+    // A retry re-asks the same beat with no page between attempts: the record of what reached
+    // them stands as it was. A revision never re-authors `since`.
+    since: prev.since ?? "",
   }, cast, "directed");
   if (!checked.ok) return checked;
   // The character is shown the situation and not the question, so a revision that sharpens the
@@ -316,7 +325,7 @@ export interface ConsultReply {
 }
 /** Everything a consult can report to the run log, as one tagged event each. */
 export type ConsultEvent =
-  | { t: "consult"; character: string; situation: string; question: string; wants: string; attempt: number }
+  | { t: "consult"; character: string; situation: string; question: string; wants: string; since: string; attempt: number }
   | { t: "need"; character: string; question: string }
   | { t: "clarify"; character: string; question: string; answer: string }
   | { t: "clarify_failed"; character: string; question: string }
@@ -347,7 +356,7 @@ export async function consult(
   let forced = false, repaired = false;
 
   log({ t: "consult", character: req.character, situation: req.situation, question: req.question,
-        wants: req.wants, attempt: opts.attempt ?? 1 });
+        wants: req.wants, since: req.since ?? "", attempt: opts.attempt ?? 1 });
 
   for (;;) {
     const raw = await agent.generate(`${C.cyan}${agent.name}${C.reset}`, "character.consult", extra);

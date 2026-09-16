@@ -138,7 +138,7 @@ describe("an answer still owed the page", () => {
   }) {
     let writerCall = 0, characterCall = 0, doneCall = 0;
     const nextWriter = () => opts.writerReplies[writerCall++];
-    const { fetchMock } = siteFetch({
+    const { fetchMock, seen } = siteFetch({
       "judge.narration": ({ body }) => {
         opts.lintPayloads?.push(String(body.messages?.find((m: any) => m.role === "user")?.content ?? ""));
         return { ok: true };
@@ -157,7 +157,7 @@ describe("an answer still owed the page", () => {
       "writer.draft": nextWriter,
       "writer.redraft": nextWriter,
     });
-    return { fetchMock, calls: () => ({ writerCall, characterCall, doneCall }) };
+    return { fetchMock, seen, calls: () => ({ writerCall, characterCall, doneCall }) };
   }
 
   const ASK = {
@@ -178,7 +178,7 @@ describe("an answer still owed the page", () => {
     const events: RunEvent[] = [];
     const agents = new Map(sc.characters.map(c =>
       [c.name.toLowerCase(), newCharacterAgent(c, sc.scenes[0].place, "low")] as const));
-    const { fetchMock, calls } = consultFetch({
+    const { fetchMock, seen, calls } = consultFetch({
       writerReplies: opts.writerReplies,
       characterReplies: opts.characterReplies ?? [{ speech: "No.", action: "stands up off the crate" }],
       lintPayloads: opts.lintPayloads,
@@ -196,7 +196,7 @@ describe("an answer still owed the page", () => {
         scene: sc.scenes[0], agents, maxSteps: opts.maxSteps, log: e => events.push(e),
       })));
       // LIVE.writer is captured before the finally's resetLive() clears it.
-      return { r, events, calls: calls(), agents, sc, writer: LIVE.writer };
+      return { r, events, calls: calls(), agents, sc, writer: LIVE.writer, seen };
     } finally {
       globalThis.fetch = origFetch;
       ENGINE.stream = origStream;
@@ -531,7 +531,7 @@ describe("an answer still owed the page", () => {
     // Seen five times in one scene: the refusal says what is wrong, the writer sends the identical
     // string back, and each round costs a step. The second one is told it is a repeat.
     const thin = { ...CRASH, situation: "Something falls over." };
-    const { events, writer } = await runIt({
+    const { events, writer, seen } = await runIt({
       maxSteps: 10,
       writerReplies: [
         { prose: "The crash echoes down the corridor.", consult: thin, scene_done: false },
@@ -542,9 +542,13 @@ describe("an answer still owed the page", () => {
 
     assert.equal(events.filter(e => e.t === "bad_consult").length, 2, "both were refused");
     const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
-    assert.match(heard, /\[CONSULT NOT SENT\]/, "the first refusal is the ordinary one");
-    assert.match(heard, /AND YOU HAVE SENT IT BEFORE/, "the second names the repetition");
-    assert.match(heard, /refused once already/);
+    assert.match(heard, /\[CONSULT NOT SENT\]/, "the first refusal leaves the ordinary tag");
+    assert.match(heard, /REPEAT ×2/, "the second names the repetition");
+    // The lectures themselves are transient: each rides the next draft call, not history.
+    const drafts = (seen["writer.draft"] ?? []).map(c => c.messages.join("\n")).join("\n");
+    assert.match(drafts, /\[CONSULT NOT SENT\]/, "the first lecture reached the next draft");
+    assert.match(drafts, /AND YOU HAVE SENT IT BEFORE/, "the second names the repetition");
+    assert.match(drafts, /refused once already/);
   });
 
   it("counts a fan-out whose every reactor was skipped as an empty turn", async () => {
