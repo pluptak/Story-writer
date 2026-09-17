@@ -131,12 +131,15 @@ seeded from the URL on arrival; inside the page the kind switcher owns it (below
 
 ```
 GET /run
-  → { run: RunMeta | null, awaitingContinue, events: number, running, stopping, where,
-      picking, loading, armed, paused, pausing, model, interactive }
+  → { run: RunMeta | null, awaitingContinue, awaitingLint: LintPrompt | null,
+      events: number, running, stopping, where, picking, loading, armed, paused, pausing, model, interactive }
+
+LintPrompt = { prose: string, blocking: string, advisory: string | null, chapter: number }
 ```
 The snapshot a freshly-loaded page needs before its first SSE frame arrives. `run` is the static
 `RunMeta` set once at scene start (`story`, `characters[]`, `target`, `question`); everything else
-mirrors the live `run_state` SSE frame (below) — polled here once, pushed there after. `loading`
+mirrors the live `run_state` SSE frame (below), except the pending prompts are objects here and
+booleans there — polled here once, pushed there after. `loading`
 is the window between a story being chosen (`picking` going false) and its run actually starting:
 every route that writes `story.json` refuses with `409` while it holds.
 
@@ -431,6 +434,7 @@ POST /stop                       → { ok:true, already? }
 POST /pause                      → { ok:true, already? }
 POST /resume                     → { ok:true } | 400 "not paused"
 POST /continue        { steps }  → { ok:true } | 400 "no run is waiting on a budget decision"
+POST /lint-decision   { choice } → { ok:true } | 400 (invalid choice or no pending lint decision)
 POST /model            { model } → { ok:true } | 400 (must be paused first when a run is in flight; must be a loaded id)
 POST /interactive      { on }    → { ok:true }
 POST /consult-me                 → { ok:true, already? } | 400 "interactive is off"
@@ -438,7 +442,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 ```
 
 - **`/stop`** is idempotent (`already: true` on a second call) and also releases whatever the loop is
-  currently blocked on — a pending `/continue` decision, an armed reader consult, a pause — so a stop
+  currently blocked on — a pending `/continue` or lint decision, an armed reader consult, a pause — so a stop
   never leaves the process hung waiting on an answer nobody will send.
 - **`/pause` / `/resume`** don't interrupt an in-flight model call; `pausing: true` until the loop
   reaches its next boundary, then `paused: true`. `/model` while paused hot-swaps the model on the
@@ -454,6 +458,26 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
   and `reader_answer` itself.
 - **`/continue`** answers the step-budget prompt (`continue_prompt` SSE frame) with how many more
   steps to allow, `0` to stop there.
+- **`/lint-decision`** accepts only the exact string `redraft`, `publish`, or `stop` as `choice`;
+  missing, coerced, differently cased or unknown values are `400`. Both `LIVE.awaitingLint` and
+  `LIVE.lintResolve` must exist; otherwise `400 no lint decision pending`. On success the route
+  synchronously clears both, broadcasts `run_state` with `awaitingLint: false`, then resolves the
+  waiter with the choice. A second submission cannot resolve the same wait again.
+  The viewer labels these **Redraft again**, **Publish anyway**, and **Stop chapter**. It renders
+  prose and findings as literal text, keeps blocking separate from optional advisory findings,
+  disables choices while submitting or reconnecting, and reports failures inline. After a failed
+  submission it rechecks `/run`; a still-pending decision remains retryable. `run_state` with
+  `awaitingLint: false` or `run_reset` hides the stale prompt, and late replies cannot alter a newer
+  prompt. The draft is unpublished: stopping preserves the page already committed.
+- **`/interactive`** off during a pending lint decision clears that prompt and resolver, broadcasts
+  the new state, then resolves `stop`. This does not release the budget, reader-answer or pause
+  waits; the existing reader-arm clearing behaviour is unchanged.
+
+Both mechanical and judge findings receive one automatic redraft. Persistent mechanical blocking,
+or a failed redraft with mechanical blocking, then needs the lint decision. Judge-only findings
+retain advisory accept-after-one-redraft behaviour. If nobody is askable (no viewer and no TTY,
+or interactive off), the chapter stops preserving committed prose. Live state and the retry/commit
+loop belong to `live.ts` and the engine, not the HTTP routes; see [Judge.MD](Judge.MD).
 
 ## Scaffold (the new-story interview)
 
@@ -663,8 +687,10 @@ Every handoff route republishes a `{ t: "handoff", state }` SSE frame (`state` i
 ## `/events` — the SSE stream
 
 One connection, `text/event-stream`, replayed from the top on every reconnect: `retry: 3000`, then the
-full `liveHistory` backlog for the current run, then a fresh `run_state`, then live frames as they
-happen, plus a 15s comment ping to hold the connection open. `liveHistory` (and its sequence numbers)
+full `liveHistory` backlog for the current run, then a fresh `run_state`, then any pending
+`continue_prompt` and `lint_prompt`, then live frames as they happen, plus a 15s comment ping to hold
+the connection open. Pending prompts replay from `LIVE`, not from event history; an answered lint
+decision is never replayed. `liveHistory` (and its sequence numbers)
 resets on `resetLive()` at the start of each new run — so reconnecting mid-run replays that run only,
 never a previous one.
 
@@ -677,7 +703,8 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` (`live.ts`):
 { t:"agent_stats"; who; model; durationMs; promptTokens; completionTokens }
                                           — one completed model call; token fields are null when unavailable
 { t:"continue_prompt"; steps; budget; suggested }  — step budget spent, needs a /continue
-{ t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; interactive }
+{ t:"lint_prompt"; prose; blocking; advisory; chapter } — LintPrompt, needs a /lint-decision
+{ t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; awaitingLint; interactive }
 { t:"run_reset" }                        — a new run is about to start; discard everything and refetch
 { t:"run_error"; message }               — a story failed to load or run; the picker is coming back
 { t:"provider_state"; provider; baseUrl; inFlight; depth; current; lastFailure }
@@ -690,6 +717,10 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` (`live.ts`):
 { t:"scaffold"; state }                  — mirrors GET /scaffold
 { t:"handoff"; state }                   — mirrors GET /next-chapter
 ```
+
+`lint_prompt` is session-level and unsequenced; `awaitingLint` in `run_state` is a boolean, unlike
+the prompt object (or null) in `/run`. Reconnect replays only the current pending prompt after the
+state snapshot. A false flag closes the prompt even when another viewer or the console answered it.
 
 `run_error` is session-level, not a `RunEvent`: it carries no `seq`, never enters `liveHistory`, and
 so is never replayed — a client that connects afterwards sees only the recovered picker. It is sent
@@ -732,13 +763,12 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    how far a judge moved the fork it re-asked
   { t:"budget"; added; budget }
   { t:"forced_end"; words; target }              — hard length cap hit; the prose was cut off
-  { t:"lint_failed"; why }                        — the narration lint call itself threw; the piece
-                                                   was accepted unchecked
-  { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
-                                                    the one redraft happened or it was logged and kept.
-                                                    `why` may carry three findings joined by ". " —
-                                                    the two mechanical checks (quotations, restricted
-                                                    senses) and the LLM half run together
+  { t:"lint_failed"; why }                        — the narration judge call threw; its check failed
+                                                   open, without waiving mechanical blocking
+  { t:"narration_flag"; why; retried }           — narration lint fired; `retried` distinguishes the
+                                                    initial finding from a finding after redrafting.
+                                                    Mechanical and judge findings are checked together;
+                                                    this event alone is not proof the draft was committed.
   { t:"repeat_strip"; chars; words; whole }      — the piece opened by re-emitting the page's tail
                                                    (engine/repeat-lint.ts, no model call); the repeated
                                                    prefix was stripped before the append, so the draft

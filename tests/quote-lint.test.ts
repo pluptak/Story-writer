@@ -230,6 +230,42 @@ describe("lintQuotations", () => {
   });
 });
 
+describe("narration finding severities", () => {
+  for (const mechanical of ["clean", "quote", "sense", "both"] as const) {
+    for (const outcome of ["clean", "flag", "malformed", "outage"] as const) {
+      it(`separates ${mechanical} mechanical findings from a ${outcome} judge`, async (t) => {
+        const prose = [
+          mechanical === "sense" || mechanical === "both" ? "Merritt watches the door." : "The door rattles.",
+          mechanical === "quote" || mechanical === "both" ? 'Merritt says, "Keep that door shut tonight."' : "",
+        ].filter(Boolean).join(" ");
+        const advisory = "Merritt's deliberate act was not granted";
+        const judge = new ScriptedAgent(outcome === "malformed" ? ["{}", "{}"]
+          : [JSON.stringify(outcome === "flag" ? { ok: false, why: advisory } : { ok: true })]);
+        if (outcome === "outage") t.mock.method(judge, "generate", async () => {
+          throw new Error("simulated lint outage");
+        });
+        const events: LintEvent[] = [];
+        const result = await lintPiece({
+          prose, granted: [], cast: [{ name: "Merritt", cannot: ["sight"] }],
+          pov: "Merritt", consult: null, chapter: 1,
+          newNarrationJudge: () => judge, log: e => events.push(e),
+        });
+        assert.equal(result.advisory, outcome === "flag" ? advisory : null);
+        if (mechanical === "clean") assert.equal(result.blocking, null);
+        else {
+          assert.ok(result.blocking);
+          assert.equal(result.blocking.includes("unmatched quotation"), mechanical !== "sense");
+          assert.equal(result.blocking.includes("sight"), mechanical !== "quote");
+          assert.ok(!result.blocking.includes(advisory));
+        }
+        assert.equal(events.filter(e => e.t === "schema_mismatch").length, outcome === "malformed" ? 1 : 0);
+        assert.equal(events.filter(e => e.t === "lint_failed").length, outcome === "outage" ? 1 : 0);
+        if (outcome !== "outage") assert.equal(judge.calls, outcome === "malformed" ? 2 : 1);
+      });
+    }
+  }
+});
+
 describe("advisory quotations in narration", () => {
   it("logs a possible misattribution without returning a redraft message", async () => {
     const events: LintEvent[] = [];
@@ -241,7 +277,7 @@ describe("advisory quotations in narration", () => {
       pov: "Merritt", consult: null, chapter: 1,
       newNarrationJudge: () => judge, log: e => events.push(e),
     });
-    assert.equal(why, null);
+    assert.deepEqual(why, { blocking: null, advisory: null });
     assert.equal(judge.calls, 1);
     assert.equal(events.length, 1);
     assert.ok(events[0].t === "narration_quote_flag");

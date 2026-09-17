@@ -101,7 +101,8 @@ When several characters face the same fork, each is asked from the same shared m
 `situation` may only contain facts that predate every answer in the beat. One character's answer
 never becomes part of another's situation — the second one asked blind, and an answer leaked into
 someone else's situation decides the moment for them (`prompts.ts`, `WRITER_FORMAT`). The situation
-is the only channel there is, so it is also the only place such a leak can happen.
+is the writer-authored channel. With `--heard-channel`, engine-owned audible speech arrives
+separately; a fan-out snapshots that channel before any reactor answers, preserving isolation.
 
 Pressure without authorship — interrogation, captivity, custody — follows the same rule: the writer
 narrates what the controller does and puts what the controlled can perceive of it to them as
@@ -110,7 +111,20 @@ situation, without naming the fork or directing the choice. The full authoring p
 the lint do with each half) is [`Character.MD`](Character.MD)'s "Full control is circumstance, not
 obedience".
 
-A character re-consulted after two or more pieces of prose carries no memory of the page between,
+`--heard-channel` (off by default) makes situations circumstance-only: the writer must not recap
+or paraphrase speech, explain another person's private motive, or assign the addressee their own
+motive, desire, or feeling. The engine supplies eligible granted speech verbatim in a separate
+**[WHAT YOU HEARD]** block since that listener's last sent ask. Only active, rostered, non-remote
+speakers contribute; remote listeners and listeners whose CANNOT removes hearing receive none.
+Partial presence adds no gate. Remote `via` text is not treated as automatic permission to relay
+speech. The block contains no thoughts, actions, or notes, and no additional model call is made.
+Accepted history retains it, and a retry sees the same snapshot. See `Character.MD` for cursor
+and fan-out semantics.
+
+This flag supersedes `--consult-since`: no writer-facing third-field requirement, no stale refusal,
+and no joining writer-authored `since` into the situation. The legacy field remains parseable for
+records. Without `--heard-channel`, the previous behavior remains available for comparisons:
+a character re-consulted after two or more pieces of prose carries no memory of the page between,
 so under `--consult-since` the consult carries a third field, `since`: what reached them since they
 were last asked — what their last answer came to, and anything else around them they could perceive,
 or a plain statement that nothing new did. It joins the situation before the consult gate (one

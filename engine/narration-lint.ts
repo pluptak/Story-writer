@@ -36,8 +36,12 @@ export interface LintPieceOpts {
   chapter: number;
 }
 
-/** Check one drafted piece. Returns what to tell the writer, or null when it is clean. */
-export async function lintPiece(o: LintPieceOpts): Promise<string | null> {
+export interface LintPieceResult {
+  blocking: string | null;
+  advisory: string | null;
+}
+
+export async function lintPiece(o: LintPieceOpts): Promise<LintPieceResult> {
   const { log, chapter } = o;
   // Both mechanical checks run ALONGSIDE the LLM lint, never before it. There is one redraft
   // only, so reporting serially spends it on the first finding and leaves the second unfixed —
@@ -82,5 +86,9 @@ export async function lintPiece(o: LintPieceOpts): Promise<string | null> {
   }
   // A mechanical hit still stands when the LLM half fails or returns no verdict: neither check
   // needed a model, so an outage cannot take them down with it.
-  return [quoteLint && !isAdvisoryQuoteHit(quoteLint) ? quoteLint.why : null, senseLint?.why, lintWhy].filter((w): w is string => !!w).join(". ") || null;
+  return {
+    blocking: [quoteLint && !isAdvisoryQuoteHit(quoteLint) ? quoteLint.why : null, senseLint?.why]
+      .filter((w): w is string => !!w).join(". ") || null,
+    advisory: lintWhy,
+  };
 }

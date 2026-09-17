@@ -9,7 +9,7 @@ import { castBlock, factsBlock } from "./internal.ts";
 
 // -- WRITER AGENT ----------------------------------------------------------
 
-export const WRITER_FORMAT = `YOU ARE THE AUTHOR. You are writing one scene, a piece at a time.
+const writerFormat = (heard = false) => `YOU ARE THE AUTHOR. You are writing one scene, a piece at a time.
 
 You do not decide what the people in this scene do. When what happens next turns on a choice one of
 them makes -- what they say, whether they give way, what they reach for -- you STOP and ask them.
@@ -38,7 +38,19 @@ WHEN ASKED TO WRITE -- [WRITE]:
   consult    -- omit the field entirely when you do not need one. Two fields, and no third: who you
                 are asking, and what they can perceive.
     character  -- who you are asking.
-    situation  -- THE WHOLE OF WHAT YOU ARE SENDING. There is no question behind it; this is the ask.
+${heard ? `    situation  -- CIRCUMSTANCE ONLY. There is no question behind it; this is the ask.
+                  Put them in the moment: where they are, what has happened, and what they can
+                  perceive now. Do not paraphrase or recap speech. The engine supplies eligible
+                  granted speech verbatim under [WHAT YOU HEARD], separately from your situation.
+                  Remote characters do not exchange speech through that automatic channel; do not
+                  assume a connection carried words the engine has not supplied.
+                  They do not see the page, anyone else's thoughts, or your intended direction.
+                  Do not name the choice, lay out options, or tell them which part matters.
+                  Give observable circumstances, not an explanation of anyone's strategy.
+                  Do not settle another person's private motive, and do not tell the addressee
+                  their own motive, desire, or feeling. Those belong to the characters themselves.
+                  A thin situation will be rejected. State what is currently true, not "the door
+                  is about to open -- or it already has". Do not smuggle in a decision menu.` : `    situation  -- THE WHOLE OF WHAT YOU ARE SENDING. There is no question behind it; this is the ask.
                   Put them in the moment as they would meet it: where they are, what has just
                   happened, what they can perceive of it right now. They know nothing you do not put
                   here -- not the scene so far, not what anyone else thought, not what you are
@@ -46,6 +58,16 @@ WHEN ASKED TO WRITE -- [WRITE]:
                   the choice you think they face, and do not lay out what they could do about it: the
                   moment holds several forks and which one they take is theirs to find. A thin
                   situation will be rejected and you will have spent a step on nothing.
+                  Give observable words and circumstances, not an explanation of the opponent's
+                  strategy. A character may infer a motive; you must not settle another person's
+                  private motive for them. Nor tell the addressee their own motive, desire, or
+                  feeling -- those are theirs, and they already hold them. State what is currently
+                  true, not "the door is about to open -- or it already has". Do not smuggle a
+                  decision menu into the situation.`}
+                  Every consult must carry a live consequence -- something that changes if the
+                  answer is one way or the other. Do not spend steps on the body's logistics
+                  (reaching, testing slack, keeping occupied): if the consult's answer cannot
+                  change what happens next, do not open it.
                   When more than one character faces the same moment, each situation is built from
                   what was true before ANY of them answered. Never fold one character's answer into
                   another's situation -- the second one asked blind, and an answer leaked into
@@ -79,6 +101,26 @@ WHEN ASKED TO WRITE -- [WRITE]:
 
   Consult when a choice is being made. Do not consult for scenery, for a gesture that carries
   nothing, or for something you have already asked and had answered.
+
+TELL THE SCENE, NOT AN EXPLANATION OF IT
+
+  Render accepted words and actions without automatically explaining their meaning afterward.
+  Leave an inference unstated when the exchange already makes it available. A granted POV thought
+  is available material, not an obligation to explain every exchange; retain interiority that adds
+  something the reader could not otherwise know. The house style still sets the voice and texture.
+  Select physical details rather than filling every piece with atmosphere or posture changes.
+  A word ceiling is not a quota. Do not invent behavior to replace an explanation: the same
+  ownership rules apply to a meaningful glance, a silence, and a dramatic decision.
+
+  Continue from what the last accepted action changed, not merely from the last argument made.
+  Put its concrete consequences into the next situation without choosing anyone's response.
+  An interruption must matter through its established circumstances, not just its noise; do not
+  invent an arrival or discovery merely to force progress. A quiet refusal can be consequential.
+  Never resolve an unanswered demand by narrating the other side's concession -- a nod, a signature,
+  an agreement is a choice, and it must be asked for. When a consult is open and the scene runs
+  short, write the waiting from the POV's side of it in a way that draws the scene's pressure
+  forward instead of passing the time until it returns; nothing else in the scene may be spent to
+  fill the word budget.
 
 THE ONE RULE
 
@@ -137,6 +179,8 @@ WHEN ASKED FOR DIRECTIONS -- [ASK READER]:
 /** Stale-character `since` (--consult-since only): the consult's third field. Appended after
  *  WRITER_FORMAT rather than woven into it, so the format itself — and every prompt with the flag
  *  off — stays byte-identical. */
+export const WRITER_FORMAT = writerFormat();
+
 export const SINCE_FIELD = `SINCE -- a consult carries a third field beside character and situation:
 
   "consult": {"character": "NAME", "situation": "...", "since": "..."}
@@ -159,6 +203,7 @@ export function writerSystem(p: {
   /** Stale-character `since` enforcement (--consult-since): with it on, the writer is told the
    *  consult carries a third field. Absent or off, the prompt is byte-identical to before. */
   since?: boolean;
+  heard?: boolean;
 }): string {
   const cast = castBlock(p.cast);
   const scene = [
@@ -172,7 +217,7 @@ export function writerSystem(p: {
     `Length: about ${p.scene.length} words.`,
   ].filter(Boolean).join("\n");
   const style = p.style.trim() ? `\n\nHOUSE STYLE:\n${p.style.trim()}` : "";
-  return `${WRITER_FORMAT}${p.since ? `\n\n${SINCE_FIELD}` : ""}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
+  return `${p.heard ? writerFormat(true) : WRITER_FORMAT}${p.since && !p.heard ? `\n\n${SINCE_FIELD}` : ""}\n\nTHE PREMISE:\n${p.premise}\n\nTHE SCENE:\n${scene}\n\n`
     + `${cast}\n\n`
     + factsBlock(p.facts)
     + `A CANNOT is absolute, and it governs your narration as much as their answers: no watching, `

@@ -5,7 +5,8 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
-import { cannotDisplay, resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
+import { canonSkill, cannotDisplay, resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
+import { heardBlock } from "./heard.ts";
 import { warn } from "./warnings.ts";
 import {
   normalizeConsult,
@@ -14,7 +15,7 @@ import {
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
-import { lintPiece } from "./narration-lint.ts";
+import { lintPiece, type LintPieceResult } from "./narration-lint.ts";
 import { stripRepeatedPrefix } from "./repeat-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
 import { nameKey, sameName } from "./config-util.ts";
@@ -95,12 +96,12 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 
 // -- WRITER AGENT ----------------------------------------------------------
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[], style: string, facts: string[] = [], constraints: string[] = [], sinceEnforced = false): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[], style: string, facts: string[] = [], constraints: string[] = [], sinceEnforced = false, heard = false): string {
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
   const houseStyle = [style.trim(), ...constraints.map(c => c.trim()).filter(Boolean)].join("\n").trim();
-  return P.writerSystem({ premise, scene, cast, facts, style: houseStyle, ...(sinceEnforced ? { since: true as const } : {}) });
+  return P.writerSystem({ premise, scene, cast, facts, style: houseStyle, ...(sinceEnforced ? { since: true as const } : {}), ...(heard ? { heard: true } : {}) });
 }
 
 /** The cast actually in a scene; an empty roster means the whole cast. */
@@ -277,6 +278,7 @@ export type RunEvent =
   | { t: "world_beat"; beat: string; hold: string; at: number; step: number; chapter: number }
   | { t: "beat_stranded"; beat: string; at: number; chapter: number }
   | { t: "memory_surfaced"; character: string; chapter: number }
+  | { t: "world_event_surfaced"; character: string; beat: string; chapter: number }
   | { t: "repeat_strip"; chars: number; words: number; whole: boolean; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
@@ -424,7 +426,7 @@ export async function writeScene(run: SceneRun) {
   const mechanicalCast = roster.map((c, i) => ({
     name: c.name, cannot: c.limits, presenceState: cast[i].presenceState, pronouns: c.pronouns,
   }));
-  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints, ENGINE.consultSince), 0.8);
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints, ENGINE.consultSince, ENGINE.heardChannel), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
   // A thought reaches the writer only from inside the POV. The narration lint already holds that
@@ -482,7 +484,7 @@ export async function writeScene(run: SceneRun) {
   // gate (--consult-since only; fan-out reactors carry none). The narration lint reads this too,
   // so it judges the ask as sent, not as drafted. With the flag off this is the identity.
   const joinedSituation = (a: DraftConsult) =>
-    ENGINE.consultSince && a.since && !a.reactors ? P.withSince(a.situation, a.since) : a.situation;
+    ENGINE.consultSince && !ENGINE.heardChannel && a.since && !a.reactors ? P.withSince(a.situation, a.since) : a.situation;
 
   const refusedAsks = new Map<string, number>();
   const refusalFor = (why: string, name: string, situation: string) => {
@@ -509,10 +511,6 @@ export async function writeScene(run: SceneRun) {
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   const lastAsked = new Map<string, number>();
-  // Prose-piece count at each character's last SENT lone consult (--consult-since staleness base).
-  // A fan-out reaction does not reset it: reacting to a shared moment is not decision continuity,
-  // and the refusal that follows points at the one field that fixes it. First consults have no
-  // base and are never stale.
   const sinceBase = new Map<string, number>();
   const retryCounts = new Map<string, number>();
   // Deeds volunteered by the last reaction fan-out (lowercased name → action), waiting for the
@@ -524,6 +522,18 @@ export async function writeScene(run: SceneRun) {
   // Only a promoted reaction action joins later, like the writer's own history folding only a
   // promoted deed; a reaction's un-promoted action never becomes canon.
   const granted: GrantedEntry[] = [];
+  const heardFor = (name: string) => {
+    const def = defOf(name);
+    if (!def || !isActive(def.name) || !agents.has(nameKey(def.name))) return { lines: [] };
+    const sinceIndex = sinceBase.get(nameKey(def.name)) ?? 0;
+    return heardBlock({
+      name: def.name,
+      present: roster.filter(c => isActive(c.name) && scenePresence(sd, c)?.mode !== "remote")
+        .map(c => c.name),
+      cannotHear: def.limits.some(limit => canonSkill(limit) === "hearing")
+        || scenePresence(sd, def)?.mode === "remote",
+    }, granted.slice(sinceIndex));
+  };
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
   // Which world beats have fired this scene, held by entry identity (world-timeline.ts). A beat
@@ -697,17 +707,20 @@ export async function writeScene(run: SceneRun) {
       beatFired.add(turn.fired);
       console.log(`\n${C.cyan}(world beat fired at step ${steps + 1}, ${words}/${sd.length} words)${C.reset}`);
       log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, at: turn.fired.at, step: steps + 1, chapter });
-      for (const [name, mem] of turn.memories) {
-        const def = defOf(name);
-        if (!def || !isActive(def.name)) continue;
-        if (!mem.trim()) continue;
-        if (turn.fired!.scope === "scene" && scenePresence(sd, def)?.mode === "remote") continue;
+      for (const def of roster) {
+        if (!isActive(def.name)) continue;
+        if (turn.fired.scope === "scene" && scenePresence(sd, def)?.mode === "remote") continue;
         const a = agents.get(nameKey(def.name));
         if (!a) continue;
-        a.system += P.memorySurfaced(mem);
-        a.hear(ENGINE.freeConsult ? P.freeMemoryMarker(mem) : P.memoryMarker(mem));
-        log({ t: "memory_surfaced", character: def.name, chapter });
-        if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
+        a.system += P.worldEventSurfaced(turn.fired.fired);
+        log({ t: "world_event_surfaced", character: def.name, beat: turn.fired.fired, chapter });
+        for (const [name, mem] of turn.memories) {
+          if (!sameName(name, def.name) || !mem.trim()) continue;
+          a.system += P.memorySurfaced(mem);
+          a.hear(ENGINE.freeConsult ? P.freeMemoryMarker(mem) : P.memoryMarker(mem));
+          log({ t: "memory_surfaced", character: def.name, chapter });
+          if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
+        }
       }
     }
     writer.hear(P.writeInstruction({
@@ -758,11 +771,13 @@ export async function writeScene(run: SceneRun) {
         : granted;
 
       let flagged: string | null;
+      let findings: LintPieceResult;
       try {
-        flagged = await lintPiece({
+        findings = await lintPiece({
           prose: reply.prose, granted: lintGranted, cast: mechanicalCast, pov: sd.pov,
           consult: outgoingConsult, newNarrationJudge, log, chapter,
         });
+        flagged = [findings.blocking, findings.advisory].filter(Boolean).join(". ") || null;
       } catch (e) {
         if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
         throw e;
@@ -774,20 +789,39 @@ export async function writeScene(run: SceneRun) {
       const retried = lintAttempt >= NARRATION_LINT_RETRIES;
       log({ t: "narration_flag", why: flagged, retried, chapter });
       console.log(`${C.yellow}(narration flagged — ${flagged.split(". ")[0]}.)${C.reset}`);
-      if (retried) break;   // one redraft only — accept whatever comes back next
+      if (retried && !findings.blocking) break;
 
-      // Transient by design: the flag critiques a draft that never entered history, so keeping
-      // it would leave a criticism with no object — and on a redraft-call throw, a criticism of
-      // prose history records as uncorrected. It rides the redraft call only.
-      try {
-        draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft",
-          [{ role: "user", content: P.narrationFlagged(flagged) }]);
-      } catch (e) {
-        if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
-        console.log(`\n${C.red}Writer redraft call failed (${(e as Error).message}) — keeping the flagged piece.${C.reset}`);
-        break;
+      let needsDecision = retried;
+      let redrafted = false;
+      for (;;) {
+        if (needsDecision && findings.blocking) {
+          let choice;
+          try {
+            choice = await io.lintDecision?.({ prose: reply.prose, blocking: findings.blocking,
+              advisory: findings.advisory, chapter }) ?? "stop";
+          } catch (e) {
+            // A port outage must not crash the run any more than a lint or writer outage would —
+            // the piece stays on hold; the chapter ends preserving what is committed.
+            console.log(`\n${C.yellow}Lint decision port failed (${(e as Error).message}) — stopping the chapter.${C.reset}`);
+            choice = "stop";
+          }
+          if (RUN.stopped || choice === "stop") { stoppedMidLint = true; break; }
+          if (choice === "publish") break;
+        }
+        try {
+          draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft",
+            [{ role: "user", content: P.narrationFlagged(flagged) }]);
+          redrafted = true;
+          steps++;
+          break;
+        } catch (e) {
+          if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
+          console.log(`\n${C.red}Writer redraft call failed (${(e as Error).message}).${C.reset}`);
+          if (!findings.blocking) break;
+          needsDecision = true;
+        }
       }
-      steps++;
+      if (!redrafted) break;
     }
     if (stoppedMidLint) break;
 
@@ -857,7 +891,12 @@ export async function writeScene(run: SceneRun) {
     if (ask?.reactors) {
       // -- REACTION FAN-OUT: one shared beat, several present-but-not-acting characters react at once.
       // Each runs an isolated consult (never seeing another's reply); the writer gets them together.
+      const heardEnd = granted.length;
       asked = await reactionFanout({
+        ...(ENGINE.heardChannel ? {
+          heardFor,
+          markHeardSent: (name: string) => sinceBase.set(nameKey(name), heardEnd),
+        } : {}),
         reactors: ask.reactors, situation: ask.situation, question: ask.question, cast: mechanicalCast,
         defOf, agents, isActive, isPov, writerSees,
         clarifications, clarify, beginAttempt, keepClarifications, dropClarifications,
@@ -871,8 +910,8 @@ export async function writeScene(run: SceneRun) {
       // Stale-character `since` (--consult-since): prose pieces since their last SENT consult.
       // Unknown base (never asked) is never stale; a fan-out reaction does not reset the base.
       const base = def ? sinceBase.get(nameKey(def.name)) : undefined;
-      const stalePieces = base === undefined ? 0 : pieces.length - base;
-      const missingSince = !!def && ENGINE.consultSince
+      const stalePieces = ENGINE.heardChannel || base === undefined ? 0 : pieces.length - base;
+      const missingSince = !!def && ENGINE.consultSince && !ENGINE.heardChannel
         && stalePieces >= SINCE_STALE_PIECES && !ask.since;
       const check = def && !missingSince
         ? normalizeConsult({ ...ask, character: def.name, situation: joinedSituation(ask) }, mechanicalCast)
@@ -893,7 +932,8 @@ export async function writeScene(run: SceneRun) {
         writer.hear(refuseForLater(check!.why, def.name, ask.situation));
       } else {
         asked = true;
-        sinceBase.set(nameKey(def.name), pieces.length);
+        if (ENGINE.heardChannel) check!.req.heard = heardFor(def.name);
+        sinceBase.set(nameKey(def.name), ENGINE.heardChannel ? granted.length : pieces.length);
         const { reply, failed, usedAttempt, req } = await judgeGate({
           def, agent: persistent, req: check!.req, cast: mechanicalCast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,

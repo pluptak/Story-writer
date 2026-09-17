@@ -113,6 +113,90 @@ describe("the autonomous character format", () => {
   });
 });
 
+describe("storytelling responsibility boundaries", () => {
+  const character = {
+    persona: "A careful healer.", place: "A cell.", skills: [],
+    knows: "The witness recovered before dawn.", goal: "Obtain a stay.",
+    impulse: "When threatened, ask for an exact date.",
+    voice: ["Which night did his fever break?", "No. Read that part again."],
+  };
+
+  it("keeps natural speech guidance and authored voice in every character format", () => {
+    for (const build of [P.characterSystem, P.freeCharacterSystem, P.freeCharacterSystemV2]) {
+      const text = build(character);
+      assert.ok(text.includes(character.impulse));
+      for (const line of character.voice) assert.ok(text.includes(line));
+      assert.match(text, /Answer the person and the immediate situation, not an audience/);
+      assert.match(text, /not a gesture appended merely to accompany dialogue/);
+      assert.match(text, /Your choices remain yours/);
+    }
+  });
+
+  it("routes house style to the writer without handing over the character's private drives", () => {
+    const style = "Restrained narration; do not explain an exchange the reader can infer.";
+    const text = P.writerSystem({
+      premise: "A prisoner awaits a verdict.",
+      scene: { place: character.place, question: "Will a stay be granted?", pov: "MARA", length: 750 },
+      cast: [{ name: "MARA", can: [], cannot: [] }], facts: [], style,
+    });
+    assert.ok(text.includes(style));
+    for (const privateText of [character.persona, character.knows, character.goal,
+                               character.impulse, ...character.voice]) {
+      assert.ok(!text.includes(privateText));
+    }
+    assert.match(text, /not an obligation to explain every exchange/);
+    assert.match(text, /Do not invent behavior to replace an explanation/);
+    assert.match(text, /ONLY if it came from an answer you have already been given/);
+    assert.match(text, /A quiet refusal can be consequential/);
+  });
+
+  it("supplies embedded-menu evidence and distinguishes quoted demands in the lint instructions", () => {
+    const situation = "The frantic pounding has reached its peak. The door is about to open—or it already has. This is the moment of truth: do you sign the death warrant tonight to secure your promotion, or do you find a reason to delay her execution until you can gather more 'divine' evidence?";
+    const request = P.narrationLintRequest({
+      pov: "MARA", prose: "The pounding continued.", granted: [],
+      consult: { character: "ROWAN", situation, question: "" },
+    });
+    assert.ok(request.includes(situation));
+    assert.match(P.NARRATION_LINT_FORMAT, /still a menu even inside\s+"situation"/);
+    assert.match(P.NARRATION_LINT_FORMAT, /Do not flag an opponent's quoted demand/);
+    assert.match(P.NARRATION_LINT_FORMAT, /must not assert another person's private strategy/);
+    assert.match(P.WRITER_FORMAT, /Do not smuggle a\s+decision menu into the situation/);
+    assert.match(P.JUDGE_FORMAT, /Your job is to protect continuity, not authorial intention/);
+  });
+
+  it("names the unanswered-demand close as an invented choice, not a resolution to narrate", () => {
+    // Live run: after quote-lint removed the invented "Very well," the redraft answered Mara's
+    // demand through narration -- "He took a breath and nodded once" -- without ever consulting
+    // Rowan. The close read as earned because it followed a decision; it was invented.
+    // Asserted on the RENDERED writer system prompt, not the constant, so wrapping cannot hide it.
+    const rendered = P.writerSystem({
+      premise: "A prisoner awaits a verdict.",
+      scene: { place: "A cell.", question: "Will a stay be granted?", pov: "MARA", length: 750 },
+      cast: [{ name: "MARA", can: [], cannot: [] }], facts: [], style: "Restrained.",
+    });
+    assert.match(P.NARRATION_LINT_FORMAT,
+      /The invented close is the most important deed check of all, so test it FIRST/);
+    assert.match(P.NARRATION_LINT_FORMAT, /"He pressed his quill to the page and signed the\s+stay of execution" as the last line, with no grant showing Rowan was asked and answered/);
+    assert.match(P.NARRATION_LINT_FORMAT, /Compare ALREADY GRANTED: if the deciding deed\s+or agreement is not there, flag it/);
+    assert.match(P.NARRATION_LINT_FORMAT, /Stop at the demand and open the consult/);
+    assert.match(rendered, /Never resolve an unanswered demand by narrating the other side's concession/);
+    assert.match(rendered, /nothing else in the scene may be spent to\s+fill the word budget/);
+  });
+
+  it("names the idle-loop failure: steps spent where nothing consequential can change", () => {
+    const rendered = P.writerSystem({
+      premise: "A prisoner awaits a verdict.",
+      scene: { place: "A cell.", question: "Will a stay be granted?", pov: "MARA", length: 750 },
+      cast: [{ name: "MARA", can: [], cannot: [] }], facts: [], style: "Restrained.",
+    });
+    assert.match(rendered,
+      /Every consult must carry a live consequence\s+-- something that changes\s+if the\s+answer is one way or the other/);
+    assert.match(rendered, /Do not spend steps on the body's logistics/);
+    assert.match(rendered,
+      /draws the scene's pressure\s+forward instead of passing the time until it returns/);
+  });
+});
+
 describe("memorySurfaced", () => {
   it("renders the memory text and reads as knowledge, not as news", () => {
     const s = P.memorySurfaced("the lighthouse keeps its beam on a half-minute swing");

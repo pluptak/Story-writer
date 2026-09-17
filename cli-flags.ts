@@ -41,6 +41,7 @@ const OPTIONS = {
   // Stale-character `since` spike (CLI-only prototype): a lone consult opened for a character two
   // or more prose pieces since their last consult must carry `since` or is refused.
   "consult-since": { type: "boolean" },
+  "heard-channel": { type: "boolean" },
   // CANNOT-rendering arms (CLI-only prototype), independently switchable so each can be attributed
   // to the finding it targets: the restriction's authored meaning, the explicit empty state, and
   // marking a judged answer as the character's own testimony.

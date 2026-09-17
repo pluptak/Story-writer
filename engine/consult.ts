@@ -28,6 +28,7 @@ export interface ConsultRequest {
    *  the page count. Joined onto `situation` before this gate by the caller, so this is the raw
    *  field back, the same way `question` travels beside the ask the character actually reads. */
   since?: string;
+  heard?: { lines: [string, string][] };
 }
 
 // -- WHAT A CONSULT MUST CONTAIN TO BE WORTH SENDING -----------------------
@@ -243,7 +244,7 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
   // answer already in hand, which is what the caller does with every other unusable revision.
   if (checked.req.situation.trim() === prev.situation.trim())
     return { ok: false, why: P.badConsult.noNewSituation() };
-  return { ok: true, req: checked.req, wantsRefused: "" };
+  return { ok: true, req: { ...checked.req, ...(prev.heard ? { heard: prev.heard } : {}) }, wantsRefused: "" };
 }
 /**
  * The only shape floor left now that the judge names no output shape: a thought from outside the

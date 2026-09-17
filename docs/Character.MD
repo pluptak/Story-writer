@@ -49,10 +49,23 @@ rendered as a labelled block (`prompts/consult.ts`):
 
 `CHARACTER_FORMAT`'s own knowledge paragraph is the boundary in the character's words: what it
 knows is its persona, its skills, what it knew coming in, the situation as the author describes it,
-and what it has already said in this conversation — nothing else. It is told not to invent facts
+and what it has already said in this conversation — nothing else. Mid-scene system implants add
+world events and surfaced knowledge through the engine-owned channel below. It is told not to invent facts
 about the world but to ask for them; its own body, memory and feelings are its to invent freely.
 
 ### What can arrive mid-scene
+
+A **world event**, verbatim. When a world beat fires, the engine appends its authored `fired`
+text to each eligible character's system prompt under **[WHAT HAS HAPPENED]**, before the writer's
+next turn. This is circumstance, not the writer's paraphrase or an instruction about what to infer,
+feel, say, or do. It arrives even when the beat carries no memory for that character. The writer
+still receives the same event in its instruction for drafting circumstance.
+
+Event and memory delivery share one gate: the character must be rostered, still active, and have
+an agent; a `"scene"`-scoped beat skips anyone `"remote"`. A `"world"`-scoped beat reaches remote
+characters too, and `"partial"` does not block delivery. The system implant survives history
+trimming and is copied by `fork()`. Each delivery logs `world_event_surfaced` with the character,
+verbatim beat text, and chapter in `writing-log.jsonl`.
 
 A **memory**. A world beat that fires may carry per-character knowledge — what that character always
 knew and had no reason to think about until the event happened. The memory is appended to the system
@@ -63,6 +76,26 @@ told not to narrate the remembering. A `"scene"`-scoped beat's memory does not i
 character marked `"remote"` in that scene. `fork()` copies the system prompt, so a retried instance keeps
 the memory without learning it was a retry. The run log records that a memory surfaced and to whom;
 its wording reaches nobody but the character it belongs to.
+
+### Heard speech (opt-in)
+
+`--heard-channel` enables an engine-owned **[WHAT YOU HEARD]** block beside the writer's
+circumstance-only situation. It is off by default. Only granted speech from other active,
+rostered, non-remote speakers is included, in ledger order, as `NAME: "words"` lines with
+JSON string escaping. Thoughts, actions, notes, and the listener's own speech never travel here.
+A listener whose CANNOT canonically removes hearing receives no block. Remote listeners and
+speakers are excluded even with an authored `via`; partial presence adds no restriction.
+
+The first ask reads from the start of the granted ledger. Each sent ask advances that listener's
+`sinceBase` to the ledger cursor (not the prose-piece count used by the legacy `--consult-since`
+mode). Empty-prose turns therefore do not lose speech. Refused asks do not advance it. Retries
+keep the same snapshot, and the accepted history fold retains the block. Fan-out snapshots are
+all taken before any reactor answers; their cursors advance to that shared boundary, so no
+same-beat answer leaks into another reactor's ask, and those words remain available next turn.
+
+With this flag enabled, writer-authored `since` is neither joined nor required; its legacy record
+field remains parseable. With the flag off, the old `--consult-since` behavior is unchanged.
+No new model call is needed. Speech is what was said, not proof that its content is true.
 
 ### Presence
 
@@ -80,8 +113,8 @@ the phone line` — and renders onto the WHERE YOU ARE line above (`characterSys
 optional `via`, is parsed and rendered the same way (*your presence here is only partial …*), but
 deliberately gates nothing.
 
-Two consumers touch the character. The WHERE YOU ARE line, above. And world-beat memory
-implantation: a `"scene"`-scoped beat's memory is skipped for a `remote` character
+Besides the opt-in heard channel above, presence affects the WHERE YOU ARE line and world-beat event and memory
+implantation: a `"scene"`-scoped beat's event and memories are skipped for a `remote` character
 (`engine/scene-loop.ts`); a `"world"`-scoped beat implants regardless of presence. `partial`
 having no consumer is deliberate: it must not become a silent "can perceive whatever is
 narratively convenient".
@@ -148,7 +181,8 @@ engine has no dominance or coercion field, and nothing about this pattern needs 
 
 ### What it is never shown
 
-- The premise, the story-level `facts`, the writer's prose, any other character's answer.
+- The premise, the story-level `facts`, the writer's prose, or any other character's full private
+  answer. The opt-in heard channel carries only eligible granted speech, not private thought or notes.
 - On an **open** beat — the writer's own ask — the question itself. The situation is the whole of
   what it is sent; `THE_MOMENT_IS_YOURS` stands where the question would (`prompts/consult.ts`).
   The author still writes a question — it gates the consult and travels with the answer on the

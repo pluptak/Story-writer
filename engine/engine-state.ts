@@ -31,6 +31,7 @@ export const ENGINE = {
    *  logged, just never enforced. Prompts and call sequences are byte-identical
    *  (docs/PLANS.md). */
   consultSince: false,
+  heardChannel: false,
   /** CANNOT-rendering arms (CLI-only, --cannot-meaning / --cannot-none / --cannot-testimony), one
    *  flag each because they target different measured findings and a bundle cannot be attributed.
    *  With all three off, every prompt is byte-identical to the pre-arm engine.

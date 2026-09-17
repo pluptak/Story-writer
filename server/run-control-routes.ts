@@ -65,7 +65,10 @@ export async function handleRunControl(
     const o = await readJsonBody(req);
     LIVE.interactive = !!o.on;
     if (!LIVE.interactive && LIVE.readerArmed) LIVE.readerArmed = false;
+    const lintResolve = !LIVE.interactive && LIVE.awaitingLint ? LIVE.lintResolve : null;
+    if (lintResolve) { LIVE.awaitingLint = null; LIVE.lintResolve = null; }
     sseWrite(runState());
+    lintResolve?.("stop");
     json(res, 200, { ok: true });
     return true;
 
@@ -82,6 +85,21 @@ export async function handleRunControl(
     LIVE.pausing = false;
     if (LIVE.pauseResolve) { const r = LIVE.pauseResolve; LIVE.pauseResolve = null; LIVE.paused = false; r(); }
     sseWrite(runState());
+    json(res, 200, { ok: true });
+    return true;
+
+  } else if (path === "/lint-decision" && req.method === "POST") {
+    const o = await readJsonBody(req);
+    const choice = o?.choice;
+    if (choice !== "redraft" && choice !== "publish" && choice !== "stop") {
+      json(res, 400, { ok: false, reason: "choice must be redraft, publish, or stop" }); return true;
+    }
+    if (!LIVE.awaitingLint || !LIVE.lintResolve) {
+      json(res, 400, { ok: false, reason: "no lint decision pending" }); return true;
+    }
+    const r = LIVE.lintResolve; LIVE.lintResolve = null; LIVE.awaitingLint = null;
+    sseWrite(runState());
+    r(choice);
     json(res, 200, { ok: true });
     return true;
 

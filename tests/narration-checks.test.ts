@@ -8,7 +8,7 @@ import { NET } from "../engine/llm-client.ts";
 import { Agent } from "../engine/agent.ts";
 import { StoppedError } from "../live.ts";
 import { ENGINE } from "../engine/engine-state.ts";
-import { LIVE, resetLive, RUN, armRun, stopRun } from "../live.ts";
+import { LIVE, resetLive, RUN, armRun, stopRun, type LintDecision, type LintPrompt, type SceneIo } from "../live.ts";
 import { quiet, siteFetch, sceneRun } from "./helpers.ts";
 
 // -- THE WORLD TIMELINE -------------------------------------------------------
@@ -156,6 +156,126 @@ describe("the world timeline in the loop", () => {
     }
   });
 
+  for (const { mode, scope, receives } of [
+    { mode: "here", scope: "scene", receives: true },
+    { mode: "remote", scope: "scene", receives: false },
+    { mode: "partial", scope: "scene", receives: true },
+    { mode: "remote", scope: "world", receives: true },
+  ] as const) {
+    it(`delivers a ${scope}-scoped event verbatim with ${mode} presence, independently of memories`, async () => {
+      const sc = await sc0();
+      const sd: typeof sc.scenes[number] = { ...sc.scenes[0], roster: [],
+        presence: mode === "here" ? {} : { RIVEN: `${mode} :: the phone line` } };
+      const beat = "A frantic pounding on the heavy oak door";
+      const memory = "The door's hinges were replaced last winter.";
+      const timeline = [{
+        chapter: 1, hold: "the pounding starting", fired: beat, at: 0,
+        memories: { rIvEn: "   ", mErRiTt: memory, NOBODY: "an absent character's memory" },
+        state: "pending" as const, scope,
+      }];
+      const events: RunEvent[] = [];
+      const agents = new Map(sc.characters.map(c =>
+        [c.name.toLowerCase(), newCharacterAgent(c, sd.place, "low")] as const));
+      const fake = siteFetch({
+        "writer.draft": ({ n }) => n < 2 ? {
+          prose: "",
+          consult: {
+            character: n === 0 ? "RIVEN" : "MERRITT",
+            situation: "The service door is closed, with a package resting on the floor beside it and the lock still fastened from inside.",
+            question: "Do you open the door?",
+            wants: "decision",
+          },
+          scene_done: false,
+        } : { prose: "Dust settles along the threshold.", scene_done: true },
+        "judge.narration": { ok: true },
+        "judge.answer": { verdict: "accept" },
+        "judge.done": { status: "resolved", evidence: "the page settles it" },
+        "character.consult": { speech: "Keep it shut." },
+      });
+      const origFetch = globalThis.fetch;
+      const origStream = ENGINE.stream;
+      const origRetries = NET.retries;
+      ENGINE.stream = false;
+      NET.retries = 0;
+      globalThis.fetch = fake.fetchMock;
+      armRun();
+      try {
+        const r = await quiet(() => writeScene(sceneRun(sc, {
+          scene: sd, agents, timeline, log: e => events.push(e),
+        })));
+
+        assert.equal(r.done, true);
+        assert.equal(fake.count("character.consult"), 2);
+        const implant = `[WHAT HAS HAPPENED]\n${beat}`;
+        assert.equal(fake.messagesOf("character.consult", 0)[0].includes(implant), receives);
+        assert.equal(fake.messagesOf("character.consult", 0).join("\n").includes(beat), receives);
+        assert.ok(fake.messagesOf("character.consult", 1)[0].includes(implant));
+        assert.ok(fake.messagesOf("character.consult", 1)[0].includes(memory));
+        assert.ok(!agents.get("riven")!.system.includes(memory));
+        assert.equal(agents.get("riven")!.fork().system.includes(implant), receives);
+        assert.equal(agents.get("merritt")!.system.split(implant).length - 1, 1);
+        const delivered = events.filter(e => e.t === "world_event_surfaced");
+        assert.deepEqual(delivered, (receives ? ["RIVEN", "MERRITT"] : ["MERRITT"]).map(character => ({
+          t: "world_event_surfaced", character, beat, chapter: 1,
+        })));
+        assert.deepEqual(events.filter(e => e.t === "memory_surfaced"), [
+          { t: "memory_surfaced", character: "MERRITT", chapter: 1 },
+        ]);
+        assert.ok(fake.messagesOf("writer.draft", 0).join("\n").includes(`[WORLD] ${beat}`));
+      } finally {
+        globalThis.fetch = origFetch;
+        ENGINE.stream = origStream;
+        NET.retries = origRetries;
+        armRun();
+        resetLive();
+      }
+    });
+  }
+
+  for (const absent of ["unrostered", "exited"] as const) {
+    it(`skips event and memory delivery to an ${absent} character`, async () => {
+      const sc = await sc0();
+      const sd = { ...sc.scenes[0], length: 40, roster: absent === "unrostered" ? ["RIVEN"] : [] };
+      const beat = "A frantic pounding on the heavy oak door";
+      const memory = "The door's hinges were replaced last winter.";
+      const timeline = [{
+        chapter: 1, hold: "the pounding starting", fired: beat, at: 0.5,
+        memories: { MERRITT: memory }, state: "pending" as const, scope: "world" as const,
+      }];
+      const events: RunEvent[] = [];
+      const agents = new Map(sc.characters.map(c =>
+        [c.name.toLowerCase(), newCharacterAgent(c, sd.place, "low")] as const));
+      const origFetch = globalThis.fetch;
+      const origStream = ENGINE.stream;
+      ENGINE.stream = false;
+      globalThis.fetch = scriptedFetch([
+        { prose: "word ".repeat(25).trim(), scene_done: false,
+          ...(absent === "exited" ? { exit: "MERRITT" } : {}) },
+        { prose: "Dust settles along the threshold.", scene_done: true },
+      ]);
+      armRun();
+      try {
+        await quiet(() => writeScene(sceneRun(sc, {
+          scene: sd, agents, timeline, log: e => events.push(e),
+        })));
+
+        assert.ok(agents.get("riven")!.system.includes(beat));
+        assert.ok(!agents.get("merritt")!.system.includes(beat));
+        assert.ok(!agents.get("merritt")!.system.includes(memory));
+        assert.deepEqual(events.filter(e => e.t === "world_event_surfaced"), [
+          { t: "world_event_surfaced", character: "RIVEN", beat, chapter: 1 },
+        ]);
+        assert.ok(!events.some(e => e.t === "memory_surfaced"));
+        if (absent === "exited") assert.ok(events.some(e => e.t === "exit" && e.character === "MERRITT"));
+      } finally {
+        globalThis.fetch = origFetch;
+        ENGINE.stream = origStream;
+        armRun();
+        resetLive();
+      }
+    });
+  }
+
   it("records a beat whose trigger the scene never reached, and says nothing about other chapters", async () => {
     // The scene closes at 3 words against a 40-word target, so a beat set at 0.9 never fires. Only
     // a firing leaves a mark otherwise, so silence would read exactly like a beat that had landed.
@@ -254,6 +374,115 @@ describe("the world timeline in the loop", () => {
   };
 
 });
+
+// -- THE LINT DECISION GATE IN THE LOOP --------------------------------------
+describe("the lint decision gate in the loop", () => {
+  const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
+
+  /** The draft is flagged mechanically and — the point — the automatic redraft comes back with
+   *  the same finding still on it, which is what earns the human a say. Only the second redraft
+   *  (the one a "redraft again" choice buys) comes back clean. */
+  function flaggedFetch() {
+    const flagged = 'Riven reaches for the door. "Not tonight," Merritt says, without looking up.';
+    const clean = "Riven crosses the corridor and tries the door.";
+    let writerCall = 0;
+    const { fetchMock } = siteFetch({
+      "judge.narration": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
+      "writer.draft": () => ({ prose: flagged, scene_done: true }),
+      "writer.redraft": () => ({ prose: ++writerCall === 1 ? flagged : clean, scene_done: true }),
+    });
+    return { fetchMock, calls: () => ({ writerCall }), flagged, clean };
+  }
+
+  /** Drive the loop with a scripted port: one redraft, then the human decision, with the prompt
+   *  the gate receives captured for the assertions below. */
+  function decisionIo(choice: LintDecision | "throw") {
+    const asked: LintPrompt[] = [];
+    const io: SceneIo = {
+      moreSteps: async () => 0,
+      pauseGate: async () => false,
+      readerTake: () => false,
+      readerAnswer: async () => "",
+      lintDecision: async p => {
+        asked.push(p);
+        if (choice === "throw") throw new Error("simulated decision-port outage");
+        return choice;
+      },
+    };
+    return { io, asked };
+  }
+
+  for (const choice of ["redraft", "publish", "stop"] as const) {
+    it(`a mechanical finding that survives the automatic redraft asks the ${choice === "publish" ? "human" : choice === "stop" ? "human and stops" : "human, then redrafts again"}, and ${choice === "publish" ? "the piece reaches the page" : choice === "stop" ? "the chapter ends preserving the committed page" : "the next piece is what the loop waits for"}`, async () => {
+      const sc = await sc0();
+      const events: RunEvent[] = [];
+      const log = (e: RunEvent) => events.push(e);
+      const { fetchMock, calls, flagged, clean } = flaggedFetch();
+      const { io, asked } = decisionIo(choice);
+
+      const origFetch = globalThis.fetch;
+      const origStream = ENGINE.stream;
+      ENGINE.stream = false;
+      globalThis.fetch = fetchMock;
+      armRun();
+      try {
+        const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log, io }));
+
+        assert.equal(asked.length, 1, "the gate is asked exactly once, after the automatic redraft");
+        assert.equal(asked[0].blocking?.includes("unmatched quotation"), true, "the prompt carries the mechanical finding");
+        assert.equal(asked[0].prose, flagged, "the prompt shows the flagged piece itself");
+        assert.equal(asked[0].advisory, null, "a clean judge adds nothing to the prompt");
+
+        if (choice === "redraft") {
+          assert.deepEqual(r.prose, [clean], "the human's redraft is checked like any other piece");
+          assert.equal(calls().writerCall, 2);
+          assert.equal(r.done, true);
+        } else if (choice === "publish") {
+          assert.deepEqual(r.prose, [flagged], "publish commits the flagged piece as-is");
+          assert.equal(calls().writerCall, 1, "publish spends no further writer call");
+          assert.equal(r.done, true);
+        } else {
+          assert.deepEqual(r.prose, [], "stop ends the chapter with the page as it was");
+          assert.equal(r.done, false);
+        }
+        const flags = events.filter(e => e.t === "narration_flag") as any[];
+        assert.equal(flags.length, 2);
+        assert.equal(flags[1].retried, true, "the second flag is reported as the spent retry");
+      } finally {
+        globalThis.fetch = origFetch;
+        ENGINE.stream = origStream;
+        armRun();
+        resetLive();
+      }
+    });
+  }
+
+  it("a decision port that throws ends the chapter rather than hanging the scene", async () => {
+    const sc = await sc0();
+    const { fetchMock, calls, flagged } = flaggedFetch();
+    const { io } = decisionIo("throw");
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    ENGINE.stream = false;
+    globalThis.fetch = fetchMock;
+    armRun();
+    try {
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], io }));
+      assert.deepEqual(r.prose, [], "the committed page is preserved — nothing is discarded or invented");
+      assert.equal(r.done, false);
+      assert.equal(calls().writerCall, 1, "a port outage is not a second redraft");
+      assert.equal(!!flagged, true);
+    } finally {
+      globalFetchRestore(origFetch);
+      ENGINE.stream = origStream;
+      armRun();
+      resetLive();
+    }
+  });
+});
+
+function globalFetchRestore(orig: typeof globalThis.fetch) { globalThis.fetch = orig; }
 
 // -- THE NARRATION LINT -------------------------------------------------------
 describe("the narration lint", () => {

@@ -53,6 +53,7 @@ ENGINE.freeConsult = flag("free-consult-v3") !== undefined ? "v3"
 ENGINE.splitJudge = flag("split-judge") !== undefined;
 // --consult-since: same rule again; stale consults without one are refused only with it on.
 ENGINE.consultSince = flag("consult-since") !== undefined;
+ENGINE.heardChannel = flag("heard-channel") !== undefined;
 // --cannot-meaning / --cannot-none / --cannot-testimony: same rule again, one flag per arm so a
 // measured delta can be attributed to one of them. Every prompt is byte-identical with all off.
 ENGINE.cannotMeaning = flag("cannot-meaning") !== undefined;

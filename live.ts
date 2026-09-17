@@ -36,6 +36,9 @@ export function releaseForStop() {
   if (LIVE.awaitingContinue && LIVE.continueResolve) {
     const r = LIVE.continueResolve; LIVE.continueResolve = null; LIVE.awaitingContinue = null; r(0);
   }
+  if (LIVE.lintResolve) {
+    const r = LIVE.lintResolve; LIVE.lintResolve = null; LIVE.awaitingLint = null; r("stop");
+  }
   if (LIVE.readerResolve) { const r = LIVE.readerResolve; LIVE.readerResolve = null; r(""); }
   LIVE.readerArmed = false;
   if (LIVE.pauseResolve) { const r = LIVE.pauseResolve; LIVE.pauseResolve = null; r(); }
@@ -52,10 +55,18 @@ export interface RunMeta {
   question: string;
 }
 
+export type LintDecision = "redraft" | "publish" | "stop";
+export interface LintPrompt {
+  prose: string;
+  blocking: string;
+  advisory: string | null;
+  chapter: number;
+}
+
 export type RunStateFrame =
   { t: "run_state"; running: boolean; stopping: boolean; where: string; picking: boolean; loading: boolean;
     armed: boolean; paused: boolean; pausing: boolean; model: string | null; awaitingContinue: boolean;
-    interactive: boolean };
+    interactive: boolean; awaitingLint: boolean };
 
 export type LiveFrame =
   | ({ seq: number } & RunEvent)
@@ -64,6 +75,7 @@ export type LiveFrame =
   | { t: "agent_stats"; who: string; model: string; durationMs: number;
       promptTokens: number | null; completionTokens: number | null }
   | { t: "continue_prompt"; steps: number; budget: number; suggested: number }
+  | ({ t: "lint_prompt" } & LintPrompt)
   | RunStateFrame
   | { t: "run_reset" }
   | { t: "run_error"; message: string }
@@ -104,6 +116,8 @@ export const LIVE = {
 
   awaitingContinue: null as { steps: number; budget: number } | null,
   continueResolve: null as ((n: number) => void) | null,
+  awaitingLint: null as LintPrompt | null,
+  lintResolve: null as ((choice: LintDecision) => void) | null,
 
   modelOverride: null as string | null,
   interactive: true,
@@ -129,6 +143,7 @@ export function runState(): RunStateFrame {
     armed: LIVE.readerArmed,
     paused: LIVE.paused, pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
     awaitingContinue: !!LIVE.awaitingContinue,
+    awaitingLint: !!LIVE.awaitingLint,
     interactive: LIVE.interactive,
   };
 }
@@ -156,6 +171,8 @@ export function resetLive() {
   liveHistory.length = 0;
   liveSeq = 0;
   LIVE.loading = false;
+  if (LIVE.lintResolve) LIVE.lintResolve("stop");
+  LIVE.awaitingLint = null; LIVE.lintResolve = null;
   LIVE.awaitingContinue = null; LIVE.continueResolve = null;
   LIVE.readerArmed = false; LIVE.readerResolve = null;
   LIVE.pausing = false; LIVE.paused = false; LIVE.pauseResolve = null;
@@ -169,6 +186,7 @@ export function resetLive() {
  *  reader's consult seat. `LIVE_IO` is the real implementation, wired to this session's LIVE
  *  state and SSE bus; a run that brings its own port (SceneRun's `io`) is driven without either. */
 export interface SceneIo {
+  lintDecision?(prompt: LintPrompt): Promise<LintDecision>;
   /** The step budget is spent: ask how many more steps to take. 0 ends the scene. */
   moreSteps(steps: number, budget: number, chapter: number): Promise<number>;
   /** Park the scene while a pause is pending, until a resume arrives. True when it parked —
@@ -182,6 +200,59 @@ export interface SceneIo {
 }
 
 export const LIVE_IO: SceneIo = {
+  async lintDecision(prompt) {
+    if (RUN.stopped) return "stop";
+    if (!LIVE.interactive) {
+      console.log(`\n${C.yellow}Mechanical narration findings remain on chapter ${prompt.chapter}. Stopping — interactive is off.${C.reset}`);
+      return "stop";
+    }
+    if (!sseClients.size && !process.stdin.isTTY) {
+      console.log(`\n${C.yellow}Mechanical narration findings remain on chapter ${prompt.chapter}. Stopping — nobody to ask.${C.reset}`);
+      return "stop";
+    }
+    LIVE.awaitingLint = prompt;
+    const signal = RUN.abort.signal;
+    let settle: (choice: LintDecision) => void;
+    const answer = new Promise<LintDecision>(resolve => { settle = resolve; });
+    let settled = false;
+    const finish = (choice: LintDecision) => {
+      if (settled) return;
+      settled = true;
+      if (LIVE.lintResolve === finish) {
+        LIVE.lintResolve = null;
+        LIVE.awaitingLint = null;
+      }
+      settle(choice);
+    };
+    LIVE.lintResolve = finish;
+    const onStop = () => finish("stop");
+    signal.addEventListener("abort", onStop, { once: true });
+    let rl: ReturnType<typeof createInterface> | undefined;
+    try {
+      progressDone();
+      sseWrite(runState());
+      if (sseClients.size) {
+        sseWrite({ t: "lint_prompt", ...prompt });
+      } else {
+        rl = createInterface({ input: process.stdin, output: process.stdout });
+        void rl.question(`\n${prompt.prose}\n\n${prompt.blocking}\n${prompt.advisory ?? ""}\n`
+          + "Redraft again [r], publish anyway [p], or stop chapter [s]: ", { signal })
+          .then(value => finish(value.trim().toLowerCase() === "r" ? "redraft"
+            : value.trim().toLowerCase() === "p" ? "publish" : "stop"), () => finish("stop"));
+      }
+      const choice = await answer;
+      return RUN.stopped ? "stop" : choice;
+    } finally {
+      signal.removeEventListener("abort", onStop);
+      rl?.close();
+      if (LIVE.lintResolve === finish) {
+        LIVE.lintResolve = null;
+        LIVE.awaitingLint = null;
+      }
+      sseWrite(runState());
+    }
+  },
+
   async moreSteps(steps, budget, chapter) {
     if (RUN.stopped) return 0;
     if (!LIVE.interactive) {

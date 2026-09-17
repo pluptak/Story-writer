@@ -97,6 +97,10 @@ const STEERING_PARA = `You are not a writing assistant, you are this character. 
 for this scene, and you do not serve it. PLAY THE CHARACTER, DO NOT PLAY THE AUTHOR'S INTENTION.`;
 
 const FORMAT_TAIL = `Answer at the length the moment deserves. One breath is a complete answer.
+Answer the person and the immediate situation, not an audience. Your words need not explain your
+complete motive or form a polished argument. Use your own speech habits; do not force an aphorism,
+an interruption, or a fragment into every reply. Give an action only when you actually take one,
+not a gesture appended merely to accompany dialogue. Your choices remain yours.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
@@ -198,6 +202,9 @@ export function freeCharacterSystemV2(p: CharacterSystemArgs): string {
 export const memorySurfaced = (memory: string) =>
   `\n\nWHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT: ${memory}`;
 
+export const worldEventSurfaced = (event: string) =>
+  `\n\n[WHAT HAS HAPPENED]\n${event}`;
+
 export const memoryMarker = (memory: string) =>
   `[YOU REMEMBER] ${memory}\n\nYou have always known this -- it simply had no bearing until now, `
   + `and it is as certain to you as anything else you know. Do not announce that it came back to `
@@ -260,8 +267,14 @@ const THE_MOMENT_IS_YOURS =
   + `it needs something from here, here is where you take it.`;
 
 /** The situation + wanted-shape head shared by askBlock and both free-consult spikes. */
-const askHead = (req: { situation: string; wants: string }, pov: boolean) =>
+export const heardSpeech = (block?: { lines: [string, string][] }) =>
+  block?.lines.length
+    ? `\n\n[WHAT YOU HEARD]\n${block.lines.map(([name, speech]) => `${name}: "${speech}"`).join("\n")}`
+    : "";
+
+const askHead = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } }, pov: boolean) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
+  + heardSpeech(req.heard)
   + (req.wants ? `\nWhat they need from you: ${req.wants} (${
       req.wants === "reaction" && !pov ? REACTION_OUTWARD : wantsDef(req.wants)})` : "");
 
@@ -269,7 +282,7 @@ const askHead = (req: { situation: string; wants: string }, pov: boolean) =>
  *  compliance clause after it, the free spikes stop here (v3 adds only the nudge). */
 const ASK_REMINDER = `\n\nMissing a fact of your situation to answer honestly? Ask for it instead.`;
 
-export const askBlock = (req: { situation: string; wants: string },
+export const askBlock = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } },
                          attempt = 1, pov = true) =>
   askHead(req, pov)
   + `\n\n${THE_MOMENT_IS_YOURS}`
@@ -282,7 +295,7 @@ export const askBlock = (req: { situation: string; wants: string },
  *  THE_MOMENT_IS_YOURS insertion, the "not a request you owe compliance to" clause, and the
  *  RETRY_NUDGE_FIRM append on attempt >= 3. The retry ladder itself (AUTHOR_DONE_ANSWERING /
  *  ANSWER_NOW) is untouched and still terminates the consult. */
-export const freeAskBlock = (req: { situation: string; wants: string },
+export const freeAskBlock = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } },
                              attempt = 1, pov = true) => {
   void attempt;
   return askHead(req, pov) + ASK_REMINDER;
@@ -293,7 +306,7 @@ export const freeAskBlock = (req: { situation: string; wants: string },
  *  (this) rather than clearer instruction (v2's ladder addendum, which v3 also keeps via
  *  freeCharacterSystemV2). THE_MOMENT_IS_YOURS and "not a request you owe compliance to" stay
  *  gone -- only the attempt-3 nudge comes back, on its own. */
-export const freeAskBlockV3 = (req: { situation: string; wants: string },
+export const freeAskBlockV3 = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } },
                                attempt = 1, pov = true) =>
   askHead(req, pov)
   + ASK_REMINDER
@@ -310,8 +323,9 @@ export const freeAskBlockV3 = (req: { situation: string; wants: string },
  *  repeated eight times competes with the scene it was supposed to serve, which is the reason the
  *  fold already drops RETRY_NUDGE_FIRM -- this is that rule applied to the rest of the block. The
  *  live ask still carries all of it, so the turn being answered never looks any different. */
-export const foldedAsk = (req: { situation: string; wants: string }) =>
+export const foldedAsk = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } }) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
+  + heardSpeech(req.heard)
   + (req.wants ? `\nWhat they need from you: ${req.wants}` : "");
 
 /** `since` joined onto the situation before the consult gate: one ground-truth channel, not

@@ -381,6 +381,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         res.write("retry: 3000\n\n");
         for (const ev of liveHistory) res.write(`data: ${JSON.stringify(ev)}\n\n`);
         res.write(`data: ${JSON.stringify(runState())}\n\n`);
+        if (LIVE.awaitingContinue) res.write(`data: ${JSON.stringify({ t: "continue_prompt", ...LIVE.awaitingContinue, suggested: 8 })}\n\n`);
+        if (LIVE.awaitingLint) res.write(`data: ${JSON.stringify({ t: "lint_prompt", ...LIVE.awaitingLint })}\n\n`);
         sseClients.add(res);
         const dropClient = () => sseClients.delete(res);
         req.on("close", dropClient);
@@ -390,7 +392,7 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
 
       } else if (path === "/run") {
         json(res, 200, {
-          run: LIVE.meta, awaitingContinue: LIVE.awaitingContinue, events: liveHistory.length,
+          run: LIVE.meta, awaitingContinue: LIVE.awaitingContinue, awaitingLint: LIVE.awaitingLint, events: liveHistory.length,
           running: LIVE.running, stopping: RUN.stopped && LIVE.running, where: LIVE.where,
           picking: LIVE.awaitingPick, loading: LIVE.loading, armed: LIVE.readerArmed,
           paused: LIVE.paused, pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,

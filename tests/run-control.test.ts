@@ -10,7 +10,7 @@ import { Agent, setFitWarning } from "../engine/agent.ts";
 import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
-import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError } from "../live.ts";
+import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError, LIVE_IO, sseClients, type LintDecision } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import type { ServerHost } from "../server/server.ts";
 import { quiet, callRoute, siteFetch, sceneRun } from "./helpers.ts";
@@ -172,16 +172,17 @@ describe("per-scene writer overrides", () => {
 });
 
 // -- PAUSE/RESUME HANDSHAKE (loop↔route promise coordination) ---------------
+/** A waiter that is never released would hang the whole suite; fail it instead. Clearing the
+ *  timer matters: an uncleared one keeps the loop alive its full second after the test. */
+function releasedWithin<T>(p: Promise<T>, ifNot: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(ifNot)), 1000);
+  });
+  return Promise.race([p, guard]).finally(() => clearTimeout(timer));
+}
+
 describe("pause/resume handshake", () => {
-  /** A waiter that is never released would hang the whole suite; fail it instead. Clearing the
-   *  timer matters: an uncleared one keeps the loop alive its full second after the test. */
-  function releasedWithin<T>(p: Promise<T>, ifNot: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>;
-    const guard = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(ifNot)), 1000);
-    });
-    return Promise.race([p, guard]).finally(() => clearTimeout(timer));
-  }
 
   it("/resume resolves the paused waiter and clears state", async () => {
     resetLive();
@@ -242,6 +243,106 @@ describe("pause/resume handshake", () => {
     assert.equal(LIVE.pausing, false);
     assert.equal(LIVE.paused, false);
     assert.equal(LIVE.pauseResolve, null);
+  });
+});
+
+// -- THE LINT DECISION GATE (loop↔route promise coordination) ----------------
+describe("lint decision handshake", () => {
+  const prompt = { prose: "Merritt watches the door.", blocking: "restricted sense: MERRITT is shown \"watches\" but CANNOT sight.", advisory: null, chapter: 1 };
+  const host = {} as unknown as ServerHost;
+
+  /** Park a lint waiter the way app.test.ts parks its other waits: seed LIVE state directly. The
+   *  routes' whole job is to spend this resolver exactly once and clear the state with it. */
+  function parked(): Promise<LintDecision> {
+    return new Promise(resolve => {
+      LIVE.awaitingLint = prompt;
+      LIVE.lintResolve = resolve;
+    });
+  }
+
+  it("/lint-decision answers the pending gate with the human's choice, once", async () => {
+    resetLive();
+    LIVE.running = true;
+    const waiter = releasedWithin(parked(), "the lint waiter was not released");
+    assert.equal(LIVE.awaitingLint, prompt, "the prompt rides run state for /run and SSE");
+    assert.equal(runState().awaitingLint, true);
+
+    const early = await callRoute(handleRunControl, "/lint-decision", { choice: "bogus" }, host);
+    assert.equal(early.code, 400, "a malformed choice is refused without spending the prompt");
+    assert.ok(LIVE.awaitingLint, "the prompt is still pending after a refused answer");
+
+    const answered = await callRoute(handleRunControl, "/lint-decision", { choice: "publish" }, host);
+    assert.equal(answered.code, 200);
+    assert.equal(await waiter, "publish");
+
+    const spent = await callRoute(handleRunControl, "/lint-decision", { choice: "publish" }, host);
+    assert.equal(spent.code, 400, "a second answer finds nothing pending");
+    assert.equal(LIVE.awaitingLint, null);
+    assert.equal(LIVE.lintResolve, null);
+    resetLive();
+  });
+
+  it("/stop releases the pending lint gate so a stopped run cannot hang on it", async () => {
+    resetLive();
+    LIVE.running = true;
+    armRun();
+    const waiter = releasedWithin(parked(), "stop did not release the lint waiter — deadlock risk");
+    const r = await callRoute(handleRunControl, "/stop", {}, host);
+    assert.equal(r.code, 200);
+    assert.equal(await waiter, "stop");
+    assert.equal(LIVE.awaitingLint, null);
+    assert.equal(LIVE.lintResolve, null);
+    resetLive();
+  });
+
+  it("/interactive off ends the chapter instead of leaving the gate parked", async () => {
+    resetLive();
+    LIVE.running = true;
+    LIVE.interactive = true;
+    const waiter = releasedWithin(parked(), "interactive-off did not release the lint waiter");
+    const r = await callRoute(handleRunControl, "/interactive", { on: false }, host);
+    assert.equal(r.code, 200);
+    assert.equal(await waiter, "stop");
+    assert.equal(LIVE.awaitingLint, null);
+    resetLive(); LIVE.interactive = true;
+  });
+
+  it("resetLive clears the gate with the rest of the run's state", () => {
+    parked();
+    resetLive();
+    assert.equal(LIVE.awaitingLint, null);
+    assert.equal(LIVE.lintResolve, null);
+  });
+
+  it("LIVE_IO parks while someone is watching and /lint-decision settles it exactly once", async () => {
+    resetLive();
+    LIVE.running = true;
+    LIVE.interactive = true;
+    armRun();
+    const client = { write: () => {} };
+    sseClients.add(client);
+    try {
+      const waiter = releasedWithin(LIVE_IO.lintDecision!(prompt), "the lint waiter was not released");
+      assert.equal(LIVE.awaitingLint?.blocking, prompt.blocking, "the parked prompt carries the findings to show");
+      assert.equal(runState().awaitingLint, true);
+      const answered = await callRoute(handleRunControl, "/lint-decision", { choice: "redraft" }, host);
+      assert.equal(answered.code, 200);
+      assert.equal(await waiter, "redraft", "the loop receives the human's choice");
+      assert.equal(LIVE.awaitingLint, null);
+    } finally {
+      sseClients.delete(client);
+    }
+    resetLive();
+  });
+
+  it("with no viewer and no terminal the gate answers stop on its own — a headless run cannot hang", async () => {
+    resetLive();
+    LIVE.running = true;
+    armRun();
+    const choice = await releasedWithin(LIVE_IO.lintDecision!(prompt), "the nobody-askable fallback did not return");
+    assert.equal(choice, "stop");
+    assert.equal(LIVE.awaitingLint, null);
+    resetLive();
   });
 });
 

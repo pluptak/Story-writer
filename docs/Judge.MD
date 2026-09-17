@@ -34,7 +34,7 @@ second shape to fall into (`prompts/judge.ts`'s header keeps the record).
 | agent | built by | model | shown | verdict | call fails |
 | --- | --- | --- | --- | --- | --- |
 | **JUDGE** | `newJudge` per call (`engine/scene-loop.ts`) | writer's | the situation, the question, the answer, the cast's limits | `accept` \| `retry` | `judge_failed` → answer accepted |
-| **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → piece goes to the page |
+| **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → judge fails open; mechanical blocking still applies |
 | **BATCH-JUDGE** | `newBatchJudge` (`engine/scene-loop.ts`) | writer's | every volunteered deed in one call | one `promotable` flag each | `batch_judge_failed` → nothing promoted |
 | **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `status` resolved/open/unclear (+ evidence, why) | `done_judge_failed` → `unavailable` recorded |
 | **CAST-JUDGE** | `newCastAsymmetryJudge` (`engine/architect.ts`) | architect's | the tension, the cast sheet | `ok` true/false + why | gate passes |
@@ -233,21 +233,34 @@ and it is addressee-anchored when it reads a consult's situation, which inverts 
 spellings read: `you watch` and `your gaze` are the incriminating forms there, where in prose
 `your` before a verb spelling marks a noun.
 The three checks run **alongside** each other and their `why` strings join into the one
-`narration_flag`, because there is only one redraft: reported serially, the budget would be spent
+`narration_flag`, because there is only one automatic redraft: reported serially, the budget would be spent
 on the first finding and the second accepted unfixed. A mechanical hit also survives an LLM outage,
 since it needed no model to begin with.
 
 The verdict is `{"ok": true}` or `{"ok": false, "why": "..."}` — and only an explicit one counts
 (`parseLintVerdict`): a reply carrying neither is asked once more against `LINT_ONLY`, and a second
-miss sends the piece to the page with `schema_mismatch` on the record. A check nobody made must not
+miss fails the judge open with `schema_mismatch` on the record; mechanical blocking still applies.
+A check nobody made must not
 read as a check that passed.
 
-**The lint warns; it never blocks.** One redraft from the same `[WRITE]` instruction — nothing has
-reached `pieces[]`, the writer's history, or the writing log, so it is a clean redo, not an
-undo — and a retry that is flagged again, or fails outright, is accepted anyway and logged with the
-flag's `retried` set. THE ONE RULE itself is enforced by the consult protocol, which decides
-whether a line exists to be written at all; the lint is advisory quality control that reports its
-own gaps.
+**One automatic redraft; persistent mechanical blocking needs a human decision.** Both mechanical
+and judge findings feed the same first redraft from the same `[WRITE]` instruction — nothing has
+reached `pieces[]`, the writer's history, or the writing log, so it is a clean redo, not an undo.
+If mechanical blocking remains afterwards, the unpublished prose and separate blocking/advisory
+findings are shown to the operator. A failed redraft with mechanical blocking still outstanding also
+opens this decision; failure is not permission to publish the original flagged piece.
+
+The choices are **Redraft again**, **Publish anyway**, and **Stop chapter**. Redraft again requests
+another attempt and checks it before committing; Publish anyway explicitly accepts the current
+flagged draft; Stop chapter discards the pending draft and preserves the already committed page.
+If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
+that committed page intact. Turning interactive off during a pending decision resolves it as stop.
+
+**Judge-only findings remain advisory:** after the one automatic redraft, a repeated judge-only
+finding or redraft failure retains the previous accept-with-warning behaviour. An unavailable judge
+still fails open, but cannot erase mechanical blocking. THE ONE RULE itself is enforced by the
+consult protocol, which decides whether a line exists to be written at all. The HTTP/SSE decision
+contract and reconnect behaviour are in [`GUI-SPEC.md`](GUI-SPEC.md).
 
 Two evidence rules keep it from flagging exactly what the engine asked for: a deed the same reply
 promotes is already on the ledger when the lint runs (the promote itself is processed just after
