@@ -62,8 +62,21 @@ interface CaseResult {
   samples: SampleResult[];
 }
 
+const KNOWN_FLAGS = ["model", "samples", "case", "story", "out", "think"];
+
 function parseArgs() {
   const args = process.argv.slice(2);
+  // A misspelled flag (--sample= for --samples=) used to fall back to the default silently — two
+  // full sampling runs were spent on 5/case instead of the intended 20 before this was caught. Fail
+  // loudly instead: an unrecognized --flag is a hard error, not a quiet default.
+  for (const a of args) {
+    if (!a.startsWith("--")) continue;
+    const name = a.slice(2).split("=")[0];
+    if (!KNOWN_FLAGS.includes(name)) {
+      console.error(`Unknown flag --${name}. Known flags: ${KNOWN_FLAGS.map(f => `--${f}=`).join(", ")}`);
+      process.exit(1);
+    }
+  }
   const get = (name: string) => {
     const hit = args.find(a => a.startsWith(`--${name}=`));
     return hit ? hit.slice(name.length + 3) : undefined;

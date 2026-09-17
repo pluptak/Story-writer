@@ -122,13 +122,14 @@ this entry was first written, so the same comparison shape covers both.
 ### 3. A scene has no representation of its own question being answered
 
 Type: measurement
-Why now: the done-judge instrumentation (`QuestionState`) shipped (`200facf`) and a resampling
-harness (`done-judge-bench`) just caught a live false-`resolved` on its first independent resample —
-the exact failure mode that decides whether gating is safe, now with a reproducible case to chase.
-Next action: run `npm run done-judge-bench` at higher `--samples` (20+) on `extension-open-step24`
-and the other cases to get a real rate, not an n=5 read; add cases as new runs surface them.
-Done when: enough samples are read to say whether `question_state` should start gating anything, or
-what enforcement should look like. See "Whether a scene may outrun its own question" under Decisions
+Why now: the resampling harness (`done-judge-bench`) has now put a real sample size (80) behind the
+one question that decides whether gating is safe — false `resolved` is rare (1.25%) and correlates
+with genuinely ambiguous prose, not with the mechanism itself. Close to a decision.
+Next action: either add cases that stress `resolved` on *different* kinds of ambiguity (not just this
+one story's lock-and-doorway shape), or move to scoping the cheap first enforcement policy (plan
+step 6: one free closing piece on resolved, deny/limit further extensions past it).
+Done when: enough is read to say whether `question_state` should start gating anything, or what
+enforcement should look like. See "Whether a scene may outrun its own question" under Decisions
 needed for the policy question this measurement feeds.
 Evidence: `05-18-22-498Z`, `05-22-55-735Z` (pre-instrumentation, revision `6e69eff`);
 `06-15-52-596Z`, `07-50-49-951Z` (first post-instrumentation reads); `scripts/done-judge-bench.ts` +
@@ -168,6 +169,23 @@ endings existing; the harness exists precisely so the next read is a real sample
 another expensive full run. `evidence` being present did not save this case — the field is stated,
 not verified, so a spot-check against the page is still required, not optional, even when `evidence`
 looks concrete.
+
+**Evidence since (2026-09-17) — the real rate, 80 samples (`--samples=20`, all four cases):** 79/80
+matched, 1/80 false `resolved` (1.25%) — the *same* case as above, `extension-open-step24`, repeating
+its exact fabricated evidence again (1/20 = 5% on that one case). The other three cases held
+perfectly: `extension-open-step48` 20/20, `writer-done-standoff-step50` 20/20, and — the one that
+mattered most — `clean-resolution-step21` **20/20**, the genuine resolution, reproducing the identical
+verbatim evidence every single time. So at this sample size the failure is not evenly distributed: it
+concentrates entirely on the one excerpt whose prose is itself genuinely confusing to read (an action
+that could plausibly, on a fast read, be mistaken for settling the door), and never touches either
+clean case. That is a narrower, more encouraging finding than "the judge hallucinates resolutions" —
+it reads more like "the judge inherits the page's own ambiguity," which is closer to what a verdict
+call is supposed to do than a flaw specific to it.
+
+Also worth recording: the harness itself had a bug caught by this run — `--sample=20` (missing the
+`s`) silently fell back to the samples default (5) instead of erroring, costing two full 5-per-case
+runs before the mistake was visible in the output. Fixed to hard-refuse any unrecognized `--flag`,
+the same policy `cli-flags.ts` already holds the engine to.
 
 The doorway run ended `done: false` at 64 steps against a `maxSteps` of 24 with 933 words against a
 700 target. Its question — "Does Riven get through the door before Merritt decides what to do about
