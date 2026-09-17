@@ -19,7 +19,8 @@ import { LIVE, resetLive } from "../../live.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, originSkillGroups } from "../../engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
          type TagEntry } from "../../engine/catalog-schema.ts";
-import { SKILL_CATALOG, canonSkill } from "../../engine/skills.ts";
+import { SKILL_CATALOG, canonSkill, splitMeaning } from "../../engine/skills.ts";
+import { sameName } from "../../engine/config-util.ts";
 import { ASSIST_FIELDS } from "../../engine/catalog-assist.ts";
 import { VOICE_SAMPLE_CAP } from "../../engine/story-schema.ts";
 import { HOST, setScaffoldTestHooks, setHandoffTestHooks } from "../../host.ts";
@@ -76,6 +77,18 @@ export async function copyFixtureStory(): Promise<string> {
   const dir = await mkdtemp(joinPath(tmpdir(), "pw-story-"));
   await writeFile(joinPath(dir, "story.json"), await readFile(joinPath(ROOT, FIXTURE_DIR, "story.json"), "utf8"));
   return dir;
+}
+
+/** Seed temp-catalog entries through the real save path, for states no UI
+ *  path produces — an origin granting a skill the general catalog does not
+ *  know. Same temp files the catalog page reads, so what lands here is what
+ *  the UI opens. */
+export async function seedCatalogEntries(kind: CatalogKind, entries: unknown[]) {
+  const bible = await skillBible(catalogFile("skills"));
+  for (const entry of entries) {
+    const r = await saveEntry(kind, entry as never, catalogFile(kind), { bible });
+    if (!r.ok) throw new Error(`seedCatalogEntries(${kind}) refused: ${JSON.stringify(r)}`);
+  }
 }
 
 // -- PER-TEST REGISTRATION ----------------------------------------------------
@@ -287,9 +300,31 @@ async function fixtureHost(): Promise<ServerHost> {
       originSkills: await originSkillGroups(catalogFile("skills")),
       generalSkills: { ...SKILL_CATALOG },
     }),
-    // Usage is derived from the temp catalogs, which start empty — never from the author's real
-    // files at ROOT, which the spread HOST would read.
-    catalogUsage: async () => ({ tags: {}, skills: {} }),
+    // Usage is derived from the temp catalogs through the same shape as the
+    // real host's catalogUsage — never from the author's real files at ROOT,
+    // which the spread HOST would read. Temp-scoped here for the same reason
+    // every other catalog call above is.
+    catalogUsage: async () => {
+      const [characters, styles] = await Promise.all([
+        loadCatalog("characters", catalogFile("characters")),
+        loadCatalog("styles", catalogFile("styles")),
+      ]);
+      const usage: { tags: Record<string, { styles: string[] }>; skills: Record<string, number> } =
+        { tags: {}, skills: {} };
+      for (const s of (styles.entries as { name?: string; tags?: string[] }[]))
+        for (const t of s.tags ?? []) {
+          const key = String(t ?? "").trim().toLowerCase();
+          if (!key) continue;
+          (usage.tags[key] ??= { styles: [] }).styles.push(String(s.name || ""));
+        }
+      for (const c of (characters.entries as { skills?: string[] }[]))
+        for (const raw of c.skills ?? []) {
+          const name = splitMeaning(String(raw)).text;
+          const key = Object.keys(usage.skills).find((k) => sameName(k, name)) ?? name;
+          usage.skills[key] = (usage.skills[key] ?? 0) + 1;
+        }
+      return usage;
+    },
   } as ServerHost;
 
   // Every property the server reads goes through here, so `setHostOverrides` applies to a host

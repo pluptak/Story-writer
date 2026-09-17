@@ -3,7 +3,7 @@ import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadLibrary } from "./catalog.js";
 import { go } from "./nav.js";
-import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
+import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, saveNotesHtml, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // The scaffold's import picker reads the same library through a lazy cache. A write here has to drop
 // it, or the tray keeps offering a character this page has already changed or deleted.
@@ -204,7 +204,7 @@ function editorHtml() {
     ${button({label:"Delete", id:"charlib-delete", variant:"danger", extraClass:"small", disabled:s.deletingId === c?.id})}
   `)}
   ${tabs(`<button class="lib-tab active">Overview</button><button class="lib-tab" id="charlib-ai-tab">AI Assistant</button><button class="lib-tab" disabled>Revisions</button>`)}
-  ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
+  ${s.error ? errorLine(esc(s.error)) : ""}${saveNotesHtml(s)}${s.dirty ? warnLine("unsaved changes") : ""}
   ${section("Essence", "Reusable character identity. Keep story-specific goals and knowledge out of the library.", `
     ${field("charlib-name", "Name", d.name, "input")}
     ${field("charlib-persona", "Portable persona", d.portablePersona, "textarea", "The identity that travels between stories.")}
@@ -350,7 +350,7 @@ async function load() {
 // baseline is a fresh clone of whatever was just selected/created/duplicated/saved -- including a
 // brand-new, never-persisted character, so its own initial draft is what a later edit diffs against
 // (plan: "changes should show edits relative to the initial draft").
-function setSelected(c) { const s = APP.characterLibrary; s.selected = c; s.baseline = clone(c); s.draft = draftOf(c); s.dirty = false; s.changes = []; s.changesOpen = false; s.menuId = ""; s.error = ""; s.assistant = { open:false, mode:"revise", fields:[], instruction:"", loading:false, proposal:null, error:"" }; ensureSelectedVisible(); APP.render(); }
+function setSelected(c) { const s = APP.characterLibrary; s.selected = c; s.baseline = clone(c); s.draft = draftOf(c); s.dirty = false; s.changes = []; s.changesOpen = false; s.menuId = ""; s.error = ""; s.saveIssues = []; s.saveProblems = []; s.assistant = { open:false, mode:"revise", fields:[], instruction:"", loading:false, proposal:null, error:"" }; ensureSelectedVisible(); APP.render(); }
 
 function createNew() { const s = APP.characterLibrary; const c = { ...entryOf({...emptyDraft(), id:newId("chr"), name:"New character"}), hidden:false, version:0, updatedAt:Date.now() }; s.entries.unshift(c); setSelected(c); }
 
@@ -360,7 +360,7 @@ function collectDraft() { const s = APP.characterLibrary; if (!s.draft) return; 
 
 async function save() {
   const s = APP.characterLibrary; collectDraft(); if (!s.draft || !needsSave(s) || s.saving) return;
-  const payload = entryOf(s.draft); if (!payload.name) { s.error = "A character needs a name."; APP.render(); return; }
+  const payload = entryOf(s.draft); if (!payload.name) { s.error = ""; s.saveIssues = ["A character needs a name."]; APP.render(); return; }
   // savingId, not s.selected, is what the response is checked against below -- the user is free to
   // switch to a different character (or none) while this request is in flight, and the save must
   // still land in the list without touching whatever is now on screen.
@@ -370,7 +370,7 @@ async function save() {
     msg => { if (s.selected?.id === savingId) s.error = msg; });
   s.saving = false;
   if (!j?.ok) {
-    if (s.selected?.id === savingId) { s.error = reasonOr(j, "could not save character"); APP.render(); }
+    if (s.selected?.id === savingId) { s.error = reasonOr(j, "could not save character"); s.saveIssues = [...(j?.issues ?? [])]; APP.render(); }
     return;
   }
   invalidateLibrary();
@@ -379,6 +379,7 @@ async function save() {
   const next = { ...j.entry, hidden: !!j.entry.hidden, updatedAt: j.entry.updatedAt || 0 };
   const idx = s.entries.findIndex(c => c.id === next.id); if (idx >= 0) s.entries[idx] = next; else s.entries.unshift(next);
   if (s.selected?.id === savingId) setSelected(next); else APP.render();
+  if (s.selected?.id === savingId) { s.saveProblems = [...(j.problems ?? [])]; s.saveIssues = []; APP.render(); }
   // Create-then-return: the scaffold sent the author here. Arm the one-shot select, clear the
   // flag before navigating (so a failed navigation can't loop), and go back — wireScaffold's
   // return hook fires the same POST the new chip would send once the refetched cache lands it.

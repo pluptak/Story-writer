@@ -963,6 +963,68 @@ test("a save that lands after switching characters updates the list row, not the
   await expect(page.locator(".said.bad")).toHaveCount(0);
 });
 
+for (const { kind, prefix, field, fields } of [
+  { kind: "skills", prefix: "skilllib", field: "name", fields: { meaning: "A learned craft.", kind: "special" } },
+  { kind: "tags", prefix: "taglib", field: "label", fields: { facet: "genre" } },
+  { kind: "styles", prefix: "stylib", field: "name", fields: { voice: "Short sentences." } },
+]) {
+  for (const outcome of ["saved", "failed", "closed"]) {
+    test(`${kind}: delayed ${outcome} save preserves the current editor and blocks duplicate submissions`, async ({ page, served }) => {
+      await arrive(page, served, `#/catalog?kind=${kind}`);
+      for (const name of ["FIRST", "SECOND"]) {
+        const response = await page.request.post(new URL("/catalog/save", page.url()).href, {
+          data: { kind, entry: { id: `race-${name}`, [field]: name, ...fields } },
+        });
+        expect((await response.json()).ok).toBe(true);
+      }
+      await arrive(page, served, `#/catalog?kind=${kind}`);
+      await page.locator(".lib-row").filter({ hasText: "FIRST" }).click();
+      await page.locator(`#${prefix}-${field}`).fill("FIRST revised");
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      let requests = 0;
+      await page.route("**/catalog/save", async route => {
+        requests++;
+        await held;
+        if (outcome === "failed") {
+          await route.fulfill({ status: 400, json: { ok: false, reason: "held save failed", issues: ["held issue"] } });
+        } else {
+          const response = await route.fetch();
+          await route.fulfill({ response });
+        }
+      });
+      const answered = page.waitForResponse(response => response.url().endsWith("/catalog/save"));
+      try {
+        await page.locator(`#${prefix}-save`).click();
+        await expect.poll(() => requests).toBe(1);
+        await expect(page.locator(`#${prefix}-save`)).toBeDisabled();
+        await page.locator(`#${prefix}-save`).dispatchEvent("click");
+        if (outcome === "closed") await page.locator(`#${prefix}-close`).click();
+        else await page.locator(".lib-row").filter({ hasText: "SECOND" }).click();
+        await page.getByTestId("confirm.ok").click();
+        if (outcome !== "closed") {
+          await page.locator(`#${prefix}-${field}`).fill("SECOND unsaved");
+          await expect(page.locator(`#${prefix}-save`)).toBeDisabled();
+        }
+      } finally {
+        release();
+      }
+      await answered;
+      if (outcome === "closed") {
+        await expect(page.locator(".lib-row").filter({ hasText: "FIRST revised" })).toHaveCount(1);
+        await expect(page.locator(`#${prefix}-${field}`)).toHaveCount(0);
+      } else {
+        await expect(page.locator(`#${prefix}-save`)).toBeEnabled();
+        await expect(page.locator(`#${prefix}-${field}`)).toHaveValue("SECOND unsaved");
+        await expect(page.locator(".said.bad")).toHaveCount(0);
+        const name = outcome === "saved" ? "FIRST revised" : "FIRST";
+        await expect(page.locator(".lib-row").filter({ hasText: name })).toHaveCount(1);
+      }
+      expect(requests).toBe(1);
+    });
+  }
+}
+
 test("a delete that lands after switching characters removes its own row, not the editor now open", async ({ page, served }) => {
   await arrive(page, served, "#/catalog");
   await page.locator("#charlib-new").click();

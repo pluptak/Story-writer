@@ -46,8 +46,8 @@ configurable.
 
 ## The count
 
-149 checkboxes, down from 188: four sections and twenty-four boxes have left the checklist as the
-suite came to hold the whole of what they claimed. Every box below is still work for a person
+104 checkboxes, down from 188: three sections and sixty-nine boxes have left the checklist as
+the suite came to hold the whole of what they claimed. Every box below is still work for a person
 today — the file carries nothing else — so the split here is about where each one *could* end
 up, not where it is.
 
@@ -63,15 +63,15 @@ measurement.
 | 3 reading accepted prose | 1 | 1 | — |
 | 4 the handoff | 7 | 6 | 1 |
 | 6 story editor | 16 | 13 | 3 |
-| 7 live writer screen | 8 | 7 | 1 |
-| 8 the story reader | 8 | 8 | — |
-| 9 story-wide search | 6 | 6 | — |
+| 7 live writer screen | 7 | 6 | 1 |
+| 8 the story reader | 7 | 7 | — |
+| 9 story-wide search | 5 | 5 | — |
 | 10 the character card | 8 | 8 | — |
-| 11 saved-run comparison | 10 | 10 | — |
-| 12 the scaffold interview | 16 | 12 | 4 |
-| 13 character catalog | 43 | 40 | 3 |
-| locators, shell, without an engine | 14 | 12 | 2 |
-| **total** | **149** | **~131** | **~18** |
+| 11 saved-run comparison | 9 | 9 | — |
+| 12 the scaffold interview | 15 | 11 | 4 |
+| 13 character catalog | 4 | — | 4 |
+| locators, shell, without an engine | 13 | 11 | 2 |
+| **total** | **104** | **~85** | **~19** |
 
 ---
 
@@ -79,36 +79,8 @@ measurement.
 
 In dependency order. Each is independently pausable and worth shipping on its own.
 
-### Block 9 — §13's remainder (~28 checks)
-
-The largest section, and mostly mechanism: issues and problems as two labelled blocks that are never
-merged; a rejected save keeping the drafted text on screen; the delete arm/disarm window (`page.clock`
-— the reason it is manual today is that nobody wants an 8-second sleep) and the armed state not
-surviving navigation; the unsaved-edit confirm on switching entries and on switching kinds; tags
-grouped STORY/STYLE **derived** (add the tag to a style, the row moves by itself); usage counts as
-observed counts that climb and fall; a tag's version bumping without changing the entry count; the
-duplicate-facet advisory that still saves; off-vocabulary chips persisting on save; hide/restore not
-disturbing a draft and absent for kinds whose schema has no `hidden`; the review panel's revert
-repainting the field live and its count staying live while typing without the caret jumping; the whole
-of the styles and skills subsections, including the cross-kind one the checklist flags as *"the check
-most likely to regress"* — a promoted `telepathy` stopping the character form calling it unknown.
-
-Worth splitting in two when picked up: the character form, then styles/skills.
-
-**Done when** §13's manual entries are the three that need a live assistant model.
-
-### Block 11 — the width sweep (~6 checks)
-
-Scattered through §7, §8, §11, §12 and the shell, all the same shape: at `<900px` the rail stacks
-below the prose **and stays visible** (if it vanishes, the only way to stop a run goes with it); the
-compare panes stack; the scaffold sidebar stacks and the stepper rail disappears; the nav becomes a
-horizontal strip and hides below 680px; at 375px there is no horizontal scrollbar. `setViewportSize`
-plus a `document.documentElement.scrollWidth` assertion covers the last one across every route at
-once. §13's automated overflow sweep already does this for the catalog — this generalises it.
-
-The nav's *both themes* check is a `data-theme` attribute swap in the same file.
-
-**Done when** every width claim in the checklist is an assertion.
+*No blocks remain — the last one shipped with its spec, and per the file's own rule it is deleted
+rather than annotated. When the checklist's last manual box goes, so does this file.*
 
 ---
 
@@ -116,14 +88,12 @@ The nav's *both themes* check is a `data-theme` attribute swap in the same file.
 
 Named once here so a block above does not have to argue for them:
 
-- **`page.clock`** — the catalog delete arm/disarm window.
 - **Request counting** (`page.on("request")`) — *typing does not refetch*, *no `/cast` fetch fires off
   the live screen*, *the chapters-written list does not recount every round*. All three are stated as
   network-tab observations.
 - **A second page in the same context** — the stale-tab check, and *the reader is not on the SSE
   stream*.
 - **`page.close({ runBeforeUnload: true })`** — the `beforeunload` guard.
-- **Bounding boxes** — a search jump's heading not hidden under the sticky topbar; the width sweep.
 
 ## What stays manual, and why
 

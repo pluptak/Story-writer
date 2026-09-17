@@ -1,4 +1,5 @@
 import { esc } from "./util.js";
+import { errorLine, warnLine } from "./ui.js";
 
 // Shared inspector-panel builders for the four GUI catalogs (characters, tags, styles, skills).
 // Each library keeps its own editorHtml() for content-specific fields, pickers and modals --
@@ -30,6 +31,23 @@ export function section(title, description, body, attrs = "") {
 
 export function editorFooter(content) {
   return `<div class="lib-editor-footer">${content}</div>`;
+}
+
+/** The save round-trip's own verdict, kept apart from the live draft: `issues`
+ *  refused this save (the entry is not saved), `problems` rode along with it
+ *  (the entry was saved anyway). Two labelled blocks, never merged — a reader
+ *  must tell "we refused to save this" from "we saved it, but look at this".
+ *  Set by save(), cleared by selecting something else; a failed save keeps the
+ *  earlier problems beside its new issues. */
+export function saveNotesHtml(s) {
+  let html = "";
+  if ((s.saveIssues || []).length)
+    html += `<div class="lib-save-notes" data-kind="issues"><strong>Issues — not saved</strong>`
+      + s.saveIssues.map(i => errorLine(esc(i))).join("") + `</div>`;
+  if ((s.saveProblems || []).length)
+    html += `<div class="lib-save-notes" data-kind="problems"><strong>Problems — saved anyway</strong>`
+      + s.saveProblems.map(p => warnLine(esc(p))).join("") + `</div>`;
+  return html;
 }
 
 export function tabs(items) {
