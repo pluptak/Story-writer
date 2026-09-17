@@ -32,7 +32,7 @@ import { Agent } from "../engine/agent.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { checkQuestionState, type QuestionState, type RunEvent } from "../engine/scene-loop.ts";
 import { loadStory } from "../engine/story-format.ts";
-import { THINK_LEVELS, type ThinkLevel } from "../engine/story-schema.ts";
+import { parseBenchmarkArgs } from "./benchmark-args.ts";
 
 // Scripted batch use: no progress painting, the simpler non-streaming completion shape.
 ENGINE.stream = false;
@@ -62,32 +62,15 @@ interface CaseResult {
   samples: SampleResult[];
 }
 
-const KNOWN_FLAGS = ["model", "samples", "case", "story", "out", "think"];
-
 function parseArgs() {
-  const args = process.argv.slice(2);
-  // A misspelled flag (--sample= for --samples=) used to fall back to the default silently — two
-  // full sampling runs were spent on 5/case instead of the intended 20 before this was caught. Fail
-  // loudly instead: an unrecognized --flag is a hard error, not a quiet default.
-  for (const a of args) {
-    if (!a.startsWith("--")) continue;
-    const name = a.slice(2).split("=")[0];
-    if (!KNOWN_FLAGS.includes(name)) {
-      console.error(`Unknown flag --${name}. Known flags: ${KNOWN_FLAGS.map(f => `--${f}=`).join(", ")}`);
-      process.exit(1);
-    }
-  }
-  const get = (name: string) => {
-    const hit = args.find(a => a.startsWith(`--${name}=`));
-    return hit ? hit.slice(name.length + 3) : undefined;
-  };
+  const { get, samples, think } = parseBenchmarkArgs(process.argv.slice(2), { values: ["case"] });
   return {
     model: get("model"),
-    samples: Number(get("samples") ?? "5"),
+    samples: samples ?? 5,
     caseId: get("case"),
     story: get("story") ?? "data/stories/doorway",
     out: get("out"),
-    think: get("think") as ThinkLevel | undefined,
+    think,
   };
 }
 
@@ -106,10 +89,6 @@ async function main() {
   if (!cases.length) {
     console.error(`no case(s) matched --case=${opts.caseId}. Known ids:\n`
       + allCases.map(c => `  ${c.id}`).join("\n"));
-    process.exit(1);
-  }
-  if (opts.think !== undefined && !(THINK_LEVELS as readonly string[]).includes(opts.think)) {
-    console.error(`--think must be one of: ${THINK_LEVELS.join(" ")}`);
     process.exit(1);
   }
 

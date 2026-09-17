@@ -43,7 +43,7 @@ import { extractJson } from "../engine/json-extract.ts";
 import { reviseConsult, parseVerdict, type CannotCast, type ConsultRequest, type ConsultWants } from "../engine/consult.ts";
 import { loadStory } from "../engine/story-format.ts";
 import { writerCast } from "../engine/scene-loop.ts";
-import { THINK_LEVELS, type ThinkLevel } from "../engine/story-schema.ts";
+import { parseBenchmarkArgs } from "./benchmark-args.ts";
 
 // Scripted batch use: no progress painting, the simpler non-streaming completion shape.
 ENGINE.stream = false;
@@ -85,16 +85,14 @@ interface CaseResult {
 }
 
 function parseArgs() {
-  const args = process.argv.slice(2);
-  const get = (name: string) => {
-    const hit = args.find(a => a.startsWith(`--${name}=`));
-    return hit ? hit.slice(name.length + 3) : undefined;
-  };
+  const { get, has, samples, think } = parseBenchmarkArgs(process.argv.slice(2), {
+    values: ["case"], booleans: ["split"],
+  });
   return {
     // The engine's --split-judge, as a benchmark mode: same cases, same scoring, two calls.
-    split: args.includes("--split"),
+    split: has("split"),
     model: get("model"),
-    samples: Number(get("samples") ?? "5"),
+    samples: samples ?? 5,
     caseId: get("case"),
     story: get("story") ?? "data/stories/doorway",
     out: get("out"),
@@ -102,7 +100,7 @@ function parseArgs() {
     // this as reasoning_effort on the wire (engine/llm-client.ts:82); a hybrid-thinking model
     // (Qwen3, ...) may default to reasoning ON and "low" may suppress more of it than that
     // model's own default would, which is a confound worth ruling out per-model, not assumed.
-    think: get("think") as ThinkLevel | undefined,
+    think,
   };
 }
 
@@ -192,10 +190,6 @@ async function main() {
   const cases = opts.caseId ? allCases.filter(c => c.id === opts.caseId) : allCases;
   if (!cases.length) {
     console.error(`no case(s) matched --case=${opts.caseId}. Known ids:\n` + allCases.map(c => `  ${c.id}`).join("\n"));
-    process.exit(1);
-  }
-  if (opts.think !== undefined && !(THINK_LEVELS as readonly string[]).includes(opts.think)) {
-    console.error(`--think must be one of: ${THINK_LEVELS.join(" ")}`);
     process.exit(1);
   }
 
