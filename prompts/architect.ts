@@ -26,7 +26,11 @@ const FIELD_KNOWS = `  knows      -- what they know walking in that the other ch
                 gets its friction.`;
 
 const FIELD_GOAL = `  goal       -- what they want tonight, in their own terms, phrased so an outcome can be MEASURED
-                against it ("every course served" -- not "do a good job"). Only the character
+                against it ("every course served" -- not "do a good job"). Give them an immediate,
+                observable aim: get the signed receipt before the courier leaves, keep the crate
+                sealed tonight, secure a bed for the child. Not "win the argument", "make them
+                understand", or prove a theme -- name what agreement would change in the room.
+                An aim is not a scripted action sequence or a guaranteed outcome. Only the character
                 themself ever weighs whether they are closer to it or further away -- this is never
                 shown to the writer or evaluated by anyone outside the character's own agent. Apply
                 the ZERO-SUM TEST before settling on any pair: if A gets what they want, does that
@@ -44,11 +48,18 @@ const FIELD_BELIEF = `  belief     -- REQUIRED. One load-bearing conviction they
 const FIELD_IMPULSE = `  impulse    -- REQUIRED. One conditional rule, "when X -> Y", where X is a pressure THIS scene
                 can actually apply: not "proud" but "when offered kindness, deflects with payment
                 first". Key the trigger to tonight's ask ("when asked to take the blame, names who
-                really decided").`;
+                really decided"). Make Y a characteristic way of dealing with that pressure, not
+                a generic gesture loop of jaw-tightening, looking away or gripping objects. It is
+                a tendency to respond when triggered, not a tic to repeat on every turn.`;
 
 const FIELD_VOICE = `  voice      -- REQUIRED. One to three lines of dialogue in their own words -- models imitate
                 samples far better than adjectives. At least one line refusing or pushing back;
-                a character whose only sampled words are agreeable answers every question like one.`;
+                 a character whose only sampled words are agreeable answers every question like one.
+                 Distinguish the cast through vocabulary and rhythm: the words each reaches for,
+                 sentence shape, directness and register. Include an ordinary, context-fitting line
+                 such as a practical request, answer or refusal -- not a set of polished aphorisms
+                 or declarations of theme. Let syntax fit the speaker; do not force fragments.
+                 These are voice samples, not dialogue scheduled for the scene.`;
 
 const FIELD_SKILLS = `  skills     -- abilities BEYOND the general list below. PREFER a skill-bible skill by exact name;
                 bespoke "name :: meaning" ONLY when nothing fits -- an unknown bare name gets
@@ -71,6 +82,12 @@ const CHARACTER_FIELDS = [FIELD_NAME, FIELD_PERSONA, FIELD_KNOWS, FIELD_GOAL, FI
 const TIMELINE_FIELDS = `A WORLD EVENT is the one category nobody in the scene decides: a fault alarm going off, a phone
 ringing, the tide turning, a door blowing shut. If a person could decline it, it is not a world
 event and does not belong here.
+
+CHANGE THE CIRCUMSTANCES, not just the noise level. An event should alter access, available time,
+resources, visibility or the cost of delay in a way that matters to the existing tension. A louder
+alarm or another flicker is not enough if everyone can carry on unchanged. State the new physical
+circumstance, not a prescribed character choice, reaction, line of dialogue or resolution. Memories
+supply established knowledge, never instructions for what someone must decide next.
 
 MOST STORIES DO NOT NEED ONE. A scene whose pressure already runs between the people in it needs no
 help from the weather. Propose "timeline": [] and say why in "note" -- that is a complete and
@@ -114,8 +131,8 @@ WHAT MAKES A MEMORY WORK -- each of these is a way one has already failed:
   that chapter's roster -- a memory for anyone else never reaches them.
 
 The scene's question must NOT name this event: a question that names it hands the writer the event
-before it fires, and the scene opens with it already underway. If the question names one, change
-the question rather than the beat.`;
+before it fires, and the scene opens with it already underway. If the question names one, flag it
+in "note" for revision at the scene stage; the world stage authors only the timeline.`;
 
 const ASYMMETRY_RULES = `DESIGN FOR ASYMMETRY. Two people who can both see, both move and both talk, who want compatible
 things, produce a scene where nothing has to be asked. Give them different senses, different
@@ -123,6 +140,13 @@ authority, different information, or different stakes. At least one real imbalan
 least one pair of goals collide outright: what one of them needs is what stands in the other's way
 ("A wants the crate open / B wants it kept sealed" -- not "A explores / B stays downstairs").
 Two goals that can both be satisfied in the same evening is a design that asks nothing.`;
+
+const GENERATED_STYLE_GUIDANCE = `When generating a house style without an author-selected preset, favour concrete selection:
+choose details that locate the action, reveal a practical obstacle or register a change, rather
+than inventorying the room. Let dialogue and action carry implications without interpreting every
+exchange or explaining what each silence means. Leave room for the chosen genre's rhythm and
+texture; this is not a requirement for clipped prose. These are generated-style guidelines only,
+not additions to or overrides of an author-selected style preset.`;
 
 export const ARCHITECT_FORMAT = `You design scenes for a writing engine, from an author's rough idea.
 
@@ -208,6 +232,7 @@ scene.constraint -- OPTIONAL. A restriction that only holds for THIS scene, unli
                  There is no mechanical check behind this one (unlike a CANNOT, which the engine
                  enforces) -- only author it when it actually matters to what the scene turns on.
 writer_style -- house style: person, tense, what to do with dialogue, what to leave out.
+${GENERATED_STYLE_GUIDANCE}
 characters   -- Every character costs consults out of a fixed step budget, so add a third or fourth
                 only when they have their own stake in what happens -- not because a scene feels thin
                 with two. Four is the maximum. A character who is present but not the one acting is
@@ -606,7 +631,9 @@ writer_style -- house style: person, tense, what to do with dialogue, what to le
                it in the premise and the tension -- a confession and a farce are narrated
                differently, and saying which this is does more than listing rules. HOW THE PROSE
                SOUNDS, never what it is allowed to know: this half is written to be reusable by
-               another story, so anything true only of this cast belongs below.
+                another story, so anything true only of this cast belongs below.
+
+${GENERATED_STYLE_GUIDANCE}
 
 ${SETTINGS_DERIVED}
 

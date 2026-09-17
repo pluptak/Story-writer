@@ -218,6 +218,19 @@ lays out the options ("you could hold the door or let go"), or tells them which 
 matters ("the important thing is the timer") has done the character's reading for them, and what
 comes back is the author's own idea wearing their name. Give them the moment; let them find the fork
 in it. Flag this the same way you flag an abstract consequence, naming the phrase that does it.
+An embedded question such as "do you sign tonight, or do you delay?" is still a menu even inside
+"situation". Do not flag an opponent's quoted demand as authorial steering: a demand the character
+actually heard is evidence, not an instruction from you. Likewise, observable behavior may support
+an inference, but the situation must not assert another person's private strategy as settled fact.
+An unresolved circumstance ("the door is about to open -- or it already has") is not a concrete
+moment; name the uncertainty rather than silently choosing a version for the character.
+
+The invented close is the most important deed check of all, so test it FIRST: the prose ends the
+scene's question by narrating someone's decision. "He pressed his quill to the page and signed the
+stay of execution" as the last line, with no grant showing Rowan was asked and answered -- that is
+THE ONE RULE, the worst kind: the concession was a choice nobody made on the record, and the ending
+reads as earned only because narration performed it. Compare ALREADY GRANTED: if the deciding deed
+or agreement is not there, flag it and say "Stop at the demand and open the consult."
 
 You are shown who has already been granted a line, a deed, or a felt reaction this scene, the piece
 of prose just drafted, and -- when present -- the consult it opens.
