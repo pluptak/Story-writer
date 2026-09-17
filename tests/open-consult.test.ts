@@ -15,7 +15,7 @@ import {
   type OpenChatDriver, type OpenParticipant,
 } from "../engine/open-consult.ts";
 import {
-  lintPressure, consultSuggestsSolution,
+  lintPressure, consultSuggestsSolution, openCharacterPreamble, openCharacterSystem, OPEN_CONSULT_FORMAT,
 } from "../prompts/open-consult.ts";
 
 // -- CANNED SCENARIO ----------------------------------------------------------
@@ -72,6 +72,15 @@ describe("parseOpenDone", () => {
     assert.equal(parseOpenDone('DONE: {"note": "stalling"}'), null);
     assert.equal(parseOpenDone("DONE:\nthought: (none)\nspeech: (none)\naction: (none)\nnote: (none)"), null);
   });
+  it("parses indented DONE payloads without slicing into the tag", () => {
+    for (const indent of [" ", "    ", "\t"]) {
+      for (const payload of ['{"speech":"No."}', "speech: No.", "\nspeech: No."]) {
+        assert.deepEqual(parseOpenDone(`Pressure.\n${indent}DONE: ${payload}`), {
+          thought: "", speech: "No.", action: "", note: "",
+        });
+      }
+    }
+  });
   it("returns null with no DONE line", () => {
     assert.equal(parseOpenDone("Just talking, no close."), null);
   });
@@ -119,6 +128,104 @@ describe("consultSuggestsSolution", () => {
 // The character script entries below are plain prose on purpose — no DONE, no
 // VETO, no labels. Only CONSULT's scripted lines ever carry those tags.
 describe("runOpenConsult", () => {
+  it("seeds the supplied situation once without exposing the private consult brief", async () => {
+    const character = {
+      ...ELARA,
+      system: openCharacterSystem({ persona: "Elara", place: "Archive", skills: [], knows: "", goal: "", situation: SITUATION }),
+    };
+    const original = { ...character };
+    const replies = script({
+      CONSULT: ["What does waiting cost?", "What do you say?", "DONE: speech: No."],
+      Elara: ["I wait.", "No."],
+    });
+    let characterCalls = 0;
+    const r = await runOpenConsult({
+      character, consult: CONSULT, situation: SITUATION, pressure: PRESSURE,
+      chat: async (p, history) => {
+        if (p.name === ELARA.name) {
+          characterCalls++;
+          assert.deepEqual(history[0], { role: "user", content: openCharacterPreamble(SITUATION) });
+          const context = [p.system, ...history.map(m => m.content)].join("\n");
+          assert.equal(context.split(SITUATION).length - 1, 1);
+          assert.ok(!context.includes(PRESSURE));
+          assert.doesNotMatch(context, /PRESSURE BRIEF|DONE:|thought:|speech:|action:|note:/);
+          assert.equal(history.length, characterCalls * 2);
+        } else {
+          assert.ok(history[0].content.includes(PRESSURE));
+        }
+        return replies(p, history);
+      },
+    });
+    assert.equal(characterCalls, 2);
+    assert.deepEqual(character, original);
+    assert.equal(r.transcript.length, 5);
+    assert.ok(r.transcript.every(t => !t.text.includes(SITUATION)));
+  });
+
+  it("requires a character reply before accepting DONE, with or without preceding prose", async () => {
+    assert.match(OPEN_CONSULT_FORMAT, /Never emit DONE before the character has replied/);
+    for (const prose of ["", "What do you say?\n"]) {
+      const premature = `${prose}DONE: speech: Invented answer.`;
+      const replies = script({
+        CONSULT: [premature, "DONE: speech: No."],
+        Elara: ["No."],
+      });
+      const linted: string[] = [];
+      let characterCalls = 0;
+      const r = await runOpenConsult({
+        character: ELARA, consult: CONSULT, situation: SITUATION, pressure: PRESSURE,
+        lintCharacter: text => { linted.push(text); return null; },
+        chat: async (p, history) => {
+          if (p.name === ELARA.name) {
+            characterCalls++;
+            assert.equal(history.at(-1)?.content, prose.trim() || "What do you do?");
+            assert.ok(history.every(m => !m.content.includes("DONE:") && !m.content.includes("Invented answer.")));
+          }
+          return replies(p, history);
+        },
+      });
+      assert.equal(characterCalls, 1);
+      assert.equal(r.roundsUsed, 2);
+      assert.equal(r.endedBy, "consult");
+      assert.equal(r.stance.speech, "No.");
+      assert.equal(r.transcript[0].text, premature);
+      assert.deepEqual(linted, ["No.", "No."]);
+    }
+  });
+
+  it("never forwards malformed DONE-only blocks as character pressure", async () => {
+    for (const malformed of ["DONE:", "DONE: not sure", "DONE:\nthought: (none)\nspeech: (none)\naction: (none)\nnote: unresolved"]) {
+      const replies = script({
+        CONSULT: ["What do you say?", malformed, "DONE: speech: No."],
+        Elara: ["I wait.", "No."],
+      });
+      let characterCalls = 0;
+      const r = await runOpenConsult({
+        character: ELARA, consult: CONSULT, situation: SITUATION, pressure: PRESSURE,
+        chat: async (p, history) => {
+          if (p.name === ELARA.name) {
+            characterCalls++;
+            assert.ok(history.every(m => !m.content.includes("DONE:") && !m.content.includes("note:")));
+            if (characterCalls === 2) assert.equal(history.at(-1)?.content, "What do you do?");
+          }
+          return replies(p, history);
+        },
+      });
+      assert.equal(characterCalls, 2);
+      assert.equal(r.roundsUsed, 3);
+      assert.equal(r.transcript[2].text, malformed);
+      assert.equal(r.stance.speech, "No.");
+    }
+  });
+
+  it("rejects forced DONE when no character response exists", async () => {
+    const r = await run({ CONSULT: ["DONE: speech: Invented answer."] }, { budget: 0 });
+    assert.equal(r.endedBy, "budget");
+    assert.equal(r.forced, true);
+    assert.deepEqual(r.stance, { thought: "", speech: "", action: "", note: "" });
+    assert.equal(r.transcript.length, 1);
+  });
+
   it("closes once the consult agent transcribes a stable answer", async () => {
     const r = await run({
       CONSULT: [

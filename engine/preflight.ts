@@ -114,7 +114,8 @@ export function runPreflight(dir: string, catalogs?: Catalogs): Promise<Prefligh
       const sc = await loadStory(dir, undefined, catalogs);
 
       const wanted = [...new Set([sc.models.default, sc.models.writer, sc.models.summary,
-                                  ...sc.characters.map(c => c.model)])].filter(Boolean);
+                                  ...sc.characters.map(c => c.model),
+                                  ...sc.scenes.map(s => s.writerModel ?? "")])].filter(Boolean);
       const loaded = await availableModelIds();
       let modelCheck: "ok" | "missing" | "unreachable" = "ok";
       let missingModels: string[] = [];

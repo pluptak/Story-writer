@@ -10,9 +10,11 @@
  * This file imports nothing from the engine: pure text matching, so it stays a leaf. */
 
 // Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
-export interface GrantedLine { character: string; speech: string; thought?: string; }
+export interface GrantedLine { character: string; speech: string; thought?: string; action?: string; }
 
 export interface QuoteLintHit { ok: false; why: string; quote: string; character: string; }
+
+export const isAdvisoryQuoteHit = (h: QuoteLintHit) => h.why.startsWith("possible misattribution");
 
 /** Pull every quoted span out of a piece of prose, with its start offset. Double quotes are
  *  unambiguous; single quotes are scanned apostrophe-aware so "I'll" does not split on the
@@ -20,38 +22,20 @@ export interface QuoteLintHit { ok: false; why: string; quote: string; character
 export function extractQuotations(prose: string): { text: string; index: number }[] {
   const out: { text: string; index: number }[] = [];
 
-  const dq = /"([^"]*)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = dq.exec(prose))) {
-    if (m[1].trim()) out.push({ text: m[1], index: m.index + 1 });
-  }
-
-  const n = prose.length;
-  let i = 0;
-  while (i < n) {
-    // An opening single quote sits at the start or after whitespace; an apostrophe mid-word does not.
-    if (prose[i] === "'" && (i === 0 || prose[i - 1] === " " || prose[i - 1] === "\t")) {
-      let j = i + 1;
-      let closed = -1;
-      while (j < n) {
-        if (prose[j] === "'") {
-          // Close only when the quote ends on a word boundary: the char before is a letter/digit and
-          // the char after is not (end, space, or punctuation). An apostrophe like the one in "I'll"
-          // is followed by a letter, so it is read as part of the word, not a close.
-          const prevWord = j > 0 && /[A-Za-z0-9]/.test(prose[j - 1]);
-          const nextNonWord = j + 1 >= n || !/[A-Za-z0-9]/.test(prose[j + 1]);
-          if (prevWord && nextNonWord) { closed = j; break; }
-        }
-        j++;
-      }
-      if (closed > i + 1) {
-        const text = prose.slice(i + 1, closed);
-        if (text.trim()) out.push({ text, index: i + 1 });
-        i = closed + 1;
-        continue;
-      }
+  for (let i = 0; i < prose.length; i++) {
+    const open = prose[i];
+    if (!['"', "“", "'", "‘"].includes(open)) continue;
+    const single = open === "'" || open === "‘";
+    if (single && i > 0 && /[\p{L}\p{N}’']/u.test(prose[i - 1])) continue;
+    const close = open === "“" ? "”" : open === "‘" ? "’" : open;
+    for (let j = i + 1; j < prose.length; j++) {
+      if (prose[j] !== close) continue;
+      if (single && j + 1 < prose.length && /[\p{L}\p{N}]/u.test(prose[j + 1])) continue;
+      const text = prose.slice(i + 1, j);
+      if (text.trim()) out.push({ text, index: i + 1 });
+      i = j;
+      break;
     }
-    i++;
   }
   return out;
 }
@@ -86,12 +70,21 @@ function matchQuote(q: string, lines: string[]): boolean {
     const sn = norm(sp);
     if (!sn) continue;
     const st = sn.split(" ");
-    if (seqContains(st, qt) || seqContains(qt, st)) return true;
-    const set = new Set(st);
-    let inter = 0;
-    for (const t of qt) if (set.has(t)) inter++;
-    const dice = (qt.length + st.length) > 0 ? (2 * inter) / (qt.length + st.length) : 0;
-    if (dice >= 0.8) return true;
+    if (seqContains(st, qt)) return true;
+    if (qt.length >= 8 && qt[0] === "i" && st[0] === "i"
+      && !st.some(t => /^(?:not|no|never|neither|nor|without|cannot|t)$/.test(t))
+      && seqContains(st, qt.slice(1))) return true;
+    if (qt.length < 5) continue;
+    for (let i = 0; i + qt.length <= st.length; i++) {
+      let edits = 0;
+      for (let j = 0; j < qt.length; j++) {
+        if (qt[j] === st[i + j]) continue;
+        if (!/^(?:a|an|the|this|that)$/.test(qt[j])
+          || !/^(?:a|an|the|this|that)$/.test(st[i + j])) { edits = 2; break; }
+        edits++;
+      }
+      if (edits <= 1) return true;
+    }
   }
   return false;
 }
@@ -102,18 +95,25 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *  the ordinary form in the prose this engine asks for, so the name immediately following the quote
  *  is checked first; only when nothing follows is the nearest preceding name used. Returns "unknown"
  *  when neither direction finds one — the flag still carries the offending quote. */
-function attribute(prose: string, quote: { index: number; text: string }, names: readonly string[]): string {
+function attribute(prose: string, quote: { index: number; text: string }, names: readonly string[]): { character: string; explicit: boolean } {
   const end = quote.index + quote.text.length;
-  const after = prose.slice(end, Math.min(prose.length, end + 60));
+  const after = prose.slice(end + 1, Math.min(prose.length, end + 100));
+  const before = prose.slice(Math.max(0, quote.index - 120), quote.index - 1);
+  const tags = "said|says|say|asked|asks|replied|replies|whispered|whispers|shouted|shouts|muttered|mutters|told|tells";
+  for (const name of names.filter(n => n.trim())) {
+    const who = escapeRe(name.trim());
+    if (new RegExp(`\\b${who}\\s+(?:${tags})(?:\\s+\\w+ly)?\\s*[,：:]?\\s*$`, "i").test(before)
+      || new RegExp(`^\\s*[,—]?\\s*(?:${who}\\s+(?:${tags})|(?:${tags})\\s+${who})\\b`, "i").test(after)) {
+      return { character: name, explicit: true };
+    }
+  }
   let bestAfter = Infinity, afterName = "unknown";
   for (const name of names) {
     const m = new RegExp(`\\b${escapeRe(name)}\\b`, "i").exec(after);
     // Keep the occurrence closest to the quote (smallest start offset within the window).
     if (m && m.index < bestAfter) { bestAfter = m.index; afterName = name; }
   }
-  if (afterName !== "unknown") return afterName;
-
-  const before = prose.slice(Math.max(0, quote.index - 120), quote.index);
+  if (afterName !== "unknown") return { character: afterName, explicit: false };
   let best = -1, bestName = "unknown";
   for (const name of names) {
     const re = new RegExp(`\\b${escapeRe(name)}\\b`, "gi");
@@ -123,7 +123,7 @@ function attribute(prose: string, quote: { index: number; text: string }, names:
       if (m.index > best) { best = m.index; bestName = name; }
     }
   }
-  return bestName;
+  return { character: bestName, explicit: false };
 }
 
 /** A quoted span of one bare word is a label, not a line: a lever thrown to the 'Shutdown' position,
@@ -164,8 +164,15 @@ const sameCharacter = (a: string, b: string) => a.trim().toLowerCase() === b.tri
 /** Every renderable line a set of grants offers to match against: what was said, and what was
  *  felt — a quoted rendering of granted interiority is exempted the same way granted dialogue is
  *  (Judge.MD, "a felt entry"), so the mechanical check must see both. */
-const linesOf = (entries: ReadonlyArray<GrantedLine>): string[] =>
-  entries.flatMap(g => [g.speech, g.thought].filter((s): s is string => !!s));
+const hasWritingFrame = (prose: string, index: number): boolean =>
+  /\b(?:write|writes|wrote|written|writing|scribble|scribbles|scribbled|print|prints|printed|type|types|typed|inscribe|inscribes|inscribed)\b[^.!?;:\n"“”‘’]{0,80}$/i
+    .test(prose.slice(Math.max(0, index - 100), index - 1));
+
+const linesOf = (entries: ReadonlyArray<GrantedLine>, written: boolean): string[] =>
+  entries.flatMap(g => [g.speech, g.thought,
+    ...(written && g.action ? extractQuotations(g.action)
+      .filter(q => hasWritingFrame(g.action!, q.index)).map(q => q.text) : []),
+  ].filter((s): s is string => !!s));
 
 /** The mechanical quotation check. Returns null when there is nothing to check (no quotes, only
  *  labels, only sourced furniture, or every quote matched a granted line) — the caller then runs
@@ -183,13 +190,14 @@ export function lintQuotations(
 ): QuoteLintHit | null {
   const quotes = extractQuotations(prose);
   if (!quotes.length) return null;
+  let advisory: QuoteLintHit | null = null;
   for (const q of quotes) {
-    if (isMachineLabel(q.text)) continue;
-    if (hasSourceFrame(prose, q.index)) continue;
-
-    const character = attribute(prose, q, names);
+    const { character, explicit } = attribute(prose, q, names);
+    if (!explicit && isMachineLabel(q.text)) continue;
+    if (!explicit && hasSourceFrame(prose, q.index)) continue;
+    const written = !explicit && hasWritingFrame(prose, q.index);
     if (character === "unknown") {
-      const lines = linesOf(granted);
+      const lines = linesOf(granted, written);
       if (!matchQuote(q.text, lines)) {
         return { ok: false, quote: q.text, character,
           why: `unmatched quotation: "${q.text}" — no character was granted that line` };
@@ -197,18 +205,20 @@ export function lintQuotations(
       continue;
     }
 
-    const own = linesOf(granted.filter(g => sameCharacter(g.character, character)));
+    const own = linesOf(granted.filter(g => sameCharacter(g.character, character)), written);
     if (matchQuote(q.text, own)) continue;
 
-    const others = linesOf(granted.filter(g => !sameCharacter(g.character, character)));
+    const others = linesOf(granted.filter(g => !sameCharacter(g.character, character)), written);
     const reassigned = matchQuote(q.text, others);
-    return {
+    const hit: QuoteLintHit = {
       ok: false,
       quote: q.text,
       character,
-      why: `unmatched quotation: "${q.text}" (near ${character})`
+      why: `${reassigned && !explicit ? "possible misattribution" : "unmatched quotation"}: "${q.text}" (near ${character})`
         + (reassigned ? " — granted to a different character" : " — no character was granted that line"),
     };
+    if (!isAdvisoryQuoteHit(hit)) return hit;
+    advisory ??= hit;
   }
-  return null;
+  return advisory;
 }

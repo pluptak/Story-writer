@@ -83,14 +83,19 @@ function runInTokens(outer: string[], inner: string[]): boolean {
 function bestDice(tail: string[], s: string[]): number {
   const m = s.length;
   if (!m || tail.length < m) return 0;
-  const set = new Set(s);
+  const negation = /^(?:not|no|never|neither|nor|without|cannot|t)$/;
   let best = 0;
   for (let i = 0; i + m <= tail.length; i++) {
-    let inter = 0;
-    for (let k = 0; k < m; k++) if (set.has(tail[i + k])) inter++;
-    const dice = inter / m;   // (2*inter)/(m+m)
-    if (dice > best) best = dice;
-    if (best === 1) break;
+    const window = tail.slice(i, i + m);
+    let edits = 0;
+    for (let j = 0; j < m; j++) {
+      if (s[j] === window[j]) continue;
+      if (negation.test(s[j]) || negation.test(window[j])
+        || window.includes(s[j]) || s.includes(window[j])) { edits = 2; break; }
+      edits++;
+      if (edits > 1) break;
+    }
+    if (edits <= 1) best = Math.max(best, (m - edits) / m);
   }
   return best;
 }

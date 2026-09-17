@@ -16,7 +16,10 @@ const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url),
 const BOLD = "\x1b[1m", DIM = "\x1b[2m", RED = "\x1b[31m", GREEN = "\x1b[32m", YELLOW = "\x1b[33m", OFF = "\x1b[0m";
 const run = cmd => {
   const r = spawnSync(cmd, { shell: true, encoding: "utf8" });
-  return { status: r.status ?? 1, out: (r.stdout || "") + (r.stderr || "") };
+  const failed = !!r.error || !!r.signal || r.status === null;
+  const failure = r.error?.message || (r.signal ? `Process terminated by ${r.signal}` : "");
+  return { status: failed ? 1 : r.status, failed,
+           out: (r.stdout || "") + (r.stderr || "") + (failure ? `\n${failure}` : "") };
 };
 
 /** tsc, minus the diagnostics that belong to the GUI specs. tsconfig type-checks `tests/gui/*` and
@@ -25,16 +28,25 @@ const run = cmd => {
  *  app/engine/node-test type error. So set those aside, report them as deferred, and let this step's
  *  pass/fail turn on everything else. A genuine type error outside `tests/gui/` still fails here. */
 function typecheck() {
-  const { out } = run(pkg.scripts.typecheck);
-  const errors = out.split(/\r?\n/).filter(l => /: error TS\d+/.test(l));
-  const isGui = l => /^(tests[/\\]gui[/\\]|playwright\.config\.ts)/.test(l);
+  const { status, out, failed } = run(pkg.scripts.typecheck);
+  const lines = out.split(/\r?\n/).filter(l => l.trim());
+  const errors = lines.filter(l => /\berror TS\d+:/.test(l));
+  const isGui = l => /^(tests[/\\]gui[/\\].+|playwright\.config\.ts)\(\d+,\d+\): error TS\d+:/.test(l);
   const appErrors = errors.filter(l => !isGui(l));
   const guiCount = errors.length - appErrors.length;
   const note = guiCount
     ? `${YELLOW}${guiCount} GUI-spec diagnostic(s) deferred to \`npm run test:gui\`${OFF}` +
       `${DIM} (install @playwright/test to type-check those here)${OFF}`
     : "";
-  return { ok: appErrors.length === 0, detail: appErrors.join("\n"),
+  let inGui = false;
+  const onlyGui = guiCount > 0 && lines.every(l => {
+    if (/^\s/.test(l)) return inGui;
+    inGui = isGui(l);
+    return inGui;
+  });
+  const ok = !failed && appErrors.length === 0
+    && (status === 0 || ((status === 1 || status === 2) && onlyGui));
+  return { ok, detail: out.trimEnd() || `Typecheck exited with status ${status}`,
            pass: `app/engine/tests type-check clean${note ? " · " + note : ""}` };
 }
 

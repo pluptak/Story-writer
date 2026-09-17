@@ -4,10 +4,11 @@
  *  caller owns the redraft itself. */
 import * as P from "../prompts.ts";
 import { C } from "../ansi.ts";
+import { RUN, StoppedError } from "../live.ts";
 import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { parseLintVerdict } from "./consult.ts";
-import { lintQuotations } from "./quote-lint.ts";
+import { isAdvisoryQuoteHit, lintQuotations } from "./quote-lint.ts";
 import { lintRestrictedSenses } from "./sense-lint.ts";
 import { lintPronouns, type PronounSet } from "./pronoun-lint.ts";
 import type { Msg } from "./llm-client.ts";
@@ -29,7 +30,7 @@ export interface LintPieceOpts {
   granted: GrantedEntry[];
   cast: ReadonlyArray<{ name: string; cannot: readonly string[]; pronouns?: PronounSet }>;
   pov: string;
-  consult: { character?: string; reactors?: string[]; situation: string; question?: string } | null;
+  consult: Parameters<typeof P.narrationLintRequest>[0]["consult"];
   newNarrationJudge: () => Agent;
   log: (e: LintEvent) => void;
   chapter: number;
@@ -75,10 +76,11 @@ export async function lintPiece(o: LintPieceOpts): Promise<string | null> {
                      { role: "user", content: P.LINT_ONLY });
     }
   } catch (e) {
+    if (e instanceof StoppedError || RUN.stopped) throw e;
     log({ t: "lint_failed", why: (e as Error).message, chapter });
     console.log(`${C.yellow}(narration lint call failed: ${(e as Error).message} — accepting)${C.reset}`);
   }
   // A mechanical hit still stands when the LLM half fails or returns no verdict: neither check
   // needed a model, so an outage cannot take them down with it.
-  return [quoteLint?.why, senseLint?.why, lintWhy].filter((w): w is string => !!w).join(". ") || null;
+  return [quoteLint && !isAdvisoryQuoteHit(quoteLint) ? quoteLint.why : null, senseLint?.why, lintWhy].filter((w): w is string => !!w).join(". ") || null;
 }

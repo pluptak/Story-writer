@@ -137,7 +137,7 @@ export function normalizeConsult(raw: {
 
   const member = cast?.find(c => sameName(c.name, character));
   if (member && (member.cannot?.length || member.presenceState?.mode === "remote")) {
-    const hit = lintRestrictedSituation(situation, character, member.cannot ?? [], member.presenceState);
+    const hit = lintRestrictedSituation(situation, character, member.cannot ?? [], member.presenceState, cast?.map(c => c.name));
     if (hit) {
       return { ok: false, why: hit.cause === "presence"
         ? P.badConsult.restrictedByPresence(character, hit.sense, hit.match, member.presenceState!.via)

@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { lintRestrictedSenses, lintRestrictedSituation } from "../engine/sense-lint.ts";
+import { normalizeConsult } from "../engine/consult.ts";
 
 const blind = [{ name: "Marsh", cannot: ["sight"] }];
 
@@ -34,6 +35,21 @@ describe("lintRestrictedSenses", () => {
 
   it("does not borrow the next sentence's subject", () => {
     assert.equal(lintRestrictedSenses("Marsh waited. Riven watched the door.", blind), null);
+  });
+
+  it("does not borrow a competing cast member's verb inside the same window", () => {
+    const cast = [...blind, { name: "Riven", cannot: [] }];
+    assert.equal(lintRestrictedSenses("Marsh waits while Riven watches the door.", cast), null);
+    assert.equal(lintRestrictedSenses("Marsh waits while RIVEN watches the door.", cast), null);
+    assert.ok(lintRestrictedSenses("Marsh waits by the river and watches the door.", cast));
+    assert.equal(lintRestrictedSenses("Marsh waits while Riven watches the door.",
+      [...blind, { name: "Riven", cannot: ["sight"] }])?.character, "Riven");
+  });
+
+  it("keeps uppercase LOOK noun and capacity uses exempt without exempting literal acts", () => {
+    assert.equal(lintRestrictedSenses("Marsh gave her a long LOOK AT the door.", blind), null);
+    assert.equal(lintRestrictedSenses("Marsh could LOOK at the door.", blind), null);
+    assert.ok(lintRestrictedSenses("Marsh LOOKS AT the door.", blind));
   });
 
   it("does not flag a verb the restricted character does not govern", () => {
@@ -312,6 +328,59 @@ describe("lintRestrictedSituation", () => {
     assert.equal(lintRestrictedSituation(
       "Riven watches you from the doorway, saying nothing.",
       "MERRITT", merritt.cannot), null);
+  });
+
+  it("uses supplied cast names to avoid borrowing a third-person subject after you", () => {
+    for (const name of ["Riven", "RIVEN", "riven"]) {
+      assert.equal(lintRestrictedSituation(`Beside you, ${name} watches the door.`,
+        "MERRITT", merritt.cannot, undefined, ["MERRITT", "Riven"]), null);
+    }
+    assert.ok(lintRestrictedSituation("You watch Riven at the door.",
+      "MERRITT", merritt.cannot, undefined, ["Riven"]));
+    assert.ok(lintRestrictedSituation("You, Merritt, watch the door.",
+      "MERRITT", merritt.cannot, undefined, ["MERRITT", "Riven"]));
+    assert.ok(lintRestrictedSituation("Beside you, Riven waits. You watch the door.",
+      "MERRITT", merritt.cannot, undefined, ["Riven"]));
+  });
+
+  it("does not consume a later you-subject while skipping another cast member", () => {
+    const hit = lintRestrictedSituation("Beside you, Riven waits and you watch the door.",
+      "MERRITT", merritt.cannot, undefined, ["Riven"]);
+    assert.ok(hit);
+    assert.equal(hit.verb, "watch");
+  });
+
+  it("passes cast names through the consult gate for competing subjects", () => {
+    const cast = [merritt, { name: "Riven", cannot: [] }];
+    const situation = "Beside you, Riven watches the door while the heavy rain drums against the roof of the station.";
+    assert.equal(normalizeConsult({ character: "MERRITT", situation }, cast).ok, true);
+  });
+
+  it("does not treat an everyday noun immediately after a determiner as a sense verb", () => {
+    const cases: [string, string][] = [
+      ["You carry a watch in your pocket.", "sight"],
+      ["You carry your WATCH in your pocket.", "sight"],
+      ["You describe the taste of the broth.", "taste"],
+      ["You describe their smell in a letter.", "smell"],
+      ["You remember her touch from long ago.", "touch"],
+      ["You return his glance.", "sight"],
+      ["You avoid the stare.", "sight"],
+      ["You describe their gaze.", "sight"],
+    ];
+    for (const [situation, sense] of cases) {
+      assert.equal(lintRestrictedSituation(situation, "MERRITT", [sense]), null, situation);
+    }
+    assert.ok(lintRestrictedSituation("You, at the door, watch the hallway.", "MERRITT", merritt.cannot));
+    assert.ok(lintRestrictedSituation("You watch the door.", "MERRITT", merritt.cannot));
+    assert.equal(lintRestrictedSituation("You hold them under your gaze.", "MERRITT", merritt.cannot)?.verb, "gaze");
+  });
+
+  it("keeps uppercase LOOK noun and capacity uses exempt in situations", () => {
+    assert.equal(lintRestrictedSituation("You give her a long LOOK AT the door.", "MERRITT", merritt.cannot), null);
+    assert.equal(lintRestrictedSituation("You could LOOK at the door.", "MERRITT", merritt.cannot), null);
+    assert.equal(lintRestrictedSituation("You cannot look at them but you can hear their voice clearly",
+      "MERRITT", merritt.cannot), null);
+    assert.ok(lintRestrictedSituation("You LOOK AT the door.", "MERRITT", merritt.cannot));
   });
 
   it("does not police a gaze that is not the addressee's", () => {

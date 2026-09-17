@@ -421,6 +421,9 @@ export async function writeScene(run: SceneRun) {
   const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])),
     Object.fromEntries(roster.map(c => [c.name, scenePresence(sd, c)] as const).filter(([, v]) => v !== null)) as Record<string, Presence>,
     Object.fromEntries(roster.map(c => [c.name, sceneConstraint(sd, c)])));
+  const mechanicalCast = roster.map((c, i) => ({
+    name: c.name, cannot: c.limits, presenceState: cast[i].presenceState, pronouns: c.pronouns,
+  }));
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints, ENGINE.consultSince), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
@@ -740,7 +743,7 @@ export async function writeScene(run: SceneRun) {
       const ask = reply.consult;
       const outgoingConsult = ask ? {
         character: ask.character || undefined,
-        reactors: ask.reactors?.length ? ask.reactors.map(r => r.name) : undefined,
+        reactors: ask.reactors ?? undefined,
         situation: joinedSituation(ask),
         question: ask.question,
       } : null;
@@ -754,10 +757,17 @@ export async function writeScene(run: SceneRun) {
         ? [...granted, { character: promoteDef.name, speech: "", action: promoted }]
         : granted;
 
-      const flagged = await lintPiece({
-        prose: reply.prose, granted: lintGranted, cast, pov: sd.pov,
-        consult: outgoingConsult, newNarrationJudge, log, chapter,
-      });
+      let flagged: string | null;
+      try {
+        flagged = await lintPiece({
+          prose: reply.prose, granted: lintGranted, cast: mechanicalCast, pov: sd.pov,
+          consult: outgoingConsult, newNarrationJudge, log, chapter,
+        });
+      } catch (e) {
+        if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
+        throw e;
+      }
+      if (RUN.stopped) { stoppedMidLint = true; break; }
 
       if (!flagged) break;
 
@@ -848,7 +858,7 @@ export async function writeScene(run: SceneRun) {
       // -- REACTION FAN-OUT: one shared beat, several present-but-not-acting characters react at once.
       // Each runs an isolated consult (never seeing another's reply); the writer gets them together.
       asked = await reactionFanout({
-        reactors: ask.reactors, situation: ask.situation, question: ask.question, cast,
+        reactors: ask.reactors, situation: ask.situation, question: ask.question, cast: mechanicalCast,
         defOf, agents, isActive, isPov, writerSees,
         clarifications, clarify, beginAttempt, keepClarifications, dropClarifications,
         refusalFor: refuseForLater, writer, granted, pendingReactionActions, lastAsked, owed,
@@ -865,7 +875,7 @@ export async function writeScene(run: SceneRun) {
       const missingSince = !!def && ENGINE.consultSince
         && stalePieces >= SINCE_STALE_PIECES && !ask.since;
       const check = def && !missingSince
-        ? normalizeConsult({ ...ask, character: def.name, situation: joinedSituation(ask) }, cast)
+        ? normalizeConsult({ ...ask, character: def.name, situation: joinedSituation(ask) }, mechanicalCast)
         : null;
       if (!def || !persistent) {
         writer.hear(P.noSuchCharacter(who, [...active]));
@@ -885,7 +895,7 @@ export async function writeScene(run: SceneRun) {
         asked = true;
         sinceBase.set(nameKey(def.name), pieces.length);
         const { reply, failed, usedAttempt, req } = await judgeGate({
-          def, agent: persistent, req: check!.req, cast, retries, maxCharacterRetries,
+          def, agent: persistent, req: check!.req, cast: mechanicalCast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
           retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
           constraint: sceneConstraint(sd, def),

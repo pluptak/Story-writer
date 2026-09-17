@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { loadStory } from "../engine/story-format.ts";
 import { newCharacterAgent, writeScene, type RunEvent } from "../engine/scene-loop.ts";
 import { NET } from "../engine/llm-client.ts";
+import { Agent } from "../engine/agent.ts";
+import { StoppedError } from "../live.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { LIVE, resetLive, RUN, armRun, stopRun } from "../live.ts";
 import { quiet, siteFetch, sceneRun } from "./helpers.ts";
@@ -427,6 +429,192 @@ describe("the narration lint", () => {
       resetLive();
     }
   });
+
+  for (const path of ["narration", "single", "fanout", "revision", "presence", "pronouns"] as const) {
+    it(`keeps ${path} mechanical checks invariant under cannotMeaning`, async () => {
+      const outcomes = [];
+      for (const cannotMeaning of [false, true]) {
+        const sc = await sc0();
+        const merritt = sc.characters.find(c => c.name === "MERRITT")!;
+        merritt.limits = ["sight"];
+        merritt.limitMeanings = [{ name: "sight", meaning: "cannot perceive light or colour" }];
+        merritt.pronouns = { subject: "they", object: "them", possessive: "their", reflexive: "themself" };
+        const scene = { ...sc.scenes[0],
+          ...(path === "presence" ? { presence: { RIVEN: "remote :: a telephone line" } } : {}) };
+        const safe = "You hear the service door rattle beside your crate in the cold corridor, followed by three heavy knocks.";
+        const restricted = "You watch the red handle turning beside your crate in the cold corridor, while the service door rattles loudly.";
+        const consult = path === "single" ? { character: "MERRITT", situation: restricted }
+          : path === "fanout" ? { reactors: ["MERRITT"], situation: restricted }
+          : path === "revision" ? { character: "MERRITT", situation: safe }
+          : path === "presence" ? { character: "RIVEN", situation: restricted } : undefined;
+        const prose = path === "narration" ? "Merritt watches the door."
+          : path === "pronouns" ? "Merritt steadies himself on the crate." : "The pipes rattle overhead.";
+        const events: RunEvent[] = [];
+        const fake = siteFetch({
+          "writer.draft": ({ n }) => n === 0 ? { prose, consult } : { prose: "The corridor is cold.", scene_done: true },
+          "writer.redraft": { prose: "The corridor is cold.", scene_done: true },
+          "judge.narration": { ok: true },
+          "judge.done": { status: "resolved", evidence: "settled" },
+          "character.consult": { speech: "Wait." },
+          "judge.answer": { verdict: "retry", revised: { situation: restricted, question: "Do you reach for the handle?" } },
+        });
+        const origFetch = globalThis.fetch;
+        const original = { stream: ENGINE.stream, cannotMeaning: ENGINE.cannotMeaning,
+          cannotNone: ENGINE.cannotNone, splitJudge: ENGINE.splitJudge };
+        Object.assign(ENGINE, { stream: false, cannotMeaning, cannotNone: true, splitJudge: false });
+        globalThis.fetch = fake.fetchMock;
+        const agents = new Map(sc.characters.map(c => [c.name.toLowerCase(), newCharacterAgent(c, scene.place, "low")]));
+        armRun();
+        try {
+          const result = await writeScene(sceneRun(sc, { scene, agents, retries: 1, log: e => events.push(e) }));
+          const findings = events.filter(e => e.t === "narration_flag" || e.t === "bad_consult" || e.t === "narration_pronoun_flag");
+          assert.equal(findings.length, 1, path);
+          if (path === "presence") assert.match((findings[0] as any).why, /not physically there/);
+          else if (path !== "pronouns") assert.match((findings[0] as any).why, /sight/);
+          assert.equal(fake.count("character.consult"), path === "revision" ? 1 : 0);
+          assert.equal(fake.count("writer.redraft"), path === "narration" ? 1 : 0);
+          const system = fake.messagesOf("judge.narration")[0];
+          assert.equal(system.includes("sight -- cannot perceive light or colour"), cannotMeaning);
+          assert.equal(LIVE.writer!.system.includes("sight -- cannot perceive light or colour"), cannotMeaning);
+          if (path === "revision")
+            assert.equal(fake.messagesOf("judge.answer")[0].includes("sight -- cannot perceive light or colour"), cannotMeaning);
+          outcomes.push({ findings, prose: result.prose });
+        } finally {
+          globalThis.fetch = origFetch;
+          Object.assign(ENGINE, original);
+          armRun();
+          resetLive();
+        }
+      }
+      assert.deepEqual(outcomes[1], outcomes[0]);
+    });
+  }
+
+  it("gives the narration judge each reactor's delivered override, shared fallback, and no fanout since", async () => {
+    for (const consultSince of [false, true]) {
+      const sc = await sc0();
+      const shared = "You hear the service door slam against its frame in the cold corridor, followed by three heavy knocks.";
+      const own = "Through the telephone you hear three heavy knocks and the service door rattling at the far end of the line.";
+      const ignored = "This duplicate override must never be delivered.";
+      const since = "This fanout since must never be delivered.";
+      const events: RunEvent[] = [];
+      const fake = siteFetch({
+        "writer.draft": ({ n }) => n === 0 ? {
+          prose: "The pipes rattle overhead.",
+          consult: { reactors: [{ name: "RIVEN", situation: `  ${own}  ` },
+            { name: "riven", situation: ignored }, { name: "MERRITT", situation: "  " }], situation: shared, since },
+        } : { prose: "The corridor is cold.", scene_done: true },
+        "judge.narration": { ok: true },
+        "judge.done": { status: "resolved", evidence: "settled" },
+        "character.consult": { speech: "Wait." },
+      });
+      const origFetch = globalThis.fetch;
+      const original = { stream: ENGINE.stream, consultSince: ENGINE.consultSince };
+      Object.assign(ENGINE, { stream: false, consultSince });
+      globalThis.fetch = fake.fetchMock;
+      armRun();
+      try {
+        const scene = { ...sc.scenes[0], presence: { RIVEN: "remote :: a telephone line" } };
+        const agents = new Map(sc.characters.map(c => [c.name.toLowerCase(), newCharacterAgent(c, scene.place, "low")]));
+        await writeScene(sceneRun(sc, { scene, agents, log: e => events.push(e) }));
+        const payload = fake.messagesOf("judge.narration")[1];
+        assert.ok(payload.includes(`RIVEN\nsituation given: ${own}`));
+        assert.ok(payload.includes(`MERRITT\nsituation given: ${shared}`));
+        assert.ok(!payload.includes(ignored) && !payload.includes(since));
+        assert.equal(fake.count("character.consult"), 2);
+        for (const [n, situation] of [own, shared].entries()) {
+          const delivered = fake.messagesOf("character.consult", n).join("\n");
+          assert.ok(delivered.includes(`Situation: ${situation}`));
+          assert.ok(!delivered.includes(ignored) && !delivered.includes(since));
+        }
+        assert.ok(!events.some(e => e.t === "bad_consult" || e.t === "lint_failed"));
+      } finally {
+        globalThis.fetch = origFetch;
+        Object.assign(ENGINE, original);
+        armRun();
+        resetLive();
+      }
+    }
+  });
+
+  it("shows the narration judge the same joined since payload as the lone consultee", async () => {
+    for (const consultSince of [false, true]) {
+      const sc = await sc0();
+      const situation = "You hear the service door rattle beside your crate in the cold corridor, followed by three heavy knocks.";
+      const since = "The knocks have grown louder.";
+      const fake = siteFetch({
+        "writer.draft": ({ n }) => n === 0 ? { prose: "The pipes rattle overhead.",
+          consult: { character: "MERRITT", situation, since } } : { prose: "The corridor is cold.", scene_done: true },
+        "judge.narration": { ok: true },
+        "judge.answer": { verdict: "accept" },
+        "judge.done": { status: "resolved", evidence: "settled" },
+        "character.consult": { speech: "Wait." },
+      });
+      const origFetch = globalThis.fetch;
+      const original = { stream: ENGINE.stream, consultSince: ENGINE.consultSince };
+      Object.assign(ENGINE, { stream: false, consultSince });
+      globalThis.fetch = fake.fetchMock;
+      armRun();
+      try {
+        const scene = sc.scenes[0];
+        const agents = new Map(sc.characters.map(c => [c.name.toLowerCase(), newCharacterAgent(c, scene.place, "low")]));
+        await writeScene(sceneRun(sc, { scene, agents }));
+        const delivered = situation + (consultSince ? `\n\nSince you were last asked: ${since}` : "");
+        assert.ok(fake.messagesOf("judge.narration")[1].includes(`situation given: ${delivered}\nquestion:`));
+        assert.ok(fake.messagesOf("character.consult").join("\n").includes(`Situation: ${delivered}`));
+        assert.equal(fake.messagesOf("judge.narration")[1].includes(since), consultSince);
+      } finally {
+        globalThis.fetch = origFetch;
+        Object.assign(ENGINE, original);
+        armRun();
+        resetLive();
+      }
+    }
+  });
+
+  for (const stage of [0, 1]) {
+    for (const outcome of ["throw", "pass", "flag"] as const) {
+      it(`does not commit when ${stage ? "redraft" : "initial"} lint stops with ${outcome}`, async (t) => {
+        const sc = await sc0();
+        const events: RunEvent[] = [];
+        const origFetch = globalThis.fetch;
+        const origStream = ENGINE.stream;
+        const generate = Agent.prototype.generate;
+        let lintCalls = 0;
+        const fake = siteFetch({
+          "writer.draft": { prose: "The corridor is cold.", scene_done: true },
+          "writer.redraft": { prose: "The pipes rattle overhead.", scene_done: true },
+        });
+        t.mock.method(Agent.prototype, "generate", async function (this: Agent, ...args: Parameters<typeof generate>) {
+          if (args[1] !== "judge.narration") return generate.apply(this, args);
+          if (lintCalls++ < stage) return JSON.stringify({ ok: false, why: "redraft this piece" });
+          if (outcome === "throw") throw new StoppedError();
+          stopRun();
+          return JSON.stringify({ ok: outcome === "pass", why: "stopped finding" });
+        });
+        ENGINE.stream = false;
+        globalThis.fetch = fake.fetchMock;
+        armRun();
+        try {
+          const result = await writeScene(sceneRun(sc, { scene: sc.scenes[0], log: e => events.push(e) }));
+          assert.deepEqual(result.prose, []);
+          assert.equal(result.words, 0);
+          assert.equal(result.done, false);
+          assert.equal(lintCalls, stage + 1);
+          assert.equal(fake.count("writer.redraft"), stage);
+          assert.ok(!events.some(e => e.t === "draft" || e.t === "lint_failed"));
+          assert.equal(events.filter(e => e.t === "narration_flag").length, stage);
+          assert.equal(LIVE.writer!.history.filter(m => m.role === "assistant").length, 0);
+        } finally {
+          t.mock.restoreAll();
+          globalThis.fetch = origFetch;
+          ENGINE.stream = origStream;
+          armRun();
+          resetLive();
+        }
+      });
+    }
+  }
 
   /** The lint against a scripted set of replies, returning what the run recorded. */
   async function lintRun(lintReplies: Record<string, unknown>[]) {

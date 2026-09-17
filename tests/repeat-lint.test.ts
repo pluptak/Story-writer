@@ -88,6 +88,30 @@ describe("stripRepeatedPrefix", () => {
     assert.equal(stripRepeatedPrefix(prose, tail), null);
   });
 
+  it("preserves new prose against a duplicate-heavy tail", () => {
+    const prose = "The alarm stopped and Mara unlocked the eastern exit.";
+    const tail = "The alarm the alarm the alarm the alarm the alarm.";
+    assert.equal(stripRepeatedPrefix(prose, tail), null);
+  });
+
+  it("preserves new prose against a mixed duplicate-heavy tail", () => {
+    const prose = "The alarm stopped and Mara unlocked the eastern exit. She pulled the door shut.";
+    const tail = "The alarm rang and Mara ran. The alarm the alarm the alarm the alarm the alarm.";
+    assert.equal(stripRepeatedPrefix(prose, tail), null);
+  });
+
+  it("preserves materially new negation, token order, and duplicated words", () => {
+    const pairs: [string, string][] = [
+      ["Mara did open the eastern door before the alarm sounded.", "Mara did not open the eastern door before the alarm sounded."],
+      ["Mara did not open the eastern door before the alarm sounded.", "Mara did open the eastern door before the alarm sounded."],
+      ["Mara never opened the eastern door before the alarm sounded.", "Mara finally opened the eastern door before the alarm sounded."],
+      ["Mara handed Nkem the ledger beside the eastern door.", "Nkem handed Mara the ledger beside the eastern door."],
+      ["Mara closed the hatch then opened the door beside Nkem.", "Mara opened the hatch then closed the door beside Nkem."],
+      ["The alarm rang and Mara unlocked the eastern door.", "The alarm rang rang and Mara unlocked the eastern door."],
+    ];
+    for (const [tail, prose] of pairs) assert.equal(stripRepeatedPrefix(prose, tail), null, prose);
+  });
+
   it("returns null when there is no page yet, or nothing drafted", () => {
     assert.equal(stripRepeatedPrefix(P, ""), null);
     assert.equal(stripRepeatedPrefix("", P), null);

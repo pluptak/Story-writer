@@ -12,6 +12,7 @@ import {
   loadStory, discoverStories, chooseStory, selectableStory, resolveCliStoryDir, loadDefaults, readChapters, writtenChapters, readChapterSpec, readChapterCatalogs, ROOT,
 } from "../engine/story-format.ts";
 import { StoryJson } from "../engine/story-schema.ts";
+import { normalizeSpec } from "../engine/story-spec.ts";
 import { WARN } from "../engine/warnings.ts";
 import { quiet } from "./helpers.ts";
 
@@ -265,6 +266,72 @@ describe("loadStory warnings", () => {
       assert.ok(!/roster "GHOST"/.test(warns.join(" ")),
                 "a roster name that is in the cast must not be warned about");
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  const sceneCases = [
+    { name: "unknown presence character", scene: { presence: { TYPO: "remote :: phone" } }, pattern: /sets presence for "TYPO", who is not one of the characters/ },
+    { name: "presence outside roster", scene: { roster: ["B"], presence: { A: "remote :: phone" } }, pattern: /sets presence for "A", who is not in its roster/ },
+    { name: "invalid presence mode", scene: { presence: { A: "invisible :: phone" } }, pattern: /presence "invisible" is not "remote" or "partial"/ },
+    { name: "remote without via", scene: { presence: { A: "remote" } }, pattern: /presence "remote" carries no ":: via" detail/ },
+    { name: "remote with blank via", scene: { presence: { A: "remote ::   " } }, pattern: /presence "remote" carries no ":: via" detail/ },
+    { name: "POV outside roster", scene: { roster: ["B"], pov: "A" }, pattern: /pov "A" is not in the roster/ },
+    { name: "unknown POV", scene: { roster: ["B"], pov: "TYPO" }, pattern: /pov "TYPO" is not one of the characters/ },
+    { name: "valid remote", scene: { presence: { A: "remote :: phone" } } },
+    { name: "partial without via", scene: { presence: { A: "partial" } } },
+    { name: "partial with via", scene: { presence: { A: "partial :: doorway" } } },
+    { name: "empty roster includes everyone", scene: { roster: [], pov: "A", presence: { B: "remote :: phone" } } },
+    { name: "case insensitive names", scene: { roster: ["a"], pov: "a", presence: { a: "remote :: phone" } } },
+    { name: "absent presence", scene: { pov: "A" } },
+    { name: "blank presence entries", scene: { presence: { A: "  ", " ": "remote" } } },
+  ];
+  for (const c of sceneCases) {
+    it(`matches normalizeSpec warnings for ${c.name} without changing authored scenes`, async () => {
+      const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+      const story = {
+        title: "T", premise: "A premise.",
+        characters: [{ name: "A" }, { name: "B" }],
+        scenes: [{ question: "Q?", ...c.scene }],
+      };
+      const warns: string[] = [];
+      const orig = WARN.sink;
+      try {
+        await writeFile(join(dir, "story.json"), JSON.stringify(story), "utf8");
+        WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+        const sc = await loadStory(dir);
+        const problems = normalizeSpec(story).problems.filter(p => /presence|pov/.test(p));
+        assert.deepEqual(sc.scenes, StoryJson.parse(story).scenes);
+        if (c.pattern) {
+          assert.match(warns.join("\n"), c.pattern);
+          assert.match(problems.join("\n"), c.pattern);
+          assert.equal(warns.length, 1);
+          assert.equal(problems.length, 1);
+        } else {
+          assert.deepEqual(warns, []);
+          assert.deepEqual(problems, []);
+        }
+      } finally {
+        WARN.sink = orig;
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("accepts whitespace around cast, POV, roster, and presence names", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    const warns: string[] = [];
+    const orig = WARN.sink;
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        premise: "A premise.", characters: [{ name: " A " }],
+        scenes: [{ question: "Q?", pov: " a ", roster: [" A "], presence: { " a ": "remote :: phone" } }],
+      }));
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      await loadStory(dir);
+      assert.deepEqual(warns, []);
+    } finally {
+      WARN.sink = orig;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("rejects a story with an empty premise", async () => {

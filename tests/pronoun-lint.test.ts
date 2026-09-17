@@ -50,9 +50,72 @@ describe("lintPronouns", () => {
     assert.equal(hit, null);
   });
 
+  it("skips an object or possessive pronoun declared by exactly one other member", () => {
+    const cast = [
+      { name: "Merritt", pronouns: merritt },
+      { name: "Mara", pronouns: { subject: "she", object: "her", possessive: "her", reflexive: "herself" } },
+    ];
+    assert.equal(lintPronouns("Merritt set down the form and slid it toward her.", cast), null);
+    assert.equal(lintPronouns("Merritt picked up HER receipt.", cast), null);
+  });
+
+  it("flags unclaimed pronouns even when another member declares pronouns", () => {
+    const cast = [
+      { name: "Merritt", pronouns: merritt },
+      { name: "Mara", pronouns: { subject: "she", object: "her", possessive: "her", reflexive: "herself" } },
+    ];
+    for (const found of ["they", "them", "their"]) {
+      const hit = lintPronouns(`Merritt watched ${found} move.`, cast);
+      assert.ok(hit);
+      assert.equal(hit.character, "Merritt");
+      assert.equal(hit.found, found);
+    }
+  });
+
+  it("continues past an undecidable pronoun to the first unclaimed mismatch", () => {
+    const cast = [
+      { name: "Merritt", pronouns: merritt },
+      { name: "Mara", pronouns: { subject: "she", object: "her", possessive: "her", reflexive: "herself" } },
+    ];
+    const hit = lintPronouns("Merritt gave her their form, then them a pen.", cast);
+    assert.ok(hit);
+    assert.equal(hit.character, "Merritt");
+    assert.equal(hit.found, "their");
+    assert.equal(hit.match, "Merritt gave her their");
+  });
+
+  it("does not apply the new skip when two other members declare the word", () => {
+    const cast = [
+      { name: "Merritt", pronouns: merritt },
+      { name: "Riven", pronouns: riven },
+      { name: "Mara", pronouns: riven },
+    ];
+    const hit = lintPronouns("Merritt shifted their weight.", cast);
+    assert.ok(hit);
+    assert.equal(hit.found, "their");
+  });
+
+  it("accepts an own pronoun shared with another member", () => {
+    const cast = [
+      { name: "Merritt", pronouns: merritt },
+      { name: "Vale", pronouns: merritt },
+    ];
+    assert.equal(lintPronouns("Merritt shifted his weight.", cast), null);
+  });
+
   it("returns null for a character with no declared pronouns", () => {
     const hit = lintPronouns("Merritt shifts their weight.", [{ name: "Merritt" }]);
     assert.equal(hit, null);
+  });
+
+  it("flags reflexive drift even when another cast member owns that form", () => {
+    const cast = [{ name: "Riven", pronouns: riven }, { name: "Merritt", pronouns: merritt }];
+    const hit = lintPronouns("Riven steadied himself.", cast);
+    assert.ok(hit);
+    assert.equal(hit.character, "Riven");
+    assert.equal(hit.found, "himself");
+    const neo = { subject: "ze", object: "zem", possessive: "zer", reflexive: "zir" };
+    assert.equal(lintPronouns("Riven steadied zir.", [...cast, { name: "Sam", pronouns: neo }])?.found, "zir");
   });
 
   it("flags a reflexive form mismatch", () => {
@@ -118,10 +181,10 @@ describe("lintPronouns", () => {
       { name: "Merritt", pronouns: merritt },
       { name: "Riven", pronouns: riven },
     ];
-    const hit = lintPronouns("Riven shifted his weight.", cast);
-    assert.ok(hit, "should flag 'his' as wrong for Riven (they/them/their/themself)");
+    const hit = lintPronouns("Riven shifted her weight.", cast);
+    assert.ok(hit, "should flag 'her' as wrong for Riven (they/them/their/themself)");
     assert.equal(hit.character, "Riven");
-    assert.equal(hit.found, "his");
+    assert.equal(hit.found, "her");
   });
 
   it("does not match a name inside a longer word", () => {
@@ -159,10 +222,10 @@ describe("lintPronouns", () => {
       { name: "Riven", pronouns: riven },
     ];
     // Separate sentences so ambiguity check doesn't skip
-    const hit = lintPronouns("Merritt shifted their weight. Riven watched his approach.", cast);
+    const hit = lintPronouns("Merritt shifted her weight. Riven watched her approach.", cast);
     assert.ok(hit, "should find first mismatch in Merritt's sentence");
     assert.equal(hit.character, "Merritt");
-    assert.equal(hit.found, "their");
+    assert.equal(hit.found, "her");
   });
 
   it("handles curly quotes as well as straight quotes", () => {

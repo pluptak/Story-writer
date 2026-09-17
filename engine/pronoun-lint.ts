@@ -133,6 +133,11 @@ export function lintPronouns(
         const others = cast.filter(c => nameKey(c.name) !== nameKey(member.name) && c.name.trim());
         const ambiguous = others.some(c => new RegExp(`\\b${escapeRe(c.name)}\\b`, "i").test(sentence));
         if (ambiguous) continue;
+        const declaredElsewhere = others.filter(c => c.pronouns
+          && Object.values(c.pronouns).some(w => w.toLowerCase() === found));
+        const reflexive = /(?:self|selves)$/.test(found)
+          || cast.some(c => c.pronouns?.reflexive.toLowerCase() === found);
+        if (!reflexive && declaredElsewhere.length === 1) continue;
 
         return {
           ok: false,

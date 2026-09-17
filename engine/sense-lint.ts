@@ -176,6 +176,13 @@ const lookIsNotTheAct = (window: string): boolean =>
  *  punctuation ends the reach regardless. */
 const SUBJECT_WINDOW = 40;
 
+const hasOtherName = (window: string, character: string, names: readonly string[]): boolean =>
+  names.some(name => name.trim() && name.trim().toLowerCase() !== character.trim().toLowerCase()
+    && new RegExp(`\\b${escapeRe(name.trim())}\\b`, "i").test(window));
+
+const NOUN_VERBS = /^(?:watch|taste|smell|touch|glance|stare|gaze|peek)$/i;
+const NOUN_DETERMINER_TAIL = /\b(?:a|an|the|your|my|his|her|their|its)\s+$/i;
+
 /**
  * The mechanical restricted-sense check. Returns the first violation found, or null when the prose
  * narrates nobody perceiving through a sense they have lost.
@@ -204,8 +211,9 @@ export function lintRestrictedSenses(
       );
       let m: RegExpExecArray | null;
       while ((m = re.exec(prose))) {
+        if (hasOtherName(m[1], member.name, cast.map(c => c.name))) continue;
         if (DETERMINER.test(m[1])) continue;
-        if (/^look/.test(m[2]) && lookIsNotTheAct(m[1])) continue;
+        if (/^look/i.test(m[2]) && lookIsNotTheAct(m[1])) continue;
         const verb = m[2];
         return {
           ok: false,
@@ -269,6 +277,7 @@ export function lintRestrictedSituation(
   character: string,
   cannot: readonly string[],
   presence?: { mode: "remote" | "partial"; via: string },
+  otherNames: readonly string[] = [],
 ): SenseLintHit | null {
   const s = situation.trim();
   if (!s || !character.trim()) return null;
@@ -297,10 +306,15 @@ export function lintRestrictedSituation(
       );
       let m: RegExpExecArray | null;
       while ((m = re.exec(s))) {
+        if (hasOtherName(m[1], character, otherNames)) {
+          re.lastIndex = m.index + 3;
+          continue;
+        }
+        if (NOUN_VERBS.test(m[2]) && NOUN_DETERMINER_TAIL.test(m[1])) continue;
         // No determiner guard here — a possessive is the incriminating form in second person — but
         // the gated `look` family keeps its noun/capacity guard: "you give Riven a long look at" is
         // as innocent in a situation as on the page.
-        if (/^look/.test(m[2]) && lookIsNotTheAct(m[1])) continue;
+        if (/^look/i.test(m[2]) && lookIsNotTheAct(m[1])) continue;
         // A situation that states the sense is gone is honouring the CANNOT, not breaking it, and
         // applies to every sense rather than only `look`: "you cannot hear the alarm, but you feel
         // the floor" is the writer doing its job.

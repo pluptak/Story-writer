@@ -102,6 +102,50 @@ intrinsic one. There is no mechanical enforcement (`Judge.MD`'s `SceneDef.constr
 judge is the only thing that checks an answer against it, the same way it checks a restriction's
 meaning.
 
+### Full control is circumstance, not obedience — the interrogation pattern
+
+One character having full control over another (an interrogation, a captivity, a custody interview)
+is authored as **circumstance the controller owns plus a choice the controlled still owns**. The
+engine has no dominance or coercion field, and nothing about this pattern needs one:
+
+- **Physical control is `constraint`, on the scene, on the controlled.** Name what the hold takes
+  away, in `name :: meaning` prose, and keep it partial: bound hands still permit a shrug, a gag
+  still permits a stare. Example:
+
+  ```json
+  "constraint": { "PRISONER": ["bound :: tied to the chair, cannot reach, handle, or leave",
+                               "watched :: two guards in the room, every movement seen"] }
+  ```
+
+  Do not model this as `restrictions` (total, source-independent, travels between scenes), as
+  `reach` on the interrogator (a grant is access, never power over someone else), or as `presence`
+  (a prisoner in the room is `here`; `remote`/`partial` is for where someone stands, not who
+  commands them).
+
+- **Narrative control stays with the prisoner.** `goal`, `belief`, and especially `impulse`
+  (`WHEN PRESSURED, YOU`) decide whether pressure produces confession, silence, lying, stalling,
+  or bargaining — refusal and stillness are complete answers (`WHAT YOU WANT IS THE POINT`). Author
+  at least one `voice` sample showing this character refusing, so defiance is an established register
+  rather than a first-time invention under pressure. A goal satisfied only through the other's
+  compliance ("make him confess") has no agency; give the interrogator a goal they can act toward
+  themselves ("get a usable name before the shift changes") and let the prisoner's goal obstruct it.
+
+- **The writer carries pressure as perceivable situation, one blind consult at a time.** The
+  interrogator is consulted for what they say and do; the prisoner is consulted for what they can
+  perceive of it — where they are, what just happened, what hangs on the choice now — without naming
+  the fork, laying out options, or leaking one answer into the other's situation (the second one
+  asked blind; [`Writer.MD`](Writer.MD)'s principle of operation). Escalation across turns is new
+  perceivable facts (the door locked, the offer put on the table), never a directive about what the
+  prisoner should do.
+
+- **What the gates do with it.** The judge accepts defiance as usable; only an answer reaching
+  through the authored `constraint` (untying, leaving, handling what bound hands cannot) or a
+  `CANNOT` is retryable on those grounds. The narration lint refuses prose that writes the prisoner's
+  choice before asking (THE ONE RULE) or phrases the situation around what a `CANNOT` removes. If the
+  next chapter still holds them the same way, re-author the same `constraint` there; if the hold is
+  gone for good, author nothing — a capability lost for good is `restrictions`, per
+  [`Architect.MD`](Architect.MD)'s operating principle.
+
 ### What it is never shown
 
 - The premise, the story-level `facts`, the writer's prose, any other character's answer.

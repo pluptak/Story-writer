@@ -103,6 +103,13 @@ never becomes part of another's situation — the second one asked blind, and an
 someone else's situation decides the moment for them (`prompts.ts`, `WRITER_FORMAT`). The situation
 is the only channel there is, so it is also the only place such a leak can happen.
 
+Pressure without authorship — interrogation, captivity, custody — follows the same rule: the writer
+narrates what the controller does and puts what the controlled can perceive of it to them as
+situation, without naming the fork or directing the choice. The full authoring pattern (scene
+`constraint` for the hold, `impulse`/`goal`/`belief` for what pressure meets, what the judge and
+the lint do with each half) is [`Character.MD`](Character.MD)'s "Full control is circumstance, not
+obedience".
+
 A character re-consulted after two or more pieces of prose carries no memory of the page between,
 so under `--consult-since` the consult carries a third field, `since`: what reached them since they
 were last asked — what their last answer came to, and anything else around them they could perceive,

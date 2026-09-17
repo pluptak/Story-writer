@@ -210,6 +210,9 @@ done, and by whom -- or something they could plausibly perceive or infer that po
 situation that only states the fact's abstract consequence ("you have been robbed") leaves them
 nothing to answer honestly from.
 
+For a reaction fan-out, check each reactor's situation separately: it is the payload that reactor
+receives, not a shared situation they may never be given.
+
 And it must not answer itself. A situation that names the choice ("you must decide whether to sign"),
 lays out the options ("you could hold the door or let go"), or tells them which part of the moment
 matters ("the important thing is the timer") has done the character's reading for them, and what
@@ -251,9 +254,14 @@ export const narrationLintRequest = (p: {
   pov: string;
   prose: string;
   granted: { character: string; speech: string; action: string; thought?: string }[];
-  consult: { character?: string; reactors?: string[]; situation: string; question?: string } | null;
-}) =>
-  `[POV] ${p.pov}\n\n[PIECE JUST DRAFTED]\n${p.prose}\n\n`
+  consult: { character?: string; reactors?: (string | { name: string; situation?: string })[];
+    situation: string; question?: string } | null;
+}) => {
+  const reactors = p.consult?.reactors?.map(r => ({
+    name: (typeof r === "string" ? r : r.name).trim(),
+    situation: (typeof r === "string" ? "" : r.situation ?? "").trim() || p.consult!.situation.trim(),
+  })).filter((r, i, all) => r.name && all.findIndex(x => x.name.toLowerCase() === r.name.toLowerCase()) === i);
+  return `[POV] ${p.pov}\n\n[PIECE JUST DRAFTED]\n${p.prose}\n\n`
   + `[ALREADY GRANTED THIS SCENE]\n`
   + (p.granted.length
       ? p.granted.map(g => `${g.character}` + (g.speech ? ` -- said: ${g.speech}` : "")
@@ -262,10 +270,13 @@ export const narrationLintRequest = (p: {
       : "(nobody yet)")
   + (p.consult
       ? `\n\n[CONSULT OPENED BY THIS PIECE]\n`
-        + (p.consult.character ? `asking: ${p.consult.character}\n` : "")
-        + (p.consult.reactors?.length ? `reactors: ${p.consult.reactors.join(", ")}\n` : "")
-        + `situation given: ${p.consult.situation}\nquestion: ${p.consult.question}`
+        + (reactors
+            ? `reactors: ${reactors.map(r => r.name).join(", ")}\n`
+              + reactors.map(r => `${r.name}\nsituation given: ${r.situation}`).join("\n\n")
+            : (p.consult.character ? `asking: ${p.consult.character}\n` : "")
+              + `situation given: ${p.consult.situation}\nquestion: ${p.consult.question}`)
       : "");
+};
 
 export const BATCH_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHICH REACTIONS MAY BECOME DEEDS.
 
