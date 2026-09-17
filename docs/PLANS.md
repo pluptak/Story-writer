@@ -122,18 +122,19 @@ this entry was first written, so the same comparison shape covers both.
 ### 3. A scene has no representation of its own question being answered
 
 Type: measurement
-Why now: the resampling harness (`done-judge-bench`) has now put a real sample size (80) behind the
-one question that decides whether gating is safe — false `resolved` is rare (1.25%) and correlates
-with genuinely ambiguous prose, not with the mechanism itself. Close to a decision.
-Next action: either add cases that stress `resolved` on *different* kinds of ambiguity (not just this
-one story's lock-and-doorway shape), or move to scoping the cheap first enforcement policy (plan
-step 6: one free closing piece on resolved, deny/limit further extensions past it).
+Why now: widening the bench past doorway found the 1.25% single-story rate does not generalize —
+two of eight cross-story cases came back wrong 8/8, both new and distinct failure shapes. Enforcement
+is further away than the single-story read suggested, not closer.
+Next action: read `interrogation-scope-mismatch` and `root-and-shadow-open-combat` (below) as the two
+concrete failure modes to design against — scope-mismatch (real evidence, wrong sub-question) and
+recency-blindness (real evidence, wrong position in the page) — before adding more cases or moving
+toward enforcement.
 Done when: enough is read to say whether `question_state` should start gating anything, or what
 enforcement should look like. See "Whether a scene may outrun its own question" under Decisions
 needed for the policy question this measurement feeds.
 Evidence: `05-18-22-498Z`, `05-22-55-735Z` (pre-instrumentation, revision `6e69eff`);
 `06-15-52-596Z`, `07-50-49-951Z` (first post-instrumentation reads); `scripts/done-judge-bench.ts` +
-`scripts/done-judge-bench-cases.json` (resampling harness, seeded from both runs above); calibration
+`scripts/done-judge-bench-cases.json` (resampling harness, 12 cases across 6 stories); calibration
 fixtures in `tests/scene-loop-consult.test.ts`.
 
 **Evidence since (2026-09-17) — first post-instrumentation reads, both doorway/`e4b`:**
@@ -186,6 +187,44 @@ Also worth recording: the harness itself had a bug caught by this run — `--sam
 `s`) silently fell back to the samples default (5) instead of erroring, costing two full 5-per-case
 runs before the mistake was visible in the output. Fixed to hard-refuse any unrecognized `--flag`,
 the same policy `cli-flags.ts` already holds the engine to.
+
+**Evidence since (2026-09-17) — widened past doorway, and the encouraging read did not survive it:**
+eight cases added from five other stories/genres already on disk (`alarm-corridor`, `root-and-shadow`,
+`the-cooling-loop2`, `thelastslot`, `interrogation-test`), all resolved via existing run transcripts —
+no new live runs needed. 96 samples total (`--samples=8`, all 12 cases): 80/96 matched, **16/96 false
+`resolved` (16.7%)**, but concentrated entirely in two cases at 8/8 (100%) each, every other case at
+8/8 correct including three more clean `resolved` cases (`alarm-corridor-resolved-logged`,
+`cooling-loop2-resolved-success`, `cooling-loop2-resolved-failure` — the last a confirmed *negative*
+resolution, Elias physically overpowers Sara and the dashboard still fails, worth having on record as
+proof the judge isn't just pattern-matching "success" to `resolved`) and `thelastslot-resolved-paperwork`.
+
+The two 8/8 misses are different failure shapes, neither a repeat of the doorway fabrication:
+
+- **`interrogation-scope-mismatch`** (from `interrogation-test`, run `2026-09-17T08-26-06-060Z` —
+  itself a live `question_state: resolved` this bench case exists to check by hand): the interviewer
+  writes down a narrow procedural note ("witness states no internal movement visible from her
+  position") mid-interrogation, and the judge reads it as the interview's whole account of the
+  missing ledger, even though the interview has not ended. **Real evidence, correctly quoted, scoped
+  to a sub-question rather than the scene's actual question.**
+- **`root-and-shadow-open-combat`** (from `root-and-shadow`, run `2026-09-10T19-34-38-969Z`): the
+  purge-flame genuinely does fire early in the page, killing one Blight-Spore — but a second, larger
+  swarm erupts immediately after, and the page ends mid-fight against it with Kaelen's own line ("we
+  don't move until the rot is truly gone") saying the threat isn't over. The judge cites the early,
+  real, verbatim explosion and never engages with the 1200 words of continued danger after it.
+  **Real evidence, correctly quoted, from the wrong position in the page relative to the actual
+  ending.** (This case's own note was initially wrong too — first written from the page's tail alone,
+  without checking whether the flame appeared earlier; fixed once the 8/8 result made that check
+  necessary. Worth remembering while building more cases: an excerpt has to be read in full, not
+  just at the point being checked.)
+
+So the doorway-only 1.25% read was real but not representative — it happened to hit a story whose
+only sharp ambiguity was one confusing sentence. Two systematic, reproducible failure shapes exist
+(scope-mismatch, recency-blindness) that a single-story sample could not have found. This moves
+enforcement further away, not closer: any gate built on `resolved` alone would need a defense against
+at least these two shapes — the most direct being a shipped version of what this harness proved out
+by hand, a mechanical check that `evidence` is drawn from *near the actual end* of what the judge was
+shown, plus a cheap re-ask (perhaps just the final third of the page) rather than trusting one
+whole-page verdict.
 
 The doorway run ended `done: false` at 64 steps against a `maxSteps` of 24 with 933 words against a
 700 target. Its question — "Does Riven get through the door before Merritt decides what to do about
