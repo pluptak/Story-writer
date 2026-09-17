@@ -122,16 +122,52 @@ this entry was first written, so the same comparison shape covers both.
 ### 3. A scene has no representation of its own question being answered
 
 Type: measurement
-Why now: the done-judge instrumentation (`QuestionState`) just shipped; this is the first live run
-that can actually be read against it, and it gates whether anything here moves from observational to
-enforcing.
-Next action: read a run under the built `QuestionState` instrumentation by hand, alongside item 1's
-pronoun question.
-Done when: enough is read to say whether `question_state` should start gating anything, or what
-enforcement should look like. See "Whether a scene may outrun its own question" under Decisions
+Why now: the done-judge instrumentation (`QuestionState`) shipped (`200facf`) and a resampling
+harness (`done-judge-bench`) just caught a live false-`resolved` on its first independent resample —
+the exact failure mode that decides whether gating is safe, now with a reproducible case to chase.
+Next action: run `npm run done-judge-bench` at higher `--samples` (20+) on `extension-open-step24`
+and the other cases to get a real rate, not an n=5 read; add cases as new runs surface them.
+Done when: enough samples are read to say whether `question_state` should start gating anything, or
+what enforcement should look like. See "Whether a scene may outrun its own question" under Decisions
 needed for the policy question this measurement feeds.
-Evidence: `05-18-22-498Z`, `05-22-55-735Z` (revision `6e69eff`); calibration fixtures in
-`tests/scene-loop-consult.test.ts`.
+Evidence: `05-18-22-498Z`, `05-22-55-735Z` (pre-instrumentation, revision `6e69eff`);
+`06-15-52-596Z`, `07-50-49-951Z` (first post-instrumentation reads); `scripts/done-judge-bench.ts` +
+`scripts/done-judge-bench-cases.json` (resampling harness, seeded from both runs above); calibration
+fixtures in `tests/scene-loop-consult.test.ts`.
+
+**Evidence since (2026-09-17) — first post-instrumentation reads, both doorway/`e4b`:**
+`06-15-52-596Z` (21 steps, no extension) ended `done: true` with a `resolved` verdict — Riven picks
+the lock, delivers the package, slips back out; Merritt only listens. The judge's `evidence` field
+quotes the actual settling line verbatim ("The lock releases with a soft, definitive *thunk*..."),
+which is the shape a spot-check can actually verify against the page.
+
+`07-50-49-951Z` (50 steps, two grants — the extension check fired at step 24/735 words and step
+48/1419 words, both `open`) ends with the writer declaring `scene_done: true` while the last tumbler
+has *just* clicked and Merritt has just put a hand out to stop Riven turning the handle — nothing
+decided either way. The judge called the final check `open` too and was right: this is the standoff
+`Judge.MD` describes, caught for the first time instead of silently reading as a finished `done: true`
+downstream.
+
+Across the two runs: 3 `open` calls, all plausible on a hand read of the page at that exact word
+count; 1 `resolved` call, correct and evidenced. Zero false `resolved` — on the two live runs alone.
+
+**Evidence since (2026-09-17) — the resampling harness immediately found what the two runs didn't:**
+`scripts/done-judge-bench.ts` (+ `scripts/done-judge-bench-cases.json`) replays a page excerpt
+against a fresh done-judge call any number of times without writing a word of prose — calling
+`checkQuestionState` itself, not a reimplementation. Seeded with the four checkpoints above and run
+once each as a smoke test, the very first independent resample of `extension-open-step24` (the
+ambiguous "Merritt secures the door" moment, genuinely `open` — the scene ran another 26 steps to an
+unmistakable standoff) came back `resolved`, with **fabricated evidence**: `"Riven quickly slides
+the canvas satchel through the narrow gap in the door, then steps across the threshold into the
+building"` — a sentence that appears nowhere in the actual page. Four more samples of the same case:
+3 correct `open`, 0 more false `resolved` (1/5 total on this case). n=5 is not a rate, but it is a
+live, reproducible false-`resolved` with invented evidence, on exactly the kind of page (a described
+action whose outcome is described but whose consequence for the *question* is not) that was always
+the risk. **This revises the read above:** "zero false resolved" was an artifact of only two live
+endings existing; the harness exists precisely so the next read is a real sample size instead of
+another expensive full run. `evidence` being present did not save this case — the field is stated,
+not verified, so a spot-check against the page is still required, not optional, even when `evidence`
+looks concrete.
 
 The doorway run ended `done: false` at 64 steps against a `maxSteps` of 24 with 933 words against a
 700 target. Its question — "Does Riven get through the door before Merritt decides what to do about

@@ -337,8 +337,11 @@ export function neglectedCast(cast: string[], lastAsked: Map<string, number>, st
  *  `buildChapterBeatOutcome` (run-and-save.ts) as the writer's-own-declaration verdict specifically,
  *  and every call site now shares this helper. The `writer_done` call site logs them itself; the
  *  other two (budget-exhaustion, hard cap) only ever log `question_state`, so an ending the writer
- *  never chose cannot be mistaken for one it did. */
-async function checkQuestionState(newDoneJudge: () => Agent, question: string, prose: string,
+ *  never chose cannot be mistaken for one it did.
+ *
+ *  Exported for `scripts/done-judge-bench.ts`, which calls this exact function against real page
+ *  excerpts to calibrate the judge without running a whole scene for each read. */
+export async function checkQuestionState(newDoneJudge: () => Agent, question: string, prose: string,
                                   chapter: number, log: (e: RunEvent) => void): Promise<QuestionState> {
   const doneJudge = newDoneJudge();
   const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({ question, prose }) }];

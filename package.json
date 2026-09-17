@@ -9,6 +9,7 @@
     "preflight": "npx tsx story-writer.ts --preflight",
     "revision-benchmark": "npx tsx scripts/revision-benchmark.ts",
     "judge-diagnostic": "npx tsx scripts/judge-diagnostic.ts",
+    "done-judge-bench": "npx tsx scripts/done-judge-bench.ts",
     "typecheck": "npx tsc",
     "lint": "eslint .",
     "test:gui": "playwright test",
