@@ -39,8 +39,8 @@ at a glance; the prose under it is not summarized away.
 
 ## Now
 
-Three items, in the order to pick them up. Items 1 and 3 share live-run evidence and are each a
-reason to distrust what the writer hands everyone else; item 2 needs no live run at all.
+Two items, in the order to pick them up. Both share live-run evidence and are each a reason to
+distrust what the writer hands everyone else.
 
 Items 1 and 3's evidence is doorway runs of 2026-08-27 (`16-23-17-001Z`, `19-33-16-122Z`,
 `19-47-04-293Z`; a fourth run from that day has since rotated off disk, so figures cited from it are
@@ -103,23 +103,7 @@ already read clean before the switch that reopened this entry (`19-15-36-664Z`) 
 switch raised, since a mechanical miss on an ambiguous (two-names-in-one-sentence) construction would
 also read as silence here and neither run's prose was checked by hand for that specific gap.
 
-### 2. `sceneDrift` must compare `reach` and `constraint`
-
-Type: fix
-Why now: small, deterministic, and has a clear verification path. It does not need a live run or a
-design decision, and it protects against silently re-authoring a chapter under stale scene
-capabilities.
-Next action: add the two comparisons to `sceneDrift` (`engine/story-spec.ts`) and tests for edited
-`reach` and `constraint`.
-Done when: `sceneDrift` flags a `reach` or `constraint` edit the same way it already flags
-`place`/`question`/`pov`/`length`/`roster`; `npx tsc --noEmit` and `npm test` pass.
-
-The snapshot-desync warning guarding the handoff compares place, question, pov, length and roster —
-but neither scene-scoped capability field, so a written chapter whose `reach` or `constraint` was
-hand-edited afterwards re-authors silently. `constraint` is `reach`'s negative twin and arrived after
-this entry was first written, so the same comparison shape covers both.
-
-### 3. A scene has no representation of its own question being answered
+### 2. A scene has no representation of its own question being answered
 
 Type: measurement
 Why now: widening the bench past doorway found the 1.25% single-story rate does not generalize —
@@ -290,8 +274,6 @@ Known change, known verification — no live run or design decision needed to st
 architect-prompt items below all have live scaffold evidence and a candidate fix, but still need a
 run to confirm the fix lands; batch them into one prompt-run session with the owner rather than
 running each alone.
-
-**In Now:** item 2, `sceneDrift`.
 
 ### The ZERO-SUM TEST passes goals that have no agency
 
@@ -495,6 +477,23 @@ would settle it, and several gate work in the sections above and below.
   gate — at the price that a one-shot beat is authored without the rules that stop it misfiring.
   **Done when** a one-shot proposal that produced a beat has been read; nobody has read one yet.
 
+  **Evidence since (2026-09-17) — the first one-shot proposal that produced a beat has been read:**
+  `the-healer-s-cell` (one-shot scaffold). `story.json`'s timeline came back with exactly one entry —
+  `hold: "the messenger's knock"`, `fired: "A frantic pounding on the heavy oak door of the dungeon
+  corridor."`, `at: 0.6`, `scope: "scene"`, one MARA memory — not the empty-list case this bullet was
+  written against. The chapter run (`2026-09-17T11-12-06-273Z`, 9 steps, 790 words, `done: true`
+  `resolved`, evidence a verbatim quoted line) rendered the `fired` text almost verbatim ("a frantic,
+  rhythmic pounding erupted from the heavy oak door at the end of the corridor") at the position the
+  trigger implies. So `TIMELINE_FIELDS` earned its cost here: one correctly-scoped, well-integrated
+  beat, not a malformed or empty one — on this run the shrink-it case has one point against it.
+
+  What it did not settle: the implanted memory ("he is the one who signed her arrest warrant") never
+  surfaced, verbatim or paraphrased, in either of Mara's two post-beat consults (`mara.jsonl`, calls
+  3–4) — both `thought` fields stayed on the immediate noise. The scene ended two exchanges after the
+  beat fired, leaving the memory little room to be exercised, so this is not a miss so much as the
+  same gap the world-repair bullet above already names: a fired beat's landing is unverified until
+  `thought` fields are read across several runs, and this is the first read that actually tried.
+
 ## Decisions needed
 
 The engine permits something it should not, or has no representation for something it needs, and the
@@ -502,7 +501,7 @@ fix is not decided. Nothing here should be built before its question is answered
 
 ### Whether a scene may outrun its own question, and what should happen when it does
 
-**In Now:** item 3 carries the live-evidence read this decision is waiting on. Overlaps the reaction
+**In Now:** item 2 carries the live-evidence read this decision is waiting on. Overlaps the reaction
 fan-out entry below, whose live evidence is also a post-crisis overrun.
 
 ### The architect hands the writer future knowledge through the scene framing — `[HOLD]` only contains it
