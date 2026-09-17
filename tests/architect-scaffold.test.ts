@@ -575,6 +575,61 @@ describe("ScaffoldSession, staged", () => {
     assert.equal(s.asks, 0);
   });
 
+  describe("storytelling prompt guidance", () => {
+    it("grounds generated goals, voices and impulses without scripting the scene", () => {
+      for (const text of [P.ARCHITECT_FORMAT, P.architectCastStage("p", "t", "{}"),
+                         P.architectCastRegenerateOne("p", "t", "{}", "ASTER")]) {
+        for (const rule of [/immediate,\s+observable aim/, /Not "win the argument"/,
+                            /not a scripted action sequence or a guaranteed outcome/,
+                            /ZERO-SUM TEST/, /One conditional rule, "when X -> Y"/,
+                            /not\s+a generic gesture loop/, /not a tic to repeat on every turn/,
+                            /vocabulary and rhythm/, /ordinary, context-fitting line/,
+                            /not a set of polished aphorisms/, /do not force fragments/,
+                            /At least one line refusing or pushing back/,
+                            /voice samples, not dialogue scheduled for the scene/]) {
+          assert.match(text, rule);
+        }
+      }
+    });
+
+    it("shares concrete selection guidance only when generating a style", () => {
+      for (const text of [P.ARCHITECT_FORMAT, P.architectSettingsStage("{}")]) {
+        assert.match(text, /without an author-selected preset, favour concrete selection/);
+        assert.match(text, /rather\s+than inventorying the room/);
+        assert.match(text, /without interpreting every\s+exchange/);
+        assert.match(text, /not a requirement for clipped prose/);
+        assert.match(text, /not additions to or overrides of an author-selected style preset/);
+      }
+      const preset = { name: "Reflective", voice: "Long sentences. Interpret every exchange.\nKeep the lyric register." };
+      const text = P.architectSettingsStage("{}", preset);
+      assert.ok(text.includes(`${preset.name}\n${preset.voice}`));
+      assert.match(text, /not yours to rewrite, extend or restate/);
+      assert.match(text, /Send no "writer_style"/);
+      assert.match(text, /Do not work around it in the constraints/);
+      assert.doesNotMatch(text, /favour concrete selection|without interpreting every/);
+      assert.doesNotMatch(text, /"writer_style":/);
+      for (const settings of [text, P.architectSettingsStage("{}")]) {
+        assert.match(settings, /rules about what the narration may KNOW, never how it sounds/);
+        assert.match(settings, /"writer_style_constraints": \[\]/);
+      }
+    });
+
+    it("keeps storytelling guidance within each stage's field ownership", () => {
+      for (const text of [P.architectStoryStage("idea"), P.architectCastStage("p", "t", "{}"),
+                         P.architectSettingsStage("{}"), P.architectSceneStage("{}"),
+                         P.architectWorldStage("{}"), P.architectTechnicalStage("{}")]) {
+        assert.match(text, /Propose ONLY this stage's fields/);
+        assert.match(text, /Fields of other stages are dropped/);
+      }
+      const world = P.architectWorldStage("{}");
+      assert.match(world, /flag it\s+in "note" for revision at the scene stage/);
+      assert.match(world, /the world stage authors only the timeline/);
+      assert.doesNotMatch(world, /change\s+the question rather than the beat/);
+      assert.doesNotMatch(P.architectCastStage("p", "t", "{}"), /favour concrete selection/);
+      assert.doesNotMatch(P.architectSettingsStage("{}"), /observable aim|generic gesture loop/);
+    });
+  });
+
   describe("the world stage", () => {
     const WORLD_WITH_BEAT = {
       timeline: [{
@@ -617,7 +672,11 @@ describe("ScaffoldSession, staged", () => {
       for (const rule of [/IT NAMES A SPECIFIC COST/, /IT AGREES WITH THE EVENT/,
                           /IT OPENS AN ACTION/, /IT GOES TO WHOEVER MUST MOVE/,
                           /MOST STORIES DO NOT NEED ONE/, /AT MOST ONE PER CHAPTER/,
-                          /No dialogue and no quotation marks/]) {
+                          /No dialogue and no quotation marks/,
+                          /CHANGE THE CIRCUMSTANCES, not just the noise level/,
+                          /alter access, available time/, /cost of delay/,
+                          /not a prescribed character choice, reaction/,
+                          /never instructions for what someone must decide next/]) {
         assert.match(staged, rule, `staged stage is missing ${rule}`);
         assert.match(P.ARCHITECT_FORMAT, rule, `one-shot format is missing ${rule}`);
       }
@@ -673,8 +732,12 @@ describe("ScaffoldSession, staged", () => {
       assert.match(text, /\[THE AUTHOR'S CAST\]/);
       assert.match(text, /IVET/);
       assert.match(text, /Ex-locksmith, keeps every key on a labelled ring\./);
-      assert.match(text, /PRESERVE, unchanged/);
-      assert.match(text, /RESOLVE for this story/);
+      assert.match(text, /PRESERVE, unchanged: belief, impulse, voice, skills, restrictions/);
+      assert.ok(text.includes(IVET.impulse));
+      assert.ok(text.includes(IVET.voice[0]));
+      assert.doesNotMatch(text, /generic gesture loop|vocabulary and rhythm|do not force fragments/);
+      assert.match(text, /immediate,\s+observable aim/);
+      assert.match(text, /RESOLVE for this story: knows and goal/);
       assert.match(text, /COMPOSE the persona/);
       assert.match(text, /DO NOT ADD ANYONE/);
     });

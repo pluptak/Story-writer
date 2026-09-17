@@ -10,6 +10,9 @@ import { join } from "node:path";
 import { loadStory } from "../engine/story-format.ts";
 import { normalizeSpec, applyEdits, specView, sceneDrift, timelineDrift, timelineBeatProblems, timelineOrderProblems, renderStory, type SceneDef } from "../engine/story-spec.ts";
 import { StoryJson } from "../engine/story-schema.ts";
+import { timelineMemoryWarnings } from "../engine/story-spec.ts";
+import { HOST } from "../host.ts";
+import { WARN } from "../engine/warnings.ts";
 import { quiet, quietSync } from "./helpers.ts";
 
 describe("specView against the story schema", () => {
@@ -320,6 +323,150 @@ describe("timelineBeatProblems", () => {
 
   it("says nothing when the target scene's roster is empty — that means the whole cast is in it", () => {
     assert.deepEqual(timelineBeatProblems("beat 1", beat({ memories: { WREN: "x" } }), cast, scenes([])), []);
+  });
+});
+
+describe("timelineMemoryWarnings", () => {
+  const memory = "The west archive contains the original signed agreement proving that the harbour belongs to the missing surveyor.";
+  const story = () => StoryJson.parse({
+    title: "The archive", premise: "Two clerks wait for a delivery.",
+    scenes: [{ question: "Will they open the parcel?" }],
+    characters: [{ name: "HALE" }, { name: "WREN" }],
+    timeline: [{ chapter: 1, hold: "the parcel arriving", fired: "the parcel arrives", memories: { HALE: memory } }],
+  });
+
+  for (const field of ["persona", "knows", "goal", "belief", "impulse", "voice"] as const) {
+    it(`warns for a complete memory embedded in the recipient's ${field}`, () => {
+      const s = story();
+      const text = `Keeps careful records. ${memory} Waits quietly.`;
+      if (field === "voice") s.characters[0].voice = [text];
+      else s.characters[0][field] = text;
+      const before = structuredClone(s);
+      const warnings = timelineMemoryWarnings(s);
+      assert.equal(warnings.length, 1);
+      assert.ok(warnings[0].includes(`characters.HALE.${field}`));
+      assert.deepEqual(s, before);
+    });
+  }
+
+  for (const field of ["premise", "facts", "question", "writerStyle", "writerStyleConstraints"] as const) {
+    it(`warns for a complete memory in ${field}`, () => {
+      const s = story();
+      if (field === "question") s.scenes[0].question = memory;
+      else if (field === "facts" || field === "writerStyleConstraints") s[field] = [memory];
+      else s[field] = memory;
+      const warnings = timelineMemoryWarnings(s);
+      assert.equal(warnings.length, 1);
+      assert.ok(warnings[0].includes(field));
+    });
+  }
+
+  it("normalizes case, punctuation, whitespace and recipient name spelling", () => {
+    const s = story();
+    s.timeline[0].memories = { " hale ": memory };
+    s.characters[0].knows = memory.toUpperCase().replaceAll(" ", ",\n  ");
+    assert.equal(timelineMemoryWarnings(s).length, 1);
+  });
+
+  it("does not attribute another character's private text to the recipient", () => {
+    const s = story();
+    s.characters[1].knows = memory;
+    assert.deepEqual(timelineMemoryWarnings(s), []);
+    s.timeline[0].memories.WREN = memory;
+    const warnings = timelineMemoryWarnings(s);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /memory for "WREN"/);
+  });
+
+  it("ignores short, blank and punctuation-only memories", () => {
+    for (const text of ["The archive is locked.", "", "   ", ".!?".repeat(40)]) {
+      const s = story();
+      s.timeline[0].memories.HALE = text;
+      s.characters[0].knows = text;
+      assert.deepEqual(timelineMemoryWarnings(s), []);
+    }
+  });
+
+  it("ignores partial copies, paraphrases and matches inside a word", () => {
+    for (const text of [memory.slice(0, 90), memory.replace("original", "old"), `x${memory}`, `${memory.slice(0, -1)}s`]) {
+      const s = story();
+      s.characters[0].knows = text;
+      assert.deepEqual(timelineMemoryWarnings(s), []);
+    }
+  });
+
+  it("does not concatenate separate fields or list entries to manufacture a match", () => {
+    const s = story();
+    s.facts = [memory.slice(0, 50), memory.slice(50)];
+    s.characters[0].persona = memory.slice(0, 50);
+    s.characters[0].knows = memory.slice(50);
+    assert.deepEqual(timelineMemoryWarnings(s), []);
+  });
+
+  it("ignores void beats but checks fired beats that rearm on a fresh run", () => {
+    const s = story();
+    s.premise = memory;
+    s.timeline[0].state = "void";
+    assert.deepEqual(timelineMemoryWarnings(s), []);
+    s.timeline[0].state = "fired";
+    assert.equal(timelineMemoryWarnings(s).length, 1);
+  });
+
+  it("ignores unknown recipients and titles rather than guessing attribution", () => {
+    const s = story();
+    s.title = memory;
+    assert.deepEqual(timelineMemoryWarnings(s), []);
+    s.premise = memory;
+    s.timeline[0].memories = { GHOST: memory };
+    assert.deepEqual(timelineMemoryWarnings(s), []);
+  });
+
+  it("checks earlier and target scene questions but not later ones", () => {
+    const s = story();
+    s.scenes.push({ ...s.scenes[0], question: memory });
+    assert.deepEqual(timelineMemoryWarnings(s), []);
+    s.timeline[0].chapter = 2;
+    assert.equal(timelineMemoryWarnings(s).length, 1);
+    s.scenes[0].question = memory;
+    s.scenes[1].question = "Who leaves?";
+    assert.equal(timelineMemoryWarnings(s).length, 1);
+  });
+
+  it("shares one diagnostic per memory across normalize, check, editor load and runtime load", async () => {
+    const s = story();
+    s.characters[0].knows = memory;
+    s.premise = memory;
+    s.facts = [memory, memory];
+    const expected = timelineMemoryWarnings(s);
+    assert.equal(expected.length, 1);
+    assert.match(expected[0], /characters.HALE.knows.*premise.*facts\[0\].*facts\[1\]/);
+    const relevant = (warnings: string[]) => warnings.filter(w => w.includes("duplicates its full text"));
+    const normalized = normalizeSpec(s);
+    assert.deepEqual(relevant(normalized.problems), expected);
+    assert.deepEqual(normalized.spec.timeline, s.timeline);
+    assert.equal(normalized.spec.characters[0].knows, memory);
+    const checked = await HOST.checkStory(s);
+    assert.equal(checked.ok, true);
+    assert.deepEqual(relevant(checked.warnings ?? []), expected);
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    const sink = WARN.sink;
+    try {
+      const content = JSON.stringify(s);
+      await writeFile(join(dir, "story.json"), content, "utf8");
+      const editor = await HOST.storyForEdit(dir);
+      assert.equal(editor.ok, true);
+      assert.deepEqual(relevant(editor.warnings ?? []), expected);
+      const warnings: string[] = [];
+      WARN.sink = text => { warnings.push(text); };
+      const loaded = await loadStory(dir);
+      assert.deepEqual(relevant(warnings), expected.map(w => `  (${w})`));
+      assert.deepEqual(loaded.timeline, s.timeline);
+      assert.equal(loaded.characters[0].knows, memory);
+      assert.equal(await readFile(join(dir, "story.json"), "utf8"), content);
+    } finally {
+      WARN.sink = sink;
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

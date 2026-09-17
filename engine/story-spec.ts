@@ -1,6 +1,7 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
 import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems, type Catalogs } from "./skills.ts";
 import { RunConfig, THINK_LEVELS, TimelineDef, type ThinkLevel, type SceneDef } from "./story-schema.ts";
+import { sameName } from "./config-util.ts";
 
 export type { SceneDef, CharacterDef, RunConfig, TimelineDef } from "./story-schema.ts";
 
@@ -132,6 +133,43 @@ export function timelineOrderProblems(beats: TimelineDef[]): string[] {
     }
   }
 
+  return out;
+}
+
+export function timelineMemoryWarnings(story: Pick<StorySpec,
+  "timeline" | "characters" | "premise" | "facts" | "scenes" | "writerStyle" | "writerStyleConstraints"
+>): string[] {
+  const textKey = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const shared: [string, string][] = [
+    ["premise", story.premise],
+    ...story.facts.map((text, i): [string, string] => [`facts[${i}]`, text]),
+    ["writerStyle", story.writerStyle],
+    ...story.writerStyleConstraints.map((text, i): [string, string] => [`writerStyleConstraints[${i}]`, text]),
+  ];
+  const out: string[] = [];
+  for (const [i, beat] of story.timeline.entries()) {
+    if (beat.state === "void") continue;
+    for (const [who, memory] of Object.entries(beat.memories)) {
+      const key = textKey(memory);
+      if (key.length < 80 || key.split(" ").length < 12) continue;
+      const character = story.characters.find(c => sameName(c.name, who));
+      if (!character) continue;
+      const fields: [string, string][] = [
+        ...(["persona", "knows", "goal", "belief", "impulse"] as const)
+          .map((field): [string, string] => [`characters.${character.name}.${field}`, character[field]]),
+        ...character.voice.map((text, n): [string, string] => [`characters.${character.name}.voice[${n}]`, text]),
+        ...shared,
+        ...story.scenes.slice(0, beat.chapter)
+          .map((scene, n): [string, string] => [`scenes[${n}].question`, scene.question]),
+      ];
+      const matches = fields.filter(([, text]) => ` ${textKey(text)} `.includes(` ${key} `))
+        .map(([field]) => field);
+      if (matches.length) {
+        out.push(`timeline beat ${i + 1} memory for "${character.name}" duplicates its full text in ${matches.join(", ")} `
+          + "— review setup exposure if this information should wait until the beat fires");
+      }
+    }
+  }
   return out;
 }
 
@@ -330,6 +368,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
     models,
     characters,
   };
+  problems.push(...timelineMemoryWarnings(spec));
   if (!spec.title) problems.push("no title");
   if (!spec.premise) problems.push("no premise");
   for (const [i, sc] of scenes.entries()) {

@@ -11,7 +11,7 @@ import { sameName } from "./engine/config-util.ts";
 import { NET } from "./engine/llm-client.ts";
 import { PROVIDER } from "./engine/provider.ts";
 import { resolveStoryDir, loadStory, loadDefaults, writtenChapters, selectableStory, type Defaults } from "./engine/story-format.ts";
-import { directEdit, specView, storyJsonShape, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, type StorySpec } from "./engine/story-spec.ts";
+import { directEdit, specView, storyJsonShape, characterPsychologyWarnings, timelineBeatProblems, timelineOrderProblems, timelineMemoryWarnings, type StorySpec } from "./engine/story-spec.ts";
 import { StoryJson, THINK_LEVELS, VOICE_SAMPLE_CAP } from "./engine/story-schema.ts";
 import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import {
@@ -701,6 +701,7 @@ const storyWarnings = (parsed: StoryJson): string[] => [
   ...parsed.timeline.flatMap((beat, i) =>
     timelineBeatProblems(`timeline beat ${i + 1}`, beat, parsed.characters.map(c => c.name), parsed.scenes)),
   ...timelineOrderProblems(parsed.timeline),
+  ...timelineMemoryWarnings(parsed),
   ...characterCardWarnings(parsed),
 ];
 

@@ -9,7 +9,7 @@ import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills, restri
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
-import { rosterNameNotACharacter, reachNotInRoster, presenceNotInRoster, constraintNotInRoster, timelineBeatProblems, timelineOrderProblems } from "./story-spec.ts";
+import { rosterNameNotACharacter, reachNotInRoster, presenceNotInRoster, constraintNotInRoster, timelineBeatProblems, timelineOrderProblems, timelineMemoryWarnings } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -191,6 +191,8 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       warn(p);
   }
   for (const p of timelineOrderProblems(parsed.timeline))
+    warn(p);
+  for (const p of timelineMemoryWarnings(parsed))
     warn(p);
 
   return {
