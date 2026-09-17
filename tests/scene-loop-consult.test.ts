@@ -35,7 +35,7 @@ describe("the judge", () => {
     const { fetchMock } = siteFetch({
       "judge.answer": () => { throw new Error("simulated judge outage"); },
       "judge.narration": { ok: true },
-      "judge.done": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
       "writer.draft": draft,
       // MERRITT's own agent, asked for a decision
       "character.consult": { speech: "I open it." },
@@ -151,7 +151,8 @@ describe("an answer still owed the page", () => {
       "judge.batch": { verdicts: [] },
       "judge.done": () => {
         const d = opts.doneReplies;
-        return d ? d[Math.min(doneCall++, d.length - 1)] : (doneCall++, { ok: true });
+        return d ? d[Math.min(doneCall++, d.length - 1)]
+          : (doneCall++, { status: "resolved", evidence: "the page settles it" });
       },
       "character.consult": () => opts.characterReplies[characterCall++],
       "writer.draft": nextWriter,
@@ -233,7 +234,7 @@ describe("an answer still owed the page", () => {
     const { r, events, calls, writer } = await runIt({
       maxSteps: 10,
       writerReplies: [{ prose: only, scene_done: true }],
-      doneReplies: [{ ok: false, why: "neither of them has moved off the door" }],
+      doneReplies: [{ status: "open", why: "neither of them has moved off the door" }],
     });
 
     const flagged = events.find(e => e.t === "done_flagged") as any;
@@ -249,7 +250,7 @@ describe("an answer still owed the page", () => {
     const { events, calls } = await runIt({
       maxSteps: 10,
       writerReplies: [{ prose: "Merritt steps back and lets the door swing wide.", scene_done: true }],
-      doneReplies: [{ ok: true }],
+      doneReplies: [{ status: "resolved", evidence: "Merritt lets the door swing wide" }],
     });
 
     assert.equal(calls.doneCall, 1, "the ending was put to the judge");
@@ -262,7 +263,7 @@ describe("an answer still owed the page", () => {
     const { events, calls } = await runIt({
       maxSteps: 10,
       writerReplies: [{ prose: "Merritt steps back and lets the door swing wide.", scene_done: true }],
-      doneReplies: [{ ok: true }],
+      doneReplies: [{ status: "resolved", evidence: "Merritt lets the door swing wide" }],
     });
 
     assert.equal(calls.doneCall, 1);
@@ -270,25 +271,65 @@ describe("an answer still owed the page", () => {
     assert.ok(confirmed, "the run record carries the positive verdict");
     assert.equal(confirmed.chapter, 1);
     assert.ok(!events.some(e => e.t === "done_flagged"));
+    const state = events.find(e => e.t === "question_state") as any;
+    assert.ok(state, "the durable question state is also on the record");
+    assert.deepEqual(state.state, { status: "resolved", evidence: "Merritt lets the door swing wide" });
+    assert.equal(state.trigger, "writer_done");
   });
 
-  it("logs neither verdict on a hard-cap forced end, where no judge is ever called", async () => {
-    // Only an ending the writer chose is checked: the hard cap is budget, not judgement. The cap
-    // is read off the page at the top of the turn after the overrun, so the run needs a second
-    // reply for the forced end to land on.
-    const page = Array(1500).fill("stone").join(" ");
-    const { r, events, calls } = await runIt({
-      maxSteps: 10,
-      writerReplies: [{ prose: page }, { prose: "The door holds." }],
+  it("checks the question on a hard-cap forced end too, but never as done_flagged/done_confirmed",
+    async () => {
+      // The hard cap is budget, not the writer's own judgement — so the check that fires here is
+      // recorded only as `question_state`, never folded into the two events that mean specifically
+      // "the writer declared done and the judge weighed in" (buildChapterBeatOutcome reads those
+      // two as exactly that). The cap is read off the page at the top of the turn after the
+      // overrun, so the run needs a second reply for the forced end to land on.
+      const page = Array(1500).fill("stone").join(" ");
+      const { r, events, calls } = await runIt({
+        maxSteps: 10,
+        writerReplies: [{ prose: page }, { prose: "The door holds." }],
+        doneReplies: [{ status: "open", why: "neither of them has moved" }],
+      });
+
+      assert.equal(calls.doneCall, 1, "the judge did see the page, even though nobody declared done");
+      assert.ok(events.some(e => e.t === "forced_end"), "the scene was forced shut");
+      assert.ok(!events.some(e => e.t === "done_flagged" || e.t === "done_confirmed"),
+        "a hard cap is budget, not the writer's own declaration");
+      const state = events.find(e => e.t === "question_state") as any;
+      assert.ok(state, "but the durable state is still on the record");
+      assert.equal(state.trigger, "forced_end");
+      assert.deepEqual(state.state, { status: "open", why: "neither of them has moved" });
+      assert.equal(r.questionState.status, "open", "and the run result carries it too");
+      assert.equal(r.done, true);
     });
 
-    assert.equal(calls.doneCall, 0, "the judge never saw the page");
-    assert.ok(events.some(e => e.t === "forced_end"), "the scene was forced shut instead");
-    assert.ok(!events.some(e => e.t === "done_flagged" || e.t === "done_confirmed"),
-      "a check nobody made is neither verdict");
-    assert.ok(!events.some(e => e.t === "schema_mismatch" && (e as any).call === "done"));
-    assert.equal(r.done, true);
-  });
+  it("checks the question before a budget extension is even asked — including the silent decline",
+    async () => {
+      // The two 2026-09-17 e4b/doorway runs behind this entry both ended exactly here: step budget
+      // spent, no viewer watching to grant more, the loop just stops with no verdict on record at
+      // all under the old code. The check has to run before the decline is known, not only when a
+      // grant is actually given — otherwise this ending, the most common one of the three, stays
+      // silent.
+      const first = "Riven's palm finds the door and stays there.";
+      const second = "Merritt stays quiet on the crate.";
+      const { r, events, calls } = await runIt({
+        maxSteps: 2,
+        writerReplies: [{ prose: first, scene_done: false }, { prose: second, scene_done: false }],
+        doneReplies: [{ status: "resolved", evidence: "Merritt stays quiet on the crate" }],
+      });
+
+      assert.equal(calls.writerCall, 2, "budget ran out after the second turn, no third was drafted");
+      assert.equal(calls.doneCall, 1,
+        "the judge was asked before the decline, not skipped because nobody would grant more");
+      const state = events.find(e => e.t === "question_state") as any;
+      assert.ok(state);
+      assert.equal(state.trigger, "extension");
+      assert.deepEqual(state.state, { status: "resolved", evidence: "Merritt stays quiet on the crate" });
+      assert.ok(!events.some(e => e.t === "done_flagged" || e.t === "done_confirmed"),
+        "an extension check is not the writer's own declaration either");
+      assert.equal(r.done, false, "nobody declared done and nothing forced a close — the scene just stopped");
+      assert.equal(r.questionState.status, "resolved", "and the run result still carries the verdict");
+    });
 
   it("records nothing when the judge answers in no shape at all", async () => {
     const { r, events, calls } = await runIt({
@@ -301,6 +342,26 @@ describe("an answer still owed the page", () => {
     assert.ok(events.some(e => e.t === "schema_mismatch" && (e as any).call === "done"),
       "and the record says no verdict was ever given");
     assert.ok(!events.some(e => e.t === "done_flagged"), "a check nobody made is not a verdict");
+    assert.equal(r.done, true);
+  });
+
+  it("records unavailable, not open or resolved, when the judge itself says it cannot tell", async () => {
+    // Distinct from the no-shape-at-all case above: this is a well-formed reply, just not one of
+    // the two shapes a budget decision could act on. Reading it as either would be a guess dressed
+    // up as a verdict.
+    const { r, events, calls } = await runIt({
+      maxSteps: 10,
+      writerReplies: [{ prose: "Riven's palm finds the door.", scene_done: true }],
+      doneReplies: [{ status: "unclear", why: "the page cuts away before either side moves" }],
+    });
+
+    assert.equal(calls.doneCall, 1, "a well-formed reply is not asked twice");
+    assert.ok(!events.some(e => e.t === "schema_mismatch" && (e as any).call === "done"),
+      "the shape parsed fine — this is not a schema mismatch");
+    assert.ok(!events.some(e => e.t === "done_flagged" || e.t === "done_confirmed"),
+      "neither verdict fits an 'unclear' reply");
+    assert.equal(r.questionState.status, "unavailable");
+    assert.equal((r.questionState as any).why, "the page cuts away before either side moves");
     assert.equal(r.done, true);
   });
 
@@ -730,7 +791,7 @@ describe("a clarification on a rejected attempt", () => {
     globalThis.fetch = siteFetch({
       "judge.narration": { ok: true },
       "judge.answer": () => judgeReplies[Math.min(judgeCall++, 1)],
-      "judge.done": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
       "clarifier.answer": ({ messages }) => {
         clarifierPrompts.push(messages);
         return clarifierReplies[Math.min(clarifierCall++, 1)];
@@ -807,7 +868,7 @@ describe("the split judge", () => {
     const nextWriter = () => writerReplies[Math.min(writerCall++, 1)];
     const fake = siteFetch({
       "judge.narration": { ok: true },
-      "judge.done": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
       "character.consult": () => characterReplies[Math.min(characterCall++, 1)],
       "writer.ask": nextWriter,
       "writer.draft": nextWriter,
@@ -939,7 +1000,7 @@ describe("a deed promoted in the same reply that renders it", () => {
         lintRequests.push(messages.join("\n"));
         return { ok: true };
       },
-      "judge.done": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
       "judge.batch": { verdicts: [{ name: "MERRITT", promotable: true }] },
       "character.consult": { thought: "Someone is out there.", action: deed },
       "writer.ask": nextWriter,

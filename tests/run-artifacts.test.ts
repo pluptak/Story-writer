@@ -827,7 +827,7 @@ describe("buildChapterBeatOutcome", () => {
 
   it("records nothing judged on a forced end, where no judge was ever called", () => {
     const events: RunEvent[] = [
-      { t: "scene_start", story: "x", characters: [], target: 700, chapter: 1 },
+      { t: "scene_start", story: "x", characters: [], target: 700, question: "", chapter: 1 },
       { t: "beat_stranded", beat: "The alarm sounds.", at: 0.45, chapter: 1 },
       { t: "forced_end", words: 1500, target: 700, chapter: 1 },
     ];

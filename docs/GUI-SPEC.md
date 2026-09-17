@@ -717,7 +717,7 @@ ConsultEvent (engine/consult.ts):
   { t:"answer"; character; thought; speech; action; note }
 
 plus, scene-loop-level (`chapter` is present on every one of them except `model_changed`):
-  { t:"scene_start"; story; characters[]; target }
+  { t:"scene_start"; story; characters[]; target; question }
   { t:"draft"; step; prose; words; consulting; salvaged }
   { t:"bad_consult"; character; why }
   { t:"schema_mismatch"; call:"judge"|"clarify"|"lint"; character }
@@ -781,7 +781,21 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"answer_unwritten"; characters[]; stopped } — the scene ended anyway with those answers never
                                                    written in: the consults were accepted, the
                                                    chapter does not carry the choices they made
-  { t:"scene_end"; steps; words; done; stopped; retries{character:count} }
+  { t:"done_confirmed" }                          — the done judge read the page as having settled
+                                                   `scene_start`'s `question`; logged only for a
+                                                   writer-declared ending, never a budget one (below)
+  { t:"done_flagged"; why }                       — the done judge read the question as still open;
+                                                   same writer-declared-only scope as `done_confirmed`.
+                                                   Neither gates — the ending stands either way
+  { t:"question_state"; state; trigger:"writer_done"|"extension"|"forced_end"; step; words }
+                                                 — the durable, three-way verdict (Judge.MD's
+                                                   DONE-JUDGE): `state` is one of
+                                                   `{status:"open",why}` / `{status:"resolved",evidence}` /
+                                                   `{status:"unavailable",why}`, logged at every place a
+                                                   scene's ending is decided, not only a writer-declared
+                                                   one — `trigger` says which. The run's last one is also
+                                                   on `scene_end.questionState` and the run result
+  { t:"scene_end"; steps; words; done; stopped; retries{character:count}; questionState }
 ```
 
 `wants` and `question` in `consult` are **`""` on an open beat**, which is every consult the writer

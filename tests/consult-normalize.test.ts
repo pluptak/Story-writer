@@ -69,8 +69,8 @@ describe("doneJudgeRequest", () => {
     assert.match(P.DONE_JUDGE_FORMAT, /Not whether the writing is good/);
   });
 
-  it("counts a refusal that holds as an answer, and a live standoff as none", () => {
-    assert.match(P.DONE_JUDGE_FORMAT, /"No" is an answer/);
+  it("counts a refusal that holds as settled, and a live standoff as not", () => {
+    assert.match(P.DONE_JUDGE_FORMAT, /"no" is a decision/);
     assert.match(P.DONE_JUDGE_FORMAT, /both sides where they started/);
   });
 

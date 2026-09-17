@@ -20,7 +20,7 @@ describe("the world timeline in the loop", () => {
     const nextWriter = () => writerReplies[writerCall++];
     const { fetchMock } = siteFetch({
       "judge.narration": { ok: true },
-      "judge.done": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
       "writer.draft": nextWriter,
       "writer.redraft": nextWriter,
     });
@@ -274,7 +274,7 @@ describe("the narration lint", () => {
         if (opts.lintFails) { lintCall++; throw new Error("simulated lint outage"); }
         return opts.lintReplies![lintCall++];
       },
-      "judge.done": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
       "writer.draft": nextWriter,
       "writer.redraft": nextWriter,
     });
@@ -498,7 +498,7 @@ describe("the repeat guard", () => {
     const nextWriter = () => opts.writerReplies[writerCall++];
     const { fetchMock } = siteFetch({
       "judge.narration": { ok: true },
-      "judge.done": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
       "writer.draft": nextWriter,
       "writer.redraft": nextWriter,
     });

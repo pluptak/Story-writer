@@ -10,12 +10,18 @@
  * sometimes exactly the point of a change; then re-record with `scripts/make-replay-fixture.mjs` and
  * commit the new fixture alongside it, so the diff shows what moved.
  *
- * Two things a recording cannot carry, both supplied here rather than papered over:
+ * Three things a recording cannot carry, all supplied here rather than papered over:
  *  - `summary.digest`, because `trimHistory` calls the transport outside any `Agent` and so is
  *    written to no transcript. Its content steers no branch — every reply is fixed either way.
  *  - the step budget, because when a scene outlives `maxSteps` the engine ASKS, and a viewer or a
  *    terminal answers. That grant lives in the writing log; `source.json` carries it as
  *    `effectiveSteps`, and without it the replay stops where the live run was extended.
+ *  - `judge.done`, because this recording predates the budget-exhaustion done-judge check
+ *    (PLANS.md item 2). The stand-in answers "open" (the recorded run's own ending, at the cap
+ *    with `done: false`, was never resolved) so nothing here claims a verdict the model never gave.
+ *    Remove this stand-in the next time the fixture is re-recorded with
+ *    `scripts/make-replay-fixture.mjs` against the current engine — that recording will carry a
+ *    real one.
  */
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -38,7 +44,10 @@ const SOURCE = JSON.parse(readFileSync(`${FIXTURE}/source.json`, "utf8")) as {
 async function replayedChapter() {
   const sc = await quiet(() => loadStory(FIXTURE));
   sc.maxSteps = SOURCE.effectiveSteps;
-  const replay = replayFetch(FIXTURE, { "summary.digest": { text: "" } });
+  const replay = replayFetch(FIXTURE, {
+    "summary.digest": { text: "" },
+    "judge.done": { status: "open", why: "supplied here — the recording predates this call" },
+  });
   globalThis.fetch = replay.fetchMock;
   armRun();
   const r = await quiet(() => runChapter(sc, 1, () => {}));

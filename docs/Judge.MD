@@ -36,7 +36,7 @@ second shape to fall into (`prompts/judge.ts`'s header keeps the record).
 | **JUDGE** | `newJudge` per call (`engine/scene-loop.ts`) | writer's | the situation, the question, the answer, the cast's limits | `accept` \| `retry` | `judge_failed` → answer accepted |
 | **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → piece goes to the page |
 | **BATCH-JUDGE** | `newBatchJudge` (`engine/scene-loop.ts`) | writer's | every volunteered deed in one call | one `promotable` flag each | `batch_judge_failed` → nothing promoted |
-| **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `ok` true/false + why | `done_judge_failed` → nothing recorded |
+| **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `status` resolved/open/unclear (+ evidence, why) | `done_judge_failed` → `unavailable` recorded |
 | **CAST-JUDGE** | `newCastAsymmetryJudge` (`engine/architect.ts`) | architect's | the tension, the cast sheet | `ok` true/false + why | gate passes |
 
 Every one fails **open** — the same policy as every other model-in-the-loop check in this engine —
@@ -277,20 +277,30 @@ very thing the scene existed to settle still open on the last line — one of th
 24-step budget, both sides exactly where they had started. The writer is not lying; a deadlock reads
 like an ending from inside the last piece.
 
-So when the writer declares the scene over, one call reads the page back against the scene's
-question and records whether it is settled. It is the only judge shown the prose whole — the
-narration lint sees one piece, the per-answer judge sees no prose at all — and the only one shown
-the scene's question, which is otherwise the writer's alone.
+So one call reads the page back against the scene's question and records whether it is settled. It
+is the only judge shown the prose whole — the narration lint sees one piece, the per-answer judge
+sees no prose at all — and the only one shown the scene's question, which is otherwise the writer's
+alone.
 
-**Answered means settled, not resolved.** "No" is an answer: a refusal that holds, a door that stays
-shut, a choice made against the thing. What fails is *undecided* — both sides where they started,
-the pressure still live, the question's fork still pending on the last line. The judge is told to
-weigh nothing else: not whether the writing is good, not whether the ending satisfies, not whether
-the scene could have gone somewhere better. A scene ending badly is the story; a scene ending
-nowhere is the writer escaping.
+**Settled, not resolved-for-good.** "No" is settled: a refusal that holds, a door that stays shut, a
+choice made against the thing. What fails is *open* — both sides where they started, the pressure
+still live, the question's fork still pending on the last line. A third shape, `unclear`, is the
+judge's own "I cannot tell" — distinct from a reply that fails to parse at all (`schema_mismatch`,
+retried once) and from the call itself erroring (`done_judge_failed`); all three land on the same
+`unavailable` state, because a check nobody could complete must never read as either verdict.
+`resolved` must carry `evidence` — the page event that settled it — or the reply is treated as
+unparseable; a positive verdict with nothing to show for it is not one. The judge is told to weigh
+nothing else: not whether the writing is good, not whether the ending satisfies, not whether the
+scene could have gone somewhere better. A scene ending badly is the story; a scene ending nowhere is
+the writer escaping.
 
-**It records; it does not gate.** A `false` verdict logs `done_flagged` carrying the judge's `why`,
-and the ending stands. The writer is told nothing.
+**It records; it does not gate.** An `open` (or `unclear`) verdict logs `done_flagged`/nothing and
+the ending stands regardless — the writer is told nothing. The three-shape verdict is folded into one
+durable `QuestionState` (`engine/scene-loop.ts`), carried on the run result and logged as its own
+`question_state` event (`state`, `trigger`, `step`, `words`) alongside whichever of `done_flagged` /
+`done_confirmed` a writer-declared ending still logs for `buildChapterBeatOutcome`'s sake
+(`run-and-save.ts`) — a viewer or a later chapter's handoff reads the durable state, not the raw
+per-call events.
 
 That is a demotion, and the reason is worth keeping. It gated once: a refusal cleared the
 declaration and handed the writer back what the page had left open. In the one live run where it
@@ -302,11 +312,15 @@ named a lever the writer does not hold. Re-arm it as a gate when a refusal can a
 world event that forces the matter is the obvious candidate.
 
 What it is now is the only measurement the engine has of whether a scene answered its question, at
-one call per scene ending. Only an ending the writer *chose* is checked: the hard cap and a spent
-step budget close the scene regardless, and those are budget, not judgement. Nor does it run on the
-turn that arms a `done_deferred` hold — that turn is not ending the scene, it is buying one more,
-and the held-open turn after it is checked like any other ending. A scene whose `question` is empty
-is never checked at all: there is nothing to read the page against.
+up to one call per place a scene's ending is decided: the writer's own `scene_done` declaration,
+every time the step budget runs out (before the engine even asks whether more will be granted — a
+silently-declined extension is exactly where an unchecked ending was found live, PLANS.md item 2),
+and the hard cap. None of the latter two is the writer's own judgement — a spent budget is budget,
+not judgement — so neither ever logs `done_flagged`/`done_confirmed`; only `question_state` records
+them, tagged `extension` or `forced_end` rather than `writer_done`. Nor does it run on the turn that
+arms a `done_deferred` hold — that turn is not ending the scene, it is buying one more, and the
+held-open turn after it is checked like any other ending. A scene whose `question` is empty, or with
+no prose on the page yet, is never checked at all: there is nothing to read the page against.
 
 ## CAST-JUDGE — the cast gate
 

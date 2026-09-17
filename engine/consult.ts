@@ -293,6 +293,29 @@ export function parseLintVerdict(o: Record<string, unknown>): { ok: boolean; why
   return null;
 }
 
+/** The done judge's own verdict shape — distinct from `parseLintVerdict` because "resolved" carries
+ *  a required `evidence` the other judges have no equivalent of. */
+export type DoneVerdict =
+  | { status: "resolved"; why: string; evidence: string }
+  | { status: "open"; why: string }
+  | { status: "unclear"; why: string };
+
+/**
+ * The done judge's verdict, or null when the reply carries no recognizable one — a missing
+ * `evidence` on "resolved" is treated the same as no verdict at all, not a resolved with nothing to
+ * show for it.
+ */
+export function parseDoneVerdict(o: Record<string, unknown>): DoneVerdict | null {
+  const status = String(o.status ?? "").trim().toLowerCase();
+  const why = String(o.why ?? "").trim();
+  if (status === "resolved") {
+    const evidence = String(o.evidence ?? "").trim();
+    return evidence ? { status, why, evidence } : null;
+  }
+  if (status === "open" || status === "unclear") return { status, why };
+  return null;
+}
+
 /** The clarifier's answer — "" when it answered with nothing, null when it did not answer at all. */
 export function parseClarifyAnswer(o: Record<string, unknown>): string | null {
   return "answer" in o ? String(o.answer ?? "").trim() : null;

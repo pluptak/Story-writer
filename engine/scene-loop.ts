@@ -9,7 +9,7 @@ import { cannotDisplay, resolveReach, splitMeaning, type Catalogs, type Skill } 
 import { warn } from "./warnings.ts";
 import {
   normalizeConsult,
-  parseClarifyAnswer, parseLintVerdict, nonPovThoughtOnly,
+  parseClarifyAnswer, parseDoneVerdict, nonPovThoughtOnly,
   type ConsultEvent, type Clarifier,
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
@@ -229,10 +229,20 @@ export function parseDraftReply(raw: string, onProseFallback?: () => void): Draf
 }
 
 // -- SCENE LOOP ------------------------------------------------------------
+/** The scene's question, as last read against the page — durable across the whole run, not just the
+ *  turn that produced it. "unread" is the ordinary in-progress state, not a verdict; "unavailable"
+ *  covers a judge call that errored, would not parse even on retry, or itself said "unclear" — a
+ *  check nobody could complete must never read as a check that passed (or failed). */
+export type QuestionState =
+  | { status: "unread" }
+  | { status: "open"; why: string }
+  | { status: "resolved"; evidence: string }
+  | { status: "unavailable"; why: string };
+
 /** Everything the run can report to the viewer and the writing log, as one tagged event each. */
 export type RunEvent =
   | ConsultEvent
-  | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
+  | { t: "scene_start"; story: string; characters: string[]; target: number; question: string; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
   | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint" | "done" | "repair"; character: string; chapter: number }
@@ -242,6 +252,8 @@ export type RunEvent =
   | { t: "done_judge_failed"; why: string; chapter: number }
   | { t: "done_flagged"; why: string; chapter: number }
   | { t: "done_confirmed"; chapter: number }
+  | { t: "question_state"; state: QuestionState; trigger: "writer_done" | "extension" | "forced_end";
+      step: number; words: number; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
@@ -268,7 +280,8 @@ export type RunEvent =
   | { t: "repeat_strip"; chars: number; words: number; whole: boolean; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
-  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
+  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number;
+      retries: Record<string, number>; questionState: QuestionState };
 
 
 const OVERRUN_SLACK = 1.5;
@@ -313,6 +326,46 @@ export function neglectedCast(cast: string[], lastAsked: Map<string, number>, st
     const last = lastAsked.get(nameKey(name));
     return last === undefined || step - last >= threshold;
   });
+}
+
+/** One call to the done judge, retried once on a schema mismatch exactly like every other judge
+ *  variant, and never thrown out of: a call that errors, a reply that never parses, or the model's
+ *  own "unclear" all come back `unavailable` rather than propagating, so a check nobody could
+ *  complete is recorded as exactly that, not silently dropped or read as a check that passed.
+ *
+ *  Deliberately does not log `done_confirmed`/`done_flagged` — those two are read by
+ *  `buildChapterBeatOutcome` (run-and-save.ts) as the writer's-own-declaration verdict specifically,
+ *  and every call site now shares this helper. The `writer_done` call site logs them itself; the
+ *  other two (budget-exhaustion, hard cap) only ever log `question_state`, so an ending the writer
+ *  never chose cannot be mistaken for one it did. */
+async function checkQuestionState(newDoneJudge: () => Agent, question: string, prose: string,
+                                  chapter: number, log: (e: RunEvent) => void): Promise<QuestionState> {
+  const doneJudge = newDoneJudge();
+  const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({ question, prose }) }];
+  try {
+    for (let tries = 0; ; tries++) {
+      const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, "judge.done", extra);
+      const verdict = parseDoneVerdict(extractJson(raw));
+      if (verdict) {
+        if (verdict.status === "resolved") return { status: "resolved", evidence: verdict.evidence };
+        if (verdict.status === "open") {
+          return { status: "open", why: verdict.why || "the scene's question is not answered" };
+        }
+        return { status: "unavailable", why: verdict.why || "the judge could not tell" };
+      }
+      // Asked twice with no verdict: nothing is recorded, as on an outage. A check nobody made
+      // must not read as a check that passed, so the log says which of the two happened.
+      if (tries) return { status: "unavailable", why: "the done judge's reply would not parse, twice" };
+      log({ t: "schema_mismatch", call: "done", character: "(scene)", chapter });
+      extra.push({ role: "assistant", content: raw.trim() }, { role: "user", content: P.DONE_ONLY });
+    }
+  } catch (e) {
+    if (!(e instanceof StoppedError) && !RUN.stopped) {
+      log({ t: "done_judge_failed", why: (e as Error).message, chapter });
+      console.log(`${C.yellow}(scene-done judge failed: ${(e as Error).message})${C.reset}`);
+    }
+    return { status: "unavailable", why: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Everything one writeScene call needs, as one object. The fields mirror what runChapter reads off
@@ -473,6 +526,9 @@ export async function writeScene(run: SceneRun) {
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
+  // The scene's question, as last read against the page — durable across the whole run (step 2 of
+  // the question-answered plan: PLANS.md item 2), not just the turn that produced it.
+  let questionState: QuestionState = { status: "unread" };
 
   // Neglected-nag throttle: the furniture lecture + fan-out upsell re-sent every turn while its
   // set holds. Emit only when the set changes or every third nagged turn — the steady state is a
@@ -563,7 +619,8 @@ export async function writeScene(run: SceneRun) {
     return a;
   };
 
-  log({ t: "scene_start", story: dir, characters: characters.map(c => c.name), target: sd.length, chapter });
+  log({ t: "scene_start", story: dir, characters: characters.map(c => c.name), target: sd.length,
+        question: sd.question, chapter });
 
   while (!done) {
     if (RUN.stopped) break;
@@ -574,6 +631,14 @@ export async function writeScene(run: SceneRun) {
     }
 
     if (steps >= budget) {
+      // Checked before the ask is even put, not only when it comes back granted: a non-interactive
+      // run (no viewer, no TTY) declines automatically with no prompt at all, and that silent
+      // decline is exactly where a scene most often ends without anyone finding out its question
+      // was still open (PLANS.md item 2, the 2026-09-17 evidence).
+      if (pieces.length && sd.question.trim()) {
+        questionState = await checkQuestionState(newDoneJudge, sd.question, pieces.join("\n\n"), chapter, log);
+        log({ t: "question_state", state: questionState, trigger: "extension", step: steps, words: wordCount(), chapter });
+      }
       const extra = await io.moreSteps(steps, budget, chapter);
       if (!extra) break;
       budget += extra;
@@ -931,38 +996,19 @@ export async function writeScene(run: SceneRun) {
     // names a lever the writer does not hold. Re-arm this as a gate when a refusal can arrive with
     // one.
     //
-    // Only an ending the writer chose is checked: the hard cap and a spent budget are budget rather
-    // than judgement. A scene with no question of its own has nothing to check against.
+    // An ending the writer never chose is checked too, at the two other places a scene can end
+    // (the budget-exhaustion site above, the hard cap below) — a spent budget is not judgement
+    // either, but the record should not stay silent just because nobody declared anything.
     if (!deferredNow && (sceneEnded || closing) && pieces.length && sd.question.trim()) {
-      let unanswered = "";
-      try {
-        const doneJudge = newDoneJudge();
-        const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({
-          question: sd.question, prose: pieces.join("\n\n") }) }];
-        for (let tries = 0; ; tries++) {
-          const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, "judge.done", extra);
-          const verdict = parseLintVerdict(extractJson(raw));
-          if (verdict) {
-            if (!verdict.ok) unanswered = verdict.why || "the scene's question is not answered";
-            else log({ t: "done_confirmed", chapter });
-            break;
-          }
-          // Asked twice with no verdict: nothing is recorded, as on an outage. A check nobody made
-          // must not read as a check that passed, so the log says which of the two happened.
-          if (tries) break;
-          log({ t: "schema_mismatch", call: "done", character: "(scene)", chapter });
-          extra.push({ role: "assistant", content: raw.trim() },
-                     { role: "user", content: P.DONE_ONLY });
-        }
-      } catch (e) {
-        if (!(e instanceof StoppedError) && !RUN.stopped) {
-          log({ t: "done_judge_failed", why: (e as Error).message, chapter });
-          console.log(`${C.yellow}(scene-done judge failed: ${(e as Error).message})${C.reset}`);
-        }
-      }
-      if (unanswered) {
-        log({ t: "done_flagged", why: unanswered, chapter });
-        console.log(`${C.yellow}(the scene ends without answering its question: ${unanswered})${C.reset}`);
+      questionState = await checkQuestionState(newDoneJudge, sd.question, pieces.join("\n\n"), chapter, log);
+      log({ t: "question_state", state: questionState, trigger: "writer_done", step: steps, words: wordCount(), chapter });
+      // done_confirmed/done_flagged are kept as their own events (not folded into question_state)
+      // because buildChapterBeatOutcome (run-and-save.ts) already reads them as the writer's-own-
+      // declaration verdict specifically — see checkQuestionState's docstring.
+      if (questionState.status === "resolved") log({ t: "done_confirmed", chapter });
+      else if (questionState.status === "open") {
+        log({ t: "done_flagged", why: questionState.why, chapter });
+        console.log(`${C.yellow}(the scene ends without answering its question: ${questionState.why})${C.reset}`);
       }
     }
 
@@ -978,6 +1024,10 @@ export async function writeScene(run: SceneRun) {
       done = true;
     } else if (hardCap) {
       done = true;
+      if (pieces.length && sd.question.trim()) {
+        questionState = await checkQuestionState(newDoneJudge, sd.question, pieces.join("\n\n"), chapter, log);
+        log({ t: "question_state", state: questionState, trigger: "forced_end", step: steps, words: wordCount(), chapter });
+      }
       log({ t: "forced_end", words: wordCount(), target: sd.length, chapter });
       console.log(`${C.yellow}(scene forced to a close — ${wordCount()} words against a `
         + `${sd.length}-word target)${C.reset}`);
@@ -1010,13 +1060,14 @@ export async function writeScene(run: SceneRun) {
       console.log(`${C.yellow}(the scene ended without the world event ever firing: ${b.fired})${C.reset}`);
     }
 
-  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter, retries: Object.fromEntries(retryCounts) });
-  return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
+  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter,
+        retries: Object.fromEntries(retryCounts), questionState });
+  return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped, questionState };
 }
 
 /** Write one chapter: build the agents for the chapter's roster, call writeScene, and clean up. */
 export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunEvent) => void): Promise<
-  { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }
+  { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean; questionState: QuestionState }
 > {
   if (!Number.isInteger(chapter) || chapter < 1 || chapter > sc.scenes.length) {
     throw new Error(`Chapter must be an integer in 1..${sc.scenes.length}, not ${chapter}`);

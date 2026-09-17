@@ -299,32 +299,37 @@ export const LINT_ONLY =
   `[WRONG SHAPE] That was not a verdict on the piece. Reply with exactly {"ok":true} or `
   + `{"ok":false,"why":"..."} and nothing else.`;
 
-export const DONE_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHETHER THE SCENE IS FINISHED.
+export const DONE_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHETHER THE SCENE'S QUESTION IS SETTLED.
 
-The scene was written to answer one question, and you have just declared it done. Read the page back
-and decide one thing: does it answer its question?
+The scene was written to answer one question. Read the page back and decide one thing: has the
+question been settled, either way?
 
-Answered means the page has settled the matter, either way. "No" is an answer -- a refusal that
-holds, a door that stays shut, a choice made against the thing. What is not an answer is undecided:
+Settled ("resolved") means the page has the thing decided -- "no" is a decision: a refusal that
+holds, a door that stays shut, a choice made against the thing. Not settled ("open") means undecided:
 both sides where they started, the pressure still live, the thing the question turns on still
-pending on the last line. A scene that stops mid-pressure is not finished, it is abandoned, and
-calling it done is the cheapest way out of a hard scene.
+pending on the last line. A scene that stops mid-pressure has not settled its question, whatever else
+it has done. If you cannot tell which of those two the page shows, say "unclear" rather than guessing.
 
-Judge nothing else. Not whether the writing is good, not whether the ending satisfies, not whether
-you would have taken it somewhere better. Only whether the question is settled on the page.
+Judge nothing else. Not whether the writing is good, not whether an ending satisfies, not whether you
+would have taken it somewhere better. Only whether the question is settled on the page.
 
-Reply with ONE JSON object -- one of these two shapes -- and nothing else:
+Reply with ONE JSON object -- one of these three shapes -- and nothing else:
 
-  {"ok": true}
-  {"ok": false, "why": "what the page leaves undecided, in one sentence"}
+  {"status": "resolved", "why": "what settled it, in one sentence", "evidence": "the exact page event that settled it -- a short quote or close paraphrase"}
+  {"status": "open", "why": "what the page leaves undecided, in one sentence"}
+  {"status": "unclear", "why": "why the page does not say, in one sentence"}
+
+"evidence" is required for "resolved" and must point at something actually on the page, not a
+summary of the whole scene. Omit it for "open" and "unclear".
 `;
 
 export const doneJudgeRequest = (p: { question: string; prose: string }) =>
   `[THE QUESTION THIS SCENE HAS TO ANSWER]\n${p.question}\n\n[THE SCENE AS IT STANDS]\n${p.prose}`;
 
 export const DONE_ONLY =
-  `[WRONG SHAPE] That was not a verdict on the scene. Reply with exactly {"ok":true} or `
-  + `{"ok":false,"why":"..."} and nothing else.`;
+  `[WRONG SHAPE] That was not a verdict on the scene. Reply with exactly `
+  + `{"status":"resolved","why":"...","evidence":"..."}, {"status":"open","why":"..."}, or `
+  + `{"status":"unclear","why":"..."} and nothing else.`;
 
 export const answerFlags = (p: { forced: boolean }) =>
   p.forced ? `They asked for detail you did not give and answered anyway.` : "";

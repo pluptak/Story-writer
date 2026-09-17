@@ -86,7 +86,7 @@ describe("adversarial autonomy run", () => {
       "judge.narration": { ok: true },
       "judge.answer": () => judgeReplies[Math.min(judgeCall++, 1)],
       "judge.batch": { verdicts: [] },
-      "judge.done": { ok: false, why: "the door question stands open on the last line" },
+      "judge.done": { status: "open", why: "the door question stands open on the last line" },
       "character.consult": () => characterReplies[characterCall++],
       "writer.draft": () => writerReplies[Math.min(writerCall++, 3)],
       "writer.redraft": () => writerReplies[Math.min(writerCall++, 3)],
