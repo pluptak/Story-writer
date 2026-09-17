@@ -751,6 +751,17 @@ export function directEdit(spec: StorySpec, field: string, value: unknown):
   return { ok: true, spec: e.spec, applied: e.applied, problems: e.problems };
 }
 
+/** Whether two `SceneDef.reach`/`SceneDef.constraint`-shaped maps differ: same keys, and each key's
+ *  array the same set (order does not matter, matching the roster comparison below). */
+function capabilityDrift(before: Record<string, string[]>, after: Record<string, string[]>): boolean {
+  const wasKeys = new Set(Object.keys(before)), nowKeys = new Set(Object.keys(after));
+  if (wasKeys.size !== nowKeys.size || ![...wasKeys].every(k => nowKeys.has(k))) return true;
+  return [...wasKeys].some(k => {
+    const was = new Set(before[k]), now = new Set(after[k]);
+    return was.size !== now.size || ![...was].every(x => now.has(x));
+  });
+}
+
 /** Which of a scene's fields differ between two versions of the story, for detecting that a chapter's
  *  prose was written from a definition that has since changed. Roster order is not a difference. */
 export function sceneDrift(before: SceneDef | undefined, after: SceneDef | undefined): string[] {
@@ -762,6 +773,8 @@ export function sceneDrift(before: SceneDef | undefined, after: SceneDef | undef
   if (before.length !== after.length) diff.push("length");
   const was = new Set(before.roster), now = new Set(after.roster);
   if (was.size !== now.size || ![...was].every(x => now.has(x))) diff.push("roster");
+  if (capabilityDrift(before.reach, after.reach)) diff.push("reach");
+  if (capabilityDrift(before.constraint, after.constraint)) diff.push("constraint");
   return diff;
 }
 

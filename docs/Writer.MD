@@ -220,15 +220,19 @@ it does (`engine/world-timeline.ts` decides; the loop injects). The decision nee
 A world event is the one category no character decides, so it is never a consult: it arrives as
 established fact inside the `[WRITE]`, the way the length budget does. A fired beat may also carry
 **memories** — per-character knowledge implanted the moment it fires (see
-[`Character.MD`](Character.MD)).
+[`Character.MD`](Character.MD)). `[WORLD]`/`[HOLD]` reaches the shared writer instruction unfiltered
+by design: nothing here decides who could perceive what (that is the information-authority question
+— restrict-only, and whether it ever needs more than the shipped gates is still open, see
+[PLANS.md](PLANS.md)) — gating this channel by presence would be a larger, riskier change than any
+shipped gate.
 
-**Nothing checks that the event reached the page.** A beat is injected once and the writer is
-trusted with it; if the piece ignores it, the run record says the beat fired and nothing says it
-never landed. A mechanical check was built and removed — it could not tell a faithful rendering from
-an unrelated piece — and what replaces it is the repair entity's, still unbuilt.
-
-What the ledger is for, and the repairs when a character's choice breaks it, are still
-[PLANS.md](PLANS.md)'s.
+**Nothing checks, at write time, that the event reached the page.** A beat is injected once and the
+writer is trusted with it; if the piece ignores it, nothing at that moment says it never landed. What
+catches a beat that fired and never landed is the handoff's repair round, after the chapter is done —
+see [`Architect.MD`](Architect.MD)'s "Stranded/Fired world events" for the check and the repair
+operations it can propose. A mechanical per-piece check was tried and removed (it could not tell a
+faithful rendering from an unrelated piece); the abandoned approach is recorded in
+[PLANS.md](PLANS.md) so it is not re-proposed the same way.
 
 ### The narration lint
 

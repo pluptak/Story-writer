@@ -104,6 +104,32 @@ describe("sceneDrift", () => {
     const after: SceneDef = { place: "  A room  ", question: "  Does she leave?  ", pov: "  MAYA  ", length: 700, roster: ["MAYA", "IVAN"], reach: {}, presence: {}, constraint: {} };
     assert.deepEqual(sceneDrift(base, after), []);
   });
+
+  it("detects an edited reach grant", () => {
+    const withReach: SceneDef = { ...base, reach: { MAYA: ["camera :: sees the hallway"] } };
+    const after: SceneDef = { ...withReach, reach: { MAYA: ["camera :: sees the street"] } };
+    assert.deepEqual(sceneDrift(withReach, after), ["reach"]);
+  });
+
+  it("ignores reach grant reordering but detects an added grant", () => {
+    const withReach: SceneDef = { ...base, reach: { MAYA: ["camera :: sees the hallway", "radio :: hears dispatch"] } };
+    const reordered: SceneDef = { ...withReach, reach: { MAYA: ["radio :: hears dispatch", "camera :: sees the hallway"] } };
+    assert.deepEqual(sceneDrift(withReach, reordered), []);
+    const added: SceneDef = { ...withReach, reach: { MAYA: ["camera :: sees the hallway", "radio :: hears dispatch", "phone :: can call out"] } };
+    assert.deepEqual(sceneDrift(withReach, added), ["reach"]);
+  });
+
+  it("detects an edited constraint", () => {
+    const withConstraint: SceneDef = { ...base, constraint: { IVAN: ["hands :: bound to the chair"] } };
+    const after: SceneDef = { ...withConstraint, constraint: { IVAN: ["hands :: bound to the chair, cannot reach the door"] } };
+    assert.deepEqual(sceneDrift(withConstraint, after), ["constraint"]);
+  });
+
+  it("detects both reach and constraint drift together", () => {
+    const withBoth: SceneDef = { ...base, reach: { MAYA: ["camera :: sees the hallway"] }, constraint: { IVAN: ["hands :: bound"] } };
+    const after: SceneDef = { ...withBoth, reach: { MAYA: ["camera :: sees the street"] }, constraint: { IVAN: [] } };
+    assert.deepEqual(sceneDrift(withBoth, after), ["reach", "constraint"]);
+  });
 });
 
 // -- TIMELINE (the world-event ledger) ---------------------------------------
