@@ -38,23 +38,38 @@ under the shipped sense-lint, consult gate and person clause), both preserved un
 its own — but the prose sense-lint's three holes, which led this list until they shipped, appeared
 on the page under both models: the one thing capability did not buy.
 
-### 1. Was the person clause the thing that cleaned the page, or was the run clean anyway?
+### 1. A character's pronoun can still switch mid-scene — the clause only ever covered `you`-leak
 
 The clause shipped (`prompts/writer.ts`, the POV line): person is the house style's to set, never
 the consult rhythm's. The first `e4b` run under it (`22-23-22-884Z`) had a clean page and clean
 drafts — but so did the control immediately before it (`21-35-36-919Z`, same model, no clause:
 0 `you` across 31 drafts), while earlier controls drifted pervasively (7 and 3 per page). One clean
-run next to one clean control credits nothing; the clause is unproven, not disproven.
-
-**Done when** another clause-era `e4b` run is read: if clause-era pages stay clean where the
-control era drifted, the clause takes the credit and this entry is deleted; if a clause-era page
-drifts, the clause failed and the approach (prompt clause vs. mechanical detection) is reopened.
+run next to one clean control credited nothing on its own.
 
 **Evidence since (2026-08-29):** both `alarm-wing` runs — heretic author-side, four characters —
 drifted, a different character each time (HALE `they` all page → `his`/`he` in the closing pieces;
 TIBBS to `he` from the opening paragraph). The duo control on the same model and style stayed clean
-both times, so the stress is the cast size, not the model. Two runs is still not a verdict, but it
-is no longer one clean run next to one clean control.
+both times, so the stress read as the cast size, not the model.
+
+**Evidence since (2026-09-16) — the `you`-leak question is answered:** three more clause-era
+`e4b`/doorway runs (`19-07-49-797Z`, `19-15-36-664Z`, `19-22-04-008Z`, revision `21ddb86`). On the
+one thing the clause's own wording actually governs — a consult's second-person `you` following its
+character onto the page — all three stayed clean (one `your` did reach the page unquoted, but it is
+RIVEN's own accepted consult answer folded in verbatim with no quotation marks, a quote-formatting
+miss, not narrator address). Four clean clause-era reads against the one 0/31 control: **the clause
+takes the credit for the `you`-leak it names**, and that half of this entry is settled.
+
+**What is not settled:** `19-15-36-664Z` has MERRITT's pronoun switch `his`→`their`→`his` three
+times within one scene — the same shape as HALE/TIBBS above, now on the smallest cast and smallest
+model on record. The clause never claimed to hold a character's pronoun steady (it governs
+grammatical person, not gender/number), so this was never its job to prevent — but it undercuts
+"the stress is the cast size, not the model": a two-hander just did it too, at least once. This
+entry is now scoped to that question alone.
+
+**Done when** enough runs (any cast size, any model) are read for pronoun-switch rate to say
+whether this is rare noise or a live problem, and if live, whether a mechanical fix (a per-piece
+check against the cast's declared pronoun, the same shape as the fact-ledger check parked under
+Small-model coherence limits) is worth building over a prompt change.
 
 ### 2. A scene has no representation of its own question being answered
 
@@ -249,7 +264,7 @@ would settle it, and several gate work in the sections below.
   constraint-interpretation accuracy has its own validated benchmark; the Free Consult findings stand
   because they were read from first-pass content, not judge behaviour — a now load-bearing
   distinction.
-- **The split judge is built as `--split-judge`, and its baselines need re-establishing.** The
+- **The split judge is built as `--split-judge`, and its baselines are re-established.** The
   prototype (JUDGE verdict call + REPAIR-JUDGE call on retry only; behaviour in [`Judge.MD`](Judge.MD))
   measured, pre-fix: `gemma-4-e4b` 6/30→9/30 surviving, `qwen2.5-coder-14b` 0/30→14/30 — and the
   verdict call stopped issuing the two known false-positive retries *entirely* while holding 15/15
@@ -258,11 +273,23 @@ would settle it, and several gate work in the sections below.
   not truth), and the verdict-call notes came back as bare fragments ("Merritt CANNOT sight") now
   that the note is the whole input to call two. Two fixes shipped together — the `You asked:`
   empty-question payload fix (which sat directly on top of the non-POV rule every under-detecting
-  model misses) and a tightened `note` gloss demanding both halves of the collision. **Every
-  pre-fix number is superseded: re-run `gemma-4-e4b` and `qwen2.5-coder-14b` in both modes first.**
-  The payload fix should move detection on the three non-POV cases; the gloss should move the share
-  of surviving revisions resting on a wrong note. A live run can then ask whether it helps a whole
-  chapter — but no run can settle diagnosis correctness; reading `retry` notes by hand is that check.
+  model misses) and a tightened `note` gloss demanding both halves of the collision.
+
+  **Evidence since (2026-09-16) — re-run post-fix, `scripts/revision-benchmark.ts`, both models,
+  both modes, 30 samples each:** `gemma-4-e4b` single-call 4/30 (was 6/30), split 13/30 (was 9/30);
+  `qwen2.5-coder-14b` single-call 0/30 (was 0/30), split 17/30 (was 14/30). Single-call held flat or
+  slipped a little (noise-scale, on 30 samples); split-judge gained on both models, and the *gap*
+  between the two modes widened on both — `e4b` 3→9, `qwen2.5-coder-14b` 14→17 — which is the
+  actual claim ("splitting the two sub-skills helps") getting more evidence, not less, after the
+  fixes. Detection alone does not mean the reason was right, though: hand-reading the notes, the one
+  flatly-wrong diagnosis this record already knew about — inventing `CANNOT: sight` for RIVEN, whose
+  `restrictions` array is empty — still recurred (`gemma-4-e4b` single-call, 2 of 5 samples on the
+  `seq78-riven-unchanged` case; `qwen2.5-coder-14b` split, 1 of 5 on the same case), just less often
+  than before. **So: promote the aggregate numbers, keep the caveat.** "No run can settle diagnosis
+  correctness; reading `retry` notes by hand is that check" still holds — this reread is exactly
+  that check, done once, not a replacement for doing it again on a live chapter. Next candidate step:
+  a live `--split-judge` chapter run, read for whether the aggregate gain shows up as fewer bad
+  narrations reaching the page, not just a higher benchmark score.
 - **Restriction meanings — the verdict-mode result is the strongest single number this record holds,
   and it is independent of the Next ordering (diagnostic-level, no live run needed).**
   (`--cannot-meaning` / `--cannot-none` / `--cannot-testimony`; mechanism in
@@ -340,15 +367,37 @@ fix is not decided. Nothing here should be built before its question is answered
   caveats (one fixture, one story, one model; confirm on a second live run). The carrier is already
   built: `--consult-since` — CLI-only and **off by default** — makes a stale consult carry `since`
   (what its last answer came to, plus perceivable surroundings), joining the situation before the
-  gate, and refuses a stale consult without it ([`Writer.MD`](Writer.MD)). So what is left is
-  enforcement and measurement, not the carrier: read a live run under the flag, mechanically confirm
-  the granted speech a `since` claims (`matchQuote` gives a real test; deeds have none) — and only
-  then decide whether the flag becomes the default. If a required, refusal-forced `since` still
-  measures insufficient, the fallback is a batched authored digest at the next consult,
-  paraphrase-only except the character's own verified speech, with a real third-person
-  presence/CANNOT gate; that one costs a model call, which is why it is last. The answer itself is
-  never withheld
-  (`answer_unwritten` aside): the gap is page-consequence, not answer-availability.
+  gate, and refuses a stale consult without it ([`Writer.MD`](Writer.MD)).
+
+  **Evidence since (2026-09-16) — the carrier's accuracy is confirmed, and the run priced in two
+  costs the fixture read never saw.** One live `e4b`/doorway run under the flag (`19-52-53-936Z`,
+  revision `21ddb86`): the stale refusal fired 5 times and recovered within 1–2 drafts every time —
+  no stall, the same 24-step cap the flag-off baseline runs also hit. Its two substantive `since`
+  values both check out mechanically against the accepted action they describe, one near-verbatim.
+  So the enforcement question this entry was waiting on — does a required `since` actually carry
+  what happened — is answered: yes.
+
+  What the same run also did: reintroduced the narrator-voice `you`-leak that the three flag-off
+  runs read for item 1 above stayed clean on (four paragraphs this time, including the scene's last
+  two, unflagged by any lint) — `SINCE_FIELD`'s own instruction to address the character as "you" in
+  `since` is the likely source, bleeding into the general narration register on this model. And it
+  let a CANNOT violation through the gate `since` is supposed to close: MERRITT
+  (`restrictions: ["sight"]`, blind) was told "Riven ... maintaining eye contact with you" — sight-
+  dependent, unflagged, because `lintRestrictedSituation`'s sight list (`engine/sense-lint.ts`) is
+  literal verbs (`watch`/`gaze`/`stare`/gated `look`) and "eye contact" is a noun phrase outside it —
+  a gap that predates this flag but that free-authored `since` prose exercises more than the
+  structured `action`/`speech` fields ever did.
+
+  **Done when** (revised): not "the flag becomes the default" yet. First, either tighten
+  `SINCE_FIELD`'s wording so "address them as you" cannot read as licence for the narration voice,
+  or measure whether the leak is model-specific; and either extend the sight list to catch
+  sight-idiom noun phrases (`eye contact` at minimum) or knowingly accept the gap as pre-existing and
+  out of scope for this entry. A second live run, after whichever of those lands, is what actually
+  settles the promotion question. If a required, refusal-forced `since` still measures insufficient
+  even then, the fallback is a batched authored digest at the next consult, paraphrase-only except
+  the character's own verified speech, with a real third-person presence/CANNOT gate; that one costs
+  a model call, which is why it is last. The answer itself is never withheld (`answer_unwritten`
+  aside): the gap this entry closes is page-consequence, not answer-availability.
 
 ## Directions
 

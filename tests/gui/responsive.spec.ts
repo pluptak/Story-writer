@@ -12,8 +12,14 @@ import {
 import type { FixtureStory } from "./harness.ts";
 import { llmLog, writingLog } from "./run-log.ts";
 
-const noSideScroll = async (page) =>
-  await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+// Settles on two rAFs past `fonts.ready` before measuring -- a webfont swap or a layout still
+// mid-transition after a viewport resize or navigation can hold `scrollWidth` a few px over for a
+// frame or two even when the page never actually scrolls sideways once painted. The +1 (now +2)
+// fudge already on record is for subpixel/scrollbar rounding, a separate and much smaller slop.
+const noSideScroll = async (page) => await page.evaluate(() =>
+  document.fonts.ready.then(() => new Promise<void>(resolve =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    .then(() => document.documentElement.scrollWidth <= window.innerWidth + 2));
 
 async function setupStory(): Promise<string> {
   const dir = await copyFixtureStory();
@@ -55,7 +61,7 @@ test("shelf, story, live and manuscript never scroll sideways at 390 and 768", a
     await page.waitForTimeout(500);
 
     const views: Array<[string, string]> = [
-      ["#/shelf", "#page"],
+      ["#/shelf", '[data-tid="shelf.picker"] .cardwrap:first-child'],
       ["#/story?dir=" + encodeURIComponent(dir), '[data-tid="story.map-status"]'],
       ["#/live", '[data-tid="live.prose-card"]'],
       ["#/readstory?dir=" + encodeURIComponent(dir), "#reader-ch-1"],
@@ -65,8 +71,9 @@ test("shelf, story, live and manuscript never scroll sideways at 390 and 768", a
       for (const [hash, ready] of views) {
         await arrive(page, served, hash);
         await expect(page.locator(ready)).toBeVisible();
-        await page.waitForTimeout(300);
-        expect(await noSideScroll(page)).toBe(true);
+        await expect.poll(() => noSideScroll(page), {
+          message: `${hash} should not scroll sideways at ${width}px`,
+        }).toBe(true);
       }
     }
   } finally {

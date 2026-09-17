@@ -252,6 +252,7 @@ export type RunEvent =
   | { t: "forced_end"; words: number; target: number; chapter: number }
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
   | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
+  | { t: "narration_pronoun_flag"; why: string; character: string; found: string; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }

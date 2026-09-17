@@ -9,6 +9,7 @@ import { extractJson } from "./json-extract.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { lintQuotations } from "./quote-lint.ts";
 import { lintRestrictedSenses } from "./sense-lint.ts";
+import { lintPronouns, type PronounSet } from "./pronoun-lint.ts";
 import type { Msg } from "./llm-client.ts";
 import type { GrantedEntry } from "./fanout.ts";
 
@@ -16,6 +17,7 @@ import type { GrantedEntry } from "./fanout.ts";
  *  declared here so this module needs no scene-loop import. */
 export type LintEvent =
   | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
+  | { t: "narration_pronoun_flag"; why: string; character: string; found: string; chapter: number }
   | { t: "schema_mismatch"; call: "lint"; character: string; chapter: number }
   | { t: "lint_failed"; why: string; chapter: number };
 
@@ -25,7 +27,7 @@ export interface LintPieceOpts {
    *  reply promotes — without it in evidence the lint flags the writer for using exactly what it
    *  was entitled to. */
   granted: GrantedEntry[];
-  cast: ReadonlyArray<{ name: string; cannot: readonly string[] }>;
+  cast: ReadonlyArray<{ name: string; cannot: readonly string[]; pronouns?: PronounSet }>;
   pov: string;
   consult: { character?: string; reactors?: string[]; situation: string; question?: string } | null;
   newNarrationJudge: () => Agent;
@@ -49,6 +51,10 @@ export async function lintPiece(o: LintPieceOpts): Promise<string | null> {
           character: quoteLint.character, chapter });
   }
   const senseLint = lintRestrictedSenses(o.prose, o.cast);
+  const pronounLint = lintPronouns(o.prose, o.cast);
+  if (pronounLint && !pronounLint.ok) {
+    log({ t: "narration_pronoun_flag", why: pronounLint.why, character: pronounLint.character, found: pronounLint.found, chapter });
+  }
   let lintWhy: string | null = null;
   try {
     const lintJudge = o.newNarrationJudge();
