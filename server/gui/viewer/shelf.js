@@ -164,7 +164,7 @@ export function pickerHtml() {
     // writing, which is that page: the one explicit primary plus a clickable
     // title, never two buttons to the same place.
     const card = `<article ${tid("shelf.story-card")} class="card shelf-card" data-dir="${esc(s.dir)}">
-      <button class="shelf-title" data-open${dis}><span class="name">${esc(s.title || s.name)}</span></button>
+      <button class="shelf-title" data-open${dis}${tid("shelf.open")}><span class="name">${esc(s.title || s.name)}</span></button>
       ${s.ok ? `${s.premise ? `<p class="pre" title="${esc(s.premise)}">${esc(s.premise)}</p>` : ""}
                 ${statusHtml(s)}
                 ${activityHtml(s)}

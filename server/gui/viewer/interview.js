@@ -658,7 +658,9 @@ function reviewComplete(s) {
 }
 
 function stageOf(s) {
-  if (!s.spec && !s.haveDraft) return "idea";
+  // A standing question pins its gate: the stepper points at the gate with the
+  // question even when nothing has landed yet (no spec at all on round one).
+  if (!s.spec && !s.haveDraft && !s.pendingAsk) return "idea";
   if (s.needsFolder || APP.folderOpen) return "handoff";
   if (s.mode === "oneshot") {
     if (reviewComplete(s) || s.haveStory) return "review";
@@ -891,7 +893,8 @@ function bibleCardHtml(s) {
       story only, unless you adopt one as reusable.</p>
     ${candidates.map(c => `<div class="stat"><span>${esc(c.name)}</span>
         <strong>${esc(c.heldBy.join(", "))}</strong></div>
-      <p class="side-copy">${esc(c.meaning)}</p>`).join("")}
+      <p class="side-copy">${esc(c.meaning)}</p>
+      <div class="side-actions"><button class="btn" data-promote="${esc(c.name)}"${tid("scaffold.promote")}>promote to bible</button></div>`).join("")}
     <p class="side-copy"><a href="#/catalog?kind=skills">Adopt one under Libraries → Skills</a> and the
       next story can reuse it by name instead of inventing it again.</p>
   </div>`;
@@ -934,7 +937,7 @@ function lastHtml(last) {
 // than rendering as a blank section the author cannot tell apart from a stage that failed.
 
 function directionBits(s) {
-  const spec = s.spec;
+  const spec = s.spec || {};
   const ch = changedSections(s);
   return [
     changedTag(ch, "direction"),
@@ -1696,6 +1699,8 @@ export function wireScaffold(page) {
   }
   const model = page.querySelector("#f-model");
   if (model) model.addEventListener("change", () => { draft.model = model.value; });
+  for (const b of page.querySelectorAll("[data-promote]"))
+    b.addEventListener("click", () => postScaffold("promote", { name: b.getAttribute("data-promote") }));
   for (const r of page.querySelectorAll('input[name="mode"]'))
     r.addEventListener("change", () => { if (r.checked) { draft.mode = r.value; APP.render(); } });
 

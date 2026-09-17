@@ -191,8 +191,7 @@ curl -s http://localhost:8080/run
 - [ ] Reload the browser mid-run. It reattaches to the running scene rather than showing an idle
       screen.
 - [ ] Let it finish. `chapters/U.json` now exists under that story and is a byte-for-byte copy of its
-      `story.json`. That snapshot is what section 5 needs, and this run is what gives sections 1 and 5
-      a second written chapter to work with.
+      `story.json`, and this run is what gives section 1 a second written chapter to work with.
 
 ## 3. Reading accepted prose
 
@@ -230,21 +229,6 @@ section 2 wrote. (`P` has to be a scene the story does not have yet — that is 
       flight. Escape or the backdrop cancels with nothing discarded.
 - [ ] **Try again panel.** Unload the architect's model in LM Studio, then open a handoff. Expect a
       panel offering to retry, not a dead screen. Reload the model afterwards.
-
-## 5. Drift warning — needs section 2 done first
-
-Drift is detected by comparing a chapter's prose against the `chapters/<n>.json` snapshot taken when
-it was written, so only chapters that *have* one can be checked. Any chapter written before snapshots
-existed stays quiet forever — check `ls data/stories/<THE SERIAL>/chapters/` and use a chapter that has a
-`.json` beside its `.md`. Call it `S` — the chapter section 2 wrote is always one.
-
-- [ ] Hand-edit that story's `story.json`, changing scene `S`'s `question`.
-- [ ] Open the handoff. Expect a warning on the panel: `chapter S's prose was written from a different
-      scene definition (question)`.
-- [ ] A chapter with no `chapters/<n>.json` draws no warning — there is nothing to compare it to.
-- [ ] The warning does not block the handoff. Revising your own story is legitimate; the engine says
-      so rather than undoing it.
-- [ ] Put the question back.
 
 ## 6. Story editor
 
@@ -328,9 +312,6 @@ story page → **read story**. The button only appears once a story has a writte
       the reader must not have cleared it.
 - [ ] **Empty story.** Open the reader on **THE BLANK** by hand at `#/readstory?dir=<THE BLANK>`.
       Expect *no chapters written yet*, not a blank page or a spinner that never stops.
-- [ ] **A chapter that will not load.** Temporarily rename one of THE SERIAL's `chapters/*.md` prose
-      files and reopen the reader. That chapter's slot says *could not load*; **the others still
-      render**. One bad chapter must not blank the story. Put the file back.
 - [ ] **Switching stories.** Open the reader on one story, go back, open it on another: the second
       must never show the first one's prose under the second one's title, not even for a frame. *Needs
       a second story with a written chapter — see the note in section 3.*
@@ -385,9 +366,6 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
       running scene.
 - [ ] **It survives a model swap and a pause** without refetching visibly or losing the fields —
       the sheet is keyed by story, not by run state.
-- [ ] **Cast unavailable is graceful.** If `/cast` cannot answer, the card says so in one muted line
-      and still shows the pill's can/cannot row. (Force it by loading the live screen with no engine
-      behind it, per the section below.)
 - [ ] **No duplicate cast panels.** The rail holds run controls and the model-calls panel and
       nothing else — there is no second "cast" section beside the header's "cast in scene".
 - [ ] **The boundary holds.** This data is shown to you only. It must never appear in any agent's
@@ -469,17 +447,6 @@ a *new* story folder — so it can go anywhere in the pass.
       catalog no longer holds shows as a second advisory saying it was dropped. **The word "spent"
       is load-bearing:** it is the difference between a control that steers a prompt ahead and one
       that edits a string nobody will read again.
-- [ ] **Promoting a skill the cast invented.** When a landed cast holds a bespoke
-      `name :: meaning` skill your bible does not have, a **new skills** card appears in the sidebar
-      naming it, what it means, and who holds it. **promote to bible** writes it to
-      `#/catalog?kind=skills` and the candidate disappears — it is re-derived from the cast, not
-      removed by the page, so the only way for it to vanish is for the bible to really hold it now.
-      Check the skills catalog afterwards. Two things that should NOT happen: a bare skill with no
-      `:: meaning` offered as a candidate, and a scene's `reach` or `constraint` entry offered as
-      one — both are scene-scoped and never promotable (I4). **A promoted skill does not appear in
-      the architect's own list until
-      the next session**, because the system prompt is sent once; validation accepts it immediately,
-      which is the part to check.
 - [ ] **Revising after a reload.** Reload the page mid-session and open **revise concept** without
       ever seeing the idea modal. Both pickers must fill. They are fed from the catalog on first
       need, and the load has to be triggered by the panel — not by the picker markup, which only
@@ -494,17 +461,6 @@ a *new* story folder — so it can go anywhere in the pass.
       *Scenes*, the label following each gate. House style and run settings appear in a highlighted
       current-stage section at the top of the proposal as their gates land; the earlier stages remain
       below it. The button is gone at the *world* gate.
-- [ ] **The cast gate can refuse.** Approving *cast* with a cast whose restrictions do not bite on the
-      tension (easiest: refine the cast until nobody has a restriction, then approve) comes back as a
-      judgement card headed **the cast gate**, not a red failure line — it names what would need a
-      restriction and says *approve again to overrule this*. The stepper's pointer stays on *Cast* and
-      no next stage appears. The approve button becomes **approve anyway →** in the warning colour;
-      clicking it within 8 seconds passes the gate, and waiting longer than that returns it to
-      **accept the cast & continue →**. Refine instead of overruling and the button reverts once the
-      round lands, so an armed override never carries to a later gate.
-- [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
-      to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
-      Answering re-runs that stage.
 - [ ] **Refinement stays put.** Type a change and **send**: it applies within the open gate and the
       checklist pointer does not move. Round labels carry the gate (`[cast] changed: …`).
 - [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no stepper rail**
@@ -521,13 +477,6 @@ a *new* story folder — so it can go anywhere in the pass.
       Accepting over unsent text or a `problems` flag takes a confirming second click.
       Secondaries: **return to blueprint**, **save and leave** (session stays live; the shelf's
       resume panel shows it), and an **inspect details** disclosure with the complete Blueprint.
-- [ ] **The folder step says what is taken, before the click.** Type the name of a story that already
-       exists: the step says *data/stories/&lt;slug&gt; already exists — pick another name* and **Start
-      writing →** goes disabled, updating as you type without the caret jumping. The field arrives
-      prefilled from the title slug. Type a name that
-       slugifies to something different (`Bay 4 — Hatches!`) and it previews *this lands in
-       data/stories/bay-4-hatches* instead. Two stories built from one premise get the same title and so
-      the same slug, which is how this is hit in practice.
 - [ ] **Abandon** (second click) drops the session and returns to the shelf.
 - [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
       server, not the tab.
@@ -544,8 +493,6 @@ The global character library, accessible from the shelf and reloadable by direct
       It navigates to `#/catalog`.
 - [ ] **Empty state.** On a first run with no catalog entries, the page reads as an invitation to add
       one, not as an error or a broken panel. The empty state is clearly distinguished from a failed load.
-- [ ] **Load failure.** Break the catalog fetch (or unload the engine). The page shows the failure
-      message with a **retry** button.
 - [ ] **Issues vs. problems.** A cataloged entry is shown with two **separate, labelled blocks**:
   - `issues` — schema failures or validations that prevent save. The entry is **not saved**. These are
     red/error-coloured.
@@ -606,9 +553,6 @@ The global character library, accessible from the shelf and reloadable by direct
       then click **Hide character**. The visibility flips (badge appears, button relabels to
       **Restore character**) and the unsaved edit is still in the form afterward — hide/restore is a
       metadata write, not a content one.
-- [ ] **A failed visibility request keeps the draft and the old state.** With the server unreachable
-      (stop the engine, or throttle the network), click **Hide character**. An error line appears, the
-      button does not relabel, and the draft is untouched.
 - [ ] **The toggle button disables itself mid-flight.** Click **Hide character** and, before the
       response lands (slow network), confirm the button is disabled rather than clickable a second
       time — a double-click must not race two visibility writes. (The switch-character variants of

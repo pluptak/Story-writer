@@ -182,7 +182,7 @@ function listHtml(pageEntries) {
       <span class="lib-avatar">${esc(initials(c.name))}</span>
       <span class="lib-row-copy"><strong>${esc(c.name || "Untitled character")}</strong><span>${esc(excerpt(c.portablePersona))}</span>
         <span class="lib-chips">${c.hidden ? `<i class="lib-hidden-badge" ${tid("character-library.hidden-badge")}>Hidden</i>` : ""}${c.origin ? `<i ${tid("character-library.origin-badge")}>${esc(c.origin)}</i>` : ""}<i>${skillCount} skill${skillCount === 1 ? "" : "s"}</i><i>${voiceCount} voice sample${voiceCount === 1 ? "" : "s"}</i></span></span>
-      <button class="lib-more" data-char-select-id="${esc(c.id)}" aria-label="Open ${esc(c.name)} in editor">•••</button>
+      <button class="lib-more" data-char-select-id="${esc(c.id)}"${tid("character-library.open")} aria-label="Open ${esc(c.name)} in editor">•••</button>
     </div>`;
   }).join("");
 }
@@ -341,6 +341,9 @@ async function load() {
     s.entries = (j.entries || []).map(c => ({ ...c, hidden: !!c.hidden, updatedAt:c.updatedAt || c.version || 0 }));
     s.loaded = true;
   } catch (e) { s.error = e.message || "could not load characters"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
 }
 

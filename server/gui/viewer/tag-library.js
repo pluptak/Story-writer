@@ -54,7 +54,7 @@ function listHtml() {
     return `<div class="lib-row${selected ? " selected" : ""}" data-tag-id="${esc(t.id)}" role="button" tabindex="0" ${tid("tag-library.row")}>
       <span class="lib-row-copy"><strong>${esc(t.label || "Untitled tag")}</strong><span>${esc(FACET_LABELS[t.facet] ?? t.facet)}</span></span>
       <span class="lib-cut">${tagIsStyle(t.label) ? "Style" : "Story"}</span>
-      <button class="lib-more" data-tag-select-id="${esc(t.id)}" aria-label="Open ${esc(t.label)} in editor">•••</button>
+      <button class="lib-more" data-tag-select-id="${esc(t.id)}"${tid("tag-library.open")} aria-label="Open ${esc(t.label)} in editor">•••</button>
     </div>`;
   }).join("");
 }
@@ -107,6 +107,9 @@ async function load() {
     s.loaded = true;
     refreshUsage();
   } catch (e) { s.error = e.message || "could not load tags"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
 }
 

@@ -57,6 +57,20 @@ describe("NextChapterSession", () => {
     assert.match(sent, /The Fog Signal/, "the story as it stands, not the architect's memory of it");
   });
 
+  it("keeps the snapshot-drift warning across a landed round instead of replacing problems", async () => {
+    const s = handoff([
+      { edits: [{ field: "characters.ASTER.goal", value: "Get off the rock." }] },
+      { edits: [] }, { edits: [] },
+    ]);
+    const drift = "chapter 1's prose was written from a different scene definition (question)";
+    s.driftProblems = [drift];
+    s.problems = [drift];
+    const r = await quiet(() => s.propose());
+    assert.equal(r.kind, "edits");
+    assert.ok(s.problems.includes(drift),
+      "a warning about a hand edit no round touches must survive the round, not vanish with it");
+  });
+
   it("folds the edits into the story and leaves everything they did not name alone", async () => {
     const s = handoff([{ edits: [
       { field: "characters.ASTER.knows", value: "Brae read the log." },

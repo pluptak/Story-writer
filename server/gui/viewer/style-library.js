@@ -39,9 +39,9 @@ function listHtml() {
   if (!entries.length) return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>${s.search ? "No styles match" : "Your style library is empty"}</h3><p>${s.search ? "Try a different search." : "Create a reusable writing approach for your stories."}</p>${button({label:"New style", id:"stylib-empty-new", variant:"primary"})}</div>`;
   return entries.map(x => {
     const selected = s.selected?.id === x.id;
-    return `<div class="lib-row${selected ? " selected" : ""}" data-style-id="${esc(x.id)}" role="button" tabindex="0">
+    return `<div class="lib-row${selected ? " selected" : ""}" data-style-id="${esc(x.id)}" role="button" tabindex="0"${tid("style-library.row")}>
       <span class="lib-row-copy"><strong>${esc(x.name || "Untitled style")}</strong><span>${esc(x.description || "Describe the writing approach in one sentence.")}</span><small>v${esc(x.version || 1)}</small></span>
-      <button class="lib-more" data-style-select-id="${esc(x.id)}" aria-label="Open ${esc(x.name)} in editor">•••</button>
+      <button class="lib-more" data-style-select-id="${esc(x.id)}"${tid("style-library.open")} aria-label="Open ${esc(x.name)} in editor">•••</button>
     </div>`;
   }).join("");
 }
@@ -126,6 +126,9 @@ async function load() {
   s.loading = true; s.error = ""; APP.render();
   try { const j = await (await fetch("/catalog?kind=styles")).json(); if (!j.ok) throw new Error(reasonOr(j, "could not load styles")); s.entries = (j.entries || []).map(x => ({ ...x, hidden:!!x.hidden, updatedAt:x.updatedAt || x.version || 0 })); s.loaded = true; }
   catch (e) { s.error = e.message || "could not load styles"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
   await loadVocab();
   refreshUsage();

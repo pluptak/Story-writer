@@ -95,7 +95,7 @@ function listHtml() {
     return `<div class="lib-row lib-row-${kind}${selected ? " selected" : ""}" data-skill-id="${esc(k.id)}" role="button" tabindex="0" ${tid("skill-library.row")}>
       <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(line)}</span></span>
       ${kind === "special" ? "" : `<i class="lib-kind-badge lib-kind-${kind}" title="${esc(KIND_LABEL[kind])} skill" ${tid("skill-library.kind-badge")}><span class="lib-kind-mark" aria-hidden="true">${esc(kindMark(kind))}</span>${kind === "origin" ? "Origin" : "General"}</i>`}
-      <button class="lib-more" data-skill-select-id="${esc(k.id)}" aria-label="Open ${esc(k.name)} in editor">•••</button>
+      <button class="lib-more" data-skill-select-id="${esc(k.id)}"${tid("skill-library.open")} aria-label="Open ${esc(k.name)} in editor">•••</button>
     </div>`;
   };
   // Three sections, each saying what its kind is for -- the three are easy to confuse, and the
@@ -223,6 +223,9 @@ async function load() {
     loadVocab();
     refreshUsage();
   } catch (e) { s.error = e.message || "could not load skills"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
 }
 

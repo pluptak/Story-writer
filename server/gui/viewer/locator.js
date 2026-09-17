@@ -120,6 +120,7 @@ const hashWantsIt = () =>
 
 export function initLocator() {
   APP.locator = locatorFor;   // console escape hatch, no mode needed: APP.locator($("..."))
+  globalThis.APP = APP;       // ES modules are not globals — without this the console has no APP
   addEventListener("mousemove", e => { if (on) paintHover(e); }, true);
   addEventListener("click", e => { if (on) swallowClick(e); }, true);
   addEventListener("keydown", e => {
