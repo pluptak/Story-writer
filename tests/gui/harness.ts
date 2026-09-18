@@ -1,5 +1,5 @@
 /** The GUI harness: the real server (server/server.ts) bound in-process over a fixture
- *  ServerHost, so the browser exercises the genuine HTTP surface, static modules, and SSE bus
+ *  host, so the browser exercises the genuine HTTP surface, static modules, and SSE bus
  *  against a deterministic backend — no LM Studio, no child process, nothing in data/stories/.
  *
  *  The fixture story is tests/fixtures/doorway (the committed worked example). Everything that
@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test as base, expect, type Page } from "@playwright/test";
 
-import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
+import { startServer, type ServerHandle } from "../../server/server.ts";
+import type { RouteHosts } from "../../server/route-hosts.ts";
 import { LIVE, resetLive } from "../../live.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, originSkillGroups } from "../../engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
@@ -132,16 +133,16 @@ export function holdCatalogWrites(): () => void {
 // model. Anything that is a pure function of files on disk -- run logs, transcripts, chapters --
 // should be given real files in a temp story dir rather than an override, so the test exercises the
 // engine's own reading of them.
-let hostOverrides: Partial<ServerHost> = {};
+let hostOverrides: Partial<RouteHosts> = {};
 /** Install host answers for this test; null (or the `served` fixture) clears them. */
-export function setHostOverrides(overrides: Partial<ServerHost> | null) {
+export function setHostOverrides(overrides: Partial<RouteHosts> | null) {
   hostOverrides = overrides ?? {};
 }
 
 let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
 /** Install the scripted handoff session a handoff test drives; null restores the refusal. Wires
- *  host.ts's handoff test hooks (setHandoffTestHooks) — newHandoffSession is no longer part of
- *  ServerHost (Block 6, PLANS.md), so overriding the returned host object can no longer reach it. */
+ *  host.ts's handoff test hooks (setHandoffTestHooks) — the session factory is not a host method,
+ *  so overriding the returned host object can no longer reach it. */
 export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSession>) | null) {
   handoffFactory = f;
   setHandoffTestHooks(f ? {
@@ -163,10 +164,10 @@ const catalogFile = (kind: string) => joinPath(catalogDir, `catalog-${kind}.json
 
 /** Install the scripted scaffold session a scaffold test drives; null restores the refusal. Also
  *  wires host.ts's scaffold test hooks (setScaffoldTestHooks), the only way to script an interview
- *  when driving it through the real ServerHost — and to keep its tag/import/style/promote lookups
+ *  when driving it through the real host — and to keep its tag/import/style/promote lookups
  *  off the author's real catalog at ROOT, the same reason every other catalog call here uses a temp
- *  file: newScaffoldSession and the three catalog lookups are no longer part of ServerHost at all
- *  (Block 5, PLANS.md), so overriding the returned host object can no longer reach them. */
+ *  file: the session factory and catalog lookups are not host methods, so overriding the returned
+ *  host object can no longer reach them. */
 export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null) {
   scaffoldFactory = f;
   if (!f) { setScaffoldTestHooks(null); return; }
@@ -210,7 +211,7 @@ export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldS
   });
 }
 
-async function fixtureHost(): Promise<ServerHost> {
+async function fixtureHost(): Promise<RouteHosts> {
   const story = await fixtureStory();
   const notScripted = (what: string): never => { throw new Error(`the GUI harness has no behaviour for ${what}`); };
   // The catalog is isolated through the engine's own optional path — real load/check/save/delete
@@ -325,7 +326,7 @@ async function fixtureHost(): Promise<ServerHost> {
         }
       return usage;
     },
-  } as ServerHost;
+  } as RouteHosts;
 
   // Every property the server reads goes through here, so `setHostOverrides` applies to a host
   // that was built before the test that overrides it existed.
@@ -333,7 +334,7 @@ async function fixtureHost(): Promise<ServerHost> {
   return new Proxy(fixture, {
     get: (target, key) =>
       typeof key === "string" && key in hostOverrides ? read(hostOverrides, key) : read(target, key as string),
-  }) as ServerHost;
+  }) as RouteHosts;
 }
 
 /** Deep-link arrival. A hash-only goto is a same-document navigation whose hashchange makes the

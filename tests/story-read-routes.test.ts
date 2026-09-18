@@ -7,12 +7,12 @@ import { join } from "node:path";
 
 import { LIVE, resetLive } from "../live.ts";
 import { handleStoryReadRoutes } from "../server/story-read-routes.ts";
-import type { ServerHost } from "../server/server.ts";
-import { callGet, makeHost as baseHost } from "./helpers.ts";
+import type { StoryReadHost } from "../server/route-hosts.ts";
+import { callGet, callRoute, makeHost as baseHost } from "./helpers.ts";
 
 let castFails = false;
 
-function makeHost(overrides?: Partial<ServerHost>): ServerHost {
+function makeHost(overrides?: Partial<StoryReadHost>): StoryReadHost {
   return baseHost({
     selectableStory: async (d: string) => (d === "data/stories/doorway" || d === "doorway" ? "data/stories/doorway" : null),
     fullCast: async (dir: string) => {
@@ -168,6 +168,12 @@ describe("/stories (GET)", () => {
       resetLive();
     }
   });
+
+  it("refuses a non-GET method with 405", async () => {
+    const r = await callRoute(handleStoryReadRoutes, "/stories", {}, makeHost());
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
+  });
 });
 
 describe("/chapter (GET)", () => {
@@ -197,5 +203,11 @@ describe("/chapter (GET)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("refuses a non-GET method with 405", async () => {
+    const r = await callRoute(handleStoryReadRoutes, "/chapter", {}, makeHost());
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 });

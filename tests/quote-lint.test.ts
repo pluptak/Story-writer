@@ -331,3 +331,79 @@ describe("world furniture — sourced quotes", () => {
     assert.equal(lintQuotations(prose, [], ["Merritt"]), null);
   });
 });
+
+describe("attribution — vocatives and possessives are not the speaker", () => {
+  const rowan = { name: "Rowan",
+    pronouns: { subject: "he", object: "him", possessive: "his", reflexive: "himself" } };
+  const mara = { name: "Mara",
+    pronouns: { subject: "she", object: "her", possessive: "her", reflexive: "herself" } };
+  const cast = [rowan, mara];
+
+  it("does not read the addressed name inside a line as its speaker — the vocative case", () => {
+    const prose = '"Tell me, Mara," he said. '
+      + '"When the shadows lengthened in your garden, did they move with your own will?"';
+    const grants = [
+      { character: "Rowan", speech: "Tell me, Mara," },
+      { character: "Rowan", speech: "When the shadows lengthened in your garden, did they move with your own will?" },
+    ];
+    // Before the fix the second line attributed to MARA (nearest preceding name) and flagged
+    // as granted to a different character; both lines are Rowan's and pass.
+    assert.equal(lintQuotations(prose, grants, cast), null);
+  });
+
+  it("holds the mirror vocative — her line addressing him", () => {
+    const prose = '"Listen, Rowan," she said. "The road beyond the gate is watched tonight."';
+    const grants = [
+      { character: "Mara", speech: "Listen, Rowan," },
+      { character: "Mara", speech: "The road beyond the gate is watched tonight." },
+    ];
+    assert.equal(lintQuotations(prose, grants, cast), null);
+  });
+
+  it("resolves a pronoun tag against declared pronouns — the possessive case", () => {
+    const prose = 'Mara held Rowan\'s gaze across the table. "The herbs were for the weary, Father," she said.';
+    const grants = [{ character: "Mara", speech: "The herbs were for the weary, Father," }];
+    // Before the fix the fallback's nearest name was ROWAN (possessive role) while the true
+    // speaker sat in an unusable "she said".
+    assert.equal(lintQuotations(prose, grants, cast), null);
+    // And the attribution itself names her: with nothing granted it is her line that flags.
+    const hit = lintQuotations(prose, [], cast);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.character, "Mara");
+    assert.equal(isAdvisoryQuoteHit(hit), false);
+  });
+
+  it("holds the mirror possessive — his line after her name in object role", () => {
+    const prose = 'Rowan kept Mara\'s hand in his. "The fever will break by morning," he said.';
+    assert.equal(lintQuotations(prose, [{ character: "Rowan", speech: "The fever will break by morning," }], cast), null);
+    const hit = lintQuotations(prose, [], cast);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.character, "Rowan");
+  });
+
+  it("masks quoted spans even with bare names — no pronouns needed", () => {
+    const prose = '"Tell me, Mara," the priest said. "When the shadows lengthened, did they move?"';
+    const grants = [{ character: "Rowan", speech: "Tell me, Mara. When the shadows lengthened, did they move?" }];
+    assert.equal(lintQuotations(prose, grants, ["Rowan", "Mara"]), null);
+  });
+
+  it("a shared pronoun identifies nobody — the existing fallback stands", () => {
+    const riven = { name: "Riven",
+      pronouns: { subject: "he", object: "him", possessive: "his", reflexive: "himself" } };
+    const prose = 'Riven waited by the door. "The line holds tonight," he said.';
+    const hit = lintQuotations(prose,
+      [{ character: "Rowan", speech: "The line holds tonight." }],
+      [riven, rowan]);
+    assert.ok(hit);
+    assert.equal(hit!.character, "Riven");
+    assert.equal(isAdvisoryQuoteHit(hit), true);
+  });
+
+  it("masking does not launder a genuine invention beside a vocative", () => {
+    const prose = '"Tell me, Mara," he said. "I burned the whole room."';
+    const hit = lintQuotations(prose, [{ character: "Rowan", speech: "Tell me, Mara," }], cast);
+    assert.ok(hit && !hit.ok);
+    assert.equal(isAdvisoryQuoteHit(hit), false);
+    assert.match(hit!.why, /unmatched quotation/);
+  });
+});

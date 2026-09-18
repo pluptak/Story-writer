@@ -132,8 +132,30 @@ export const LIVE = {
   readerArmed: false,
   readerResolve: null as ((answer: string) => void) | null,
   awaitingPick: false,
-  pickResolve: null as ((pick: { dir: string; chapter: number; replace?: boolean }) => void) | null,
+  pickResolve: null as ((pick: StoryPick) => void) | null,
 };
+
+/** A story choice resolving a pending pick: the directory, chapter, and whether the viewer
+ *  authorized writing over or past an existing chapter (the `--replace` counterpart). */
+export interface StoryPick {
+  dir: string;
+  chapter: number;
+  replace?: boolean;
+}
+
+/** Whether the session is waiting on a story choice. Reads only — arming stays with the loop. */
+export function isPickAwaited(): boolean {
+  return LIVE.awaitingPick && LIVE.pickResolve !== null;
+}
+
+/** Take the pending pick resolver, disarming the pick. Null when nothing is awaited. The take
+ *  is one sync sequence, so no second consumer can interleave between the check and the clear. */
+export function consumePick(): ((pick: StoryPick) => void) | null {
+  const r = LIVE.pickResolve;
+  LIVE.pickResolve = null;
+  LIVE.awaitingPick = false;
+  return r;
+}
 
 /** A snapshot of the session's run state, for /run, SSE, and the viewer's header. */
 export function runState(): RunStateFrame {

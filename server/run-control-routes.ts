@@ -1,6 +1,6 @@
 /**
- * RUN CONTROL ROUTES — everything that steers a scene already in flight:
- * stop, pause/resume, the model override, interactive mode, and the reader's consult seat.
+ * RUN CONTROL ROUTES — stop, pause/resume, model override, interactive mode, reader seat, and the
+ * lint/continue decisions. Contract: docs/GUI-SPEC.md ("Run control").
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -8,11 +8,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { C } from "../ansi.ts";
 import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
-import type { ServerHost } from "./server.ts";
+import type { RunControlHost } from "./route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleRunControl(
-  req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
+  req: IncomingMessage, res: ServerResponse, path: string, host: RunControlHost,
 ): Promise<boolean> {
   if (path === "/stop" && req.method === "POST") {
     if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }

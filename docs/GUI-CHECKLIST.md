@@ -2,7 +2,7 @@
 
 **Everything in this file is work for a person.** `npm test` covers the engine and the route modules
 and `npm run test:gui` covers the viewer's mechanical half — Playwright driving the real server
-in-process over a fixture ServerHost, no LM Studio, nothing in `data/stories/` touched. What is left here
+in-process over a fixture host, no LM Studio, nothing in `data/stories/` touched. What is left here
 is what neither can reach: a real model's behaviour, a truth that is not on the page, a second
 client, and layout, theme, focus and feel.
 

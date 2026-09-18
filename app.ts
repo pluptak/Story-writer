@@ -3,7 +3,7 @@
  * knob application, the chapter-start guard), the story pick (browser-driven when a viewer is
  * watching, the console picker otherwise), and the pick → run → pick loop. The CLI entry points
  * (--preflight, --consult) stay in story-writer.ts; everything one chapter run does around the
- * scene loop lives in run-and-save.ts; the ServerHost the viewer talks to lives in host.ts.
+ * scene loop lives in run-and-save.ts; the route-host object the viewer talks to lives in host.ts.
  */
 
 import { C } from "./ansi.ts";
@@ -40,7 +40,7 @@ export interface CliConfig {
   /** --consult=NAME: answer one consult in the console instead of writing a scene. */
   consult?: string;
   /** --replace: authorize writing over an existing chapter or skipping past an unwritten one. */
-  replace?: string;
+  replace?: boolean;
   /** The console consult runner. --consult is a console entry point, so the app loop calls back
    *  into story-writer.ts for it rather than growing a readline UI of its own. */
   consultCli: (sc: StoryConfig, who: string) => Promise<void>;

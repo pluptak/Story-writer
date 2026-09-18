@@ -12,7 +12,7 @@ import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
 import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError, LIVE_IO, sseClients, type LintDecision } from "../live.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
-import type { ServerHost } from "../server/server.ts";
+import type { RunControlHost } from "../server/route-hosts.ts";
 import { quiet, callRoute, siteFetch, sceneRun } from "./helpers.ts";
 
 // Consult test helpers for stopRun
@@ -198,7 +198,7 @@ describe("pause/resume handshake", () => {
     // Call /resume — should call pauseResolve() to wake the loop
     const host = {
       availableModelIds: async () => ["test-model"],
-    } as unknown as ServerHost;
+    } as unknown as RunControlHost;
     const r = await callRoute(handleRunControl, "/resume", {}, host);
     assert.equal(r.code, 200);
 
@@ -225,7 +225,7 @@ describe("pause/resume handshake", () => {
     // Call /stop — must release the paused loop or it will hang forever
     const host = {
       availableModelIds: async () => ["test-model"],
-    } as unknown as ServerHost;
+    } as unknown as RunControlHost;
     const r = await callRoute(handleRunControl, "/stop", {}, host);
     assert.equal(r.code, 200);
 
@@ -249,7 +249,7 @@ describe("pause/resume handshake", () => {
 // -- THE LINT DECISION GATE (loop↔route promise coordination) ----------------
 describe("lint decision handshake", () => {
   const prompt = { prose: "Merritt watches the door.", blocking: "restricted sense: MERRITT is shown \"watches\" but CANNOT sight.", advisory: null, chapter: 1 };
-  const host = {} as unknown as ServerHost;
+  const host = {} as unknown as RunControlHost;
 
   /** Park a lint waiter the way app.test.ts parks its other waits: seed LIVE state directly. The
    *  routes' whole job is to spend this resolver exactly once and clear the state with it. */

@@ -9,11 +9,11 @@ import { createServer as netCreateServer, type AddressInfo } from "node:net";
 import { createShutdownSignal, startChapterRun } from "../app.ts";
 import { startServer, type ServerHandle } from "../server/server.ts";
 import { LIVE, RUN, resetLive, armRun, publish } from "../live.ts";
-import type { ServerHost } from "../server/server.ts";
+import type { RouteHosts } from "../server/route-hosts.ts";
 import { quiet } from "./helpers.ts";
 import { ROOT } from "../engine/story-format.ts";
 
-const noopHost = {} as ServerHost;
+const noopHost = {} as RouteHosts;
 
 const liveHandles: ServerHandle[] = [];
 afterEach(async () => {

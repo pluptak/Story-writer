@@ -39,16 +39,18 @@ at a glance; the prose under it is not summarized away.
 
 ## Now
 
-Two items, in the order to pick them up. Both share live-run evidence and are each a reason to
-distrust what the writer hands everyone else.
+Three items, in the order to pick them up. The first two share live-run evidence and are each a
+reason to distrust what the writer hands everyone else; the third is the authoring side of the same
+worry — whether the story the writer was handed was worth writing.
 
-Items 1 and 3's evidence is doorway runs of 2026-08-27 (`16-23-17-001Z`, `19-33-16-122Z`,
+Item 1's evidence is doorway runs of 2026-08-27 (`16-23-17-001Z`, `19-33-16-122Z`,
 `19-47-04-293Z`; a fourth run from that day has since rotated off disk, so figures cited from it are
 not re-derivable) plus further `e4b` runs, `21-35-36-919Z` (control) and `22-23-22-884Z` (first run
 under the shipped sense-lint, consult gate and person clause), both preserved under
 `data/stories/doorway/experiments/`. Raising the author-side model fixed or nearly fixed both on
 its own — but the prose sense-lint's three holes, which led this list until they shipped, appeared
-on the page under both models: the one thing capability did not buy.
+on the page under both models: the one thing capability did not buy. Items 2 and 3 carry their own
+evidence on their cards.
 
 ### 1. A character's pronoun can still switch mid-scene — the clause only ever covered `you`-leak
 
@@ -267,6 +269,71 @@ extension will be granted — the third silent path above), and the hard cap. `d
 (`run-and-save.ts`). Calibration fixtures are in `tests/scene-loop-consult.test.ts` (resolved,
 open, unclear/unavailable, hard-cap, and budget-exhaustion-with-no-grant). Nothing gates yet — this
 is still step 5 of the block plan, not step 6.
+
+### 3. Nothing re-reads a finished story to ask whether it was worth writing
+
+Type: feature
+Why now: `engine/story-audit.ts` ships the mechanical half — a story that cannot run, or that a
+shipped check cannot see. It says nothing about whether the story WORKS: whether a goal can be acted
+toward, whether the scene question can be answered by this cast, whether two goals actually collide.
+Every rule for that already exists, in the architect's authoring prompts, and runs exactly once —
+while a story is being scaffolded. A story authored under an older prompt was never held to the rule
+that came after it, and re-scaffolding is the only way to find out.
+Next action: block 1 below — the judged axis, plumbed with no judge behind it.
+Done when: the viewer shows both axes on a story, and the four Ready-fixes entries this absorbs are
+deleted because their rules have one home and two consumers.
+Depends on: nothing.
+
+**Two axes, never one.** `level` stays what it is: offline, deterministic, mechanical, the thing
+`--min-level` gates a batch on. Judged findings ride beside it on their own field with their own
+verdict and never touch it. The reason is not tidiness — a judge fails open, so folding it in would
+mean the same story passes a gate on the run where the judge times out and fails on the run where it
+answers, with nothing about the story having changed. A gate that moves on its own is not a gate.
+
+**The rules already exist; what is missing is a second consumer.** `FIELD_GOAL` and the verify pass
+(`prompts/architect.ts`) hold the ZERO-SUM TEST and the goal wording rules; `newCastAsymmetryJudge`
+(`engine/architect.ts`) already answers "does this cast's asymmetry bite on the tension" against a
+cast sheet, and is reusable unchanged — it takes a tension and a list of `{name, goal, skills,
+restrictions}`, which a loaded story can supply as easily as a proposal can. The work is to give each
+rule ONE home a prompt module owns, and render it into both the architect's stage prompt and the
+audit's request, rather than letting a second copy drift.
+
+**And a mechanical half is already written and unused.** `normalizeSpec` (`engine/story-spec.ts`)
+returns `problems` for a raw story object, and reads a `story.json` straight off disk
+(`docs/mockups/capture/screens.capture.ts` does exactly that). The audit ignores it today. Folding it
+in is a check-for-free before any model is involved.
+
+The blocks, each independently pausable:
+
+1. **The judged axis, with no judge behind it.** `StoryOpinion` beside `StoryAudit.level`, a
+   `judgeStory()` that takes its judge injected, and a CLI flag that is off by default. Ships with a
+   fake judge so the plumbing is tested without a model, and proves the outage path first: no judge
+   reachable is `unavailable`, which is not a verdict and changes no level.
+2. **The mechanical content checks.** `normalizeSpec().problems` folded into the existing tiering,
+   plus the string-checkable cast-sheet defects the fourth Ready-fix names: a goal written in the
+   third person naming its own character, an editorial parenthetical rendered verbatim into a
+   prompt, and a missing goal — which nothing checks today, since
+   `characterPsychologyWarnings` covers belief, impulse and voice but not goal. Still offline, still
+   deterministic, so these DO move `level`.
+3. **The judged content checks.** Per character: does the goal name something they can act toward,
+   and is it in their scope. Per story: does the question presuppose its own answer, is it
+   answerable by this cast, is a skill inert in the scene it is authored for, and does the cast's
+   asymmetry bite — the last one reusing `newCastAsymmetryJudge` rather than adding a fifth judge.
+4. **Host and route.** One host-interface method and a `/story/audit` route, shaped like
+   `/story/check`: the mechanical half always, the judged half only when asked for, since it costs a
+   call. `GUI-SPEC.md` gains the route.
+5. **The two viewer surfaces.** A level badge and finding count on the shelf card, riding the
+   `StoryCard` path that already carries `warnings` to the shelf; and a findings panel beside the
+   story editor, where a gap is fixed where it is authored, with the judged half behind a button.
+
+**What this absorbs.** Four Ready-fixes entries — the ZERO-SUM agency test, the presupposing scene
+question, the inert skill, and the cast-sheet defects — are all the same rules aimed only at the
+architect. They stay listed until their rule has its single home and both consumers read it, and are
+deleted then, not annotated.
+
+**What it deliberately does not do.** No advisor: `Architect.MD` defers the edit-proposing advisor
+until real entries exist to test it against, and nothing here reopens that. No writing to
+`story.json`: the audit reports, the author or the architect edits.
 
 ## Ready fixes
 
@@ -499,6 +566,40 @@ would settle it, and several gate work in the sections above and below.
 The engine permits something it should not, or has no representation for something it needs, and the
 fix is not decided. Nothing here should be built before its question is answered.
 
+### Whether `--heard-channel` becomes the default
+
+Type: decision
+Why now: both halves of the mechanism are now built — verbatim delivery, and a gate that refuses a
+situation retelling what the block carries (`engine/situation-lint.ts`, `Character.MD`) — but the
+only live evidence for either predates the gate. The flag is still off by default, so nothing
+exercises them together.
+Next action: one live run under `--heard-channel` on a story that **declares pronouns**, then read
+the `bad_consult` rate and whether the writer recovers from a recap refusal the way it recovers
+from a restricted-sense one.
+Done when: the promotion is taken or refused on that run's evidence.
+Evidence: the-healer-s-cell `2026-09-18T06-24-52-772Z` (revision `00741a1`,
+`gemma-4-12b-it-qat-uncensored-heretic`, 13 consults, chapter finished on `done_confirmed`).
+
+**What that run already settles.** The delivery half is exact: seven asks carried
+`[WHAT YOU HEARD]`, seven lines were delivered, all seven verbatim matches of granted speech, one
+of them a promoted fan-out reaction rather than an `accept`. The six asks with no block are all
+correct — the opening consult, and five where nothing new had been said since. Nothing was owed
+and missing.
+
+**What it says about the writer.** Six of the seven heard-carrying asks *also* paraphrased the same
+speech in the situation, so delivery alone did not stop the retelling arriving first; that is what
+the gate now refuses. Steering survived in five of thirteen asks, including a literal decision menu
+("Do you open the door or wait for them to announce themselves?"), which no mechanical check
+addresses. Thirteen asks in one chapter of one story under one model is a direction, not a rate.
+
+**Why the next run needs declared pronouns.** `pronouns` is optional on the schema, and
+the-healer-s-cell declares none. Replayed against that run, the gate refuses six of the seven asks
+with a declared cast and only three without — the writer pronominalises whoever the previous
+sentence named, and an undeclared pronoun resolves to nobody rather than to a guess. The same
+field carries the quote lint's speaker resolution, which on the same replay clears all four of
+that run's false attributions with pronouns declared and three of four without. A promotion run on
+a pronoun-less story would measure the weaker half of both.
+
 ### Whether a scene may outrun its own question, and what should happen when it does
 
 **In Now:** item 2 carries the live-evidence read this decision is waiting on. Overlaps the reaction
@@ -673,8 +774,8 @@ Big, unbuilt, and shaping rather than corrective.
   when** a scaffold run twice against a bible the first run filled is read for reuse vs.
   reinvention; that measurement is worth more than the rule. Left behind: the system prompt is not
   re-rendered mid-session (promoted skill validates immediately, appears next session), and
-  `directEdit` still normalizes against the in-code bible (fix = async `ServerHost.directEdit` for
-  an advisory-only effect).
+  `directEdit` still normalizes against the in-code bible (fix = making the scaffold's direct
+  edit async for an advisory-only effect).
 - **Casting from the library, past the opening cast.** Import path built (tray, cast gate's own stage
   prompt, enforced adaptation contract). Unbuilt: (1) the contract has never met a real model —
   preservation is enforced so it cannot fail quietly, and the revert notes are the measurement

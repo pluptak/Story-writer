@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { handleCatalogRoutes } from "../server/catalog-routes.ts";
-import type { ServerHost } from "../server/server.ts";
+import type { CatalogRoutesHost } from "../server/route-hosts.ts";
 import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 
 const CHAR_ONE = {
@@ -28,7 +28,7 @@ const CHAR_TWO = {
   restrictions: [] as string[],
 };
 
-function makeHost(overrides?: Partial<ServerHost>): ServerHost {
+function makeHost(overrides?: Partial<CatalogRoutesHost>): CatalogRoutesHost {
   return baseHost({
     catalogEntries: async (kind: string) => {
       if (kind === "characters") {

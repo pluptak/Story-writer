@@ -1,26 +1,25 @@
 /**
- * STORY EDIT ROUTES — read, validate, and save a story's story.json from the GUI.
- * `/story/edit` (GET), `/story/check` (POST), `/story/save` (POST).
+ * STORY EDIT ROUTES — load, validate, and save story.json. Refuse with 409 while story.json is
+ * held (run, loading window, or handoff). Contract: docs/GUI-SPEC.md ("Story editor").
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { storyWriteBlocked } from "../live.ts";
-import { json, readJsonBody } from "./http-util.ts";
-import type { ServerHost } from "./server.ts";
+import { json, readJsonBody, getQuery } from "./http-util.ts";
+import type { StoryEditHost } from "./route-hosts.ts";
 
-/** One refusal for every story-mutating action: a run is reading story.json, or a picked story is
- *  still loading (the window between /select and the run starting), or a handoff holds it. */
+/** Refusal shared by every story-mutating action while story.json is held. */
 function writeBlocked(action: string): string {
   return `cannot ${action} while ${storyWriteBlocked()}`;
 }
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleStoryEditRoutes(
-  req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
+  req: IncomingMessage, res: ServerResponse, path: string, host: StoryEditHost,
 ): Promise<boolean> {
   if (path === "/story/edit" && req.method === "GET") {
-    const query = new URLSearchParams((req.url || "").split("?")[1] || "");
+    const query = getQuery(req);
     const dir = await host.selectableStory(query.get("dir") || "");
     if (!dir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
     if (storyWriteBlocked()) { json(res, 409, { ok: false, reason: writeBlocked("edit") }); return true; }

@@ -438,6 +438,13 @@ export const badConsult = {
     + `not physically there right now, connected only by ${via}: they would receive it as ground truth `
     + `their position rules out. Rebuild the situation around what actually reaches them through that `
     + `connection.`,
+
+  reportedSpeech: (character: string, fragment: string) =>
+    `The situation you gave ${character} retells speech — "${fragment}" — but eligible speech `
+    + `already reaches them verbatim under [WHAT YOU HEARD], separately from your situation. Keep `
+    + `the situation to circumstance only: where they are, what has happened, and what they can `
+    + `perceive now. Do not paraphrase or recap speech. The bare fact that someone spoke is `
+    + `circumstance and stays allowed; what they said is the heard block's job.`,
 };
 
 export const badReaction = {

@@ -1,20 +1,16 @@
 /**
- * NEXT-CHAPTER ROUTES — the architect handoff, server side: `/next-chapter` and `/next-chapter/*`.
- *
- * A thin dispatcher, mirroring scaffold-routes.ts: validates the story and model before opening a
- * session, calls the matching ServerHost.handoff*() method, and forwards whatever it returns.
- * Never touches the architect's own session object or the story-write lock directly — both are
- * private to host.ts now, which also does all of this route's SSE publishing internally.
+ * NEXT-CHAPTER ROUTES — `/next-chapter` and `/next-chapter/*`. Same shape as scaffold-routes.ts:
+ * dispatch to `HandoffRoutesHost.handoff*()`, never the session. Contract: docs/GUI-SPEC.md ("The handoff").
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { json, readJsonBody } from "./http-util.ts";
-import type { ServerHost } from "./server.ts";
+import type { HandoffRoutesHost } from "./route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleNextChapterRoutes(
-  req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
+  req: IncomingMessage, res: ServerResponse, path: string, host: HandoffRoutesHost,
 ): Promise<boolean> {
   if (path === "/next-chapter" && req.method !== "POST") {
     json(res, 200, host.handoffState());

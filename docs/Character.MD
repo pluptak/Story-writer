@@ -301,7 +301,14 @@ writer's first ask, a fan-out's shared text, a judge's `revised` — passes the 
 ground truth a character cannot have is exactly what a situation must not be. The same gate reads
 presence: a `remote` addressee is refused a situation phrased around a sense their position rules
 out (`cause: "presence"` rather than the CANNOT wording), and a `remote` reactor in a fan-out is
-refused the shared room-perspective situation unless the writer gives them their own override. One character's
+refused the shared room-perspective situation unless the writer gives them their own override.
+When the ask carries a **[WHAT YOU HEARD]** block, the same gate also refuses a situation that
+retells what that block already holds verbatim: a reporting construction ("she answered that",
+"Rowan has just asked about", "you asked about") whose subject is another cast member — by name,
+or by a subject pronoun exactly one of them declares — or the addressee. The bare fact that
+someone spoke is circumstance and passes; what they said is the block's job. The check runs only
+where a block exists, so an opening consult stays free to set the scene, and a fan-out's blocks
+attach after the shared gate, so each reactor's own is checked at that attachment point instead. One character's
 answer never becomes part of another's situation: the second one asked blind, and a fan-out's
 shared text may only hold facts that predate every answer in the beat. When a consult is refused,
 the character is never sent anything — the refusal is a message to the writer, and the character

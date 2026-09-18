@@ -1,18 +1,14 @@
 /**
- * SCAFFOLD ROUTES — the new-story interview, server side: `/scaffold` and `/scaffold/*`.
- *
- * A thin dispatcher: validates wire shape and bounds, calls the matching ServerHost.scaffold*()
- * method, and forwards whatever it returns. Never touches the architect's own session object —
- * that, and every piece of its bookkeeping (busy, the abandon generation counter, the session
- * itself), is private to host.ts, which also does all of this route's SSE publishing internally as
- * part of being the domain layer.
+ * SCAFFOLD ROUTES — `/scaffold` and `/scaffold/*`. Wire validation and dispatch to
+ * `ScaffoldRoutesHost.scaffold*()`; the session and its bookkeeping are private to host.ts.
+ * Contract: docs/GUI-SPEC.md ("Scaffold").
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE } from "../live.ts";
+import { LIVE, isPickAwaited, consumePick } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
-import type { ServerHost, Concept, RegenScope } from "./server.ts";
+import type { ScaffoldRoutesHost, Concept, RegenScope } from "./route-hosts.ts";
 
 const MAX_TAGS = 8;
 const MAX_TAG_LEN = 40;
@@ -20,8 +16,7 @@ const MAX_CAST = 4;      // the cast stage's own ceiling: "Four is the maximum"
 const MAX_IMPORTS = 4;   // the cast stage's ceiling, same as MAX_CAST
 const MAX_ID_LEN = 200;  // a catalog id is a slug; this only stops an unbounded string
 
-/** The concept goes verbatim into a prompt, so its size is bounded here rather than trusted. Returns
- *  the cleaned concept, or a reason it was refused. */
+/** The concept goes verbatim into a prompt, so its size is bounded here. */
 function readConcept(o: Record<string, unknown>): { ok: true; concept: Concept } | { ok: false; reason: string } {
   const rawTags = Array.isArray(o.tags) ? o.tags : [];
   const tags = rawTags.map(t => String(t ?? "").trim()).filter(Boolean);
@@ -44,8 +39,7 @@ function readImportIds(o: Record<string, unknown>): { ok: true; ids: string[] } 
   return { ok: true, ids };
 }
 
-/** A scoped regenerate ("just this character"), or a reason the shape is unusable. Resolving
- *  the name against the cast needs the host, so this only checks the shape. */
+/** A scoped regenerate ("just this character"); resolving the name needs the host. */
 function readRegenScope(o: Record<string, unknown>): { ok: true; scope?: RegenScope } | { ok: false; reason: string } {
   if (o.scope === undefined) return { ok: true };
   const s = o.scope;
@@ -59,7 +53,7 @@ function readRegenScope(o: Record<string, unknown>): { ok: true; scope?: RegenSc
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleScaffoldRoutes(
-  req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
+  req: IncomingMessage, res: ServerResponse, path: string, host: ScaffoldRoutesHost,
 ): Promise<boolean> {
   if (path === "/scaffold" && req.method !== "POST") {
     json(res, 200, host.scaffoldState());
@@ -77,6 +71,7 @@ export async function handleScaffoldRoutes(
   }
 
   if (what === "start") {
+    // The shelf-phase flag only: start needs no resolver, just a session waiting for a story.
     if (!LIVE.awaitingPick) { json(res, 400, { ok: false, reason: "the session is not waiting for a story" }); return true; }
     const idea = String(o.idea ?? "").trim();
     if (!idea) { json(res, 400, { ok: false, reason: "nothing to work with" }); return true; }
@@ -159,14 +154,19 @@ export async function handleScaffoldRoutes(
   }
 
   if (what === "accept") {
-    if (!LIVE.awaitingPick || !LIVE.pickResolve) { json(res, 400, { ok: false, reason: "the session is not waiting for a story" }); return true; }
+    // Both the flag and the resolver: refusing before the host call means a story is never
+    // written when there is no pick to resolve it with (cf. start, which needs the flag only).
+    if (!isPickAwaited()) { json(res, 400, { ok: false, reason: "the session is not waiting for a story" }); return true; }
     const r = await host.scaffoldAccept(String(o.folder ?? "").trim());
     if (!r.ok) {
       const { status, ok: _ok, ...body } = r;
       json(res, status, { ok: false, ...body });
       return true;
     }
-    const resolve = LIVE.pickResolve; LIVE.pickResolve = null; LIVE.awaitingPick = false;
+    const resolve = consumePick();
+    // consumePick answers null only when no resolver was armed — start already refused that,
+    // and nothing runs between the guard and here, so this is unreachable in practice.
+    if (!resolve) { json(res, 400, { ok: false, reason: "the session is not waiting for a story" }); return true; }
     const { status: _status, ok: _ok2, ...body } = r;
     json(res, 200, { ok: true, ...body });
     resolve({ dir: r.dir, chapter: 1 });   // a story that did not exist a moment ago starts at its first chapter

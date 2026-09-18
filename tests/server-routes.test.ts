@@ -16,7 +16,7 @@ import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
 import { handleRunControl } from "../server/run-control-routes.ts";
 import { handleRunLogRoutes } from "../server/run-log-routes.ts";
 import { HttpError, readJsonBody } from "../server/http-util.ts";
-import type { ServerHost } from "../server/server.ts";
+import type { RouteHosts } from "../server/route-hosts.ts";
 import { HOST, setHandoffTestHooks, resetHandoffForTests } from "../host.ts";
 import { callRoute, callGet, fakeRequest, fakeRawRequest, quiet, ScriptedAgent, makeHost } from "./helpers.ts";
 
@@ -51,9 +51,9 @@ describe("/next-chapter routes", () => {
                            "data/stories/doorway", spec, [{ n: 1, text: "It happened." }]);
 
   // Drives the real HOST handoff methods (host.ts) through setHandoffTestHooks, mirroring
-  // scaffold-routes.test.ts -- newHandoffSession is no longer part of ServerHost (Block 6,
-  // PLANS.md), so the story-discovery-adjacent fields are the only ones still faked here.
-  const host = (open?: () => Promise<NextChapterSession>): ServerHost => {
+  // scaffold-routes.test.ts -- newHandoffSession is not a host method, so the
+  // story-discovery-adjacent fields are the only ones still faked here.
+  const host = (open?: () => Promise<NextChapterSession>): RouteHosts => {
     setHandoffTestHooks({
       session: async (dir) => { opened.push(dir); return open ? open() : session([]); },
     });
@@ -320,7 +320,7 @@ describe("readJsonBody", () => {
 
 // -- SECTION ----
 describe("handleRunControl", () => {
-  const host: ServerHost = makeHost({
+  const host: RouteHosts = makeHost({
     availableModelIds: async () => ["qwen-new", "qwen-test", "qwen-old"],
   });
 
@@ -599,7 +599,7 @@ describe("handleRunControl", () => {
 
 // -- SECTION ----
 describe("/runs/llm routes", () => {
-  const host: ServerHost = makeHost({
+  const host: RouteHosts = makeHost({
     selectableStory: async (d: string) => d.startsWith("data/stories/") ? d : null,
     resolveStoryDir: (d: string) => "/resolved/" + d,
     runDirs: async () => ["run-1"],
@@ -650,7 +650,7 @@ describe("/runs/llm routes", () => {
 
 // -- SECTION ----
 describe("/runs/log", () => {
-  const hostAt = (base: string): ServerHost => makeHost({
+  const hostAt = (base: string): RouteHosts => makeHost({
     selectableStory: async (d: string) => d.startsWith("data/stories/") ? d : null,
     resolveStoryDir: () => base,
     runDirs: async () => ["run-1"],

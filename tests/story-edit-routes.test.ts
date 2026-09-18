@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 
 import { LIVE, resetLive, armRun } from "../live.ts";
 import { handleStoryEditRoutes } from "../server/story-edit-routes.ts";
-import type { ServerHost } from "../server/server.ts";
+import type { StoryEditHost } from "../server/route-hosts.ts";
 import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 
 const DOORWAY = {
@@ -28,7 +28,7 @@ const DOORWAY = {
 
 let suggestCalls = 0;
 
-function makeHost(overrides?: Partial<ServerHost>): ServerHost {
+function makeHost(overrides?: Partial<StoryEditHost>): StoryEditHost {
   return baseHost({
     selectableStory: async (d: string) => (d === "data/stories/doorway" || d === "doorway" ? "data/stories/doorway" : null),
     storyForEdit: async (dir: string) => {

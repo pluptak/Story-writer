@@ -10,6 +10,7 @@ import {
   consult, normalizeReactionConsult, parseBatchVerdict,
   type ConsultEvent, type Clarifier, type ConsultRequest,
 } from "./consult.ts";
+import { lintReportedSpeech } from "./situation-lint.ts";
 import { type Msg } from "./llm-client.ts";
 import type { CharacterDef } from "./story-format.ts";
 import { ENGINE } from "./engine-state.ts";
@@ -80,6 +81,19 @@ export async function reactionFanout(o: FanoutOpts): Promise<boolean> {
   const collected: { name: string; thought: string; speech: string; action: string; situation: string }[] = [];
   const requests = rc.reqs.map(req => o.heardFor
     ? { ...req, heard: o.heardFor(req.character) } : req);
+  // The fan-out's heard blocks attach after the shared gate, which cannot see them — so each
+  // reactor's own block is linted here, at the attachment point, and a recap turns the whole
+  // fan-out back through the same bad_consult, the way one restricted reactor does.
+  for (const req of requests) {
+    const hit = lintReportedSpeech(req.situation, req.character, o.cast, req.heard);
+    if (hit) {
+      const why = P.badConsult.reportedSpeech(req.character, hit.match);
+      log({ t: "bad_consult", character: req.character, why, chapter });
+      console.log(`${C.yellow}(reaction not sent — ${why.split(". ")[0]}.)${C.reset}`);
+      o.writer.hear(o.refusalFor(why, "the group", String(o.situation ?? "")));
+      return false;
+    }
+  }
   for (const req of requests) {
     if (o.stopped()) break;
     const def = o.defOf(req.character);

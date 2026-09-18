@@ -1,7 +1,8 @@
 /** The boundary CLAUDE.md states as an invariant: server/ never imports engine/ at runtime —
- *  everything a route needs arrives through ServerHost, built once in story-writer.ts. Only
- *  `import type` (erased before anything runs) may reach into engine/ from here; any other import
- *  would hand a route module a live engine value ServerHost was supposed to be the sole channel for. */
+ *  everything a route needs arrives through narrow host interfaces (server/route-hosts.ts),
+ *  satisfied by the one object built in host.ts. Only `import type` (erased before anything runs)
+ *  may reach into engine/ from here; any other import would hand a route module a live engine
+ *  value the host interfaces were supposed to be the sole channel for. */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -26,17 +27,15 @@ describe("server/ never imports engine/ at runtime", () => {
         const [, isType, spec] = m;
         if (!spec.includes("/engine/")) return;
         assert.ok(isType, `server/${file}:${i + 1} imports "${spec}" without "import type" — `
-          + `a runtime import of engine/ from server/ breaks the ServerHost boundary`);
+          + `a runtime import of engine/ from server/ breaks the route-host boundary`);
       });
     });
   }
 });
 
-// The decoupling program's one shipped piece (CLAUDE.md's ServerHost rule): the scaffold AND
-// handoff domains are fully behind ServerHost — no route module knows what a ScaffoldSession or
-// a NextChapterSession is, not even as a type, and neither engine/architect.ts nor
-// engine/story-spec.ts (the last of it retired once host.ts's own snapshot builders stopped needing
-// specView/storyJsonShape as ServerHost methods) is imported anywhere under server/ at all.
+// The scaffold AND handoff domains are fully behind narrow host interfaces — no route module
+// knows what a ScaffoldSession or a NextChapterSession is, not even as a type, and neither
+// engine/architect.ts nor engine/story-spec.ts is imported anywhere under server/ at all.
 describe("server/ has no dependency on engine/architect.ts or engine/story-spec.ts, even as a type", () => {
   for (const file of serverFiles()) {
     it(`${file} does not import either module`, () => {
@@ -47,12 +46,58 @@ describe("server/ has no dependency on engine/architect.ts or engine/story-spec.
         const [, , spec] = m;
         assert.ok(!spec.includes("/engine/architect.ts") && !spec.includes("/engine/story-spec.ts"),
           `server/${file}:${i + 1} imports "${spec}" — the scaffold and handoff domains are `
-          + `supposed to be entirely behind ServerHost (CLAUDE.md: routes never import engine/)`);
+          + `supposed to be entirely behind host interfaces (CLAUDE.md: routes never import engine/)`);
       });
     });
   }
 });
 
+describe("every server/*.ts module is type-checked (tsconfig covers it)", () => {
+  // Regression guard: server/catalog-routes.ts once shipped without a tsconfig entry,
+  // so `npx tsc` never checked it. The include list uses globs, so match each file
+  // against them instead of asserting exact entries.
+  const tsconfig = JSON.parse(
+    readFileSync(fileURLToPath(new URL("../tsconfig.json", import.meta.url)), "utf8"),
+  ) as { include?: string[] };
+  const patterns = tsconfig.include ?? [];
+  const globToRegExp = (glob: string) => new RegExp(
+    "^" + glob.split("/").map((seg) => {
+      if (seg === "**") return ".*";
+      return seg.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]");
+    }).join("/") + "$",
+  );
+  const covered = (file: string) =>
+    patterns.some((p) => globToRegExp(p).test(`server/${file}`) || globToRegExp(p).test(file));
+  for (const file of serverFiles()) {
+    it(`${file} matches a tsconfig include pattern`, () => {
+      assert.ok(covered(file),
+        `server/${file} matches no tsconfig include pattern — \`npx tsc\` skips it`);
+    });
+  }
+});
+describe("no god host interface: `ServerHost` appears in no .ts file", () => {
+  // Each route module takes only its narrow slice (server/route-hosts.ts); the single runtime
+  // object is typed as their `RouteHosts` intersection. Resurrecting the god interface re-couples
+  // every route to every domain, so its name fails here.
+  it("no .ts file names ServerHost, even in a comment", () => {
+    const roots = [
+      fileURLToPath(new URL("../server", import.meta.url)),
+      fileURLToPath(new URL("../tests", import.meta.url)),
+      fileURLToPath(new URL("../engine", import.meta.url)),
+    ];
+    const tsFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith(".ts") && p !== fileURLToPath(import.meta.url)) tsFiles.push(p);
+      }
+    };
+    roots.forEach(walk);
+    const offenders = tsFiles.filter((f) => /\bServerHost\b/.test(readFileSync(f, "utf8")));
+    assert.deepEqual(offenders, [], `these files still name ServerHost: ${offenders.join(", ")}`);
+  });
+});
 describe("scaffold-routes.ts and next-chapter-routes.ts never name their session objects", () => {
   // "SCAFFOLD ROUTES" / "NEXT-CHAPTER ROUTES" are the files' own headers, matching every other
   // route module's naming convention (CATALOG ROUTES, STORY EDIT ROUTES, ...) — allowed. Actual use

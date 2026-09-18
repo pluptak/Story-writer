@@ -1,8 +1,7 @@
 /** Routes for the scaffold interview: the staged checklist (start/approve/say) and cleanup.
  *
  *  Drives the REAL host.ts HOST object through handleScaffoldRoutes -- not a hand-rolled
- *  ServerHost, since SCAFFOLD and its bookkeeping are private to host.ts now (Block 5, PLANS.md).
- *  setScaffoldTestHooks substitutes the model (a ScriptedAgent) and the three catalog lookups
+ *  host, since SCAFFOLD and its bookkeeping are private to host.ts. SetScaffoldTestHooks substitutes the model (a ScriptedAgent) and the three catalog lookups
  *  (tags/imports/style), the only pieces that would otherwise reach a real model or a real catalog
  *  file; everything else -- busy/gen/state-snapshot bookkeeping, the checklist, concept steering,
  *  promotion -- is the genuine implementation. */
@@ -13,7 +12,7 @@ import { ScaffoldSession } from "../engine/architect.ts";
 import type { Defaults } from "../engine/story-format.ts";
 import { LIVE, resetLive } from "../live.ts";
 import { handleScaffoldRoutes } from "../server/scaffold-routes.ts";
-import type { ServerHost } from "../server/server.ts";
+import type { ScaffoldRoutesHost } from "../server/route-hosts.ts";
 import { HOST, setScaffoldTestHooks, resetScaffoldForTests } from "../host.ts";
 import { callRoute, quiet, ScriptedAgent } from "./helpers.ts";
 
@@ -57,7 +56,7 @@ describe("/scaffold routes", () => {
   /** Configures the real HOST's scaffold test hooks (a scripted architect over `script`, and the
    *  tag/import/style lookups against the fixed LIB/STYLES tables above) and returns HOST itself --
    *  every test drives the same singleton, which is why afterEach resets it. */
-  const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ServerHost => {
+  const host = (script: unknown[], knownTags: string[] = ["bleak", "adventure"]): ScaffoldRoutesHost => {
     setScaffoldTestHooks({
       // The scripted cast judge is not optional furniture: without it the cast gate builds a real
       // one and reaches for the network, and whether a test that crosses that gate passes then
@@ -93,7 +92,7 @@ describe("/scaffold routes", () => {
     return HOST;
   };
 
-  const post = (path: string, body?: unknown, h: ServerHost = host([])) =>
+  const post = (path: string, body?: unknown, h: ScaffoldRoutesHost = host([])) =>
     quiet(() => callRoute(handleScaffoldRoutes, path, body ?? {}, h));
 
   it("opens a staged checklist and passes one approved gate at a time", async () => {

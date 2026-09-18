@@ -222,7 +222,7 @@ that same map, so the two views cannot disagree about what is in it.
 
 One reader is still on the in-code catalog: `directEdit`, which re-normalizes the whole spec in order
 to change `scene.length` and so can report a bible problem against the wrong catalog. Fixing it means
-making `ServerHost.directEdit` async for an advisory-only effect, so it is recorded rather than done.
+making the scaffold's direct edit async for an advisory-only effect, so it is recorded rather than done.
 
 ### Promotion
 
@@ -859,7 +859,7 @@ Both conversations are viewer-only: the new-story interview is driven from the s
 `GET /scaffold`, `POST /scaffold/{start,say,approve,regenerate,concept,import,promote,set,accept,abandon}`,
 and the handoff from `#/handoff?dir=` through `GET /next-chapter` and
 `POST /next-chapter/{start,say,regenerate,accept,abandon}`,
-specified in `GUI-SPEC.md`. The server reaches the engine through `ServerHost` and
+specified in `GUI-SPEC.md`. The server reaches the engine through narrow host interfaces and
 never imports engine modules directly. The old console walkthrough (`--new`, `--oneshot`,
 `--idea`, `--next-chapter`) was removed; those flags are no longer declared, so strict
 parsing rejects them as unknown options.

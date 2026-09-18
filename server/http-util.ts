@@ -17,11 +17,24 @@ export function json(res: ServerResponse, code: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
+/** Parse the request's query string. */
+export function getQuery(req: IncomingMessage): URLSearchParams {
+  return new URLSearchParams((req.url || "").split("?")[1] || "");
+}
+
+/** Answer 405 unless the request uses one of `allowed`. Returns true when it answered. */
+export function requireMethod(res: ServerResponse, req: IncomingMessage, ...allowed: string[]): boolean {
+  if (allowed.includes(req.method || "")) return false;
+  res.writeHead(405, { Allow: allowed.join(", ") });
+  res.end();
+  return true;
+}
+
 const MAX_BODY_SIZE = 1024 * 1024; // 1 MiB
 
 /** Read a request body as JSON. Rejects with HttpError on size limit, malformed JSON, or unsupported content type. */
-export function readJsonBody(req: IncomingMessage): Promise<any> {
-  return new Promise((resolve, reject) => {
+export function readJsonBody<T = any>(req: IncomingMessage): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     let rejected = false;
@@ -55,11 +68,11 @@ export function readJsonBody(req: IncomingMessage): Promise<any> {
     req.on("end", () => {
       if (rejected) return;
       if (!chunks.length) {
-        resolve({});
+        resolve({} as T);
         return;
       }
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as T);
       } catch {
         reject(new HttpError(400, "invalid JSON"));
       }

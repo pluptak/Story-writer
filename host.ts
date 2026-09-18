@@ -1,7 +1,6 @@
-/** HOST — the ServerHost handed to server/server.ts, plus everything only it needs: the story.json
- *  read/persist helpers (exactly one place reads the file, one place commits it) and the architect
- *  session factories with their defaults-scoped engine knobs. Built here so server/ never imports
- *  engine/ — routes receive behaviour through this object. */
+/** HOST — the object handed to server/server.ts, plus everything only it needs: the story.json
+ *  read/persist helpers and the scaffold and handoff domains. Built here so server/ never imports
+ *  engine/ — routes receive behaviour through narrow interfaces (server/route-hosts.ts). */
 import { writeFile, readFile, rename } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { LIVE, storyWriteBlocked, sseWrite, setWhere } from "./live.ts";
@@ -23,17 +22,26 @@ import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBi
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter } from "./engine/catalog-schema.ts";
 import { assistCharacter, ASSIST_FIELDS, type AssistField, type AssistMode } from "./engine/catalog-assist.ts";
 import type {
-  ServerHost, Concept, RegenScope, CatalogUsage, EditorConfig, CatalogConfig,
+  RouteHosts, Concept, RegenScope, CatalogUsage, EditorConfig, CatalogConfig,
   ScaffoldState, ScaffoldActionResult, ScaffoldAcceptResult,
   HandoffState, HandoffActionResult, HandoffAcceptResult,
-} from "./server/server.ts";
-import { flag } from "./cli-flags.ts";
+} from "./server/route-hosts.ts";
+
+/** The --model override for this process, set once by the composition root (story-writer.ts)
+ *  from the parsed CLI options. host.ts never reads process.argv itself. */
+let modelOverride: string | undefined;
+export function setHostModelOverride(model?: string): void {
+  modelOverride = model;
+}
+function hostModel(): string {
+  return modelOverride ?? "";
+}
 
 /** The defaults.json knobs every stateless or session-opening author-side call runs under — the
  *  architect's (scaffold, handoff, suggest) and the catalog assistant's alike — never any one
  *  story's. */
 async function loadHostDefaults(model = ""): Promise<Defaults> {
-  const d = await loadDefaults(model || flag("model") || "");
+  const d = await loadDefaults(model || hostModel() || "");
   ENGINE.stream = d.stream; ENGINE.debug = d.debug;
   NET.timeoutMs = d.requestTimeout * 1000;
   NET.retries = d.attempts - 1;
@@ -129,12 +137,9 @@ async function resolveStyle(id: string): Promise<StylePreset | null> {
 }
 
 // -- SCAFFOLD (the new-story interview) --------------------------------------------------------
-// SCAFFOLD and its bookkeeping are private to this module: server/scaffold-routes.ts only ever
-// calls HOST.scaffold*() and gets back a full state snapshot or a refusal to forward as-is.
-// scaffoldBusy guards against two overlapping rounds; scaffoldGen guards against a round's own
-// result landing after the session was abandoned out from under it -- abandon is allowed to
-// interrupt an in-flight round rather than wait for it, so every multi-step action captures
-// scaffoldGen at entry and re-checks it after each await.
+// Private to this module; routes only call HOST.scaffold*(). Abandon may interrupt a round:
+// every multi-step action captures `scaffoldGen` at entry and drops its result when stale.
+// Lifecycle contract: docs/GUI-SPEC.md ("Scaffold").
 let SCAFFOLD: ScaffoldSession | null = null;
 let scaffoldBusy = false;
 let scaffoldGen = 0;
@@ -176,17 +181,13 @@ export function scaffoldSnapshot(): ScaffoldState {
       styleId: SCAFFOLD.style?.id ?? "",
       styleName: SCAFFOLD.style?.name ?? "",
       missingStyle: scaffoldMissingStyle,
-      // Each half steers exactly one gate and is spent once that gate has produced its content.
-      // Saying so is the point: a control that has stopped doing anything must not keep looking
-      // live. Both are asked as "would the next build of that stage's prompt read this?" — which
-      // is why cast size is measured against the cast, not against the open gate: it is at its most
-      // live during the STORY gate, before the cast prompt has ever been built.
+      // A control that has stopped steering must not look live: each half is spent once its
+      // gate has produced content (measured against the spec, not the open gate).
       tagsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.stage === "story",
-      // An imported tray IS the cast size, so the number stops being an answer to anything.
+      // An imported tray IS the cast size, so the number steers nothing afterwards.
       castSizeSteers: SCAFFOLD.mode !== "oneshot" && !SCAFFOLD.imported.length && SCAFFOLD.spec.characters.length === 0,
       importsSteer: SCAFFOLD.mode !== "oneshot" && SCAFFOLD.spec.characters.length === 0,
-      // Spent once the settings gate has produced a voice — which, with a preset in hand, is the
-      // preset's own. Measured against the spec rather than the open gate, like the other two.
+      // Spent once the settings gate has produced a voice (or a preset stands in for one).
       styleSteers: SCAFFOLD.mode !== "oneshot" && !SCAFFOLD.spec.writerStyle.trim(),
     },
     haveDraft,
@@ -211,13 +212,8 @@ function publishScaffold(): void {
   sseWrite({ t: "scaffold", state: scaffoldSnapshot() });
 }
 
-/** Test-only substitution for what scaffoldStart/Concept/Import/Promote call internally: a real
- *  model (newScaffoldSession) and the real catalog files (unknownTags/importCharacters/
- *  resolveStyle/promoteSkill). This is the only way to script an interview when driving it through
- *  the real ServerHost, whose scaffold*() methods take no extra arguments to inject through —
- *  mirrors ScaffoldSession's own injectable `newJudge`, for the same reason: without it, a test
- *  walking the checklist reaches for a real model or the author's real catalog. Pass null to
- *  restore the real implementations. */
+/** Test-only seam for the scaffold's model/catalog dependencies: without it a test driving the
+ *  real host would reach a real model or the author's real catalogs. Pass null to restore. */
 let scaffoldTestHooks: {
   session?: typeof newScaffoldSession;
   tags?: typeof unknownTags;
@@ -252,10 +248,8 @@ function scaffoldOk(): ScaffoldActionResult {
   return { ok: true, state: scaffoldSnapshot() };
 }
 
-/** One model round behind the scaffold lock: entry guards, the busy window with its
- *  abandon-generation check, and folding the round into scaffoldLast. scaffoldStart (which
- *  re-checks the generation after every await) and scaffoldAccept (which commits a write) keep
- *  their bespoke flows; say/approve/regenerate are exactly this shape. */
+/** One model round behind the scaffold lock. Start/accept keep bespoke flows; say/approve/
+ *  regenerate share this one. A stale generation answers 409 and commits nothing. */
 async function runScaffoldRound(
   run: (session: ScaffoldSession, onStage: (stage: AutoStage) => void) => Promise<ScaffoldRound>,
 ): Promise<ScaffoldActionResult> {
@@ -318,9 +312,8 @@ export async function scaffoldApprove(override: boolean): Promise<ScaffoldAction
 export async function scaffoldRegenerate(scope?: RegenScope): Promise<ScaffoldActionResult> {
   if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
   if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
-  // The name is validated against the live cast before anything runs: a scoped re-run for a
-  // stranger would otherwise spend a model round to discover there is nobody to reconsider.
-  // Stays ahead of the shared round (rather than inside it) so the refusal precedes the lock.
+  // Refuse before taking the lock: a scoped re-run for a stranger would spend a model round
+  // to discover nobody to reconsider.
   if (scope && !SCAFFOLD.spec.characters.some(c => sameName(c.name, scope.name)))
     return { ok: false, reason: `there is no cast member named "${scope.name}"`, status: 400 };
   return runScaffoldRound((s, onStage) => scope
@@ -331,9 +324,8 @@ export async function scaffoldRegenerate(scope?: RegenScope): Promise<ScaffoldAc
 export async function scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult> {
   if (scaffoldBusy) return { ok: false, reason: SCAFFOLD_BUSY, status: 409 };
   if (!SCAFFOLD) return { ok: false, reason: SCAFFOLD_NOT_OPEN, status: 400 };
-  // Revising the concept never re-runs a gate: it changes what the NEXT build of a stage prompt
-  // says. `tagsSteer` / `castSizeSteers` in the state is what tells the author whether that is
-  // still any gate at all.
+  // Never re-runs a gate: it changes what the NEXT stage-prompt build says. `tagsSteer` et al.
+  // tell the author whether any gate is left for it to steer.
   SCAFFOLD.tags = concept.tags;
   SCAFFOLD.castSize = concept.castSize;
   scaffoldUnknownTags = concept.tags.length ? await (scaffoldTestHooks?.tags ?? unknownTags)(concept.tags) : [];
@@ -418,18 +410,15 @@ export async function scaffoldAccept(folder: string): Promise<ScaffoldAcceptResu
 }
 
 export function scaffoldAbandon(): void {
-  // The session dies here, but `scaffoldBusy` is left alone: if a round is in flight it must
-  // keep the lock until its own finally clears it, so a second start cannot overlap it. The
-  // round itself finds a stale `scaffoldGen` on return and drops everything it produced.
+  // The lock stays with an in-flight round: its own finally clears it, and the round drops
+  // its result on a stale `scaffoldGen`.
   SCAFFOLD = null; scaffoldLast = null; scaffoldFolderAsk = "";
   scaffoldUnknownTags = []; scaffoldMissingImports = []; scaffoldMissingStyle = "";
   scaffoldGen++;
   publishScaffold();
 }
 
-/** Test-only reset for the scaffold's private module state, mirroring live.ts's resetLive() — a
- *  test importing scaffoldStart/Say/etc. directly shares this module's singleton across cases and
- *  must clear it between them, the same leak Playwright's harness had for the same reason. */
+/** Test-only reset for the scaffold's module state (cf. live.ts resetLive()). */
 export function resetScaffoldForTests(): void {
   SCAFFOLD = null; scaffoldBusy = false; scaffoldGen++;
   scaffoldLast = null; scaffoldStage = ""; scaffoldFolderAsk = "";
@@ -442,10 +431,8 @@ async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSe
 }
 
 // -- HANDOFF (the between-chapters interview) --------------------------------------------------
-// HANDOFF and its bookkeeping are private to this module, mirroring SCAFFOLD above. The
-// story-write lock (LIVE.storyLock) is tied 1:1 to HANDOFF's own lifecycle -- set the moment a
-// session opens, cleared on every exit (abandon, a session-open failure, a round discovering it
-// was abandoned, or a successful accept) -- so it lives here too, not at the route.
+// Mirrors SCAFFOLD above. LIVE.storyLock is tied 1:1 to HANDOFF's lifecycle, so it lives here.
+// Lifecycle contract: docs/GUI-SPEC.md ("The handoff").
 let HANDOFF: NextChapterSession | null = null;
 let handoffBusy = false;
 let handoffGen = 0;
@@ -477,20 +464,15 @@ function publishHandoffState(): void {
   sseWrite({ t: "handoff", state: handoffSnapshot() });
 }
 
-/** The one exit for a round that finds itself abandoned after an await. Always releases the
- *  story-write lock: `handoffAbandon()` deliberately leaves it alone while a round is in flight (an
- *  `accept` already rewriting story.json keeps its guard until that write, and its restore-on-
- *  failure, is finished), so releasing it is the abandoned round's own job on its way out. */
+/** The exit for a round abandoned mid-flight. Always releases the story-write lock, which
+ *  `handoffAbandon()` leaves in place while a round (e.g. a mid-write accept) still needs it. */
 function handoffAbandonedResult(reason: string): { ok: false; reason: string; status: 409 } {
   LIVE.storyLock = null;
   publishHandoffState();
   return { ok: false, reason, status: 409 };
 }
 
-/** Test-only substitution for what handoffStart calls internally: a real model and the real story
- *  file (openNextChapter reads story.json and the skill bible). Mirrors scaffoldTestHooks, for the
- *  same reason: without it, a test reaches a real model or the author's real files. Pass null to
- *  restore the real implementation. */
+/** Test-only seam for handoffStart's model/story-file dependencies (cf. scaffoldTestHooks). */
 let handoffTestHooks: { session?: typeof newHandoffSession } | null = null;
 export function setHandoffTestHooks(hooks: typeof handoffTestHooks): void {
   handoffTestHooks = hooks;
@@ -498,7 +480,7 @@ export function setHandoffTestHooks(hooks: typeof handoffTestHooks): void {
 
 export function handoffState(): HandoffState { return handoffSnapshot(); }
 
-/** The stage callback every handoff round hands its session, mirroring onScaffoldStage. */
+/** The stage callback every handoff round hands its session. */
 function onHandoffStage(stage: AutoStage): void {
   handoffStage = stage; publishHandoffState();
 }
@@ -509,12 +491,8 @@ function handoffOk(): HandoffActionResult {
   return { ok: true, state: handoffSnapshot() };
 }
 
-/** One model round behind the handoff lock: entry guards (including the story-write lock the
- *  session holds from build to accept/abandon), the busy window with its abandon-generation
- *  check, and folding the round into handoffLast. handoffStart (which builds the session and
- *  takes the lock) and handoffAccept (which commits the write and releases it) keep their
- *  bespoke flows; say/regenerate are exactly this shape — except say's finally, which
- *  deliberately leaves handoffStage alone (resetStage: false), while regenerate clears it. */
+/** One model round behind the handoff lock. Start/accept keep bespoke flows; say/regenerate
+ *  share this one — except say leaves the auto-pass stage marker alone (resetStage: false). */
 async function runHandoffRound(
   resetStage: boolean,
   run: (session: NextChapterSession) => Promise<ScaffoldRound>,
@@ -543,9 +521,8 @@ export async function handoffStart(dir: string, model: string): Promise<HandoffA
   const gen = handoffGen;
   handoffBusy = true; handoffLast = null;
   LIVE.storyLock = `a chapter handoff is open for ${dir}`;
-  // The session will hold a snapshot it writes back on accept: hold the story-write lock from
-  // before the session build (which awaits) until the handoff ends (accept, abandon, or failure),
-  // so neither a second handoff nor an editor save can interleave.
+  // The lock is taken before the session build (which awaits) so no second handoff or editor
+  // save can interleave before the session holds its snapshot.
   try {
     const session = await (handoffTestHooks?.session ?? newHandoffSession)(dir, model);
     // Abandoned while the session was being built: it must not resurrect itself.
@@ -612,11 +589,8 @@ export async function handoffAccept(): Promise<HandoffAcceptResult> {
 }
 
 export function handoffAbandon(): void {
-  // The session dies here, but `handoffBusy` is left alone: if a round is in flight it must keep
-  // the lock until its own finally clears it. The round itself finds a stale `handoffGen` on
-  // return and drops everything it produced. `LIVE.storyLock` goes the same way and for the same
-  // reason -- an `accept` mid-write still needs the guard that keeps an editor save from
-  // interleaving with it -- so an in-flight round releases it instead, via handoffAbandonedResult().
+  // Locks go the same way as the scaffold's: an in-flight round keeps them and releases them
+  // itself via handoffAbandonedResult() — a mid-write accept still needs its guard.
   HANDOFF = null; handoffLast = null;
   if (!handoffBusy) LIVE.storyLock = null;
   handoffGen++;
@@ -709,18 +683,27 @@ const storyWarnings = (parsed: StoryJson): string[] => [
 const validateCatalogKind = (kind: string): CatalogKind | null =>
   CATALOG_KINDS.includes(kind as CatalogKind) ? (kind as CatalogKind) : null;
 
-export const HOST: ServerHost = {
-  selectableStory, resolveStoryDir, runDirs, runLlmLogs, readLlmLog, writtenChapters, availableModelIds,
+export const HOST: RouteHosts = {
+  // -- SessionRoutesHost (/stories, /select, /models), incl. the shared StorySelection --
+  selectableStory, resolveStoryDir,
+  availableModelIds,
   providerName: PROVIDER.displayName,
   // The shelf's cards resolve capabilities against the author's own catalogs, so a card and the run it
   // starts report the same skills.
   storyCards: async () => storyCards(await persistedCatalogs()),
+  architectModel: async () => (await loadDefaults(hostModel() ?? "")).models.architect,
+  // -- RunLogHost (/runs/*, /log.jsonl) --
+  runDirs, runLlmLogs, readLlmLog,
+  outDir: () => ENGINE.outDir,
+  // -- StoryReadHost (/cast, /chapter) — fullCast's body sits with the editor's below --
+  writtenChapters,
+  // -- ScaffoldRoutesHost (/scaffold/*) --
   scaffoldState: scaffoldSnapshot,
   scaffoldStart, scaffoldSay, scaffoldApprove, scaffoldRegenerate, scaffoldConcept, scaffoldImport, scaffoldPromote,
   scaffoldSet, scaffoldAccept, scaffoldAbandon,
+  // -- HandoffRoutesHost (/next-chapter/*) --
   handoffState, handoffStart, handoffSay, handoffRegenerate, handoffAccept, handoffAbandon,
-  architectModel: async () => (await loadDefaults(flag("model") ?? "")).models.architect,
-  outDir: () => ENGINE.outDir,
+  // -- StoryEditHost (/story/*) --
   editorConfig: (): EditorConfig => {
     const d = StoryJson.parse({});
     return {
@@ -740,6 +723,7 @@ export const HOST: ServerHost = {
     if (!loaded.ok) return { ok: false, error: loaded.error, raw: loaded.raw };
     return { ok: true, story: loaded.story, warnings: storyWarnings(loaded.story) };
   },
+  // -- StoryReadHost (/cast body; the rest of the interface is grouped above) --
   fullCast: async (dir) => {
     const loaded = await loadStoryJson(dir);
     if (!loaded.ok) return { ok: false, error: loaded.error };
@@ -810,7 +794,7 @@ export const HOST: ServerHost = {
     const specObj = spec as StorySpec;
     try {
       const entries = await skillBibleEntries();
-      return await withHostDefaults(flag("model") ?? "", async d => {
+      return await withHostDefaults(hostModel() ?? "", async d => {
         const r = await statelessSuggest(d, specObj, String(text ?? ""), entries);
         if (r.kind === "failed") return { ok: false as const, error: r.error };
         if (r.kind === "question") return { ok: true as const, kind: "question" as const, ask: r.ask };
@@ -820,6 +804,7 @@ export const HOST: ServerHost = {
       return { ok: false, error: (e as Error).message };
     }
   },
+  // -- CatalogRoutesHost (/catalog/*) --
   catalogConfig: async (): Promise<CatalogConfig> => ({
     tagFacets: TAG_FACETS,
     caps: { voiceSamples: VOICE_SAMPLE_CAP },
@@ -892,7 +877,7 @@ export const HOST: ServerHost = {
   catalogAssist: async (mode, fields, instruction, character) => {
     try {
       const catalogs = await persistedCatalogs();
-      return await withHostDefaults(flag("model") ?? "", async d => {
+      return await withHostDefaults(hostModel() ?? "", async d => {
         const r = await assistCharacter(d, {
           mode: mode as AssistMode, fields: fields as AssistField[], instruction,
           character: character as { id: string; name: string; portablePersona: string; belief: string;

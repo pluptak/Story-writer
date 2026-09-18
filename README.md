@@ -34,7 +34,7 @@ server/                  # HTTP surface for --serve mode (viewer + API routes in
 prompts/                 # Every word said to a model (prompts.ts at the root re-exports them)
 docs/                    # One concept per file (see the table in CLAUDE.md)
 story-writer.ts          # Composition root: engine wiring + console entry points
-app.ts / host.ts / cli-flags.ts  # Application layer / ServerHost object / the one place that reads process.argv
+app.ts / host.ts / cli-flags.ts  # Application layer / route-host object / the one place that reads process.argv
 ```
 
 ## Commands
@@ -80,7 +80,7 @@ The engine is split leaf-first under `engine/`. Key invariants:
 - **The writer never sees a persona**; **a character never sees the premise, the draft, or anyone else's replies.**
 - `consult()` never touches `agent.history` — the caller folds in only the accepted answer, which is what makes `agent.fork()` a genuinely clean retry.
 - **Reach never leaks into a character-level representation (I4)** — a skill is intrinsic, a scene's reach grant exists only while that scene is being written.
-- `server/` and its route modules never import `engine/` at runtime (only `import type`, which is erased) — everything a route needs arrives as a `ServerHost` object.
+- `server/` and its route modules never import `engine/` at runtime (only `import type`, which is erased) — everything a route needs arrives through a narrow host interface (server/route-hosts.ts).
 
 See [CLAUDE.md](CLAUDE.md) for the full architecture, agent roles, and documentation table.
 

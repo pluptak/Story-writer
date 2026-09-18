@@ -1,22 +1,24 @@
 /**
- * RUN LOG ROUTES — reading a run's logs. Read-only by construction: nothing here can touch a running
- * scene, which is what keeps inspection separate from run control.
- *   /runs/llm, /runs/llm/file — a retained run's per-agent LLM transcripts.
- *   /runs/log                 — a retained run's writing-log.jsonl.
- *   /log.jsonl                — the in-progress run's writing-log.jsonl, or 404 before one exists.
+ * RUN LOG ROUTES — `/runs/llm`, `/runs/llm/file`, `/runs/log`, `/log.jsonl`. Read-only by
+ * construction. Contract: docs/GUI-SPEC.md ("Saved-run comparison").
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 
-import { json } from "./http-util.ts";
-import type { ServerHost } from "./server.ts";
+import { json, getQuery, requireMethod } from "./http-util.ts";
+import type { RunLogHost } from "./route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleRunLogRoutes(
-  req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
+  req: IncomingMessage, res: ServerResponse, path: string, host: RunLogHost,
 ): Promise<boolean> {
+  const isLogRoute = path === "/log.jsonl" || path === "/runs/llm"
+    || path === "/runs/llm/file" || path === "/runs/log";
+  if (!isLogRoute) return false;
+  if (requireMethod(res, req, "GET")) return true;
+
   if (path === "/log.jsonl") {
     const out = host.outDir();
     if (!out) { json(res, 404, { ok: false, reason: "no run yet" }); return true; }
@@ -27,9 +29,7 @@ export async function handleRunLogRoutes(
     return true;
   }
 
-  if (path !== "/runs/llm" && path !== "/runs/llm/file" && path !== "/runs/log") return false;
-
-  const query = new URLSearchParams((req.url || "").split("?")[1] || "");
+  const query = getQuery(req);
   const storyDir = await host.selectableStory(query.get("dir") || "");
   if (!storyDir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
 

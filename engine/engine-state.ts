@@ -76,3 +76,34 @@ export function progressDone() {
   process.stdout.write(`\r\x1b[2K`);
   progressOpen = false;
 }
+
+/** The ENGINE fields the command line owns: everything story-writer.ts used to assign field by
+ *  field. A plain-data snapshot — no argv, no precedence, no side effects — so the CLI-to-engine
+ *  mapping (cli-to-engine.ts) stays pure and unit-testable, and this module stays the only place
+ *  that mutates the singleton. Deliberately excludes stream/debug/maxTokens/outDir and the per-run
+ *  log handles: those come from the story config and the run setup, never the command line. */
+export interface EngineOptions {
+  echoConsole: boolean;
+  echoCast: boolean;
+  freeConsult: typeof ENGINE.freeConsult;
+  splitJudge: boolean;
+  consultSince: boolean;
+  heardChannel: boolean;
+  cannotMeaning: boolean;
+  cannotNone: boolean;
+  cannotTestimony: boolean;
+}
+
+/** Apply a mapped EngineOptions to the singleton. The one impure step, kept beside ENGINE so the
+ *  composition root configures the engine without touching its fields directly. */
+export function applyEngineOptions(opts: EngineOptions): void {
+  ENGINE.echoConsole = opts.echoConsole;
+  ENGINE.echoCast = opts.echoCast;
+  ENGINE.freeConsult = opts.freeConsult;
+  ENGINE.splitJudge = opts.splitJudge;
+  ENGINE.consultSince = opts.consultSince;
+  ENGINE.heardChannel = opts.heardChannel;
+  ENGINE.cannotMeaning = opts.cannotMeaning;
+  ENGINE.cannotNone = opts.cannotNone;
+  ENGINE.cannotTestimony = opts.cannotTestimony;
+}

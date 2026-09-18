@@ -50,7 +50,10 @@ export async function lintPiece(o: LintPieceOpts): Promise<LintPieceResult> {
   // skipped the deed and stillness checks. Two live runs skipped six pieces that way and put
   // three unasked-for stillnesses on the page. The extra model call is only spent on pieces
   // already in trouble.
-  const quoteLint = lintQuotations(o.prose, o.granted, o.cast.map(c => c.name));
+  // The cast carries the defs, so the lint gets names with declared pronouns: a pronominal
+  // speech tag then resolves against exactly one member instead of falling back to the
+  // nearest name (which misread vocatives and possessives as the speaker).
+  const quoteLint = lintQuotations(o.prose, o.granted, o.cast);
   if (quoteLint && !quoteLint.ok) {
     log({ t: "narration_quote_flag", why: quoteLint.why, quote: quoteLint.quote,
           character: quoteLint.character, chapter });

@@ -2,7 +2,9 @@
 
 Read this before adding a route, an SSE event, or anything a run control does to the run — and before
 deciding whether the GUI under [server/gui/](../server/gui/) could be swapped for something else. It is
-written from the server's side: what [server/server.ts](../server/server.ts),
+written from the server's side: what [server/server.ts](../server/server.ts) (bind, dispatch),
+[server/session-routes.ts](../server/session-routes.ts) (`/run`, `/select`, `/models`),
+[server/static-files.ts](../server/static-files.ts), [server/sse.ts](../server/sse.ts),
 [server/run-control-routes.ts](../server/run-control-routes.ts),
 [server/scaffold-routes.ts](../server/scaffold-routes.ts),
 [server/next-chapter-routes.ts](../server/next-chapter-routes.ts) and
@@ -16,7 +18,8 @@ One Node process drives **at most one run at a time**. `--serve` starts an HTTP 
 steers the one the CLI process is already running. There is no database and no per-request session —
 state lives in three module-level objects, [live.ts](../live.ts)'s `LIVE`/`RUN` and, private to
 [host.ts](../host.ts), the open scaffold interview (`SCAFFOLD`) and the open handoff (`HANDOFF`) — no
-route module holds either directly, only `ServerHost.scaffold*()`/`handoff*()` methods reach them —
+route module holds either directly, only the narrow `ScaffoldRoutesHost`/`HandoffRoutesHost`
+interfaces (server/route-hosts.ts) reach them —
 and a browser reconnecting just resubscribes to whichever run (if any) is already in flight. **No
 auth, no CORS headers, no CSRF token** — anything that can reach the port can steer the run or start a
 new story. That is an accepted property of a local single-user tool, not an oversight.
@@ -67,12 +70,12 @@ Two channels carry everything:
 
 Nothing under `server/*.ts` imports `engine/` — not even as a type, for `engine/architect.ts` or
 `engine/story-spec.ts` specifically ([tests/boundaries.test.ts](../tests/boundaries.test.ts) checks
-both claims). Every route reaches the engine only through the `ServerHost` interface built once in
-`story-writer.ts` (`server/server.ts`). The scaffold and handoff domains are
-entirely behind it: no route module holds a `ScaffoldSession` or a `NextChapterSession`, only
-`ServerHost.scaffold*()`/`handoff*()` methods, each wire-shaped in and returning a plain result type
-declared in `server.ts`. A route that needs something new gets a host method, never an import
-(CLAUDE.md).
+both claims). Every route reaches the engine only through its narrow host interface
+(server/route-hosts.ts), satisfied by the one object built in `host.ts`. The scaffold and handoff
+domains are entirely behind those interfaces: no route module holds a `ScaffoldSession` or a
+`NextChapterSession`, only the session methods, each wire-shaped in and returning a plain result
+type declared in `route-hosts.ts`. A route that needs something new gets a host method, never an
+import (CLAUDE.md).
 
 ## Static routes
 
@@ -864,8 +867,8 @@ against it.** Two things make that true:
    anything under `server/gui/`, checks a `User-Agent`, or otherwise assumes a particular client. A
    second frontend calling this same API from the same origin is indistinguishable, server-side, from
    the shipped one.
-2. **Every route reaches the engine only through `ServerHost`.** No route module imports `engine/`
-   directly (CLAUDE.md's own invariant), so the API's behavior is exactly the `ServerHost` methods
+2. **Every route reaches the engine only through narrow host interfaces.** No route module imports `engine/`
+   directly (CLAUDE.md's own invariant), so the API's behavior is exactly the route-host methods
    plus the `LIVE`/`RUN`/`SCAFFOLD`/`HANDOFF` state machine described above — nothing lives only in
    `server/gui/*.js` that a route depends on.
 
@@ -887,7 +890,7 @@ What a replacement would actually need to reproduce, none of it GUI-specific:
   can drive the identical controls. Running the shipped viewer and a new one side by side to compare
   behavior costs nothing extra on the server.
 
-What is **not** available through this API, and would need a new route (a `ServerHost` addition, not a
+What is **not** available through this API, and would need a new route (a host-interface addition, not a
 GUI trick) rather than being derivable client-side: editing a story's files field by field
 (`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts),
 reading a story's full cast — `knows`, `goal`, `belief`, `impulse`, `voice` and `persona` — for a story that is not in a scaffold or

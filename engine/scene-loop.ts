@@ -915,8 +915,14 @@ export async function writeScene(run: SceneRun) {
       const stalePieces = ENGINE.heardChannel || base === undefined ? 0 : pieces.length - base;
       const missingSince = !!def && ENGINE.consultSince && !ENGINE.heardChannel
         && stalePieces >= SINCE_STALE_PIECES && !ask.since;
+      // The heard block is part of the ask the character reads, so the gate reads it too:
+      // computed here, before the check, and the same object is carried on the request when
+      // it passes. A situation recapping speech the block already carries verbatim is refused
+      // through the same bad_consult as a restricted-sense one; the lint gates itself on a
+      // non-empty block, so the opening consult stays free to set the scene.
+      const heard = def && ENGINE.heardChannel ? heardFor(def.name) : undefined;
       const check = def && !missingSince
-        ? normalizeConsult({ ...ask, character: def.name, situation: joinedSituation(ask) }, mechanicalCast)
+        ? normalizeConsult({ ...ask, character: def.name, situation: joinedSituation(ask) }, mechanicalCast, "open", { heard })
         : null;
       if (!def || !persistent) {
         writer.hear(P.noSuchCharacter(who, [...active]));
@@ -934,7 +940,7 @@ export async function writeScene(run: SceneRun) {
         writer.hear(refuseForLater(check!.why, def.name, ask.situation));
       } else {
         asked = true;
-        if (ENGINE.heardChannel) check!.req.heard = heardFor(def.name);
+        if (heard) check!.req.heard = heard;
         sinceBase.set(nameKey(def.name), ENGINE.heardChannel ? granted.length : pieces.length);
         const { reply, failed, usedAttempt, req } = await judgeGate({
           def, agent: persistent, req: check!.req, cast: mechanicalCast, retries, maxCharacterRetries,

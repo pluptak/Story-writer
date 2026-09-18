@@ -1,5 +1,5 @@
 /** Shared driver for Architect stage-progression GUI tests: start a scripted staged (or
- *  one-shot) interview through the real ServerHost, approve gate to gate, and abandon cleanly.
+ *  one-shot) interview through the real host, approve gate to gate, and abandon cleanly.
  *  SCAFFOLD is a module-level singleton outliving any one test's server instance, so every walk
  *  ends with abandonWalk() in a finally. */
 import { arrive, expect, setScaffoldFactory } from "./harness.ts";
@@ -109,3 +109,4 @@ export async function abandonWalk(page: Page, served: number) {
   setScaffoldFactory(null);
   LIVE.awaitingPick = false;
 }
+

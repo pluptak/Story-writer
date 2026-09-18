@@ -118,8 +118,10 @@ motive, desire, or feeling. The engine supplies eligible granted speech verbatim
 speakers contribute; remote listeners and listeners whose CANNOT removes hearing receive none.
 Partial presence adds no gate. Remote `via` text is not treated as automatic permission to relay
 speech. The block contains no thoughts, actions, or notes, and no additional model call is made.
-Accepted history retains it, and a retry sees the same snapshot. See `Character.MD` for cursor
-and fan-out semantics.
+Accepted history retains it, and a retry sees the same snapshot. The circumstance-only rule is
+enforced, not only asked for: a situation that retells what the block carries is refused back to
+the writer as a `bad_consult`, the same way a situation phrased around a lost sense is. See
+`Character.MD` for cursor, refusal and fan-out semantics.
 
 This flag supersedes `--consult-since`: no writer-facing third-field requirement, no stale refusal,
 and no joining writer-authored `since` into the situation. The legacy field remains parseable for

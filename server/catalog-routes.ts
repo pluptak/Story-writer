@@ -1,21 +1,19 @@
 /**
- * CATALOG ROUTES — reusable character templates stored globally beside defaults.json,
- * not within any story. Routes: `/catalog` (GET), `/catalog/usage` (GET), `/catalog/entry` (GET),
- * `/catalog/check` (POST), `/catalog/save` (POST), `/catalog/delete` (POST),
- * `/catalog/visibility` (POST), `/catalog/assist` (POST).
+ * CATALOG ROUTES — the global reusable-asset catalogs. Story-independent: no story dir, no
+ * story-write lock. Contract: docs/GUI-SPEC.md ("Character catalog").
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { json, readJsonBody } from "./http-util.ts";
-import type { ServerHost } from "./server.ts";
+import { json, readJsonBody, getQuery } from "./http-util.ts";
+import type { CatalogRoutesHost } from "./route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleCatalogRoutes(
-  req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
+  req: IncomingMessage, res: ServerResponse, path: string, host: CatalogRoutesHost,
 ): Promise<boolean> {
   if (path === "/catalog" && req.method === "GET") {
-    const query = new URLSearchParams((req.url || "").split("?")[1] || "");
+    const query = getQuery(req);
     const kind = query.get("kind") || "characters";
     const r = await host.catalogEntries(kind, { includeHidden: query.get("includeHidden") === "1" });
     if (!r.ok) {
@@ -39,7 +37,7 @@ export async function handleCatalogRoutes(
   }
 
   if (path === "/catalog/entry" && req.method === "GET") {
-    const query = new URLSearchParams((req.url || "").split("?")[1] || "");
+    const query = getQuery(req);
     const kind = query.get("kind") || "characters";
     const id = query.get("id");
     if (!id) { json(res, 400, { ok: false, reason: "no id" }); return true; }
@@ -121,9 +119,8 @@ export async function handleCatalogRoutes(
   if (path === "/catalog/assist" && req.method === "POST") {
     const o = await readJsonBody(req);
 
-    // Every check here is about the request's own shape — mode/fields/instruction/character all
-    // arrive from the wire and are specific to this one route, unlike `kind`'s cross-catalog check
-    // elsewhere. `assistFields` comes from the host because routes never import engine/.
+    // Wire-shape checks live here (route-specific); `kind` validation lives in the host.
+    // `assistFields` comes from the host because routes never import engine/.
     const kind = String(o.kind ?? "characters");
     if (kind !== "characters") { json(res, 400, { ok: false, reason: `the assistant does not support "${kind}"` }); return true; }
 

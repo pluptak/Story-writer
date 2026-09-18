@@ -6,6 +6,7 @@ import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
 import { ENGINE } from "./engine-state.ts";
 import { lintRestrictedSituation } from "./sense-lint.ts";
+import { lintReportedSpeech } from "./situation-lint.ts";
 import { nameKey, sameName } from "./config-util.ts";
 
 /** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can
@@ -15,7 +16,11 @@ import { nameKey, sameName } from "./config-util.ts";
  *  engine above it; it is named for the state, not `presence`, which the writer's cast block already
  *  uses for the rendered string. Scene-loop resolves the same thing for the narration lint. */
 export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[];
-  presenceState?: { mode: "remote" | "partial"; via: string } }>;
+  presenceState?: { mode: "remote" | "partial"; via: string };
+  /** Declared pronouns, when the story carries them: the reported-speech lint resolves a
+   *  pronoun subject through these rather than skipping it. Optional on the schema, so a
+   *  story without them falls back to matching names alone. */
+  pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }>;
 
 /** What the writer sends when it wants a character's take: who, the situation as given to them, the question, and what shape of answer is wanted. */
 export interface ConsultRequest {
@@ -107,7 +112,8 @@ export type ConsultMode = "open" | "directed";
 export function normalizeConsult(raw: {
   character: string; situation?: unknown; question?: unknown; wants?: unknown; since?: unknown;
 }, cast?: CannotCast,
-   mode: ConsultMode = "open"): ConsultCheck {
+    mode: ConsultMode = "open",
+    opts?: { heard?: { lines: [string, string][] } }): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
   const question  = String(raw.question ?? "").trim();
@@ -144,6 +150,16 @@ export function normalizeConsult(raw: {
         ? P.badConsult.restrictedByPresence(character, hit.sense, hit.match, member.presenceState!.via)
         : P.badConsult.restrictedSense(character, hit.sense, hit.match) };
     }
+  }
+
+  // The heard half of the same door: a situation that recaps speech the ask's own heard
+  // block already carries verbatim is refused like a restricted-sense one, through the
+  // same bad_consult. The lint gates itself on a non-empty block, so a scene's opening
+  // consult — nothing said yet — passes untouched. The heard block is computed by the
+  // caller, never taken from the writer's raw reply.
+  if (opts?.heard?.lines.length) {
+    const hit = lintReportedSpeech(situation, character, cast ?? [], opts.heard);
+    if (hit) return { ok: false, why: P.badConsult.reportedSpeech(character, hit.match) };
   }
 
   return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants, since } };
@@ -234,7 +250,7 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
     // A retry re-asks the same beat with no page between attempts: the record of what reached
     // them stands as it was. A revision never re-authors `since`.
     since: prev.since ?? "",
-  }, cast, "directed");
+  }, cast, "directed", { heard: prev.heard });
   if (!checked.ok) return checked;
   // The character is shown the situation and not the question, so a revision that sharpens the
   // wording of the fork and leaves the situation alone re-sends a fresh instance the byte-identical

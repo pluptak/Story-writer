@@ -12,6 +12,14 @@
 // Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
 export interface GrantedLine { character: string; speech: string; thought?: string; action?: string; }
 
+// The declared pronoun set, re-declared locally for the same reason — the shape already on
+// the schema and already consumed by pronoun-lint.ts, so no new authoring is needed.
+export interface SpeakerPronouns { subject: string; object: string; possessive: string; reflexive: string; }
+
+/** Who a quote may be attributed to: a bare name (as before), or a name with declared
+ *  pronouns so a pronominal speech tag can resolve against exactly one member. */
+export type SpeakerRef = string | { name: string; pronouns?: SpeakerPronouns };
+
 export interface QuoteLintHit { ok: false; why: string; quote: string; character: string; }
 
 export const isAdvisoryQuoteHit = (h: QuoteLintHit) => h.why.startsWith("possible misattribution");
@@ -91,11 +99,35 @@ function matchQuote(q: string, lines: string[]): boolean {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** The paragraph separator the engine writes between pieces — the boundary the attribution
+ *  fallbacks stop at, since no speech tag reaches across one. */
+const PARA = "\n\n";
+
 /** Best-effort attribution of an unmatched quote. Post-dialogue attribution (`"..." NAME says`) is
  *  the ordinary form in the prose this engine asks for, so the name immediately following the quote
  *  is checked first; only when nothing follows is the nearest preceding name used. Returns "unknown"
- *  when neither direction finds one — the flag still carries the offending quote. */
-function attribute(prose: string, quote: { index: number; text: string }, names: readonly string[]): { character: string; explicit: boolean } {
+ *  when neither direction finds one — the flag still carries the offending quote.
+ *
+ *  Two guards against reading a name that is not the speaker, both grown on live false positives
+ *  (the-healer-s-cell 2026-09-18T06-24-52-772Z, four of five flags):
+ *
+ *  - **Quoted spans are masked from the fallback scan.** A vocative inside another character's
+ *    line (`"Tell me, Mara," he said ... "When the shadows lengthened..."`) used to count as
+ *    the nearest preceding name, attributing Rowan's own line to MARA. The explicit tag pass
+ *    still reads the unmasked prose; only the nearest-name fallback reads the masked copy.
+ *  - **A pronoun speech tag resolves against declared pronouns.** A name in a possessive or
+ *    object role (`Mara held Rowan's gaze ... "The herbs were for the weary, Father," she
+ *    said`) used to win the fallback while the true speaker sat in a `she said` the explicit
+ *    pass cannot use. When exactly one cast member declares that subject pronoun, the tag
+ *    names them for the own-grants check; a pronoun shared by two members identifies nobody
+ *    and the existing fallback stands. Best-effort, not explicit: the tag is no more certain
+ *    than the fallback, so the label and source-frame skips still apply.
+ *  - **Both fallback windows stop at a paragraph break.** A speaker is never named across one,
+ *    and a granted line split into two quoted fragments leaves the second without a tag, so the
+ *    scan would otherwise take the next paragraph's opening name as its speaker. */
+function attribute(prose: string, quote: { index: number; text: string }, speakers: readonly SpeakerRef[]): { character: string; explicit: boolean } {
+  const entries = speakers.map(s => typeof s === "string" ? { name: s } : s);
+  const names = entries.map(e => e.name);
   const end = quote.index + quote.text.length;
   const after = prose.slice(end + 1, Math.min(prose.length, end + 100));
   const before = prose.slice(Math.max(0, quote.index - 120), quote.index - 1);
@@ -107,9 +139,44 @@ function attribute(prose: string, quote: { index: number; text: string }, names:
       return { character: name, explicit: true };
     }
   }
+  // A pronominal tag adjacent to the quote ("she said", "said she"), resolved only when the
+  // subject pronoun names exactly one cast member — the speech-tag subject is always the
+  // subject form, so only pronouns.subject is read. Best-effort like the fallback, not
+  // certain like a name tag: prose does not always follow the bible (a generic singular
+  // "they" for a he/him character), so certainty here would both defeat the machine-label
+  // skip and escalate a misresolution to blocking.
+  const bySubject = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const e of entries) {
+    const subject = e.pronouns?.subject?.trim().toLowerCase();
+    if (!e.name.trim() || !subject) continue;
+    if (bySubject.has(subject)) { ambiguous.add(subject); bySubject.delete(subject); }
+    else if (!ambiguous.has(subject)) bySubject.set(subject, e.name);
+  }
+  if (bySubject.size) {
+    const alt = [...bySubject.keys()].map(escapeRe).join("|");
+    const beforeRe = new RegExp(`\\b(${alt})\\s+(?:${tags})(?:\\s+\\w+ly)?\\s*[,：:]?\\s*$`, "i");
+    const afterRe = new RegExp(`^\\s*[,—]?\\s*(?:(${alt})\\s+(?:${tags})|(?:${tags})\\s+(${alt}))\\b`, "i");
+    const mb = beforeRe.exec(before);
+    if (mb) return { character: bySubject.get(mb[1].toLowerCase())!, explicit: false };
+    const ma = afterRe.exec(after);
+    if (ma) return { character: bySubject.get((ma[1] ?? ma[2]).toLowerCase())!, explicit: false };
+  }
+  // The fallback windows also stop at a paragraph break, because a speaker is never named
+  // across one. Without this, a line split into two quoted fragments loses its tag on the
+  // second of them, and the scan reaches past the blank line into the next paragraph's opening
+  // name — the last of the four live false positives, and the only one still standing once
+  // vocatives were masked.
+  const masked = maskQuotations(prose);
+  const paraBefore = prose.lastIndexOf(PARA, Math.max(0, quote.index - 1));
+  const paraAfter = prose.indexOf(PARA, end + 1);
+  const afterMasked = masked.slice(end + 1,
+    Math.min(masked.length, end + 100, paraAfter < 0 ? masked.length : paraAfter));
+  const beforeMasked = masked.slice(
+    Math.max(0, quote.index - 120, paraBefore < 0 ? 0 : paraBefore + PARA.length), quote.index - 1);
   let bestAfter = Infinity, afterName = "unknown";
   for (const name of names) {
-    const m = new RegExp(`\\b${escapeRe(name)}\\b`, "i").exec(after);
+    const m = new RegExp(`\\b${escapeRe(name)}\\b`, "i").exec(afterMasked);
     // Keep the occurrence closest to the quote (smallest start offset within the window).
     if (m && m.index < bestAfter) { bestAfter = m.index; afterName = name; }
   }
@@ -118,12 +185,27 @@ function attribute(prose: string, quote: { index: number; text: string }, names:
   for (const name of names) {
     const re = new RegExp(`\\b${escapeRe(name)}\\b`, "gi");
     let m: RegExpExecArray | null;
-    while ((m = re.exec(before))) {
+    while ((m = re.exec(beforeMasked))) {
       // Keep the occurrence closest to the quote (largest start offset within the window).
       if (m.index > best) { best = m.index; bestName = name; }
     }
   }
   return { character: bestName, explicit: false };
+}
+
+/** The prose with every quoted span blanked to spaces, offsets preserved — so the fallback
+ *  name scan never reads a vocative (or any other name) inside someone else's line as the
+ *  speaker. The explicit tag pass does not use this: speech tags live in narration. */
+function maskQuotations(prose: string): string {
+  const spans = extractQuotations(prose);
+  if (!spans.length) return prose;
+  const chars = prose.split("");
+  for (const q of spans) {
+    const start = Math.max(0, q.index - 1);
+    const stop = Math.min(chars.length - 1, q.index + q.text.length);
+    for (let i = start; i <= stop; i++) chars[i] = " ";
+  }
+  return chars.join("");
 }
 
 /** A quoted span of one bare word is a label, not a line: a lever thrown to the 'Shutdown' position,
@@ -186,7 +268,7 @@ const linesOf = (entries: ReadonlyArray<GrantedLine>, written: boolean): string[
 export function lintQuotations(
   prose: string,
   granted: ReadonlyArray<GrantedLine>,
-  names: readonly string[] = [],
+  names: readonly SpeakerRef[] = [],
 ): QuoteLintHit | null {
   const quotes = extractQuotations(prose);
   if (!quotes.length) return null;
