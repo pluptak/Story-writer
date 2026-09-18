@@ -6,8 +6,9 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE, RUN, liveHistory, runState, storyWriteBlocked, isPickAwaited, consumePick } from "../../live.ts";
+import { LIVE, RUN, liveHistory, runState, isPickAwaited, consumePick } from "../../live.ts";
 import { json, readJsonBody, requireMethod } from "../infra/http-util.ts";
+import { storyOr400, refuseWrite } from "./route-helpers.ts";
 import type { SessionRoutesHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -29,10 +30,9 @@ export async function handleSessionRoutes(
   if (path === "/select" && req.method === "POST") {
     const o = await readJsonBody(req);
     if (!isPickAwaited()) { json(res, 400, { ok: false, reason: "the session is not waiting on a choice" }); return true; }
-    const blocked = storyWriteBlocked();
-    if (blocked) { json(res, 409, { ok: false, reason: `cannot pick while ${blocked}` }); return true; }
-    const dir = await host.selectableStory(String(o.dir ?? ""));
-    if (!dir) { json(res, 400, { ok: false, reason: `no such story: ${String(o.dir ?? "")}` }); return true; }
+    if (refuseWrite(res, "pick")) return true;
+    const dir = await storyOr400(res, host, String(o.dir ?? ""), `no such story: ${String(o.dir ?? "")}`);
+    if (!dir) return true;
     const asked = Number(o.chapter ?? 1);
     const chapter = Number.isInteger(asked) && asked > 0 ? asked : 1;
     // Explicit authorization to write over an existing chapter or skip past an unwritten one —

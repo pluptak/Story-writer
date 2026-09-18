@@ -8,6 +8,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { C } from "../../ansi.ts";
 import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../../live.ts";
 import { json, readJsonBody } from "../infra/http-util.ts";
+import { modelOr400 } from "./route-helpers.ts";
 import type { RunControlHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -47,10 +48,7 @@ export async function handleRunControl(
     if (LIVE.running && !LIVE.paused) { json(res, 400, { ok: false, reason: "pause the run before changing its model" }); return true; }
     const model = String(o.model ?? "").trim();
     if (!model) { LIVE.modelOverride = null; json(res, 200, { ok: true }); return true; }
-    const ids = await host.availableModelIds();
-    if (ids !== null && !ids.includes(model)) {
-      json(res, 400, { ok: false, reason: `"${model}" is not available in ${host.providerName}` }); return true;
-    }
+    if (!(await modelOr400(res, host, model))) return true;
     LIVE.modelOverride = model;
     if (LIVE.paused && LIVE.writer && LIVE.agents) {
       LIVE.writer.model = model;

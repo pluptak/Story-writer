@@ -20,7 +20,7 @@ One Node process drives **at most one run at a time**. `--serve` starts an HTTP 
 (`server/server.ts`) alongside it; the server does not own the run, it watches and
 steers the one the CLI process is already running. There is no database and no per-request session —
 state lives in three module-level objects, [live.ts](../live.ts)'s `LIVE`/`RUN` and, private to
-[host.ts](../host.ts), the open scaffold interview (`SCAFFOLD`) and the open handoff (`HANDOFF`) — no
+[host/](../host/) — `SCAFFOLD` in `host/scaffold.ts`, `HANDOFF` in `host/handoff.ts — no
 route module holds either directly, only the narrow `ScaffoldRoutesHost`/`HandoffRoutesHost`
 interfaces (server/route-hosts.ts) reach them —
 and a browser reconnecting just resubscribes to whichever run (if any) is already in flight. **No
@@ -875,7 +875,7 @@ against it.** Two things make that true:
    at runtime — only `import type`, never `engine/architect.ts` or `engine/story-spec.ts` even as a
    type (CLAUDE.md's own invariant) — so the API's behavior is exactly the route-host methods
    plus the `LIVE`/`RUN` session state described above. The scaffold/handoff sessions stay private
-   to `host.ts`, reachable only through host methods — nothing lives only in
+   to `host/` (`host/scaffold.ts`, `host/handoff.ts`), reachable only through host methods — nothing lives only in
    `server/gui/*.js` that a route depends on.
 
 What a replacement would actually need to reproduce, none of it GUI-specific:

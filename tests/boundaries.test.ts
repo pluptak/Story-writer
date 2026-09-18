@@ -119,9 +119,9 @@ describe("scaffold-routes.ts and next-chapter-routes.ts never name their session
     it(`${file} never mentions ${type} or the ${varName} session variable`, () => {
       const text = readFileSync(join(SERVER_DIR, file), "utf8");
       assert.ok(!new RegExp(`\\b${type}\\b`).test(text),
-        `${file} names ${type} — that type is private to host.ts now`);
+        `${file} names ${type} — that type is private to host/ now`);
       assert.ok(!varException.test(text),
-        `${file} names ${varName} — the session and its bookkeeping are private to host.ts now`);
+        `${file} names ${varName} — the session and its bookkeeping are private to host/ now`);
     });
   }
 });

@@ -6,6 +6,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { json, readJsonBody, getQuery } from "../infra/http-util.ts";
+import { kindOf, idOr400 } from "./route-helpers.ts";
 import type { CatalogRoutesHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -39,8 +40,8 @@ export async function handleCatalogRoutes(
   if (path === "/catalog/entry" && req.method === "GET") {
     const query = getQuery(req);
     const kind = query.get("kind") || "characters";
-    const id = query.get("id");
-    if (!id) { json(res, 400, { ok: false, reason: "no id" }); return true; }
+    const id = idOr400(res, query.get("id"));
+    if (!id) return true;
 
     const r = await host.catalogEntries(kind);
     if (!r.ok) {
@@ -59,7 +60,7 @@ export async function handleCatalogRoutes(
 
   if (path === "/catalog/check" && req.method === "POST") {
     const o = await readJsonBody(req);
-    const kind = String(o.kind ?? "characters");
+    const kind = kindOf(o);
     const r = await host.catalogCheck(kind, o.entry);
     if (!r.ok) {
       if ("reason" in r) {
@@ -75,7 +76,7 @@ export async function handleCatalogRoutes(
 
   if (path === "/catalog/save" && req.method === "POST") {
     const o = await readJsonBody(req);
-    const kind = String(o.kind ?? "characters");
+    const kind = kindOf(o);
     const r = await host.catalogSave(kind, o.entry);
     if (!r.ok) {
       json(res, r.status ?? 400, { ok: false, reason: r.reason, issues: r.issues });
@@ -87,9 +88,9 @@ export async function handleCatalogRoutes(
 
   if (path === "/catalog/delete" && req.method === "POST") {
     const o = await readJsonBody(req);
-    const kind = String(o.kind ?? "characters");
-    const id = String(o.id ?? "").trim();
-    if (!id) { json(res, 400, { ok: false, reason: "no id" }); return true; }
+    const kind = kindOf(o);
+    const id = idOr400(res, o.id);
+    if (!id) return true;
 
     const r = await host.catalogDelete(kind, id);
     if (!r.ok) {
@@ -102,9 +103,9 @@ export async function handleCatalogRoutes(
 
   if (path === "/catalog/visibility" && req.method === "POST") {
     const o = await readJsonBody(req);
-    const kind = String(o.kind ?? "characters");
-    const id = String(o.id ?? "").trim();
-    if (!id) { json(res, 400, { ok: false, reason: "no id" }); return true; }
+    const kind = kindOf(o);
+    const id = idOr400(res, o.id);
+    if (!id) return true;
     if (typeof o.hidden !== "boolean") { json(res, 400, { ok: false, reason: "hidden must be a boolean" }); return true; }
 
     const r = await host.catalogSetVisibility(kind, id, o.hidden);
@@ -121,7 +122,7 @@ export async function handleCatalogRoutes(
 
     // Wire-shape checks live here (route-specific); `kind` validation lives in the host.
     // `assistFields` comes from the host because routes never import engine/.
-    const kind = String(o.kind ?? "characters");
+    const kind = kindOf(o);
     if (kind !== "characters") { json(res, 400, { ok: false, reason: `the assistant does not support "${kind}"` }); return true; }
 
     const mode = String(o.mode ?? "");

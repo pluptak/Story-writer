@@ -122,7 +122,7 @@ depends on it directly);
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
 the `HOST` object, and [app.ts](app.ts) (root) is the application layer above both — run setup, the
 story pick, and the pick → run → pick loop. Separately, `app.ts` → [server/server.ts](server/server.ts) →
-{`routes/session-routes.ts`, `routes/run-control-routes.ts`, `routes/scaffold-routes.ts`, `routes/next-chapter-routes.ts`, `routes/run-log-routes.ts`, `routes/story-read-routes.ts`, `routes/story-edit-routes.ts`, `routes/catalog-routes.ts`, plus `infra/static-files.ts` and `infra/sse.ts`} →
+{`routes/session-routes.ts`, `routes/run-control-routes.ts`, `routes/scaffold-routes.ts`, `routes/next-chapter-routes.ts`, `routes/run-log-routes.ts`, `routes/story-read-routes.ts`, `routes/story-edit-routes.ts`, `routes/catalog-routes.ts`, `routes/route-helpers.ts`, plus `infra/static-files.ts` and `infra/sse.ts`} →
 `infra/http-util.ts` → (nothing), all under
 [server/](server/) — nothing in that chain imports `story-writer.ts`, `app.ts` or any `engine/` module at run
 time. `prompts.ts`, `ansi.ts` and `live.ts` stay at the repo root because both chains import them;
@@ -139,7 +139,11 @@ way.**
 | [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `parseCli()` returns `{ ok, options/error }` (`CliOptions`/`CliParseResult`) |
 | [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, the chapter snapshot and the catalogs snapshot beside it, and the unfired-beat and beat-outcome sidecars the handoff reads |
 | [run-manifest.ts](run-manifest.ts) | which engine wrote a run — a source fingerprint taken at import time (so a stale `--serve` process is caught rather than mislabelled), the git revision beside it, and `out/<id>/manifest.json` |
-| [host.ts](host.ts) | the route-host object handed to `server/server.ts`: its story.json read/persist helpers, and the scaffold and handoff domains in full — the open `ScaffoldSession`/`NextChapterSession`, their busy/abandon-generation bookkeeping, and the story-write lock are private here, reached only through narrow `scaffold*()`/`handoff*()` interfaces that publish their own SSE state |
+| [host.ts](host.ts) | the route-host object handed to `server/server.ts`: assembles the `host/` domains below into the `RouteHosts` intersection, nothing else |
+| [host/defaults.ts](host/defaults.ts) | the `--model` override and the `defaults.json` knobs every author-side call runs under, applied and restored around each call |
+| [host/scaffold.ts](host/scaffold.ts) | the scaffold domain in full — the open `ScaffoldSession`, its busy/abandon-generation bookkeeping, and the catalog lookups its rounds need, reached only through narrow `scaffold*()` interfaces that publish their own SSE state |
+| [host/handoff.ts](host/handoff.ts) | the handoff domain in full — the open `NextChapterSession` and the `LIVE.storyLock` tied 1:1 to its lifecycle, reached only through narrow `handoff*()` interfaces that publish their own SSE state |
+| [host/story-store.ts](host/story-store.ts) | `story.json` read/persist (the single read path and the single atomic write path) plus the story-editor and catalog domains: load, validate, save, discard, suggest, and every `/catalog/*` op |
 | [engine/engine-state.ts](engine/engine-state.ts) | mutable run knobs shared across the engine — stream/debug/token-cap, the console echo, the per-run LLM log handles, the terminal status line |
 | [engine/config-util.ts](engine/config-util.ts) | the shared filename `slugify`, and the character-name matching (`nameKey`/`sameName`) every case-insensitive identity comparison goes through |
 | [engine/json-extract.ts](engine/json-extract.ts) | pulling a structured reply (or a prose fallback) out of raw model output |
@@ -183,6 +187,7 @@ way.**
 | [server/routes/story-edit-routes.ts](server/routes/story-edit-routes.ts) | `/story/edit` (GET), `/story/edit-config` (GET), `/story/check`, `/story/save`, `/story/discard`, `/story/suggest` (POST) — the `story.json` form editor; load, schema-derived editor config, validate, save, discard the last unwritten scene, and a stateless architect suggestion call. Refuses with `409` while something holds `story.json`: a run, the post-pick loading window, or an open handoff |
 | [server/routes/catalog-routes.ts](server/routes/catalog-routes.ts) | `/catalog` (GET), `/catalog/config` (GET), `/catalog/usage` (GET), `/catalog/entry` (GET), `/catalog/check`, `/catalog/save`, `/catalog/delete`, `/catalog/visibility`, `/catalog/assist` (POST) — the global character catalog. Takes no story dir and never consults the story-write lock: a catalog is not scoped to a story |
 | [server/route-hosts.ts](server/route-hosts.ts) | the narrow engine-facing interfaces, one per route domain (`ScaffoldRoutesHost`, `HandoffRoutesHost`, …), plus the wire DTOs — the single runtime object satisfies their `RouteHosts` intersection |
+| [server/routes/route-helpers.ts](server/routes/route-helpers.ts) | the wire validation every route repeats (story resolve, write-lock refusal, model check, catalog kind/id) — one home so status/reason shapes stay identical |
 | [server/infra/http-util.ts](server/infra/http-util.ts) | `json()`, the query/method helpers, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
 | [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel, the character catalog) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus, the stop signal, and the loop's human-interaction port (`SceneIo`/`LIVE_IO`: step budget, pause, reader seat) |

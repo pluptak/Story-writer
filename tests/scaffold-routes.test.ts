@@ -1,7 +1,7 @@
 /** Routes for the scaffold interview: the staged checklist (start/approve/say) and cleanup.
  *
  *  Drives the REAL host.ts HOST object through handleScaffoldRoutes -- not a hand-rolled
- *  host, since SCAFFOLD and its bookkeeping are private to host.ts. SetScaffoldTestHooks substitutes the model (a ScriptedAgent) and the three catalog lookups
+ *  host, since SCAFFOLD and its bookkeeping are private to host/scaffold.ts. SetScaffoldTestHooks substitutes the model (a ScriptedAgent) and the three catalog lookups
  *  (tags/imports/style), the only pieces that would otherwise reach a real model or a real catalog
  *  file; everything else -- busy/gen/state-snapshot bookkeeping, the checklist, concept steering,
  *  promotion -- is the genuine implementation. */

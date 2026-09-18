@@ -6,6 +6,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { json, readJsonBody } from "../infra/http-util.ts";
+import { storyOr400, modelOr400 } from "./route-helpers.ts";
 import type { HandoffRoutesHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -28,15 +29,10 @@ export async function handleNextChapterRoutes(
   }
 
   if (what === "start") {
-    const dir = await host.selectableStory(String(o.dir ?? ""));
-    if (!dir) { json(res, 400, { ok: false, reason: `no such story: ${String(o.dir ?? "")}` }); return true; }
+    const dir = await storyOr400(res, host, String(o.dir ?? ""), `no such story: ${String(o.dir ?? "")}`);
+    if (!dir) return true;
     const model = String(o.model ?? "").trim();
-    if (model) {
-      const ids = await host.availableModelIds();
-      if (ids !== null && !ids.includes(model)) {
-        json(res, 400, { ok: false, reason: `"${model}" is not available in ${host.providerName}` }); return true;
-      }
-    }
+    if (!(await modelOr400(res, host, model))) return true;
     const r = await host.handoffStart(dir, model);
     if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
     json(res, 200, r.state);

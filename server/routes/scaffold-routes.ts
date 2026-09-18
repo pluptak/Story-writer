@@ -1,6 +1,6 @@
 /**
  * SCAFFOLD ROUTES — `/scaffold` and `/scaffold/*`. Wire validation and dispatch to
- * `ScaffoldRoutesHost.scaffold*()`; the session and its bookkeeping are private to host.ts.
+ * `ScaffoldRoutesHost.scaffold*()`; the session and its bookkeeping are private to host/scaffold.ts.
  * Contract: docs/GUI-SPEC.md ("Scaffold").
  */
 
@@ -8,6 +8,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { LIVE, isPickAwaited, consumePick } from "../../live.ts";
 import { json, readJsonBody } from "../infra/http-util.ts";
+import { modelOr400 } from "./route-helpers.ts";
 import type { ScaffoldRoutesHost, Concept, RegenScope } from "../route-hosts.ts";
 
 const MAX_TAGS = 8;
@@ -76,12 +77,7 @@ export async function handleScaffoldRoutes(
     const idea = String(o.idea ?? "").trim();
     if (!idea) { json(res, 400, { ok: false, reason: "nothing to work with" }); return true; }
     const model = String(o.model ?? "").trim();
-    if (model) {
-      const ids = await host.availableModelIds();
-      if (ids !== null && !ids.includes(model)) {
-        json(res, 400, { ok: false, reason: `"${model}" is not available in ${host.providerName}` }); return true;
-      }
-    }
+    if (!(await modelOr400(res, host, model))) return true;
     const c = readConcept(o);
     if (!c.ok) { json(res, 400, { ok: false, reason: c.reason }); return true; }
     const tray = readImportIds(o);

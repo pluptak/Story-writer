@@ -4,7 +4,7 @@
  * (route-hosts.ts). Contract: docs/GUI-SPEC.md.
  */
 
-import { createServer, ServerResponse } from "node:http";
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
 
 import { C } from "../ansi.ts";
 import { LIVE, sseClients } from "../live.ts";
@@ -34,6 +34,27 @@ export interface ServerHandle {
 }
 
 let started: { handle: ServerHandle } | null = null;
+
+/** One dispatch entry: true when the handler answered. Order is precedence — static files
+ *  first, the event stream before any route that publishes on it. */
+type RouteHandler = (
+  req: IncomingMessage, res: ServerResponse, path: string, host: RouteHosts,
+) => boolean | Promise<boolean>;
+
+/** Every handler the server can answer with, in precedence order. Adding a route means adding
+ *  a line here, not another branch. */
+const ROUTES: ReadonlyArray<RouteHandler> = [
+  (req, res, path) => serveStatic(req, res, path),
+  (req, res, path) => handleSseRoute(req, res, path),
+  (req, res, path, host) => handleSessionRoutes(req, res, path, host),
+  (req, res, path, host) => handleRunControl(req, res, path, host),
+  (req, res, path, host) => handleScaffoldRoutes(req, res, path, host),
+  (req, res, path, host) => handleNextChapterRoutes(req, res, path, host),
+  (req, res, path, host) => handleStoryEditRoutes(req, res, path, host),
+  (req, res, path, host) => handleStoryReadRoutes(req, res, path, host),
+  (req, res, path, host) => handleCatalogRoutes(req, res, path, host),
+  (req, res, path, host) => handleRunLogRoutes(req, res, path, host),
+];
 /** Start the viewer's HTTP server once: static GUI files, SSE at /events, and dispatch to the route
  *  modules. Idempotent — every call returns the same handle until it is closed. */
 export function startServer(port: number, host: RouteHosts, bindAddr: string = "127.0.0.1"): ServerHandle {
@@ -43,37 +64,10 @@ export function startServer(port: number, host: RouteHosts, bindAddr: string = "
   const server = createServer(async (req, res) => {
     try {
       const path = (req.url || "/").split("?")[0];
-      if (await serveStatic(req, res, path)) {
-        // handled
-
-      } else if (handleSseRoute(req, res, path)) {
-        // handled (the connection stays open on the bus)
-
-      } else if (await handleSessionRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleRunControl(req, res, path, host)) {
-        // handled
-
-      } else if (await handleScaffoldRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleNextChapterRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleStoryEditRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleStoryReadRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleCatalogRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleRunLogRoutes(req, res, path, host)) {
-        // handled
-
-      } else { res.writeHead(404); res.end("not found"); }
+      for (const handle of ROUTES) {
+        if (await handle(req, res, path, host)) return;
+      }
+      res.writeHead(404); res.end("not found");
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
       const status = error instanceof HttpError ? error.status : 500;

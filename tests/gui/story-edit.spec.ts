@@ -204,7 +204,7 @@ test("the review-new-story screen loads the scaffold's StoryJson-shaped draft", 
     await page.locator("#edit-title").fill("The Signature.");
     await expect(page.locator("#edit-scaffold-accept")).toBeEnabled();
   } finally {
-    // SCAFFOLD is a module-level singleton (host.ts), outliving this test's own
+    // SCAFFOLD is a module-level singleton (host/scaffold.ts), outliving this test's own
     // server instance -- the next test to reach #/scaffold in this worker would otherwise inherit
     // this session instead of the idea modal.
     await page.request.post(`http://127.0.0.1:${served}/scaffold/abandon`).catch(() => {});

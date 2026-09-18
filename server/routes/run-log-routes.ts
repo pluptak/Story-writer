@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 
 import { json, getQuery, requireMethod } from "../infra/http-util.ts";
+import { storyOr400 } from "./route-helpers.ts";
 import type { RunLogHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -30,8 +31,8 @@ export async function handleRunLogRoutes(
   }
 
   const query = getQuery(req);
-  const storyDir = await host.selectableStory(query.get("dir") || "");
-  if (!storyDir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
+  const storyDir = await storyOr400(res, host, query.get("dir") || "");
+  if (!storyDir) return true;
 
   const base = host.resolveStoryDir(storyDir);
   const id = query.get("id") || "";

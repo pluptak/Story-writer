@@ -9,6 +9,7 @@ import { join as joinPath } from "node:path";
 
 import { LIVE } from "../../live.ts";
 import { json, getQuery, requireMethod } from "../infra/http-util.ts";
+import { storyOr400 } from "./route-helpers.ts";
 import type { StoryReadHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -23,8 +24,8 @@ export async function handleStoryReadRoutes(
 
   if (path === "/cast" && req.method === "GET") {
     const query = getQuery(req);
-    const dir = await host.selectableStory(query.get("dir") || "");
-    if (!dir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
+    const dir = await storyOr400(res, host, query.get("dir") || "");
+    if (!dir) return true;
 
     const r = await host.fullCast(dir);
     if (!r.ok) {
@@ -39,8 +40,8 @@ export async function handleStoryReadRoutes(
   if (path === "/chapter") {
     if (requireMethod(res, req, "GET")) return true;
     const query = getQuery(req);
-    const storyDir = await host.selectableStory(query.get("dir") || "");
-    if (!storyDir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
+    const storyDir = await storyOr400(res, host, query.get("dir") || "");
+    if (!storyDir) return true;
     const n = Number(query.get("n"));
     if (!(await host.writtenChapters(storyDir)).includes(n)) {
       json(res, 404, { ok: false, reason: "no such chapter" }); return true;
