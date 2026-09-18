@@ -7,10 +7,10 @@ import assert from "node:assert/strict";
 
 import {
   normalizeBaseUrl, openAiRoot, selectProviderId, makeProvider, PROVIDER,
-} from "../engine/provider.ts";
-import { parseModelInventory, parseModelInfo } from "../engine/provider-lmstudio.ts";
-import { parsePsModels } from "../engine/provider-ollama.ts";
-import { requestBody } from "../engine/llm-client.ts";
+} from "../../engine/providers/provider.ts";
+import { parseModelInventory, parseModelInfo } from "../../engine/providers/provider-lmstudio.ts";
+import { parsePsModels } from "../../engine/providers/provider-ollama.ts";
+import { requestBody } from "../../engine/llm-client.ts";
 
 const BASE = "http://localhost:1234/v1";
 

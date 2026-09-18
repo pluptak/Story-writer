@@ -7,7 +7,7 @@
  * narrow interfaces (server/route-hosts.ts).
  */
 import { ENGINE } from "./engine/engine-state.ts";
-import { PROVIDER } from "./engine/provider.ts";
+import { PROVIDER } from "./engine/providers/provider.ts";
 import { resolveStoryDir, loadDefaults, writtenChapters, selectableStory } from "./engine/story-format.ts";
 import { runDirs, availableModelIds, storyCards, runLlmLogs, readLlmLog } from "./engine/preflight.ts";
 import { persistedCatalogs } from "./engine/catalog.ts";

@@ -6,8 +6,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { lintRestrictedSenses, lintRestrictedSituation } from "../engine/sense-lint.ts";
-import { normalizeConsult } from "../engine/consult.ts";
+import { lintRestrictedSenses, lintRestrictedSituation } from "../../engine/lint/sense-lint.ts";
+import { normalizeConsult } from "../../engine/consult.ts";
 
 const blind = [{ name: "Marsh", cannot: ["sight"] }];
 

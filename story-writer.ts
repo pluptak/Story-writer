@@ -12,7 +12,7 @@ import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { C } from "./ansi.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { PROVIDER } from "./engine/provider.ts";
+import { PROVIDER } from "./engine/providers/provider.ts";
 import { discoverStories, resolveCliStoryDir, type StoryConfig } from "./engine/story-format.ts";
 import { runPreflight, contextFit } from "./engine/preflight.ts";
 import { persistedCatalogs } from "./engine/catalog.ts";

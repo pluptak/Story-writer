@@ -1,7 +1,7 @@
 /** PRE-FLIGHT — checking a story loads and its models are available, and the story-card listing. */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { PROVIDER } from "./provider.ts";
+import { PROVIDER } from "./providers/provider.ts";
 import { estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
 import { skillOrigins } from "./catalog.ts";

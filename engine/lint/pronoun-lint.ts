@@ -21,7 +21,7 @@
  *  a second-person address inside dialogue or a situation is a different check's job
  *  (prompts/writer.ts's person clause, not this).
  */
-import { nameKey } from "./config-util.ts";
+import { nameKey } from "../config-util.ts";
 
 export interface PronounSet { subject: string; object: string; possessive: string; reflexive: string }
 

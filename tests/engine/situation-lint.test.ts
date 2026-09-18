@@ -6,18 +6,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { lintReportedSpeech } from "../engine/situation-lint.ts";
+import { lintReportedSpeech } from "../../engine/lint/situation-lint.ts";
 import {
   normalizeConsult, reviseConsult, type ConsultRequest,
-} from "../engine/consult.ts";
-import * as P from "../prompts.ts";
+} from "../../engine/consult.ts";
+import * as P from "../../prompts.ts";
 
-import { loadStory } from "../engine/story-format.ts";
-import { newCharacterAgent, writeScene, type RunEvent } from "../engine/scene-loop.ts";
-import { ENGINE } from "../engine/engine-state.ts";
-import { NET } from "../engine/llm-client.ts";
-import { armRun, resetLive } from "../live.ts";
-import { quiet, sceneRun, siteFetch } from "./helpers.ts";
+import { loadStory } from "../../engine/story-format.ts";
+import { newCharacterAgent, writeScene, type RunEvent } from "../../engine/scene-loop.ts";
+import { ENGINE } from "../../engine/engine-state.ts";
+import { NET } from "../../engine/llm-client.ts";
+import { armRun, resetLive } from "../../live.ts";
+import { quiet, sceneRun, siteFetch } from "../helpers.ts";
 
 const CAST = ["Rowan", "Mara"];
 const CAST_PRONOUNS = [

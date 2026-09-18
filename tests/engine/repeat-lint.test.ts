@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { stripRepeatedPrefix, MIN_REPEAT_WORDS } from "../engine/repeat-lint.ts";
+import { stripRepeatedPrefix, MIN_REPEAT_WORDS } from "../../engine/lint/repeat-lint.ts";
 
 // The shape of the doorway defect: a two-sentence paragraph the writer will re-emit.
 const P = "The fault alarm kept ringing over the empty wing while the cold worked through every "

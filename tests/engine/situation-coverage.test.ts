@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 
 import {
   contentWords, recall, scoreCoverage, type CoverageEvent,
-} from "../engine/situation-coverage.ts";
+} from "../../engine/lint/situation-coverage.ts";
 
 describe("content words and recall", () => {
   it("keeps names and drops stopwords and short tokens", () => {

@@ -5,9 +5,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { extractQuotations, isAdvisoryQuoteHit, lintQuotations } from "../engine/quote-lint.ts";
-import { lintPiece, type LintEvent } from "../engine/narration-lint.ts";
-import { ScriptedAgent } from "./helpers.ts";
+import { extractQuotations, isAdvisoryQuoteHit, lintQuotations } from "../../engine/lint/quote-lint.ts";
+import { lintPiece, type LintEvent } from "../../engine/lint/narration-lint.ts";
+import { ScriptedAgent } from "../helpers.ts";
 
 const granted = (speech: string, character = "Marcus") => [{ character, speech }];
 

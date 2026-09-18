@@ -15,8 +15,8 @@ import {
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
-import { lintPiece, type LintPieceResult } from "./narration-lint.ts";
-import { stripRepeatedPrefix } from "./repeat-lint.ts";
+import { lintPiece, type LintPieceResult } from "./lint/narration-lint.ts";
+import { stripRepeatedPrefix } from "./lint/repeat-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { type Msg } from "./llm-client.ts";

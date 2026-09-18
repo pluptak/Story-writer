@@ -29,7 +29,7 @@
  *  page already arrives via draft prose. The denominator for the pre-registered 70% rule is
  *  re-consults with ≥ 1 intervening piece whose previous consult was answered.
  */
-import { nameKey } from "./config-util.ts";
+import { nameKey } from "../config-util.ts";
 
 /** The minimal event shapes this measurement reads. Field names match `RunEvent` (`engine/scene-loop.ts`);
  *  a caller maps the full events onto these (fan-out and judge events are simply not mapped). */

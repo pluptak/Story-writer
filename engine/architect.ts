@@ -15,7 +15,7 @@ import { adjudicateBeat, adjudicateChapter, type BeatStanding } from "./world-re
 import type { TimelineDef } from "./story-schema.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
-import { PROVIDER } from "./provider.ts";
+import { PROVIDER } from "./providers/provider.ts";
 import { estimateTokens } from "./llm-client.ts";
 
 async function architectExample(): Promise<string> {

@@ -5,10 +5,10 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { startupRefusal, RUN_GATE } from "../engine/run-gate.ts";
-import { PROVIDER } from "../engine/provider.ts";
-import type { ModelRuntime } from "../engine/provider-util.ts";
-import { WARN } from "../engine/warnings.ts";
+import { startupRefusal, RUN_GATE } from "../../engine/run-gate.ts";
+import { PROVIDER } from "../../engine/providers/provider.ts";
+import type { ModelRuntime } from "../../engine/providers/provider-util.ts";
+import { WARN } from "../../engine/warnings.ts";
 
 const WANTED = ["gemma", "qwen"];
 

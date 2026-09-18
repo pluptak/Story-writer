@@ -5,11 +5,11 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { complete, NET, ModelLoadTimeoutError } from "../engine/llm-client.ts";
-import { PROVIDER, makeProvider } from "../engine/provider.ts";
-import type { ModelRuntime } from "../engine/provider-util.ts";
-import { WARN } from "../engine/warnings.ts";
-import { armRun } from "../live.ts";
+import { complete, NET, ModelLoadTimeoutError } from "../../engine/llm-client.ts";
+import { PROVIDER, makeProvider } from "../../engine/providers/provider.ts";
+import type { ModelRuntime } from "../../engine/providers/provider-util.ts";
+import { WARN } from "../../engine/warnings.ts";
+import { armRun } from "../../live.ts";
 
 const MSGS = [{ role: "user" as const, content: "test" }];
 const chatReply = () => new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }));

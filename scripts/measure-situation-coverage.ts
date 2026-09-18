@@ -3,7 +3,7 @@
  * happened since the character was last asked?
  *
  * Replays `tests/fixtures/recorded-run` (fixed model replies, so the emitted situations are
- * deterministic) with event capture, maps the run events onto `engine/situation-coverage.ts`,
+ * deterministic) with event capture, maps the run events onto `engine/lint/situation-coverage.ts`,
  * and prints the coverage report. No inference server needed — the fixture carries every reply.
  *
  * Usage:
@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 
 import { loadStory } from "../engine/story-format.ts";
 import { runChapter, type RunEvent } from "../engine/scene-loop.ts";
-import { scoreCoverage, type CoverageEvent } from "../engine/situation-coverage.ts";
+import { scoreCoverage, type CoverageEvent } from "../engine/lint/situation-coverage.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { armRun, resetLive } from "../live.ts";
 import { quiet, replayFetch } from "../tests/helpers.ts";

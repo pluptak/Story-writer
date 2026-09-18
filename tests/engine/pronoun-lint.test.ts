@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { lintPronouns, type PronounSet } from "../engine/pronoun-lint.ts";
+import { lintPronouns, type PronounSet } from "../../engine/lint/pronoun-lint.ts";
 
 const merritt: PronounSet = { subject: "he", object: "him", possessive: "his", reflexive: "himself" };
 const riven: PronounSet = { subject: "they", object: "them", possessive: "their", reflexive: "themself" };

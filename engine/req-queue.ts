@@ -10,7 +10,7 @@
  *  app). A stalled call while QUEUE looks idle is that case — say so, when asked. */
 import { RUN, StoppedError, sseWrite } from "../live.ts";
 import { warn } from "./warnings.ts";
-import { PROVIDER } from "./provider.ts";
+import { PROVIDER } from "./providers/provider.ts";
 import type { CallSite } from "./llm-client.ts";
 
 /** Raised when a queued call's wait budget ran out. Deliberately NOT retryable: the holder of

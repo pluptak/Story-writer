@@ -2,17 +2,17 @@
  *  quotation match, the mechanical restricted-sense match, and the narration judge's read. One
  *  redraft only, so every finding must arrive in one message. Extracted from the scene loop; the
  *  caller owns the redraft itself. */
-import * as P from "../prompts.ts";
-import { C } from "../ansi.ts";
-import { RUN, StoppedError } from "../live.ts";
-import { type Agent } from "./agent.ts";
-import { extractJson } from "./json-extract.ts";
-import { parseLintVerdict } from "./consult.ts";
+import * as P from "../../prompts.ts";
+import { C } from "../../ansi.ts";
+import { RUN, StoppedError } from "../../live.ts";
+import { type Agent } from "../agent.ts";
+import { extractJson } from "../json-extract.ts";
+import { parseLintVerdict } from "../consult.ts";
 import { isAdvisoryQuoteHit, lintQuotations } from "./quote-lint.ts";
 import { lintRestrictedSenses } from "./sense-lint.ts";
 import { lintPronouns, type PronounSet } from "./pronoun-lint.ts";
-import type { Msg } from "./llm-client.ts";
-import type { GrantedEntry } from "./fanout.ts";
+import type { Msg } from "../llm-client.ts";
+import type { GrantedEntry } from "../fanout.ts";
 
 /** Everything the lint can report, as one tagged event each — the RunEvent members it emits,
  *  declared here so this module needs no scene-loop import. */

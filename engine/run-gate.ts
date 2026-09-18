@@ -5,7 +5,7 @@
  *  or reports the server's refusal itself), and a standing server whose model list cannot be
  *  read starts anyway — the calls will speak for themselves. */
 import { warn } from "./warnings.ts";
-import { PROVIDER } from "./provider.ts";
+import { PROVIDER } from "./providers/provider.ts";
 import { NET } from "./llm-client.ts";
 
 /** Mutable so tests can stand the gate down; nothing else should write it. */

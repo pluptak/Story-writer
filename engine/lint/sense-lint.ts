@@ -41,7 +41,7 @@
  * On the page that same sentence is still a flag: narrating the sense at all is the defect there.
  * Ordinary negation is untouched on both sides.
  */
-import { canonSkill } from "./skills.ts";
+import { canonSkill } from "../skills.ts";
 
 export interface SenseLintHit { ok: false; why: string; character: string; sense: string; verb: string; match: string; cause?: "presence"; }
 

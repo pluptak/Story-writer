@@ -8,8 +8,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
-import { contextShortfall, runPreflight, type ModelInfo } from "../engine/preflight.ts";
-import { PROVIDER, type ModelRuntime } from "../engine/provider.ts";
+import { contextShortfall, runPreflight, type ModelInfo } from "../../engine/preflight.ts";
+import { PROVIDER, type ModelRuntime } from "../../engine/providers/provider.ts";
 
 describe("runPreflight scene writer models", () => {
   it("checks overrides in every scene, deduplicates them, and ignores unset or empty overrides", async t => {
@@ -85,7 +85,7 @@ describe("static check runner", () => {
   ];
   for (const c of cases) {
     it(c.name, async () => {
-      const source = await readFile(new URL("../scripts/check.mjs", import.meta.url), "utf8");
+      const source = await readFile(new URL("../../scripts/check.mjs", import.meta.url), "utf8");
       const output: string[] = [], calls: string[] = [];
       let exitCode = 0;
       const exit = new Error("exit");

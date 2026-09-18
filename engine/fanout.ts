@@ -10,7 +10,7 @@ import {
   consult, normalizeReactionConsult, parseBatchVerdict,
   type ConsultEvent, type Clarifier, type ConsultRequest,
 } from "./consult.ts";
-import { lintReportedSpeech } from "./situation-lint.ts";
+import { lintReportedSpeech } from "./lint/situation-lint.ts";
 import { type Msg } from "./llm-client.ts";
 import type { CharacterDef } from "./story-format.ts";
 import { ENGINE } from "./engine-state.ts";

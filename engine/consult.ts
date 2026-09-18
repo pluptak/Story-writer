@@ -5,8 +5,8 @@ import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
 import { ENGINE } from "./engine-state.ts";
-import { lintRestrictedSituation } from "./sense-lint.ts";
-import { lintReportedSpeech } from "./situation-lint.ts";
+import { lintRestrictedSituation } from "./lint/sense-lint.ts";
+import { lintReportedSpeech } from "./lint/situation-lint.ts";
 import { nameKey, sameName } from "./config-util.ts";
 
 /** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can

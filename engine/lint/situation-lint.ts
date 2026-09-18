@@ -35,7 +35,7 @@
  * This file imports nothing from the engine past config-util.ts: pure text matching, so it
  * stays a leaf the consult gate can call with no model, no fetch and no loop. */
 
-import { sameName } from "./config-util.ts";
+import { sameName } from "../config-util.ts";
 
 export interface SituationLintHit { ok: false; why: string; character: string; match: string; }
 
