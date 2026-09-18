@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { LIVE, resetLive, armRun } from "../live.ts";
-import { handleStoryEditRoutes } from "../server/story-edit-routes.ts";
+import { handleStoryEditRoutes } from "../server/routes/story-edit-routes.ts";
 import type { StoryEditHost } from "../server/route-hosts.ts";
 import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 

@@ -9,14 +9,14 @@ import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { resetLive } from "../live.ts";
-import { handleCatalogRoutes } from "../server/catalog-routes.ts";
-import { handleStoryEditRoutes } from "../server/story-edit-routes.ts";
-import { handleStoryReadRoutes } from "../server/story-read-routes.ts";
-import { handleScaffoldRoutes } from "../server/scaffold-routes.ts";
-import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
-import { handleRunControl } from "../server/run-control-routes.ts";
-import { handleRunLogRoutes } from "../server/run-log-routes.ts";
-import { handleSessionRoutes } from "../server/session-routes.ts";
+import { handleCatalogRoutes } from "../server/routes/catalog-routes.ts";
+import { handleStoryEditRoutes } from "../server/routes/story-edit-routes.ts";
+import { handleStoryReadRoutes } from "../server/routes/story-read-routes.ts";
+import { handleScaffoldRoutes } from "../server/routes/scaffold-routes.ts";
+import { handleNextChapterRoutes } from "../server/routes/next-chapter-routes.ts";
+import { handleRunControl } from "../server/routes/run-control-routes.ts";
+import { handleRunLogRoutes } from "../server/routes/run-log-routes.ts";
+import { handleSessionRoutes } from "../server/routes/session-routes.ts";
 import { callRoute, callGet, makeHost } from "./helpers.ts";
 
 afterEach(() => resetLive());

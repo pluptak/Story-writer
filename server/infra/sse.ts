@@ -6,7 +6,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE, sseClients, liveHistory, runState } from "../live.ts";
+import { LIVE, sseClients, liveHistory, runState } from "../../live.ts";
 import { requireMethod } from "./http-util.ts";
 
 /** Attach an SSE subscriber for `/events`: headers, replay, then park on the bus.

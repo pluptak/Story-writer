@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { LIVE, resetLive } from "../live.ts";
-import { handleStoryReadRoutes } from "../server/story-read-routes.ts";
+import { handleStoryReadRoutes } from "../server/routes/story-read-routes.ts";
 import type { StoryReadHost } from "../server/route-hosts.ts";
 import { callGet, callRoute, makeHost as baseHost } from "./helpers.ts";
 

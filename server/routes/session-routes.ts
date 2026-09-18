@@ -6,9 +6,9 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE, RUN, liveHistory, runState, storyWriteBlocked, isPickAwaited, consumePick } from "../live.ts";
-import { json, readJsonBody, requireMethod } from "./http-util.ts";
-import type { SessionRoutesHost } from "./route-hosts.ts";
+import { LIVE, RUN, liveHistory, runState, storyWriteBlocked, isPickAwaited, consumePick } from "../../live.ts";
+import { json, readJsonBody, requireMethod } from "../infra/http-util.ts";
+import type { SessionRoutesHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleSessionRoutes(

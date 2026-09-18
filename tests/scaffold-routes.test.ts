@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { ScaffoldSession } from "../engine/architect.ts";
 import type { Defaults } from "../engine/story-format.ts";
 import { LIVE, resetLive } from "../live.ts";
-import { handleScaffoldRoutes } from "../server/scaffold-routes.ts";
+import { handleScaffoldRoutes } from "../server/routes/scaffold-routes.ts";
 import type { ScaffoldRoutesHost } from "../server/route-hosts.ts";
 import { HOST, setScaffoldTestHooks, resetScaffoldForTests } from "../host.ts";
 import { callRoute, quiet, ScriptedAgent } from "./helpers.ts";

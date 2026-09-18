@@ -5,9 +5,9 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { storyWriteBlocked } from "../live.ts";
-import { json, readJsonBody, getQuery } from "./http-util.ts";
-import type { StoryEditHost } from "./route-hosts.ts";
+import { storyWriteBlocked } from "../../live.ts";
+import { json, readJsonBody, getQuery } from "../infra/http-util.ts";
+import type { StoryEditHost } from "../route-hosts.ts";
 
 /** Refusal shared by every story-mutating action while story.json is held. */
 function writeBlocked(action: string): string {

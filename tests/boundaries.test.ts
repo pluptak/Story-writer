@@ -14,7 +14,15 @@ const SERVER_DIR = fileURLToPath(new URL("../server", import.meta.url));
 const IMPORT_LINE = /^\s*import\s+(type\s+)?.*from\s+["'](.+?)["']/;
 
 function serverFiles(): string[] {
-  return readdirSync(SERVER_DIR).filter(f => f.endsWith(".ts"));
+  const out: string[] = [];
+  const walk = (dir: string, prefix: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) walk(join(dir, e.name), prefix + e.name + "/");
+      else if (e.name.endsWith(".ts")) out.push(prefix + e.name);
+    }
+  };
+  walk(SERVER_DIR, "");
+  return out.sort();
 }
 
 describe("server/ never imports engine/ at runtime", () => {
@@ -53,7 +61,7 @@ describe("server/ has no dependency on engine/architect.ts or engine/story-spec.
 });
 
 describe("every server/*.ts module is type-checked (tsconfig covers it)", () => {
-  // Regression guard: server/catalog-routes.ts once shipped without a tsconfig entry,
+  // Regression guard: server/routes/catalog-routes.ts once shipped without a tsconfig entry,
   // so `npx tsc` never checked it. The include list uses globs, so match each file
   // against them instead of asserting exact entries.
   const tsconfig = JSON.parse(
@@ -104,8 +112,8 @@ describe("scaffold-routes.ts and next-chapter-routes.ts never name their session
   // of a module-level session variable always appears as SCAFFOLD/HANDOFF followed by a property
   // access, assignment, or call, never followed by "ROUTES".
   const cases: { file: string; type: string; varName: string; varException: RegExp }[] = [
-    { file: "scaffold-routes.ts", type: "ScaffoldSession", varName: "SCAFFOLD", varException: /\bSCAFFOLD\b(?!\s+ROUTES)/ },
-    { file: "next-chapter-routes.ts", type: "NextChapterSession", varName: "HANDOFF", varException: /\bHANDOFF\b(?!\s+ROUTES)/ },
+    { file: "routes/scaffold-routes.ts", type: "ScaffoldSession", varName: "SCAFFOLD", varException: /\bSCAFFOLD\b(?!\s+ROUTES)/ },
+    { file: "routes/next-chapter-routes.ts", type: "NextChapterSession", varName: "HANDOFF", varException: /\bHANDOFF\b(?!\s+ROUTES)/ },
   ];
   for (const { file, type, varName, varException } of cases) {
     it(`${file} never mentions ${type} or the ${varName} session variable`, () => {

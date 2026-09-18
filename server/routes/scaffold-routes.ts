@@ -6,9 +6,9 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE, isPickAwaited, consumePick } from "../live.ts";
-import { json, readJsonBody } from "./http-util.ts";
-import type { ScaffoldRoutesHost, Concept, RegenScope } from "./route-hosts.ts";
+import { LIVE, isPickAwaited, consumePick } from "../../live.ts";
+import { json, readJsonBody } from "../infra/http-util.ts";
+import type { ScaffoldRoutesHost, Concept, RegenScope } from "../route-hosts.ts";
 
 const MAX_TAGS = 8;
 const MAX_TAG_LEN = 40;

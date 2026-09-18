@@ -12,10 +12,10 @@ import { NextChapterSession } from "../engine/architect.ts";
 import { Agent } from "../engine/agent.ts";
 import type { Defaults } from "../engine/story-format.ts";
 import { LIVE, resetLive, armRun } from "../live.ts";
-import { handleNextChapterRoutes } from "../server/next-chapter-routes.ts";
-import { handleRunControl } from "../server/run-control-routes.ts";
-import { handleRunLogRoutes } from "../server/run-log-routes.ts";
-import { HttpError, readJsonBody } from "../server/http-util.ts";
+import { handleNextChapterRoutes } from "../server/routes/next-chapter-routes.ts";
+import { handleRunControl } from "../server/routes/run-control-routes.ts";
+import { handleRunLogRoutes } from "../server/routes/run-log-routes.ts";
+import { HttpError, readJsonBody } from "../server/infra/http-util.ts";
 import type { RouteHosts } from "../server/route-hosts.ts";
 import { HOST, setHandoffTestHooks, resetHandoffForTests } from "../host.ts";
 import { callRoute, callGet, fakeRequest, fakeRawRequest, quiet, ScriptedAgent, makeHost } from "./helpers.ts";
@@ -237,7 +237,7 @@ describe("/next-chapter routes", () => {
 
   it("an open handoff blocks the story editor's save until it ends", async () => {
     const h = host(async () => session([{ edits: [{ field: "characters.ASTER.goal", value: "Leave." }] }]));
-    const { handleStoryEditRoutes } = await import("../server/story-edit-routes.ts");
+    const { handleStoryEditRoutes } = await import("../server/routes/story-edit-routes.ts");
     const editHost = makeHost({
       selectableStory: h.selectableStory,
       saveStory: async () => ({ ok: true, warnings: [] }),

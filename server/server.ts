@@ -8,17 +8,17 @@ import { createServer, ServerResponse } from "node:http";
 
 import { C } from "../ansi.ts";
 import { LIVE, sseClients } from "../live.ts";
-import { HttpError, json } from "./http-util.ts";
-import { serveStatic } from "./static-files.ts";
-import { handleSseRoute, startSsePing } from "./sse.ts";
-import { handleSessionRoutes } from "./session-routes.ts";
-import { handleRunControl } from "./run-control-routes.ts";
-import { handleScaffoldRoutes } from "./scaffold-routes.ts";
-import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
-import { handleRunLogRoutes } from "./run-log-routes.ts";
-import { handleStoryEditRoutes } from "./story-edit-routes.ts";
-import { handleStoryReadRoutes } from "./story-read-routes.ts";
-import { handleCatalogRoutes } from "./catalog-routes.ts";
+import { HttpError, json } from "./infra/http-util.ts";
+import { serveStatic } from "./infra/static-files.ts";
+import { handleSseRoute, startSsePing } from "./infra/sse.ts";
+import { handleSessionRoutes } from "./routes/session-routes.ts";
+import { handleRunControl } from "./routes/run-control-routes.ts";
+import { handleScaffoldRoutes } from "./routes/scaffold-routes.ts";
+import { handleNextChapterRoutes } from "./routes/next-chapter-routes.ts";
+import { handleRunLogRoutes } from "./routes/run-log-routes.ts";
+import { handleStoryEditRoutes } from "./routes/story-edit-routes.ts";
+import { handleStoryReadRoutes } from "./routes/story-read-routes.ts";
+import { handleCatalogRoutes } from "./routes/catalog-routes.ts";
 import type { RouteHosts } from "./route-hosts.ts";
 
 /** Everything a route can ask of the engine lives in route-hosts.ts as narrow per-domain

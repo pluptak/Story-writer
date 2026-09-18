@@ -2,7 +2,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { handleCatalogRoutes } from "../server/catalog-routes.ts";
+import { handleCatalogRoutes } from "../server/routes/catalog-routes.ts";
 import type { CatalogRoutesHost } from "../server/route-hosts.ts";
 import { callRoute, callGet, makeHost as baseHost } from "./helpers.ts";
 

@@ -5,8 +5,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { json, readJsonBody, getQuery } from "./http-util.ts";
-import type { CatalogRoutesHost } from "./route-hosts.ts";
+import { json, readJsonBody, getQuery } from "../infra/http-util.ts";
+import type { CatalogRoutesHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleCatalogRoutes(

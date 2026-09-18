@@ -11,7 +11,7 @@ import { complete, NET } from "../engine/llm-client.ts";
 import { ENGINE } from "../engine/engine-state.ts";
 import { WARN } from "../engine/warnings.ts";
 import { LIVE, runState, resetLive, storyWriteBlocked, RUN, stopRun, armRun, StoppedError, LIVE_IO, sseClients, type LintDecision } from "../live.ts";
-import { handleRunControl } from "../server/run-control-routes.ts";
+import { handleRunControl } from "../server/routes/run-control-routes.ts";
 import type { RunControlHost } from "../server/route-hosts.ts";
 import { quiet, callRoute, siteFetch, sceneRun } from "./helpers.ts";
 

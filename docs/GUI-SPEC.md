@@ -3,12 +3,15 @@
 Read this before adding a route, an SSE event, or anything a run control does to the run — and before
 deciding whether the GUI under [server/gui/](../server/gui/) could be swapped for something else. It is
 written from the server's side: what [server/server.ts](../server/server.ts) (bind, dispatch),
-[server/session-routes.ts](../server/session-routes.ts) (`/run`, `/select`, `/models`),
-[server/static-files.ts](../server/static-files.ts), [server/sse.ts](../server/sse.ts),
-[server/run-control-routes.ts](../server/run-control-routes.ts),
-[server/scaffold-routes.ts](../server/scaffold-routes.ts),
-[server/next-chapter-routes.ts](../server/next-chapter-routes.ts) and
-[server/run-log-routes.ts](../server/run-log-routes.ts) actually expose, independent of the one
+[server/routes/session-routes.ts](../server/routes/session-routes.ts) (`/run`, `/select`, `/models`),
+[server/infra/static-files.ts](../server/infra/static-files.ts), [server/infra/sse.ts](../server/infra/sse.ts),
+[server/routes/run-control-routes.ts](../server/routes/run-control-routes.ts),
+[server/routes/scaffold-routes.ts](../server/routes/scaffold-routes.ts),
+[server/routes/next-chapter-routes.ts](../server/routes/next-chapter-routes.ts),
+[server/routes/story-read-routes.ts](../server/routes/story-read-routes.ts) (`/stories`, `/cast`, `/chapter`),
+[server/routes/story-edit-routes.ts](../server/routes/story-edit-routes.ts) (`/story/*`),
+[server/routes/catalog-routes.ts](../server/routes/catalog-routes.ts) (`/catalog/*`) and
+[server/routes/run-log-routes.ts](../server/routes/run-log-routes.ts) actually expose, independent of the one
 client that happens to consume it today.
 
 ## The shape of it
@@ -50,7 +53,7 @@ the JSONL logs — the GUI never becomes a second source of truth.**
 Two channels carry everything:
 
 - **JSON request/response** — plain `POST`/`GET`, `Content-Type: application/json`, no framework
-  (`server/http-util.ts`). Most mutating `POST`s reply `{ ok: true, ... }` or
+  (`server/infra/http-util.ts`). Most mutating `POST`s reply `{ ok: true, ... }` or
   `{ ok: false, reason }` with a `4xx`/`5xx` status; a handful (`/stories`, `/models`)
   are read calls that reply with the resource itself instead of an `ok` envelope, and the
   scaffold/handoff progress `POST`s (`/scaffold/start`, `/scaffold/say`, `/scaffold/approve`,
@@ -68,8 +71,9 @@ Two channels carry everything:
   a `POST` succeeded elsewhere (its own `fetch` replies too, but every other open tab or window
   finds out only through `/events`).
 
-Nothing under `server/*.ts` imports `engine/` — not even as a type, for `engine/architect.ts` or
-`engine/story-spec.ts` specifically ([tests/boundaries.test.ts](../tests/boundaries.test.ts) checks
+Nothing under `server/*.ts` imports `engine/` at runtime — only `import type` (erased before
+anything runs) may reach into `engine/`, and never `engine/architect.ts` or `engine/story-spec.ts`
+even as a type ([tests/boundaries.test.ts](../tests/boundaries.test.ts) checks
 both claims). Every route reaches the engine only through its narrow host interface
 (server/route-hosts.ts), satisfied by the one object built in `host.ts`. The scaffold and handoff
 domains are entirely behind those interfaces: no route module holds a `ScaffoldSession` or a
@@ -862,14 +866,16 @@ every judgement actually happened; see [Writer.MD](Writer.MD).
 **Yes — the API is a complete, self-describing surface, and [server/gui/](../server/gui/) is not privileged
 against it.** Two things make that true:
 
-1. **The four static routes are the entire coupling.** They serve fixed files by path; nothing in
+1. **The static routes are the entire coupling.** They serve fixed files by path; nothing in
    `/run`, `/stories`, `/models`, `/select`, run control, scaffold, or `/events` reads or writes
    anything under `server/gui/`, checks a `User-Agent`, or otherwise assumes a particular client. A
    second frontend calling this same API from the same origin is indistinguishable, server-side, from
    the shipped one.
 2. **Every route reaches the engine only through narrow host interfaces.** No route module imports `engine/`
-   directly (CLAUDE.md's own invariant), so the API's behavior is exactly the route-host methods
-   plus the `LIVE`/`RUN`/`SCAFFOLD`/`HANDOFF` state machine described above — nothing lives only in
+   at runtime — only `import type`, never `engine/architect.ts` or `engine/story-spec.ts` even as a
+   type (CLAUDE.md's own invariant) — so the API's behavior is exactly the route-host methods
+   plus the `LIVE`/`RUN` session state described above. The scaffold/handoff sessions stay private
+   to `host.ts`, reachable only through host methods — nothing lives only in
    `server/gui/*.js` that a route depends on.
 
 What a replacement would actually need to reproduce, none of it GUI-specific:
@@ -891,17 +897,15 @@ What a replacement would actually need to reproduce, none of it GUI-specific:
   behavior costs nothing extra on the server.
 
 What is **not** available through this API, and would need a new route (a host-interface addition, not a
-GUI trick) rather than being derivable client-side: editing a story's files field by field
-(`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts),
-reading a story's full cast — `knows`, `goal`, `belief`, `impulse`, `voice` and `persona` — for a story that is not in a scaffold or
-handoff session, starting a run without going through the picker/scaffold handshake, or anything about
-a run that already fell out of `MAX_RUNS` retention. Field-by-field story editing
-(`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts)
-and the read-only cast view (`GET /cast`) are the routes those needs grew into; anything further
+GUI trick) rather than being derivable client-side: starting a run without going through the
+picker/scaffold handshake, or anything about a run that already fell out of `MAX_RUNS` retention.
+Field-by-field story editing (`/story/edit`, `/story/check`, `/story/save`, `/story/discard`,
+`/story/suggest`) and the read-only cast view (`GET /cast`) already cover the two needs an earlier
+version of this section listed as missing; anything further
 belongs in `PLANS.md`, which is also where the routes they would add are drafted.
 
 If "replace" means **serve the new frontend from somewhere other than this process** (a separate dev
 server, a static host): the JSON/SSE routes have no CORS headers today, so a different-origin client
 would 405/opaque-fail on `fetch` until `Access-Control-Allow-Origin` (and SSE's own CORS story) is
 added — a small, contained change to `server.ts`, not a redesign. Same-origin (served by this process,
-which is what the four static routes already do) needs nothing extra.
+which is what the static routes already do) needs nothing extra.

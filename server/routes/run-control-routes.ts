@@ -5,10 +5,10 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { C } from "../ansi.ts";
-import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../live.ts";
-import { json, readJsonBody } from "./http-util.ts";
-import type { RunControlHost } from "./route-hosts.ts";
+import { C } from "../../ansi.ts";
+import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../../live.ts";
+import { json, readJsonBody } from "../infra/http-util.ts";
+import type { RunControlHost } from "../route-hosts.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleRunControl(

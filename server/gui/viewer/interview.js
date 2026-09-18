@@ -104,7 +104,7 @@ const castSizeFieldHtml = s => {
     </select></div>`;
 };
 
-const MAX_IMPORTS = 4;   // the cast stage's ceiling, mirrored from server/scaffold-routes.ts
+const MAX_IMPORTS = 4;   // the cast stage's ceiling, mirrored from server/routes/scaffold-routes.ts
 
 // Reusable characters, cast in THIS story. Picking one is not the same as the architect
 // inventing one: the cast gate switches to a different prompt entirely, and the fields that

@@ -122,8 +122,8 @@ depends on it directly);
 `story-writer.ts` (root) is the composition root that imports all of them and wires up the CLI and
 the `HOST` object, and [app.ts](app.ts) (root) is the application layer above both — run setup, the
 story pick, and the pick → run → pick loop. Separately, `app.ts` → [server/server.ts](server/server.ts) →
-{`run-control-routes.ts`, `scaffold-routes.ts`, `next-chapter-routes.ts`, `run-log-routes.ts`, `story-read-routes.ts`, `story-edit-routes.ts`, `catalog-routes.ts`} →
-`http-util.ts` → (nothing), all under
+{`routes/session-routes.ts`, `routes/run-control-routes.ts`, `routes/scaffold-routes.ts`, `routes/next-chapter-routes.ts`, `routes/run-log-routes.ts`, `routes/story-read-routes.ts`, `routes/story-edit-routes.ts`, `routes/catalog-routes.ts`, plus `infra/static-files.ts` and `infra/sse.ts`} →
+`infra/http-util.ts` → (nothing), all under
 [server/](server/) — nothing in that chain imports `story-writer.ts`, `app.ts` or any `engine/` module at run
 time. `prompts.ts`, `ansi.ts` and `live.ts` stay at the repo root because both chains import them;
 where `live.ts` needs an engine type (`Agent`, `RunEvent`) it reaches into `engine/agent.ts` /
@@ -172,18 +172,18 @@ way.**
 | [engine/scene-loop.ts](engine/scene-loop.ts) | wrapping the writer/character agents and the scene-writing loop itself |
 | [prompts.ts](prompts.ts) | every word said to a model — a thin barrel re-exporting the [prompts/](prompts/) role files (common, internal, architect, consult, writer, judge, clarify, catalog-assist, open-consult), which match one engine caller each |
 | [server/server.ts](server/server.ts) | the `--serve` viewer's HTTP surface: bind/listen/close, the error boundary, and dispatch to static files, SSE, and the route modules |
-| [server/static-files.ts](server/static-files.ts) | the viewer's static assets by path (from `server/gui/`, plus the studio mockup) |
-| [server/sse.ts](server/sse.ts) | `/events` HTTP framing and the keep-alive ping — the bus itself stays in `live.ts` |
-| [server/session-routes.ts](server/session-routes.ts) | `/run`, `/select`, `/models` — the session's own endpoints |
-| [server/run-control-routes.ts](server/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
-| [server/scaffold-routes.ts](server/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side: wire validation and dispatch to `ScaffoldRoutesHost`, nothing else — it never touches a `ScaffoldSession` |
-| [server/next-chapter-routes.ts](server/next-chapter-routes.ts) | `/next-chapter` and `/next-chapter/*` — the architect handoff, server side, the same shape as `scaffold-routes.ts`: dispatch to `HandoffRoutesHost`, never a `NextChapterSession` |
-| [server/run-log-routes.ts](server/run-log-routes.ts) | `/runs/llm`, `/runs/llm/file`, `/runs/log`, `/log.jsonl` — a run's logs (per-agent LLM transcripts, the retained and the in-progress writing logs), read-only by construction |
-| [server/story-read-routes.ts](server/story-read-routes.ts) | `/stories`, `/cast` (GET), `/chapter` (GET) — read-only story views: the shelf's story-card listing, the live screen's full cast (models omitted), and an accepted chapter's markdown; all available while a run is in flight |
-| [server/story-edit-routes.ts](server/story-edit-routes.ts) | `/story/edit` (GET), `/story/edit-config` (GET), `/story/check`, `/story/save`, `/story/discard`, `/story/suggest` (POST) — the `story.json` form editor; load, schema-derived editor config, validate, save, discard the last unwritten scene, and a stateless architect suggestion call. Refuses with `409` while something holds `story.json`: a run, the post-pick loading window, or an open handoff |
-| [server/catalog-routes.ts](server/catalog-routes.ts) | `/catalog` (GET), `/catalog/config` (GET), `/catalog/usage` (GET), `/catalog/entry` (GET), `/catalog/check`, `/catalog/save`, `/catalog/delete`, `/catalog/visibility`, `/catalog/assist` (POST) — the global character catalog. Takes no story dir and never consults the story-write lock: a catalog is not scoped to a story |
+| [server/infra/static-files.ts](server/infra/static-files.ts) | the viewer's static assets by path (from `server/gui/`, plus the studio mockup) |
+| [server/infra/sse.ts](server/infra/sse.ts) | `/events` HTTP framing and the keep-alive ping — the bus itself stays in `live.ts` |
+| [server/routes/session-routes.ts](server/routes/session-routes.ts) | `/run`, `/select`, `/models` — the session's own endpoints |
+| [server/routes/run-control-routes.ts](server/routes/run-control-routes.ts) | routes that steer a scene in flight: stop, pause/resume, model override, interactive mode, the reader's consult seat |
+| [server/routes/scaffold-routes.ts](server/routes/scaffold-routes.ts) | `/scaffold` and `/scaffold/*` — the new-story interview, server side: wire validation and dispatch to `ScaffoldRoutesHost`, nothing else — it never touches a `ScaffoldSession` |
+| [server/routes/next-chapter-routes.ts](server/routes/next-chapter-routes.ts) | `/next-chapter` and `/next-chapter/*` — the architect handoff, server side, the same shape as `scaffold-routes.ts`: dispatch to `HandoffRoutesHost`, never a `NextChapterSession` |
+| [server/routes/run-log-routes.ts](server/routes/run-log-routes.ts) | `/runs/llm`, `/runs/llm/file`, `/runs/log`, `/log.jsonl` — a run's logs (per-agent LLM transcripts, the retained and the in-progress writing logs), read-only by construction |
+| [server/routes/story-read-routes.ts](server/routes/story-read-routes.ts) | `/stories`, `/cast` (GET), `/chapter` (GET) — read-only story views: the shelf's story-card listing, the live screen's full cast (models omitted), and an accepted chapter's markdown; all available while a run is in flight |
+| [server/routes/story-edit-routes.ts](server/routes/story-edit-routes.ts) | `/story/edit` (GET), `/story/edit-config` (GET), `/story/check`, `/story/save`, `/story/discard`, `/story/suggest` (POST) — the `story.json` form editor; load, schema-derived editor config, validate, save, discard the last unwritten scene, and a stateless architect suggestion call. Refuses with `409` while something holds `story.json`: a run, the post-pick loading window, or an open handoff |
+| [server/routes/catalog-routes.ts](server/routes/catalog-routes.ts) | `/catalog` (GET), `/catalog/config` (GET), `/catalog/usage` (GET), `/catalog/entry` (GET), `/catalog/check`, `/catalog/save`, `/catalog/delete`, `/catalog/visibility`, `/catalog/assist` (POST) — the global character catalog. Takes no story dir and never consults the story-write lock: a catalog is not scoped to a story |
 | [server/route-hosts.ts](server/route-hosts.ts) | the narrow engine-facing interfaces, one per route domain (`ScaffoldRoutesHost`, `HandoffRoutesHost`, …), plus the wire DTOs — the single runtime object satisfies their `RouteHosts` intersection |
-| [server/http-util.ts](server/http-util.ts) | `json()`, the query/method helpers, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
+| [server/infra/http-util.ts](server/infra/http-util.ts) | `json()`, the query/method helpers, `readJsonBody()` and `HttpError`, shared by server.ts and the route modules |
 | [server/gui/](server/gui/) | the viewer's static assets — `viewer.html`, `viewer.css`, and `viewer.js`, a composition root that wires together the ES modules under `server/gui/viewer/` (state, SSE, event grouping, block rendering, the shelf, the scaffold interview, the handoff panel, the character catalog) |
 | [live.ts](live.ts) | session state shared by the loop and the server, plus the SSE bus, the stop signal, and the loop's human-interaction port (`SceneIo`/`LIVE_IO`: step budget, pause, reader seat) |
 | [ansi.ts](ansi.ts) | terminal colours |
