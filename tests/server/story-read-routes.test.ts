@@ -1,0 +1,213 @@
+/** Story read routes: read-only views of a story's authored definition. */
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { LIVE, resetLive } from "../../live.ts";
+import { handleStoryReadRoutes } from "../../server/routes/story-read-routes.ts";
+import type { StoryReadHost } from "../../server/route-hosts.ts";
+import { callGet, callRoute, makeHost as baseHost } from "../helpers.ts";
+
+let castFails = false;
+
+function makeHost(overrides?: Partial<StoryReadHost>): StoryReadHost {
+  return baseHost({
+    selectableStory: async (d: string) => (d === "data/stories/doorway" || d === "doorway" ? "data/stories/doorway" : null),
+    fullCast: async (dir: string) => {
+      if (castFails) {
+        return { ok: false, error: "cannot parse" };
+      }
+      if (dir !== "data/stories/doorway") return { ok: false, error: "not found" };
+      return {
+        ok: true,
+        characters: [
+          {
+            name: "ASTER",
+            persona: "Keeps the log.",
+            knows: "The signal did not fire.",
+            goal: "",
+            origin: "ai",
+            skills: [{ text: "lockpicking", meaning: "" }],
+            restrictions: [],
+          },
+          {
+            name: "BRAE",
+            persona: "Came up from the boats.",
+            knows: "",
+            goal: "",
+            origin: "",
+            skills: [],
+            restrictions: ["hearing"],
+          },
+        ],
+        // Reach arrives per scene and never merged into a character's skills (I4); presence and
+        // constraint ride the same way, as the raw SceneDef map.
+        scenes: [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] },
+                         presence: { BRAE: "remote :: the stairwell phone" },
+                         constraint: { BRAE: ["hands :: bound to the chair"] } }],
+      };
+    },
+    ...overrides,
+  });
+}
+
+describe("/cast (GET)", () => {
+  it("leaves other paths alone", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/nope?x=1", makeHost());
+    assert.equal(r.handled, false);
+  });
+
+  it("refuses a story it did not discover", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=../elsewhere", makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.json().reason, /no such story/);
+  });
+
+  it("returns the full cast", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.equal(r.code, 200);
+    assert.equal(r.json().ok, true);
+    assert.equal(r.json().characters.length, 2);
+    assert.equal(r.json().characters[0].name, "ASTER");
+    assert.equal(r.json().characters[0].knows, "The signal did not fire.");
+  });
+
+  it("includes each character's origin", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.equal(r.json().ok, true);
+    assert.equal(r.json().characters[0].origin, "ai");
+    assert.equal(r.json().characters[1].origin, "");
+  });
+
+  it("omits each character's model", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.equal(r.json().ok, true);
+    for (const ch of r.json().characters) {
+      assert.ok(!("model" in ch));
+    }
+  });
+
+  it("shapes skills as {text, meaning}", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.equal(r.json().characters[0].skills[0].text, "lockpicking");
+    assert.equal(typeof r.json().characters[0].skills[0].meaning, "string");
+  });
+
+  it("presents reach per scene, never as a character skill", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    assert.ok(!("scenes" in r.json().characters[0]));
+    for (const ch of r.json().characters)
+      assert.ok(!ch.skills.some((s: { text: string }) => s.text.includes("cameras")),
+        `${ch.name} must not carry reach on their skills`);
+    assert.deepEqual(r.json().scenes,
+                      [{ n: 1, reach: { ASTER: ["cameras :: perceiving through the lamp room cameras"] },
+                               presence: { BRAE: "remote :: the stairwell phone" },
+                               constraint: { BRAE: ["hands :: bound to the chair"] } }]);
+  });
+
+  it("presents presence per scene, never as a character field", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    for (const ch of r.json().characters)
+      assert.ok(!("presence" in ch), `${ch.name} must not carry presence on their character`);
+    assert.deepEqual(r.json().scenes[0].presence, { BRAE: "remote :: the stairwell phone" });
+  });
+
+  it("presents constraint per scene, never as a character field or a restriction", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+    for (const ch of r.json().characters) {
+      assert.ok(!("constraint" in ch), `${ch.name} must not carry constraint on their character`);
+      assert.ok(!ch.restrictions.includes("hands"), `${ch.name} must not carry constraint on restrictions`);
+    }
+    assert.deepEqual(r.json().scenes[0].constraint, { BRAE: ["hands :: bound to the chair"] });
+  });
+
+  it("reports a story that will not load", async () => {
+    castFails = true;
+    try {
+      const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+      assert.equal(r.code, 200);
+      assert.equal(r.json().ok, false);
+      assert.ok(typeof r.json().error === "string" && r.json().error.length > 0);
+    } finally {
+      castFails = false;
+    }
+  });
+
+  it("answers while a run is in flight", async () => {
+    resetLive();
+    LIVE.running = true;
+    try {
+      const r = await callGet(handleStoryReadRoutes, "/cast?dir=doorway", makeHost());
+      assert.equal(r.code, 200);
+      assert.equal(r.json().ok, true);
+    } finally {
+      LIVE.running = false;
+      resetLive();
+    }
+  });
+});
+
+describe("/stories (GET)", () => {
+  it("returns the story cards", async () => {
+    const host = makeHost({ storyCards: async () => [{ dir: "data/stories/doorway", name: "Doorway", ok: true, warnings: [] }] as never });
+    const r = await callGet(handleStoryReadRoutes, "/stories", host);
+    assert.equal(r.code, 200);
+    assert.equal(r.json().stories.length, 1);
+    assert.equal(r.json().stories[0].name, "Doorway");
+  });
+
+  it("reflects whether the session is awaiting a pick", async () => {
+    resetLive();
+    LIVE.awaitingPick = true;
+    try {
+      const r = await callGet(handleStoryReadRoutes, "/stories", makeHost());
+      assert.equal(r.json().picking, true);
+    } finally {
+      resetLive();
+    }
+  });
+
+  it("refuses a non-GET method with 405", async () => {
+    const r = await callRoute(handleStoryReadRoutes, "/stories", {}, makeHost());
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
+  });
+});
+
+describe("/chapter (GET)", () => {
+  it("refuses a story it did not discover", async () => {
+    const r = await callGet(handleStoryReadRoutes, "/chapter?dir=../elsewhere&n=1", makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.json().reason, /no such story/);
+  });
+
+  it("refuses a chapter that is not written", async () => {
+    const host = makeHost({ writtenChapters: async () => [1] });
+    const r = await callGet(handleStoryReadRoutes, "/chapter?dir=doorway&n=2", host);
+    assert.equal(r.code, 404);
+    assert.match(r.json().reason, /no such chapter/);
+  });
+
+  it("serves a written chapter's markdown", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "chapter-"));
+    try {
+      await mkdir(join(dir, "chapters"), { recursive: true });
+      await writeFile(join(dir, "chapters", "1.md"), "# Chapter one\n\nprose.", "utf8");
+      const host = makeHost({ resolveStoryDir: () => dir, writtenChapters: async () => [1] });
+      const r = await callGet(handleStoryReadRoutes, "/chapter?dir=doorway&n=1", host);
+      assert.equal(r.code, 200);
+      assert.equal(r.headers["Content-Type"], "text/markdown; charset=utf-8");
+      assert.match(r.text, /Chapter one/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a non-GET method with 405", async () => {
+    const r = await callRoute(handleStoryReadRoutes, "/chapter", {}, makeHost());
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
+  });
+});

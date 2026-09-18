@@ -1,0 +1,307 @@
+/** Story edit routes: read, validate, and save story.json over HTTP.
+ *  Also tests the /story/suggest endpoint and edge cases from plan 5. */
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+
+import { LIVE, resetLive, armRun } from "../../live.ts";
+import { handleStoryEditRoutes } from "../../server/routes/story-edit-routes.ts";
+import type { StoryEditHost } from "../../server/route-hosts.ts";
+import { callRoute, callGet, makeHost as baseHost } from "../helpers.ts";
+
+const DOORWAY = {
+  title: "The Fog Signal",
+  premise: "Two keepers, one lamp, and a night that did not happen the way the log says it did.",
+  scenes: [{ place: "the lamp room", question: "Does Aster admit the signal never fired?", pov: "ASTER", length: 700, roster: [] as string[], reach: {} as Record<string, string[]>, presence: {} as Record<string, string>, constraint: {} as Record<string, string[]> }],
+  writerStyle: "Plain sentences.",
+  writerStyleConstraints: [] as string[],
+  facts: [] as string[],
+  timeline: [] as { chapter: number; hold: string; fired: string; at: number; memories: Record<string, string>; scope: "scene" | "world"; state: "pending" | "fired" | "void" }[],
+  characters: [
+    { name: "ASTER", model: "", persona: "Keeps the log.", knows: "The signal did not fire.", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: [] },
+    { name: "BRAE", model: "", persona: "Came up from the boats.", knows: "", goal: "", belief: "", impulse: "", voice: [] as string[], origin: "", skills: [] as string[], restrictions: ["hearing"] },
+  ],
+  config: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140, stream: true, debug: false,
+            requestTimeout: 120, attempts: 3, maxTokens: 2000,
+            thinking: { writer: "default", character: "default", summary: "default" } } as const,
+  models: { default: "none" },
+};
+
+let suggestCalls = 0;
+
+function makeHost(overrides?: Partial<StoryEditHost>): StoryEditHost {
+  return baseHost({
+    selectableStory: async (d: string) => (d === "data/stories/doorway" || d === "doorway" ? "data/stories/doorway" : null),
+    storyForEdit: async (dir: string) => {
+      if (dir !== "data/stories/doorway") return { ok: false, error: "not found" };
+      const parsed = {
+        title: DOORWAY.title,
+        premise: DOORWAY.premise,
+        scenes: DOORWAY.scenes,
+        writerStyle: DOORWAY.writerStyle,
+        writerStyleConstraints: DOORWAY.writerStyleConstraints,
+        facts: DOORWAY.facts,
+        timeline: DOORWAY.timeline,
+        characters: DOORWAY.characters,
+        config: {},
+        models: {},
+      };
+      return { ok: true, story: parsed, warnings: [] };
+    },
+    checkStory: (story: any) => {
+      if (story.simulatedError) return { ok: false, error: "validation failed", issues: [{ path: "title", message: "Required" }] };
+      return { ok: true, warnings: [] };
+    },
+    saveStory: async (dir: string, _story: any) => {
+      if (dir !== "data/stories/doorway") return { ok: false, reason: "not found" };
+      return { ok: true, warnings: [] };
+    },
+    suggestEdits: async (_spec: unknown, text: string) => {
+      suggestCalls++;
+      if (text === "fail") return { ok: false, error: "architect error" };
+      if (text.startsWith("ask")) return { ok: true, kind: "question", ask: "What do you mean?" };
+      return {
+        ok: true, kind: "edits",
+        applied: [{ field: "title", before: "old", after: "new" }],
+        ignored: [],
+        problems: [],
+        note: "",
+      };
+    },
+    ...overrides,
+  });
+}
+
+// -- SECTION ----
+describe("/story/edit (GET)", () => {
+  it("leaves other paths alone", async () => {
+    const r = await callGet(handleStoryEditRoutes, "/stories?x=1", makeHost());
+    assert.equal(r.handled, false);
+  });
+
+  it("refuses a story it did not discover", async () => {
+    const r = await callGet(handleStoryEditRoutes, "/story/edit?dir=../elsewhere", makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.json().reason, /no such story/);
+  });
+
+  it("refuses while a run is in flight", async () => {
+    resetLive(); LIVE.running = true; armRun();
+    try {
+      const r = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", makeHost());
+      assert.equal(r.code, 409);
+      assert.match(r.json().reason, /run is in flight/);
+    } finally { LIVE.running = false; resetLive(); }
+  });
+
+  it("refuses while a story is loading, not only while a run is in flight", async () => {
+    // The window between /select and the run actually starting: running is still false here.
+    resetLive(); LIVE.loading = true;
+    try {
+      const edit = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", makeHost());
+      assert.equal(edit.code, 409);
+      assert.match(edit.json().reason, /story is loading/);
+
+      const save = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: DOORWAY }, makeHost());
+      assert.equal(save.code, 409);
+      assert.match(save.body.reason, /story is loading/);
+
+      const discard = await callRoute(handleStoryEditRoutes, "/story/discard", { dir: "doorway", n: 1 }, makeHost());
+      assert.equal(discard.code, 409);
+      assert.match(discard.body.reason, /story is loading/);
+
+      const suggest = await callRoute(handleStoryEditRoutes, "/story/suggest", { spec: DOORWAY, text: "x" }, makeHost());
+      assert.equal(suggest.code, 409);
+      assert.match(suggest.body.reason, /story is loading/);
+    } finally { LIVE.loading = false; resetLive(); }
+  });
+
+  it("loads a valid story", async () => {
+    const r = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", makeHost());
+    assert.equal(r.code, 200);
+    const body = r.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.story.title, "The Fog Signal");
+    assert.equal(body.story.characters.length, 2);
+  });
+
+  it("returns warnings alongside the story", async () => {
+    const h = makeHost({
+      storyForEdit: async (_dir: string) => ({
+        ok: true as const,
+        story: DOORWAY,
+        warnings: ["Scene 1 has no question"],
+      }),
+    });
+    const r = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", h);
+    const body = r.json();
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.warnings, ["Scene 1 has no question"]);
+  });
+
+  it("returns a malformed story with raw content for the editor to show", async () => {
+    const h = makeHost({
+      storyForEdit: async () => ({ ok: false as const, error: "could not read", raw: { title: "broken" } }),
+    });
+    const r = await callGet(handleStoryEditRoutes, "/story/edit?dir=doorway", h);
+    const body = r.json();
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "could not read");
+    assert.deepEqual(body.raw, { title: "broken" });
+  });
+});
+
+describe("/story/edit-config (GET)", () => {
+  it("returns the host's editor-config projection verbatim", async () => {
+    const config = {
+      defaults: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140,
+                  requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: true, debug: false,
+                  thinking: { writer: "low" as const, character: "low" as const, summary: "low" as const }, sceneLength: 700 },
+      thinkingLevels: ["off", "low", "medium", "high", "default"] as const,
+      caps: { voiceSamples: 3 },
+    };
+    const host = makeHost({ editorConfig: () => config });
+    const r = await callGet(handleStoryEditRoutes, "/story/edit-config", host);
+    assert.equal(r.code, 200);
+    assert.deepEqual(r.json(), config);
+  });
+
+  it("is not blocked by the story-write lock — it names no story", async () => {
+    armRun();
+    try {
+      const config = {
+        defaults: { retries: 0, clarifications: 0, maxSteps: 1, maxProseWords: 1,
+                    requestTimeout: 1, attempts: 1, maxTokens: 1, stream: false, debug: false,
+                    thinking: { writer: "off" as const, character: "off" as const, summary: "off" as const }, sceneLength: 1 },
+        thinkingLevels: ["off", "low", "medium", "high", "default"] as const,
+        caps: { voiceSamples: 0 },
+      };
+      const host = makeHost({ editorConfig: () => config });
+      const r = await callGet(handleStoryEditRoutes, "/story/edit-config", host);
+      assert.equal(r.code, 200);
+    } finally { resetLive(); }
+  });
+});
+
+// -- SECTION ----
+describe("/story/check (POST)", () => {
+  it("reports validation failures", async () => {
+    const r = await callRoute(handleStoryEditRoutes, "/story/check", { story: { simulatedError: true } }, makeHost());
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, false);
+    assert.equal(r.body.error, "validation failed");
+    assert.equal(r.body.issues[0].path, "title");
+  });
+});
+
+// -- SECTION ----
+describe("/story/save (POST)", () => {
+  it("refuses a story it did not discover", async () => {
+    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "../elsewhere", story: DOORWAY }, makeHost());
+    assert.equal(r.code, 400);
+    assert.match(r.body.reason, /no such story/);
+  });
+
+  it("refuses while a run is in flight", async () => {
+    resetLive(); LIVE.running = true; armRun();
+    try {
+      const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: DOORWAY }, makeHost());
+      assert.equal(r.code, 409);
+      assert.match(r.body.reason, /run is in flight/);
+    } finally { LIVE.running = false; resetLive(); }
+  });
+
+  it("saves a valid story", async () => {
+    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: DOORWAY }, makeHost());
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+  });
+
+  it("rejects save of invalid data at the host level", async () => {
+    const h = makeHost({
+      saveStory: async () => ({ ok: false, reason: "validation failed" }),
+    });
+    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: { bad: true } }, h);
+    assert.equal(r.code, 400);
+    assert.equal(r.body.ok, false);
+    assert.match(r.body.reason, /validation/);
+  });
+
+  it("warnings accompany a successful save", async () => {
+    const h = makeHost({
+      saveStory: async () => ({ ok: true, warnings: ["Scene 1 has no question"] }),
+    });
+    const r = await callRoute(handleStoryEditRoutes, "/story/save", { dir: "doorway", story: DOORWAY }, h);
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+    assert.deepEqual(r.body.warnings, ["Scene 1 has no question"]);
+  });
+});
+
+// -- SECTION ----
+describe("/story/suggest (POST)", () => {
+  it("returns edits from the architect", async () => {
+    suggestCalls = 0;
+    const r = await callRoute(handleStoryEditRoutes, "/story/suggest",
+      { spec: DOORWAY, text: "make it darker" }, makeHost());
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+    assert.equal(r.body.kind, "edits");
+    assert.equal(r.body.applied[0].field, "title");
+  });
+
+  it("returns a question when the architect needs more", async () => {
+    const r = await callRoute(handleStoryEditRoutes, "/story/suggest",
+      { spec: DOORWAY, text: "ask something" }, makeHost());
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+    assert.equal(r.body.kind, "question");
+    assert.equal(r.body.ask, "What do you mean?");
+  });
+
+  it("returns an error when the architect fails", async () => {
+    const r = await callRoute(handleStoryEditRoutes, "/story/suggest",
+      { spec: DOORWAY, text: "fail" }, makeHost());
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, false);
+    assert.equal(r.body.error, "architect error");
+  });
+
+  it("passes an empty text safely", async () => {
+    suggestCalls = 0;
+    const r = await callRoute(handleStoryEditRoutes, "/story/suggest",
+      { spec: DOORWAY, text: "" }, makeHost());
+    assert.equal(r.code, 200);
+    assert.equal(r.body.ok, true);
+    // Host side treats empty string as valid input
+    assert.equal(suggestCalls, 1);
+  });
+
+  it("refuses while a run is in flight, without touching the architect", async () => {
+    resetLive(); LIVE.running = true; armRun(); suggestCalls = 0;
+    try {
+      const r = await callRoute(handleStoryEditRoutes, "/story/suggest",
+        { spec: DOORWAY, text: "make it darker" }, makeHost());
+      assert.equal(r.code, 409);
+      assert.match(r.body.reason, /run is in flight/);
+      assert.equal(suggestCalls, 0);
+    } finally { LIVE.running = false; resetLive(); }
+  });
+});
+
+// -- SECTION ----
+describe("route dispatch edge cases", () => {
+  it("returns false for routes it does not handle", async () => {
+    const r = await callRoute(handleStoryEditRoutes, "/scaffold/say", {}, makeHost());
+    assert.equal(r.handled, false);
+  });
+
+  it("returns false for /story/save GET (not POST)", async () => {
+    const r = await callGet(handleStoryEditRoutes, "/story/save?dir=doorway", makeHost());
+    assert.equal(r.handled, false);
+  });
+
+  it("returns false for /story/edit POST (not GET)", async () => {
+    const r = await callRoute(handleStoryEditRoutes, "/story/edit", {}, makeHost(), "POST");
+    assert.equal(r.handled, false);
+  });
+});
