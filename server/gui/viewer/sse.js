@@ -8,7 +8,7 @@ import { renderSession, disarm, loadModels, loadEditorConfig, loadCatalogConfig 
 import { loadStories, loadRun } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { loadDeepLinkedComparison, loadComparisonRuns } from "./compare.js";
-import { disarmAccept, disarmApprove } from "./interview.js";
+import { disarmAccept, disarmApprove } from "./interview-page.js";
 
 export function loadDeepLinkedRun() {
   const params = parseHashParams();
