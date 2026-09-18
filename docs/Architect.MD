@@ -615,7 +615,7 @@ scene decides; if a person could decline it, it is not one. Each beat carries a 
 the writer may not start before it fires) and a **fired** form (what has happened) — the held form
 is not decoration, since a writer left to itself invents the event early. The fired form must carry
 no quotation marks: an event with a voice cannot be told apart from an invented line, and
-[`engine/quote-lint.ts`](../engine/quote-lint.ts) will flag it as one. At most one beat per chapter
+[`engine/lint/quote-lint.ts`](../engine/lint/quote-lint.ts) will flag it as one. At most one beat per chapter
 unless the idea demands two, because beats fire in authored order and two events compete for the
 same page.
 
@@ -740,7 +740,7 @@ reviewed; the architect input stays sticky at the bottom while the proposal scro
 
 ### Scaffold interview
 
-Built as its own `#/scaffold` route in [`interview.js`](../server/gui/viewer/interview.js), reached from
+Built as its own `#/scaffold` route in [`interview.js`](../server/gui/viewer/interview.js) (builders) + [`interview-page.js`](../server/gui/viewer/interview-page.js) (page assembly and wiring), reached from
 the shelf's "start a new story" card — which relabels itself "continue new story…" while a session is
 open on the server. The idea step is a modal over an empty scaffold shell; once the first proposal
 lands the page keeps three things visible at all times: the proposed story (a card), the current round

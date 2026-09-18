@@ -73,7 +73,7 @@ Two channels carry everything:
 
 Nothing under `server/*.ts` imports `engine/` at runtime — only `import type` (erased before
 anything runs) may reach into `engine/`, and never `engine/architect.ts` or `engine/story-spec.ts`
-even as a type ([tests/boundaries.test.ts](../tests/boundaries.test.ts) checks
+even as a type ([tests/server/boundaries.test.ts](../tests/server/boundaries.test.ts) checks
 both claims). Every route reaches the engine only through its narrow host interface
 (server/route-hosts.ts), satisfied by the one object built in `host.ts`. The scaffold and handoff
 domains are entirely behind those interfaces: no route module holds a `ScaffoldSession` or a
@@ -782,7 +782,7 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    piece as it stands) or `stop` (end the chapter).
                                                    Nothing else records the answer
   { t:"repeat_strip"; chars; words; whole }      — the piece opened by re-emitting the page's tail
-                                                   (engine/repeat-lint.ts, no model call); the repeated
+                                                   (engine/lint/repeat-lint.ts, no model call); the repeated
                                                    prefix was stripped before the append, so the draft
                                                    event that follows carries only the new text.
                                                    `whole` true means the entire piece was already on

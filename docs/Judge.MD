@@ -220,8 +220,8 @@ and — when the same reply opens one — the consult it is about to send. It ch
    part of the moment matters. Give the character the moment; let them find the fork in it.
 
 It is told **not** to re-check quotations — they are matched against the ledger mechanically first
-(`engine/quote-lint.ts`), and restricted senses are matched by verb against the character's own
-CANNOT list mechanically too (`engine/sense-lint.ts`). The mechanical halves are deliberately
+(`engine/lint/quote-lint.ts`), and restricted senses are matched by verb against the character's own
+CANNOT list mechanically too (`engine/lint/sense-lint.ts`). The mechanical halves are deliberately
 conservative, because a mechanical flag has no model to soften it. The quotation check skips a
 quoted span of one bare word — read as a machine label, not a line: a lever thrown to the
 `'Shutdown'` position, a status reading `"Fatal"`; missing an invented one-word line is the cheap

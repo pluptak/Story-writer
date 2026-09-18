@@ -272,8 +272,8 @@ outright, is accepted anyway and logged as `narration_flag` — the lint warns; 
 (`engine/scene-loop.ts`'s `NARRATION_LINT_RETRIES`).
 
 Two of those four are decided in code, and they are the two whose evidence is a closed set.
-Quotations are matched against the granted ledger (`engine/quote-lint.ts`); a restricted sense is
-matched by verb against the character's own CANNOT list (`engine/sense-lint.ts`). Deeds and the
+Quotations are matched against the granted ledger (`engine/lint/quote-lint.ts`); a restricted sense is
+matched by verb against the character's own CANNOT list (`engine/lint/sense-lint.ts`). Deeds and the
 consult's `situation` stay the model's, because neither has a list to check against. All three run
 **alongside** each other and their `why` strings join into the one `narration_flag` — there is only
 one redraft, so a piece carrying two findings has to report both in the same message. What the lint
@@ -283,7 +283,7 @@ check nobody made must not read as a check that passed are [`Judge.MD`](Judge.MD
 ### The repeat guard
 
 After the lint, and just before the append, a piece that **opens by re-emitting the page's tail** is
-stripped back to its genuinely new text (`engine/repeat-lint.ts`, no model call). The recorded
+stripped back to its genuinely new text (`engine/lint/repeat-lint.ts`, no model call). The recorded
 failure: the doorway run's second draft re-emitted the first — 386 identical characters, the whole
 opening paragraph — and appended one new sentence, and both were accepted, so the scene opened with
 the paragraph twice. The guard matches the piece's leading sentences against the last two pieces

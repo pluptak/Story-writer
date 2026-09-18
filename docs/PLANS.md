@@ -58,7 +58,7 @@ Type: measurement
 Why now: settles whether pronoun drift is rare noise or a live problem before deciding whether a
 mechanical fix is worth building over a prompt change.
 Next action: read more `e4b`/doorway runs (any cast size, any model) for pronoun-switch rate,
-alongside `lintPronouns`'s (`engine/pronoun-lint.ts`) output.
+alongside `lintPronouns`'s (`engine/lint/pronoun-lint.ts`) output.
 Done when: enough runs are read for pronoun-switch rate to say whether this is rare noise or a live
 problem, and if live, whether a mechanical fix (a per-piece check against the cast's declared
 pronoun, the same shape as the fact-ledger check parked under Small-model coherence limits) is worth
@@ -95,7 +95,7 @@ entry is now scoped to that question alone.
 
 **Evidence since (2026-09-17) — the mechanical check exists now, and is silent on both:** two more
 `e4b`/doorway runs (`05-18-22-498Z`, `05-22-55-735Z`, revision `6e69eff`), the first read under the
-just-wired `lintPronouns` (`engine/pronoun-lint.ts`) rather than by eye alone. Both cast members
+just-wired `lintPronouns` (`engine/lint/pronoun-lint.ts`) rather than by eye alone. Both cast members
 have declared `pronouns` in `story.json` (RIVEN they/them, MERRITT he/him); neither run produced a
 `narration_pronoun_flag`, and a manual name-proximity scan of both pages agrees — every MERRITT
 reference stays `he`/`his`/`himself` (RIVEN is narrated second-person throughout, so there is little
@@ -121,7 +121,7 @@ needed for the policy question this measurement feeds.
 Evidence: `05-18-22-498Z`, `05-22-55-735Z` (pre-instrumentation, revision `6e69eff`);
 `06-15-52-596Z`, `07-50-49-951Z` (first post-instrumentation reads); `scripts/done-judge-bench.ts` +
 `scripts/done-judge-bench-cases.json` (resampling harness, 12 cases across 6 stories); calibration
-fixtures in `tests/scene-loop-consult.test.ts`.
+fixtures in `tests/engine/scene-loop-consult.test.ts`.
 
 **Evidence since (2026-09-17) — first post-instrumentation reads, both doorway/`e4b`:**
 `06-15-52-596Z` (21 steps, no extension) ended `done: true` with a `resolved` verdict — Riven picks
@@ -266,7 +266,7 @@ It is checked at all three places a scene's ending is decided, not only a writer
 existing `scene_done` site, every step-budget exhaustion (before the engine even learns whether an
 extension will be granted — the third silent path above), and the hard cap. `done_flagged` /
 `done_confirmed` still exist, unchanged, for `buildChapterBeatOutcome`'s writer-declared-only reading
-(`run-and-save.ts`). Calibration fixtures are in `tests/scene-loop-consult.test.ts` (resolved,
+(`run-and-save.ts`). Calibration fixtures are in `tests/engine/scene-loop-consult.test.ts` (resolved,
 open, unclear/unavailable, hard-cap, and budget-exhaustion-with-no-grant). Nothing gates yet — this
 is still step 5 of the block plan, not step 6.
 
@@ -570,7 +570,7 @@ fix is not decided. Nothing here should be built before its question is answered
 
 Type: decision
 Why now: both halves of the mechanism are now built — verbatim delivery, and a gate that refuses a
-situation retelling what the block carries (`engine/situation-lint.ts`, `Character.MD`) — but the
+situation retelling what the block carries (`engine/lint/situation-lint.ts`, `Character.MD`) — but the
 only live evidence for either predates the gate. The flag is still off by default, so nothing
 exercises them together.
 Next action: one live run under `--heard-channel` on a story that **declares pronouns**, then read
@@ -675,7 +675,7 @@ nothing is built until then.
 A character consulted at step 2 and again at step 24 holds only its answer as decided: no record of
 what the page did with it, nor of the intervening beats. The measurement that opened this
 (`scripts/measure-situation-coverage.ts` against the recorded-run fixture: 16 re-consults, 15 of them
-stale) found the mechanical screen in `engine/situation-coverage.ts` uncalibrated (0/15) but the
+stale) found the mechanical screen in `engine/lint/situation-coverage.ts` uncalibrated (0/15) but the
 human read 15/15 carrying the decision-relevant intervention — including the one-word "Clear."
 rendered as "a single word of confirmation". That clears the 70% bar fixed before the run, which
 sends this to enforcement, with caveats (one fixture, one story, one model; confirm on a second live
@@ -697,7 +697,7 @@ last two, unflagged by any lint) — `SINCE_FIELD`'s own instruction to address 
 in `since` is the likely source, bleeding into the general narration register on this model. And it
 let a CANNOT violation through the gate `since` is supposed to close: MERRITT
 (`restrictions: ["sight"]`, blind) was told "Riven ... maintaining eye contact with you" — sight-
-dependent, unflagged, because `lintRestrictedSituation`'s sight list (`engine/sense-lint.ts`) is
+dependent, unflagged, because `lintRestrictedSituation`'s sight list (`engine/lint/sense-lint.ts`) is
 literal verbs (`watch`/`gaze`/`stare`/gated `look`) and "eye contact" is a noun phrase outside it —
 a gap that predates this flag but that free-authored `since` prose exercises more than the
 structured `action`/`speech` fields ever did.
@@ -839,7 +839,7 @@ Nothing here is work. Each entry exists to stop a future decision going wrong.
   is shipped; see [`Architect.MD`](Architect.MD)'s "Fired world events".)
 - **A full ports-and-adapters restructuring. Evaluated and rejected, not deferred.** The decoupling
   program shipped the one real piece (route modules no longer hold live engine objects); the rest
-  does not apply — dependency direction already holds under test (`tests/boundaries.test.ts`),
+  does not apply — dependency direction already holds under test (`tests/server/boundaries.test.ts`),
   generic taxonomies describe this system worse, view models for reads with presenters buy nothing, a
   DTO layer under the story editor is actively harmful (any view model there must be isomorphic or a
   save silently drops fields), `PROVIDER` injection is ceremony over a monkey-patched singleton, and

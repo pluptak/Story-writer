@@ -20,7 +20,7 @@ npx tsx story-writer.ts --serve
 2. **Draft a scene** — the writer agent writes one chapter of prose from the POV of a single character, bounded by the scene's place, question, length, and roster.
 3. **Consult the cast** — when what happens next turns on a character's choice, the writer consults that character's agent. The character responds from its own character definition (`persona`, `knows`, `goal`, `belief`, `impulse`, `voice`, `skills`, `restrictions`) only.
 4. **Reject and retry** — if a character's answer is rejected, the question is re-asked of a fresh instance. The rejected instance learns nothing.
-5. **Lint as you go** — every draft passes through quotation-lint, sense-lint, and the narration judge (run together in `engine/narration-lint.ts`) plus the repeat-lint guard before it's appended.
+5. **Lint as you go** — every draft passes through quotation-lint, sense-lint, and the narration judge (run together in `engine/lint/narration-lint.ts`) plus the repeat-lint guard before it's appended.
 
 ## Project layout
 
@@ -28,7 +28,7 @@ npx tsx story-writer.ts --serve
 data/stories/            # Your stories' content (gitignored) — story.json + chapters/
 data/catalogs/           # Persisted reusable assets (gitignored)
 tests/fixtures/doorway/  # The committed example and shared test fixture
-tests/fixtures/recorded-run/ # One captured doorway run, played back by tests/replay.test.ts
+tests/fixtures/recorded-run/ # One captured doorway run, played back by tests/engine/replay.test.ts
 engine/                  # The engine, split leaf-first (see CLAUDE.md)
 server/                  # HTTP surface for --serve mode (viewer + API routes in server/*.ts, assets in server/gui/)
 prompts/                 # Every word said to a model (prompts.ts at the root re-exports them)
