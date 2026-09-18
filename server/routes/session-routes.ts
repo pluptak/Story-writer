@@ -27,7 +27,8 @@ export async function handleSessionRoutes(
     return true;
   }
 
-  if (path === "/select" && req.method === "POST") {
+  if (path === "/select") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     if (!isPickAwaited()) { json(res, 400, { ok: false, reason: "the session is not waiting on a choice" }); return true; }
     if (refuseWrite(res, "pick")) return true;
@@ -44,7 +45,8 @@ export async function handleSessionRoutes(
     return true;
   }
 
-  if (path === "/models" && req.method === "GET") {
+  if (path === "/models") {
+    if (requireMethod(res, req, "GET")) return true;
     const ids = await host.availableModelIds();
     json(res, 200, {
       ids: ids ?? [], reachable: ids !== null,

@@ -7,7 +7,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { LIVE, isPickAwaited, consumePick } from "../../live.ts";
-import { json, readJsonBody } from "../infra/http-util.ts";
+import { json, readJsonBody, requireMethod } from "../infra/http-util.ts";
 import { modelOr400 } from "./route-helpers.ts";
 import type { ScaffoldRoutesHost, Concept, RegenScope } from "../route-hosts.ts";
 
@@ -56,11 +56,14 @@ function readRegenScope(o: Record<string, unknown>): { ok: true; scope?: RegenSc
 export async function handleScaffoldRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: ScaffoldRoutesHost,
 ): Promise<boolean> {
-  if (path === "/scaffold" && req.method !== "POST") {
+  if (path === "/scaffold") {
+    if (requireMethod(res, req, "GET")) return true;
     json(res, 200, host.scaffoldState());
     return true;
   }
-  if (!(path.startsWith("/scaffold/") && req.method === "POST")) return false;
+  if (path.startsWith("/scaffold/")) {
+    if (requireMethod(res, req, "POST")) return true;
+  } else return false;
 
   const o = await readJsonBody(req);
   const what = path.slice("/scaffold/".length);

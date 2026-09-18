@@ -5,7 +5,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { json, readJsonBody, getQuery } from "../infra/http-util.ts";
+import { json, readJsonBody, getQuery, requireMethod } from "../infra/http-util.ts";
 import { kindOf, idOr400 } from "./route-helpers.ts";
 import type { CatalogRoutesHost } from "../route-hosts.ts";
 
@@ -13,7 +13,8 @@ import type { CatalogRoutesHost } from "../route-hosts.ts";
 export async function handleCatalogRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: CatalogRoutesHost,
 ): Promise<boolean> {
-  if (path === "/catalog" && req.method === "GET") {
+  if (path === "/catalog") {
+    if (requireMethod(res, req, "GET")) return true;
     const query = getQuery(req);
     const kind = query.get("kind") || "characters";
     const r = await host.catalogEntries(kind, { includeHidden: query.get("includeHidden") === "1" });
@@ -25,19 +26,22 @@ export async function handleCatalogRoutes(
     return true;
   }
 
-  if (path === "/catalog/config" && req.method === "GET") {
+  if (path === "/catalog/config") {
+    if (requireMethod(res, req, "GET")) return true;
     // Awaited: the origin/general projections read the persisted skills catalog, so a host may
     // answer asynchronously. Awaiting a synchronous reply is a no-op, which keeps test hosts plain.
     json(res, 200, await host.catalogConfig());
     return true;
   }
 
-  if (path === "/catalog/usage" && req.method === "GET") {
+  if (path === "/catalog/usage") {
+    if (requireMethod(res, req, "GET")) return true;
     json(res, 200, { ok: true, usage: await host.catalogUsage() });
     return true;
   }
 
-  if (path === "/catalog/entry" && req.method === "GET") {
+  if (path === "/catalog/entry") {
+    if (requireMethod(res, req, "GET")) return true;
     const query = getQuery(req);
     const kind = query.get("kind") || "characters";
     const id = idOr400(res, query.get("id"));
@@ -58,7 +62,8 @@ export async function handleCatalogRoutes(
     return true;
   }
 
-  if (path === "/catalog/check" && req.method === "POST") {
+  if (path === "/catalog/check") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const kind = kindOf(o);
     const r = await host.catalogCheck(kind, o.entry);
@@ -74,7 +79,8 @@ export async function handleCatalogRoutes(
     return true;
   }
 
-  if (path === "/catalog/save" && req.method === "POST") {
+  if (path === "/catalog/save") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const kind = kindOf(o);
     const r = await host.catalogSave(kind, o.entry);
@@ -86,7 +92,8 @@ export async function handleCatalogRoutes(
     return true;
   }
 
-  if (path === "/catalog/delete" && req.method === "POST") {
+  if (path === "/catalog/delete") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const kind = kindOf(o);
     const id = idOr400(res, o.id);
@@ -101,7 +108,8 @@ export async function handleCatalogRoutes(
     return true;
   }
 
-  if (path === "/catalog/visibility" && req.method === "POST") {
+  if (path === "/catalog/visibility") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const kind = kindOf(o);
     const id = idOr400(res, o.id);
@@ -117,7 +125,8 @@ export async function handleCatalogRoutes(
     return true;
   }
 
-  if (path === "/catalog/assist" && req.method === "POST") {
+  if (path === "/catalog/assist") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
 
     // Wire-shape checks live here (route-specific); `kind` validation lives in the host.

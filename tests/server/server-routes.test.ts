@@ -583,10 +583,11 @@ describe("handleRunControl", () => {
     assert.equal(r.handled, false);
   });
 
-  it("only handles POST and GET methods", async () => {
+  it("refuses non-POST methods with 405", async () => {
     resetLive(); LIVE.running = true; armRun();
     const rPut = await callRoute(handleRunControl, "/stop", {}, host, "PUT");
-    assert.equal(rPut.handled, false);
+    assert.equal(rPut.handled, true);
+    assert.equal(rPut.code, 405);
     resetLive();
   });
 });

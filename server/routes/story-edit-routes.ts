@@ -5,7 +5,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { json, readJsonBody, getQuery } from "../infra/http-util.ts";
+import { json, readJsonBody, getQuery, requireMethod } from "../infra/http-util.ts";
 import { storyOr400, refuseWrite } from "./route-helpers.ts";
 import type { StoryEditHost } from "../route-hosts.ts";
 
@@ -13,7 +13,8 @@ import type { StoryEditHost } from "../route-hosts.ts";
 export async function handleStoryEditRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: StoryEditHost,
 ): Promise<boolean> {
-  if (path === "/story/edit" && req.method === "GET") {
+  if (path === "/story/edit") {
+    if (requireMethod(res, req, "GET")) return true;
     const query = getQuery(req);
     const dir = await storyOr400(res, host, query.get("dir") || "");
     if (!dir) return true;
@@ -28,12 +29,14 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/edit-config" && req.method === "GET") {
+  if (path === "/story/edit-config") {
+    if (requireMethod(res, req, "GET")) return true;
     json(res, 200, host.editorConfig());
     return true;
   }
 
-  if (path === "/story/check" && req.method === "POST") {
+  if (path === "/story/check") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const r = host.checkStory(o.story);
     if (!r.ok) {
@@ -44,7 +47,8 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/save" && req.method === "POST") {
+  if (path === "/story/save") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const dir = await storyOr400(res, host, String(o.dir ?? ""));
     if (!dir) return true;
@@ -59,7 +63,8 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/discard" && req.method === "POST") {
+  if (path === "/story/discard") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const dir = await storyOr400(res, host, String(o.dir ?? ""));
     if (!dir) return true;
@@ -73,7 +78,8 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/suggest" && req.method === "POST") {
+  if (path === "/story/suggest") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     if (refuseWrite(res, "suggest")) return true;
     const r = await host.suggestEdits(o.spec, String(o.text ?? ""));

@@ -5,7 +5,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { json, readJsonBody } from "../infra/http-util.ts";
+import { json, readJsonBody, requireMethod } from "../infra/http-util.ts";
 import { storyOr400, modelOr400 } from "./route-helpers.ts";
 import type { HandoffRoutesHost } from "../route-hosts.ts";
 
@@ -13,11 +13,14 @@ import type { HandoffRoutesHost } from "../route-hosts.ts";
 export async function handleNextChapterRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: HandoffRoutesHost,
 ): Promise<boolean> {
-  if (path === "/next-chapter" && req.method !== "POST") {
+  if (path === "/next-chapter") {
+    if (requireMethod(res, req, "GET")) return true;
     json(res, 200, host.handoffState());
     return true;
   }
-  if (!(path.startsWith("/next-chapter/") && req.method === "POST")) return false;
+  if (path.startsWith("/next-chapter/")) {
+    if (requireMethod(res, req, "POST")) return true;
+  } else return false;
 
   const o = await readJsonBody(req);
   const what = path.slice("/next-chapter/".length);

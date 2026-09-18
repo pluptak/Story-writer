@@ -22,7 +22,8 @@ export async function handleStoryReadRoutes(
     return true;
   }
 
-  if (path === "/cast" && req.method === "GET") {
+  if (path === "/cast") {
+    if (requireMethod(res, req, "GET")) return true;
     const query = getQuery(req);
     const dir = await storyOr400(res, host, query.get("dir") || "");
     if (!dir) return true;

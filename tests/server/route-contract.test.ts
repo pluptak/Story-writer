@@ -4,7 +4,7 @@
  *
  *  Convention under test: mutating POSTs answer `{ok:true,…}` or `{ok:false,reason}` with a 4xx;
  *  validation-shaped answers (issues/problems, the catalog assistant's expected failures) are 200
- *  with `ok:false`; unknown actions are 404; read-only GETs refuse other methods with 405. */
+ *  with `ok:false`; unknown actions are 404; known paths refuse other methods with 405. */
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -128,6 +128,32 @@ describe("run log contract", () => {
     const retained = await callRoute(handleRunLogRoutes, "/runs/log", {}, makeHost());
     assert.equal(retained.handled, true);
     assert.equal(retained.code, 405);
+  });
+
+  it("mutating POSTs refuse other methods with 405, not 404", async () => {
+    resetLive();
+    const cases = [
+      await callRoute(handleRunControl, "/stop", {}, makeHost(), "GET"),
+      await callGet(handleStoryEditRoutes, "/story/save?dir=doorway", makeHost()),
+      await callGet(handleCatalogRoutes, "/catalog/save", makeHost()),
+      await callRoute(handleSessionRoutes, "/select", { dir: "x" }, makeHost(), "GET"),
+      await callRoute(handleStoryReadRoutes, "/cast", { dir: "x" }, makeHost(), "POST"),
+      await callGet(handleScaffoldRoutes, "/scaffold/say", makeHost()),
+      await callGet(handleNextChapterRoutes, "/next-chapter/say", makeHost()),
+    ];
+    for (const r of cases) {
+      assert.equal(r.handled, true);
+      assert.equal(r.code, 405);
+    }
+  });
+
+  it("state reads refuse non-GET methods with 405", async () => {
+    const scaffoldPut = await callRoute(handleScaffoldRoutes, "/scaffold", {}, makeHost(), "PUT");
+    assert.equal(scaffoldPut.handled, true);
+    assert.equal(scaffoldPut.code, 405);
+    const handoffPut = await callRoute(handleNextChapterRoutes, "/next-chapter", {}, makeHost(), "PUT");
+    assert.equal(handoffPut.handled, true);
+    assert.equal(handoffPut.code, 405);
   });
 });
 
