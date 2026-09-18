@@ -255,6 +255,12 @@ another attempt and checks it before committing; Publish anyway explicitly accep
 flagged draft; Stop chapter discards the pending draft and preserves the already committed page.
 If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
 that committed page intact. Turning interactive off during a pending decision resolves it as stop.
+
+Whichever is chosen is written to the run's log as `lint_decision`, because nothing else records it:
+the answer is a human's, not a model's, so no transcript holds it. `scripts/make-replay-fixture.mjs`
+carries those answers into the fixture as `lintDecisions`, in order — without them a replay of a run
+that published or redrafted past a blocking finding stops at that piece, since a replay is headless
+and headless means nobody to ask.
 
 **Judge-only findings remain advisory:** after the one automatic redraft, a repeated judge-only
 finding or redraft failure retains the previous accept-with-warning behaviour. An unavailable judge

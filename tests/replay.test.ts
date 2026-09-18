@@ -16,12 +16,11 @@
  *  - the step budget, because when a scene outlives `maxSteps` the engine ASKS, and a viewer or a
  *    terminal answers. That grant lives in the writing log; `source.json` carries it as
  *    `effectiveSteps`, and without it the replay stops where the live run was extended.
- *  - `judge.done`, because this recording predates the budget-exhaustion done-judge check
- *    (PLANS.md item 2). The stand-in answers "open" (the recorded run's own ending, at the cap
- *    with `done: false`, was never resolved) so nothing here claims a verdict the model never gave.
- *    Remove this stand-in the next time the fixture is re-recorded with
- *    `scripts/make-replay-fixture.mjs` against the current engine — that recording will carry a
- *    real one.
+ *  - the narration lint gate's answers, for the same reason and with more teeth: a blocking finding
+ *    that survives its redraft ASKS, and `stop` ends the chapter there. `source.json` carries them
+ *    as `lintDecisions`, in order, and the io below hands them back. Without them a replay of any
+ *    run whose human published or redrafted past a blocking finding stops at that piece, which is
+ *    what a headless run means by "nobody to ask".
  */
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -30,27 +29,28 @@ import { readFileSync } from "node:fs";
 import { loadStory } from "../engine/story-format.ts";
 import { runChapter } from "../engine/scene-loop.ts";
 import { ENGINE } from "../engine/engine-state.ts";
-import { armRun, resetLive } from "../live.ts";
+import { armRun, resetLive, LIVE_IO, type LintDecision } from "../live.ts";
 import { quiet, replayFetch } from "./helpers.ts";
 
 const FIXTURE = "tests/fixtures/recorded-run";
 const SOURCE = JSON.parse(readFileSync(`${FIXTURE}/source.json`, "utf8")) as {
   effectiveSteps: number;
+  lintDecisions?: LintDecision[];
   outcome: { steps: number; words: number; done: boolean };
 };
 
-/** The recorded run's own conditions: its granted step budget, and a stand-in for the one call no
- *  transcript holds. */
+/** The recorded run's own conditions: its granted step budget, the answers it gave the lint gate,
+ *  and a stand-in for the one call no transcript holds. Decisions are handed back in order; once
+ *  they run out the port answers "stop", which is what a run with nobody to ask does. */
 async function replayedChapter() {
   const sc = await quiet(() => loadStory(FIXTURE));
   sc.maxSteps = SOURCE.effectiveSteps;
-  const replay = replayFetch(FIXTURE, {
-    "summary.digest": { text: "" },
-    "judge.done": { status: "open", why: "supplied here — the recording predates this call" },
-  });
+  const decisions = [...(SOURCE.lintDecisions ?? [])];
+  const io = { ...LIVE_IO, lintDecision: async () => decisions.shift() ?? "stop" as LintDecision };
+  const replay = replayFetch(FIXTURE, { "summary.digest": { text: "" } });
   globalThis.fetch = replay.fetchMock;
   armRun();
-  const r = await quiet(() => runChapter(sc, 1, () => {}));
+  const r = await quiet(() => runChapter(sc, 1, () => {}, io));
   return { r, replay };
 }
 
@@ -69,7 +69,7 @@ describe("replaying a recorded chapter", () => {
     const recorded = readFileSync(`${FIXTURE}/scene.md`, "utf8").replace(/\r\n/g, "\n");
     assert.equal(r.prose.join("\n\n").trim(), recorded.trim(),
       "the replayed chapter is word-for-word the recorded one");
-    assert.equal(r.done, SOURCE.outcome.done, "the recorded run finished, so the replay must too");
+    assert.equal(r.done, SOURCE.outcome.done, "the replay ends the chapter the way the recording did");
     assert.equal(r.steps, SOURCE.outcome.steps);
     assert.equal(r.words, SOURCE.outcome.words);
     assert.deepEqual(replay.unused(), {},
@@ -82,11 +82,11 @@ describe("replaying a recorded chapter", () => {
     // The pair is the key: both characters answer at `character.consult` and are told apart by name
     // alone. Were that ever to collapse to the site, one of these would eat the other's replies.
     assert.equal(replay.used("MERRITT|character.consult"), 14);
-    assert.equal(replay.used("RIVEN|character.consult"), 13);
-    // The writer's two sites share one transcript and interleave — 19 drafts against 6 redrafts — so
+    assert.equal(replay.used("RIVEN|character.consult"), 7);
+    // The writer's two sites share one transcript and interleave — 16 drafts against 8 redrafts — so
     // order alone would hand a redraft's reply to a draft. Per-queue keeps them straight.
-    assert.equal(replay.used("WRITER|writer.draft"), 19);
-    assert.equal(replay.used("WRITER|writer.redraft"), 6);
-    assert.equal(replay.total(), 98);
+    assert.equal(replay.used("WRITER|writer.draft"), 16);
+    assert.equal(replay.used("WRITER|writer.redraft"), 8);
+    assert.equal(replay.total(), 85);
   });
 });

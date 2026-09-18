@@ -20,7 +20,7 @@ import { stripRepeatedPrefix } from "./repeat-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { type Msg } from "./llm-client.ts";
-import { LIVE, RUN, StoppedError, LIVE_IO, type SceneIo } from "../live.ts";
+import { LIVE, RUN, StoppedError, LIVE_IO, type SceneIo, type LintDecision } from "../live.ts";
 import { ENGINE } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
@@ -264,6 +264,7 @@ export type RunEvent =
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "forced_end"; words: number; target: number; chapter: number }
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
+  | { t: "lint_decision"; choice: LintDecision; chapter: number }
   | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
   | { t: "narration_pronoun_flag"; why: string; character: string; found: string; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
@@ -795,7 +796,7 @@ export async function writeScene(run: SceneRun) {
       let redrafted = false;
       for (;;) {
         if (needsDecision && findings.blocking) {
-          let choice;
+          let choice: LintDecision;
           try {
             choice = await io.lintDecision?.({ prose: reply.prose, blocking: findings.blocking,
               advisory: findings.advisory, chapter }) ?? "stop";
@@ -805,6 +806,7 @@ export async function writeScene(run: SceneRun) {
             console.log(`\n${C.yellow}Lint decision port failed (${(e as Error).message}) — stopping the chapter.${C.reset}`);
             choice = "stop";
           }
+          log({ t: "lint_decision", choice, chapter });
           if (RUN.stopped || choice === "stop") { stoppedMidLint = true; break; }
           if (choice === "publish") break;
         }
@@ -1118,8 +1120,11 @@ export async function writeScene(run: SceneRun) {
   return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped, questionState };
 }
 
-/** Write one chapter: build the agents for the chapter's roster, call writeScene, and clean up. */
-export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunEvent) => void): Promise<
+/** Write one chapter: build the agents for the chapter's roster, call writeScene, and clean up.
+ *  `io` is the human-interaction port, defaulted by writeScene to LIVE_IO — the replay passes its
+ *  own so a recorded run's human answers can be handed back. */
+export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunEvent) => void,
+                                 io?: SceneIo): Promise<
   { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean; questionState: QuestionState }
 > {
   if (!Number.isInteger(chapter) || chapter < 1 || chapter > sc.scenes.length) {
@@ -1146,6 +1151,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
       facts: sc.facts,
       timeline: sc.timeline,
       catalogs: sc.catalogs,
+      io,
     });
   } finally {
     LIVE.writer = null; LIVE.agents = null; LIVE.log = null;

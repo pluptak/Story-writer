@@ -769,6 +769,11 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                     initial finding from a finding after redrafting.
                                                     Mechanical and judge findings are checked together;
                                                     this event alone is not proof the draft was committed.
+  { t:"lint_decision"; choice }                  — a blocking finding survived its redraft, so the gate
+                                                   asked, and this is what the human answered:
+                                                   `redraft` (try once more), `publish` (commit the
+                                                   piece as it stands) or `stop` (end the chapter).
+                                                   Nothing else records the answer
   { t:"repeat_strip"; chars; words; whole }      — the piece opened by re-emitting the page's tail
                                                    (engine/repeat-lint.ts, no model call); the repeated
                                                    prefix was stripped before the append, so the draft
