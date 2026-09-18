@@ -87,8 +87,8 @@ does not mask a real type error. It does **not** cover `test:gui` (needs a brows
 
 One run writes **one chapter**. Between chapters, the viewer's handoff panel (started with `--serve`)
 re-authors the cast for the next one ([Architect.MD](docs/Architect.MD)). The new-story interview and the
-handoff are browser-only; passing their old console flags (`--new`, `--oneshot`, `--idea`,
-`--next-chapter`) is rejected with a pointer at `--serve`. `--headless` starts the server alone — no
+handoff are browser-only; their old console flags (`--new`, `--oneshot`, `--idea`,
+`--next-chapter`) are gone — passed now, strict parsing rejects them as unknown options. `--headless` starts the server alone — no
 story argument, no console picker, no one-shot — with the browser driving from the shelf and Ctrl-C
 stopping any run in flight gracefully before exit. `--open-consult` (beside `--consult` on the
 same console entry point) is a CLI-only prototype: a freetext pressure-test chat with one
@@ -128,7 +128,7 @@ way.**
 | --- | --- |
 | [story-writer.ts](story-writer.ts) | the composition root: import-time engine wiring and the console entry points (`--preflight`, `--consult`) — everything else starts from `app.ts` |
 | [app.ts](app.ts) | the application layer: run setup (`startChapterRun`), the story pick (browser-driven or console), the pick → run → pick loop, and the headless bootstrap (`--headless`) with its graceful-shutdown signal |
-| [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `SERVE`/`HEADLESS`/`PORT`/`STORY_DIR`, the `flag()` reader, and the retired-flag rejection |
+| [cli-flags.ts](cli-flags.ts) | the one place that reads `process.argv` — `SERVE`/`HEADLESS`/`PORT`/`STORY_DIR` and the `flag()` reader |
 | [run-and-save.ts](run-and-save.ts) | everything one chapter run does around the scene loop: the out/ directory and its logs, incremental scene.md, retained-run rotation, the chapter snapshot and the catalogs snapshot beside it, and the unfired-beat and beat-outcome sidecars the handoff reads |
 | [run-manifest.ts](run-manifest.ts) | which engine wrote a run — a source fingerprint taken at import time (so a stale `--serve` process is caught rather than mislabelled), the git revision beside it, and `out/<id>/manifest.json` |
 | [host.ts](host.ts) | the `ServerHost` object handed to `server/server.ts`: its story.json read/persist helpers, and the scaffold and handoff domains in full — the open `ScaffoldSession`/`NextChapterSession`, their busy/abandon-generation bookkeeping, and the story-write lock are private here, reached only through `scaffold*()`/`handoff*()` methods that publish their own SSE state |

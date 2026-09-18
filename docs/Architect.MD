@@ -861,7 +861,8 @@ and the handoff from `#/handoff?dir=` through `GET /next-chapter` and
 `POST /next-chapter/{start,say,regenerate,accept,abandon}`,
 specified in `GUI-SPEC.md`. The server reaches the engine through `ServerHost` and
 never imports engine modules directly. The old console walkthrough (`--new`, `--oneshot`,
-`--idea`, `--next-chapter`) was removed; those flags are rejected with a pointer at `--serve`.
+`--idea`, `--next-chapter`) was removed; those flags are no longer declared, so strict
+parsing rejects them as unknown options.
 
 ## Remaining work
 

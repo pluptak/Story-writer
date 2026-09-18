@@ -25,7 +25,7 @@ import { setFitWarning } from "./engine/agent.ts";
 import { setDebugWrite } from "./engine/json-extract.ts";
 import { warn } from "./engine/warnings.ts";
 import { appMain } from "./app.ts";
-import { PREFLIGHT, SERVE, HEADLESS, PORT, ARCHITECT_DEBUG, ARCHITECT_DEBUG_LOG, STORY_DIR, flag, retiredFlagUsed, parseError } from "./cli-flags.ts";
+import { PREFLIGHT, SERVE, HEADLESS, PORT, ARCHITECT_DEBUG, ARCHITECT_DEBUG_LOG, STORY_DIR, flag, parseError } from "./cli-flags.ts";
 
 // json-extract stays engine-free; its debug lines follow ENGINE.debug from here, at call time.
 setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
@@ -194,13 +194,6 @@ async function main() {
   // viewer and said nothing about why.
   if (parseError) {
     console.error(parseError);
-    process.exitCode = 1;
-    return;
-  }
-  const retired = retiredFlagUsed();
-  if (retired) {
-    console.error(`${retired} was removed — start the viewer with --serve and use the browser flow `
-      + `(the shelf's new-story interview, or the handoff panel).`);
     process.exitCode = 1;
     return;
   }

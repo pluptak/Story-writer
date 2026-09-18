@@ -51,15 +51,7 @@ const OPTIONS = {
   // Architect tracing.
   "architect-debug": { type: "boolean" },
   "architect-debug-log": { type: "string" },
-  // Retired, and declared only so that strict parsing does not reject them with its own generic
-  // message before retiredFlagUsed() can point at --serve and the browser flow.
-  new: { type: "boolean" },
-  oneshot: { type: "boolean" },
-  idea: { type: "boolean" },
-  "next-chapter": { type: "boolean" },
 } as const;
-
-const RETIRED_FLAGS = ["new", "oneshot", "idea", "next-chapter"] as const;
 
 type FlagValue = string | boolean | undefined;
 
@@ -85,9 +77,7 @@ try {
   // dash, which is never what happened here — a mistyped flag is. Say what IS accepted instead,
   // and fall back to the raw message if that wording ever changes upstream.
   if (err.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION") {
-    const known = Object.keys(OPTIONS)
-      .filter(k => !(RETIRED_FLAGS as readonly string[]).includes(k))
-      .map(k => `--${k}`).join(" ");
+    const known = Object.keys(OPTIONS).map(k => `--${k}`).join(" ");
     parseError = `${err.message.split(". To specify")[0]}.\nAccepted flags: ${known}`;
   } else {
     parseError = err.message;
@@ -113,10 +103,4 @@ export const flag = (name: string): string | undefined => {
   const v = VALUES[name];
   if (v === undefined) return undefined;
   return v === true ? "" : String(v);
-};
-
-/** The first retired flag on the command line, if any — main() turns this into the rejection. */
-export const retiredFlagUsed = (): string | undefined => {
-  const hit = RETIRED_FLAGS.find(f => VALUES[f] === true);
-  return hit && `--${hit}`;
 };
