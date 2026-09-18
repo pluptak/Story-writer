@@ -5,11 +5,10 @@
  */
 import { type WriteStream } from "node:fs";
 
-/** Mutable run knobs shared across the engine: stream/debug/serve/echo flags, token cap, and the run's LLM log handles. */
+/** Mutable run knobs shared across the engine: stream/debug/echo flags, token cap, and the run's LLM log handles. */
 export const ENGINE = {
   stream: true,
   debug: false,
-  serve: false,
   /** Free Consult spike (CLI-only, --free-consult / --free-consult-v2 / --free-consult-v3): strip
    *  authorial behavioral steering from the character prompt while keeping every information/
    *  physical boundary intact. "v1" is the strip-only condition; "v2" adds one paragraph to the
@@ -49,8 +48,8 @@ export const ENGINE = {
   cannotNone: false,
   cannotTestimony: false,
   /** What the scene loop echoes to the console: the draft prose and the characters' acts and
-   *  replies. `serve` only means the HTTP surface is up — a headless process serves AND echoes,
-   *  because its console is the monitor there is; plain --serve goes quiet because the viewer is. */
+   *  replies. A headless process echoes because its console is the monitor there is; plain --serve
+   *  goes quiet because the viewer is. */
   echoConsole: true,
   /** The characters' own replies on top of that: `acts:`, `reacts:` and consult answers. Off with
    *  --no-cast-echo; the prose echo and the JSONL/SSE record are untouched by it. */

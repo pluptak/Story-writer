@@ -33,7 +33,6 @@ setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
 // a layer above agent.ts — so the same sink pattern as setDebugWrite wires it in from here.
 setFitWarning(contextFit);
 
-ENGINE.serve = SERVE || HEADLESS;
 // Plain --serve goes quiet (the viewer is the monitor); headless serves AND echoes (its console is).
 ENGINE.echoConsole = !SERVE || HEADLESS;
 // --no-cast-echo trims just the characters' acts/reactions/answers from that echo; prose stays.
