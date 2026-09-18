@@ -89,6 +89,10 @@ export const sseClients = new Set<{ write: (s: string) => void }>();
 export const liveHistory: Array<{ seq: number } & RunEvent> = [];
 let liveSeq = 0;
 
+/** Default extra-step grant offered when the step budget is spent. Single source so the live
+ *  prompt, the console fallback, and the SSE replay in server/infra/sse.ts cannot desync. */
+export const DEFAULT_EXTRA_STEPS = 8;
+
 /** Fan one frame out to every attached viewer; silently ignored when nobody is watching. */
 export function sseWrite(frame: LiveFrame) {
   if (!sseClients.size) return;
@@ -286,7 +290,7 @@ export const LIVE_IO: SceneIo = {
       LIVE.awaitingContinue = { steps, budget };
       progressDone();
       console.log(`\n${C.yellow}Budget spent on chapter ${chapter} — waiting on the viewer.${C.reset}`);
-      sseWrite({ t: "continue_prompt", steps, budget, suggested: 8 });
+      sseWrite({ t: "continue_prompt", steps, budget, suggested: DEFAULT_EXTRA_STEPS });
       return new Promise<number>(resolve => { LIVE.continueResolve = resolve; });
     }
     if (!process.stdin.isTTY) {
@@ -298,7 +302,7 @@ export const LIVE_IO: SceneIo = {
     const ans = (await rl.question(`\n${C.yellow}${steps} steps used on chapter ${chapter} and the scene is not done. `
       + `How many more? [8, 0 to stop]: ${C.reset}`)).trim();
     rl.close();
-    const n = ans === "" ? 8 : Number(ans);
+    const n = ans === "" ? DEFAULT_EXTRA_STEPS : Number(ans);
     return Number.isInteger(n) && n > 0 ? n : 0;
   },
 

@@ -23,10 +23,12 @@ export async function handleRunLogRoutes(
   if (path === "/log.jsonl") {
     const out = host.outDir();
     if (!out) { json(res, 404, { ok: false, reason: "no run yet" }); return true; }
-    try {
-      res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-      res.end(await readFile(joinPath(out, "writing-log.jsonl"), "utf8"));
-    } catch { json(res, 404, { ok: false, reason: "no writing log" }); }
+    // Read before writeHead: a rejected read must still be free to answer 404, and headers
+    // can only be sent once.
+    const text = await readFile(joinPath(out, "writing-log.jsonl"), "utf8").catch(() => null);
+    if (text === null) { json(res, 404, { ok: false, reason: "no writing log" }); return true; }
+    res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+    res.end(text);
     return true;
   }
 
@@ -41,10 +43,10 @@ export async function handleRunLogRoutes(
   }
 
   if (path === "/runs/log") {
-    try {
-      res.writeHead(200, { "Content-Type": "application/x-ndjson" });
-      res.end(await readFile(joinPath(base, "out", id, "writing-log.jsonl"), "utf8"));
-    } catch { json(res, 404, { ok: false, reason: "no writing log" }); }
+    const text = await readFile(joinPath(base, "out", id, "writing-log.jsonl"), "utf8").catch(() => null);
+    if (text === null) { json(res, 404, { ok: false, reason: "no writing log" }); return true; }
+    res.writeHead(200, { "Content-Type": "application/x-ndjson" });
+    res.end(text);
     return true;
   }
 

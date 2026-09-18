@@ -21,7 +21,7 @@
  *  a second-person address inside dialogue or a situation is a different check's job
  *  (prompts/writer.ts's person clause, not this).
  */
-import { nameKey } from "../config-util.ts";
+import { nameKey, escapeRe } from "../config-util.ts";
 
 export interface PronounSet { subject: string; object: string; possessive: string; reflexive: string }
 
@@ -45,8 +45,6 @@ const STANDARD_PRONOUNS = [
   "his", "their", "hers", "theirs",
   "himself", "herself", "themself", "themselves",
 ];
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const SUBJECT_WINDOW = 40;
 

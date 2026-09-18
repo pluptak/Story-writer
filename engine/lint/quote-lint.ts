@@ -7,10 +7,14 @@
  * each against the granted-so-far ledger. An unmatched quotation flags with no model call, empty
  * ledger included — the exact case the LLM used to pass as a "free assertion".
  *
- * This file imports nothing from the engine: pure text matching, so it stays a leaf. */
+ * This file imports only config-util.ts: pure text matching plus shared regex escaping,
+ *  so it stays a leaf. */
+
+import { escapeRe } from "../config-util.ts";
 
 // Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
 export interface GrantedLine { character: string; speech: string; thought?: string; action?: string; }
+
 
 // The declared pronoun set, re-declared locally for the same reason — the shape already on
 // the schema and already consumed by pronoun-lint.ts, so no new authoring is needed.
@@ -96,8 +100,6 @@ function matchQuote(q: string, lines: string[]): boolean {
   }
   return false;
 }
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The paragraph separator the engine writes between pieces — the boundary the attribution
  *  fallbacks stop at, since no speech tag reaches across one. */

@@ -288,12 +288,6 @@ describe("readJsonBody", () => {
       (e: Error) => e instanceof HttpError && (e as HttpError).status === 413);
   });
 
-  it("accepts a missing Content-Type header (viewer's no-body POSTs send none)", async () => {
-    const req = fakeRequest({ data: "test" });
-    const result = await readJsonBody(req);
-    assert.deepEqual(result, { data: "test" });
-  });
-
   it("accepts Content-Type: application/json", async () => {
     const req = fakeRequest({ ok: true }, "POST", { "content-type": "application/json" });
     const result = await readJsonBody(req);

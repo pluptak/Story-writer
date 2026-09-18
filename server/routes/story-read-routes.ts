@@ -46,10 +46,12 @@ export async function handleStoryReadRoutes(
     if (!(await host.writtenChapters(storyDir)).includes(n)) {
       json(res, 404, { ok: false, reason: "no such chapter" }); return true;
     }
-    try {
-      res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
-      res.end(await readFile(joinPath(host.resolveStoryDir(storyDir), "chapters", `${n}.md`), "utf8"));
-    } catch { json(res, 404, { ok: false, reason: "no such chapter" }); }
+    // Read before writeHead: a rejected read must still be free to answer 404, and headers
+    // can only be sent once.
+    const text = await readFile(joinPath(host.resolveStoryDir(storyDir), "chapters", `${n}.md`), "utf8").catch(() => null);
+    if (text === null) { json(res, 404, { ok: false, reason: "no such chapter" }); return true; }
+    res.writeHead(200, { "Content-Type": "text/markdown; charset=utf-8" });
+    res.end(text);
     return true;
   }
 

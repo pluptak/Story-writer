@@ -18,7 +18,7 @@ import { reactionFanout, type GrantedEntry } from "./fanout.ts";
 import { lintPiece, type LintPieceResult } from "./lint/narration-lint.ts";
 import { stripRepeatedPrefix } from "./lint/repeat-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
-import { nameKey, sameName } from "./config-util.ts";
+import { nameKey, sameName, JUDGE_TEMPERATURE } from "./config-util.ts";
 import { type Msg } from "./llm-client.ts";
 import { LIVE, RUN, StoppedError, LIVE_IO, type SceneIo, type LintDecision } from "../live.ts";
 import { ENGINE } from "./engine-state.ts";
@@ -313,7 +313,6 @@ const HARD_CAP_MULT = 2;
 const NARRATION_LINT_RETRIES = 1;
 
 // Judging an answer is classification, not composition: the writer's own 0.8 buys nothing here.
-const JUDGE_TEMPERATURE = 0.3;
 
 
 /** Cast members who have gone unconsulted for long enough that the writer may have lost one.

@@ -35,7 +35,7 @@
  * This file imports nothing from the engine past config-util.ts: pure text matching, so it
  * stays a leaf the consult gate can call with no model, no fetch and no loop. */
 
-import { sameName } from "../config-util.ts";
+import { sameName, escapeRe } from "../config-util.ts";
 
 export interface SituationLintHit { ok: false; why: string; character: string; match: string; }
 
@@ -61,8 +61,6 @@ const REPORT_FRAMES = [
   "pressing you to",
   "offered",
 ];
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const FRAME_ALT = REPORT_FRAMES
   .map(f => f.split(" ").map(escapeRe).join("\\s+"))

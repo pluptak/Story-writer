@@ -460,7 +460,7 @@ describe("the lint decision gate in the loop", () => {
 
   it("a decision port that throws ends the chapter rather than hanging the scene", async () => {
     const sc = await sc0();
-    const { fetchMock, calls, flagged } = flaggedFetch();
+    const { fetchMock, calls } = flaggedFetch();
     const { io } = decisionIo("throw");
     const origFetch = globalThis.fetch;
     const origStream = ENGINE.stream;
@@ -472,7 +472,6 @@ describe("the lint decision gate in the loop", () => {
       assert.deepEqual(r.prose, [], "the committed page is preserved — nothing is discarded or invented");
       assert.equal(r.done, false);
       assert.equal(calls().writerCall, 1, "a port outage is not a second redraft");
-      assert.equal(!!flagged, true);
     } finally {
       globalFetchRestore(origFetch);
       ENGINE.stream = origStream;

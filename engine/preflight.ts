@@ -4,7 +4,6 @@ import { join as joinPath } from "node:path";
 import { PROVIDER } from "./providers/provider.ts";
 import { estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
-import { skillOrigins } from "./catalog.ts";
 import type { TimelineDef } from "./story-schema.ts";
 import { type Catalogs } from "./skills.ts";
 import { ENGINE } from "./engine-state.ts";

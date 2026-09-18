@@ -6,7 +6,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LIVE, sseClients, liveHistory, runState } from "../../live.ts";
+import { LIVE, sseClients, liveHistory, runState, DEFAULT_EXTRA_STEPS } from "../../live.ts";
 import { requireMethod } from "./http-util.ts";
 
 /** Attach an SSE subscriber for `/events`: headers, replay, then park on the bus.
@@ -23,7 +23,7 @@ export function handleSseRoute(
   res.write("retry: 3000\n\n");
   for (const ev of liveHistory) res.write(`data: ${JSON.stringify(ev)}\n\n`);
   res.write(`data: ${JSON.stringify(runState())}\n\n`);
-  if (LIVE.awaitingContinue) res.write(`data: ${JSON.stringify({ t: "continue_prompt", ...LIVE.awaitingContinue, suggested: 8 })}\n\n`);
+  if (LIVE.awaitingContinue) res.write(`data: ${JSON.stringify({ t: "continue_prompt", ...LIVE.awaitingContinue, suggested: DEFAULT_EXTRA_STEPS })}\n\n`);
   if (LIVE.awaitingLint) res.write(`data: ${JSON.stringify({ t: "lint_prompt", ...LIVE.awaitingLint })}\n\n`);
   sseClients.add(res);
   const dropClient = () => sseClients.delete(res);

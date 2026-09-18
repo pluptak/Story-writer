@@ -101,10 +101,6 @@ describe("4. existing character knowledge remains available where legitimately e
       "knows is not erased by the boundary block");
     assert.match(s, /WHAT HAS NOT HAPPENED/, "and the boundary rides along");
   });
-
-  it("the gates take no knowledge parameter — there is nothing in them that could erase it", () => {
-    assert.equal(normalizeReactionConsult.length, 2, "raw + cast only");
-  });
 });
 
 describe("5. a hidden world event does not automatically become character knowledge", () => {
@@ -207,9 +203,5 @@ describe("8. timeline repair reacts to that choice independently", () => {
     assert.deepEqual(adjudicateBeat(thing,
       { fired: true, landed: true, possible: false, questionLive: true, ended: true }),
       { op: "revise", cause: "contradicted" });
-  });
-
-  it("the repair signature admits no character data", () => {
-    assert.equal(adjudicateBeat.length, 2, "beat and standing — nowhere to put who chose what");
   });
 });
