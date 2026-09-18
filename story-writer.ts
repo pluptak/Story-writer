@@ -23,7 +23,6 @@ import { configureArchitectDebug } from "./engine/architect.ts";
 import { newCharacterAgent } from "./engine/scene-loop.ts";
 import { setFitWarning } from "./engine/agent.ts";
 import { setDebugWrite } from "./engine/json-extract.ts";
-import { warn } from "./engine/warnings.ts";
 import { appMain } from "./app.ts";
 import { PREFLIGHT, SERVE, HEADLESS, PORT, ARCHITECT_DEBUG, ARCHITECT_DEBUG_LOG, STORY_DIR, flag, parseError } from "./cli-flags.ts";
 
@@ -33,11 +32,6 @@ setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
 // The scene loop's context-fit check needs LM Studio's model info, which lives in preflight —
 // a layer above agent.ts — so the same sink pattern as setDebugWrite wires it in from here.
 setFitWarning(contextFit);
-
-// The old env variable named the full chat-completions URL; the provider layer wants the base.
-// The alias still works — normalizeBaseUrl strips the suffix — but say so once, at startup only.
-if (process.env.LM_STUDIO_URL && !process.env.LLM_BASE_URL)
-  warn(`LM_STUDIO_URL is deprecated — use LLM_BASE_URL (a base URL such as ${PROVIDER.baseUrl})`);
 
 ENGINE.serve = SERVE || HEADLESS;
 // Plain --serve goes quiet (the viewer is the monitor); headless serves AND echoes (its console is).

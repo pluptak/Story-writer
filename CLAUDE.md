@@ -97,7 +97,7 @@ character fork that leaves the gated consult path untouched.
 Requires a **local inference server** with the story's models loaded: **LM Studio** by default at
 `http://localhost:1234/v1`, with the **Ollama** and **llama.cpp** adapters also built in. Selection is
 environmental, never per story: `LLM_PROVIDER` (`lmstudio` | `ollama` | `llamacpp`), `LLM_BASE_URL`
-(the base ending in `/v1`; the old `LM_STUDIO_URL` full-chat-URL form still works), and `LLM_API_KEY`
+(the base ending in `/v1`), and `LLM_API_KEY`
 for servers that want one. So is the process-wide request coordinator's shape: `LLM_MAX_IN_FLIGHT`
 (default 1 — one model request on the wire at a time) and `LLM_QUEUE_TIMEOUT_MS` (default ten
 minutes — how long a queued call waits before giving up).

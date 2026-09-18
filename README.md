@@ -62,7 +62,7 @@ npm run capture   # refresh docs/mockups/current/ (viewer screens as standalone 
   environment, never per story:
   - `LLM_PROVIDER` — `lmstudio` (default) | `ollama` | `llamacpp`
   - `LLM_BASE_URL` — the server's base URL ending in `/v1` (default `http://localhost:1234/v1` for
-    LM Studio; the old `LM_STUDIO_URL` full-chat-URL form still works)
+    LM Studio)
   - `LLM_API_KEY` — only for servers that want one
 - Request coordination: `LLM_MAX_IN_FLIGHT` (default 1 — one model request on the wire at a time;
   the engine holds the line itself because a local server may drop the in-flight prompt when a

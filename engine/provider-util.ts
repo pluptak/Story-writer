@@ -54,8 +54,7 @@ export interface InferenceProvider {
   inspectModels(timeoutMs: number): Promise<Map<string, ModelRuntime> | null>;
 }
 
-/** The per-provider default endpoint, used when neither LLM_BASE_URL nor the LM_STUDIO_URL
- *  alias is set. */
+/** The per-provider default endpoint, used when LLM_BASE_URL is not set. */
 export const DEFAULT_BASE: Record<ProviderId, string> = {
   lmstudio: "http://localhost:1234/v1",
   ollama: "http://localhost:11434/v1",
@@ -63,12 +62,11 @@ export const DEFAULT_BASE: Record<ProviderId, string> = {
 };
 
 /** Turn whatever the environment called the endpoint into the base URL the provider shape
- *  wants: trimmed, any trailing `/chat/completions` (the old LM_STUDIO_URL form) stripped,
- *  empty replaced by the provider's default, and `/v1` appended when missing — every adapter
- *  hangs its native API off the same root the OpenAI-compatible `/v1` lives under. */
+ *  wants: trimmed, empty replaced by the provider's default, and `/v1` appended when
+ *  missing — every adapter hangs its native API off the same root the OpenAI-compatible
+ *  `/v1` lives under. */
 export function normalizeBaseUrl(raw: string, fallback: string): string {
   let url = raw.trim().replace(/\/+$/, "");
-  url = url.replace(/\/chat\/completions$/i, "");
   if (!url) url = fallback;
   if (!/\/v1$/.test(url)) url += "/v1";
   return url;

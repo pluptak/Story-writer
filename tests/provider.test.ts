@@ -16,13 +16,6 @@ const BASE = "http://localhost:1234/v1";
 
 // -- URL SHAPE ----------------------------------------------------------------
 describe("normalizeBaseUrl", () => {
-  it("strips a full chat-completions URL back to its base — the old LM_STUDIO_URL form", () => {
-    assert.equal(normalizeBaseUrl("http://localhost:1234/v1/chat/completions", "http://x/v1"),
-                 "http://localhost:1234/v1");
-    assert.equal(normalizeBaseUrl("http://host.docker.internal:1234/v1/chat/completions", "http://x/v1"),
-                 "http://host.docker.internal:1234/v1", "the devcontainer's host-gateway form");
-  });
-
   it("appends /v1 to a bare host, so both spellings land on the same endpoints", () => {
     assert.equal(normalizeBaseUrl("http://localhost:1234", "http://x/v1"), "http://localhost:1234/v1");
   });

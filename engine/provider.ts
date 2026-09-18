@@ -28,10 +28,9 @@ export function makeProvider(id: ProviderId, baseUrl: string,
   return newLmStudioProvider(baseUrl, auth);
 }
 
-/** The one provider this process talks to. LM_STUDIO_URL — the old full-chat-URL variable —
- *  still works through normalizeBaseUrl's suffix stripping, but LLM_BASE_URL is canonical. */
+/** The one provider this process talks to, rooted at LLM_BASE_URL. */
 export const PROVIDER: InferenceProvider = (() => {
   const id = selectProviderId();
-  const raw = process.env.LLM_BASE_URL ?? process.env.LM_STUDIO_URL ?? "";
+  const raw = process.env.LLM_BASE_URL ?? "";
   return makeProvider(id, normalizeBaseUrl(raw, DEFAULT_BASE[id]));
 })();
