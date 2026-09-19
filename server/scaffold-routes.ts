@@ -11,7 +11,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { LIVE } from "../live.ts";
-import { json, readJsonBody } from "./http-util.ts";
+import { json, readJsonBody, requireMethod } from "./http-util.ts";
 import type { ServerHost, Concept, RegenScope } from "./server.ts";
 
 /** An empty interview line — the scaffold and handoff "say" actions share the refusal. */
@@ -63,11 +63,14 @@ function readRegenScope(o: Record<string, unknown>): { ok: true; scope?: RegenSc
 export async function handleScaffoldRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
 ): Promise<boolean> {
-  if (path === "/scaffold" && req.method !== "POST") {
+  if (path === "/scaffold") {
+    if (requireMethod(res, req, "GET")) return true;
     json(res, 200, host.scaffoldState());
     return true;
   }
-  if (!(path.startsWith("/scaffold/") && req.method === "POST")) return false;
+  if (path.startsWith("/scaffold/")) {
+    if (requireMethod(res, req, "POST")) return true;
+  } else return false;
 
   const o = await readJsonBody(req);
   const what = path.slice("/scaffold/".length);

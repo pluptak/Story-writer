@@ -9,7 +9,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { json, readJsonBody } from "./http-util.ts";
+import { json, readJsonBody, requireMethod } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
 /** An empty interview line — the scaffold and handoff "say" actions share the refusal. */
@@ -19,11 +19,14 @@ const EMPTY_SAY = "say something";
 export async function handleNextChapterRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
 ): Promise<boolean> {
-  if (path === "/next-chapter" && req.method !== "POST") {
+  if (path === "/next-chapter") {
+    if (requireMethod(res, req, "GET")) return true;
     json(res, 200, host.handoffState());
     return true;
   }
-  if (!(path.startsWith("/next-chapter/") && req.method === "POST")) return false;
+  if (path.startsWith("/next-chapter/")) {
+    if (requireMethod(res, req, "POST")) return true;
+  } else return false;
 
   const o = await readJsonBody(req);
   const what = path.slice("/next-chapter/".length);

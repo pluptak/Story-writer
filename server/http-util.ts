@@ -17,6 +17,14 @@ export function json(res: ServerResponse, code: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
+/** Answer 405 unless the request uses one of `allowed`. Returns true when it answered. */
+export function requireMethod(res: ServerResponse, req: IncomingMessage, ...allowed: string[]): boolean {
+  if (allowed.includes(req.method || "")) return false;
+  res.writeHead(405, { Allow: allowed.join(", ") });
+  res.end();
+  return true;
+}
+
 const MAX_BODY_SIZE = 1024 * 1024; // 1 MiB
 
 /** Read a request body as JSON. Rejects with HttpError on size limit, malformed JSON, or unsupported content type. */

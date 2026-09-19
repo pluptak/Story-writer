@@ -10,6 +10,10 @@
  *  This file imports config-util.ts for the shared token matching: pure text matching, so it
  *  stays a leaf. */
 import { normText, containsTokenRun } from "./config-util.ts";
+ * This file imports only config-util.ts: pure text matching plus shared regex escaping,
+ *  so it stays a leaf. */
+
+import { escapeRe } from "./config-util.ts";
 
 // Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
 export interface GrantedLine { character: string; speech: string; thought?: string; }

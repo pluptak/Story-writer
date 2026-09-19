@@ -42,6 +42,7 @@
  * Ordinary negation is untouched on both sides.
  */
 import { canonSkill } from "./skills.ts";
+import { escapeRe } from "./config-util.ts";
 
 export interface SenseLintHit { ok: false; why: string; character: string; sense: string; verb: string; match: string; cause?: "presence"; }
 
@@ -82,8 +83,6 @@ const SENSE_NOUNS: Readonly<Record<string, readonly string[]>> = Object.freeze({
  *  via specifically says otherwise (a video call would be reach-through-a-camera, not this). Hearing
  *  is deliberately absent: a phone/radio channel routinely carries it. */
 const REMOTE_BLOCKED_SENSES = ["sight", "touch", "taste", "smell"] as const;
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The `look` family, gated: only with a directional particle following is "look" the act. Bare
  *  "looks" is as often copular as perceiving ("looks tired", "looks like", "looks to"), so the

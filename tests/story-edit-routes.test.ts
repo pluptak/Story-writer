@@ -295,13 +295,15 @@ describe("route dispatch edge cases", () => {
     assert.equal(r.handled, false);
   });
 
-  it("returns false for /story/save GET (not POST)", async () => {
+  it("refuses /story/save GET with 405 (not POST)", async () => {
     const r = await callGet(handleStoryEditRoutes, "/story/save?dir=doorway", makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
-  it("returns false for /story/edit POST (not GET)", async () => {
+  it("refuses /story/edit POST with 405 (not GET)", async () => {
     const r = await callRoute(handleStoryEditRoutes, "/story/edit", {}, makeHost(), "POST");
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 });
