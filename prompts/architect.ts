@@ -341,7 +341,7 @@ export const architectMore = (userText: string, idea: string, insist: boolean) =
 // "tension" is the load-bearing conflict sentence coined at the story stage; it is not a story.json
 // field of its own -- it steers the cast and the scene question, then lives folded into the premise.
 
-export type ScaffoldStage = "story" | "cast" | "settings" | "technical" | "scene" | "world";
+export type ScaffoldStage = "story" | "cast" | "settings" | "technical" | "scene" | "staging" | "world";
 
 /** Prepended to a staged round once one stage has asked MAX_ASKS questions without proposing -- the
  *  staged counterpart of [MORE]'s OVERRIDE line, so a gate cannot stall on questions forever. */
@@ -349,7 +349,7 @@ export const STAGE_INSIST =
   `OVERRIDE: you have asked several times without proposing. Do not ask anything else -- choose the `
   + `most interesting reading of what the author has given you and commit to it now.`;
 
-const STAGE_ORDER: readonly ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
+const STAGE_ORDER: readonly ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "staging", "world"];
 
 const checklistLine = (stage: ScaffoldStage) => {
   const i = STAGE_ORDER.indexOf(stage);
@@ -686,6 +686,33 @@ later_scenes   -- OPTIONAL sketches of what might come after scene 1, each {"que
   complete in one scene.
 
   ${STAGE_RULES}`;
+
+export const architectStagingStage = (specSoFar: string) => `${checklistLine("staging")}
+
+[THE STORY SO FAR]
+${specSoFar}
+
+YOUR STAGE: the staging, and nothing else --
+
+{"staging": ["NAME :: where", ...],
+ "ask": "",
+ "note": ""}
+
+staging -- where everyone is and what they can touch from there, for scene 1. One flat
+           list, people and objects together -- a character is an entity with a position.
+           "NAME :: where": NAME is a roster character, or an object this scene will touch;
+           where is coarse ("beside the door"), never coordinates or measures.
+           People before furniture: place each roster character first, relative to each
+           other and to one or two anchors -- that arrangement is the high-value half of
+           this stage. Objects only when the scene will touch them: a lamp nobody
+           approaches is set dressing, not staging.
+           A leading "!" marks an entry load-bearing ("!steel door :: shut fast"): fixed,
+           the scene cannot move it. Mark only what the scene's question turns on;
+           everything else may shift as the scene is written.
+           This is not a description and is never narrated directly -- completeness is not
+           the goal. Add an entity only when the scene needs it placed.
+
+${STAGE_RULES}`;
 
 export const architectWorldStage = (specSoFar: string) => `${checklistLine("world")}
 

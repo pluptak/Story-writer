@@ -931,7 +931,7 @@ describe("style preset feature", () => {
       await s.approve(); // cast -> settings
       await s.approve(); // settings -> technical
       await s.approve(); // technical -> scene
-      await s.approve(); // scene -> world
+      await s.approve(); // scene -> staging
 
       assert.deepEqual(s.spec.writerStyleConstraints,
                       ["prose knows only what POV can see", "no weather as metaphor"]);

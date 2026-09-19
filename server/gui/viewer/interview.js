@@ -14,7 +14,7 @@ const IDEA_PLACEHOLDER =
 
 // Must match ScaffoldSession.CHECKLIST. The gate the session is on drives the chip strip, the
 // draft label and which section renders as current, so a stage missing here loses all three.
-const GATES = ["story", "cast", "settings", "technical", "scene", "world"];
+const GATES = ["story", "cast", "settings", "technical", "scene", "staging", "world"];
 
 // The six decision stages. The engine's gate strings never change -- CHECKLIST owns them -- so
 // the author-facing progression lives here beside the gate keys. Each stage names the decision,
@@ -32,7 +32,7 @@ const STAGES = [
     gates: ["cast", "settings"] },
   { key: "structure", q: "What is the story's shape?",
     why: "One fully-built opening scene; the world ledger only if the story needs it.",
-    gates: ["technical", "scene", "world"] },
+    gates: ["technical", "scene", "staging", "world"] },
   { key: "review", q: "Does this Blueprint make sense?",
     why: "The last look before anything is written — read it whole, fix what is off.",
     gates: [] },
@@ -44,7 +44,8 @@ const STAGE_LABELS = { idea: "Idea", direction: "Direction", castworld: "Cast & 
   structure: "Structure", review: "Review", handoff: "Accept" };
 const APPROVE_LABELS = {
   story: "accept the concept", cast: "accept the cast", settings: "accept the style",
-  technical: "accept the run shape", scene: "accept the scene", world: "accept the world",
+  technical: "accept the run shape", scene: "accept the scene", staging: "accept the staging",
+  world: "accept the world",
 };
 
 // ── the idea step (modal) ────────────────────────────────────────────────────

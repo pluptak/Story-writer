@@ -299,6 +299,7 @@ describe("ScaffoldSession, staged", () => {
     scenes: [{ writerThink: "high" }],
   };
   const SCENE_STAGE = { scene: STORY.scene, later_scenes: [{ question: "Does the relief boat come?" }] };
+  const STAGING_STAGE = { staging: ["ASTER :: at the log desk", "BRAE :: by the door", "!lamp :: lit"] };
 
   // The cast gate consults a judge, a fresh one per verdict — so the factory hands back a new
   // one-reply ScriptedAgent each time rather than one agent that would run out.
@@ -313,7 +314,7 @@ describe("ScaffoldSession, staged", () => {
   it("walks the checklist one approved gate at a time, merging as it goes", async () => {
     const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
                      { edits: [], note: "it holds together" }, // verify pass
-                     { timeline: [] }]); // world stage
+                     STAGING_STAGE, { timeline: [] }]); // staging, then world
 
     const first = await s.propose();
     assert.equal(first.kind, "proposal");
@@ -350,6 +351,12 @@ describe("ScaffoldSession, staged", () => {
     const heard = s.architect.history.map(h => h.content).join("\n");
     assert.match(heard, /\[VERIFY\]/);
     assert.doesNotMatch(heard, /\[FILL\]/);
+
+    const staging = await s.approve();
+    assert.equal(gateOf(staging), "staging");
+    assert.deepEqual(s.spec.scenes[0].staging,
+      ["ASTER :: at the log desk", "BRAE :: by the door", "!lamp :: lit"],
+      "the staged room lands on scene 1, marker and all");
 
     const world = await s.approve();
     assert.equal(gateOf(world), "world");
@@ -617,6 +624,7 @@ describe("ScaffoldSession, staged", () => {
     it("keeps storytelling guidance within each stage's field ownership", () => {
       for (const text of [P.architectStoryStage("idea"), P.architectCastStage("p", "t", "{}"),
                          P.architectSettingsStage("{}"), P.architectSceneStage("{}"),
+                         P.architectStagingStage("(so far)"),
                          P.architectWorldStage("{}"), P.architectTechnicalStage("{}")]) {
         assert.match(text, /Propose ONLY this stage's fields/);
         assert.match(text, /Fields of other stages are dropped/);
@@ -645,9 +653,9 @@ describe("ScaffoldSession, staged", () => {
     // mergedRaw and normalizeSpec to reach the spec, memories and trigger intact.
     it("folds a proposed beat onto the spec, with its trigger and memories", async () => {
       const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
-                       { edits: [], note: "it holds together" }, WORLD_WITH_BEAT]);
+                       { edits: [], note: "it holds together" }, { staging: [] }, WORLD_WITH_BEAT]);
       await s.propose();
-      for (const _ of ["cast", "settings", "technical", "scene"]) await s.approve();
+      for (const _ of ["cast", "settings", "technical", "scene", "staging"]) await s.approve();
 
       const world = await s.approve();
       assert.equal(world.kind, "proposal", "a well-formed beat is content, not nothing");
@@ -682,9 +690,9 @@ describe("ScaffoldSession, staged", () => {
       }
     });
 
-    it("reports the world stage as stage 6 of 6 in the checklist", () => {
+    it("reports the world stage as stage 7 of 7 in the checklist", () => {
       const text = P.architectWorldStage("(so far)");
-      assert.match(text, /stage 6 of 6/);
+      assert.match(text, /stage 7 of 7/);
     });
 
     it("carries the story-so-far to the world stage", () => {
@@ -711,9 +719,9 @@ describe("ScaffoldSession, staged", () => {
       assert.match(text, /No dialogue and no quotation marks/);
     });
 
-    it("checklistLine() now reports six stages", () => {
+    it("checklistLine() now reports seven stages", () => {
       const storyText = P.architectStoryStage("idea");
-      assert.match(storyText, /stage 1 of 6/);
+      assert.match(storyText, /stage 1 of 7/);
     });
 
     it("the imported cast stage states the contract and names the people", () => {
@@ -785,6 +793,58 @@ describe("ScaffoldSession, staged", () => {
     });
   });
 
+  // The room for scene 1: people before furniture, coarse positions, load-bearing
+  // entries marked. The wiring proof mirrors the world stage's: a proposed room has to
+  // survive mergedRaw and normalizeSpec to reach the spec, marker and all.
+  describe("the staging stage", () => {
+    it("folds a proposed room onto scene 1, marker and all", async () => {
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "it holds together" }, STAGING_STAGE]);
+      await s.propose();
+      for (const _ of ["cast", "settings", "technical", "scene"]) await s.approve();
+
+      const staging = await s.approve();
+      assert.equal(staging.kind, "proposal");
+      assert.equal(gateOf(staging), "staging");
+      assert.deepEqual(s.spec.scenes[0].staging,
+        ["ASTER :: at the log desk", "BRAE :: by the door", "!lamp :: lit"]);
+    });
+
+    it("takes an empty room as a complete answer, not a missing one", async () => {
+      const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
+                       { edits: [], note: "it holds together" }, { staging: [] }]);
+      await s.propose();
+      for (const _ of ["cast", "settings", "technical", "scene"]) await s.approve();
+
+      const staging = await s.approve();
+      assert.equal(staging.kind, "proposal", "nothing placed is content, not nothing");
+      assert.deepEqual(s.spec.scenes[0].staging, []);
+    });
+
+    it("reports the staging stage as stage 6 of 7 in the checklist", () => {
+      assert.match(P.architectStagingStage("(so far)"), /stage 6 of 7/);
+    });
+
+    it("carries the story-so-far to the staging stage", () => {
+      assert.match(P.architectStagingStage("(the story so far)"), /\(the story so far\)/);
+    });
+
+    it("places people before furniture, coarsely, and marks only the load-bearing", () => {
+      const text = P.architectStagingStage("(so far)");
+      assert.match(text, /People before furniture/);
+      assert.match(text, /never coordinates or measures/);
+      assert.match(text, /Objects only when the scene will touch them/);
+      assert.match(text, /"!steel door :: shut fast"/);
+      assert.match(text, /never narrated directly/);
+    });
+
+    it("asks for only the room, in one JSON object", () => {
+      const text = P.architectStagingStage("(so far)");
+      assert.match(text, /"staging": \["NAME :: where"/);
+      assert.match(text, /Propose ONLY this stage's fields/);
+    });
+  });
+
   // Refining the open world gate. The architect authors the ledger as {"timeline": [...]}, so a
   // refinement round a turn later reaches for that shape again -- observed live, with a beat
   // correct in every field but the name it arrived under. While that gate is open the shape is
@@ -798,9 +858,9 @@ describe("ScaffoldSession, staged", () => {
     };
     const walkToWorld = async (...after: unknown[]) => {
       const s = stage([STORY_STAGE, CAST_STAGE, SETTINGS_STAGE, TECHNICAL_STAGE, SCENE_STAGE,
-                       { edits: [], note: "it holds together" }, { timeline: [] }, ...after]);
+                       { edits: [], note: "it holds together" }, { staging: [] }, { timeline: [] }, ...after]);
       await s.propose();
-      for (let i = 0; i < 5; i++) await s.approve();
+      for (let i = 0; i < 6; i++) await s.approve();
       assert.equal(s.stage, "world");
       assert.deepEqual(s.spec.timeline, []);
       return s;

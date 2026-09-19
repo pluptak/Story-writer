@@ -400,7 +400,7 @@ export class ScaffoldSession {
    *  the source. An unset bag falls back to the in-code catalogs at each resolution. */
   catalogs: Catalogs = {};
 
-  private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "world"];
+  private static readonly CHECKLIST: readonly P.ScaffoldStage[] = ["story", "cast", "settings", "technical", "scene", "staging", "world"];
 
   /** `newJudge` builds the cast gate's judge. It is injectable for the same reason `architect` is:
    *  without it a test walking the checklist would reach for the network at the cast gate.
@@ -461,6 +461,7 @@ export class ScaffoldSession {
         this.style ? { name: this.style.name, voice: this.style.voice } : undefined);
       case "technical": return insist + P.architectTechnicalStage(json);
       case "scene": return insist + P.architectSceneStage(json);
+      case "staging": return insist + P.architectStagingStage(json);
       case "world": return insist + P.architectWorldStage(json);
     }
   }
@@ -475,6 +476,7 @@ export class ScaffoldSession {
       case "technical": return Boolean(out.config && typeof out.config === "object")
         || Array.isArray(out.characters) || Array.isArray(out.scenes);
       case "scene": return Boolean(out.scene && typeof out.scene === "object");
+      case "staging": return Array.isArray(out.staging); // even an empty list is a valid "nothing needs placing" answer
       case "world": return Array.isArray(out.timeline); // even an empty array is a valid "no events needed" answer
     }
   }
@@ -530,6 +532,12 @@ export class ScaffoldSession {
       }
     } else if (stage === "world") {
       raw.timeline = Array.isArray(out.timeline) ? out.timeline : [];
+    } else if (stage === "staging") {
+      // The room for scene 1, folded onto it: entries arrive as plain strings and are
+      // cleaned like facts, then validated by normalizeSpec's own staging pass below.
+      const cur = (raw.scenes || [])[0];
+      if (cur) cur.staging = (Array.isArray(out.staging) ? out.staging : [])
+        .map((e: unknown) => String(e ?? "").trim()).filter(Boolean);
     } else {
       const later = (Array.isArray(out.later_scenes) ? out.later_scenes : [])
         .filter((s: unknown): s is Record<string, unknown> => Boolean(s) && typeof s === "object")
@@ -674,6 +682,7 @@ export class ScaffoldSession {
       case "settings": return this.spec.writerStyle.trim() ? null : "no writer style yet";
       case "technical": return null;   // optional stage: config has defaults, so nothing is required
       case "scene": return this.spec.scenes[0]?.question.trim() ? null : "no scene question yet";
+      case "staging": return null;   // optional stage: a scene with nothing placed is complete
       case "world": return null;       // optional stage: a story with no world events is complete
       default: return null;
     }

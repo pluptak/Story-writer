@@ -88,9 +88,9 @@ function activityHtml(s) {
 // The blocking-count pattern mirrors interview.js FINDING_RULES' blocking bucket, which
 // owns the canonical map — shelf.js only needs the count, and importing interview.js
 // here would close a module cycle (nav.js -> saved-runs.js -> shelf.js).
-const RESUME_GATES = ["story", "cast", "settings", "technical", "scene", "world"];
+const RESUME_GATES = ["story", "cast", "settings", "technical", "scene", "staging", "world"];
 const RESUME_GATE_LABELS = { story: "direction", cast: "cast", settings: "style",
-  technical: "run shape", scene: "scene 1", world: "world events" };
+  technical: "run shape", scene: "scene 1", staging: "staging", world: "world events" };
 const RESUME_BLOCKING_RE = /^(no title|no premise)|no characters at all|has no question|came back as text rather than an object/i;
 
 const resumeComplete = s =>
