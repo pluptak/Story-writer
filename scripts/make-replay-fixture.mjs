@@ -59,10 +59,14 @@ if (unnamed) {
 // scene outlives `maxSteps`, `askMoreSteps()` ASKS — a viewer or a terminal answers, and the grant
 // lands in the writing log, not in any transcript. Replaying with the story's own `maxSteps` would
 // stop where the live run was extended, so the fixture carries the budget the run actually had.
+// The narration lint gate is the second of the same kind: a blocking finding that survives its
+// redraft ASKS, and redraft/publish/stop decides whether the chapter goes on at all. Those answers
+// are carried the same way, in the order the run made them.
 const wlog = readFileSync(join(runDir, "writing-log.jsonl"), "utf8")
   .split("\n").filter(l => l.trim()).map(l => { try { return JSON.parse(l); } catch { return null; } })
   .filter(Boolean);
 const budgets = wlog.filter(e => e.t === "budget");
+const lintDecisions = wlog.filter(e => e.t === "lint_decision").map(e => e.choice);
 const sceneEnd = wlog.find(e => e.t === "scene_end");
 const effectiveSteps = budgets.length ? budgets[budgets.length - 1].budget
                                       : JSON.parse(readFileSync(storyJson, "utf8")).config?.maxSteps ?? null;
@@ -76,6 +80,9 @@ writeFileSync(join(out, "source.json"), JSON.stringify({
   /** The step budget the live run ended up with, after any interactive grant. */
   effectiveSteps,
   budgetGrants: budgets.map(b => ({ added: b.added, budget: b.budget })),
+  /** What the human answered each time the narration lint gate asked, in order. A run recorded
+   *  before those answers were logged carries none, and the replay stops at the first gate. */
+  lintDecisions,
   /** What the live run produced, for the replay to be measured against. */
   outcome: sceneEnd ? { steps: sceneEnd.steps, words: sceneEnd.words, done: sceneEnd.done } : null,
 }, null, 2) + "\n", "utf8");

@@ -88,6 +88,26 @@
   <button class="btn" id="promptGo">give steps</button>
   <button class="btn" id="promptStop">stop</button>
 </div>
+<section class="prompt lint-prompt" id="lintPrompt" data-tid="chrome.lint-prompt" aria-labelledby="lintTitle">
+  <h2 id="lintTitle" tabindex="-1">This draft needs a decision</h2>
+  <p>The draft has not reached the page. Redraft again, publish despite the findings, or stop this chapter and keep the committed page.</p>
+  <div class="lint-content" tabindex="0" role="region" aria-label="Draft and findings">
+    <h3>Blocking findings</h3>
+    <div class="lint-findings" id="lintBlocking"></div>
+    <div id="lintAdvisorySection" hidden>
+      <h3>Advisory findings</h3>
+      <div class="lint-findings" id="lintAdvisory"></div>
+    </div>
+    <h3>Unpublished draft</h3>
+    <div class="prose" id="lintProse"></div>
+  </div>
+  <div class="lint-actions">
+    <button class="btn primary" id="lintRedraft">Redraft again</button>
+    <button class="btn" id="lintPublish">Publish anyway</button>
+    <button class="btn" id="lintStop">Stop chapter</button>
+  </div>
+  <span class="ctrl-err" id="lintNotice" role="status"></span>
+</section>
 <input type="file" id="file" accept=".jsonl,.json,.txt" style="display:none">
 
 <script type="module" src="viewer.js"></script>

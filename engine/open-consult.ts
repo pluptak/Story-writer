@@ -33,6 +33,7 @@ import {
   CONSULT_DONE_TAG,
   CONSULT_VETO_TAG,
   consultSuggestsSolution,
+  openCharacterPreamble,
   stancePolarity,
 } from "../prompts/open-consult.ts";
 import type { ThinkLevel } from "./story-schema.ts";
@@ -131,6 +132,7 @@ export function parseOpenDone(text: string): OpenStance | null {
   const tail = lines
     .slice(idx)
     .join("\n")
+    .trimStart()
     .slice(CONSULT_DONE_TAG.length)
     .trim();
   if (!tail) return null;
@@ -157,7 +159,7 @@ export function parseOpenVeto(text: string): string | null {
 function stripDoneForForward(text: string): string {
   const idx = text.split("\n").findIndex(l => l.trim().startsWith(CONSULT_DONE_TAG));
   if (idx < 0) return text;
-  return text.split("\n").slice(0, idx).join("\n").trim() || text;
+  return text.split("\n").slice(0, idx).join("\n").trim();
 }
 
 export interface RunOpenConsultOpts {
@@ -181,13 +183,14 @@ export async function runOpenConsult(o: RunOpenConsultOpts): Promise<OpenConsult
 
   const transcript: OpenTurn[] = [];
   const consultHist: Msg[] = [];
-  const charHist: Msg[] = [];
+  const charHist: Msg[] = [{ role: "user", content: openCharacterPreamble(o.situation) }];
   const skillFlags: string[] = [];
   const coercion: OpenCoercion = { suggestions: 0, stanceShifts: 0, vetoOverDivergence: 0, missedViolations: 0 };
   let vetoes = 0;
   let lastPolarity: -1 | 0 | 1 | null = null;
 
-  const lastCharText = () => charHist.length ? charHist[charHist.length - 1].content : "";
+  let characterReply: string | null = null;
+  const lastCharText = () => characterReply ?? "";
 
   const noteCharacterTurn = (text: string) => {
     if (lint) {
@@ -224,7 +227,7 @@ export async function runOpenConsult(o: RunOpenConsultOpts): Promise<OpenConsult
     // last reply — the only place a stance ever becomes structured. A DONE
     // with no parseable stance is an ordinary message (malformed never ends).
     const consultDone = parseOpenDone(consultText);
-    if (consultDone) {
+    if (consultDone && characterReply !== null) {
       const missed = lint?.(lastCharText()) ?? null;
       if (missed) coercion.missedViolations++;
       return {
@@ -255,8 +258,9 @@ export async function runOpenConsult(o: RunOpenConsultOpts): Promise<OpenConsult
     // both things it legitimately reads; a stray DONE fragment from a
     // malformed close is not.
     const fwd = stripDoneForForward(consultText);
-    charHist.push({ role: "user", content: fwd });
+    charHist.push({ role: "user", content: fwd || "What do you do?" });
     const charText = (await chat(o.character, charHist)).trim();
+    characterReply = charText;
     charHist.push({ role: "assistant", content: charText });
     transcript.push({ from: "character", text: charText, round });
     noteCharacterTurn(charText);
@@ -273,7 +277,7 @@ export async function runOpenConsult(o: RunOpenConsultOpts): Promise<OpenConsult
   const forceText = (await chat(o.consult, consultHist)).trim();
   consultHist.push({ role: "assistant", content: forceText });
   transcript.push({ from: "consult", text: forceText, round: budget });
-  const forced = parseOpenDone(forceText);
+  const forced = characterReply !== null ? parseOpenDone(forceText) : null;
   if (forced) {
     const missed = lint?.(lastCharText()) ?? null;
     if (missed) coercion.missedViolations++;

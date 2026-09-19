@@ -8,7 +8,7 @@ import { renderSession, disarm, loadModels, loadEditorConfig, loadCatalogConfig 
 import { loadStories, loadRun } from "./saved-runs.js";
 import { loadReader } from "./reader.js";
 import { loadDeepLinkedComparison, loadComparisonRuns } from "./compare.js";
-import { disarmAccept, disarmApprove } from "./interview.js";
+import { disarmAccept, disarmApprove } from "./interview-page.js";
 
 export function loadDeepLinkedRun() {
   const params = parseHashParams();
@@ -43,6 +43,7 @@ export async function tryHttp() {
     loadEditorConfig();
     loadCatalogConfig();
     if (j.awaitingContinue) showPrompt(j.awaitingContinue);
+    if (j.awaitingLint) showLintPrompt(j.awaitingLint); else hideLintPrompt();
     // An interview may already be open -- a reload mid-interview must land back in it. Independent
     // endpoints, fetched concurrently; either may fail without affecting the other.
     const [scaf, hand] = await Promise.allSettled([
@@ -106,6 +107,7 @@ export function startSSE() {
       return;
     }
     if (f.t === "continue_prompt") { showPrompt(f); return; }
+    if (f.t === "lint_prompt") { lintConnected = true; showLintPrompt(f); return; }
     if (f.t === "provider_state") {
       // The engine sends one whenever its request line or last failure changes. The chip is
       // chrome, not page content — repaint the srcbar, never the page under the reader.
@@ -120,6 +122,7 @@ export function startSSE() {
       // clears it. Every frame carries whether it is still outstanding, so a prompt nobody is
       // waiting on comes down instead of sitting there with buttons that only 400.
       if (!f.awaitingContinue) $("prompt").classList.remove("on");
+      if (!f.awaitingLint) hideLintPrompt();
       if (!APP.session.running) { disarm(); APP.awaitingReader = false; }
       // Edges only -- a page you navigated to on purpose must not get yanked out from under you by
       // a frame that arrives several times a run for unrelated reasons. run_state always re-renders,
@@ -182,6 +185,7 @@ export function startSSE() {
       // already attached must be told, or the next scene renders glued onto the last one.
       LIVEV.events = []; LIVEV.seen = new Set(); LIVEV.meta = null; LIVEV.agentStats = {}; APP.composing = null;
       APP.awaitingReader = false; APP.runEnded = null; APP.runError = "";
+      hideLintPrompt();
       clearReaderDrafts();
       fetch("/run").then(r => r.json()).then(j => { if (j.run) { LIVEV.meta = j.run; if (APP.view === "live") APP.render(); } }).catch(() => {});
       // Same rule as the run-start edge above: never yank you out of the editor -- least of all
@@ -222,8 +226,71 @@ export function startSSE() {
   // "live" after an onerror -- without it the srcbar stays "reconnecting…" for the rest of the
   // session even though events have resumed.
   es.onopen = () => setSrc(LIVEV, "live", true);
-  es.onerror = () => setSrc(LIVEV, "live (reconnecting…)", false);
+  es.onerror = () => { setSrc(LIVEV, "live (reconnecting…)", false); lintConnected = false; paintLintControls(); };
 }
+
+let lintPrompt = null, lintBusy = false, lintConnected = false, lintError = "", lintFocus = null;
+const lintButtons = ["lintRedraft", "lintPublish", "lintStop"];
+
+function paintLintControls() {
+  for (const id of lintButtons) $(id).disabled = lintBusy || !lintConnected;
+  $("lintNotice").textContent = !lintConnected ? "Reconnecting — wait for the current decision before choosing."
+    : lintBusy ? "Sending decision…" : lintError;
+}
+
+function showLintPrompt(p) {
+  const same = lintPrompt && ["chapter", "prose", "blocking", "advisory"].every(k => lintPrompt[k] === p[k]);
+  if (!same) {
+    if (!lintPrompt) lintFocus = document.activeElement;
+    lintPrompt = p; lintBusy = false; lintError = "";
+  }
+  $("lintTitle").textContent = `Chapter ${p.chapter}: this draft needs a decision`;
+  $("lintProse").textContent = p.prose;
+  $("lintBlocking").textContent = p.blocking;
+  $("lintAdvisory").textContent = p.advisory || "";
+  $("lintAdvisorySection").hidden = !p.advisory;
+  $("lintPrompt").classList.add("on");
+  paintLintControls();
+  if (!same) { $("lintPrompt").querySelector(".lint-content").scrollTop = 0; $("lintTitle").focus(); }
+}
+
+function hideLintPrompt() {
+  if ($("lintPrompt").contains(document.activeElement) && lintFocus?.isConnected) lintFocus.focus();
+  lintPrompt = null; lintBusy = false; lintError = ""; lintFocus = null;
+  $("lintPrompt").classList.remove("on");
+  $("lintProse").textContent = ""; $("lintBlocking").textContent = ""; $("lintAdvisory").textContent = "";
+}
+
+async function answerLintPrompt(choice) {
+  if (!lintPrompt || lintBusy || !lintConnected) return;
+  const prompt = lintPrompt;
+  lintBusy = true; lintError = ""; paintLintControls();
+  try {
+    const r = await fetch("/lint-decision", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({ choice }) });
+    const j = await r.json();
+    if (lintPrompt !== prompt) return;
+    if (r.ok && j.ok === true) { hideLintPrompt(); return; }
+    lintError = j.reason || "The decision was not accepted. Try again.";
+  } catch {
+    if (lintPrompt !== prompt) return;
+    lintError = "The engine did not confirm the decision. Check the connection and try again.";
+  }
+  try {
+    const r = await fetch("/run");
+    if (!r.ok) throw new Error();
+    const j = await r.json();
+    if (lintPrompt !== prompt) return;
+    if (!j.awaitingLint) { hideLintPrompt(); return; }
+    showLintPrompt(j.awaitingLint);
+  } catch {}
+  if (lintPrompt !== prompt) return;
+  lintBusy = false; paintLintControls();
+}
+
+$("lintRedraft").onclick = () => answerLintPrompt("redraft");
+$("lintPublish").onclick = () => answerLintPrompt("publish");
+$("lintStop").onclick = () => answerLintPrompt("stop");
 
 // ---- the out-of-budget prompt (live only) -------------------------------
 function showPrompt(p) {

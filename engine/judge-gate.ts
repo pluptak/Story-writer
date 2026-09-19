@@ -84,7 +84,7 @@ async function repairRevision(
   }
   const agent = o.newRepairJudge();
   const extra: Msg[] = [{ role: "user", content: P.repairOnlyRequest({
-    name: def.name, situation: req.situation, question: req.question,
+    name: def.name, situation: req.situation + P.heardSpeech(req.heard), question: req.question,
     thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note,
     pov: o.pov, why,
   }) }];
@@ -134,7 +134,7 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     const judgeExtra: Msg[] = [{
       role: "user",
       content: P.judgeRequest({
-        name: def.name, situation: req.situation, question: req.question,
+        name: def.name, situation: req.situation + P.heardSpeech(req.heard), question: req.question,
         thought: reply.thought, speech: reply.speech, action: reply.action, note: reply.note,
         flags, pov: o.pov,
         // --cannot-testimony: the answerer's own established limits restated beside the answer, and

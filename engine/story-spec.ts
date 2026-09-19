@@ -1,6 +1,7 @@
 /** STORY SPEC — what the architect proposes: the shape, normalization, edits, and its renderings. */
 import { SKILL_CATALOG, bibleMeaningOf, canonSkill, splitMeaning, capabilityProblems, type Catalogs } from "./skills.ts";
 import { RunConfig, THINK_LEVELS, TimelineDef, type ThinkLevel, type SceneDef } from "./story-schema.ts";
+import { sameName } from "./config-util.ts";
 
 export type { SceneDef, CharacterDef, RunConfig, TimelineDef } from "./story-schema.ts";
 
@@ -29,6 +30,26 @@ const asStrings = (v: unknown): string[] =>
   Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean)
   : typeof v === "string" ? v.split("|").map(s => s.trim()).filter(Boolean)
   : [];
+
+/** Clean a `name -> entries` map from a raw proposal or edit value: trim the keys, coerce each
+ *  value, drop blank keys. Anything that is not a plain object cleans to {}.
+ *  `keepEmptyValue` preserves the split the callers were already carrying: normalizeSpec keeps a
+ *  key whose entries came back empty (the per-entry loop below reports each missing ":: meaning"
+ *  itself), while an edit that sets an empty value drops the key. */
+function cleanStringMap<T extends string | string[]>(
+  value: unknown,
+  coerce: (v: unknown) => T,
+  keepEmptyValue: boolean,
+): Record<string, T> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([k, v]) => [k.trim(), coerce(v)] as const)
+    .filter(([k, v]) => k.length > 0 && (keepEmptyValue || v.length > 0)));
+}
+
+/** Models copy the <NAME> placeholder literally sometimes; unwrap it rather than refuse. */
+const unwrapName = (raw: string): string =>
+  raw.replace(/^<+/, "").replace(/>+$/, "").trim() || raw;
 
 /** The belief/impulse/voice fields are required by convention, not by schema (so old stories still load).
  *  Both `normalizeSpec` (architect proposals) and the saved-story check surface their absence from here,
@@ -115,6 +136,43 @@ export function timelineOrderProblems(beats: TimelineDef[]): string[] {
   return out;
 }
 
+export function timelineMemoryWarnings(story: Pick<StorySpec,
+  "timeline" | "characters" | "premise" | "facts" | "scenes" | "writerStyle" | "writerStyleConstraints"
+>): string[] {
+  const textKey = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const shared: [string, string][] = [
+    ["premise", story.premise],
+    ...story.facts.map((text, i): [string, string] => [`facts[${i}]`, text]),
+    ["writerStyle", story.writerStyle],
+    ...story.writerStyleConstraints.map((text, i): [string, string] => [`writerStyleConstraints[${i}]`, text]),
+  ];
+  const out: string[] = [];
+  for (const [i, beat] of story.timeline.entries()) {
+    if (beat.state === "void") continue;
+    for (const [who, memory] of Object.entries(beat.memories)) {
+      const key = textKey(memory);
+      if (key.length < 80 || key.split(" ").length < 12) continue;
+      const character = story.characters.find(c => sameName(c.name, who));
+      if (!character) continue;
+      const fields: [string, string][] = [
+        ...(["persona", "knows", "goal", "belief", "impulse"] as const)
+          .map((field): [string, string] => [`characters.${character.name}.${field}`, character[field]]),
+        ...character.voice.map((text, n): [string, string] => [`characters.${character.name}.voice[${n}]`, text]),
+        ...shared,
+        ...story.scenes.slice(0, beat.chapter)
+          .map((scene, n): [string, string] => [`scenes[${n}].question`, scene.question]),
+      ];
+      const matches = fields.filter(([, text]) => ` ${textKey(text)} `.includes(` ${key} `))
+        .map(([field]) => field);
+      if (matches.length) {
+        out.push(`timeline beat ${i + 1} memory for "${character.name}" duplicates its full text in ${matches.join(", ")} `
+          + "— review setup exposure if this information should wait until the beat fires");
+      }
+    }
+  }
+  return out;
+}
+
 /** Normalize a raw architect proposal into a StorySpec, collecting non-fatal problems instead of failing.
  *  The catalogs are a parameter so the architect validates against the ones the author edits, not
  *  the ones in the source. */
@@ -187,11 +245,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
     // names a real character who is simply not placed in this scene's room (genuinely unbuilt until now).
     if (pov && povOk && roster.length && !roster.some(r => r.toLowerCase() === pov.toLowerCase()))
       problems.push(`${prefix} pov "${pov}" is not in the roster — the reader would be inside the perception of someone not placed in the room`);
-    const rawReach = (s.reach && typeof s.reach === "object" && !Array.isArray(s.reach))
-      ? Object.fromEntries(Object.entries(s.reach)
-          .map(([k, v]) => [k.trim(), asStrings(v)] as const)
-          .filter(([k]) => k.length > 0))
-      : {};
+    const rawReach = cleanStringMap(s.reach, asStrings, true);
     // Reach is never in the bible, so every entry must carry its own ":: meaning"; and a grant to
     // someone who does not exist would silently reach no one. Both are dropped with a problem.
     const reach: SceneDef["reach"] = {};
@@ -219,11 +273,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       });
       if (ok.length) reach[ch.name] = ok;
     }
-    const rawPresence = (s.presence && typeof s.presence === "object" && !Array.isArray(s.presence))
-      ? Object.fromEntries(Object.entries(s.presence)
-          .map(([k, v]) => [k.trim(), String(v ?? "").trim()] as const)
-          .filter(([k, v]) => k.length > 0 && v.length > 0))
-      : {};
+    const rawPresence = cleanStringMap(s.presence, (v: unknown) => String(v ?? "").trim(), false);
     // Presence is one string per character, not a list: "mode :: via" with mode remote or
     // partial. The roster is the likelier thing to be wrong, so a grant to someone absent from
     // it is reported and kept, exactly like reach. A remote entry with no ":: via" is dropped —
@@ -246,11 +296,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       }
       presence[ch.name] = raw;
     }
-    const rawConstraint = (s.constraint && typeof s.constraint === "object" && !Array.isArray(s.constraint))
-      ? Object.fromEntries(Object.entries(s.constraint)
-          .map(([k, v]) => [k.trim(), asStrings(v)] as const)
-          .filter(([k]) => k.length > 0))
-      : {};
+    const rawConstraint = cleanStringMap(s.constraint, asStrings, true);
     // Constraint is the negative twin of reach and gets the same two problems: never in any
     // catalog, so every entry must carry its own ":: meaning", and a constraint on someone who
     // does not exist would silently bind nobody. Unlike reach there is no I3 collision check —
@@ -322,6 +368,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
     models,
     characters,
   };
+  problems.push(...timelineMemoryWarnings(spec));
   if (!spec.title) problems.push("no title");
   if (!spec.premise) problems.push("no premise");
   for (const [i, sc] of scenes.entries()) {
@@ -427,25 +474,13 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
       const before = (normalizedDraft().scenes[idx] as any)[sceneField];
       if (sceneField === "roster") draft.scenes[idx].roster = asStrings(value);
       else if (sceneField === "reach") {
-        draft.scenes[idx].reach = (value && typeof value === "object" && !Array.isArray(value))
-          ? Object.fromEntries(Object.entries(value)
-              .map(([k, v]) => [k.trim(), asStrings(v)] as const)
-              .filter(([k, v]) => k.length > 0 && v.length > 0))
-          : {};
+        draft.scenes[idx].reach = cleanStringMap(value, asStrings, false);
       }
       else if (sceneField === "presence") {
-        draft.scenes[idx].presence = (value && typeof value === "object" && !Array.isArray(value))
-          ? Object.fromEntries(Object.entries(value)
-              .map(([k, v]) => [k.trim(), String(v ?? "").trim()] as const)
-              .filter(([k, v]) => k.length > 0 && v.length > 0))
-          : {};
+        draft.scenes[idx].presence = cleanStringMap(value, (v: unknown) => String(v ?? "").trim(), false);
       }
       else if (sceneField === "constraint") {
-        draft.scenes[idx].constraint = (value && typeof value === "object" && !Array.isArray(value))
-          ? Object.fromEntries(Object.entries(value)
-              .map(([k, v]) => [k.trim(), asStrings(v)] as const)
-              .filter(([k, v]) => k.length > 0 && v.length > 0))
-          : {};
+        draft.scenes[idx].constraint = cleanStringMap(value, asStrings, false);
       }
       else if (sceneField === "length") draft.scenes[idx].length = Number(value);
       else draft.scenes[idx][sceneField] = scalar();
@@ -503,7 +538,7 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
     // arrival -- reported as a knows change so the author sees where it landed.
     const lm = field.match(/^characters\.(.+)\.learned$/);
     if (lm) {
-      const who = lm[1].replace(/^<+/, "").replace(/>+$/, "").trim() || lm[1];
+      const who = unwrapName(lm[1]);
       const c = findChar(who);
       if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
       const text = scalar();
@@ -518,8 +553,7 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
 
     const cm = field.match(/^characters\.(.+)\.(persona|knows|goal|belief|impulse|voice|origin|skills|restrictions|lacks|name)$/);
     if (cm) {
-      // Models copy the <NAME> placeholder literally sometimes; unwrap it rather than refuse.
-      const who = cm[1].replace(/^<+/, "").replace(/>+$/, "").trim() || cm[1];
+      const who = unwrapName(cm[1]);
       const c = findChar(who);
       if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
 
@@ -605,11 +639,7 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
       const before = (normalizedDraft().timeline[idx] as any)?.[beatField];
       if (beatField === "chapter" || beatField === "at") draft.timeline[idx][beatField] = Number(value);
       else if (beatField === "memories") {
-        draft.timeline[idx].memories = (value && typeof value === "object" && !Array.isArray(value))
-          ? Object.fromEntries(Object.entries(value)
-              .map(([k, v]) => [k.trim(), String(v).trim()] as const)
-              .filter(([k, v]) => k.length > 0 && v.length > 0))
-          : {};
+        draft.timeline[idx].memories = cleanStringMap(value, (v: unknown) => String(v).trim(), false);
       }
       else draft.timeline[idx][beatField] = scalar();
       scalarResolver(`beat:${idx}.${beatField}`, next => (next.timeline[idx] as any)?.[beatField], before, field);
@@ -689,7 +719,7 @@ export function applyEdits(spec: StorySpec, raw: any, catalogs?: Catalogs): {
     }
     const charMax = field.match(/^characters\.(.+)\.maxRetries$/);
     if (charMax) {
-      const who = charMax[1].replace(/^<+/, "").replace(/>+$/, "").trim() || charMax[1];
+      const who = unwrapName(charMax[1]);
       const c = findChar(who);
       if (!c) { ignored.push(`${field} — no character called "${who}"`); continue; }
       const before = (normalizedDraft().characters.find(x => x.name.toLowerCase() === c.name.toLowerCase()) as any)?.maxRetries;
@@ -760,6 +790,17 @@ export function directEdit(spec: StorySpec, field: string, value: unknown):
   return { ok: true, spec: e.spec, applied: e.applied, problems: e.problems };
 }
 
+/** Whether two `SceneDef.reach`/`SceneDef.constraint`-shaped maps differ: same keys, and each key's
+ *  array the same set (order does not matter, matching the roster comparison below). */
+function capabilityDrift(before: Record<string, string[]>, after: Record<string, string[]>): boolean {
+  const wasKeys = new Set(Object.keys(before)), nowKeys = new Set(Object.keys(after));
+  if (wasKeys.size !== nowKeys.size || ![...wasKeys].every(k => nowKeys.has(k))) return true;
+  return [...wasKeys].some(k => {
+    const was = new Set(before[k]), now = new Set(after[k]);
+    return was.size !== now.size || ![...was].every(x => now.has(x));
+  });
+}
+
 /** Which of a scene's fields differ between two versions of the story, for detecting that a chapter's
  *  prose was written from a definition that has since changed. Roster order is not a difference. */
 export function sceneDrift(before: SceneDef | undefined, after: SceneDef | undefined): string[] {
@@ -771,6 +812,8 @@ export function sceneDrift(before: SceneDef | undefined, after: SceneDef | undef
   if (before.length !== after.length) diff.push("length");
   const was = new Set(before.roster), now = new Set(after.roster);
   if (was.size !== now.size || ![...was].every(x => now.has(x))) diff.push("roster");
+  if (capabilityDrift(before.reach, after.reach)) diff.push("reach");
+  if (capabilityDrift(before.constraint, after.constraint)) diff.push("constraint");
   return diff;
 }
 

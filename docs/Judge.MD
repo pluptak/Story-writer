@@ -34,9 +34,9 @@ second shape to fall into (`prompts/judge.ts`'s header keeps the record).
 | agent | built by | model | shown | verdict | call fails |
 | --- | --- | --- | --- | --- | --- |
 | **JUDGE** | `newJudge` per call (`engine/scene-loop.ts`) | writer's | the situation, the question, the answer, the cast's limits | `accept` \| `retry` | `judge_failed` → answer accepted |
-| **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → piece goes to the page |
+| **NARRATION-JUDGE** | `newNarrationJudge` (`engine/scene-loop.ts`) | writer's | the drafted piece, the granted ledger, any outgoing consult | `ok` true/false + why | `lint_failed` → judge fails open; mechanical blocking still applies |
 | **BATCH-JUDGE** | `newBatchJudge` (`engine/scene-loop.ts`) | writer's | every volunteered deed in one call | one `promotable` flag each | `batch_judge_failed` → nothing promoted |
-| **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `ok` true/false + why | `done_judge_failed` → nothing recorded |
+| **DONE-JUDGE** | `newDoneJudge` (`engine/scene-loop.ts`) | writer's | the scene's question, the whole page | `status` resolved/open/unclear (+ evidence, why) | `done_judge_failed` → `unavailable` recorded |
 | **CAST-JUDGE** | `newCastAsymmetryJudge` (`engine/architect.ts`) | architect's | the tension, the cast sheet | `ok` true/false + why | gate passes |
 
 Every one fails **open** — the same policy as every other model-in-the-loop check in this engine —
@@ -220,8 +220,8 @@ and — when the same reply opens one — the consult it is about to send. It ch
    part of the moment matters. Give the character the moment; let them find the fork in it.
 
 It is told **not** to re-check quotations — they are matched against the ledger mechanically first
-(`engine/quote-lint.ts`), and restricted senses are matched by verb against the character's own
-CANNOT list mechanically too (`engine/sense-lint.ts`). The mechanical halves are deliberately
+(`engine/lint/quote-lint.ts`), and restricted senses are matched by verb against the character's own
+CANNOT list mechanically too (`engine/lint/sense-lint.ts`). The mechanical halves are deliberately
 conservative, because a mechanical flag has no model to soften it. The quotation check skips a
 quoted span of one bare word — read as a machine label, not a line: a lever thrown to the
 `'Shutdown'` position, a status reading `"Fatal"`; missing an invented one-word line is the cheap
@@ -233,21 +233,40 @@ and it is addressee-anchored when it reads a consult's situation, which inverts 
 spellings read: `you watch` and `your gaze` are the incriminating forms there, where in prose
 `your` before a verb spelling marks a noun.
 The three checks run **alongside** each other and their `why` strings join into the one
-`narration_flag`, because there is only one redraft: reported serially, the budget would be spent
+`narration_flag`, because there is only one automatic redraft: reported serially, the budget would be spent
 on the first finding and the second accepted unfixed. A mechanical hit also survives an LLM outage,
 since it needed no model to begin with.
 
 The verdict is `{"ok": true}` or `{"ok": false, "why": "..."}` — and only an explicit one counts
 (`parseLintVerdict`): a reply carrying neither is asked once more against `LINT_ONLY`, and a second
-miss sends the piece to the page with `schema_mismatch` on the record. A check nobody made must not
+miss fails the judge open with `schema_mismatch` on the record; mechanical blocking still applies.
+A check nobody made must not
 read as a check that passed.
 
-**The lint warns; it never blocks.** One redraft from the same `[WRITE]` instruction — nothing has
-reached `pieces[]`, the writer's history, or the writing log, so it is a clean redo, not an
-undo — and a retry that is flagged again, or fails outright, is accepted anyway and logged with the
-flag's `retried` set. THE ONE RULE itself is enforced by the consult protocol, which decides
-whether a line exists to be written at all; the lint is advisory quality control that reports its
-own gaps.
+**One automatic redraft; persistent mechanical blocking needs a human decision.** Both mechanical
+and judge findings feed the same first redraft from the same `[WRITE]` instruction — nothing has
+reached `pieces[]`, the writer's history, or the writing log, so it is a clean redo, not an undo.
+If mechanical blocking remains afterwards, the unpublished prose and separate blocking/advisory
+findings are shown to the operator. A failed redraft with mechanical blocking still outstanding also
+opens this decision; failure is not permission to publish the original flagged piece.
+
+The choices are **Redraft again**, **Publish anyway**, and **Stop chapter**. Redraft again requests
+another attempt and checks it before committing; Publish anyway explicitly accepts the current
+flagged draft; Stop chapter discards the pending draft and preserves the already committed page.
+If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
+that committed page intact. Turning interactive off during a pending decision resolves it as stop.
+
+Whichever is chosen is written to the run's log as `lint_decision`, because nothing else records it:
+the answer is a human's, not a model's, so no transcript holds it. `scripts/make-replay-fixture.mjs`
+carries those answers into the fixture as `lintDecisions`, in order — without them a replay of a run
+that published or redrafted past a blocking finding stops at that piece, since a replay is headless
+and headless means nobody to ask.
+
+**Judge-only findings remain advisory:** after the one automatic redraft, a repeated judge-only
+finding or redraft failure retains the previous accept-with-warning behaviour. An unavailable judge
+still fails open, but cannot erase mechanical blocking. THE ONE RULE itself is enforced by the
+consult protocol, which decides whether a line exists to be written at all. The HTTP/SSE decision
+contract and reconnect behaviour are in [`GUI-SPEC.md`](GUI-SPEC.md).
 
 Two evidence rules keep it from flagging exactly what the engine asked for: a deed the same reply
 promotes is already on the ledger when the lint runs (the promote itself is processed just after
@@ -277,20 +296,30 @@ very thing the scene existed to settle still open on the last line — one of th
 24-step budget, both sides exactly where they had started. The writer is not lying; a deadlock reads
 like an ending from inside the last piece.
 
-So when the writer declares the scene over, one call reads the page back against the scene's
-question and records whether it is settled. It is the only judge shown the prose whole — the
-narration lint sees one piece, the per-answer judge sees no prose at all — and the only one shown
-the scene's question, which is otherwise the writer's alone.
+So one call reads the page back against the scene's question and records whether it is settled. It
+is the only judge shown the prose whole — the narration lint sees one piece, the per-answer judge
+sees no prose at all — and the only one shown the scene's question, which is otherwise the writer's
+alone.
 
-**Answered means settled, not resolved.** "No" is an answer: a refusal that holds, a door that stays
-shut, a choice made against the thing. What fails is *undecided* — both sides where they started,
-the pressure still live, the question's fork still pending on the last line. The judge is told to
-weigh nothing else: not whether the writing is good, not whether the ending satisfies, not whether
-the scene could have gone somewhere better. A scene ending badly is the story; a scene ending
-nowhere is the writer escaping.
+**Settled, not resolved-for-good.** "No" is settled: a refusal that holds, a door that stays shut, a
+choice made against the thing. What fails is *open* — both sides where they started, the pressure
+still live, the question's fork still pending on the last line. A third shape, `unclear`, is the
+judge's own "I cannot tell" — distinct from a reply that fails to parse at all (`schema_mismatch`,
+retried once) and from the call itself erroring (`done_judge_failed`); all three land on the same
+`unavailable` state, because a check nobody could complete must never read as either verdict.
+`resolved` must carry `evidence` — the page event that settled it — or the reply is treated as
+unparseable; a positive verdict with nothing to show for it is not one. The judge is told to weigh
+nothing else: not whether the writing is good, not whether the ending satisfies, not whether the
+scene could have gone somewhere better. A scene ending badly is the story; a scene ending nowhere is
+the writer escaping.
 
-**It records; it does not gate.** A `false` verdict logs `done_flagged` carrying the judge's `why`,
-and the ending stands. The writer is told nothing.
+**It records; it does not gate.** An `open` (or `unclear`) verdict logs `done_flagged`/nothing and
+the ending stands regardless — the writer is told nothing. The three-shape verdict is folded into one
+durable `QuestionState` (`engine/scene-loop.ts`), carried on the run result and logged as its own
+`question_state` event (`state`, `trigger`, `step`, `words`) alongside whichever of `done_flagged` /
+`done_confirmed` a writer-declared ending still logs for `buildChapterBeatOutcome`'s sake
+(`run-and-save.ts`) — a viewer or a later chapter's handoff reads the durable state, not the raw
+per-call events.
 
 That is a demotion, and the reason is worth keeping. It gated once: a refusal cleared the
 declaration and handed the writer back what the page had left open. In the one live run where it
@@ -302,11 +331,15 @@ named a lever the writer does not hold. Re-arm it as a gate when a refusal can a
 world event that forces the matter is the obvious candidate.
 
 What it is now is the only measurement the engine has of whether a scene answered its question, at
-one call per scene ending. Only an ending the writer *chose* is checked: the hard cap and a spent
-step budget close the scene regardless, and those are budget, not judgement. Nor does it run on the
-turn that arms a `done_deferred` hold — that turn is not ending the scene, it is buying one more,
-and the held-open turn after it is checked like any other ending. A scene whose `question` is empty
-is never checked at all: there is nothing to read the page against.
+up to one call per place a scene's ending is decided: the writer's own `scene_done` declaration,
+every time the step budget runs out (before the engine even asks whether more will be granted — a
+silently-declined extension is exactly where an unchecked ending was found live, PLANS.md item 2),
+and the hard cap. None of the latter two is the writer's own judgement — a spent budget is budget,
+not judgement — so neither ever logs `done_flagged`/`done_confirmed`; only `question_state` records
+them, tagged `extension` or `forced_end` rather than `writer_done`. Nor does it run on the turn that
+arms a `done_deferred` hold — that turn is not ending the scene, it is buying one more, and the
+held-open turn after it is checked like any other ending. A scene whose `question` is empty, or with
+no prose on the page yet, is never checked at all: there is nothing to read the page against.
 
 ## CAST-JUDGE — the cast gate
 

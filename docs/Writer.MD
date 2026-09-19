@@ -52,10 +52,15 @@ writer's loop does around them.
 The loop's contract with them: an answer is judged before the writer ever sees it, and every
 situation-entry path — the writer's first ask, a fan-out's shared text, a judge's revision on a
 retry — is checked against its addressee's own CANNOT list before it leaves. A refused ask is never
-sent; the writer is told why instead. When an answer is unusable, the retry's re-ask is re-authored
+sent; the writer is told why instead — a one-line tag stays in history permanently, and the full
+lecture rides the next `[WRITE]` draft call as a transient extra, landing after the instruction,
+closest to generation. When an answer is unusable, the retry's re-ask is re-authored
 by the judge and passes the same gate before it reaches a fresh character instance that never learns
 it was rejected — and when the revision cannot be sent, the answer already in hand is the one the
-scene gets. What the clarifier settles on the way folds into the writer's history as it goes, and an
+scene gets. A folded answer names only what the writer cannot read back: the echoed question is
+dropped when it matches the draft's own record, and when a retry revised it, both the asked and
+the original question travel with the answer, so the substitution is never silent. What the clarifier settles on the way folds into the writer's history as it goes — one
+`[SETTLED]` message per attempt, not a question/answer pair per fact — and an
 attempt whose answer is thrown away is rewound out of both histories: the writer is told nothing at
 all until the answer is the one the scene takes.
 
@@ -96,7 +101,38 @@ When several characters face the same fork, each is asked from the same shared m
 `situation` may only contain facts that predate every answer in the beat. One character's answer
 never becomes part of another's situation — the second one asked blind, and an answer leaked into
 someone else's situation decides the moment for them (`prompts.ts`, `WRITER_FORMAT`). The situation
-is the only channel there is, so it is also the only place such a leak can happen.
+is the writer-authored channel. With `--heard-channel`, engine-owned audible speech arrives
+separately; a fan-out snapshots that channel before any reactor answers, preserving isolation.
+
+Pressure without authorship — interrogation, captivity, custody — follows the same rule: the writer
+narrates what the controller does and puts what the controlled can perceive of it to them as
+situation, without naming the fork or directing the choice. The full authoring pattern (scene
+`constraint` for the hold, `impulse`/`goal`/`belief` for what pressure meets, what the judge and
+the lint do with each half) is [`Character.MD`](Character.MD)'s "Full control is circumstance, not
+obedience".
+
+`--heard-channel` (off by default) makes situations circumstance-only: the writer must not recap
+or paraphrase speech, explain another person's private motive, or assign the addressee their own
+motive, desire, or feeling. The engine supplies eligible granted speech verbatim in a separate
+**[WHAT YOU HEARD]** block since that listener's last sent ask. Only active, rostered, non-remote
+speakers contribute; remote listeners and listeners whose CANNOT removes hearing receive none.
+Partial presence adds no gate. Remote `via` text is not treated as automatic permission to relay
+speech. The block contains no thoughts, actions, or notes, and no additional model call is made.
+Accepted history retains it, and a retry sees the same snapshot. The circumstance-only rule is
+enforced, not only asked for: a situation that retells what the block carries is refused back to
+the writer as a `bad_consult`, the same way a situation phrased around a lost sense is. See
+`Character.MD` for cursor, refusal and fan-out semantics.
+
+This flag supersedes `--consult-since`: no writer-facing third-field requirement, no stale refusal,
+and no joining writer-authored `since` into the situation. The legacy field remains parseable for
+records. Without `--heard-channel`, the previous behavior remains available for comparisons:
+a character re-consulted after two or more pieces of prose carries no memory of the page between,
+so under `--consult-since` the consult carries a third field, `since`: what reached them since they
+were last asked — what their last answer came to, and anything else around them they could perceive,
+or a plain statement that nothing new did. It joins the situation before the consult gate (one
+channel, not two) and the blind rule covers it like any other ground truth. A stale consult without
+it is refused like a thin situation. Fan-out reactors carry none: a shared moment is not anyone's
+decision continuity.
 
 The writer may describe setting, atmosphere, time passing, physical reactions without deliberate
 choice, established facts, and POV perception within the character's capabilities.
@@ -149,12 +185,14 @@ attempts, mark the character freshly consulted, and hand the writer an answer wi
 A reaction fan-out whose every reactor ends up there hands over no bundle, and the writer is told so
 plainly — silence would read as an unanswered fan-out and get the same beat asked again.
 
-The engine nudges as well as gates: a character gone unconsulted too long is named in the next
-`[WRITE]`, and that nudge tells the writer to put the moment to them *whether it turns on a choice of
+The engine nudges as well as gates: a character gone unconsulted too long is named in `[WRITE]`,
+and that nudge tells the writer to put the moment to them *whether it turns on a choice of
 theirs or they are simply standing in it* (`prompts.ts`'s `writeInstruction`) — the case that
 otherwise produces a degenerate "What do you do?". It names no shape, because the writer's ask has
 none to name; more than one neglected character turns the nudge into a fan-out instruction instead,
-since that costs one step rather than a step apiece.
+since that costs one step rather than a step apiece. The nudge is throttled — re-sent only when the
+neglected set changes or every third nagged turn — so a stuck scene does not pay the furniture
+lecture on every turn.
 
 ### Group reactions
 
@@ -205,15 +243,19 @@ it does (`engine/world-timeline.ts` decides; the loop injects). The decision nee
 A world event is the one category no character decides, so it is never a consult: it arrives as
 established fact inside the `[WRITE]`, the way the length budget does. A fired beat may also carry
 **memories** — per-character knowledge implanted the moment it fires (see
-[`Character.MD`](Character.MD)).
+[`Character.MD`](Character.MD)). `[WORLD]`/`[HOLD]` reaches the shared writer instruction unfiltered
+by design: nothing here decides who could perceive what (that is the information-authority question
+— restrict-only, and whether it ever needs more than the shipped gates is still open, see
+[PLANS.md](PLANS.md)) — gating this channel by presence would be a larger, riskier change than any
+shipped gate.
 
-**Nothing checks that the event reached the page.** A beat is injected once and the writer is
-trusted with it; if the piece ignores it, the run record says the beat fired and nothing says it
-never landed. A mechanical check was built and removed — it could not tell a faithful rendering from
-an unrelated piece — and what replaces it is the repair entity's, still unbuilt.
-
-What the ledger is for, and the repairs when a character's choice breaks it, are still
-[PLANS.md](PLANS.md)'s.
+**Nothing checks, at write time, that the event reached the page.** A beat is injected once and the
+writer is trusted with it; if the piece ignores it, nothing at that moment says it never landed. What
+catches a beat that fired and never landed is the handoff's repair round, after the chapter is done —
+see [`Architect.MD`](Architect.MD)'s "Stranded/Fired world events" for the check and the repair
+operations it can propose. A mechanical per-piece check was tried and removed (it could not tell a
+faithful rendering from an unrelated piece); the abandoned approach is recorded in
+[PLANS.md](PLANS.md) so it is not re-proposed the same way.
 
 ### The narration lint
 
@@ -223,13 +265,15 @@ was granted; did it hand a deed or meaningful stillness to someone not already g
 if the same reply opens a consult or reaction fan-out, does the `situation` it hands the character
 name the concrete fact just established rather than only its consequence. A flag sends the writer back for one
 redraft from the same `[WRITE]` instruction — nothing has reached `pieces[]`, the writer's own history,
-or the log yet, so this is a clean redo, not an undo. A retry that is also flagged, or that fails
+or the log yet, so this is a clean redo, not an undo. The flag itself rides the redraft call as a
+transient extra and never enters history: a criticism of a draft history never held would otherwise
+linger past the correction. A retry that is also flagged, or that fails
 outright, is accepted anyway and logged as `narration_flag` — the lint warns; it never blocks the scene
 (`engine/scene-loop.ts`'s `NARRATION_LINT_RETRIES`).
 
 Two of those four are decided in code, and they are the two whose evidence is a closed set.
-Quotations are matched against the granted ledger (`engine/quote-lint.ts`); a restricted sense is
-matched by verb against the character's own CANNOT list (`engine/sense-lint.ts`). Deeds and the
+Quotations are matched against the granted ledger (`engine/lint/quote-lint.ts`); a restricted sense is
+matched by verb against the character's own CANNOT list (`engine/lint/sense-lint.ts`). Deeds and the
 consult's `situation` stay the model's, because neither has a list to check against. All three run
 **alongside** each other and their `why` strings join into the one `narration_flag` — there is only
 one redraft, so a piece carrying two findings has to report both in the same message. What the lint
@@ -239,7 +283,7 @@ check nobody made must not read as a check that passed are [`Judge.MD`](Judge.MD
 ### The repeat guard
 
 After the lint, and just before the append, a piece that **opens by re-emitting the page's tail** is
-stripped back to its genuinely new text (`engine/repeat-lint.ts`, no model call). The recorded
+stripped back to its genuinely new text (`engine/lint/repeat-lint.ts`, no model call). The recorded
 failure: the doorway run's second draft re-emitted the first — 386 identical characters, the whole
 opening paragraph — and appended one new sentence, and both were accepted, so the scene opened with
 the paragraph twice. The guard matches the piece's leading sentences against the last two pieces

@@ -18,7 +18,7 @@ import { characterCardModalHtml, wireCharacterCard, settleModalWant } from "./ch
 import { consultInspectorHtml, wireConsultInspector, wireConsultInspectButtons, settleInspectWant } from "./consult-inspector.js";
 import { runEndedModalHtml, wireRunEndedModal } from "./run-ended.js";
 import { libraryPickerHtml, wireLibraryPicker } from "./library-picker.js";
-import { scaffoldHtml, wireScaffold } from "./interview.js";
+import { scaffoldHtml, wireScaffold } from "./interview-page.js";
 import { readerPageHtml, wireReaderPage, loadReader } from "./reader.js";
 import { comparisonPageHtml, wireComparison, prepareComparison, loadComparisonRuns } from "./compare.js";
 import { paintFocus } from "./focus.js";

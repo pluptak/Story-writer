@@ -3,7 +3,7 @@ import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadVocab, loadStyles, refreshUsage } from "./catalog.js";
 import { go } from "./nav.js";
-import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
+import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, saveNotesHtml, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 const emptyDraft = () => ({ id:"", name:"", description:"", voice:"", tags:[] });
 const draftOf = s => ({ id:s?.id || "", name:s?.name || "", description:s?.description || "", voice:s?.voice || "", tags:[...(s?.tags || [])] });
@@ -39,9 +39,9 @@ function listHtml() {
   if (!entries.length) return `<div class="lib-empty"><div class="lib-empty-mark">⁂</div><h3>${s.search ? "No styles match" : "Your style library is empty"}</h3><p>${s.search ? "Try a different search." : "Create a reusable writing approach for your stories."}</p>${button({label:"New style", id:"stylib-empty-new", variant:"primary"})}</div>`;
   return entries.map(x => {
     const selected = s.selected?.id === x.id;
-    return `<div class="lib-row${selected ? " selected" : ""}" data-style-id="${esc(x.id)}" role="button" tabindex="0">
+    return `<div class="lib-row${selected ? " selected" : ""}" data-style-id="${esc(x.id)}" role="button" tabindex="0"${tid("style-library.row")}>
       <span class="lib-row-copy"><strong>${esc(x.name || "Untitled style")}</strong><span>${esc(x.description || "Describe the writing approach in one sentence.")}</span><small>v${esc(x.version || 1)}</small></span>
-      <button class="lib-more" data-style-select-id="${esc(x.id)}" aria-label="Open ${esc(x.name)} in editor">•••</button>
+      <button class="lib-more" data-style-select-id="${esc(x.id)}"${tid("style-library.open")} aria-label="Open ${esc(x.name)} in editor">•••</button>
     </div>`;
   }).join("");
 }
@@ -53,7 +53,7 @@ function editorHtml() {
   return `${editorHead(`<div><strong>${esc(d.name || "Untitled style")}</strong><small>ID: ${esc(d.id || "not saved")}</small></div><button class="lib-close" id="stylib-close" aria-label="Close style editor">×</button>`)}
   ${actions(`${button({label:"Duplicate", id:"stylib-duplicate", extraClass:"small"})}${button({label:c?.hidden ? "Restore" : "Hide", id:"stylib-toggle-hidden", extraClass:"small", title:"Hiding entries isn't available yet"})}<span class="lib-soon">soon</span>${button({label:"Delete", id:"stylib-delete", variant:"danger", extraClass:"small"})}`)}
   ${tabs(`<button class="lib-tab active">Overview</button><button class="lib-tab" id="stylib-ai-tab">AI Assistant <b>soon</b></button><button class="lib-tab" disabled>Revisions</button>`)}
-  ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
+  ${s.error ? errorLine(esc(s.error)) : ""}${saveNotesHtml(s)}${s.dirty ? warnLine("unsaved changes") : ""}
   ${section("Style identity", "Define a reusable writing approach. Keep story-specific instructions outside the library.", `
     <label class="lib-field"><span>Name</span><input class="lib-input" id="stylib-name" value="${esc(d.name)}"></label>
     ${field("stylib-description", "Description", d.description, "A short description shown when choosing a style.")}
@@ -65,7 +65,7 @@ function editorHtml() {
   `)}
   <div class="lib-guides"><h3>Principles</h3><p>Quickly visible reminders derived from the style guidelines.</p><div class="lib-guide-grid">${principles(d.voice).map(p => `<div class="lib-guide"><strong>${esc(p)}</strong><span>Reusable style principle</span></div>`).join("") || `<div class="lib-guide empty">Add guidelines to develop principles.</div>`}</div></div>
   <div class="lib-assistant"><div><strong>✦ Style assistant</strong><span class="lib-soon">coming soon</span></div><p>Ask for a tonal, structural, or guideline revision. Not available yet — the button reports back until it lands.</p>${button({label:"Open AI assistant →", id:"stylib-ai-open", extraClass:"small"})}</div>
-  ${editorFooter(`${button({label:"Cancel", id:"stylib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"stylib-save", variant:"primary", disabled:!needsSave(s)})}`)}
+  ${editorFooter(`${button({label:"Cancel", id:"stylib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"stylib-save", variant:"primary", disabled:!needsSave(s) || s.saving})}`)}
   ${a.open ? assistantHtml() : ""}`;
 }
 
@@ -126,12 +126,15 @@ async function load() {
   s.loading = true; s.error = ""; APP.render();
   try { const j = await (await fetch("/catalog?kind=styles")).json(); if (!j.ok) throw new Error(reasonOr(j, "could not load styles")); s.entries = (j.entries || []).map(x => ({ ...x, hidden:!!x.hidden, updatedAt:x.updatedAt || x.version || 0 })); s.loaded = true; }
   catch (e) { s.error = e.message || "could not load styles"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
   await loadVocab();
   refreshUsage();
 }
 
-function setSelected(x) { const s = APP.styleLibrary; s.selected = x; s.draft = draftOf(x); s.dirty = false; s.error = ""; s.assistant = { open:false, instruction:"", loading:false, proposal:null, error:"" }; APP.render(); }
+function setSelected(x) { const s = APP.styleLibrary; s.selected = x; s.draft = draftOf(x); s.dirty = false; s.error = ""; s.saveIssues = []; s.saveProblems = []; s.assistant = { open:false, instruction:"", loading:false, proposal:null, error:"" }; APP.render(); }
 function createNew() { const s = APP.styleLibrary, x = { ...entryOf({...emptyDraft(), id:newId("sty"), name:"New style"}), hidden:false, version:0, updatedAt:Date.now() }; s.entries.unshift(x); setSelected(x); }
 function duplicate() { const s = APP.styleLibrary; if (!s.selected) return; const x = { ...clone(s.selected), id:newId("sty"), name:`${s.selected.name} Copy`, version:0, updatedAt:Date.now(), hidden:false }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, x); setSelected(x); }
 // Tags are not re-read from the DOM here: the chip click handler already keeps s.draft.tags in
@@ -139,18 +142,29 @@ function duplicate() { const s = APP.styleLibrary; if (!s.selected) return; cons
 // `.lib-chip.on` would silently drop any selected tag past that cutoff.
 function collectDraft() { const s = APP.styleLibrary; if (!s.draft) return; for (const k of ["name","description","voice"]) { const el = document.getElementById(`stylib-${k}`); if (el) s.draft[k] = el.value; } dirtyFromDraft(); }
 async function save() {
-  const s = APP.styleLibrary; collectDraft(); if (!s.draft || !needsSave(s)) return;
-  const payload = entryOf(s.draft); if (!payload.name) { s.error = "A style needs a name."; APP.render(); return; }
-  const j = await postJson("/catalog/save", { kind:"styles", entry:payload }, msg => { s.error = msg; APP.render(); });
-  if (!j?.ok) { s.error = reasonOr(j, "could not save style"); APP.render(); return; }
+  const s = APP.styleLibrary; collectDraft(); if (!s.draft || !needsSave(s) || s.saving) return;
+  const payload = entryOf(s.draft); if (!payload.name) { s.error = ""; s.saveIssues = ["A style needs a name."]; APP.render(); return; }
+  const savingId = payload.id;
+  const hidden = s.selected?.hidden || false;
+  s.saving = true; APP.render();
+  const j = await postJson("/catalog/save", { kind:"styles", entry:payload }, msg => { if (s.selected?.id === savingId) s.error = msg; });
+  s.saving = false;
+  if (!j?.ok) {
+    if (s.selected?.id === savingId) { s.error = reasonOr(j, "could not save style"); s.saveIssues = [...(j?.issues ?? [])]; }
+    APP.render(); return;
+  }
   // The scaffold's voice picker reads its own lazy cache — drop it, or the tray keeps offering
   // the list from before this save (the character and tag saves already invalidate theirs).
   loadStyles.invalidate();
-  const next = { ...j.entry, hidden:s.selected?.hidden || false, updatedAt:Date.now() };
+  const next = { ...j.entry, hidden, updatedAt:Date.now() };
   const i = s.entries.findIndex(x => x.id === next.id); if (i >= 0) s.entries[i] = next; else s.entries.unshift(next);
-  setSelected(next);
+  if (s.selected?.id === savingId) {
+    setSelected(next);
+    s.saveProblems = [...(j.problems ?? [])]; s.saveIssues = [];
+  }
+  APP.render();
   // Create-then-return: same shape as character-library.js's save.
-  if (APP.catalog.returnTo?.view === "scaffold" && APP.scaffold?.active) {
+  if (s.selected?.id === savingId && APP.catalog.returnTo?.view === "scaffold" && APP.scaffold?.active) {
     APP.catalog.pendingSelect = { kind: "styles", selectId: next.id };
     APP.catalog.returnTo = null;
     go("scaffold");
@@ -215,7 +229,7 @@ export function wireStyleLibrary(page) {
     if (idx >= 0) s.draft.tags.splice(idx, 1); else s.draft.tags.push(tag);
     dirtyFromDraft(); APP.render();
   }));
-  for (const k of ["name","description","voice"]) page.querySelector(`#stylib-${k}`)?.addEventListener("input", () => { s.draft[k] = document.getElementById(`stylib-${k}`).value; dirtyFromDraft(); page.querySelector("#stylib-save").disabled = !needsSave(s); page.querySelector("#stylib-cancel").disabled = !s.dirty; });
+  for (const k of ["name","description","voice"]) page.querySelector(`#stylib-${k}`)?.addEventListener("input", () => { s.draft[k] = document.getElementById(`stylib-${k}`).value; dirtyFromDraft(); page.querySelector("#stylib-save").disabled = !needsSave(s) || s.saving; page.querySelector("#stylib-cancel").disabled = !s.dirty; });
   page.querySelector("#stylib-close")?.addEventListener("click", async () => { if (!s.dirty || await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) { s.selected = null; s.draft = null; s.dirty = false; APP.render(); } });
   page.querySelector("#stylib-save")?.addEventListener("click", save); page.querySelector("#stylib-cancel")?.addEventListener("click", () => { s.draft = draftOf(s.selected); s.dirty = false; APP.render(); });
   page.querySelector("#stylib-duplicate")?.addEventListener("click", duplicate); page.querySelector("#stylib-toggle-hidden")?.addEventListener("click", toggleHidden); page.querySelector("#stylib-delete")?.addEventListener("click", remove);

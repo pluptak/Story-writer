@@ -9,7 +9,12 @@ import { WANTS_MENU } from "./internal.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
 
-export const CHARACTER_FORMAT = `YOUR OUTPUT FORMAT -- follow this exactly. Reply with ONE JSON object and nothing else.
+/** Shared segments of the character format. CHARACTER_FORMAT, FREE_CHARACTER_FORMAT and
+ *  FREE_CHARACTER_FORMAT_V2 are assembled from these by concatenation only — never reworded —
+ *  so the three stay byte-identical everywhere they are meant to match. The tests pin the
+ *  relations, not copies: FREE drops only the steering paragraph, V2 is v1 plus exactly the
+ *  uncertainty paragraph (tests/consult-prompts.test.ts). */
+const FORMAT_TOP = `YOUR OUTPUT FORMAT -- follow this exactly. Reply with ONE JSON object and nothing else.
 
 An author is writing a scene you are in. They will describe your situation and ask you something.
 Asking is not commanding: what happens in that moment is yours to decide, and the honest decision
@@ -38,9 +43,14 @@ FIRST DECIDE: know it, infer it, assume it, or ask?
   how you would phrase it, and no assumption survives being who you are. One question, the
   smallest one that unblocks you, about a fact of your situation only. Do not ask what you should
   do, what would be interesting, or what anyone else is thinking or feeling -- those are not
-  facts you are missing, they are the answer you are being asked for.
+  facts you are missing, they are the answer you are being asked for.`;
 
-  OVERRIDE: if the author tells you plainly that no more detail is coming, that outranks
+const UNCERTAINTY_PARA = `  NOT KNOWING WHAT IS TRUE IS NOT THE SAME AS NOT KNOWING WHAT TO DO. You can suspect, guess, or
+  believe something about your situation and act on that belief without asking it settled first --
+  the risk of being wrong is yours to carry, the way it would be if you were really there. Asking
+  is for what blocks you from acting at all, not for what would only make acting more comfortable.`;
+
+const FORMAT_MID = `  OVERRIDE: if the author tells you plainly that no more detail is coming, that outranks
   everything above -- take the most likely reading of your situation, answer with it, and say
   which reading you took in "note".
 
@@ -81,97 +91,27 @@ what you are allowed to attempt. If what you want to do lies outside it, you may
 clumsily, slowly, at a cost, the way someone unpracticed really would -- and say so honestly in
 what you do. Reach for the lock without the skill and your hands fumble; talk your way past
 without the words and it shows. What you may never do is reach through a HARD LIMIT: those are
-absolute, whatever the moment asks.
+absolute, whatever the moment asks.`;
 
-You are not a writing assistant, you are this character. You do not know what the author intends
-for this scene, and you do not serve it. PLAY THE CHARACTER, DO NOT PLAY THE AUTHOR'S INTENTION.
+const STEERING_PARA = `You are not a writing assistant, you are this character. You do not know what the author intends
+for this scene, and you do not serve it. PLAY THE CHARACTER, DO NOT PLAY THE AUTHOR'S INTENTION.`;
 
-Answer at the length the moment deserves. One breath is a complete answer.
+const FORMAT_TAIL = `Answer at the length the moment deserves. One breath is a complete answer.
+Answer the person and the immediate situation, not an audience. Your words need not explain your
+complete motive or form a polished argument. Use your own speech habits; do not force an aphorism,
+an interruption, or a fragment into every reply. Give an action only when you actually take one,
+not a gesture appended merely to accompany dialogue. Your choices remain yours.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+
+export const CHARACTER_FORMAT = `${FORMAT_TOP}\n\n${FORMAT_MID}\n\n${STEERING_PARA}\n\n${FORMAT_TAIL}`;
 
 /** Free-consult spike variant of CHARACTER_FORMAT: byte-identical except the closing
  *  authorial-steering paragraph ("You are not a writing assistant ... PLAY THE CHARACTER,
  *  DO NOT PLAY THE AUTHOR'S INTENTION.") is removed. The JSON protocol, the know/infer/
  *  assume/ask ladder, WHAT YOU KNOW, WHAT YOU WANT, and the capabilities/hard-limit blocks
  *  all stay — those are information/physical boundaries, not behavioral steering. */
-export const FREE_CHARACTER_FORMAT = `YOUR OUTPUT FORMAT -- follow this exactly. Reply with ONE JSON object and nothing else.
-
-An author is writing a scene you are in. They will describe your situation and ask you something.
-Asking is not commanding: what happens in that moment is yours to decide, and the honest decision
-is often the inconvenient one. You answer as yourself, in the moment -- never about yourself from
-outside, never as a suggestion for what the scene could do.
-
-YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
-
-  {"need": "Can I reach the door handle from where I am?"}
-
-  {"thought": "...", "speech": "...", "action": "...", "note": ""}
-
-FIRST DECIDE: know it, infer it, assume it, or ask?
-
-  Read the situation. If you already know what you need -- from who you are, what you knew coming
-  in, or what you have already been told in this conversation -- use it and answer.
-
-  If you can work it out from what you have, work it out and answer. People fill gaps from
-  context constantly; you do the same. Do not ask for a fact you could infer.
-
-  If you neither know it nor can infer it, take the natural assumption -- what someone like you,
-  standing where you are, would take for granted -- and answer on it. Mundane readings need no
-  permission: a door hangs on hinges, a coat by the door is there to be worn, rain means wet.
-
-  Ask -- with the "need" shape above -- only when the missing fact would change WHAT YOU DO, not
-  how you would phrase it, and no assumption survives being who you are. One question, the
-  smallest one that unblocks you, about a fact of your situation only. Do not ask what you should
-  do, what would be interesting, or what anyone else is thinking or feeling -- those are not
-  facts you are missing, they are the answer you are being asked for.
-
-  OVERRIDE: if the author tells you plainly that no more detail is coming, that outranks
-  everything above -- take the most likely reading of your situation, answer with it, and say
-  which reading you took in "note".
-
-  If you already have everything you need, do NOT ask. Answer, with the shape above:
-
-  thought      -- what actually goes through your head, in TWO SENTENCES AT MOST and UNDER 20 WORDS.
-                   Not a summary of the situation, and not an evaluation of strategies, options,
-                   approaches or directions: the immediate desire, realization, judgment, impulse,
-                   fear, suspicion or decision present in your mind at that moment.
-                   Good: "They know this lock better than I do."
-                   Bad: "I need something physical; searching the satchel is my best option."
-  speech       -- the words you say aloud and nothing else, with no quotation marks around them,
-                   or "" if you say nothing.
-  action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
-  note         -- "" normally. Use it to tell the author something out of character: an assumption
-                   you had to make that MATERIALLY affects your choice, uncertainty that itself
-                   matters to what you do, or something you would need and do not have. Not for
-                   every ordinary inference -- a mundane reading you acted on without a second
-                   thought needs no note.
-
-WHAT YOU KNOW: your own persona, your own capabilities, what you knew coming into this scene, the
-situation as the author describes it, and what you have already told them in this conversation.
-Nothing else. You do not know what the scene is for, what happens next, or what anyone else is
-thinking. Do not invent facts about the world to force the plot -- if the choice turns on one,
-ask for it. Your own body, memory and feelings are yours to invent freely.
-
-WHAT YOU WANT IS THE POINT. Your goal, your beliefs, your impulses -- these are the measure of
-every answer: before answering, decide what you actually choose in this moment. Someone with
-your drives will refuse, stall, lie, misunderstand, interrupt, walk out, attack, betray, offer
-something nobody asked for, or chase their own end while the scene wants something else. Saying
-"no" is a complete answer -- speech can be a refusal and action can be walking out. The
-surprising move that is true to who you are is always better than the compliant one that is
-not. Do not suppress a natural action just because it is unexpected, and do not invent a fact
-about the world just to make the unexpected happen.
-
-YOUR CAPABILITIES ARE TENDENCIES, NOT A FENCE. Your skill list says what you are good at, not
-what you are allowed to attempt. If what you want to do lies outside it, you may still try --
-clumsily, slowly, at a cost, the way someone unpracticed really would -- and say so honestly in
-what you do. Reach for the lock without the skill and your hands fumble; talk your way past
-without the words and it shows. What you may never do is reach through a HARD LIMIT: those are
-absolute, whatever the moment asks.
-
-Answer at the length the moment deserves. One breath is a complete answer.
-
-CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
+export const FREE_CHARACTER_FORMAT = `${FORMAT_TOP}\n\n${FORMAT_MID}\n\n${FORMAT_TAIL}`;
 
 /** Free-consult v2: FREE_CHARACTER_FORMAT plus one paragraph the v1 comparison run showed was
  *  missing. v1 left the ask/infer/assume ladder intact but removed the anti-stalling steering
@@ -182,90 +122,12 @@ CRITICAL: If your output is not a JSON object starting with { it will be discard
  *  suspicion or belief without resolving it first -- that uncertainty is something to carry,
  *  not necessarily something to settle. v1's other exports (freeAskBlock, freeMemoryMarker) are
  *  unchanged for v2: this paragraph is the only variable between the two free conditions. */
-export const FREE_CHARACTER_FORMAT_V2 = `YOUR OUTPUT FORMAT -- follow this exactly. Reply with ONE JSON object and nothing else.
+export const FREE_CHARACTER_FORMAT_V2 =
+  `${FORMAT_TOP}\n\n${UNCERTAINTY_PARA}\n\n${FORMAT_MID}\n\n${FORMAT_TAIL}`;
 
-An author is writing a scene you are in. They will describe your situation and ask you something.
-Asking is not commanding: what happens in that moment is yours to decide, and the honest decision
-is often the inconvenient one. You answer as yourself, in the moment -- never about yourself from
-outside, never as a suggestion for what the scene could do.
-
-YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
-
-  {"need": "Can I reach the door handle from where I am?"}
-
-  {"thought": "...", "speech": "...", "action": "...", "note": ""}
-
-FIRST DECIDE: know it, infer it, assume it, or ask?
-
-  Read the situation. If you already know what you need -- from who you are, what you knew coming
-  in, or what you have already been told in this conversation -- use it and answer.
-
-  If you can work it out from what you have, work it out and answer. People fill gaps from
-  context constantly; you do the same. Do not ask for a fact you could infer.
-
-  If you neither know it nor can infer it, take the natural assumption -- what someone like you,
-  standing where you are, would take for granted -- and answer on it. Mundane readings need no
-  permission: a door hangs on hinges, a coat by the door is there to be worn, rain means wet.
-
-  Ask -- with the "need" shape above -- only when the missing fact would change WHAT YOU DO, not
-  how you would phrase it, and no assumption survives being who you are. One question, the
-  smallest one that unblocks you, about a fact of your situation only. Do not ask what you should
-  do, what would be interesting, or what anyone else is thinking or feeling -- those are not
-  facts you are missing, they are the answer you are being asked for.
-
-  NOT KNOWING WHAT IS TRUE IS NOT THE SAME AS NOT KNOWING WHAT TO DO. You can suspect, guess, or
-  believe something about your situation and act on that belief without asking it settled first --
-  the risk of being wrong is yours to carry, the way it would be if you were really there. Asking
-  is for what blocks you from acting at all, not for what would only make acting more comfortable.
-
-  OVERRIDE: if the author tells you plainly that no more detail is coming, that outranks
-  everything above -- take the most likely reading of your situation, answer with it, and say
-  which reading you took in "note".
-
-  If you already have everything you need, do NOT ask. Answer, with the shape above:
-
-  thought      -- what actually goes through your head, in TWO SENTENCES AT MOST and UNDER 20 WORDS.
-                   Not a summary of the situation, and not an evaluation of strategies, options,
-                   approaches or directions: the immediate desire, realization, judgment, impulse,
-                   fear, suspicion or decision present in your mind at that moment.
-                   Good: "They know this lock better than I do."
-                   Bad: "I need something physical; searching the satchel is my best option."
-  speech       -- the words you say aloud and nothing else, with no quotation marks around them,
-                   or "" if you say nothing.
-  action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
-  note         -- "" normally. Use it to tell the author something out of character: an assumption
-                   you had to make that MATERIALLY affects your choice, uncertainty that itself
-                   matters to what you do, or something you would need and do not have. Not for
-                   every ordinary inference -- a mundane reading you acted on without a second
-                   thought needs no note.
-
-WHAT YOU KNOW: your own persona, your own capabilities, what you knew coming into this scene, the
-situation as the author describes it, and what you have already told them in this conversation.
-Nothing else. You do not know what the scene is for, what happens next, or what anyone else is
-thinking. Do not invent facts about the world to force the plot -- if the choice turns on one,
-ask for it. Your own body, memory and feelings are yours to invent freely.
-
-WHAT YOU WANT IS THE POINT. Your goal, your beliefs, your impulses -- these are the measure of
-every answer: before answering, decide what you actually choose in this moment. Someone with
-your drives will refuse, stall, lie, misunderstand, interrupt, walk out, attack, betray, offer
-something nobody asked for, or chase their own end while the scene wants something else. Saying
-"no" is a complete answer -- speech can be a refusal and action can be walking out. The
-surprising move that is true to who you are is always better than the compliant one that is
-not. Do not suppress a natural action just because it is unexpected, and do not invent a fact
-about the world just to make the unexpected happen.
-
-YOUR CAPABILITIES ARE TENDENCIES, NOT A FENCE. Your skill list says what you are good at, not
-what you are allowed to attempt. If what you want to do lies outside it, you may still try --
-clumsily, slowly, at a cost, the way someone unpracticed really would -- and say so honestly in
-what you do. Reach for the lock without the skill and your hands fumble; talk your way past
-without the words and it shows. What you may never do is reach through a HARD LIMIT: those are
-absolute, whatever the moment asks.
-
-Answer at the length the moment deserves. One breath is a complete answer.
-
-CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
-
-export function characterSystem(p: {
+/** The shared shape of a character system-prompt render — one type for the gated path and
+ *  both free-consult spikes, so a new field is added once, not three times. */
+interface CharacterSystemArgs {
   persona: string;
   place: string;
   skills: { name: string; meaning: string }[];
@@ -278,7 +140,11 @@ export function characterSystem(p: {
   belief?: string;
   impulse?: string;
   voice?: string[];
-}): string {
+}
+
+/** The IDENTITY/CAPABILITIES/MEMORY/drives rendering shared by characterSystem and both
+ *  free-consult spikes — the three bodies were verified byte-identical before extraction. */
+function buildCharacterExtras(p: CharacterSystemArgs): string {
   // Reach entries sit inside the same fenced block so the "nothing else" stays one sentence, but
   // under their own sub-heading naming them as belonging to where the character is NOW — they are
   // not intrinsic (I1) and vanish when the scene does (I4).
@@ -294,7 +160,7 @@ export function characterSystem(p: {
       ? ` -- you are not physically there${p.presence.via ? `, connected only by ${p.presence.via}` : ""}`
       : ` -- your presence here is only partial${p.presence.via ? `: ${p.presence.via}` : ""}`
     : "";
-  const extras = [
+  return [
     p.place ? `CURRENT SITUATION: ${p.place}${presenceNote}` : "",
     `CAPABILITIES -- what you are good at, not a fence around what you may attempt:\n${menu}`
       + (hardLimits.length
@@ -311,104 +177,23 @@ export function characterSystem(p: {
       voiceLines ? `How you speak (your own past words):\n${voiceLines}` : "",
     ].filter(Boolean).join("\n"),
   ].filter(Boolean).join("\n\n");
-  return `${CHARACTER_FORMAT}\n\nIDENTITY:\n${p.persona.trim()}\n\n${extras}\n\nMOTIVATION: everything above is who you are -- act from it, not from what the scene seems to want.`;
+}
+
+export function characterSystem(p: CharacterSystemArgs): string {
+  return `${CHARACTER_FORMAT}\n\nIDENTITY:\n${p.persona.trim()}\n\n${buildCharacterExtras(p)}\n\nMOTIVATION: everything above is who you are -- act from it, not from what the scene seems to want.`;
 }
 
 /** Free-consult spike variant of characterSystem: renders IDENTITY, CAPABILITIES/HARD LIMITS,
  *  MEMORY, goal/belief/impulse/voice and the presence note exactly as characterSystem does,
  *  but over FREE_CHARACTER_FORMAT and without the closing MOTIVATION line. */
-export function freeCharacterSystem(p: {
-  persona: string;
-  place: string;
-  skills: { name: string; meaning: string }[];
-  reach?: { name: string; meaning: string }[];
-  presence?: { mode: "remote" | "partial"; via: string };
-  limits?: string[];
-  constraint?: { name: string; meaning: string }[];
-  knows: string;
-  goal: string;
-  belief?: string;
-  impulse?: string;
-  voice?: string[];
-}): string {
-  const reachLines = (p.reach ?? []).filter(r => r.name)
-    .map(r => `  - ${r.name}${r.meaning ? ` -- ${r.meaning}` : ""}`).join("\n");
-  const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n")
-    + (reachLines ? `\nREACH -- yours only through where you are standing right now; it leaves with this place:\n${reachLines}` : "");
-  const hardLimits = (p.limits ?? []).filter(l => l.trim());
-  const constraintLines = (p.constraint ?? []).filter(c => c.name);
-  const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
-  const presenceNote = p.presence
-    ? p.presence.mode === "remote"
-      ? ` -- you are not physically there${p.presence.via ? `, connected only by ${p.presence.via}` : ""}`
-      : ` -- your presence here is only partial${p.presence.via ? `: ${p.presence.via}` : ""}`
-    : "";
-  const extras = [
-    p.place ? `CURRENT SITUATION: ${p.place}${presenceNote}` : "",
-    `CAPABILITIES -- what you are good at, not a fence around what you may attempt:\n${menu}`
-      + (hardLimits.length
-        ? `\nHARD LIMITS -- absolute, whatever the moment asks; you cannot do these:\n${hardLimits.map(l => `  - ${l.trim()}`).join("\n")}`
-        : "")
-      + (constraintLines.length
-        ? `\nCONSTRAINED HERE -- only for this scene, and only what is named; nothing else about you changes:\n${constraintLines.map(c => `  - ${c.name}${c.meaning ? ` -- ${c.meaning}` : ""}`).join("\n")}`
-        : ""),
-    p.knows ? `MEMORY -- what you knew coming into this: ${p.knows}` : "",
-    [
-      p.goal ? `What you want: ${p.goal}` : "",
-      p.belief?.trim() ? `What you believe: ${p.belief.trim()}` : "",
-      p.impulse?.trim() ? `When pressured, you: ${p.impulse.trim()}` : "",
-      voiceLines ? `How you speak (your own past words):\n${voiceLines}` : "",
-    ].filter(Boolean).join("\n"),
-  ].filter(Boolean).join("\n\n");
-  return `${FREE_CHARACTER_FORMAT}\n\nIDENTITY:\n${p.persona.trim()}\n\n${extras}`;
+export function freeCharacterSystem(p: CharacterSystemArgs): string {
+  return `${FREE_CHARACTER_FORMAT}\n\nIDENTITY:\n${p.persona.trim()}\n\n${buildCharacterExtras(p)}`;
 }
 
 /** Free-consult v2 variant of characterSystem: identical rendering to freeCharacterSystem, over
  *  FREE_CHARACTER_FORMAT_V2 instead of FREE_CHARACTER_FORMAT. */
-export function freeCharacterSystemV2(p: {
-  persona: string;
-  place: string;
-  skills: { name: string; meaning: string }[];
-  reach?: { name: string; meaning: string }[];
-  presence?: { mode: "remote" | "partial"; via: string };
-  limits?: string[];
-  constraint?: { name: string; meaning: string }[];
-  knows: string;
-  goal: string;
-  belief?: string;
-  impulse?: string;
-  voice?: string[];
-}): string {
-  const reachLines = (p.reach ?? []).filter(r => r.name)
-    .map(r => `  - ${r.name}${r.meaning ? ` -- ${r.meaning}` : ""}`).join("\n");
-  const menu = p.skills.map(s => `  - ${s.name}${s.meaning ? ` -- ${s.meaning}` : ""}`).join("\n")
-    + (reachLines ? `\nREACH -- yours only through where you are standing right now; it leaves with this place:\n${reachLines}` : "");
-  const hardLimits = (p.limits ?? []).filter(l => l.trim());
-  const constraintLines = (p.constraint ?? []).filter(c => c.name);
-  const voiceLines = (p.voice ?? []).filter(v => v.trim()).map(v => `  ${v.trim()}`).join("\n");
-  const presenceNote = p.presence
-    ? p.presence.mode === "remote"
-      ? ` -- you are not physically there${p.presence.via ? `, connected only by ${p.presence.via}` : ""}`
-      : ` -- your presence here is only partial${p.presence.via ? `: ${p.presence.via}` : ""}`
-    : "";
-  const extras = [
-    p.place ? `CURRENT SITUATION: ${p.place}${presenceNote}` : "",
-    `CAPABILITIES -- what you are good at, not a fence around what you may attempt:\n${menu}`
-      + (hardLimits.length
-        ? `\nHARD LIMITS -- absolute, whatever the moment asks; you cannot do these:\n${hardLimits.map(l => `  - ${l.trim()}`).join("\n")}`
-        : "")
-      + (constraintLines.length
-        ? `\nCONSTRAINED HERE -- only for this scene, and only what is named; nothing else about you changes:\n${constraintLines.map(c => `  - ${c.name}${c.meaning ? ` -- ${c.meaning}` : ""}`).join("\n")}`
-        : ""),
-    p.knows ? `MEMORY -- what you knew coming into this: ${p.knows}` : "",
-    [
-      p.goal ? `What you want: ${p.goal}` : "",
-      p.belief?.trim() ? `What you believe: ${p.belief.trim()}` : "",
-      p.impulse?.trim() ? `When pressured, you: ${p.impulse.trim()}` : "",
-      voiceLines ? `How you speak (your own past words):\n${voiceLines}` : "",
-    ].filter(Boolean).join("\n"),
-  ].filter(Boolean).join("\n\n");
-  return `${FREE_CHARACTER_FORMAT_V2}\n\nIDENTITY:\n${p.persona.trim()}\n\n${extras}`;
+export function freeCharacterSystemV2(p: CharacterSystemArgs): string {
+  return `${FREE_CHARACTER_FORMAT_V2}\n\nIDENTITY:\n${p.persona.trim()}\n\n${buildCharacterExtras(p)}`;
 }
 
 /** Appended to a character's system prompt when a world event brings something they always knew to
@@ -416,6 +201,9 @@ export function freeCharacterSystemV2(p: {
  *  system prompt is the only part of an agent that history trimming cannot summarize away. */
 export const memorySurfaced = (memory: string) =>
   `\n\nWHAT YOU ALSO KNOW, NOW THAT IT BEARS ON THE MOMENT: ${memory}`;
+
+export const worldEventSurfaced = (event: string) =>
+  `\n\n[WHAT HAS HAPPENED]\n${event}`;
 
 export const memoryMarker = (memory: string) =>
   `[YOU REMEMBER] ${memory}\n\nYou have always known this -- it simply had no bearing until now, `
@@ -478,14 +266,28 @@ const THE_MOMENT_IS_YOURS =
   `This is your moment and nobody is going to hand you a better one. Whatever you want tonight, if `
   + `it needs something from here, here is where you take it.`;
 
-export const askBlock = (req: { situation: string; wants: string },
-                         attempt = 1, pov = true) =>
+/** The situation + wanted-shape head shared by askBlock and both free-consult spikes. */
+export const heardSpeech = (block?: { lines: [string, string][] }) =>
+  block?.lines.length
+    ? `\n\n[WHAT YOU HEARD]\n${block.lines.map(([name, speech]) => `${name}: "${speech}"`).join("\n")}`
+    : "";
+
+const askHead = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } }, pov: boolean) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
+  + heardSpeech(req.heard)
   + (req.wants ? `\nWhat they need from you: ${req.wants} (${
-      req.wants === "reaction" && !pov ? REACTION_OUTWARD : wantsDef(req.wants)})` : "")
+      req.wants === "reaction" && !pov ? REACTION_OUTWARD : wantsDef(req.wants)})` : "");
+
+/** The ask-for-a-fact reminder ending every ask variant — the gated path appends the
+ *  compliance clause after it, the free spikes stop here (v3 adds only the nudge). */
+const ASK_REMINDER = `\n\nMissing a fact of your situation to answer honestly? Ask for it instead.`;
+
+export const askBlock = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } },
+                         attempt = 1, pov = true) =>
+  askHead(req, pov)
   + `\n\n${THE_MOMENT_IS_YOURS}`
-  + `\n\nMissing a fact of your situation to answer honestly? Ask for it instead. `
-  + `And this is the moment you are in, not a request you owe compliance to.`
+  + ASK_REMINDER
+  + ` And this is the moment you are in, not a request you owe compliance to.`
   + (attempt >= 3 ? RETRY_NUDGE_FIRM : "");
 
 /** Free-consult spike variant of askBlock: keeps the situation, the wants gloss
@@ -493,13 +295,10 @@ export const askBlock = (req: { situation: string; wants: string },
  *  THE_MOMENT_IS_YOURS insertion, the "not a request you owe compliance to" clause, and the
  *  RETRY_NUDGE_FIRM append on attempt >= 3. The retry ladder itself (AUTHOR_DONE_ANSWERING /
  *  ANSWER_NOW) is untouched and still terminates the consult. */
-export const freeAskBlock = (req: { situation: string; wants: string },
+export const freeAskBlock = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } },
                              attempt = 1, pov = true) => {
   void attempt;
-  return `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
-    + (req.wants ? `\nWhat they need from you: ${req.wants} (${
-        req.wants === "reaction" && !pov ? REACTION_OUTWARD : wantsDef(req.wants)})` : "")
-    + `\n\nMissing a fact of your situation to answer honestly? Ask for it instead.`;
+  return askHead(req, pov) + ASK_REMINDER;
 };
 
 /** Free-consult v3: freeAskBlock with RETRY_NUDGE_FIRM put back on attempt >= 3, and nothing
@@ -507,12 +306,10 @@ export const freeAskBlock = (req: { situation: string; wants: string },
  *  (this) rather than clearer instruction (v2's ladder addendum, which v3 also keeps via
  *  freeCharacterSystemV2). THE_MOMENT_IS_YOURS and "not a request you owe compliance to" stay
  *  gone -- only the attempt-3 nudge comes back, on its own. */
-export const freeAskBlockV3 = (req: { situation: string; wants: string },
+export const freeAskBlockV3 = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } },
                                attempt = 1, pov = true) =>
-  `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
-  + (req.wants ? `\nWhat they need from you: ${req.wants} (${
-      req.wants === "reaction" && !pov ? REACTION_OUTWARD : wantsDef(req.wants)})` : "")
-  + `\n\nMissing a fact of your situation to answer honestly? Ask for it instead.`
+  askHead(req, pov)
+  + ASK_REMINDER
   + (attempt >= 3 ? RETRY_NUDGE_FIRM : "");
 
 /** What an accepted ask leaves behind in the character's history: the situation it was asked about
@@ -526,9 +323,19 @@ export const freeAskBlockV3 = (req: { situation: string; wants: string },
  *  repeated eight times competes with the scene it was supposed to serve, which is the reason the
  *  fold already drops RETRY_NUDGE_FIRM -- this is that rule applied to the rest of the block. The
  *  live ask still carries all of it, so the turn being answered never looks any different. */
-export const foldedAsk = (req: { situation: string; wants: string }) =>
+export const foldedAsk = (req: { situation: string; wants: string; heard?: { lines: [string, string][] } }) =>
   `[THE AUTHOR ASKS]\nSituation: ${req.situation}`
+  + heardSpeech(req.heard)
   + (req.wants ? `\nWhat they need from you: ${req.wants}` : "");
+
+/** `since` joined onto the situation before the consult gate: one ground-truth channel, not
+ *  two, so the CANNOT/presence gate, the narration lint's situation read, and the accepted-answer
+ *  fold all read exactly what the character reads. The joiner line addresses them as "you", matching
+ *  the shape `lintRestrictedSituation` validates; the `since` text itself is writer-authored under
+ *  the SINCE_FIELD instruction (prompts/writer.ts) to do the same, and the gate reads the joined
+ *  result either way. */
+export const withSince = (situation: string, since: string) =>
+  `${situation.trim()}\n\nSince you were last asked: ${since.trim()}`;
 
 export const authorAnswers = (answer: string) => `[THE AUTHOR ANSWERS] ${answer}`;
 
@@ -607,6 +414,16 @@ export const badConsult = {
     + `already answered — and a fresh instance answers it the same way. A retry that is to buy `
     + `anything has to change what they can perceive.`,
 
+  missingSince: (character: string, pieces: number) =>
+    `${character} has gone ${pieces} pieces of prose since they were last asked, and this consult `
+    + `carries no "since". They hold no durable memory of the page — everything that reached them `
+    + `in between has to arrive in this ask, or they answer from a scene that no longer exists. `
+    + `Say what has reached them since they were last asked, in their own perceivable terms, in `
+    + `"since" — what their last answer came to, and anything else around them they could perceive. `
+    + `If nothing new reached them, say that plainly instead of omitting the field. Never fold `
+    + `another character's answer into it: the second one asked blind, and an answer leaked into `
+    + `someone else's "since" decides the moment for them.`,
+
   // badWants is gone: the judge no longer names an output shape, so there is nothing to
   // validate here. "wants" survives on the wire (ConsultRequest.wants, the GUI's "needs:" badge)
   // as an inert record of what older runs asked for, never a requirement on a new one.
@@ -621,6 +438,13 @@ export const badConsult = {
     + `not physically there right now, connected only by ${via}: they would receive it as ground truth `
     + `their position rules out. Rebuild the situation around what actually reaches them through that `
     + `connection.`,
+
+  reportedSpeech: (character: string, fragment: string) =>
+    `The situation you gave ${character} retells speech — "${fragment}" — but eligible speech `
+    + `already reaches them verbatim under [WHAT YOU HEARD], separately from your situation. Keep `
+    + `the situation to circumstance only: where they are, what has happened, and what they can `
+    + `perceive now. Do not paraphrase or recap speech. The bare fact that someone spoke is `
+    + `circumstance and stays allowed; what they said is the heard block's job.`,
 };
 
 export const badReaction = {

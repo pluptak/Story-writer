@@ -27,6 +27,13 @@ export const LibraryCharacter = z.strictObject({
    *  general skill — the pre-origins default. Resolved against the skills catalog when a story
    *  loads, not stored here, so a renamed origin in the catalog applies to existing entries. */
   origin: z.string().default(""),
+  /** Pronouns for this character: subject, object, possessive, and reflexive forms. */
+  pronouns: z.strictObject({
+    subject: z.string().min(1),
+    object: z.string().min(1),
+    possessive: z.string().min(1),
+    reflexive: z.string().min(1),
+  }).optional(),
   /** Hidden entries stay in the catalog and keep working for stories that already reference them,
    *  but are excluded from every new-story selection path. Hide/restore never touches `version` —
    *  it is not a content revision. */

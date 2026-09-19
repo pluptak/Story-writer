@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { ServerHost } from "../server/server.ts";
+import type { RouteHosts } from "../server/route-hosts.ts";
 import { Agent } from "../engine/agent.ts";
 import type { SceneRun } from "../engine/scene-loop.ts";
 import type { StoryConfig } from "../engine/story-format.ts";
@@ -201,26 +201,28 @@ export function fakeRawRequest(raw: string, method = "POST",
   return req;
 }
 
-type RouteHandler =
-  (req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost) => Promise<boolean>;
+type RouteHandler<H = RouteHosts> =
+  (req: IncomingMessage, res: ServerResponse, path: string, host: H) => Promise<boolean>;
 
 /** Drive one route call with a fake request/response pair, and hand back what it replied. */
-export async function callRoute(handler: RouteHandler, path: string, body: unknown,
-                                host: ServerHost, method = "POST") {
+export async function callRoute<H>(handler: RouteHandler<H>, path: string, body: unknown,
+                                host: H, method = "POST") {
   const req = fakeRequest(body ?? {}, method);
   let code = 0, sent = "";
+  // Headers are captured because a 405 is only correct if it says which methods ARE allowed.
+  let headers: Record<string, string> = {};
   const res = {
-    writeHead(c: number) { code = c; return res; },
+    writeHead(c: number, h?: Record<string, string>) { code = c; headers = h ?? {}; return res; },
     end(s?: string) { sent = s ?? ""; },
   } as unknown as ServerResponse;
   const handled = await handler(req, res, path, host);
-  return { handled, code, body: sent ? JSON.parse(sent) : null };
+  return { handled, code, headers, body: sent ? JSON.parse(sent) : null };
 }
 
 /** Drive one GET route whose parameters live in the query string. Unlike `callRoute` it sets
  *  `req.url` and returns the raw body and response headers -- these routes answer with NDJSON as
  *  often as JSON, so parsing is the caller's choice. */
-export async function callGet(handler: RouteHandler, url: string, host: ServerHost) {
+export async function callGet<H>(handler: RouteHandler<H>, url: string, host: H) {
   const req = Readable.from([]) as unknown as IncomingMessage;
   (req as { method?: string }).method = "GET";
   (req as { url?: string }).url = url;
@@ -234,36 +236,30 @@ export async function callGet(handler: RouteHandler, url: string, host: ServerHo
 }
 
 // -- A SHARED FAKE SERVER HOST -----------------------------------------------
-/** A `ServerHost` with every member set to a safe default that fails loudly if a route calls it
+/** A `RouteHosts` with every member set to a safe default that fails loudly if a route calls it
  *  unscripted — a refusal shaped like the real one, or a throw naming the call "unused". Override
  *  only the members the test under it actually exercises; this is the one shape every route test
- *  fakes a host with, promoted so ServerHost's own shape stays the only thing to update.
+ *  fakes a host with.
  *
- *  `overrides` is deliberately untyped against `ServerHost` itself: a route double often returns a
- *  deliberately trimmed shape (a `story.config` with none of the run defaults, a cast entry missing
- *  fields the route under test never reads) that the real interface would reject. The final cast is
- *  what makes that legal, same as every hand-rolled fake this replaces did with its own trailing
- *  `as unknown as ServerHost`. */
-export function makeHost(overrides?: Record<string, any>): ServerHost {
-  return {
-    storyCards: async () => [],
+ *  The `base` literal is annotated `RouteHosts`, so adding a required member to any narrow
+ *  interface breaks `npx tsc` here until the fake grows the same member — the annotation is the
+ *  exhaustiveness check. `overrides` stays untyped (`Record<string, any>`): a route double often
+ *  returns a deliberately trimmed shape the real interface would reject, and the final cast is
+ *  what makes that legal. */
+export function makeHost(overrides?: Record<string, any>): RouteHosts {
+  const base: RouteHosts = {
     selectableStory: async () => null,
     resolveStoryDir: (d: string) => d,
+    availableModelIds: async () => null,
+    providerName: "none",
+    storyCards: async () => [],
+    architectModel: async () => "none",
     runDirs: async () => [],
     runLlmLogs: async () => [],
     readLlmLog: async () => null,
-    writtenChapters: async () => [],
-    availableModelIds: async () => null,
-    providerName: "none",
-    architectModel: async () => "none",
-    newScaffoldSession: async () => { throw new Error("unused"); },
-    unknownTags: async () => [],
-    importCharacters: async () => ({ imported: [], missing: [] }),
-    resolveStyle: async () => null,
-    newHandoffSession: async () => { throw new Error("unused"); },
-    directEdit: () => ({ ok: false, reason: "unused" }),
-    specView: (s: unknown) => s,
     outDir: () => "",
+    fullCast: async () => ({ ok: false, error: "unused" }),
+    writtenChapters: async () => [],
     editorConfig: () => ({
       defaults: { retries: 2, clarifications: 2, maxSteps: 24, maxProseWords: 140,
                   requestTimeout: 120, attempts: 3, maxTokens: 2000, stream: true, debug: false,
@@ -271,17 +267,35 @@ export function makeHost(overrides?: Record<string, any>): ServerHost {
       thinkingLevels: ["off", "low", "medium", "high", "default"],
       caps: { voiceSamples: 3 },
     }),
-    catalogConfig: () => ({
-      tagFacets: ["genre", "dramaticMode", "tone"],
-      caps: { voiceSamples: 3 },
-      assistFields: ["name", "portablePersona", "belief", "impulse", "voice", "skills", "restrictions"],
-    }),
     storyForEdit: async () => ({ ok: false, error: "unused" }),
-    fullCast: async () => ({ ok: false, error: "unused" }),
     checkStory: () => ({ ok: false, error: "unused", issues: [] }),
     saveStory: async () => ({ ok: false, reason: "unused" }),
     discardScene: async () => ({ ok: false, reason: "unused", status: 400 }),
     suggestEdits: async () => ({ ok: false, error: "unused" }),
+    scaffoldState: () => ({ active: false }),
+    scaffoldStart: async () => ({ ok: false, reason: "unused" }),
+    scaffoldSay: async () => ({ ok: false, reason: "unused" }),
+    scaffoldApprove: async () => ({ ok: false, reason: "unused" }),
+    scaffoldRegenerate: async () => ({ ok: false, reason: "unused" }),
+    scaffoldConcept: async () => ({ ok: false, reason: "unused" }),
+    scaffoldImport: async () => ({ ok: false, reason: "unused" }),
+    scaffoldPromote: async () => ({ ok: false, reason: "unused" }),
+    scaffoldSet: () => ({ ok: false, reason: "unused" }),
+    scaffoldAccept: async () => ({ ok: false, reason: "unused", status: 400 }),
+    scaffoldAbandon: () => { throw new Error("unused"); },
+    handoffState: () => ({ active: false }),
+    handoffStart: async () => ({ ok: false, reason: "unused" }),
+    handoffSay: async () => ({ ok: false, reason: "unused" }),
+    handoffRegenerate: async () => ({ ok: false, reason: "unused" }),
+    handoffAccept: async () => ({ ok: false, reason: "unused", status: 400 }),
+    handoffAbandon: () => { throw new Error("unused"); },
+    catalogConfig: () => ({
+      tagFacets: ["genre", "dramaticMode", "tone"],
+      caps: { voiceSamples: 3 },
+      assistFields: ["name", "portablePersona", "belief", "impulse", "voice", "skills", "restrictions"],
+      originSkills: {},
+      generalSkills: {},
+    }),
     catalogEntries: async () => ({ ok: false, reason: "unused" }),
     catalogCheck: async () => ({ ok: false, reason: "unused" }),
     catalogSave: async () => ({ ok: false, reason: "unused" }),
@@ -289,9 +303,8 @@ export function makeHost(overrides?: Record<string, any>): ServerHost {
     catalogSetVisibility: async () => ({ ok: false, reason: "unused" }),
     catalogUsage: async () => ({ tags: {}, skills: {} }),
     catalogAssist: async () => ({ ok: false, reason: "unused" }),
-    promoteSkill: async () => ({ ok: false, reason: "unused" }),
-    ...overrides,
-  } as unknown as ServerHost;
+  };
+  return { ...base, ...overrides } as RouteHosts;
 }
 
 // -- A SCENE RUN FOR TESTS --------------------------------------------------

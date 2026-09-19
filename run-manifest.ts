@@ -24,12 +24,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // Everything whose content can change what a run does. The viewer's static assets are deliberately
 // out: they render a run, they never write one (server/ contributes only its .ts routes —
 // fingerprint() reads .ts files alone, so server/gui/ never counts).
-const SOURCE_DIRS = ["engine", "prompts", "server"];
+const SOURCE_DIRS = ["engine", "prompts", "host", "server"];
 const SOURCE_FILES = ["prompts.ts", "live.ts", "app.ts", "run-and-save.ts", "run-manifest.ts",
-  "story-writer.ts", "cli-flags.ts", "ansi.ts"];
+  "story-writer.ts", "cli-flags.ts", "cli-to-engine.ts", "ansi.ts"];
 
-/** Every .ts file under `dir`, recursively — a change in any nested file must move the digest.
- *  Unreadable directories contribute nothing. */
+/** Every .ts file under `dir`, recursively — engine/lint/ and engine/providers/ are engine
+ *  too, and a change there must move the digest. Unreadable directories contribute nothing. */
 function dirSources(root: string, dir: string): string[] {
   const out: string[] = [];
   const walk = (rel: string) => {

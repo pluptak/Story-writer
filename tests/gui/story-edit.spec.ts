@@ -189,7 +189,7 @@ test("the review-new-story screen loads the scaffold's StoryJson-shaped draft", 
     await expect(page.locator("#iv-edit")).toBeVisible();
 
     // "edit in full →" hands the review screen the scaffold's StoryJson-shaped draft directly
-    // (server/scaffold-routes.ts's storyDraft field, not specView's GUI-facing shape) -- this is
+    // (server/routes/scaffold-routes.ts's storyDraft field, not specView's GUI-facing shape) -- this is
     // the path scaffoldStory() used to hand-convert client-side before it was deleted.
     await page.locator("#iv-edit").click();
     await expect(page.locator("#edit-title")).toHaveValue("The Signature");
@@ -204,7 +204,7 @@ test("the review-new-story screen loads the scaffold's StoryJson-shaped draft", 
     await page.locator("#edit-title").fill("The Signature.");
     await expect(page.locator("#edit-scaffold-accept")).toBeEnabled();
   } finally {
-    // SCAFFOLD is a module-level singleton (server/scaffold-routes.ts), outliving this test's own
+    // SCAFFOLD is a module-level singleton (host/scaffold.ts), outliving this test's own
     // server instance -- the next test to reach #/scaffold in this worker would otherwise inherit
     // this session instead of the idea modal.
     await page.request.post(`http://127.0.0.1:${served}/scaffold/abandon`).catch(() => {});

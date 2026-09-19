@@ -1,340 +1,28 @@
 /**
  * LIVE SERVER — the viewer's HTTP surface. Node built-ins only, no framework, no build step.
+ * Dispatches to the route modules; engine access arrives as narrow host interfaces
+ * (route-hosts.ts). Contract: docs/GUI-SPEC.md.
  */
 
-import { createServer, ServerResponse } from "node:http";
-import { readFile } from "node:fs/promises";
+import { createServer, IncomingMessage, ServerResponse } from "node:http";
 
 import { C } from "../ansi.ts";
-import { LIVE, RUN, sseClients, liveHistory, runState, storyWriteBlocked } from "../live.ts";
-import { HttpError, json, readJsonBody, requireMethod } from "./http-util.ts";
-import { handleRunControl } from "./run-control-routes.ts";
-import { handleScaffoldRoutes } from "./scaffold-routes.ts";
-import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
-import { handleRunLogRoutes } from "./run-log-routes.ts";
-import { handleStoryEditRoutes } from "./story-edit-routes.ts";
-import { handleStoryReadRoutes } from "./story-read-routes.ts";
-import { handleCatalogRoutes } from "./catalog-routes.ts";
-import type { StoryCard, LlmLogSummary } from "../engine/preflight.ts";
-import type { StoryJson, ThinkLevel } from "../engine/story-schema.ts";
-import type { TagFacet } from "../engine/catalog-schema.ts";
+import { LIVE, sseClients } from "../live.ts";
+import { HttpError, json } from "./infra/http-util.ts";
+import { serveStatic } from "./infra/static-files.ts";
+import { handleSseRoute, startSsePing } from "./infra/sse.ts";
+import { handleSessionRoutes } from "./routes/session-routes.ts";
+import { handleRunControl } from "./routes/run-control-routes.ts";
+import { handleScaffoldRoutes } from "./routes/scaffold-routes.ts";
+import { handleNextChapterRoutes } from "./routes/next-chapter-routes.ts";
+import { handleRunLogRoutes } from "./routes/run-log-routes.ts";
+import { handleStoryEditRoutes } from "./routes/story-edit-routes.ts";
+import { handleStoryReadRoutes } from "./routes/story-read-routes.ts";
+import { handleCatalogRoutes } from "./routes/catalog-routes.ts";
+import type { RouteHosts } from "./route-hosts.ts";
 
-/** The author's concept, chosen before the architect runs and never written to story.json:
- *  `tags` steer the story stage, `castSize` is the opening cast's target size for the cast
- *  stage, and `styleId` names the voice preset the settings stage is handed. Staged mode only —
- *  the one-shot walk has no gate for any of them to steer. */
-export type Concept = { tags: string[]; castSize: number; styleId: string };
-
-/** A scoped regenerate: reconsider exactly one cast member at the staged cast gate. Cast-only by
- *  design — no other gate has a meaningful scoped form. */
-export type RegenScope = { kind: "character"; name: string };
-
-/** What the reusable vocabulary is being used by, derived by scanning the other catalogs — the
- *  "18 uses" line, observed rather than authored. Tags are keyed by folded label (what entries
- *  store); a style carries the STYLE NAMES whose tags include it, for the tag page's "commonly
- *  associated" line. Skills carry no tags, so nothing counts them here; `skills` is the other
- *  direction — keyed by the name a character's `skills` line names, counted with the engine's own
- *  case-insensitive identity match. */
-export interface CatalogUsage {
-  tags: Record<string, { styles: string[] }>;
-  skills: Record<string, number>;
-}
-
-/** The editor's schema-derived defaults, thinking levels and voice cap — a small, explicitly
- *  hand-enumerated projection of story-schema.ts's own defaults, never the schema itself. Adding a
- *  new RunConfig field here is a deliberate choice, not something the editor picks up for free. */
-export interface EditorConfig {
-  defaults: {
-    retries: number; clarifications: number; maxSteps: number; maxProseWords: number;
-    requestTimeout: number; attempts: number; maxTokens: number; stream: boolean; debug: boolean;
-    thinking: { writer: ThinkLevel; character: ThinkLevel; summary: ThinkLevel };
-    sceneLength: number;
-  };
-  thinkingLevels: readonly ThinkLevel[];
-  caps: { voiceSamples: number };
-}
-
-/** The catalog's own schema-derived shape: the tag facet enum, the character voice-sample cap
- *  (the same VOICE_SAMPLE_CAP EditorConfig's caps.voiceSamples reads, since both schemas share it),
- *  and the field names the character assistant may be asked to touch. Same reasoning as
- *  EditorConfig: a small, explicit projection, never the schema itself — and the one place a route
- *  may learn `assistFields` from, since routes never import engine/. */
-export interface CatalogConfig {
-  tagFacets: readonly TagFacet[];
-  caps: { voiceSamples: number };
-  assistFields: readonly string[];
-  /** The persisted origin groups: origin name → the general skills it grants. Feeds the skill
-   *  editor's origin view and the character library's origin picker; empty when no origins exist. */
-  originSkills: Readonly<Record<string, readonly string[]>>;
-  /** The general-skill catalog, name → meaning. The selectable universe for an origin's `general`
-   *  list — derived only from origins would hide a general skill no origin happens to grant yet. */
-  generalSkills: Readonly<Record<string, string>>;
-}
-
-/** One in-progress interview's full snapshot — what GET /scaffold and every /scaffold/* action
- *  returns. Declared here rather than derived from engine/architect.ts's ScaffoldRound, so
- *  server/scaffold-routes.ts never needs that module even as a type; `last` and `bibleCandidates`
- *  are opaque/small enough that hand-restating the shape costs nothing and buys the boundary. */
-export type ScaffoldState =
-  | { active: false }
-  | {
-      active: true;
-      idea: string;
-      mode: "oneshot" | "staged";
-      busy: boolean;
-      stage: "" | "fillGaps" | "verify";
-      gate: string | null;
-      tension: string;
-      concept: {
-        tags: readonly string[]; castSize: number; unknownTags: string[];
-        imported: { libraryId: string; version: number; name: string }[];
-        missingImports: string[];
-        styleId: string; styleName: string; missingStyle: string;
-        tagsSteer: boolean; castSizeSteers: boolean; importsSteer: boolean; styleSteers: boolean;
-      };
-      haveDraft: boolean;
-      haveStory: boolean;
-      pendingAsk: string;
-      problems: string[];
-      bibleCandidates: { name: string; meaning: string; heldBy: string[] }[];
-      last: unknown;
-      needsFolder: string;
-      model: string;
-      spec: unknown;
-      storyDraft: unknown;
-    };
-
-/** One scaffold action's outcome: the resulting state, or a refusal naming the status to answer with. */
-export type ScaffoldActionResult =
-  | { ok: true; state: ScaffoldState }
-  | { ok: false; reason: string; status?: number; issues?: string[] };
-
-/** accept()'s outcome. Distinct from ScaffoldActionResult: a non-"written" result is not always a
- *  refusal of the call (the route answers 200 for "needs_folder"/"unloadable"), and the route needs
- *  the written files/dir, not a state snapshot — the session is gone once this succeeds. */
-export type ScaffoldAcceptResult =
-  | { ok: true; kind: "written"; dir: string; files: string[]; warnings: string[]; status: 200 }
-  | { ok: false; kind: "unloadable"; dir: string; files: string[]; error: string; warnings: string[]; status: 200 }
-  | { ok: false; kind: "needs_folder"; reason: string; status: 200 }
-  | { ok: false; kind: "no_story"; status: 400 }
-  | { ok: false; reason: string; status: number };
-
-/** One open handoff's full snapshot — what GET /next-chapter and every /next-chapter/* action
- *  returns. The handoff's own version of ScaffoldState: no `concept`/`gate`/`mode`/`haveDraft` (the
- *  handoff is never staged and never asks whether a draft exists — it always has one, the story
- *  already on disk), but `dir`/`chapter`/`edited` in their place. */
-export type HandoffState =
-  | { active: false }
-  | {
-      active: true;
-      dir: string;
-      chapter: number;
-      busy: boolean;
-      stage: "" | "fillGaps" | "verify";
-      edited: boolean;
-      pendingAsk: string;
-      problems: string[];
-      last: unknown;
-      model: string;
-      spec: unknown;
-    };
-
-/** One handoff action's outcome — the handoff's version of ScaffoldActionResult, returning
- *  HandoffState rather than ScaffoldState. */
-export type HandoffActionResult =
-  | { ok: true; state: HandoffState }
-  | { ok: false; reason: string; status?: number };
-
-/** accept()'s outcome — the handoff's version of ScaffoldAcceptResult. Distinct shape: the handoff's
- *  "unloadable" carries only `dir`/`error` (no `files`/`warnings`, unlike the scaffold's), there is
- *  no "needs_folder" (the handoff never asks for one — the directory already exists), and "nothing"
- *  takes "no_story"'s 400 instead. */
-export type HandoffAcceptResult =
-  | { ok: true; kind: "written"; chapter: number; dir: string; files: string[]; warnings: string[]; status: 200 }
-  | { ok: false; kind: "unloadable"; dir: string; error: string; status: 200 }
-  | { ok: false; kind: "nothing"; status: 400 }
-  | { ok: false; reason: string; status: number };
-
-/** Everything a route can ask of the engine; built in story-writer.ts so server/ never imports engine/. */
-export interface ServerHost {
-  storyCards(): Promise<StoryCard[]>;
-  /** Resolve a directory that came from OUTSIDE the process to one the engine discovered, or null. */
-  selectableStory(dir: string): Promise<string | null>;
-  resolveStoryDir(dir: string): string;
-  runDirs(storyDir: string): Promise<string[]>;
-  /** A retained run's per-agent LLM transcripts. Both take a resolved story path, as `runDirs` does. */
-  runLlmLogs(storyDir: string, id: string): Promise<LlmLogSummary[]>;
-  readLlmLog(storyDir: string, id: string, file: string): Promise<string | null>;
-  /** The chapter numbers already written for a story -- the chapter equivalent of `runDirs`. Takes
-   *  a discovered story dir, not a resolved path. */
-  writtenChapters(dir: string): Promise<number[]>;
-  availableModelIds(): Promise<string[] | null>;
-  /** The configured provider's display name ("LM Studio", "Ollama", …) — routes name the server
-   *  in user-facing refusals without importing the engine that knows it. */
-  providerName: string;
-  /** The model an interview would use if you chose nothing — resolved, not `defaults.md`'s text. */
-  architectModel(): Promise<string>;
-  /** The open interview's current snapshot, or `{active:false}`. Never mutates or publishes. */
-  scaffoldState(): ScaffoldState;
-  /** Opens a new interview: `mode` picks the walk ("staged" runs the gated checklist, "oneshot" is
-   *  the whole-story proposal), `concept` is the author's pre-architect steering (tags/cast
-   *  size/style), `importIds` is the opening tray. Refuses (409) if a round is already in flight, or
-   *  if abandoned while this one was still getting under way. */
-  scaffoldStart(input: { idea: string; model: string; mode: "oneshot" | "staged";
-                         concept: Concept; importIds: string[] }): Promise<ScaffoldActionResult>;
-  /** A free-text turn against the open interview. */
-  scaffoldSay(text: string): Promise<ScaffoldActionResult>;
-  /** Staged mode only: pass the open checklist gate and propose the next stage's content. `override`
-   *  is the author overruling a gate that came back blocked. */
-  scaffoldApprove(override: boolean): Promise<ScaffoldActionResult>;
-  /** Re-runs the open stage's prompt without advancing the checklist — staged re-proposes only
-   *  the open gate's fields, one-shot re-proposes the whole story. The conversation is kept, so
-   *  refinements usually survive; nothing reaches disk either way. With a scope, re-runs only
-   *  that member at the staged cast gate, leaving every other cast member untouched. */
-  scaffoldRegenerate(scope?: RegenScope): Promise<ScaffoldActionResult>;
-  /** Revises the author's concept on the open session — never re-runs a gate. */
-  scaffoldConcept(concept: Concept): Promise<ScaffoldActionResult>;
-  /** Replaces the import tray on the open session, wholesale. */
-  scaffoldImport(ids: string[]): Promise<ScaffoldActionResult>;
-  /** Puts one of the session's current bible candidates into the author's skill bible. */
-  scaffoldPromote(name: string): Promise<ScaffoldActionResult>;
-  /** Direct edit, bypassing the model: `{field, value}` for a single scalar field (today only
-   *  "scene.length"), or `{story}` to replace the in-memory draft wholesale -- from the full
-   *  editor, or (`source: "revert"`) from putting back a round's own changes. */
-  scaffoldSet(input: { story?: unknown; field?: string; value?: unknown; source?: string }): ScaffoldActionResult;
-  /** Writes the accepted story to disk and ends the session on success. */
-  scaffoldAccept(folder: string): Promise<ScaffoldAcceptResult>;
-  /** Drops the open interview unconditionally — a round in flight discovers this and discards
-   *  whatever it was about to commit rather than being resurrected. */
-  scaffoldAbandon(): void;
-  /** The open handoff's current snapshot, or `{active:false}`. Never mutates or publishes. */
-  handoffState(): HandoffState;
-  /** Opens the handoff on a discovered story and runs the first round. Refuses (409) while a run is
-   *  in flight, a picked story is still loading, or another writer holds the story-write lock; 400
-   *  if the story has no chapter written yet for the handoff to read. */
-  handoffStart(dir: string, model: string): Promise<HandoffActionResult>;
-  /** A follow-up from the author, in the same edits-only format. */
-  handoffSay(text: string): Promise<HandoffActionResult>;
-  /** Re-runs the handoff's opening round on the live session — a fresh proposal that keeps the
-   *  refinements said so far, unlike abandoning and starting over. Writes nothing. */
-  handoffRegenerate(): Promise<HandoffActionResult>;
-  /** Writes the re-authored story over the one on disk; on failure puts back exactly what was there
-   *  and answers `kind:"unloadable"`, leaving the session open to keep refining. */
-  handoffAccept(): Promise<HandoffAcceptResult>;
-  /** Drops the open handoff unconditionally — a round in flight discovers this and discards whatever
-   *  it was about to commit, releasing the story-write lock on its way out. */
-  handoffAbandon(): void;
-  /** The current run's output folder, or "" before a run has committed one. */
-  outDir(): string;
-  /** Schema-derived defaults, thinking levels and caps for the story editor and the new-story form —
-   *  never the schema itself, so a change in story-schema.ts's defaults shows up here without the
-   *  GUI hand-copying it, and a new field does not appear until someone adds it to the projection. */
-  editorConfig(): EditorConfig;
-  /** Load a story's full validated definition for editing. Returns the Zod-parsed StoryJson
-   *  plus engine warnings. On parse failure returns the raw object so the editor can show the
-   *  error and let the user fix the file. */
-  storyForEdit(dir: string): Promise<{
-    ok: true; story: StoryJson; warnings: string[]
-  } | {
-    ok: false; error: string; raw?: object
-  }>;
-  /** A story's full authored cast for the live screen's read-only character sheet. Same load and
-   *  validation as `storyForEdit`, but mapped to the display shape and with `model` omitted.
-   *  `scenes[].reach` is the per-scene grant, `scenes[].presence` the per-scene position, and
-   *  `scenes[].constraint` the per-scene hold (reach's negative twin) — all three kept OUT of the
-   *  characters (I4: scene-scoped, never intrinsic — a missing presence or constraint entry means
-   *  "unaffected" and travels as absence). Origin is intrinsic and travels with the character. On a story that will not parse, returns `{ ok:false, error }`. */
-  fullCast(dir: string): Promise<{
-    ok: true; characters: {
-      name: string; persona: string; knows: string; goal: string;
-      belief: string; impulse: string; voice: string[]; origin: string;
-      skills: { text: string; meaning: string }[]; restrictions: string[];
-    }[]; scenes?: { n: number; reach: Record<string, string[]>; presence: Record<string, string>; constraint: Record<string, string[]> }[];
-  } | {
-    ok: false; error: string;
-  }>;
-  /** Validate a modified story.json in memory without writing. Returns Zod errors + engine
-   *  warnings (empty premise, no characters, etc.) grouped by path. */
-  checkStory(story: object): {
-    ok: true; warnings: string[]
-  } | {
-    ok: false; error: string; issues: { path: string; message: string }[]
-  };
-  /** Save a validated story.json atomically. Guards: refuses while a run is in flight and
-   *  refuses if the story no longer loads. */
-  saveStory(dir: string, story: object): Promise<{
-    ok: true; warnings: string[]
-  } | {
-    ok: false; reason: string; status?: number
-  }>;
-  /** Drop the last authored scene from story.json, undoing an accepted-but-unwritten chapter.
-   *  Refuses the sole scene, any scene but the last, a written chapter, or a run in flight. */
-  discardScene(dir: string, n: number): Promise<{
-    ok: true; chapter: number; scenes: number
-  } | {
-    ok: false; reason: string; status?: number
-  }>;
-  /** Stateless architect suggestion: given the current spec and user text, return proposed edits
-   *  with the edited spec, for the editor to adopt into its (unsaved) draft. */
-  suggestEdits(spec: unknown, text: string): Promise<{
-    ok: true; kind: "edits"; spec: unknown; applied: {field:string;before:unknown;after:unknown}[]; ignored: string[];
-    problems: string[]; note: string
-  } | {
-    ok: true; kind: "question"; ask: string
-  } | {
-    ok: false; error: string
-  }>;
-  /** The catalog's schema-derived shape (tag facets, voice-sample cap) for the catalog editor —
-   *  never the schema itself, so the GUI stops hand-copying it. The origin/general projections read
-   *  the persisted skills catalog, so this may be asynchronous; the route awaits it. */
-  catalogConfig(): CatalogConfig | Promise<CatalogConfig>;
-  /** All entries in a catalog. `kind` is validated here because it arrives from the wire.
-   *  Hidden entries are excluded unless `includeHidden` is set — every selectable-characters
-   *  surface (the new-story cast picker, the library picker) wants the default; only the
-   *  character catalog editor itself needs to see and manage a hidden entry. */
-  catalogEntries(kind: string, opts?: { includeHidden?: boolean }): Promise<{ ok: true; entries: unknown[] } | { ok: false; reason: string }>;
-  /** Validate one catalog entry without saving. `kind` is validated here because it arrives from
-   *  the wire; an unknown kind returns `reason`, not `issues`. Schema validation failure returns
-   *  `issues`; both schema and kind validation answers are 200 (validation is ordinary reply). */
-  catalogCheck(kind: string, entry: unknown): Promise<
-    { ok: true; problems: string[] } |
-    { ok: false; issues: string[] } |
-    { ok: false; reason: string }
-  >;
-  /** Insert or replace one catalog entry by id. */
-  catalogSave(kind: string, entry: unknown): Promise<{ ok: true; entry: unknown; problems: string[] } | { ok: false; reason: string; status?: number; issues?: string[] }>;
-  /** Remove one catalog entry by id. Fails if the id is not found. */
-  catalogDelete(kind: string, id: string): Promise<{ ok: true } | { ok: false; reason: string; status?: number }>;
-  /** Hide or restore one catalog entry. Never a content revision: does not touch `version`.
-   *  Fails with `status: 404` if the id is not found, or a plain reason if the kind's schema has
-   *  no `hidden` field to set. */
-  catalogSetVisibility(kind: string, id: string, hidden: boolean): Promise<{ ok: true; entry: unknown } | { ok: false; reason: string; status?: number }>;
-  /** Which catalogs reference which entries — read-only derivation over the other kinds. */
-  catalogUsage(): Promise<CatalogUsage>;
-  /** Propose a change to a subset of one character's fields on a separate, explicitly configured
-   *  model — never saves. `mode`/`fields`/`instruction`/`character` are validated here because they
-   *  arrive from the wire; the host's own failure kinds (`model_unavailable`, `provider_error`,
-   *  `malformed_reply`, `invalid_draft`) are expected-failure answers at 200, not a 4xx. */
-  catalogAssist(mode: "create" | "revise" | "review", fields: string[], instruction: string, character: unknown): Promise<
-    | { ok: true; proposal: { draft: unknown; changes: { field: string; before: unknown; after: unknown }[]; warnings: string[] } }
-    | { ok: false; kind?: string; reason: string; issues?: string[] }
-  >;
-}
-
-async function serveFile(res: ServerResponse, url: URL, contentType: string, method: string) {
-  if (method !== "GET") {
-    res.writeHead(405, { Allow: "GET" });
-    res.end();
-    return;
-  }
-  try {
-    res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-cache" });
-    res.end(await readFile(url, "utf8"));
-  } catch {
-    res.writeHead(404);
-    res.end("not found");
-  }
-}
+/** Everything a route can ask of the engine lives in route-hosts.ts as narrow per-domain
+ *  interfaces; the single runtime object satisfies their `RouteHosts` intersection. */
 
 /** A started viewer's HTTP server. `close()` ends every SSE client, stops the keep-alive ping,
  *  and frees the port — after which a fresh `startServer` may bind again. */
@@ -346,103 +34,40 @@ export interface ServerHandle {
 }
 
 let started: { handle: ServerHandle } | null = null;
+
+/** One dispatch entry: true when the handler answered. Order is precedence — static files
+ *  first, the event stream before any route that publishes on it. */
+type RouteHandler = (
+  req: IncomingMessage, res: ServerResponse, path: string, host: RouteHosts,
+) => boolean | Promise<boolean>;
+
+/** Every handler the server can answer with, in precedence order. Adding a route means adding
+ *  a line here, not another branch. */
+const ROUTES: ReadonlyArray<RouteHandler> = [
+  (req, res, path) => serveStatic(req, res, path),
+  (req, res, path) => handleSseRoute(req, res, path),
+  (req, res, path, host) => handleSessionRoutes(req, res, path, host),
+  (req, res, path, host) => handleRunControl(req, res, path, host),
+  (req, res, path, host) => handleScaffoldRoutes(req, res, path, host),
+  (req, res, path, host) => handleNextChapterRoutes(req, res, path, host),
+  (req, res, path, host) => handleStoryEditRoutes(req, res, path, host),
+  (req, res, path, host) => handleStoryReadRoutes(req, res, path, host),
+  (req, res, path, host) => handleCatalogRoutes(req, res, path, host),
+  (req, res, path, host) => handleRunLogRoutes(req, res, path, host),
+];
 /** Start the viewer's HTTP server once: static GUI files, SSE at /events, and dispatch to the route
  *  modules. Idempotent — every call returns the same handle until it is closed. */
-export function startServer(port: number, host: ServerHost, bindAddr: string = "127.0.0.1"): ServerHandle {
+export function startServer(port: number, host: RouteHosts, bindAddr: string = "127.0.0.1"): ServerHandle {
   if (started) return started.handle;
   LIVE.port = port;
-  const viewerPath = new URL("./gui/viewer.html", import.meta.url);
-  const viewerCssPath = new URL("./gui/viewer.css", import.meta.url);
-  const viewerJsPath = new URL("./gui/viewer.js", import.meta.url);
-  const viewerModule = /^\/viewer\/([a-z0-9_-]+\.js)$/i;
 
   const server = createServer(async (req, res) => {
     try {
       const path = (req.url || "/").split("?")[0];
-      if (path === "/" || path === "/index.html") {
-        await serveFile(res, viewerPath, "text/html; charset=utf-8", req.method || "");
-      } else if (path === "/viewer.css") {
-        await serveFile(res, viewerCssPath, "text/css; charset=utf-8", req.method || "");
-      } else if (path === "/viewer.js") {
-        await serveFile(res, viewerJsPath, "application/javascript; charset=utf-8", req.method || "");
-      } else if (viewerModule.test(path)) {
-        // viewer.js's own submodules -- an allowlist regex (flat filenames only, no subfolders)
-        // rather than a `..`-blacklist check, since that's the shape the folder actually has.
-        const file = path.match(viewerModule)![1];
-        await serveFile(res, new URL(`./gui/viewer/${file}`, import.meta.url), "application/javascript; charset=utf-8", req.method || "");
-      } else if (path === "/studio" || path === "/studio/") {
-        await serveFile(res, new URL("../mockups/studio/index.html", import.meta.url), "text/html; charset=utf-8", req.method || "");
-      } else if (path === "/events") {
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream", "Cache-Control": "no-cache",
-          Connection: "keep-alive", "X-Accel-Buffering": "no",
-        });
-        res.write("retry: 3000\n\n");
-        for (const ev of liveHistory) res.write(`data: ${JSON.stringify(ev)}\n\n`);
-        res.write(`data: ${JSON.stringify(runState())}\n\n`);
-        sseClients.add(res);
-        const dropClient = () => sseClients.delete(res);
-        req.on("close", dropClient);
-        // Without an `error` listener, an async socket failure (EPIPE/ECONNRESET on a half-dead
-        // viewer) emits an unhandled 'error' event that would crash the whole process.
-        res.on("error", dropClient);
-
-      } else if (path === "/run") {
-        json(res, 200, {
-          run: LIVE.meta, awaitingContinue: LIVE.awaitingContinue, events: liveHistory.length,
-          running: LIVE.running, stopping: RUN.stopped && LIVE.running, where: LIVE.where,
-          picking: LIVE.awaitingPick, loading: LIVE.loading, armed: LIVE.readerArmed,
-          paused: LIVE.paused, pausing: LIVE.pausing && !LIVE.paused, model: LIVE.modelOverride,
-          interactive: LIVE.interactive,
-        });
-
-      } else if (path === "/select") {
-        if (requireMethod(res, req, "POST")) return;
-        const o = await readJsonBody(req);
-        if (!LIVE.awaitingPick || !LIVE.pickResolve) { json(res, 400, { ok: false, reason: "the session is not waiting on a choice" }); return; }
-        const blocked = storyWriteBlocked();
-        if (blocked) { json(res, 409, { ok: false, reason: `cannot pick while ${blocked}` }); return; }
-        const dir = await host.selectableStory(String(o.dir ?? ""));
-        if (!dir) { json(res, 400, { ok: false, reason: `no such story: ${String(o.dir ?? "")}` }); return; }
-        const asked = Number(o.chapter ?? 1);
-        const chapter = Number.isInteger(asked) && asked > 0 ? asked : 1;
-        // Explicit authorization to write over an existing chapter or skip past an unwritten one —
-        // the viewer's counterpart of the CLI's --replace. Absent, runOne's durability guard holds.
-        const replace = o.replace === true;
-        const r = LIVE.pickResolve; LIVE.pickResolve = null; LIVE.awaitingPick = false;
-        json(res, 200, { ok: true, dir });
-        r({ dir, chapter, replace });
-
-      } else if (path === "/models") {
-        if (requireMethod(res, req, "GET")) return;
-        const ids = await host.availableModelIds();
-        json(res, 200, {
-          ids: ids ?? [], reachable: ids !== null,
-          current: LIVE.modelOverride, architect: await host.architectModel(),
-        });
-
-      } else if (await handleRunControl(req, res, path, host)) {
-        // handled
-
-      } else if (await handleScaffoldRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleNextChapterRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleStoryEditRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleStoryReadRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleCatalogRoutes(req, res, path, host)) {
-        // handled
-
-      } else if (await handleRunLogRoutes(req, res, path, host)) {
-        // handled
-
-      } else { res.writeHead(404); res.end("not found"); }
+      for (const handle of ROUTES) {
+        if (await handle(req, res, path, host)) return;
+      }
+      res.writeHead(404); res.end("not found");
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
       const status = error instanceof HttpError ? error.status : 500;
@@ -471,12 +96,12 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
       reject(e);
     });
   });
-  const ping = setInterval(() => { for (const c of sseClients) { try { c.write(": ping\n\n"); } catch {} } }, 15000);
+  const stopPing = startSsePing();
 
   const handle: ServerHandle = {
     bound,
     close: () => new Promise<void>(resolve => {
-      clearInterval(ping);
+      stopPing();
       for (const c of sseClients) { try { (c as ServerResponse).end(); } catch { } }
       sseClients.clear();
       server.close(() => { started = null; resolve(); });

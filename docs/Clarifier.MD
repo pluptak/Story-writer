@@ -51,7 +51,7 @@ HAPPENED …]` — not-yet-true, never to be confirmed, denied, previewed or set
 directly or obliquely — and fired beats arrive verbatim under `[ALREADY TRUE …]` as settled fact.
 Verbatim is the point: the strings arrive exactly as authored, so the block can carry no belief or
 conclusion of its own. With no ledger state the block is empty and the request is byte-identical
-to before it existed (`tests/info-boundary.test.ts`).
+to before it existed (`tests/engine/info-boundary.test.ts`).
 
 ## Its bounds
 

@@ -2,7 +2,7 @@ import { APP } from "./state.js";
 import { esc, tid, postJson, reasonOr, glyphAvailable } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
-import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
+import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, saveNotesHtml, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // Three kinds share this one catalog. A GENERAL skill is one every character starts with; a
 // SPECIAL skill is one a story gives a character by name; an ORIGIN is a named group of general
@@ -27,7 +27,8 @@ const entryOf = d => ({ id:d.id, name:d.name.trim(), meaning:d.meaning.trim(),
 
 const folded = s => String(s ?? "").trim().toLowerCase();
 function usageLine(name) {
-  const n = APP.catalog.usage?.skills?.[folded(name)] ?? 0;
+  const key = Object.keys(APP.catalog.usage?.skills ?? {}).find(k => folded(k) === folded(name));
+  const n = key !== undefined ? APP.catalog.usage.skills[key] : 0;
   return n ? `<i>used by ${n} character${n === 1 ? "" : "s"}</i>` : "";
 }
 
@@ -93,9 +94,9 @@ function listHtml() {
       ? (coverage ? `starts with ${coverage}` : "starts with no general skills yet")
       : (k.meaning || "Describe what this skill lets a character do.");
     return `<div class="lib-row lib-row-${kind}${selected ? " selected" : ""}" data-skill-id="${esc(k.id)}" role="button" tabindex="0" ${tid("skill-library.row")}>
-      <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(line)}</span></span>
+      <span class="lib-row-copy"><strong>${esc(k.name || "Untitled skill")}</strong><span>${esc(line)}${usageLine(k.name) ? ` · ${usageLine(k.name)}` : ""}</span></span>
       ${kind === "special" ? "" : `<i class="lib-kind-badge lib-kind-${kind}" title="${esc(KIND_LABEL[kind])} skill" ${tid("skill-library.kind-badge")}><span class="lib-kind-mark" aria-hidden="true">${esc(kindMark(kind))}</span>${kind === "origin" ? "Origin" : "General"}</i>`}
-      <button class="lib-more" data-skill-select-id="${esc(k.id)}" aria-label="Open ${esc(k.name)} in editor">•••</button>
+      <button class="lib-more" data-skill-select-id="${esc(k.id)}"${tid("skill-library.open")} aria-label="Open ${esc(k.name)} in editor">•••</button>
     </div>`;
   };
   // Three sections, each saying what its kind is for -- the three are easy to confuse, and the
@@ -182,7 +183,7 @@ function editorHtml() {
     ${button({label:"Duplicate", id:"skilllib-duplicate", extraClass:"small"})}
     ${button({label:"Delete", id:"skilllib-delete", variant:"danger", extraClass:"small"})}
   `)}
-  ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
+  ${s.error ? errorLine(esc(s.error)) : ""}${saveNotesHtml(s)}${s.dirty ? warnLine("unsaved changes") : ""}
   ${section("Skill identity", `${origin
       ? "An origin is a kind of being: the general skills below are what a character of this kind starts with."
       : d.kind === "general"
@@ -194,7 +195,7 @@ function editorHtml() {
   `)}
   ${origin ? section("General skills", "What a character of this kind starts with. A story can still add or take away per character.", `${coverage}${generalPickerHtml(d)}`, 'id="skilllib-general-section"') : ""}
   ${c ? section("Usage", `What actually carries this ${origin ? "origin" : "skill"} today.`, usageHtml(d)) : ""}
-  ${editorFooter(`${button({label:"Cancel", id:"skilllib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"skilllib-save", variant:"primary", disabled:!needsSave(s)})}`)}`;
+  ${editorFooter(`${button({label:"Cancel", id:"skilllib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"skilllib-save", variant:"primary", disabled:!needsSave(s) || s.saving})}`)}`;
 }
 
 export function skillLibraryHtml() {
@@ -223,25 +224,38 @@ async function load() {
     loadVocab();
     refreshUsage();
   } catch (e) { s.error = e.message || "could not load skills"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
 }
 
-function setSelected(k) { const s = APP.skillLibrary; s.selected = k; s.draft = draftOf(k); s.dirty = false; s.error = ""; APP.render(); }
+function setSelected(k) { const s = APP.skillLibrary; s.selected = k; s.draft = draftOf(k); s.dirty = false; s.error = ""; s.saveIssues = []; s.saveProblems = []; APP.render(); }
 function createNew() { const s = APP.skillLibrary; const k = { ...entryOf({...emptyDraft(), id:newId("skl"), name:"New skill"}), version:0, updatedAt:Date.now() }; s.entries.unshift(k); setSelected(k); }
 function duplicate() { const s = APP.skillLibrary; if (!s.selected) return; const k = { ...clone(s.selected), id:newId("skl"), name:`${s.selected.name} Copy`, version:0, updatedAt:Date.now() }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, k); setSelected(k); }
 function collectDraft() { const s = APP.skillLibrary; if (!s.draft) return; for (const key of ["name","meaning"]) { const el = document.getElementById(`skilllib-${key}`); if (el) s.draft[key] = el.value; } dirtyFromDraft(); }
 
 async function save() {
-  const s = APP.skillLibrary; collectDraft(); if (!s.draft || !needsSave(s)) return;
+  const s = APP.skillLibrary; collectDraft(); if (!s.draft || !needsSave(s) || s.saving) return;
   const payload = entryOf(s.draft);
-  if (!payload.name) { s.error = "A skill needs a name."; APP.render(); return; }
-  if (!payload.meaning) { s.error = "A skill needs a meaning."; APP.render(); return; }
-  const j = await postJson("/catalog/save", { kind:"skills", entry:payload }, msg => { s.error = msg; APP.render(); });
-  if (!j?.ok) { s.error = reasonOr(j, "could not save skill"); APP.render(); return; }
+  if (!payload.name) { s.error = ""; s.saveIssues = ["A skill needs a name."]; APP.render(); return; }
+  if (!payload.meaning) { s.error = ""; s.saveIssues = ["A skill needs a meaning."]; APP.render(); return; }
+  const savingId = payload.id;
+  s.saving = true; APP.render();
+  const j = await postJson("/catalog/save", { kind:"skills", entry:payload }, msg => { if (s.selected?.id === savingId) s.error = msg; });
+  s.saving = false;
+  if (!j?.ok) {
+    if (s.selected?.id === savingId) { s.error = reasonOr(j, "could not save skill"); s.saveIssues = [...(j?.issues ?? [])]; }
+    APP.render(); return;
+  }
   const next = { ...j.entry, updatedAt:Date.now() };
   const idx = s.entries.findIndex(k => k.id === next.id); if (idx >= 0) s.entries[idx] = next; else s.entries.unshift(next);
   refreshUsage();
-  setSelected(next);
+  if (s.selected?.id === savingId) {
+    setSelected(next);
+    s.saveProblems = [...(j.problems ?? [])]; s.saveIssues = [];
+  }
+  APP.render();
 }
 
 async function remove() {
@@ -280,7 +294,7 @@ export function wireSkillLibrary(page) {
     e.stopPropagation(); collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return;
     setSelected(s.entries.find(k => k.id === action.dataset.skillSelectId));
   }));
-  for (const key of ["name","meaning"]) page.querySelector(`#skilllib-${key}`)?.addEventListener("input", () => { s.draft[key] = document.getElementById(`skilllib-${key}`).value; dirtyFromDraft(); page.querySelector("#skilllib-save").disabled = !needsSave(s); page.querySelector("#skilllib-cancel").disabled = !s.dirty; });
+  for (const key of ["name","meaning"]) page.querySelector(`#skilllib-${key}`)?.addEventListener("input", () => { s.draft[key] = document.getElementById(`skilllib-${key}`).value; dirtyFromDraft(); page.querySelector("#skilllib-save").disabled = !needsSave(s) || s.saving; page.querySelector("#skilllib-cancel").disabled = !s.dirty; });
   // Kind pills and general-skill chips mutate the draft and re-render (like the tag chips), so the
   // save/cancel buttons and the coverage line recompute from the same draft the render drew from.
   page.querySelectorAll("[data-skill-kind]").forEach(pill => pill.addEventListener("click", () => {

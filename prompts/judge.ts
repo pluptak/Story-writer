@@ -210,11 +210,27 @@ done, and by whom -- or something they could plausibly perceive or infer that po
 situation that only states the fact's abstract consequence ("you have been robbed") leaves them
 nothing to answer honestly from.
 
+For a reaction fan-out, check each reactor's situation separately: it is the payload that reactor
+receives, not a shared situation they may never be given.
+
 And it must not answer itself. A situation that names the choice ("you must decide whether to sign"),
 lays out the options ("you could hold the door or let go"), or tells them which part of the moment
 matters ("the important thing is the timer") has done the character's reading for them, and what
 comes back is the author's own idea wearing their name. Give them the moment; let them find the fork
 in it. Flag this the same way you flag an abstract consequence, naming the phrase that does it.
+An embedded question such as "do you sign tonight, or do you delay?" is still a menu even inside
+"situation". Do not flag an opponent's quoted demand as authorial steering: a demand the character
+actually heard is evidence, not an instruction from you. Likewise, observable behavior may support
+an inference, but the situation must not assert another person's private strategy as settled fact.
+An unresolved circumstance ("the door is about to open -- or it already has") is not a concrete
+moment; name the uncertainty rather than silently choosing a version for the character.
+
+The invented close is the most important deed check of all, so test it FIRST: the prose ends the
+scene's question by narrating someone's decision. "He pressed his quill to the page and signed the
+stay of execution" as the last line, with no grant showing Rowan was asked and answered -- that is
+THE ONE RULE, the worst kind: the concession was a choice nobody made on the record, and the ending
+reads as earned only because narration performed it. Compare ALREADY GRANTED: if the deciding deed
+or agreement is not there, flag it and say "Stop at the demand and open the consult."
 
 You are shown who has already been granted a line, a deed, or a felt reaction this scene, the piece
 of prose just drafted, and -- when present -- the consult it opens.
@@ -251,9 +267,14 @@ export const narrationLintRequest = (p: {
   pov: string;
   prose: string;
   granted: { character: string; speech: string; action: string; thought?: string }[];
-  consult: { character?: string; reactors?: string[]; situation: string; question?: string } | null;
-}) =>
-  `[POV] ${p.pov}\n\n[PIECE JUST DRAFTED]\n${p.prose}\n\n`
+  consult: { character?: string; reactors?: (string | { name: string; situation?: string })[];
+    situation: string; question?: string } | null;
+}) => {
+  const reactors = p.consult?.reactors?.map(r => ({
+    name: (typeof r === "string" ? r : r.name).trim(),
+    situation: (typeof r === "string" ? "" : r.situation ?? "").trim() || p.consult!.situation.trim(),
+  })).filter((r, i, all) => r.name && all.findIndex(x => x.name.toLowerCase() === r.name.toLowerCase()) === i);
+  return `[POV] ${p.pov}\n\n[PIECE JUST DRAFTED]\n${p.prose}\n\n`
   + `[ALREADY GRANTED THIS SCENE]\n`
   + (p.granted.length
       ? p.granted.map(g => `${g.character}` + (g.speech ? ` -- said: ${g.speech}` : "")
@@ -262,10 +283,13 @@ export const narrationLintRequest = (p: {
       : "(nobody yet)")
   + (p.consult
       ? `\n\n[CONSULT OPENED BY THIS PIECE]\n`
-        + (p.consult.character ? `asking: ${p.consult.character}\n` : "")
-        + (p.consult.reactors?.length ? `reactors: ${p.consult.reactors.join(", ")}\n` : "")
-        + `situation given: ${p.consult.situation}\nquestion: ${p.consult.question}`
+        + (reactors
+            ? `reactors: ${reactors.map(r => r.name).join(", ")}\n`
+              + reactors.map(r => `${r.name}\nsituation given: ${r.situation}`).join("\n\n")
+            : (p.consult.character ? `asking: ${p.consult.character}\n` : "")
+              + `situation given: ${p.consult.situation}\nquestion: ${p.consult.question}`)
       : "");
+};
 
 export const BATCH_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHICH REACTIONS MAY BECOME DEEDS.
 
@@ -299,32 +323,37 @@ export const LINT_ONLY =
   `[WRONG SHAPE] That was not a verdict on the piece. Reply with exactly {"ok":true} or `
   + `{"ok":false,"why":"..."} and nothing else.`;
 
-export const DONE_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHETHER THE SCENE IS FINISHED.
+export const DONE_JUDGE_FORMAT = `YOU ARE THE AUTHOR, CHECKING WHETHER THE SCENE'S QUESTION IS SETTLED.
 
-The scene was written to answer one question, and you have just declared it done. Read the page back
-and decide one thing: does it answer its question?
+The scene was written to answer one question. Read the page back and decide one thing: has the
+question been settled, either way?
 
-Answered means the page has settled the matter, either way. "No" is an answer -- a refusal that
-holds, a door that stays shut, a choice made against the thing. What is not an answer is undecided:
+Settled ("resolved") means the page has the thing decided -- "no" is a decision: a refusal that
+holds, a door that stays shut, a choice made against the thing. Not settled ("open") means undecided:
 both sides where they started, the pressure still live, the thing the question turns on still
-pending on the last line. A scene that stops mid-pressure is not finished, it is abandoned, and
-calling it done is the cheapest way out of a hard scene.
+pending on the last line. A scene that stops mid-pressure has not settled its question, whatever else
+it has done. If you cannot tell which of those two the page shows, say "unclear" rather than guessing.
 
-Judge nothing else. Not whether the writing is good, not whether the ending satisfies, not whether
-you would have taken it somewhere better. Only whether the question is settled on the page.
+Judge nothing else. Not whether the writing is good, not whether an ending satisfies, not whether you
+would have taken it somewhere better. Only whether the question is settled on the page.
 
-Reply with ONE JSON object -- one of these two shapes -- and nothing else:
+Reply with ONE JSON object -- one of these three shapes -- and nothing else:
 
-  {"ok": true}
-  {"ok": false, "why": "what the page leaves undecided, in one sentence"}
+  {"status": "resolved", "why": "what settled it, in one sentence", "evidence": "the exact page event that settled it -- a short quote or close paraphrase"}
+  {"status": "open", "why": "what the page leaves undecided, in one sentence"}
+  {"status": "unclear", "why": "why the page does not say, in one sentence"}
+
+"evidence" is required for "resolved" and must point at something actually on the page, not a
+summary of the whole scene. Omit it for "open" and "unclear".
 `;
 
 export const doneJudgeRequest = (p: { question: string; prose: string }) =>
   `[THE QUESTION THIS SCENE HAS TO ANSWER]\n${p.question}\n\n[THE SCENE AS IT STANDS]\n${p.prose}`;
 
 export const DONE_ONLY =
-  `[WRONG SHAPE] That was not a verdict on the scene. Reply with exactly {"ok":true} or `
-  + `{"ok":false,"why":"..."} and nothing else.`;
+  `[WRONG SHAPE] That was not a verdict on the scene. Reply with exactly `
+  + `{"status":"resolved","why":"...","evidence":"..."}, {"status":"open","why":"..."}, or `
+  + `{"status":"unclear","why":"..."} and nothing else.`;
 
 export const answerFlags = (p: { forced: boolean }) =>
   p.forced ? `They asked for detail you did not give and answered anyway.` : "";

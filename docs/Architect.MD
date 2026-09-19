@@ -222,7 +222,7 @@ that same map, so the two views cannot disagree about what is in it.
 
 One reader is still on the in-code catalog: `directEdit`, which re-normalizes the whole spec in order
 to change `scene.length` and so can report a bible problem against the wrong catalog. Fixing it means
-making `ServerHost.directEdit` async for an advisory-only effect, so it is recorded rather than done.
+making the scaffold's direct edit async for an advisory-only effect, so it is recorded rather than done.
 
 ### Promotion
 
@@ -615,7 +615,7 @@ scene decides; if a person could decline it, it is not one. Each beat carries a 
 the writer may not start before it fires) and a **fired** form (what has happened) — the held form
 is not decoration, since a writer left to itself invents the event early. The fired form must carry
 no quotation marks: an event with a voice cannot be told apart from an invented line, and
-[`engine/quote-lint.ts`](../engine/quote-lint.ts) will flag it as one. At most one beat per chapter
+[`engine/lint/quote-lint.ts`](../engine/lint/quote-lint.ts) will flag it as one. At most one beat per chapter
 unless the idea demands two, because beats fire in authored order and two events compete for the
 same page.
 
@@ -740,7 +740,7 @@ reviewed; the architect input stays sticky at the bottom while the proposal scro
 
 ### Scaffold interview
 
-Built as its own `#/scaffold` route in [`interview.js`](../server/gui/viewer/interview.js), reached from
+Built as its own `#/scaffold` route in [`interview.js`](../server/gui/viewer/interview.js) (builders) + [`interview-page.js`](../server/gui/viewer/interview-page.js) (page assembly and wiring), reached from
 the shelf's "start a new story" card — which relabels itself "continue new story…" while a session is
 open on the server. The idea step is a modal over an empty scaffold shell; once the first proposal
 lands the page keeps three things visible at all times: the proposed story (a card), the current round
@@ -859,9 +859,10 @@ Both conversations are viewer-only: the new-story interview is driven from the s
 `GET /scaffold`, `POST /scaffold/{start,say,approve,regenerate,concept,import,promote,set,accept,abandon}`,
 and the handoff from `#/handoff?dir=` through `GET /next-chapter` and
 `POST /next-chapter/{start,say,regenerate,accept,abandon}`,
-specified in `GUI-SPEC.md`. The server reaches the engine through `ServerHost` and
+specified in `GUI-SPEC.md`. The server reaches the engine through narrow host interfaces and
 never imports engine modules directly. The old console walkthrough (`--new`, `--oneshot`,
-`--idea`, `--next-chapter`) was removed; those flags are rejected with a pointer at `--serve`.
+`--idea`, `--next-chapter`) was removed; those flags are no longer declared, so strict
+parsing rejects them as unknown options.
 
 ## Remaining work
 

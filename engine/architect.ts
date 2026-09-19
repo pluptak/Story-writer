@@ -15,7 +15,7 @@ import { adjudicateBeat, adjudicateChapter, type BeatStanding } from "./world-re
 import type { TimelineDef } from "./story-schema.ts";
 import { parseLintVerdict } from "./consult.ts";
 import { runPreflight, modelInfo, contextShortfall } from "./preflight.ts";
-import { PROVIDER } from "./provider.ts";
+import { PROVIDER } from "./providers/provider.ts";
 import { estimateTokens } from "./llm-client.ts";
 
 async function architectExample(): Promise<string> {
@@ -946,6 +946,13 @@ export class NextChapterSession {
   pendingAsk = "";
   edited = false;                              // has any round changed the spec
 
+  /** Snapshot-drift advisories from openNextChapter (a written chapter's scene
+   *  or ledger changed by hand since). A round re-normalizes the spec and so
+   *  replaces `problems` wholesale (take/runAutoPasses below) — without this
+   *  separate carrier the first landed round would silently drop a warning
+   *  about an edit no round ever touches. */
+  driftProblems: string[] = [];
+
   /** The bible this session validates a proposed cast against. Assigned by whoever built the
    *  session, so the architect is judged by the catalogs the author edits rather than the ones in
    *  the source. An unset bag falls back to the in-code catalogs at each resolution. */
@@ -1077,7 +1084,7 @@ export class NextChapterSession {
 
     const guarded = this.refuse(r.out.edits);
     const e = applyEdits(this.spec, { edits: guarded.edits }, this.catalogs);
-    this.spec = e.spec; this.problems = e.problems; this.pendingAsk = "";
+    this.spec = e.spec; this.problems = [...this.driftProblems, ...e.problems]; this.pendingAsk = "";
     this.edited = true;
     this.refusedLastRound = [...guarded.refused, ...e.ignored];
     const routed = this.routeBeatChecks(r.out, r.out.edits);
@@ -1101,7 +1108,7 @@ export class NextChapterSession {
       // voided here has state "void", which adjudicateChapter's filter skips, so it can never
       // resurface in a later round's call.
       const v = applyEdits(this.spec, { edits: this.autoVoids }, this.catalogs);
-      this.spec = v.spec; this.problems = v.problems; this.edited = true;
+      this.spec = v.spec; this.problems = [...this.driftProblems, ...v.problems]; this.edited = true;
       autoApplied = v.applied; autoIgnored = v.ignored;
       this.autoVoids = [];
     }
@@ -1116,7 +1123,7 @@ export class NextChapterSession {
     if (base.kind !== "edits") return base;
 
     const r = await runAutoPasses(this.architect, this.spec, `scene_${this.chapter}`, onStage, edits => this.refuse(edits), undefined, this.catalogs);
-    this.spec = r.spec; this.problems = r.problems;
+    this.spec = r.spec; this.problems = [...this.driftProblems, ...r.problems];
     if (r.question !== undefined) { this.pendingAsk = r.question; return { kind: "question", ask: r.question, auto: r.auto }; }
     this.pendingAsk = "";
     return { ...base, applied: [...autoApplied, ...base.applied], ignored: [...autoIgnored, ...base.ignored], auto: r.auto };
@@ -1220,7 +1227,10 @@ export async function openNextChapter(d: Defaults, dir: string, bible: Readonly<
 
   // `refuse()` keeps the architect off a written chapter's scene, but a hand edit reaches it, and
   // that is legitimate -- so this says so rather than undoing it. Chapters written before snapshots
-  // existed have nothing to compare and must pass quietly.
+  // existed have nothing to compare and must pass quietly. The drift advisories ride their own
+  // carrier (driftProblems) as well as problems: rounds replace problems wholesale, and a warning
+  // about an edit no round touches must survive the first landed round, not vanish with it.
+  const drift: string[] = [];
   for (const c of chapters) {
     try {
       const snapshot = await readChapterSpec(dir, c.n);
@@ -1230,16 +1240,18 @@ export async function openNextChapter(d: Defaults, dir: string, bible: Readonly<
       const written = normalizeSpec(snapshot, await readChapterCatalogs(dir, c.n) ?? catalogs);
       const drifted = sceneDrift(written.spec.scenes[c.n - 1], s.spec.scenes[c.n - 1]);
       if (drifted.length)
-        s.problems.push(`chapter ${c.n}'s prose was written from a different scene definition `
+        drift.push(`chapter ${c.n}'s prose was written from a different scene definition `
           + `(${drifted.join(", ")})`);
       // Same guard for the world-event ledger: a beat edited after the chapter ran would re-author
       // silently. `state` is bookkeeping, not drift, so voiding a spent beat passes quietly.
       const beatDrift = timelineDrift(written.spec.timeline, s.spec.timeline);
       if (beatDrift.length)
-        s.problems.push(`chapter ${c.n}'s world-event ledger changed since it was written `
+        drift.push(`chapter ${c.n}'s world-event ledger changed since it was written `
           + `(${beatDrift.join(", ")})`);
     } catch { /* a broken snapshot must not stop the handoff opening */ }
   }
+  s.driftProblems = drift;
+  s.problems.push(...drift);
   return s;
 }
 

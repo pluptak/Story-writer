@@ -4,12 +4,12 @@ import { existsSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { isAbsolute, join as joinPath, resolve as resolvePath } from "node:path";
-import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills, restrictionMeanings,
+import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills, restrictionMeanings, splitMeaning,
          type Catalogs, type RemovedCapability, type Skill } from "./skills.ts";
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
-import { rosterNameNotACharacter, reachNotInRoster, constraintNotInRoster, timelineBeatProblems, timelineOrderProblems } from "./story-spec.ts";
+import { rosterNameNotACharacter, reachNotInRoster, presenceNotInRoster, constraintNotInRoster, timelineBeatProblems, timelineOrderProblems, timelineMemoryWarnings } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -37,6 +37,7 @@ export interface CharacterDef {
   limits: string[];
   limitMeanings: RemovedCapability[];
   maxRetries?: number;
+  pronouns?: { subject: string; object: string; possessive: string; reflexive: string };
 }
 
 /** A story as loaded and validated: the engine's view of story.json, with defaults filled in. */
@@ -128,6 +129,7 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", { origin, catalogs: resolvedCatalogs }),
       limitMeanings: restrictionMeanings(name, skillsRaw, restrictionsRaw, "", { origin, catalogs: resolvedCatalogs }),
       maxRetries: c.maxRetries,
+      pronouns: c.pronouns,
     });
   }
 
@@ -139,6 +141,8 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       warn(`Scene ${i + 1} has no "question" — the writer has no dramatic question to close, so it decides alone when the scene is done`);
     if (s.pov && !characters.some(c => sameName(c.name, s.pov)))
       warn(`Scene ${i + 1} pov "${s.pov}" is not one of the characters — ignored`);
+    else if (s.pov && s.roster.length && !s.roster.some(r => sameName(r, s.pov)))
+      warn(`Scene ${i + 1} pov "${s.pov}" is not in the roster — the reader would be inside the perception of someone not placed in the room`);
     for (const r of s.roster) {
       if (!characters.some(c => sameName(c.name, r)))
         warn(rosterNameNotACharacter(`Scene ${i + 1}`, r) + " — ignored");
@@ -150,6 +154,21 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       if (!ch) warn(`Scene ${i + 1} grants reach to "${who}", who is not one of the characters — ignored`);
       else if (s.roster.length && !s.roster.some(r => sameName(r, who)))
         warn(reachNotInRoster(`Scene ${i + 1}`, who) + " — the grant never reaches a run");
+    }
+    for (const [who, raw] of Object.entries(s.presence)) {
+      if (!who.trim() || !raw.trim()) continue;
+      const ch = characters.find(c => sameName(c.name, who));
+      if (!ch) {
+        warn(`Scene ${i + 1} sets presence for "${who}", who is not one of the characters — ignored`);
+        continue;
+      }
+      if (s.roster.length && !s.roster.some(r => sameName(r, who)))
+        warn(presenceNotInRoster(`Scene ${i + 1}`, who) + " — the presence never reaches a run");
+      const { text, meaning } = splitMeaning(raw);
+      if (text !== "remote" && text !== "partial")
+        warn(`${ch.name}'s presence "${text}" is not "remote" or "partial" — ignored, treated as here`);
+      else if (text === "remote" && !meaning.trim())
+        warn(`${ch.name}'s presence "remote" carries no ":: via" detail — specify how they connect`);
     }
     // Constraint is scene-scoped like reach (I4), so the same well-formedness check applies: a
     // constraint on nobody in the roster is dead weight nobody would ever see rendered.
@@ -172,6 +191,8 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       warn(p);
   }
   for (const p of timelineOrderProblems(parsed.timeline))
+    warn(p);
+  for (const p of timelineMemoryWarnings(parsed))
     warn(p);
 
   return {

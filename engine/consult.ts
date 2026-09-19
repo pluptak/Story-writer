@@ -5,7 +5,8 @@ import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import { type Msg } from "./llm-client.ts";
 import { ENGINE } from "./engine-state.ts";
-import { lintRestrictedSituation } from "./sense-lint.ts";
+import { lintRestrictedSituation } from "./lint/sense-lint.ts";
+import { lintReportedSpeech } from "./lint/situation-lint.ts";
 import { nameKey, sameName } from "./config-util.ts";
 
 /** The cast shape the consult gate needs: each character's resolved CANNOT list, so a situation can
@@ -15,7 +16,11 @@ import { nameKey, sameName } from "./config-util.ts";
  *  engine above it; it is named for the state, not `presence`, which the writer's cast block already
  *  uses for the rendered string. Scene-loop resolves the same thing for the narration lint. */
 export type CannotCast = ReadonlyArray<{ name: string; cannot: readonly string[];
-  presenceState?: { mode: "remote" | "partial"; via: string } }>;
+  presenceState?: { mode: "remote" | "partial"; via: string };
+  /** Declared pronouns, when the story carries them: the reported-speech lint resolves a
+   *  pronoun subject through these rather than skipping it. Optional on the schema, so a
+   *  story without them falls back to matching names alone. */
+  pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }>;
 
 /** What the writer sends when it wants a character's take: who, the situation as given to them, the question, and what shape of answer is wanted. */
 export interface ConsultRequest {
@@ -23,6 +28,12 @@ export interface ConsultRequest {
   situation: string;
   question: string;
   wants: ConsultWants | "";
+  /** What reached them since they were last asked (--consult-since): carried as a record on the
+   *  run log, never a requirement here — the staleness refusal lives with the caller, which owns
+   *  the page count. Joined onto `situation` before this gate by the caller, so this is the raw
+   *  field back, the same way `question` travels beside the ask the character actually reads. */
+  since?: string;
+  heard?: { lines: [string, string][] };
 }
 
 // -- WHAT A CONSULT MUST CONTAIN TO BE WORTH SENDING -----------------------
@@ -99,12 +110,14 @@ export type ConsultMode = "open" | "directed";
  *  so every situation-entry path passes the same door: the writer's first ask, the judge's `revised`
  *  on a retry (reviseConsult), and each reactor of a fan-out (normalizeReactionConsult). */
 export function normalizeConsult(raw: {
-  character: string; situation?: unknown; question?: unknown; wants?: unknown;
+  character: string; situation?: unknown; question?: unknown; wants?: unknown; since?: unknown;
 }, cast?: CannotCast,
-   mode: ConsultMode = "open"): ConsultCheck {
+    mode: ConsultMode = "open",
+    opts?: { heard?: { lines: [string, string][] } }): ConsultCheck {
   const character = String(raw.character ?? "").trim();
   const situation = String(raw.situation ?? "").trim();
   const question  = String(raw.question ?? "").trim();
+  const since = String(raw.since ?? "").trim();
   const words = situation.split(/\s+/).filter(Boolean).length;
   const floor = mode === "open" ? MIN_OPEN_SITUATION_WORDS : MIN_SITUATION_WORDS;
 
@@ -131,7 +144,7 @@ export function normalizeConsult(raw: {
 
   const member = cast?.find(c => sameName(c.name, character));
   if (member && (member.cannot?.length || member.presenceState?.mode === "remote")) {
-    const hit = lintRestrictedSituation(situation, character, member.cannot ?? [], member.presenceState);
+    const hit = lintRestrictedSituation(situation, character, member.cannot ?? [], member.presenceState, cast?.map(c => c.name));
     if (hit) {
       return { ok: false, why: hit.cause === "presence"
         ? P.badConsult.restrictedByPresence(character, hit.sense, hit.match, member.presenceState!.via)
@@ -139,7 +152,17 @@ export function normalizeConsult(raw: {
     }
   }
 
-  return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants } };
+  // The heard half of the same door: a situation that recaps speech the ask's own heard
+  // block already carries verbatim is refused like a restricted-sense one, through the
+  // same bad_consult. The lint gates itself on a non-empty block, so a scene's opening
+  // consult — nothing said yet — passes untouched. The heard block is computed by the
+  // caller, never taken from the writer's raw reply.
+  if (opts?.heard?.lines.length) {
+    const hit = lintReportedSpeech(situation, character, cast ?? [], opts.heard);
+    if (hit) return { ok: false, why: P.badConsult.reportedSpeech(character, hit.match) };
+  }
+
+  return { ok: true, req: { character, situation, question: mode === "open" ? "" : question, wants, since } };
 }
 
 /** The outcome of checking a reaction fan-out: one sendable request per reactor, or a single refusal. */
@@ -224,7 +247,10 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
     situation: String(rev.situation ?? "").trim() || prev.situation,
     question: String(rev.question ?? "").trim() || prev.question,
     wants: prev.wants,
-  }, cast, "directed");
+    // A retry re-asks the same beat with no page between attempts: the record of what reached
+    // them stands as it was. A revision never re-authors `since`.
+    since: prev.since ?? "",
+  }, cast, "directed", { heard: prev.heard });
   if (!checked.ok) return checked;
   // The character is shown the situation and not the question, so a revision that sharpens the
   // wording of the fork and leaves the situation alone re-sends a fresh instance the byte-identical
@@ -234,7 +260,7 @@ export function reviseConsult(prev: ConsultRequest, rev: Record<string, unknown>
   // answer already in hand, which is what the caller does with every other unusable revision.
   if (checked.req.situation.trim() === prev.situation.trim())
     return { ok: false, why: P.badConsult.noNewSituation() };
-  return { ok: true, req: checked.req, wantsRefused: "" };
+  return { ok: true, req: { ...checked.req, ...(prev.heard ? { heard: prev.heard } : {}) }, wantsRefused: "" };
 }
 /**
  * The only shape floor left now that the judge names no output shape: a thought from outside the
@@ -284,6 +310,29 @@ export function parseLintVerdict(o: Record<string, unknown>): { ok: boolean; why
   return null;
 }
 
+/** The done judge's own verdict shape — distinct from `parseLintVerdict` because "resolved" carries
+ *  a required `evidence` the other judges have no equivalent of. */
+export type DoneVerdict =
+  | { status: "resolved"; why: string; evidence: string }
+  | { status: "open"; why: string }
+  | { status: "unclear"; why: string };
+
+/**
+ * The done judge's verdict, or null when the reply carries no recognizable one — a missing
+ * `evidence` on "resolved" is treated the same as no verdict at all, not a resolved with nothing to
+ * show for it.
+ */
+export function parseDoneVerdict(o: Record<string, unknown>): DoneVerdict | null {
+  const status = String(o.status ?? "").trim().toLowerCase();
+  const why = String(o.why ?? "").trim();
+  if (status === "resolved") {
+    const evidence = String(o.evidence ?? "").trim();
+    return evidence ? { status, why, evidence } : null;
+  }
+  if (status === "open" || status === "unclear") return { status, why };
+  return null;
+}
+
 /** The clarifier's answer — "" when it answered with nothing, null when it did not answer at all. */
 export function parseClarifyAnswer(o: Record<string, unknown>): string | null {
   return "answer" in o ? String(o.answer ?? "").trim() : null;
@@ -316,7 +365,7 @@ export interface ConsultReply {
 }
 /** Everything a consult can report to the run log, as one tagged event each. */
 export type ConsultEvent =
-  | { t: "consult"; character: string; situation: string; question: string; wants: string; attempt: number }
+  | { t: "consult"; character: string; situation: string; question: string; wants: string; since: string; attempt: number }
   | { t: "need"; character: string; question: string }
   | { t: "clarify"; character: string; question: string; answer: string }
   | { t: "clarify_failed"; character: string; question: string }
@@ -347,7 +396,7 @@ export async function consult(
   let forced = false, repaired = false;
 
   log({ t: "consult", character: req.character, situation: req.situation, question: req.question,
-        wants: req.wants, attempt: opts.attempt ?? 1 });
+        wants: req.wants, since: req.since ?? "", attempt: opts.attempt ?? 1 });
 
   for (;;) {
     const raw = await agent.generate(`${C.cyan}${agent.name}${C.reset}`, "character.consult", extra);

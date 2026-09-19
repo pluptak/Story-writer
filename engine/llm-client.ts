@@ -6,7 +6,7 @@ import { RUN, StoppedError } from "../live.ts";
 import { ENGINE, progress, progressDone } from "./engine-state.ts";
 import { warn } from "./warnings.ts";
 import { topLevelObjects, visibleReply } from "./json-extract.ts";
-import { PROVIDER } from "./provider.ts";
+import { PROVIDER } from "./providers/provider.ts";
 import { onceAdmitted, QueueGaveUpError, TELEMETRY, announceProviderState } from "./req-queue.ts";
 import type { ThinkLevel } from "./story-schema.ts";
 

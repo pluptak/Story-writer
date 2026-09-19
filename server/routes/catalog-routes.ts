@@ -1,0 +1,166 @@
+/**
+ * CATALOG ROUTES — the global reusable-asset catalogs. Story-independent: no story dir, no
+ * story-write lock. Contract: docs/GUI-SPEC.md ("Character catalog").
+ */
+
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+import { json, readJsonBody, getQuery, requireMethod } from "../infra/http-util.ts";
+import { kindOf, idOr400 } from "./route-helpers.ts";
+import type { CatalogRoutesHost } from "../route-hosts.ts";
+
+/** Handles the request and returns true, or returns false if `path` is not one of its routes. */
+export async function handleCatalogRoutes(
+  req: IncomingMessage, res: ServerResponse, path: string, host: CatalogRoutesHost,
+): Promise<boolean> {
+  if (path === "/catalog") {
+    if (requireMethod(res, req, "GET")) return true;
+    const query = getQuery(req);
+    const kind = query.get("kind") || "characters";
+    const r = await host.catalogEntries(kind, { includeHidden: query.get("includeHidden") === "1" });
+    if (!r.ok) {
+      json(res, 400, { ok: false, reason: r.reason });
+    } else {
+      json(res, 200, { ok: true, entries: r.entries });
+    }
+    return true;
+  }
+
+  if (path === "/catalog/config") {
+    if (requireMethod(res, req, "GET")) return true;
+    // Awaited: the origin/general projections read the persisted skills catalog, so a host may
+    // answer asynchronously. Awaiting a synchronous reply is a no-op, which keeps test hosts plain.
+    json(res, 200, await host.catalogConfig());
+    return true;
+  }
+
+  if (path === "/catalog/usage") {
+    if (requireMethod(res, req, "GET")) return true;
+    json(res, 200, { ok: true, usage: await host.catalogUsage() });
+    return true;
+  }
+
+  if (path === "/catalog/entry") {
+    if (requireMethod(res, req, "GET")) return true;
+    const query = getQuery(req);
+    const kind = query.get("kind") || "characters";
+    const id = idOr400(res, query.get("id"));
+    if (!id) return true;
+
+    const r = await host.catalogEntries(kind);
+    if (!r.ok) {
+      json(res, 400, { ok: false, reason: r.reason });
+      return true;
+    }
+
+    const entry = r.entries.find((e) => (e as { id?: unknown }).id === id);
+    if (!entry) {
+      json(res, 404, { ok: false, reason: "no such entry" });
+    } else {
+      json(res, 200, { ok: true, entry });
+    }
+    return true;
+  }
+
+  if (path === "/catalog/check") {
+    if (requireMethod(res, req, "POST")) return true;
+    const o = await readJsonBody(req);
+    const kind = kindOf(o);
+    const r = await host.catalogCheck(kind, o.entry);
+    if (!r.ok) {
+      if ("reason" in r) {
+        json(res, 400, { ok: false, reason: r.reason });
+      } else {
+        json(res, 200, { ok: false, issues: r.issues });
+      }
+    } else {
+      json(res, 200, { ok: true, problems: r.problems });
+    }
+    return true;
+  }
+
+  if (path === "/catalog/save") {
+    if (requireMethod(res, req, "POST")) return true;
+    const o = await readJsonBody(req);
+    const kind = kindOf(o);
+    const r = await host.catalogSave(kind, o.entry);
+    if (!r.ok) {
+      json(res, r.status ?? 400, { ok: false, reason: r.reason, issues: r.issues });
+    } else {
+      json(res, 200, { ok: true, entry: r.entry, problems: r.problems });
+    }
+    return true;
+  }
+
+  if (path === "/catalog/delete") {
+    if (requireMethod(res, req, "POST")) return true;
+    const o = await readJsonBody(req);
+    const kind = kindOf(o);
+    const id = idOr400(res, o.id);
+    if (!id) return true;
+
+    const r = await host.catalogDelete(kind, id);
+    if (!r.ok) {
+      json(res, r.status ?? 400, { ok: false, reason: r.reason });
+    } else {
+      json(res, 200, { ok: true });
+    }
+    return true;
+  }
+
+  if (path === "/catalog/visibility") {
+    if (requireMethod(res, req, "POST")) return true;
+    const o = await readJsonBody(req);
+    const kind = kindOf(o);
+    const id = idOr400(res, o.id);
+    if (!id) return true;
+    if (typeof o.hidden !== "boolean") { json(res, 400, { ok: false, reason: "hidden must be a boolean" }); return true; }
+
+    const r = await host.catalogSetVisibility(kind, id, o.hidden);
+    if (!r.ok) {
+      json(res, r.status ?? 400, { ok: false, reason: r.reason });
+    } else {
+      json(res, 200, { ok: true, entry: r.entry });
+    }
+    return true;
+  }
+
+  if (path === "/catalog/assist") {
+    if (requireMethod(res, req, "POST")) return true;
+    const o = await readJsonBody(req);
+
+    // Wire-shape checks live here (route-specific); `kind` validation lives in the host.
+    // `assistFields` comes from the host because routes never import engine/.
+    const kind = kindOf(o);
+    if (kind !== "characters") { json(res, 400, { ok: false, reason: `the assistant does not support "${kind}"` }); return true; }
+
+    const mode = String(o.mode ?? "");
+    if (mode !== "create" && mode !== "revise" && mode !== "review") {
+      json(res, 400, { ok: false, reason: "mode must be one of create, revise, review" });
+      return true;
+    }
+
+    const fields = Array.isArray(o.fields) ? o.fields.map((f: unknown) => String(f)) : [];
+    if (!fields.length) { json(res, 400, { ok: false, reason: "no fields selected" }); return true; }
+    const { assistFields } = await host.catalogConfig();
+    const unsupported = fields.find((f: string) => !assistFields.includes(f));
+    if (unsupported) { json(res, 400, { ok: false, reason: `unsupported field "${unsupported}"` }); return true; }
+
+    const instruction = String(o.instruction ?? "").trim();
+    if (!instruction) { json(res, 400, { ok: false, reason: "no instruction" }); return true; }
+
+    if (!o.character || typeof o.character !== "object") { json(res, 400, { ok: false, reason: "no character" }); return true; }
+
+    const r = await host.catalogAssist(mode, fields, instruction, o.character);
+    if (!r.ok) {
+      // model_unavailable / provider_error / malformed_reply / invalid_draft are expected-failure
+      // answers, not a client error — 200, same convention as the other catalog kinds' problems.
+      json(res, 200, { ok: false, kind: r.kind, reason: r.reason, issues: r.issues });
+    } else {
+      json(res, 200, { ok: true, proposal: r.proposal });
+    }
+    return true;
+  }
+
+  return false;
+}

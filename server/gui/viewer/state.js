@@ -215,21 +215,23 @@ export const APP = {
     // ever written to the catalog file -- they exist only for the in-editor review before Save.
     baseline:null, changes:[], changesOpen:false,
     assistant:{ open:false, mode:"revise", fields:[], instruction:"", loading:false, proposal:null, error:"" },
+    saveIssues:[], saveProblems:[],
   },
   styleLibrary: {
     loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false,
     search:"", visibility:"all", sort:"updated", showHidden:false,
     assistant:{ open:false, instruction:"", loading:false, proposal:null, error:"" },
+    saveIssues:[], saveProblems:[],
   },
   // Tags and skills have no hidden/visibility concept in their schema, so their libraries carry no
   // showHidden/assistant slice -- there is nothing there for either to act on.
   tagLibrary: {
     loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false,
-    search:"", sort:"updated",
+    search:"", sort:"updated", saveIssues:[], saveProblems:[],
   },
   skillLibrary: {
     loading:false, loaded:false, error:"", entries:[], selected:null, draft:null, dirty:false,
-    search:"", sort:"updated",
+    search:"", sort:"updated", saveIssues:[], saveProblems:[],
   },
   render: () => {},             // set once, from viewer.js, to the real page-render function
 };

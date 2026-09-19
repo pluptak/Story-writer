@@ -211,6 +211,7 @@ function characterCardsHtml() {
   return s.characters.map((c, i) => {
     const skills = Array.isArray(c.skills) ? c.skills.join(", ") : "";
     const restrictions = Array.isArray(c.restrictions) ? c.restrictions.join(", ") : "";
+    const pronouns = c.pronouns ? `${c.pronouns.subject}/${c.pronouns.object}/${c.pronouns.possessive}/${c.pronouns.reflexive}` : "";
     return `<div class="editor-char" data-tid="edit.char-card" data-char="${i}">
       <h4>${esc(c.name)}</h4>
       ${fld(`char-${i}-name`, "Name", c.name)}
@@ -229,6 +230,7 @@ function characterCardsHtml() {
         ${fld(`char-${i}-skills`, "Skills (comma-separated)", skills, "half")}
         ${fld(`char-${i}-restrictions`, "Restrictions (comma-separated)", restrictions, "half")}
       </div>
+      ${fld(`char-${i}-pronouns`, "Pronouns (subject/object/possessive/reflexive)", pronouns)}
       ${issuesHtml(`characters.${i}`)}
     </div>`;
   }).join("");
@@ -550,6 +552,21 @@ function applyField(id, value) {
       APP.editDraft.characters[idx].restrictions = value ? parseCommaSeparated(value) : [];
     } else if (field === "voice") {
       APP.editDraft.characters[idx].voice = parseLines(value).slice(0, APP.editorConfig.caps.voiceSamples);
+    } else if (field === "pronouns") {
+      const trimmed = String(value || "").trim();
+      if (!trimmed) {
+        APP.editDraft.characters[idx].pronouns = undefined;
+      } else {
+        const parts = trimmed.split("/").map(p => p.trim()).filter(Boolean);
+        if (parts.length === 4) {
+          APP.editDraft.characters[idx].pronouns = {
+            subject: parts[0],
+            object: parts[1],
+            possessive: parts[2],
+            reflexive: parts[3],
+          };
+        }
+      }
     } else if (field === "maxRetries") {
       APP.editDraft.characters[idx].maxRetries = toNum(value);
     } else {

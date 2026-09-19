@@ -70,6 +70,8 @@ WHAT YOU MAY DECLINE TO CLOSE OVER (and only this):
 - They produce nothing legible after pressure (pure stall with no stance).
 
 CLOSING:
+Never emit DONE before the character has replied. The situation and pressure
+brief are context, not a character response to transcribe.
 When they have taken a stable stance and further probing would only rephrase
 or steer, close with a LAST block in exactly this shape, and nothing after it:
 

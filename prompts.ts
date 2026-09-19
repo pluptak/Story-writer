@@ -16,3 +16,4 @@ export * from "./prompts/writer.ts";
 export * from "./prompts/judge.ts";
 export * from "./prompts/clarify.ts";
 export * from "./prompts/catalog-assist.ts";
+export * from "./prompts/smooth.ts";

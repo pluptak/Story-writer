@@ -5,21 +5,22 @@ import { Agent, trimHistory } from "./agent.ts";
 import { extractJson, salvageProse } from "./json-extract.ts";
 import { type CharacterDef, type SceneDef, type StoryConfig } from "./story-format.ts";
 import type { ThinkLevel, TimelineDef } from "./story-schema.ts";
-import { cannotDisplay, resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
+import { canonSkill, cannotDisplay, resolveReach, splitMeaning, type Catalogs, type Skill } from "./skills.ts";
+import { heardBlock } from "./heard.ts";
 import { warn } from "./warnings.ts";
 import {
   normalizeConsult,
-  parseClarifyAnswer, parseLintVerdict, nonPovThoughtOnly,
+  parseClarifyAnswer, parseDoneVerdict, nonPovThoughtOnly,
   type ConsultEvent, type Clarifier,
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
-import { lintPiece } from "./narration-lint.ts";
-import { stripRepeatedPrefix } from "./repeat-lint.ts";
+import { lintPiece, type LintPieceResult } from "./lint/narration-lint.ts";
+import { stripRepeatedPrefix } from "./lint/repeat-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
 import { nameKey, sameName, JUDGE_TEMPERATURE } from "./config-util.ts";
 import { type Msg } from "./llm-client.ts";
-import { LIVE, RUN, StoppedError, LIVE_IO, type SceneIo } from "../live.ts";
+import { LIVE, RUN, StoppedError, LIVE_IO, type SceneIo, type LintDecision } from "../live.ts";
 import { ENGINE } from "./engine-state.ts";
 
 // -- CHARACTER AGENT -------------------------------------------------------
@@ -94,13 +95,22 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
+/** Trailing options for the writer's system prompt. An object — never two trailing booleans —
+ *  so the consult-since and heard-channel flags cannot be swapped at the call site. */
+export interface WriterOpts {
+  facts?: string[];
+  constraints?: string[];
+  sinceEnforced?: boolean;
+  heard?: boolean;
+}
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[], style: string, facts: string[] = [], constraints: string[] = []): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[], style: string, opts: WriterOpts = {}): string {
+  const { facts = [], constraints = [], sinceEnforced = false, heard = false } = opts;
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
   const houseStyle = [style.trim(), ...constraints.map(c => c.trim()).filter(Boolean)].join("\n").trim();
-  return P.writerSystem({ premise, scene, cast, facts, style: houseStyle });
+  return P.writerSystem({ premise, scene, cast, facts, style: houseStyle, ...(sinceEnforced ? { since: true as const } : {}), ...(heard ? { heard: true } : {}) });
 }
 
 /** The cast actually in a scene; an empty roster means the whole cast. */
@@ -119,7 +129,7 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
                            reach: Record<string, Skill[]> = {},
                            presence: Record<string, Presence> = {},
                            constraint: Record<string, { name: string; meaning: string }[]> = {}):
-    { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence; constraint?: string[] }[] {
+    { name: string; can: string[]; reach: string[]; cannot: string[]; presence?: string; presenceState?: Presence; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[] {
   return rosterOf(characters, rostered)
     .map(c => {
       const pres = presence[c.name];
@@ -149,6 +159,7 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
         // only, every reader of `presence` is untouched.
         ...(pres ? { presence: pres.via ? `${pres.mode} -- ${pres.via}` : pres.mode, presenceState: pres } : {}),
         ...(cons.length ? { constraint: cons.map(x => x.meaning ? `${x.name} -- ${x.meaning}` : x.name) } : {}),
+        ...(c.pronouns ? { pronouns: c.pronouns } : {}),
       };
     });
 }
@@ -160,12 +171,17 @@ export function writerCast(characters: CharacterDef[], rostered: string[],
  *  reactors, which the gate refuses, not a single consult. Each reactor keeps its own `situation`
  *  override where the writer gave one (a reactor who only heard, not saw, an event) — flattening
  *  this to bare names would hand every reactor the shared situation regardless of what the writer
- *  wrote for them, including past a restricted sense normalizeReactionConsult exists to guard. */
+ *  wrote for them, including past a restricted sense normalizeReactionConsult exists to guard.
+ *  `since` is what reached a lone consultee since they were last asked (--consult-since); with
+ *  the flag on it joins the situation before the gate, with the flag off it is parsed, recorded,
+ *  and logged but never required and never joined. Fan-out reactors carry
+ *  none: a shared moment is not anyone's decision continuity. */
 export interface DraftConsult {
   character: string;
   situation: string;
   question: string;
   wants: string;
+  since: string;
   reactors: { name: string; situation?: string }[] | null;
 }
 
@@ -206,6 +222,7 @@ export function parseDraftReply(raw: string, onProseFallback?: () => void): Draf
       situation: String(c.situation ?? "").trim(),
       question: String(c.question ?? "").trim(),
       wants: String(c.wants ?? "").trim(),
+      since: String(c.since ?? "").trim(),
       reactors: Array.isArray(c.reactors)
         ? c.reactors
             .map((r: unknown) => {
@@ -222,10 +239,20 @@ export function parseDraftReply(raw: string, onProseFallback?: () => void): Draf
 }
 
 // -- SCENE LOOP ------------------------------------------------------------
+/** The scene's question, as last read against the page — durable across the whole run, not just the
+ *  turn that produced it. "unread" is the ordinary in-progress state, not a verdict; "unavailable"
+ *  covers a judge call that errored, would not parse even on retry, or itself said "unclear" — a
+ *  check nobody could complete must never read as a check that passed (or failed). */
+export type QuestionState =
+  | { status: "unread" }
+  | { status: "open"; why: string }
+  | { status: "resolved"; evidence: string }
+  | { status: "unavailable"; why: string };
+
 /** Everything the run can report to the viewer and the writing log, as one tagged event each. */
 export type RunEvent =
   | ConsultEvent
-  | { t: "scene_start"; story: string; characters: string[]; target: number; chapter: number }
+  | { t: "scene_start"; story: string; characters: string[]; target: number; question: string; chapter: number }
   | { t: "draft"; step: number; prose: string; words: number; consulting: string; salvaged: boolean; chapter: number }
   | { t: "bad_consult"; character: string; why: string; chapter: number }
   | { t: "schema_mismatch"; call: "judge" | "clarify" | "lint" | "done" | "repair"; character: string; chapter: number }
@@ -235,6 +262,8 @@ export type RunEvent =
   | { t: "done_judge_failed"; why: string; chapter: number }
   | { t: "done_flagged"; why: string; chapter: number }
   | { t: "done_confirmed"; chapter: number }
+  | { t: "question_state"; state: QuestionState; trigger: "writer_done" | "extension" | "forced_end";
+      step: number; words: number; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
@@ -244,7 +273,9 @@ export type RunEvent =
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "forced_end"; words: number; target: number; chapter: number }
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
+  | { t: "lint_decision"; choice: LintDecision; chapter: number }
   | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
+  | { t: "narration_pronoun_flag"; why: string; character: string; found: string; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }
@@ -257,10 +288,12 @@ export type RunEvent =
   | { t: "world_beat"; beat: string; hold: string; at: number; step: number; chapter: number }
   | { t: "beat_stranded"; beat: string; at: number; chapter: number }
   | { t: "memory_surfaced"; character: string; chapter: number }
+  | { t: "world_event_surfaced"; character: string; beat: string; chapter: number }
   | { t: "repeat_strip"; chars: number; words: number; whole: boolean; chapter: number }
   | { t: "done_deferred"; chapter: number }
   | { t: "answer_unwritten"; characters: string[]; stopped: boolean; chapter: number }
-  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number; retries: Record<string, number> };
+  | { t: "scene_end"; steps: number; words: number; done: boolean; stopped: boolean; chapter: number;
+      retries: Record<string, number>; questionState: QuestionState };
 
 
 const OVERRUN_SLACK = 1.5;
@@ -270,6 +303,13 @@ const OVERRUN_SLACK = 1.5;
 const REPEAT_TAIL_CHARS = 2000;
 
 const NEGLECT_GAP = 3;
+
+// A lone consult opened for a character with this many prose pieces since their last consult is
+// stale (--consult-since): what reached them in between must arrive in `since`, or the consult is
+// refused. One piece back is immediate continuation, already carried by ordinary situations
+// (the coverage measurement: every +1pc re-consult in the fixture continued the previous turn);
+// two is where the character starts answering from a scene that no longer exists.
+const SINCE_STALE_PIECES = 2;
 
 // A scene told repeatedly that it is at length and still not ending (PLANS.md: a 750-word chapter
 // ran to 2,237) needs a hard stop under the soft nudges. Twice the target is the last piece the
@@ -297,6 +337,49 @@ export function neglectedCast(cast: string[], lastAsked: Map<string, number>, st
     const last = lastAsked.get(nameKey(name));
     return last === undefined || step - last >= threshold;
   });
+}
+
+/** One call to the done judge, retried once on a schema mismatch exactly like every other judge
+ *  variant, and never thrown out of: a call that errors, a reply that never parses, or the model's
+ *  own "unclear" all come back `unavailable` rather than propagating, so a check nobody could
+ *  complete is recorded as exactly that, not silently dropped or read as a check that passed.
+ *
+ *  Deliberately does not log `done_confirmed`/`done_flagged` — those two are read by
+ *  `buildChapterBeatOutcome` (run-and-save.ts) as the writer's-own-declaration verdict specifically,
+ *  and every call site now shares this helper. The `writer_done` call site logs them itself; the
+ *  other two (budget-exhaustion, hard cap) only ever log `question_state`, so an ending the writer
+ *  never chose cannot be mistaken for one it did.
+ *
+ *  Exported for `scripts/done-judge-bench.ts`, which calls this exact function against real page
+ *  excerpts to calibrate the judge without running a whole scene for each read. */
+export async function checkQuestionState(newDoneJudge: () => Agent, question: string, prose: string,
+                                  chapter: number, log: (e: RunEvent) => void): Promise<QuestionState> {
+  const doneJudge = newDoneJudge();
+  const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({ question, prose }) }];
+  try {
+    for (let tries = 0; ; tries++) {
+      const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, "judge.done", extra);
+      const verdict = parseDoneVerdict(extractJson(raw));
+      if (verdict) {
+        if (verdict.status === "resolved") return { status: "resolved", evidence: verdict.evidence };
+        if (verdict.status === "open") {
+          return { status: "open", why: verdict.why || "the scene's question is not answered" };
+        }
+        return { status: "unavailable", why: verdict.why || "the judge could not tell" };
+      }
+      // Asked twice with no verdict: nothing is recorded, as on an outage. A check nobody made
+      // must not read as a check that passed, so the log says which of the two happened.
+      if (tries) return { status: "unavailable", why: "the done judge's reply would not parse, twice" };
+      log({ t: "schema_mismatch", call: "done", character: "(scene)", chapter });
+      extra.push({ role: "assistant", content: raw.trim() }, { role: "user", content: P.DONE_ONLY });
+    }
+  } catch (e) {
+    if (!(e instanceof StoppedError) && !RUN.stopped) {
+      log({ t: "done_judge_failed", why: (e as Error).message, chapter });
+      console.log(`${C.yellow}(scene-done judge failed: ${(e as Error).message})${C.reset}`);
+    }
+    return { status: "unavailable", why: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Everything one writeScene call needs, as one object. The fields mirror what runChapter reads off
@@ -349,7 +432,11 @@ export async function writeScene(run: SceneRun) {
   const cast = writerCast(roster, [], Object.fromEntries(roster.map(c => [c.name, sceneReach(sd, c, catalogs)])),
     Object.fromEntries(roster.map(c => [c.name, scenePresence(sd, c)] as const).filter(([, v]) => v !== null)) as Record<string, Presence>,
     Object.fromEntries(roster.map(c => [c.name, sceneConstraint(sd, c)])));
-  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints), 0.8);
+  const mechanicalCast = roster.map((c, i) => ({
+    name: c.name, cannot: c.limits, presenceState: cast[i].presenceState, pronouns: c.pronouns,
+  }));
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle,
+    { facts, constraints: writerStyleConstraints, sinceEnforced: ENGINE.consultSince, heard: ENGINE.heardChannel }), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
   // A thought reaches the writer only from inside the POV. The narration lint already holds that
@@ -403,17 +490,38 @@ export async function writeScene(run: SceneRun) {
   // the repetition is named rather than answered with the same words again. Keyed on the SITUATION
   // and its addressee, because that is the ask now: the question is absent altogether from an open
   // beat, and keying on it would quietly never match.
+  // What a lone consultee actually receives: `since` joined onto the situation before the
+  // gate (--consult-since only; fan-out reactors carry none). The narration lint reads this too,
+  // so it judges the ask as sent, not as drafted. With the flag off this is the identity.
+  const joinedSituation = (a: DraftConsult) =>
+    ENGINE.consultSince && !ENGINE.heardChannel && a.since && !a.reactors ? P.withSince(a.situation, a.since) : a.situation;
+
   const refusedAsks = new Map<string, number>();
   const refusalFor = (why: string, name: string, situation: string) => {
     const key = `${nameKey(name)}|${situation.trim().toLowerCase()}`;
     const times = situation.trim() ? (refusedAsks.get(key) ?? 0) + 1 : 1;
     if (situation.trim()) refusedAsks.set(key, times);
-    return times > 1 ? P.consultRepeated(why, name, times) : P.consultNotSent(why, name);
+    const text = times > 1 ? P.consultRepeated(why, name, times) : P.consultNotSent(why, name);
+    return { text, times };
+  };
+
+  // Lectures are for the writer, not for history. A refusal's full text — the craft lecture on
+  // what was wrong with the ask — has one job: make the NEXT draft fix it. A one-line tag is what
+  // stays in history permanently; the lecture itself rides the next writer.draft call as a
+  // transient extra (B's pattern, one loop boundary later). Deliberate placement change: today the
+  // lecture sits before [WRITE]; as an extra it lands after it, closest to generation.
+  const pendingWriterExtras: Msg[] = [];
+  const refuseForLater = (why: string, name: string, situation: string): string => {
+    const { text, times } = refusalFor(why, name, situation);
+    pendingWriterExtras.push({ role: "user", content: text });
+    const gist = why.split(". ")[0].trim().replace(/\.+$/, "");
+    return `[CONSULT NOT SENT${times > 1 ? ` — REPEAT ×${times}` : ""}] ${name}: ${gist}.`;
   };
 
   const pieces: string[] = [];
   const wordCount = () => pieces.join(" ").split(/\s+/).filter(Boolean).length;
   const lastAsked = new Map<string, number>();
+  const sinceBase = new Map<string, number>();
   const retryCounts = new Map<string, number>();
   // Deeds volunteered by the last reaction fan-out (lowercased name → action), waiting for the
   // writer's next reply to promote at most one. A one-shot offer: cleared as the next reply is read.
@@ -424,6 +532,18 @@ export async function writeScene(run: SceneRun) {
   // Only a promoted reaction action joins later, like the writer's own history folding only a
   // promoted deed; a reaction's un-promoted action never becomes canon.
   const granted: GrantedEntry[] = [];
+  const heardFor = (name: string) => {
+    const def = defOf(name);
+    if (!def || !isActive(def.name) || !agents.has(nameKey(def.name))) return { lines: [] };
+    const sinceIndex = sinceBase.get(nameKey(def.name)) ?? 0;
+    return heardBlock({
+      name: def.name,
+      present: roster.filter(c => isActive(c.name) && scenePresence(sd, c)?.mode !== "remote")
+        .map(c => c.name),
+      cannotHear: def.limits.some(limit => canonSkill(limit) === "hearing")
+        || scenePresence(sd, def)?.mode === "remote",
+    }, granted.slice(sinceIndex));
+  };
   let steps = 0, budget = maxSteps, done = false, empties = 0;
   let overran = 0;
   // Which world beats have fired this scene, held by entry identity (world-timeline.ts). A beat
@@ -432,6 +552,14 @@ export async function writeScene(run: SceneRun) {
   // Set when a reply declared the scene done with a consult still open and an answer landed: the
   // scene is held open one more turn so the answer reaches the page, then closes regardless.
   let closing = false;
+  // The scene's question, as last read against the page — durable across the whole run (step 2 of
+  // the question-answered plan: PLANS.md item 2), not just the turn that produced it.
+  let questionState: QuestionState = { status: "unread" };
+
+  // Neglected-nag throttle: the furniture lecture + fan-out upsell re-sent every turn while its
+  // set holds. Emit only when the set changes or every third nagged turn — the steady state is a
+  // scene the writer already knows is neglecting someone.
+  let lastNeglectedKey = "", neglectedNags = 0;
 
   // A `scene_done` on an empty page ends a scene that never happened. The first one is refused with
   // a message and a flag, so the writer cannot be trapped by its own declaration; a second is
@@ -459,9 +587,10 @@ export async function writeScene(run: SceneRun) {
     clarifierMark = clarifier?.history.length ?? 0;
   };
   const keepClarifications = () => {
-    for (const cl of attemptClarifications) {
-      writer.hear(P.characterAsks(cl.character, cl.question));
-      writer.said(JSON.stringify({ answer: cl.answer }));
+    // One message for the whole attempt, not a question/answer pair per fact: the pairs cost two
+    // history slots per clarification and push story prose into the digest within a few turns.
+    if (attemptClarifications.length) {
+      writer.hear(P.clarificationsSettled(attemptClarifications));
     }
     attemptClarifications = [];
   };
@@ -516,7 +645,8 @@ export async function writeScene(run: SceneRun) {
     return a;
   };
 
-  log({ t: "scene_start", story: dir, characters: characters.map(c => c.name), target: sd.length, chapter });
+  log({ t: "scene_start", story: dir, characters: characters.map(c => c.name), target: sd.length,
+        question: sd.question, chapter });
 
   while (!done) {
     if (RUN.stopped) break;
@@ -527,6 +657,14 @@ export async function writeScene(run: SceneRun) {
     }
 
     if (steps >= budget) {
+      // Checked before the ask is even put, not only when it comes back granted: a non-interactive
+      // run (no viewer, no TTY) declines automatically with no prompt at all, and that silent
+      // decline is exactly where a scene most often ends without anyone finding out its question
+      // was still open (PLANS.md item 2, the 2026-09-17 evidence).
+      if (pieces.length && sd.question.trim()) {
+        questionState = await checkQuestionState(newDoneJudge, sd.question, pieces.join("\n\n"), chapter, log);
+        log({ t: "question_state", state: questionState, trigger: "extension", step: steps, words: wordCount(), chapter });
+      }
       const extra = await io.moreSteps(steps, budget, chapter);
       if (!extra) break;
       budget += extra;
@@ -564,7 +702,11 @@ export async function writeScene(run: SceneRun) {
     }
 
     const words = wordCount();
-    const neglected = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
+    const neglectedFull = neglectedCast([...active], lastAsked, steps, NEGLECT_GAP);
+    const neglectedKey = neglectedFull.join("|");
+    if (neglectedKey !== lastNeglectedKey) { lastNeglectedKey = neglectedKey; neglectedNags = 0; }
+    const neglected = neglectedKey && neglectedNags % 3 === 0 ? neglectedFull : [];
+    if (neglectedKey) neglectedNags++;
     const hardCap = words >= sd.length * HARD_CAP_MULT;
     // The world timeline: a held event the writer may not start, and — at the trigger — a fired
     // event injected as already true. Zero inference; the decision is world-timeline.ts's, and the
@@ -575,17 +717,20 @@ export async function writeScene(run: SceneRun) {
       beatFired.add(turn.fired);
       console.log(`\n${C.cyan}(world beat fired at step ${steps + 1}, ${words}/${sd.length} words)${C.reset}`);
       log({ t: "world_beat", beat: turn.fired.fired, hold: turn.fired.hold, at: turn.fired.at, step: steps + 1, chapter });
-      for (const [name, mem] of turn.memories) {
-        const def = defOf(name);
-        if (!def || !isActive(def.name)) continue;
-        if (!mem.trim()) continue;
-        if (turn.fired!.scope === "scene" && scenePresence(sd, def)?.mode === "remote") continue;
+      for (const def of roster) {
+        if (!isActive(def.name)) continue;
+        if (turn.fired.scope === "scene" && scenePresence(sd, def)?.mode === "remote") continue;
         const a = agents.get(nameKey(def.name));
         if (!a) continue;
-        a.system += P.memorySurfaced(mem);
-        a.hear(ENGINE.freeConsult ? P.freeMemoryMarker(mem) : P.memoryMarker(mem));
-        log({ t: "memory_surfaced", character: def.name, chapter });
-        if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
+        a.system += P.worldEventSurfaced(turn.fired.fired);
+        log({ t: "world_event_surfaced", character: def.name, beat: turn.fired.fired, chapter });
+        for (const [name, mem] of turn.memories) {
+          if (!sameName(name, def.name) || !mem.trim()) continue;
+          a.system += P.memorySurfaced(mem);
+          a.hear(ENGINE.freeConsult ? P.freeMemoryMarker(mem) : P.memoryMarker(mem));
+          log({ t: "memory_surfaced", character: def.name, chapter });
+          if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.dim}(${def.name} remembers)${C.reset}`);
+        }
       }
     }
     writer.hear(P.writeInstruction({
@@ -595,7 +740,10 @@ export async function writeScene(run: SceneRun) {
     }));
     let draftRaw: string;
     try {
-      draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.draft");
+      // A queued refusal lecture goes out here and only here — the one call site that drains
+      // pendingWriterExtras, so a lecture is delivered exactly once, on the next draft.
+      draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.draft",
+        pendingWriterExtras.splice(0));
     } catch (e) {
       if (e instanceof StoppedError || RUN.stopped) break;
       console.log(`\n${C.red}Writer call failed (${(e as Error).message}) — stopping with what we have.${C.reset}`);
@@ -618,8 +766,8 @@ export async function writeScene(run: SceneRun) {
       const ask = reply.consult;
       const outgoingConsult = ask ? {
         character: ask.character || undefined,
-        reactors: ask.reactors?.length ? ask.reactors.map(r => r.name) : undefined,
-        situation: ask.situation,
+        reactors: ask.reactors ?? undefined,
+        situation: joinedSituation(ask),
         question: ask.question,
       } : null;
 
@@ -632,27 +780,59 @@ export async function writeScene(run: SceneRun) {
         ? [...granted, { character: promoteDef.name, speech: "", action: promoted }]
         : granted;
 
-      const flagged = await lintPiece({
-        prose: reply.prose, granted: lintGranted, cast, pov: sd.pov,
-        consult: outgoingConsult, newNarrationJudge, log, chapter,
-      });
+      let flagged: string | null;
+      let findings: LintPieceResult;
+      try {
+        findings = await lintPiece({
+          prose: reply.prose, granted: lintGranted, cast: mechanicalCast, pov: sd.pov,
+          consult: outgoingConsult, newNarrationJudge, log, chapter,
+        });
+        flagged = [findings.blocking, findings.advisory].filter(Boolean).join(". ") || null;
+      } catch (e) {
+        if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
+        throw e;
+      }
+      if (RUN.stopped) { stoppedMidLint = true; break; }
 
       if (!flagged) break;
 
       const retried = lintAttempt >= NARRATION_LINT_RETRIES;
       log({ t: "narration_flag", why: flagged, retried, chapter });
       console.log(`${C.yellow}(narration flagged — ${flagged.split(". ")[0]}.)${C.reset}`);
-      if (retried) break;   // one redraft only — accept whatever comes back next
+      if (retried && !findings.blocking) break;
 
-      writer.hear(P.narrationFlagged(flagged));
-      try {
-        draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft");
-      } catch (e) {
-        if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
-        console.log(`\n${C.red}Writer redraft call failed (${(e as Error).message}) — keeping the flagged piece.${C.reset}`);
-        break;
+      let needsDecision = retried;
+      let redrafted = false;
+      for (;;) {
+        if (needsDecision && findings.blocking) {
+          let choice: LintDecision;
+          try {
+            choice = await io.lintDecision?.({ prose: reply.prose, blocking: findings.blocking,
+              advisory: findings.advisory, chapter }) ?? "stop";
+          } catch (e) {
+            // A port outage must not crash the run any more than a lint or writer outage would —
+            // the piece stays on hold; the chapter ends preserving what is committed.
+            console.log(`\n${C.yellow}Lint decision port failed (${(e as Error).message}) — stopping the chapter.${C.reset}`);
+            choice = "stop";
+          }
+          log({ t: "lint_decision", choice, chapter });
+          if (RUN.stopped || choice === "stop") { stoppedMidLint = true; break; }
+          if (choice === "publish") break;
+        }
+        try {
+          draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft",
+            [{ role: "user", content: P.narrationFlagged(flagged) }]);
+          redrafted = true;
+          steps++;
+          break;
+        } catch (e) {
+          if (e instanceof StoppedError || RUN.stopped) { stoppedMidLint = true; break; }
+          console.log(`\n${C.red}Writer redraft call failed (${(e as Error).message}).${C.reset}`);
+          if (!findings.blocking) break;
+          needsDecision = true;
+        }
       }
-      steps++;
+      if (!redrafted) break;
     }
     if (stoppedMidLint) break;
 
@@ -691,6 +871,7 @@ export async function writeScene(run: SceneRun) {
       ...(ask.situation ? { situation: ask.situation } : {}),
       ...(ask.question ? { question: ask.question } : {}),
       ...(ask.wants ? { wants: ask.wants } : {}),
+      ...(ask.since ? { since: ask.since } : {}),
     } : null;
     writer.said(JSON.stringify({ prose: reply.prose,
       ...(askedRecord ? { consult: askedRecord } : {}),
@@ -721,31 +902,57 @@ export async function writeScene(run: SceneRun) {
     if (ask?.reactors) {
       // -- REACTION FAN-OUT: one shared beat, several present-but-not-acting characters react at once.
       // Each runs an isolated consult (never seeing another's reply); the writer gets them together.
+      const heardEnd = granted.length;
       asked = await reactionFanout({
-        reactors: ask.reactors, situation: ask.situation, question: ask.question, cast,
+        ...(ENGINE.heardChannel ? {
+          heardFor,
+          markHeardSent: (name: string) => sinceBase.set(nameKey(name), heardEnd),
+        } : {}),
+        reactors: ask.reactors, situation: ask.situation, question: ask.question, cast: mechanicalCast,
         defOf, agents, isActive, isPov, writerSees,
         clarifications, clarify, beginAttempt, keepClarifications, dropClarifications,
-        refusalFor, writer, granted, pendingReactionActions, lastAsked, owed,
+        refusalFor: refuseForLater, writer, granted, pendingReactionActions, lastAsked, owed,
         step: steps, chapter, newBatchJudge, log, stopped: () => RUN.stopped,
       });
     } else if (ask?.character) {
       const who = ask.character;
       const def = defOf(who);
       const persistent = agents.get(nameKey(who));
-      const check = def ? normalizeConsult({ ...ask, character: def.name }, cast) : null;
+      // Stale-character `since` (--consult-since): prose pieces since their last SENT consult.
+      // Unknown base (never asked) is never stale; a fan-out reaction does not reset the base.
+      const base = def ? sinceBase.get(nameKey(def.name)) : undefined;
+      const stalePieces = ENGINE.heardChannel || base === undefined ? 0 : pieces.length - base;
+      const missingSince = !!def && ENGINE.consultSince && !ENGINE.heardChannel
+        && stalePieces >= SINCE_STALE_PIECES && !ask.since;
+      // The heard block is part of the ask the character reads, so the gate reads it too:
+      // computed here, before the check, and the same object is carried on the request when
+      // it passes. A situation recapping speech the block already carries verbatim is refused
+      // through the same bad_consult as a restricted-sense one; the lint gates itself on a
+      // non-empty block, so the opening consult stays free to set the scene.
+      const heard = def && ENGINE.heardChannel ? heardFor(def.name) : undefined;
+      const check = def && !missingSince
+        ? normalizeConsult({ ...ask, character: def.name, situation: joinedSituation(ask) }, mechanicalCast, "open", { heard })
+        : null;
       if (!def || !persistent) {
         writer.hear(P.noSuchCharacter(who, [...active]));
       } else if (!isActive(def.name)) {
         console.log(`${C.yellow}(not sent to ${def.name} — they have left the scene.)${C.reset}`);
         writer.hear(P.consultExited(def.name));
+      } else if (missingSince) {
+        const why = P.badConsult.missingSince(def.name, stalePieces);
+        log({ t: "bad_consult", character: def.name, why, chapter });
+        console.log(`${C.yellow}(not sent to ${def.name} — stale, no "since".)${C.reset}`);
+        writer.hear(refuseForLater(why, def.name, ask.situation));
       } else if (!check!.ok) {
         log({ t: "bad_consult", character: def.name, why: check!.why, chapter });
         console.log(`${C.yellow}(not sent to ${def.name} — ${check!.why.split(". ")[0]}.)${C.reset}`);
-        writer.hear(refusalFor(check!.why, def.name, ask.situation));
+        writer.hear(refuseForLater(check!.why, def.name, ask.situation));
       } else {
         asked = true;
+        if (heard) check!.req.heard = heard;
+        sinceBase.set(nameKey(def.name), ENGINE.heardChannel ? granted.length : pieces.length);
         const { reply, failed, usedAttempt, req } = await judgeGate({
-          def, agent: persistent, req: check!.req, cast, retries, maxCharacterRetries,
+          def, agent: persistent, req: check!.req, cast: mechanicalCast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
           retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
           constraint: sceneConstraint(sd, def),
@@ -783,7 +990,8 @@ export async function writeScene(run: SceneRun) {
           keepClarifications();   // before the answer: the writer settled these facts to get it
           const shown = { thought: writerSees(def.name, reply.thought),
                           speech: reply.speech, action: reply.action };
-          writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question));
+          writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question,
+            ask?.question ?? ""));
           lastAsked.set(nameKey(def.name), steps);
           // An answer joins the lint's ledger as whatever the writer actually got. An
           // answer from the POV character lands as a felt entry, like a fan-out's bundle — without
@@ -858,38 +1066,19 @@ export async function writeScene(run: SceneRun) {
     // names a lever the writer does not hold. Re-arm this as a gate when a refusal can arrive with
     // one.
     //
-    // Only an ending the writer chose is checked: the hard cap and a spent budget are budget rather
-    // than judgement. A scene with no question of its own has nothing to check against.
+    // An ending the writer never chose is checked too, at the two other places a scene can end
+    // (the budget-exhaustion site above, the hard cap below) — a spent budget is not judgement
+    // either, but the record should not stay silent just because nobody declared anything.
     if (!deferredNow && (sceneEnded || closing) && pieces.length && sd.question.trim()) {
-      let unanswered = "";
-      try {
-        const doneJudge = newDoneJudge();
-        const extra: Msg[] = [{ role: "user", content: P.doneJudgeRequest({
-          question: sd.question, prose: pieces.join("\n\n") }) }];
-        for (let tries = 0; ; tries++) {
-          const raw = await doneJudge.generate(`${C.magenta}DONE-JUDGE${C.reset}`, "judge.done", extra);
-          const verdict = parseLintVerdict(extractJson(raw));
-          if (verdict) {
-            if (!verdict.ok) unanswered = verdict.why || "the scene's question is not answered";
-            else log({ t: "done_confirmed", chapter });
-            break;
-          }
-          // Asked twice with no verdict: nothing is recorded, as on an outage. A check nobody made
-          // must not read as a check that passed, so the log says which of the two happened.
-          if (tries) break;
-          log({ t: "schema_mismatch", call: "done", character: "(scene)", chapter });
-          extra.push({ role: "assistant", content: raw.trim() },
-                     { role: "user", content: P.DONE_ONLY });
-        }
-      } catch (e) {
-        if (!(e instanceof StoppedError) && !RUN.stopped) {
-          log({ t: "done_judge_failed", why: (e as Error).message, chapter });
-          console.log(`${C.yellow}(scene-done judge failed: ${(e as Error).message})${C.reset}`);
-        }
-      }
-      if (unanswered) {
-        log({ t: "done_flagged", why: unanswered, chapter });
-        console.log(`${C.yellow}(the scene ends without answering its question: ${unanswered})${C.reset}`);
+      questionState = await checkQuestionState(newDoneJudge, sd.question, pieces.join("\n\n"), chapter, log);
+      log({ t: "question_state", state: questionState, trigger: "writer_done", step: steps, words: wordCount(), chapter });
+      // done_confirmed/done_flagged are kept as their own events (not folded into question_state)
+      // because buildChapterBeatOutcome (run-and-save.ts) already reads them as the writer's-own-
+      // declaration verdict specifically — see checkQuestionState's docstring.
+      if (questionState.status === "resolved") log({ t: "done_confirmed", chapter });
+      else if (questionState.status === "open") {
+        log({ t: "done_flagged", why: questionState.why, chapter });
+        console.log(`${C.yellow}(the scene ends without answering its question: ${questionState.why})${C.reset}`);
       }
     }
 
@@ -905,6 +1094,10 @@ export async function writeScene(run: SceneRun) {
       done = true;
     } else if (hardCap) {
       done = true;
+      if (pieces.length && sd.question.trim()) {
+        questionState = await checkQuestionState(newDoneJudge, sd.question, pieces.join("\n\n"), chapter, log);
+        log({ t: "question_state", state: questionState, trigger: "forced_end", step: steps, words: wordCount(), chapter });
+      }
       log({ t: "forced_end", words: wordCount(), target: sd.length, chapter });
       console.log(`${C.yellow}(scene forced to a close — ${wordCount()} words against a `
         + `${sd.length}-word target)${C.reset}`);
@@ -937,13 +1130,17 @@ export async function writeScene(run: SceneRun) {
       console.log(`${C.yellow}(the scene ended without the world event ever firing: ${b.fired})${C.reset}`);
     }
 
-  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter, retries: Object.fromEntries(retryCounts) });
-  return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped };
+  log({ t: "scene_end", steps, words: wordCount(), done, stopped: RUN.stopped, chapter,
+        retries: Object.fromEntries(retryCounts), questionState });
+  return { prose: pieces, steps, words: wordCount(), done, stopped: RUN.stopped, questionState };
 }
 
-/** Write one chapter: build the agents for the chapter's roster, call writeScene, and clean up. */
-export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunEvent) => void): Promise<
-  { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean }
+/** Write one chapter: build the agents for the chapter's roster, call writeScene, and clean up.
+ *  `io` is the human-interaction port, defaulted by writeScene to LIVE_IO — the replay passes its
+ *  own so a recorded run's human answers can be handed back. */
+export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunEvent) => void,
+                                 io?: SceneIo): Promise<
+  { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean; questionState: QuestionState }
 > {
   if (!Number.isInteger(chapter) || chapter < 1 || chapter > sc.scenes.length) {
     throw new Error(`Chapter must be an integer in 1..${sc.scenes.length}, not ${chapter}`);
@@ -969,6 +1166,7 @@ export async function runChapter(sc: StoryConfig, chapter: number, log: (e: RunE
       facts: sc.facts,
       timeline: sc.timeline,
       catalogs: sc.catalogs,
+      io,
     });
   } finally {
     LIVE.writer = null; LIVE.agents = null; LIVE.log = null;

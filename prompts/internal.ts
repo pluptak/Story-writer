@@ -44,7 +44,7 @@ export const wantsMenuLines = WANTS_MENU.map(([w, d]) => `                    ${
  *  header states the baseline and glosses the three labels explicitly (they are confusable):
  *  `can:` is intrinsic, beyond the baseline; `REACH:` is situational, granted by this scene only;
  *  `CANNOT:` is unavailable whatever its source would have been (I2). */
-export const castBlock = (cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[] }[]) =>
+export const castBlock = (cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[]) =>
   `THE CAST -- every character below has the ordinary human abilities (speaking,\n`
   + `hearing, seeing, touching, tasting, smelling) unless their CANNOT removes one. Each\n`
   + `character's line lists ONLY what is beyond that baseline or taken from it -- can: is an ability\n`
@@ -59,6 +59,7 @@ export const castBlock = (cast: { name: string; can: string[]; reach?: string[];
         c.cannot.length ? `CANNOT: ${c.cannot.join(", ")}` : "",
         c.presence?.length ? `PRESENCE: ${c.presence}` : "",
         c.constraint?.length ? `CONSTRAINED: ${c.constraint.join(", ")}` : "",
+        c.pronouns ? `PRONOUNS: ${c.pronouns.subject}/${c.pronouns.object}/${c.pronouns.possessive}/${c.pronouns.reflexive}` : "",
       ].filter(Boolean);
       if (!tails.length) return head;
       const pad = " ".repeat(2 + c.name.length);

@@ -7,7 +7,7 @@ import { C } from "./ansi.ts";
 import { LIVE, resetLive, setWhere, publish } from "./live.ts";
 import { ENGINE } from "./engine/engine-state.ts";
 import { runDirs } from "./engine/preflight.ts";
-import { runChapter, type RunEvent } from "./engine/scene-loop.ts";
+import { runChapter, type RunEvent, type QuestionState } from "./engine/scene-loop.ts";
 import { warn } from "./engine/warnings.ts";
 import { writeRunManifest } from "./run-manifest.ts";
 import { persistedCatalogData } from "./engine/catalog.ts";
@@ -109,7 +109,7 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
     });
   };
 
-  let r: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean };
+  let r: { prose: string[]; steps: number; words: number; done: boolean; stopped: boolean; questionState: QuestionState };
   let cleanupError: Error | null = null;
   try {
     r = await runChapter(sc, chapter, e => {
@@ -220,5 +220,13 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
   console.log(`${C.dim}${r.words} words · ${r.steps} steps · ${consults} consult(s) · `
     + `${needs} clarification(s) · ${retries} retry/retries · `
     + `${r.stopped ? "stopped by request" : r.done ? "chapter finished" : "stopped early"}${C.reset}`);
+  // Calibration reading (PLANS.md item 2): the last verdict any done-judge call landed on, so a
+  // human comparing the console against the page does not have to go dig it out of writing-log.jsonl.
+  if (r.questionState.status !== "unread") {
+    const q = r.questionState;
+    const detail = q.status === "resolved" ? ` (${q.evidence})` : q.status === "open" ? ` — ${q.why}`
+      : q.status === "unavailable" ? ` — ${q.why}` : "";
+    console.log(`${C.dim}question: ${q.status}${detail}${C.reset}`);
+  }
   console.log(`${C.dim}${scenePath}\n${logPath}${chapterPath ? "\n" + chapterPath : ""}${C.reset}`);
 }

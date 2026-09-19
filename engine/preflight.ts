@@ -1,7 +1,7 @@
 /** PRE-FLIGHT — checking a story loads and its models are available, and the story-card listing. */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
-import { PROVIDER } from "./provider.ts";
+import { PROVIDER } from "./providers/provider.ts";
 import { estimateTokens, type Msg } from "./llm-client.ts";
 import { loadStory, discoverStories, resolveStoryDir, writtenChapters, type SceneDef } from "./story-format.ts";
 import type { TimelineDef } from "./story-schema.ts";
@@ -113,7 +113,8 @@ export function runPreflight(dir: string, catalogs?: Catalogs): Promise<Prefligh
       const sc = await loadStory(dir, undefined, catalogs);
 
       const wanted = [...new Set([sc.models.default, sc.models.writer, sc.models.summary,
-                                  ...sc.characters.map(c => c.model)])].filter(Boolean);
+                                  ...sc.characters.map(c => c.model),
+                                  ...sc.scenes.map(s => s.writerModel ?? "")])].filter(Boolean);
       const loaded = await availableModelIds();
       let modelCheck: "ok" | "missing" | "unreachable" = "ok";
       let missingModels: string[] = [];

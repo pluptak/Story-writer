@@ -10,6 +10,10 @@ export async function refreshUsage() {
     const r = await fetch("/catalog/usage");
     const j = await r.json();
     if (j.ok) APP.catalog.usage = j.usage;
+    // The rows using this render once from whatever was cached; without a
+    // repaint here a fresh count lands invisibly until something else
+    // re-renders, and the derived grouping never "moves by itself".
+    APP.render();
   } catch { /* keep what was there */ }
 }
 

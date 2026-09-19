@@ -2,7 +2,7 @@
 
 **Everything in this file is work for a person.** `npm test` covers the engine and the route modules
 and `npm run test:gui` covers the viewer's mechanical half — Playwright driving the real server
-in-process over a fixture ServerHost, no LM Studio, nothing in `data/stories/` touched. What is left here
+in-process over a fixture host, no LM Studio, nothing in `data/stories/` touched. What is left here
 is what neither can reach: a real model's behaviour, a truth that is not on the page, a second
 client, and layout, theme, focus and feel.
 
@@ -191,8 +191,32 @@ curl -s http://localhost:8080/run
 - [ ] Reload the browser mid-run. It reattaches to the running scene rather than showing an idle
       screen.
 - [ ] Let it finish. `chapters/U.json` now exists under that story and is a byte-for-byte copy of its
-      `story.json`. That snapshot is what section 5 needs, and this run is what gives sections 1 and 5
-      a second written chapter to work with.
+      `story.json`, and this run is what gives section 1 a second written chapter to work with.
+
+## 2b. Persistent lint decision — Block 4b
+
+Use a disposable fixture run, never an author's existing chapter or retained output. Mechanical
+coverage belongs in the route/GUI suites; these checks retain the human judgement of readability,
+focus and multi-client behaviour.
+
+- [ ] After the one automatic redraft leaves mechanical blocking, the viewer shows the unpublished
+      draft, chapter number, **Blocking findings**, and **Advisory findings** only when present.
+      Prose/findings containing HTML-like text read literally, never as markup.
+- [ ] In both themes and at narrow widths, long findings and prose scroll within the prompt while
+      **Redraft again**, **Publish anyway**, and **Stop chapter** remain reachable by keyboard.
+      Focus arrives at the decision heading without selecting a destructive default.
+- [ ] Redraft again gets another checked attempt; Publish anyway commits the displayed draft;
+      Stop chapter ends without that draft and keeps the page already committed. A failed redraft
+      with mechanical blocking still asks rather than publishing silently.
+- [ ] Judge-only findings retain accept-after-one-redraft behaviour. With nobody askable or
+      interactive off, mechanical blocking stops the chapter with its committed page preserved.
+- [ ] Reload or disconnect/reconnect during a pending decision: the current prompt returns, not an
+      older draft. During reconnect buttons are disabled; connection recovery restores them.
+- [ ] With two viewers attached, decide in either: the other prompt closes. Turn interactive off
+      during the wait: both prompts close and the chapter stops; other waits keep their behaviour.
+- [ ] A refused or failed POST leaves a readable inline error and retryable choices if the decision
+      is still pending. A decision answered elsewhere or a run reset removes the stale prompt;
+      a late HTTP reply never hides or rewrites a newer prompt.
 
 ## 3. Reading accepted prose
 
@@ -230,21 +254,6 @@ section 2 wrote. (`P` has to be a scene the story does not have yet — that is 
       flight. Escape or the backdrop cancels with nothing discarded.
 - [ ] **Try again panel.** Unload the architect's model in LM Studio, then open a handoff. Expect a
       panel offering to retry, not a dead screen. Reload the model afterwards.
-
-## 5. Drift warning — needs section 2 done first
-
-Drift is detected by comparing a chapter's prose against the `chapters/<n>.json` snapshot taken when
-it was written, so only chapters that *have* one can be checked. Any chapter written before snapshots
-existed stays quiet forever — check `ls data/stories/<THE SERIAL>/chapters/` and use a chapter that has a
-`.json` beside its `.md`. Call it `S` — the chapter section 2 wrote is always one.
-
-- [ ] Hand-edit that story's `story.json`, changing scene `S`'s `question`.
-- [ ] Open the handoff. Expect a warning on the panel: `chapter S's prose was written from a different
-      scene definition (question)`.
-- [ ] A chapter with no `chapters/<n>.json` draws no warning — there is nothing to compare it to.
-- [ ] The warning does not block the handoff. Revising your own story is legitimate; the engine says
-      so rather than undoing it.
-- [ ] Put the question back.
 
 ## 6. Story editor
 
@@ -306,9 +315,7 @@ Needs a run, so pair it with section 2. What the redesign changed:
       reset by the stream).
 - [ ] The status bar reads `<story> · chapter N of M`, agreeing with the terminal's own run header.
 - [ ] On the read view the rail drops phase and model, and there is no headline or prose card — both
-      are live-only.
-- [ ] **Narrow the window below 900px.** The rail stacks below the prose and stays visible. If it
-      vanishes, the only way to stop a run has gone with it.
+       are live-only.
 
 ## 8. The story reader
 
@@ -328,13 +335,9 @@ story page → **read story**. The button only appears once a story has a writte
       the reader must not have cleared it.
 - [ ] **Empty story.** Open the reader on **THE BLANK** by hand at `#/readstory?dir=<THE BLANK>`.
       Expect *no chapters written yet*, not a blank page or a spinner that never stops.
-- [ ] **A chapter that will not load.** Temporarily rename one of THE SERIAL's `chapters/*.md` prose
-      files and reopen the reader. That chapter's slot says *could not load*; **the others still
-      render**. One bad chapter must not blank the story. Put the file back.
 - [ ] **Switching stories.** Open the reader on one story, go back, open it on another: the second
       must never show the first one's prose under the second one's title, not even for a frame. *Needs
-      a second story with a written chapter — see the note in section 3.*
-- [ ] **Narrow the window below 900px.** The prose column reflows and stays readable.
+       a second story with a written chapter — see the note in section 3.*
 
 ## 9. Story-wide search
 
@@ -344,8 +347,6 @@ In the reader (section 8), using the search box above the prose.
 - [ ] **A word you know is there.** Type it. A match count appears and a hit per matching line, each
       labelled with its chapter and showing the line with every occurrence highlighted.
 - [ ] **Case-insensitive.** The same word in a different case finds the same lines.
-- [ ] **Jump.** Click a hit. The page scrolls to that chapter's heading, and the heading is not hidden
-      under the sticky topbar.
 - [ ] **Typing does not refetch.** With the network tab open, type several characters. No `/chapter`
       or `/stories` requests fire — search is over prose already loaded. Focus stays in the box.
 - [ ] **Switching stories clears it.** Search for something, go back, open the reader on another
@@ -385,9 +386,6 @@ screen the modal carries the authored sheet, and the rail holds no cast panel of
       running scene.
 - [ ] **It survives a model swap and a pause** without refetching visibly or losing the fields —
       the sheet is keyed by story, not by run state.
-- [ ] **Cast unavailable is graceful.** If `/cast` cannot answer, the card says so in one muted line
-      and still shows the pill's can/cannot row. (Force it by loading the live screen with no engine
-      behind it, per the section below.)
 - [ ] **No duplicate cast panels.** The rail holds run controls and the model-calls panel and
       nothing else — there is no second "cast" section beside the header's "cast in scene".
 - [ ] **The boundary holds.** This data is shown to you only. It must never appear in any agent's
@@ -414,7 +412,6 @@ before starting this section. The comparison is opened from the story page's **c
 - [ ] **Diff safety.** A draft containing `<b>markup</b>` displays that text literally, not as HTML.
 - [ ] **Empty and failed runs.** A run with no draft prose shows the empty state. If either log fetch
       fails, the comparison shows an error rather than stale content from an earlier selection.
-- [ ] **Responsive layout.** Resize below 900px. The panes stack vertically and the diff remains readable.
 - [ ] **Single-run regression.** Open a retained run through the ordinary **read** action. It still has
       its original one-pane view and its original shared agent transcript behavior.
 
@@ -469,17 +466,6 @@ a *new* story folder — so it can go anywhere in the pass.
       catalog no longer holds shows as a second advisory saying it was dropped. **The word "spent"
       is load-bearing:** it is the difference between a control that steers a prompt ahead and one
       that edits a string nobody will read again.
-- [ ] **Promoting a skill the cast invented.** When a landed cast holds a bespoke
-      `name :: meaning` skill your bible does not have, a **new skills** card appears in the sidebar
-      naming it, what it means, and who holds it. **promote to bible** writes it to
-      `#/catalog?kind=skills` and the candidate disappears — it is re-derived from the cast, not
-      removed by the page, so the only way for it to vanish is for the bible to really hold it now.
-      Check the skills catalog afterwards. Two things that should NOT happen: a bare skill with no
-      `:: meaning` offered as a candidate, and a scene's `reach` or `constraint` entry offered as
-      one — both are scene-scoped and never promotable (I4). **A promoted skill does not appear in
-      the architect's own list until
-      the next session**, because the system prompt is sent once; validation accepts it immediately,
-      which is the part to check.
 - [ ] **Revising after a reload.** Reload the page mid-session and open **revise concept** without
       ever seeing the idea modal. Both pickers must fill. They are fed from the catalog on first
       need, and the load has to be triggered by the panel — not by the picker markup, which only
@@ -494,17 +480,6 @@ a *new* story folder — so it can go anywhere in the pass.
       *Scenes*, the label following each gate. House style and run settings appear in a highlighted
       current-stage section at the top of the proposal as their gates land; the earlier stages remain
       below it. The button is gone at the *world* gate.
-- [ ] **The cast gate can refuse.** Approving *cast* with a cast whose restrictions do not bite on the
-      tension (easiest: refine the cast until nobody has a restriction, then approve) comes back as a
-      judgement card headed **the cast gate**, not a red failure line — it names what would need a
-      restriction and says *approve again to overrule this*. The stepper's pointer stays on *Cast* and
-      no next stage appears. The approve button becomes **approve anyway →** in the warning colour;
-      clicking it within 8 seconds passes the gate, and waiting longer than that returns it to
-      **accept the cast & continue →**. Refine instead of overruling and the button reverts once the
-      round lands, so an armed override never carries to a later gate.
-- [ ] **A question pins the gate.** When a round asks instead of proposing, the answer field relabels
-      to *your answer* / **send answer →**, the approve button disappears, and the draft is unchanged.
-      Answering re-runs that stage.
 - [ ] **Refinement stays put.** Type a change and **send**: it applies within the open gate and the
       checklist pointer does not move. Round labels carry the gate (`[cast] changed: …`).
 - [ ] **One-shot.** Start again choosing **the whole story at once**. One proposal, **no stepper rail**
@@ -521,116 +496,15 @@ a *new* story folder — so it can go anywhere in the pass.
       Accepting over unsent text or a `problems` flag takes a confirming second click.
       Secondaries: **return to blueprint**, **save and leave** (session stays live; the shelf's
       resume panel shows it), and an **inspect details** disclosure with the complete Blueprint.
-- [ ] **The folder step says what is taken, before the click.** Type the name of a story that already
-       exists: the step says *data/stories/&lt;slug&gt; already exists — pick another name* and **Start
-      writing →** goes disabled, updating as you type without the caret jumping. The field arrives
-      prefilled from the title slug. Type a name that
-       slugifies to something different (`Bay 4 — Hatches!`) and it previews *this lands in
-       data/stories/bay-4-hatches* instead. Two stories built from one premise get the same title and so
-      the same slug, which is how this is hit in practice.
 - [ ] **Abandon** (second click) drops the session and returns to the shelf.
 - [ ] **Reload mid-session** on `#/scaffold` lands back in the same session — the state lives on the
       server, not the tab.
-- [ ] **Responsive.** Below 900px the sidebar stacks under the proposal and the **stepper rail
-      disappears** — the status bar's `gate:` word still says where the walk stands; at 375px there is
-      **no horizontal scrollbar**.
 
 ## 13. Character catalog
 
 The global character library, accessible from the shelf and reloadable by direct navigation to
 `#/catalog`. Unlike every other page, the catalog is not scoped to a story.
 
-- [ ] **Entry point.** Shelf → **library of characters** card (under the "start a new story" card).
-      It navigates to `#/catalog`.
-- [ ] **Empty state.** On a first run with no catalog entries, the page reads as an invitation to add
-      one, not as an error or a broken panel. The empty state is clearly distinguished from a failed load.
-- [ ] **Load failure.** Break the catalog fetch (or unload the engine). The page shows the failure
-      message with a **retry** button.
-- [ ] **Issues vs. problems.** A cataloged entry is shown with two **separate, labelled blocks**:
-  - `issues` — schema failures or validations that prevent save. The entry is **not saved**. These are
-    red/error-coloured.
-  - `problems` — advisory warnings (e.g. missing fields that have defaults). The entry **was saved anyway**.
-    These are yellow/warning-coloured.
-  - The two must never be concatenated or merged into one list. A reader must be able to tell
-    "we refused to save this" from "we saved it, but look at this".
-- [ ] **Save with draft intact.** Add an entry. Introduce a validation error (e.g. an invalid JSON
-      field). Attempt to save. The save is rejected and the error appears in `issues`. The user's
-      drafted text stays on screen, not cleared.
-- [ ] **Delete asks first.** Click the delete button on an entry. A styled confirm modal names the
-      entry and its confirm button is red. Confirm deletes it; cancel, the backdrop, or Escape keeps
-      it. There is no armed button state — the modal is the whole question.
-- [ ] **A confirm never strands a delete.** Open a delete confirm, then navigate away (back to shelf,
-      to another story, or reload the page) without confirming. Return to `#/catalog`: the entry is
-      still there — nothing was deleted, and no modal is left open.
-- [ ] **Reload on `#/catalog`.** Close the tab, reopen the browser, and land directly on `#/catalog`
-      by pasting the URL. The catalog page comes back, not the shelf.
-- [ ] **Switching entries with unsaved edits.** Open an entry and make a change without saving. Click
-      another entry. A styled confirm modal warns about unsaved changes. Cancel stays on the current
-      entry; discard navigates to the other one.
-- [ ] **Switching kinds.** At the top of the catalog, a kind switcher shows four tabs: **characters**,
-      **tags**, **styles** and **skills** — one per entry in `CATALOG_KINDS` (`server/gui/viewer/state.js`),
-      which is the browser's copy of the engine's list. Clicking any of them switches the list and the
-      form to that kind. With unsaved edits in the form, clicking another tab warns with a styled
-      confirm modal; cancel stays on the current kind, discard switches and drops the draft. The nav's
-      **Libraries** group switches kinds by navigation too — each entry seeds the kind before the page
-      loads, landing on the same view the switcher would show.
-- [ ] **Tags render grouped STORY / STYLE, derived.** When browsing tags, the list groups entries
-      under two observed headings: **STORY** (no style carries the tag) and **STYLE** (some style
-      does), with each tag's authored facet riding along on its row. The grouping moves by itself —
-      add the tag to a style, save, and the tag reappears under STYLE; remove it and it falls back
-      to STORY. No editor field decides this.
-- [ ] **Usage lines are observed counts.** A tag row reads *used by N characters · M styles · K
-      skills* (whichever are non-zero); a skill row reads *used by N characters*. Save a character
-      carrying a tag and the tag's count climbs without another edit; delete the character and it
-      falls back.
-- [ ] **A tag's detail shows the styles associated with it.** Open a tag that at least one style
-      carries: *Styles commonly associated* names those styles as chips. A tag no style carries
-      shows no such block — an empty labelled block would read as data that is not there.
-- [ ] **Editing a tag's label bumps its version and does not change the entry count.** Open a tag entry
-      and change its label. Save it. Its version number increments. The total number of tags on the
-      page stays the same — the entry is an update, not a new one.
-- [ ] **A duplicate facet+label reports the advisory and still saves.** Add a tag entry whose facet and
-      label match an existing one. Attempt to save. The save succeeds and the entry appears in the list;
-      a problem (yellow-coloured advisory) notes the duplicate. The data is retained.
-- [ ] **On a character, tag chips toggle on and off.** On a character's form, the tag picker (or equivalent)
-      shows tag chips. Click a chip to toggle it on or off. The character's tag list updates to reflect
-      the change. The chips show visually distinct on/off states.
-- [ ] **A character carrying a tag that is no longer in the vocabulary still shows it, marked as off-vocabulary.**
-      On a character entry that carries a tag no longer in the current tag vocabulary, that tag chip
-      displays marked as off-vocabulary (distinct from both selected and unselected, not styled as an error).
-      The chip reads as "still here, but not one of the current terms". On save, the tag persists — it is
-      not silently lost. The author owns their data, and losing it silently is the failure being guarded against.
-- [ ] **Reloading on `#/catalog?kind=tags` lands back on tags.** Reload the page while browsing tags
-      at `#/catalog?kind=tags`. The page comes back with tags loaded, not silently switched to characters.
-- [ ] **Hiding does not disturb an unsaved draft.** Open a character, edit a field without saving,
-      then click **Hide character**. The visibility flips (badge appears, button relabels to
-      **Restore character**) and the unsaved edit is still in the form afterward — hide/restore is a
-      metadata write, not a content one.
-- [ ] **A failed visibility request keeps the draft and the old state.** With the server unreachable
-      (stop the engine, or throttle the network), click **Hide character**. An error line appears, the
-      button does not relabel, and the draft is untouched.
-- [ ] **The toggle button disables itself mid-flight.** Click **Hide character** and, before the
-      response lands (slow network), confirm the button is disabled rather than clickable a second
-      time — a double-click must not race two visibility writes. (The switch-character variants of
-      this — a save, hide/restore, or delete landing after you've moved to a different character,
-      and the assistant's controls locking while it loads — are automated; see above.)
-- [ ] **Hide/restore is absent for kinds without it.** Tags and skills show no hide/restore control
-      anywhere in their editors — their schema carries no `hidden` field, and the plan is to add
-      style/tag/skill visibility later, not to fake it now.
-- [ ] **The review panel has no backdrop or Escape close.** Click outside it, and press Escape while
-      it is open — neither closes it (matching the assistant modal beside it, which has the same
-      gap); only the × and **Close** buttons do. If this is surprising in practice, it is a real gap
-      to fix, not a regression to chase.
-- [ ] **A revert repaints the field live.** With the review panel open over an edited textarea,
-      click **Revert field** for that field. The textarea's value changes immediately, without
-      needing to close the panel first, and the panel's own remaining entries update to match.
-- [ ] **The review count stays live while typing.** With the panel closed, type in a field: the
-      **Review changes (N)** button's count updates on every keystroke without the whole page
-      re-rendering (the caret must not jump, same concern as the search box in the test above).
-      Opening the panel after several edits shows all of them, not just the most recent one.
-- [ ] **A brand-new, never-saved character can still be reviewed.** Create a character, edit two
-      fields without saving, and open **Review changes** before ever pressing Save — it shows the
-      edits against the character's own initial (empty) draft, not an error or an empty panel.
 - [ ] **The assistant against a real model.** Needs `defaults.json`'s `models.assistant` set and
       that model loaded in LM Studio. Open a character, pick a field, write an instruction, and
       **Prepare proposal**. Confirm: only the picked field changed in the diff; a field NOT picked
@@ -645,66 +519,7 @@ The global character library, accessible from the shelf and reloadable by direct
 - [ ] **A malformed model reply.** Hard to force without editing the model's own output, but if you
       have a small/uncooperative local model handy, try `create` mode with a vague instruction and
       confirm a reply with no usable `draft`/`findings` surfaces as a clear error rather than an
-      empty or broken proposal panel.
-- [ ] **The pager and page-size selector read cleanly together.** With more than one page of
-      characters, "Showing 11-20 of 42 characters", the Prev/Next pair, and the page-size select all
-      sit in one footer row without visually colliding. With everything on one page, the Prev/Next
-      pair and page indicator disappear entirely (not just disabled) while the page-size selector
-      stays.
-- [ ] **Typing in search does not fight the caret while a pager is showing.** With more than 10
-      characters, type a multi-character search term. The caret must not jump mid-word (same
-      concern as the existing search-caret test, now with a pager present too).
-
-### Styles, the third kind
-
-A style is a reusable writer voice — the half of a house style that travels between stories. The other
-half, the clauses a story derives from its POV and its cast's restrictions, is deliberately NOT here.
-
-- [ ] **Every kind round-trips.** Characters and tags still behave exactly as the checks above
-      describe — the page was a binary before styles and every per-kind branch had to be widened.
-- [ ] **Empty style catalog reads as an invitation.** Styles have no seed, unlike tags. A first run
-      shows the create prompt, not a blank panel and not an error.
-- [ ] **Create and edit.** A style takes a name, a one-line description, tags (the same chip picker
-      the character form uses) and a voice. Saving lists it at v1 with its description under its name;
-      editing the voice and saving again makes it v2 without changing the entry count.
-- [ ] **A voice carrying a perception rule SAVES, with an advisory.** Put "nothing that is only
-      visible" (or "cannot see", "is blind") in a style's voice and save. It saves, and the advisory
-      appears in the `.prob` block — NOT as an error. This is the rule the preset/derived split exists
-      for: such a clause is load-bearing on the page, and a preset carrying one would take it away the
-      moment the author picked a different voice.
-- [ ] **An empty name is refused** with `issues` in `.said.bad`, and the description and voice you
-      typed are still on screen.
-- [ ] **Reloading on `#/catalog?kind=styles` lands back on styles**, with the parameter still in the
-      URL — not silently switched to characters.
-
-### Skills, the fourth kind
-
-The persisted special-skill bible. A skill takes a name, a meaning and tags; it takes no voice, no
-persona and no restrictions ([`Architect.MD`](Architect.MD)'s *Skill bible* says why restrictions get
-no catalog of their own).
-
-- [ ] **The seed is there before anything is saved.** A first run on `#/catalog?kind=skills` lists the
-      engine's three special skills — `lockpicking`, `climbing`, `sleight-of-hand` — with their
-      meanings. This is the tag behaviour, not the style behaviour: skills seed, styles do not.
-- [ ] **The first save materializes the whole seed.** Create one skill and save. The list holds four
-      entries, not one — the seed was written out beside the new entry, so every seeded skill is now
-      editable and deletable. Delete a seeded one and reload: it stays gone.
-- [ ] **The meaning is a paragraph, not a list.** Type a multi-line meaning with blank lines and save.
-      It comes back as one block of prose with its line breaks intact — it must not be split into
-      separate entries the way a character's voice samples are.
-- [ ] **An empty meaning is refused,** in `issues` in `.said.bad`, not reported as an advisory — the
-      one field in any kind the schema will not let through. The name you typed is still on screen.
-- [ ] **A name that is a general skill saves, with an advisory.** Add a skill called `sight` and save.
-      It saves, and the `.prob` block says every character already has it. Same for a name containing
-      `::`, and for a second spelling of a name already in the bible (`Sleight of Hand` beside
-      `sleight-of-hand`) — all three are advisories, none of them refuse.
-- [ ] **The character form stops calling a promoted skill unknown.** Add `telepathy :: reading minds`
-      to the bible. Then open a character and give them a bare `telepathy` in their skills with no
-      `:: meaning`. The advisory saying it is "not a bible skill, and it carries no `:: meaning`" is
-      **gone** — this is the whole point of the kind, and it is the check most likely to regress,
-      because it is the only one that crosses from one catalog kind to another.
-- [ ] **Reloading on `#/catalog?kind=skills` lands back on skills**, with the parameter still in the
-      URL — not silently switched to characters.
+       empty or broken proposal panel.
 
 ## Checking the viewer without an engine
 
@@ -747,10 +562,9 @@ Without an engine attached (`go()` rewrites everything but `read`/`readstory`/`c
 - [ ] **The current item is marked.** The view you are on reads as `current` (and `aria-current="page"`),
       including the aliases: the story page marks **Story map**, the editor marks **Story map**, the
       scaffold and the handoff both mark **Architect**.
-- [ ] **Below 900px the nav is a horizontal strip** above the page, groups inline, scrolling rather
-      than stacking; below 680px it hides with the other chrome.
-- [ ] **Both themes.** The nav reads correctly with `data-theme="dark"` and `"light"` — group headings,
-      hover and the current marker in each.
+- [ ] **Both themes.** The nav carries a `current` marker with `data-theme="dark"` and `"light"` —
+      group headings, hover and the marker in each read. *(The marker's presence in each theme is
+      asserted by the suite; that either one reads well stays judgement.)*
 
 ## What this list cannot tell you
 

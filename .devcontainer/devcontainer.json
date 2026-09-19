@@ -22,7 +22,7 @@
     }
   },
   "remoteEnv": {
-    "LM_STUDIO_URL": "http://host.docker.internal:1234/v1/chat/completions"
+    "LLM_BASE_URL": "http://host.docker.internal:1234/v1"
   }
   //"postCreateCommand": "npm install"
 

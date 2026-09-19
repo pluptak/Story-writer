@@ -38,7 +38,8 @@ import { reviseConsult, parseVerdict, type CannotCast, type ConsultRequest, type
 import { loadStory } from "../engine/story-format.ts";
 import { writerCast } from "../engine/scene-loop.ts";
 import { sameName } from "../engine/config-util.ts";
-import { THINK_LEVELS, type ThinkLevel } from "../engine/story-schema.ts";
+import { type ThinkLevel } from "../engine/story-schema.ts";
+import { parseBenchmarkArgs } from "./benchmark-args.ts";
 
 ENGINE.stream = false;
 
@@ -54,18 +55,15 @@ interface RepairCase {
 interface Cases { castQuestions: CastQuestion[]; verdictCases: VerdictCase[]; repairCases: RepairCase[] }
 
 function parseArgs() {
-  const args = process.argv.slice(2);
-  const get = (name: string) => {
-    const hit = args.find(a => a.startsWith(`--${name}=`));
-    return hit ? hit.slice(name.length + 3) : undefined;
-  };
-  const has = (name: string) => args.includes(`--${name}`);
+  const { get, has, samples, think } = parseBenchmarkArgs(process.argv.slice(2), {
+    values: ["mode"], booleans: ["cannot-meaning", "cannot-none", "cannot-testimony"],
+  });
   return {
     mode: (get("mode") ?? "all") as "cast" | "verdict" | "repair" | "all",
     model: get("model"),
-    samples: Number(get("samples") ?? "5"),
+    samples: samples ?? 5,
     story: get("story") ?? "data/stories/doorway",
-    think: get("think") as ThinkLevel | undefined,
+    think,
     out: get("out"),
     // The CANNOT-rendering arms, one flag each so a delta can be attributed to one of them. These
     // set the same ENGINE fields the CLI sets, because the rendering lives in the engine's cast
@@ -182,10 +180,6 @@ async function main() {
   const opts = parseArgs();
   const here = dirname(fileURLToPath(import.meta.url));
   const cases: Cases = JSON.parse(readFileSync(join(here, "judge-diagnostic-cases.json"), "utf8"));
-  if (opts.think !== undefined && !(THINK_LEVELS as readonly string[]).includes(opts.think)) {
-    console.error(`--think must be one of: ${THINK_LEVELS.join(" ")}`);
-    process.exit(1);
-  }
 
   // Set before writerCast: the arms act on the engine's cast flattening, not on a prompt argument,
   // so they have to be in place by the time the cast is built. `cannotCast` below is deliberately

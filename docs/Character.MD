@@ -49,10 +49,23 @@ rendered as a labelled block (`prompts/consult.ts`):
 
 `CHARACTER_FORMAT`'s own knowledge paragraph is the boundary in the character's words: what it
 knows is its persona, its skills, what it knew coming in, the situation as the author describes it,
-and what it has already said in this conversation — nothing else. It is told not to invent facts
+and what it has already said in this conversation — nothing else. Mid-scene system implants add
+world events and surfaced knowledge through the engine-owned channel below. It is told not to invent facts
 about the world but to ask for them; its own body, memory and feelings are its to invent freely.
 
 ### What can arrive mid-scene
+
+A **world event**, verbatim. When a world beat fires, the engine appends its authored `fired`
+text to each eligible character's system prompt under **[WHAT HAS HAPPENED]**, before the writer's
+next turn. This is circumstance, not the writer's paraphrase or an instruction about what to infer,
+feel, say, or do. It arrives even when the beat carries no memory for that character. The writer
+still receives the same event in its instruction for drafting circumstance.
+
+Event and memory delivery share one gate: the character must be rostered, still active, and have
+an agent; a `"scene"`-scoped beat skips anyone `"remote"`. A `"world"`-scoped beat reaches remote
+characters too, and `"partial"` does not block delivery. The system implant survives history
+trimming and is copied by `fork()`. Each delivery logs `world_event_surfaced` with the character,
+verbatim beat text, and chapter in `writing-log.jsonl`.
 
 A **memory**. A world beat that fires may carry per-character knowledge — what that character always
 knew and had no reason to think about until the event happened. The memory is appended to the system
@@ -63,6 +76,26 @@ told not to narrate the remembering. A `"scene"`-scoped beat's memory does not i
 character marked `"remote"` in that scene. `fork()` copies the system prompt, so a retried instance keeps
 the memory without learning it was a retry. The run log records that a memory surfaced and to whom;
 its wording reaches nobody but the character it belongs to.
+
+### Heard speech (opt-in)
+
+`--heard-channel` enables an engine-owned **[WHAT YOU HEARD]** block beside the writer's
+circumstance-only situation. It is off by default. Only granted speech from other active,
+rostered, non-remote speakers is included, in ledger order, as `NAME: "words"` lines with
+JSON string escaping. Thoughts, actions, notes, and the listener's own speech never travel here.
+A listener whose CANNOT canonically removes hearing receives no block. Remote listeners and
+speakers are excluded even with an authored `via`; partial presence adds no restriction.
+
+The first ask reads from the start of the granted ledger. Each sent ask advances that listener's
+`sinceBase` to the ledger cursor (not the prose-piece count used by the legacy `--consult-since`
+mode). Empty-prose turns therefore do not lose speech. Refused asks do not advance it. Retries
+keep the same snapshot, and the accepted history fold retains the block. Fan-out snapshots are
+all taken before any reactor answers; their cursors advance to that shared boundary, so no
+same-beat answer leaks into another reactor's ask, and those words remain available next turn.
+
+With this flag enabled, writer-authored `since` is neither joined nor required; its legacy record
+field remains parseable. With the flag off, the old `--consult-since` behavior is unchanged.
+No new model call is needed. Speech is what was said, not proof that its content is true.
 
 ### Presence
 
@@ -80,8 +113,8 @@ the phone line` — and renders onto the WHERE YOU ARE line above (`characterSys
 optional `via`, is parsed and rendered the same way (*your presence here is only partial …*), but
 deliberately gates nothing.
 
-Two consumers touch the character. The WHERE YOU ARE line, above. And world-beat memory
-implantation: a `"scene"`-scoped beat's memory is skipped for a `remote` character
+Besides the opt-in heard channel above, presence affects the WHERE YOU ARE line and world-beat event and memory
+implantation: a `"scene"`-scoped beat's event and memories are skipped for a `remote` character
 (`engine/scene-loop.ts`); a `"world"`-scoped beat implants regardless of presence. `partial`
 having no consumer is deliberate: it must not become a silent "can perceive whatever is
 narratively convenient".
@@ -102,9 +135,54 @@ intrinsic one. There is no mechanical enforcement (`Judge.MD`'s `SceneDef.constr
 judge is the only thing that checks an answer against it, the same way it checks a restriction's
 meaning.
 
+### Full control is circumstance, not obedience — the interrogation pattern
+
+One character having full control over another (an interrogation, a captivity, a custody interview)
+is authored as **circumstance the controller owns plus a choice the controlled still owns**. The
+engine has no dominance or coercion field, and nothing about this pattern needs one:
+
+- **Physical control is `constraint`, on the scene, on the controlled.** Name what the hold takes
+  away, in `name :: meaning` prose, and keep it partial: bound hands still permit a shrug, a gag
+  still permits a stare. Example:
+
+  ```json
+  "constraint": { "PRISONER": ["bound :: tied to the chair, cannot reach, handle, or leave",
+                               "watched :: two guards in the room, every movement seen"] }
+  ```
+
+  Do not model this as `restrictions` (total, source-independent, travels between scenes), as
+  `reach` on the interrogator (a grant is access, never power over someone else), or as `presence`
+  (a prisoner in the room is `here`; `remote`/`partial` is for where someone stands, not who
+  commands them).
+
+- **Narrative control stays with the prisoner.** `goal`, `belief`, and especially `impulse`
+  (`WHEN PRESSURED, YOU`) decide whether pressure produces confession, silence, lying, stalling,
+  or bargaining — refusal and stillness are complete answers (`WHAT YOU WANT IS THE POINT`). Author
+  at least one `voice` sample showing this character refusing, so defiance is an established register
+  rather than a first-time invention under pressure. A goal satisfied only through the other's
+  compliance ("make him confess") has no agency; give the interrogator a goal they can act toward
+  themselves ("get a usable name before the shift changes") and let the prisoner's goal obstruct it.
+
+- **The writer carries pressure as perceivable situation, one blind consult at a time.** The
+  interrogator is consulted for what they say and do; the prisoner is consulted for what they can
+  perceive of it — where they are, what just happened, what hangs on the choice now — without naming
+  the fork, laying out options, or leaking one answer into the other's situation (the second one
+  asked blind; [`Writer.MD`](Writer.MD)'s principle of operation). Escalation across turns is new
+  perceivable facts (the door locked, the offer put on the table), never a directive about what the
+  prisoner should do.
+
+- **What the gates do with it.** The judge accepts defiance as usable; only an answer reaching
+  through the authored `constraint` (untying, leaving, handling what bound hands cannot) or a
+  `CANNOT` is retryable on those grounds. The narration lint refuses prose that writes the prisoner's
+  choice before asking (THE ONE RULE) or phrases the situation around what a `CANNOT` removes. If the
+  next chapter still holds them the same way, re-author the same `constraint` there; if the hold is
+  gone for good, author nothing — a capability lost for good is `restrictions`, per
+  [`Architect.MD`](Architect.MD)'s operating principle.
+
 ### What it is never shown
 
-- The premise, the story-level `facts`, the writer's prose, any other character's answer.
+- The premise, the story-level `facts`, the writer's prose, or any other character's full private
+  answer. The opt-in heard channel carries only eligible granted speech, not private thought or notes.
 - On an **open** beat — the writer's own ask — the question itself. The situation is the whole of
   what it is sent; `THE_MOMENT_IS_YOURS` stands where the question would (`prompts/consult.ts`).
   The author still writes a question — it gates the consult and travels with the answer on the
@@ -223,7 +301,14 @@ writer's first ask, a fan-out's shared text, a judge's `revised` — passes the 
 ground truth a character cannot have is exactly what a situation must not be. The same gate reads
 presence: a `remote` addressee is refused a situation phrased around a sense their position rules
 out (`cause: "presence"` rather than the CANNOT wording), and a `remote` reactor in a fan-out is
-refused the shared room-perspective situation unless the writer gives them their own override. One character's
+refused the shared room-perspective situation unless the writer gives them their own override.
+When the ask carries a **[WHAT YOU HEARD]** block, the same gate also refuses a situation that
+retells what that block already holds verbatim: a reporting construction ("she answered that",
+"Rowan has just asked about", "you asked about") whose subject is another cast member — by name,
+or by a subject pronoun exactly one of them declares — or the addressee. The bare fact that
+someone spoke is circumstance and passes; what they said is the block's job. The check runs only
+where a block exists, so an opening consult stays free to set the scene, and a fan-out's blocks
+attach after the shared gate, so each reactor's own is checked at that attachment point instead. One character's
 answer never becomes part of another's situation: the second one asked blind, and a fan-out's
 shared text may only hold facts that predate every answer in the beat. When a consult is refused,
 the character is never sent anything — the refusal is a message to the writer, and the character

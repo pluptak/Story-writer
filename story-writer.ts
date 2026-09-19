@@ -5,14 +5,14 @@
  *
  * The composition root: import-time engine wiring, the console entry points (--preflight and
  * --consult), and the handoff of the run loop to app.ts. The run itself lives in run-and-save.ts;
- * the ServerHost the viewer talks to lives in host.ts.
+ * the route-host object the viewer talks to lives in host.ts.
  */
 
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { C } from "./ansi.ts";
 import { ENGINE } from "./engine/engine-state.ts";
-import { PROVIDER } from "./engine/provider.ts";
+import { PROVIDER } from "./engine/providers/provider.ts";
 import { discoverStories, resolveCliStoryDir, type StoryConfig } from "./engine/story-format.ts";
 import { runPreflight, contextFit } from "./engine/preflight.ts";
 import { persistedCatalogs } from "./engine/catalog.ts";
@@ -23,9 +23,11 @@ import { configureArchitectDebug } from "./engine/architect.ts";
 import { newCharacterAgent } from "./engine/scene-loop.ts";
 import { setFitWarning } from "./engine/agent.ts";
 import { setDebugWrite } from "./engine/json-extract.ts";
-import { warn } from "./engine/warnings.ts";
 import { appMain } from "./app.ts";
-import { PREFLIGHT, SERVE, HEADLESS, PORT, ARCHITECT_DEBUG, ARCHITECT_DEBUG_LOG, STORY_DIR, flag, retiredFlagUsed, parseError } from "./cli-flags.ts";
+import { parseCli, type CliOptions } from "./cli-flags.ts";
+import { engineOptionsFromCli } from "./cli-to-engine.ts";
+import { applyEngineOptions } from "./engine/engine-state.ts";
+import { setHostModelOverride } from "./host.ts";
 
 // json-extract stays engine-free; its debug lines follow ENGINE.debug from here, at call time.
 setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
@@ -34,32 +36,21 @@ setDebugWrite(msg => { if (ENGINE.debug) process.stderr.write(msg); });
 // a layer above agent.ts — so the same sink pattern as setDebugWrite wires it in from here.
 setFitWarning(contextFit);
 
-// The old env variable named the full chat-completions URL; the provider layer wants the base.
-// The alias still works — normalizeBaseUrl strips the suffix — but say so once, at startup only.
-if (process.env.LM_STUDIO_URL && !process.env.LLM_BASE_URL)
-  warn(`LM_STUDIO_URL is deprecated — use LLM_BASE_URL (a base URL such as ${PROVIDER.baseUrl})`);
+const cliResult = parseCli();
+const cli: CliOptions | null = cliResult.ok ? cliResult.options : null;
 
-ENGINE.serve = SERVE || HEADLESS;
-// Plain --serve goes quiet (the viewer is the monitor); headless serves AND echoes (its console is).
-ENGINE.echoConsole = !SERVE || HEADLESS;
-// --no-cast-echo trims just the characters' acts/reactions/answers from that echo; prose stays.
-ENGINE.echoCast = flag("no-cast-echo") === undefined;
-// --free-consult / --free-consult-v2 / --free-consult-v3: run-level CLI toggle only (like
-// --open-consult), never persisted to story.json. v3 wins if more than one is passed.
-ENGINE.freeConsult = flag("free-consult-v3") !== undefined ? "v3"
-  : flag("free-consult-v2") !== undefined ? "v2"
-  : flag("free-consult") !== undefined ? "v1" : false;
-// --split-judge: same run-level-toggle-only rule; the gated path is byte-identical without it.
-ENGINE.splitJudge = flag("split-judge") !== undefined;
-// --cannot-meaning / --cannot-none / --cannot-testimony: same rule again, one flag per arm so a
-// measured delta can be attributed to one of them. Every prompt is byte-identical with all off.
-ENGINE.cannotMeaning = flag("cannot-meaning") !== undefined;
-ENGINE.cannotNone = flag("cannot-none") !== undefined;
-ENGINE.cannotTestimony = flag("cannot-testimony") !== undefined;
-configureArchitectDebug(ARCHITECT_DEBUG || !!ARCHITECT_DEBUG_LOG, ARCHITECT_DEBUG_LOG);
+if (cli) {
+  applyEngineOptions(engineOptionsFromCli(cli));
+
+  configureArchitectDebug(
+    cli.architectDebug.enabled,
+    cli.architectDebug.log ?? ""
+  );
+  setHostModelOverride(cli.run.model);
+}
 
 async function runPreflightCli() {
-  const dirs = STORY_DIR ? [resolveCliStoryDir(STORY_DIR)] : await discoverStories();
+  const dirs = cli!.preflight ? [resolveCliStoryDir(cli!.storyDir)] : await discoverStories();
   if (!dirs.length) { console.error("No stories found under data/stories/."); process.exitCode = 1; return; }
   let failed = 0;
   const catalogs = await persistedCatalogs();   // one read for the whole listing, not one per story
@@ -96,14 +87,14 @@ async function runConsultCli(sc: StoryConfig, who: string) {
     if (preset) return preset;
     return (await rl.question(`${label}: `)).trim();
   };
-  const situation = await ask("Situation", flag("situation"));
+  const situation = await ask("Situation", cli?.consult?.situation);
 
   // --open-consult: freetext pressure-test chat (spike). The gated path below
   // is untouched; this branch forks the character, builds an author-side
   // consult agent from a pressure brief (problem + stakes, never an outcome),
   // and prints the full verbatim transcript plus the coercion tallies.
-  if (flag("open-consult") !== undefined) {
-    const pressure = await ask("Pressure (problem + stakes, not an outcome)", flag("pressure"));
+  if (cli?.experiments.openConsult) {
+    const pressure = await ask("Pressure (problem + stakes, not an outcome)", cli.experiments.pressure);
     const pressureWhy = lintPressure(pressure, def.name);
     if (pressureWhy) {
       console.log(`\n${C.yellow}(pressure refused — ${pressureWhy})${C.reset}`);
@@ -164,8 +155,8 @@ async function runConsultCli(sc: StoryConfig, who: string) {
     return;
   }
 
-  const question  = await ask("Question", flag("question"));
-  const wants     = canonWants(flag("wants")) ?? "";
+  const question  = await ask("Question", cli?.consult?.question);
+  const wants     = canonWants(cli?.consult?.wants) ?? "";
   const req: ConsultRequest = { character: def.name, situation, question, wants };
 
   console.log(`\n${C.bold}${def.name}${C.reset} ${C.dim}(${def.skills.length} skills, ${def.model})${C.reset}`);
@@ -189,35 +180,28 @@ async function runConsultCli(sc: StoryConfig, who: string) {
 async function main() {
   // A flag the CLI does not define. Refusing beats the old silence: a mistyped --serv started no
   // viewer and said nothing about why.
-  if (parseError) {
-    console.error(parseError);
-    process.exitCode = 1;
-    return;
-  }
-  const retired = retiredFlagUsed();
-  if (retired) {
-    console.error(`${retired} was removed — start the viewer with --serve and use the browser flow `
-      + `(the shelf's new-story interview, or the handoff panel).`);
+  if (!cliResult.ok) {
+    console.error(cliResult.error);
     process.exitCode = 1;
     return;
   }
   await appMain({
-    serve: SERVE || HEADLESS,
-    headless: HEADLESS,
-    port: PORT,
-    oneShot: !!STORY_DIR || !process.stdin.isTTY || flag("consult") !== undefined,
-    storyDir: STORY_DIR,
-    steps: flag("steps"),
-    chapter: flag("chapter"),
-    consult: flag("consult"),
-    replace: flag("replace"),
+    serve: cliResult.options.serve || cliResult.options.headless,
+    headless: cliResult.options.headless,
+    port: cliResult.options.port,
+    oneShot: !!cliResult.options.storyDir || !process.stdin.isTTY || cliResult.options.consult != undefined,
+    storyDir: cliResult.options.storyDir,
+    steps: cliResult.options.run.steps,
+    chapter: cliResult.options.run.chapter,
+    consult: cliResult.options.consult?.character,
+    replace: cliResult.options.run.replace,
     consultCli: runConsultCli,
   });
 }
 
 const IS_MAIN = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (IS_MAIN) {
-  if (PREFLIGHT) {
+  if (cliResult.ok && cliResult.options.preflight) {
     runPreflightCli().catch(e => { console.error("\n[preflight error]", e.message); process.exitCode = 1; });
   } else {
     main().catch(e => {

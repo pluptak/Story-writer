@@ -2,11 +2,16 @@
 
 Read this before adding a route, an SSE event, or anything a run control does to the run — and before
 deciding whether the GUI under [server/gui/](../server/gui/) could be swapped for something else. It is
-written from the server's side: what [server/server.ts](../server/server.ts),
-[server/run-control-routes.ts](../server/run-control-routes.ts),
-[server/scaffold-routes.ts](../server/scaffold-routes.ts),
-[server/next-chapter-routes.ts](../server/next-chapter-routes.ts) and
-[server/run-log-routes.ts](../server/run-log-routes.ts) actually expose, independent of the one
+written from the server's side: what [server/server.ts](../server/server.ts) (bind, dispatch),
+[server/routes/session-routes.ts](../server/routes/session-routes.ts) (`/run`, `/select`, `/models`),
+[server/infra/static-files.ts](../server/infra/static-files.ts), [server/infra/sse.ts](../server/infra/sse.ts),
+[server/routes/run-control-routes.ts](../server/routes/run-control-routes.ts),
+[server/routes/scaffold-routes.ts](../server/routes/scaffold-routes.ts),
+[server/routes/next-chapter-routes.ts](../server/routes/next-chapter-routes.ts),
+[server/routes/story-read-routes.ts](../server/routes/story-read-routes.ts) (`/stories`, `/cast`, `/chapter`),
+[server/routes/story-edit-routes.ts](../server/routes/story-edit-routes.ts) (`/story/*`),
+[server/routes/catalog-routes.ts](../server/routes/catalog-routes.ts) (`/catalog/*`) and
+[server/routes/run-log-routes.ts](../server/routes/run-log-routes.ts) actually expose, independent of the one
 client that happens to consume it today.
 
 ## The shape of it
@@ -15,8 +20,9 @@ One Node process drives **at most one run at a time**. `--serve` starts an HTTP 
 (`server/server.ts`) alongside it; the server does not own the run, it watches and
 steers the one the CLI process is already running. There is no database and no per-request session —
 state lives in three module-level objects, [live.ts](../live.ts)'s `LIVE`/`RUN` and, private to
-[host.ts](../host.ts), the open scaffold interview (`SCAFFOLD`) and the open handoff (`HANDOFF`) — no
-route module holds either directly, only `ServerHost.scaffold*()`/`handoff*()` methods reach them —
+[host/](../host/) — `SCAFFOLD` in `host/scaffold.ts`, `HANDOFF` in `host/handoff.ts — no
+route module holds either directly, only the narrow `ScaffoldRoutesHost`/`HandoffRoutesHost`
+interfaces (server/route-hosts.ts) reach them —
 and a browser reconnecting just resubscribes to whichever run (if any) is already in flight. **No
 auth, no CORS headers, no CSRF token** — anything that can reach the port can steer the run or start a
 new story. That is an accepted property of a local single-user tool, not an oversight.
@@ -47,7 +53,7 @@ the JSONL logs — the GUI never becomes a second source of truth.**
 Two channels carry everything:
 
 - **JSON request/response** — plain `POST`/`GET`, `Content-Type: application/json`, no framework
-  (`server/http-util.ts`). Most mutating `POST`s reply `{ ok: true, ... }` or
+  (`server/infra/http-util.ts`). Most mutating `POST`s reply `{ ok: true, ... }` or
   `{ ok: false, reason }` with a `4xx`/`5xx` status; a handful (`/stories`, `/models`)
   are read calls that reply with the resource itself instead of an `ok` envelope, and the
   scaffold/handoff progress `POST`s (`/scaffold/start`, `/scaffold/say`, `/scaffold/approve`,
@@ -65,14 +71,15 @@ Two channels carry everything:
   a `POST` succeeded elsewhere (its own `fetch` replies too, but every other open tab or window
   finds out only through `/events`).
 
-Nothing under `server/*.ts` imports `engine/` — not even as a type, for `engine/architect.ts` or
-`engine/story-spec.ts` specifically ([tests/boundaries.test.ts](../tests/boundaries.test.ts) checks
-both claims). Every route reaches the engine only through the `ServerHost` interface built once in
-`story-writer.ts` (`server/server.ts`). The scaffold and handoff domains are
-entirely behind it: no route module holds a `ScaffoldSession` or a `NextChapterSession`, only
-`ServerHost.scaffold*()`/`handoff*()` methods, each wire-shaped in and returning a plain result type
-declared in `server.ts`. A route that needs something new gets a host method, never an import
-(CLAUDE.md).
+Nothing under `server/*.ts` imports `engine/` at runtime — only `import type` (erased before
+anything runs) may reach into `engine/`, and never `engine/architect.ts` or `engine/story-spec.ts`
+even as a type ([tests/server/boundaries.test.ts](../tests/server/boundaries.test.ts) checks
+both claims). Every route reaches the engine only through its narrow host interface
+(server/route-hosts.ts), satisfied by the one object built in `host.ts`. The scaffold and handoff
+domains are entirely behind those interfaces: no route module holds a `ScaffoldSession` or a
+`NextChapterSession`, only the session methods, each wire-shaped in and returning a plain result
+type declared in `route-hosts.ts`. A route that needs something new gets a host method, never an
+import (CLAUDE.md).
 
 ## Static routes
 
@@ -131,12 +138,15 @@ seeded from the URL on arrival; inside the page the kind switcher owns it (below
 
 ```
 GET /run
-  → { run: RunMeta | null, awaitingContinue, events: number, running, stopping, where,
-      picking, loading, armed, paused, pausing, model, interactive }
+  → { run: RunMeta | null, awaitingContinue, awaitingLint: LintPrompt | null,
+      events: number, running, stopping, where, picking, loading, armed, paused, pausing, model, interactive }
+
+LintPrompt = { prose: string, blocking: string, advisory: string | null, chapter: number }
 ```
 The snapshot a freshly-loaded page needs before its first SSE frame arrives. `run` is the static
 `RunMeta` set once at scene start (`story`, `characters[]`, `target`, `question`); everything else
-mirrors the live `run_state` SSE frame (below) — polled here once, pushed there after. `loading`
+mirrors the live `run_state` SSE frame (below), except the pending prompts are objects here and
+booleans there — polled here once, pushed there after. `loading`
 is the window between a story being chosen (`picking` going false) and its run actually starting:
 every route that writes `story.json` refuses with `409` while it holds.
 
@@ -431,6 +441,7 @@ POST /stop                       → { ok:true, already? }
 POST /pause                      → { ok:true, already? }
 POST /resume                     → { ok:true } | 400 "not paused"
 POST /continue        { steps }  → { ok:true } | 400 "no run is waiting on a budget decision"
+POST /lint-decision   { choice } → { ok:true } | 400 (invalid choice or no pending lint decision)
 POST /model            { model } → { ok:true } | 400 (must be paused first when a run is in flight; must be a loaded id)
 POST /interactive      { on }    → { ok:true }
 POST /consult-me                 → { ok:true, already? } | 400 "interactive is off"
@@ -438,7 +449,7 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
 ```
 
 - **`/stop`** is idempotent (`already: true` on a second call) and also releases whatever the loop is
-  currently blocked on — a pending `/continue` decision, an armed reader consult, a pause — so a stop
+  currently blocked on — a pending `/continue` or lint decision, an armed reader consult, a pause — so a stop
   never leaves the process hung waiting on an answer nobody will send.
 - **`/pause` / `/resume`** don't interrupt an in-flight model call; `pausing: true` until the loop
   reaches its next boundary, then `paused: true`. `/model` while paused hot-swaps the model on the
@@ -454,6 +465,26 @@ POST /reader-answer    { answer }→ { ok:true } | 400 (nothing pending, or answ
   and `reader_answer` itself.
 - **`/continue`** answers the step-budget prompt (`continue_prompt` SSE frame) with how many more
   steps to allow, `0` to stop there.
+- **`/lint-decision`** accepts only the exact string `redraft`, `publish`, or `stop` as `choice`;
+  missing, coerced, differently cased or unknown values are `400`. Both `LIVE.awaitingLint` and
+  `LIVE.lintResolve` must exist; otherwise `400 no lint decision pending`. On success the route
+  synchronously clears both, broadcasts `run_state` with `awaitingLint: false`, then resolves the
+  waiter with the choice. A second submission cannot resolve the same wait again.
+  The viewer labels these **Redraft again**, **Publish anyway**, and **Stop chapter**. It renders
+  prose and findings as literal text, keeps blocking separate from optional advisory findings,
+  disables choices while submitting or reconnecting, and reports failures inline. After a failed
+  submission it rechecks `/run`; a still-pending decision remains retryable. `run_state` with
+  `awaitingLint: false` or `run_reset` hides the stale prompt, and late replies cannot alter a newer
+  prompt. The draft is unpublished: stopping preserves the page already committed.
+- **`/interactive`** off during a pending lint decision clears that prompt and resolver, broadcasts
+  the new state, then resolves `stop`. This does not release the budget, reader-answer or pause
+  waits; the existing reader-arm clearing behaviour is unchanged.
+
+Both mechanical and judge findings receive one automatic redraft. Persistent mechanical blocking,
+or a failed redraft with mechanical blocking, then needs the lint decision. Judge-only findings
+retain advisory accept-after-one-redraft behaviour. If nobody is askable (no viewer and no TTY,
+or interactive off), the chapter stops preserving committed prose. Live state and the retry/commit
+loop belong to `live.ts` and the engine, not the HTTP routes; see [Judge.MD](Judge.MD).
 
 ## Scaffold (the new-story interview)
 
@@ -663,8 +694,10 @@ Every handoff route republishes a `{ t: "handoff", state }` SSE frame (`state` i
 ## `/events` — the SSE stream
 
 One connection, `text/event-stream`, replayed from the top on every reconnect: `retry: 3000`, then the
-full `liveHistory` backlog for the current run, then a fresh `run_state`, then live frames as they
-happen, plus a 15s comment ping to hold the connection open. `liveHistory` (and its sequence numbers)
+full `liveHistory` backlog for the current run, then a fresh `run_state`, then any pending
+`continue_prompt` and `lint_prompt`, then live frames as they happen, plus a 15s comment ping to hold
+the connection open. Pending prompts replay from `LIVE`, not from event history; an answered lint
+decision is never replayed. `liveHistory` (and its sequence numbers)
 resets on `resetLive()` at the start of each new run — so reconnecting mid-run replays that run only,
 never a previous one.
 
@@ -677,7 +710,8 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` (`live.ts`):
 { t:"agent_stats"; who; model; durationMs; promptTokens; completionTokens }
                                           — one completed model call; token fields are null when unavailable
 { t:"continue_prompt"; steps; budget; suggested }  — step budget spent, needs a /continue
-{ t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; interactive }
+{ t:"lint_prompt"; prose; blocking; advisory; chapter } — LintPrompt, needs a /lint-decision
+{ t:"run_state"; running; stopping; where; picking; loading; armed; paused; pausing; model; awaitingContinue; awaitingLint; interactive }
 { t:"run_reset" }                        — a new run is about to start; discard everything and refetch
 { t:"run_error"; message }               — a story failed to load or run; the picker is coming back
 { t:"provider_state"; provider; baseUrl; inFlight; depth; current; lastFailure }
@@ -691,6 +725,10 @@ Every frame is `data: <json>\n\n`. The union, `LiveFrame` (`live.ts`):
 { t:"handoff"; state }                   — mirrors GET /next-chapter
 ```
 
+`lint_prompt` is session-level and unsequenced; `awaitingLint` in `run_state` is a boolean, unlike
+the prompt object (or null) in `/run`. Reconnect replays only the current pending prompt after the
+state snapshot. A false flag closes the prompt even when another viewer or the console answered it.
+
 `run_error` is session-level, not a `RunEvent`: it carries no `seq`, never enters `liveHistory`, and
 so is never replayed — a client that connects afterwards sees only the recovered picker. It is sent
 from `main()`'s catch, which then re-enters `pickStory()`. The viewer holds it in `APP.runError`
@@ -703,7 +741,9 @@ sequence, live/current/retained:
 
 ```
 ConsultEvent (engine/consult.ts):
-  { t:"consult"; character; situation; question; wants; attempt }
+  { t:"consult"; character; situation; question; wants; attempt; since }
+     — `since` is what reached them since they were last asked (`""` unless the writer sent one,
+        which only `--consult-since` ever asks for)
   { t:"need"; character; question }
   { t:"clarify"; character; question; answer }
   { t:"clarify_failed"; character; question }    — the call to answer this never came back;
@@ -715,7 +755,7 @@ ConsultEvent (engine/consult.ts):
   { t:"answer"; character; thought; speech; action; note }
 
 plus, scene-loop-level (`chapter` is present on every one of them except `model_changed`):
-  { t:"scene_start"; story; characters[]; target }
+  { t:"scene_start"; story; characters[]; target; question }
   { t:"draft"; step; prose; words; consulting; salvaged }
   { t:"bad_consult"; character; why }
   { t:"schema_mismatch"; call:"judge"|"clarify"|"lint"; character }
@@ -730,15 +770,19 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
                                                    how far a judge moved the fork it re-asked
   { t:"budget"; added; budget }
   { t:"forced_end"; words; target }              — hard length cap hit; the prose was cut off
-  { t:"lint_failed"; why }                        — the narration lint call itself threw; the piece
-                                                   was accepted unchecked
-  { t:"narration_flag"; why; retried }           — narration lint fired; `retried` says whether
-                                                    the one redraft happened or it was logged and kept.
-                                                    `why` may carry three findings joined by ". " —
-                                                    the two mechanical checks (quotations, restricted
-                                                    senses) and the LLM half run together
+  { t:"lint_failed"; why }                        — the narration judge call threw; its check failed
+                                                   open, without waiving mechanical blocking
+  { t:"narration_flag"; why; retried }           — narration lint fired; `retried` distinguishes the
+                                                    initial finding from a finding after redrafting.
+                                                    Mechanical and judge findings are checked together;
+                                                    this event alone is not proof the draft was committed.
+  { t:"lint_decision"; choice }                  — a blocking finding survived its redraft, so the gate
+                                                   asked, and this is what the human answered:
+                                                   `redraft` (try once more), `publish` (commit the
+                                                   piece as it stands) or `stop` (end the chapter).
+                                                   Nothing else records the answer
   { t:"repeat_strip"; chars; words; whole }      — the piece opened by re-emitting the page's tail
-                                                   (engine/repeat-lint.ts, no model call); the repeated
+                                                   (engine/lint/repeat-lint.ts, no model call); the repeated
                                                    prefix was stripped before the append, so the draft
                                                    event that follows carries only the new text.
                                                    `whole` true means the entire piece was already on
@@ -779,7 +823,21 @@ plus, scene-loop-level (`chapter` is present on every one of them except `model_
   { t:"answer_unwritten"; characters[]; stopped } — the scene ended anyway with those answers never
                                                    written in: the consults were accepted, the
                                                    chapter does not carry the choices they made
-  { t:"scene_end"; steps; words; done; stopped; retries{character:count} }
+  { t:"done_confirmed" }                          — the done judge read the page as having settled
+                                                   `scene_start`'s `question`; logged only for a
+                                                   writer-declared ending, never a budget one (below)
+  { t:"done_flagged"; why }                       — the done judge read the question as still open;
+                                                   same writer-declared-only scope as `done_confirmed`.
+                                                   Neither gates — the ending stands either way
+  { t:"question_state"; state; trigger:"writer_done"|"extension"|"forced_end"; step; words }
+                                                 — the durable, three-way verdict (Judge.MD's
+                                                   DONE-JUDGE): `state` is one of
+                                                   `{status:"open",why}` / `{status:"resolved",evidence}` /
+                                                   `{status:"unavailable",why}`, logged at every place a
+                                                   scene's ending is decided, not only a writer-declared
+                                                   one — `trigger` says which. The run's last one is also
+                                                   on `scene_end.questionState` and the run result
+  { t:"scene_end"; steps; words; done; stopped; retries{character:count}; questionState }
 ```
 
 `wants` and `question` in `consult` are **`""` on an open beat**, which is every consult the writer
@@ -808,14 +866,16 @@ every judgement actually happened; see [Writer.MD](Writer.MD).
 **Yes — the API is a complete, self-describing surface, and [server/gui/](../server/gui/) is not privileged
 against it.** Two things make that true:
 
-1. **The four static routes are the entire coupling.** They serve fixed files by path; nothing in
+1. **The static routes are the entire coupling.** They serve fixed files by path; nothing in
    `/run`, `/stories`, `/models`, `/select`, run control, scaffold, or `/events` reads or writes
    anything under `server/gui/`, checks a `User-Agent`, or otherwise assumes a particular client. A
    second frontend calling this same API from the same origin is indistinguishable, server-side, from
    the shipped one.
-2. **Every route reaches the engine only through `ServerHost`.** No route module imports `engine/`
-   directly (CLAUDE.md's own invariant), so the API's behavior is exactly the `ServerHost` methods
-   plus the `LIVE`/`RUN`/`SCAFFOLD`/`HANDOFF` state machine described above — nothing lives only in
+2. **Every route reaches the engine only through narrow host interfaces.** No route module imports `engine/`
+   at runtime — only `import type`, never `engine/architect.ts` or `engine/story-spec.ts` even as a
+   type (CLAUDE.md's own invariant) — so the API's behavior is exactly the route-host methods
+   plus the `LIVE`/`RUN` session state described above. The scaffold/handoff sessions stay private
+   to `host/` (`host/scaffold.ts`, `host/handoff.ts`), reachable only through host methods — nothing lives only in
    `server/gui/*.js` that a route depends on.
 
 What a replacement would actually need to reproduce, none of it GUI-specific:
@@ -836,18 +896,16 @@ What a replacement would actually need to reproduce, none of it GUI-specific:
   can drive the identical controls. Running the shipped viewer and a new one side by side to compare
   behavior costs nothing extra on the server.
 
-What is **not** available through this API, and would need a new route (a `ServerHost` addition, not a
-GUI trick) rather than being derivable client-side: editing a story's files field by field
-(`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts),
-reading a story's full cast — `knows`, `goal`, `belief`, `impulse`, `voice` and `persona` — for a story that is not in a scaffold or
-handoff session, starting a run without going through the picker/scaffold handshake, or anything about
-a run that already fell out of `MAX_RUNS` retention. Field-by-field story editing
-(`/next-chapter` rewrites `story.json`, but only what the architect proposes and the reader accepts)
-and the read-only cast view (`GET /cast`) are the routes those needs grew into; anything further
+What is **not** available through this API, and would need a new route (a host-interface addition, not a
+GUI trick) rather than being derivable client-side: starting a run without going through the
+picker/scaffold handshake, or anything about a run that already fell out of `MAX_RUNS` retention.
+Field-by-field story editing (`/story/edit`, `/story/check`, `/story/save`, `/story/discard`,
+`/story/suggest`) and the read-only cast view (`GET /cast`) already cover the two needs an earlier
+version of this section listed as missing; anything further
 belongs in `PLANS.md`, which is also where the routes they would add are drafted.
 
 If "replace" means **serve the new frontend from somewhere other than this process** (a separate dev
 server, a static host): the JSON/SSE routes have no CORS headers today, so a different-origin client
 would 405/opaque-fail on `fetch` until `Access-Control-Allow-Origin` (and SSE's own CORS story) is
 added — a small, contained change to `server.ts`, not a redesign. Same-origin (served by this process,
-which is what the four static routes already do) needs nothing extra.
+which is what the static routes already do) needs nothing extra.

@@ -1,5 +1,5 @@
 /** The GUI harness: the real server (server/server.ts) bound in-process over a fixture
- *  ServerHost, so the browser exercises the genuine HTTP surface, static modules, and SSE bus
+ *  host, so the browser exercises the genuine HTTP surface, static modules, and SSE bus
  *  against a deterministic backend — no LM Studio, no child process, nothing in data/stories/.
  *
  *  The fixture story is tests/fixtures/doorway (the committed worked example). Everything that
@@ -14,12 +14,14 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test as base, expect, type Page } from "@playwright/test";
 
-import { startServer, type ServerHandle, type ServerHost } from "../../server/server.ts";
+import { startServer, type ServerHandle } from "../../server/server.ts";
+import type { RouteHosts } from "../../server/route-hosts.ts";
 import { LIVE, resetLive } from "../../live.ts";
 import { loadCatalog, checkEntry, saveEntry, deleteEntry, setVisibility, skillBible, originSkillGroups } from "../../engine/catalog.ts";
 import { CATALOG_KINDS, TAG_FACETS, type CatalogKind, type LibraryCharacter, type LibraryStyle,
          type TagEntry } from "../../engine/catalog-schema.ts";
-import { SKILL_CATALOG, canonSkill } from "../../engine/skills.ts";
+import { SKILL_CATALOG, canonSkill, splitMeaning } from "../../engine/skills.ts";
+import { sameName } from "../../engine/config-util.ts";
 import { ASSIST_FIELDS } from "../../engine/catalog-assist.ts";
 import { VOICE_SAMPLE_CAP } from "../../engine/story-schema.ts";
 import { HOST, setScaffoldTestHooks, setHandoffTestHooks } from "../../host.ts";
@@ -78,6 +80,18 @@ export async function copyFixtureStory(): Promise<string> {
   return dir;
 }
 
+/** Seed temp-catalog entries through the real save path, for states no UI
+ *  path produces — an origin granting a skill the general catalog does not
+ *  know. Same temp files the catalog page reads, so what lands here is what
+ *  the UI opens. */
+export async function seedCatalogEntries(kind: CatalogKind, entries: unknown[]) {
+  const bible = await skillBible(catalogFile("skills"));
+  for (const entry of entries) {
+    const r = await saveEntry(kind, entry as never, catalogFile(kind), { bible });
+    if (!r.ok) throw new Error(`seedCatalogEntries(${kind}) refused: ${JSON.stringify(r)}`);
+  }
+}
+
 // -- PER-TEST REGISTRATION ----------------------------------------------------
 /** Temp stories sit in a registry of card PROVIDERS, not static cards: the real story discovery
  *  re-reads the file on every /stories, so a card built from a snapshot would go stale the moment
@@ -119,16 +133,16 @@ export function holdCatalogWrites(): () => void {
 // model. Anything that is a pure function of files on disk -- run logs, transcripts, chapters --
 // should be given real files in a temp story dir rather than an override, so the test exercises the
 // engine's own reading of them.
-let hostOverrides: Partial<ServerHost> = {};
+let hostOverrides: Partial<RouteHosts> = {};
 /** Install host answers for this test; null (or the `served` fixture) clears them. */
-export function setHostOverrides(overrides: Partial<ServerHost> | null) {
+export function setHostOverrides(overrides: Partial<RouteHosts> | null) {
   hostOverrides = overrides ?? {};
 }
 
 let handoffFactory: ((dir: string) => Promise<NextChapterSession>) | null = null;
 /** Install the scripted handoff session a handoff test drives; null restores the refusal. Wires
- *  host.ts's handoff test hooks (setHandoffTestHooks) — newHandoffSession is no longer part of
- *  ServerHost (Block 6, PLANS.md), so overriding the returned host object can no longer reach it. */
+ *  host.ts's handoff test hooks (setHandoffTestHooks) — the session factory is not a host method,
+ *  so overriding the returned host object can no longer reach it. */
 export function setHandoffFactory(f: ((dir: string) => Promise<NextChapterSession>) | null) {
   handoffFactory = f;
   setHandoffTestHooks(f ? {
@@ -150,10 +164,10 @@ const catalogFile = (kind: string) => joinPath(catalogDir, `catalog-${kind}.json
 
 /** Install the scripted scaffold session a scaffold test drives; null restores the refusal. Also
  *  wires host.ts's scaffold test hooks (setScaffoldTestHooks), the only way to script an interview
- *  when driving it through the real ServerHost — and to keep its tag/import/style/promote lookups
+ *  when driving it through the real host — and to keep its tag/import/style/promote lookups
  *  off the author's real catalog at ROOT, the same reason every other catalog call here uses a temp
- *  file: newScaffoldSession and the three catalog lookups are no longer part of ServerHost at all
- *  (Block 5, PLANS.md), so overriding the returned host object can no longer reach them. */
+ *  file: the session factory and catalog lookups are not host methods, so overriding the returned
+ *  host object can no longer reach them. */
 export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldSession>) | null) {
   scaffoldFactory = f;
   if (!f) { setScaffoldTestHooks(null); return; }
@@ -197,7 +211,7 @@ export function setScaffoldFactory(f: ((args: ScaffoldArgs) => Promise<ScaffoldS
   });
 }
 
-async function fixtureHost(): Promise<ServerHost> {
+async function fixtureHost(): Promise<RouteHosts> {
   const story = await fixtureStory();
   const notScripted = (what: string): never => { throw new Error(`the GUI harness has no behaviour for ${what}`); };
   // The catalog is isolated through the engine's own optional path — real load/check/save/delete
@@ -287,10 +301,32 @@ async function fixtureHost(): Promise<ServerHost> {
       originSkills: await originSkillGroups(catalogFile("skills")),
       generalSkills: { ...SKILL_CATALOG },
     }),
-    // Usage is derived from the temp catalogs, which start empty — never from the author's real
-    // files at ROOT, which the spread HOST would read.
-    catalogUsage: async () => ({ tags: {}, skills: {} }),
-  } as ServerHost;
+    // Usage is derived from the temp catalogs through the same shape as the
+    // real host's catalogUsage — never from the author's real files at ROOT,
+    // which the spread HOST would read. Temp-scoped here for the same reason
+    // every other catalog call above is.
+    catalogUsage: async () => {
+      const [characters, styles] = await Promise.all([
+        loadCatalog("characters", catalogFile("characters")),
+        loadCatalog("styles", catalogFile("styles")),
+      ]);
+      const usage: { tags: Record<string, { styles: string[] }>; skills: Record<string, number> } =
+        { tags: {}, skills: {} };
+      for (const s of (styles.entries as { name?: string; tags?: string[] }[]))
+        for (const t of s.tags ?? []) {
+          const key = String(t ?? "").trim().toLowerCase();
+          if (!key) continue;
+          (usage.tags[key] ??= { styles: [] }).styles.push(String(s.name || ""));
+        }
+      for (const c of (characters.entries as { skills?: string[] }[]))
+        for (const raw of c.skills ?? []) {
+          const name = splitMeaning(String(raw)).text;
+          const key = Object.keys(usage.skills).find((k) => sameName(k, name)) ?? name;
+          usage.skills[key] = (usage.skills[key] ?? 0) + 1;
+        }
+      return usage;
+    },
+  } as RouteHosts;
 
   // Every property the server reads goes through here, so `setHostOverrides` applies to a host
   // that was built before the test that overrides it existed.
@@ -298,7 +334,7 @@ async function fixtureHost(): Promise<ServerHost> {
   return new Proxy(fixture, {
     get: (target, key) =>
       typeof key === "string" && key in hostOverrides ? read(hostOverrides, key) : read(target, key as string),
-  }) as ServerHost;
+  }) as RouteHosts;
 }
 
 /** Deep-link arrival. A hash-only goto is a same-document navigation whose hashchange makes the

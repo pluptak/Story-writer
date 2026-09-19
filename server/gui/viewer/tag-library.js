@@ -3,7 +3,7 @@ import { esc, tid, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadVocab, refreshUsage } from "./catalog.js";
 import { go } from "./nav.js";
-import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
+import { inspectorEmpty, editorHead, actions, section, editorFooter, clone, newId, needsSave, saveNotesHtml, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // The character/style tag pickers and the scaffold's tag picker all read this same cache. A write
 // here has to drop it, or they keep offering a tag this page has already renamed or deleted.
@@ -52,9 +52,9 @@ function listHtml() {
   return entries.map(t => {
     const selected = s.selected?.id === t.id;
     return `<div class="lib-row${selected ? " selected" : ""}" data-tag-id="${esc(t.id)}" role="button" tabindex="0" ${tid("tag-library.row")}>
-      <span class="lib-row-copy"><strong>${esc(t.label || "Untitled tag")}</strong><span>${esc(FACET_LABELS[t.facet] ?? t.facet)}</span></span>
+      <span class="lib-row-copy"><strong>${esc(t.label || "Untitled tag")}</strong><span>${esc(FACET_LABELS[t.facet] ?? t.facet)}${usageLine(t.label) ? ` · ${usageLine(t.label)}` : ""}</span></span>
       <span class="lib-cut">${tagIsStyle(t.label) ? "Style" : "Story"}</span>
-      <button class="lib-more" data-tag-select-id="${esc(t.id)}" aria-label="Open ${esc(t.label)} in editor">•••</button>
+      <button class="lib-more" data-tag-select-id="${esc(t.id)}"${tid("tag-library.open")} aria-label="Open ${esc(t.label)} in editor">•••</button>
     </div>`;
   }).join("");
 }
@@ -73,7 +73,7 @@ function editorHtml() {
     ${button({label:"Duplicate", id:"taglib-duplicate", extraClass:"small"})}
     ${button({label:"Delete", id:"taglib-delete", variant:"danger", extraClass:"small"})}
   `)}
-  ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
+  ${s.error ? errorLine(esc(s.error)) : ""}${saveNotesHtml(s)}${s.dirty ? warnLine("unsaved changes") : ""}
   ${section("Tag identity", "A controlled vocabulary entry the architect and story editor offer as a choice.", `
     <label class="lib-field"><span>Facet</span><select class="lib-input" id="taglib-facet">${facetOptionsHtml(d.facet)}</select></label>
     <label class="lib-field"><span>Label</span><input class="lib-input" id="taglib-label" value="${esc(d.label)}" placeholder="e.g. Science Fiction, Comedy, Melancholic"></label>
@@ -81,7 +81,7 @@ function editorHtml() {
   ${c ? section("Usage", "What actually references this tag today, observed from the other catalogs.", `${usageLine(d.label) || hint("nothing uses this tag yet")}
     ${stylesFor.length ? `<div class="lib-chips">${stylesFor.map(name => `<span class="lib-chip">${esc(name)}</span>`).join("")}</div>` : ""}
   `) : ""}
-  ${editorFooter(`${button({label:"Cancel", id:"taglib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"taglib-save", variant:"primary", disabled:!needsSave(s)})}`)}`;
+  ${editorFooter(`${button({label:"Cancel", id:"taglib-cancel", disabled:!s.dirty})}${button({label:"Save changes", id:"taglib-save", variant:"primary", disabled:!needsSave(s) || s.saving})}`)}`;
 }
 
 export function tagLibraryHtml() {
@@ -107,29 +107,42 @@ async function load() {
     s.loaded = true;
     refreshUsage();
   } catch (e) { s.error = e.message || "could not load tags"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
 }
 
-function setSelected(t) { const s = APP.tagLibrary; s.selected = t; s.draft = draftOf(t); s.dirty = false; s.error = ""; APP.render(); }
+function setSelected(t) { const s = APP.tagLibrary; s.selected = t; s.draft = draftOf(t); s.dirty = false; s.error = ""; s.saveIssues = []; s.saveProblems = []; APP.render(); }
 function createNew() { const s = APP.tagLibrary; const t = { ...entryOf({...emptyDraft(), id:newId("tag")}), version:0, updatedAt:Date.now() }; s.entries.unshift(t); setSelected(t); }
 function duplicate() { const s = APP.tagLibrary; if (!s.selected) return; const t = { ...clone(s.selected), id:newId("tag"), version:0, updatedAt:Date.now() }; s.entries.splice(s.entries.indexOf(s.selected) + 1, 0, t); setSelected(t); }
 function collectDraft() { const s = APP.tagLibrary; if (!s.draft) return; for (const key of ["facet","label"]) { const el = document.getElementById(`taglib-${key}`); if (el) s.draft[key] = el.value; } dirtyFromDraft(); }
 
 async function save() {
-  const s = APP.tagLibrary; collectDraft(); if (!s.draft || !needsSave(s)) return;
+  const s = APP.tagLibrary; collectDraft(); if (!s.draft || !needsSave(s) || s.saving) return;
   const payload = entryOf(s.draft);
-  if (!payload.facet) { s.error = "A tag needs a facet."; APP.render(); return; }
-  if (!payload.label) { s.error = "A tag needs a label."; APP.render(); return; }
-  const j = await postJson("/catalog/save", { kind:"tags", entry:payload }, msg => { s.error = msg; APP.render(); });
-  if (!j?.ok) { s.error = reasonOr(j, "could not save tag"); APP.render(); return; }
+  if (!payload.facet) { s.error = ""; s.saveIssues = ["A tag needs a facet."]; APP.render(); return; }
+  if (!payload.label) { s.error = ""; s.saveIssues = ["A tag needs a label."]; APP.render(); return; }
+  const savingId = payload.id;
+  s.saving = true; APP.render();
+  const j = await postJson("/catalog/save", { kind:"tags", entry:payload }, msg => { if (s.selected?.id === savingId) s.error = msg; });
+  s.saving = false;
+  if (!j?.ok) {
+    if (s.selected?.id === savingId) { s.error = reasonOr(j, "could not save tag"); s.saveIssues = [...(j?.issues ?? [])]; }
+    APP.render(); return;
+  }
   invalidateVocab();
   const next = { ...j.entry, updatedAt:Date.now() };
   const idx = s.entries.findIndex(t => t.id === next.id); if (idx >= 0) s.entries[idx] = next; else s.entries.unshift(next);
   refreshUsage();
-  setSelected(next);
+  if (s.selected?.id === savingId) {
+    setSelected(next);
+    s.saveProblems = [...(j.problems ?? [])]; s.saveIssues = [];
+  }
+  APP.render();
   // Create-then-return: same shape as character-library.js's save — the scaffold's tag chips key
   // on labels, not ids, so the one-shot carries the label.
-  if (APP.catalog.returnTo?.view === "scaffold" && APP.scaffold?.active) {
+  if (s.selected?.id === savingId && APP.catalog.returnTo?.view === "scaffold" && APP.scaffold?.active) {
     APP.catalog.pendingSelect = { kind: "tags", selectLabel: next.label };
     APP.catalog.returnTo = null;
     go("scaffold");
@@ -163,8 +176,8 @@ export function wireTagLibrary(page) {
     e.stopPropagation(); collectDraft(); if (s.dirty && !await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) return;
     setSelected(s.entries.find(t => t.id === action.dataset.tagSelectId));
   }));
-  for (const key of ["facet","label"]) page.querySelector(`#taglib-${key}`)?.addEventListener("input", () => { s.draft[key] = document.getElementById(`taglib-${key}`).value; dirtyFromDraft(); page.querySelector("#taglib-save").disabled = !needsSave(s); page.querySelector("#taglib-cancel").disabled = !s.dirty; });
-  page.querySelector("#taglib-facet")?.addEventListener("change", () => { s.draft.facet = document.getElementById("taglib-facet").value; dirtyFromDraft(); page.querySelector("#taglib-save").disabled = !needsSave(s); page.querySelector("#taglib-cancel").disabled = !s.dirty; });
+  for (const key of ["facet","label"]) page.querySelector(`#taglib-${key}`)?.addEventListener("input", () => { s.draft[key] = document.getElementById(`taglib-${key}`).value; dirtyFromDraft(); page.querySelector("#taglib-save").disabled = !needsSave(s) || s.saving; page.querySelector("#taglib-cancel").disabled = !s.dirty; });
+  page.querySelector("#taglib-facet")?.addEventListener("change", () => { s.draft.facet = document.getElementById("taglib-facet").value; dirtyFromDraft(); page.querySelector("#taglib-save").disabled = !needsSave(s) || s.saving; page.querySelector("#taglib-cancel").disabled = !s.dirty; });
   page.querySelector("#taglib-close")?.addEventListener("click", async () => { if (!s.dirty || await confirmDialog({ title: "Discard unsaved changes?", body: "Your unsaved edits will be lost.", confirmLabel: "discard", danger: true })) { s.selected = null; s.draft = null; s.dirty = false; APP.render(); } });
   page.querySelector("#taglib-save")?.addEventListener("click", save);
   page.querySelector("#taglib-cancel")?.addEventListener("click", () => { s.draft = draftOf(s.selected); s.dirty = false; APP.render(); });

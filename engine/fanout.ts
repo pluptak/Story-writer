@@ -8,8 +8,9 @@ import { type Agent } from "./agent.ts";
 import { extractJson } from "./json-extract.ts";
 import {
   consult, normalizeReactionConsult, parseBatchVerdict,
-  type ConsultEvent, type Clarifier,
+  type ConsultEvent, type Clarifier, type ConsultRequest,
 } from "./consult.ts";
+import { lintReportedSpeech } from "./lint/situation-lint.ts";
 import { type Msg } from "./llm-client.ts";
 import type { CharacterDef } from "./story-format.ts";
 import { ENGINE } from "./engine-state.ts";
@@ -37,6 +38,8 @@ export interface FanoutOpts {
     presenceState?: { mode: "remote" | "partial"; via: string } }>;
   defOf: (name: string) => CharacterDef | undefined;
   agents: Map<string, Agent>;
+  heardFor?: (name: string) => ConsultRequest["heard"];
+  markHeardSent?: (name: string) => void;
   isActive: (name: string) => boolean;
   isPov: (name: string) => boolean;
   /** The POV gate on thoughts: what the writer is handed of a reactor's inner life. */
@@ -76,7 +79,22 @@ export async function reactionFanout(o: FanoutOpts): Promise<boolean> {
   log({ t: "reaction_fanout", reactors: rc.reqs.map(r => r.character),
         situation: rc.reqs[0].situation, chapter });
   const collected: { name: string; thought: string; speech: string; action: string; situation: string }[] = [];
-  for (const req of rc.reqs) {
+  const requests = rc.reqs.map(req => o.heardFor
+    ? { ...req, heard: o.heardFor(req.character) } : req);
+  // The fan-out's heard blocks attach after the shared gate, which cannot see them — so each
+  // reactor's own block is linted here, at the attachment point, and a recap turns the whole
+  // fan-out back through the same bad_consult, the way one restricted reactor does.
+  for (const req of requests) {
+    const hit = lintReportedSpeech(req.situation, req.character, o.cast, req.heard);
+    if (hit) {
+      const why = P.badConsult.reportedSpeech(req.character, hit.match);
+      log({ t: "bad_consult", character: req.character, why, chapter });
+      console.log(`${C.yellow}(reaction not sent — ${why.split(". ")[0]}.)${C.reset}`);
+      o.writer.hear(o.refusalFor(why, "the group", String(o.situation ?? "")));
+      return false;
+    }
+  }
+  for (const req of requests) {
     if (o.stopped()) break;
     const def = o.defOf(req.character);
     const persistent = o.agents.get(nameKey(req.character));
@@ -86,6 +104,7 @@ export async function reactionFanout(o: FanoutOpts): Promise<boolean> {
       continue;   // unknown or gone — skip quietly
     }
     let reply;
+    o.markHeardSent?.(def.name);
     o.beginAttempt();
     try {
       // A reaction is not retried here; consult()'s empty/shape repair is guard enough for the thought.

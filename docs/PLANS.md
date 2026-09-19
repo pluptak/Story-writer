@@ -2,178 +2,396 @@
 
 **Every unbuilt plan lives here.** Built behaviour belongs to the document that owns its surface —
 [`GUI-SPEC.md`](GUI-SPEC.md) for routes and SSE, [`Architect.MD`](Architect.MD) for the architect and
-the handoff, [`Writer.MD`](Writer.MD) for the writer and the live screen. When something here ships,
-its behaviour moves into one of those and **the entry is deleted rather than annotated**; git history
-is where implementation notes belong.
+the handoff, [`Writer.MD`](Writer.MD) for the writer and the live screen, [`Judge.MD`](Judge.MD) for
+all five judge variants, [`Character.MD`](Character.MD) for the character agent,
+[`Clarifier.MD`](Clarifier.MD) for the clarifier. When something here ships, its behaviour moves into
+one of those and **the entry is deleted rather than annotated**; git history is where implementation
+notes belong.
 
 One annex, kept separate at the owner's request and under the same delete-on-ship rule:
 [`PLANS-playwright.md`](PLANS-playwright.md) — which of `GUI-CHECKLIST.md`'s manual checks the
 Playwright suite could take over, in blocks. It goes away with its last block.
 
-Nothing below is committed work. **Sections are kinds of work, not subsystems** — a defect with a
-known fix, a run owed before a decision, a decision owed before code, a direction, a cost, and a note
-that exists only to stop something being re-proposed. Within a section the order is a preference, not
-a schedule. The one exception is **Next**, which is the short list of what to pick up first; it is
-deliberately mixed-kind, and an entry promoted into it is not repeated in the section it came from.
+**Sections are kinds of work, not subsystems**, and nothing below is committed work.
+
+| section | what belongs there |
+| --- | --- |
+| **Now** | at most three items, mixed-kind, picked up first; an entry here is not repeated in the section it came from |
+| **Ready fixes** | a known change with a known verification path — no live run or design decision needed |
+| **Evidence to collect** | the next action is reading a run, not writing code; the owner's, batched |
+| **Decisions needed** | no code until a policy or design choice is made |
+| **Directions** | larger, unscheduled bets — shaping rather than corrective |
+| **Constraints / rejected ideas** | nothing here is work; each entry exists to stop a future decision going wrong the same way |
+| **Research log** | detailed run-ID history that no longer gates anything, kept only so a shipped or retired item's evidence isn't re-litigated from memory |
+
+Within a section the order is a preference, not a schedule.
 
 **Verification, once, for all of it:** `npx tsc --noEmit` and `npm test` are the cheap checks. Anything
 touching `server/gui/` also needs `npm run test:gui` and then the matching section of
 [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md), for what that suite cannot see. Anything touching `prompts.ts`
 or model behaviour needs a live run, which is the owner's to make, batched.
 
+Each active item below is a card — Type, Why now, Next action, Done when, and (where useful) Depends
+on / Evidence — followed by whatever prose reasoning backs it. The card is the part meant to be read
+at a glance; the prose under it is not summarized away.
+
 ---
 
-## Next
+## Now
 
-Two items promoted out of the sections below, in the order they should be picked up. Each is
-decidable now and has live-run evidence behind it, and each is a reason to distrust what the writer
-hands everyone else.
+Three items, in the order to pick them up. The first two share live-run evidence and are each a
+reason to distrust what the writer hands everyone else; the third is the authoring side of the same
+worry — whether the story the writer was handed was worth writing.
 
-Their evidence is four doorway runs of 2026-08-27 — `14-54-12-677Z`, `16-23-17-001Z`,
-`19-33-16-122Z` and `19-47-04-293Z`. The first three ran `google/gemma-4-e4b` throughout; the fourth
-put the writer, judge, narration lint and clarifier on `gemma-4-12b-it-qat-uncensored-heretic` and
-left the characters on `e4b`. **Retained-run rotation has since removed `14-54-12-677Z` from disk**,
-so figures cited from it are not re-derivable; everything attributed to the other three is. Two
-further `e4b` runs, `21-35-36-919Z` (control) and `22-23-22-884Z` (the first under the shipped
-sense-lint, consult gate and person clause), are item 1's evidence; both are preserved
-under `data/stories/doorway/experiments/` with the runs they are measured against.
+Item 1's evidence is doorway runs of 2026-08-27 (`16-23-17-001Z`, `19-33-16-122Z`,
+`19-47-04-293Z`; a fourth run from that day has since rotated off disk, so figures cited from it are
+not re-derivable) plus further `e4b` runs, `21-35-36-919Z` (control) and `22-23-22-884Z` (first run
+under the shipped sense-lint, consult gate and person clause), both preserved under
+`data/stories/doorway/experiments/`. Raising the author-side model fixed or nearly fixed both on
+its own — but the prose sense-lint's three holes, which led this list until they shipped, appeared
+on the page under both models: the one thing capability did not buy. Items 2 and 3 carry their own
+evidence on their cards.
 
-That model split is why the order is what it is. Raising the author-side model fixed or nearly fixed
-both on its own — the fourth run finished in 13 steps with no degenerate questions, no
-person drift and no repetition — while the prose sense-lint's three holes, which led this list until
-they shipped, appeared on the page in both models: the one thing capability did not buy.
+### 1. A character's pronoun can still switch mid-scene — the clause only ever covered `you`-leak
 
-### 1. Was the person clause the thing that cleaned the page, or was the run clean anyway?
+Type: measurement
+Why now: settles whether pronoun drift is rare noise or a live problem before deciding whether a
+mechanical fix is worth building over a prompt change.
+Next action: read more `e4b`/doorway runs (any cast size, any model) for pronoun-switch rate,
+alongside `lintPronouns`'s (`engine/lint/pronoun-lint.ts`) output.
+Done when: enough runs are read for pronoun-switch rate to say whether this is rare noise or a live
+problem, and if live, whether a mechanical fix (a per-piece check against the cast's declared
+pronoun, the same shape as the fact-ledger check parked under Small-model coherence limits) is worth
+building over a prompt change.
+Evidence: `16-23-17-001Z`, `19-33-16-122Z`, `19-47-04-293Z`, `21-35-36-919Z`, `22-23-22-884Z`,
+`alarm-wing`/`alarm-corridor` (2026-08-29), `19-07-49-797Z`, `19-15-36-664Z`, `19-22-04-008Z`,
+`05-18-22-498Z`, `05-22-55-735Z`.
 
 The clause shipped (`prompts/writer.ts`, the POV line): person is the house style's to set, never
 the consult rhythm's. The first `e4b` run under it (`22-23-22-884Z`) had a clean page and clean
 drafts — but so did the control immediately before it (`21-35-36-919Z`, same model, no clause:
-0 `you` across 31 drafts), while the controls before that drifted pervasively (7 and 3 per page in
-`16-23` and `19-33`). One clean run next to one clean control credits nothing; the clause is
-unproven, not disproven.
-
-**Done when** another clause-era `e4b` run is read: if clause-era pages stay clean where the
-control era drifted, the clause takes the credit and this entry is deleted; if a clause-era page
-drifts, the clause failed and the approach (prompt clause vs. mechanical detection) is reopened.
+0 `you` across 31 drafts), while earlier controls drifted pervasively (7 and 3 per page). One clean
+run next to one clean control credited nothing on its own.
 
 **Evidence since (2026-08-29):** both `alarm-wing` runs — heretic author-side, four characters —
-drifted, a different character each time: run one's HALE is `they` for the whole page and becomes
-`his`/`he` in the closing pieces ("his shadow falling over the trolley"); run two's TIBBS goes to
-`he` from the opening paragraph on. The duo control on the same model and the same style stayed
-clean both times, so the stress is the cast size, not the model — two runs is still not a verdict,
-but it is no longer one.
+drifted, a different character each time (HALE `they` all page → `his`/`he` in the closing pieces;
+TIBBS to `he` from the opening paragraph). The duo control on the same model and style stayed clean
+both times, so the stress read as the cast size, not the model.
+
+**Evidence since (2026-09-16) — the `you`-leak question is answered:** three more clause-era
+`e4b`/doorway runs (`19-07-49-797Z`, `19-15-36-664Z`, `19-22-04-008Z`, revision `21ddb86`). On the
+one thing the clause's own wording actually governs — a consult's second-person `you` following its
+character onto the page — all three stayed clean (one `your` did reach the page unquoted, but it is
+RIVEN's own accepted consult answer folded in verbatim with no quotation marks, a quote-formatting
+miss, not narrator address). Four clean clause-era reads against the one 0/31 control: **the clause
+takes the credit for the `you`-leak it names**, and that half of this entry is settled.
+
+**What is not settled:** `19-15-36-664Z` has MERRITT's pronoun switch `his`→`their`→`his` three
+times within one scene — the same shape as HALE/TIBBS above, now on the smallest cast and smallest
+model on record. The clause never claimed to hold a character's pronoun steady (it governs
+grammatical person, not gender/number), so this was never its job to prevent — but it undercuts
+"the stress is the cast size, not the model": a two-hander just did it too, at least once. This
+entry is now scoped to that question alone.
+
+**Evidence since (2026-09-17) — the mechanical check exists now, and is silent on both:** two more
+`e4b`/doorway runs (`05-18-22-498Z`, `05-22-55-735Z`, revision `6e69eff`), the first read under the
+just-wired `lintPronouns` (`engine/lint/pronoun-lint.ts`) rather than by eye alone. Both cast members
+have declared `pronouns` in `story.json` (RIVEN they/them, MERRITT he/him); neither run produced a
+`narration_pronoun_flag`, and a manual name-proximity scan of both pages agrees — every MERRITT
+reference stays `he`/`his`/`himself` (RIVEN is narrated second-person throughout, so there is little
+third-person surface to check on that side). Two clean reads, but both are the same two-hander that
+already read clean before the switch that reopened this entry (`19-15-36-664Z`) — they add to the
+"rare" side of the ledger without saying anything new about the cast-size-independence question the
+switch raised, since a mechanical miss on an ambiguous (two-names-in-one-sentence) construction would
+also read as silence here and neither run's prose was checked by hand for that specific gap.
 
 ### 2. A scene has no representation of its own question being answered
 
-The doorway run ended `done: false`, at 64 steps against a `maxSteps` of 24 (four `budget` grants)
-and 933 words against a 700 target. Its question — "Does Riven get through the door before Merritt
-decides what to do about them?" — was answered at the midpoint: door open, satchel handed over,
-ledger signed. Everything after is epilogue, and in it Riven is consulted four more times about how
-fast to walk away while Merritt is asked five times whether to stand up. Item 1's person drift lives
+Type: measurement
+Why now: widening the bench past doorway found the 1.25% single-story rate does not generalize —
+two of eight cross-story cases came back wrong 8/8, both new and distinct failure shapes. Enforcement
+is further away than the single-story read suggested, not closer.
+Next action: read `interrogation-scope-mismatch` and `root-and-shadow-open-combat` (below) as the two
+concrete failure modes to design against — scope-mismatch (real evidence, wrong sub-question) and
+recency-blindness (real evidence, wrong position in the page) — before adding more cases or moving
+toward enforcement.
+Done when: enough is read to say whether `question_state` should start gating anything, or what
+enforcement should look like. See "Whether a scene may outrun its own question" under Decisions
+needed for the policy question this measurement feeds.
+Evidence: `05-18-22-498Z`, `05-22-55-735Z` (pre-instrumentation, revision `6e69eff`);
+`06-15-52-596Z`, `07-50-49-951Z` (first post-instrumentation reads); `scripts/done-judge-bench.ts` +
+`scripts/done-judge-bench-cases.json` (resampling harness, 12 cases across 6 stories); calibration
+fixtures in `tests/engine/scene-loop-consult.test.ts`.
+
+**Evidence since (2026-09-17) — first post-instrumentation reads, both doorway/`e4b`:**
+`06-15-52-596Z` (21 steps, no extension) ended `done: true` with a `resolved` verdict — Riven picks
+the lock, delivers the package, slips back out; Merritt only listens. The judge's `evidence` field
+quotes the actual settling line verbatim ("The lock releases with a soft, definitive *thunk*..."),
+which is the shape a spot-check can actually verify against the page.
+
+`07-50-49-951Z` (50 steps, two grants — the extension check fired at step 24/735 words and step
+48/1419 words, both `open`) ends with the writer declaring `scene_done: true` while the last tumbler
+has *just* clicked and Merritt has just put a hand out to stop Riven turning the handle — nothing
+decided either way. The judge called the final check `open` too and was right: this is the standoff
+`Judge.MD` describes, caught for the first time instead of silently reading as a finished `done: true`
+downstream.
+
+Across the two runs: 3 `open` calls, all plausible on a hand read of the page at that exact word
+count; 1 `resolved` call, correct and evidenced. Zero false `resolved` — on the two live runs alone.
+
+**Evidence since (2026-09-17) — the resampling harness immediately found what the two runs didn't:**
+`scripts/done-judge-bench.ts` (+ `scripts/done-judge-bench-cases.json`) replays a page excerpt
+against a fresh done-judge call any number of times without writing a word of prose — calling
+`checkQuestionState` itself, not a reimplementation. Seeded with the four checkpoints above and run
+once each as a smoke test, the very first independent resample of `extension-open-step24` (the
+ambiguous "Merritt secures the door" moment, genuinely `open` — the scene ran another 26 steps to an
+unmistakable standoff) came back `resolved`, with **fabricated evidence**: `"Riven quickly slides
+the canvas satchel through the narrow gap in the door, then steps across the threshold into the
+building"` — a sentence that appears nowhere in the actual page. Four more samples of the same case:
+3 correct `open`, 0 more false `resolved` (1/5 total on this case). n=5 is not a rate, but it is a
+live, reproducible false-`resolved` with invented evidence, on exactly the kind of page (a described
+action whose outcome is described but whose consequence for the *question* is not) that was always
+the risk. **This revises the read above:** "zero false resolved" was an artifact of only two live
+endings existing; the harness exists precisely so the next read is a real sample size instead of
+another expensive full run. `evidence` being present did not save this case — the field is stated,
+not verified, so a spot-check against the page is still required, not optional, even when `evidence`
+looks concrete.
+
+**Evidence since (2026-09-17) — the real rate, 80 samples (`--samples=20`, all four cases):** 79/80
+matched, 1/80 false `resolved` (1.25%) — the *same* case as above, `extension-open-step24`, repeating
+its exact fabricated evidence again (1/20 = 5% on that one case). The other three cases held
+perfectly: `extension-open-step48` 20/20, `writer-done-standoff-step50` 20/20, and — the one that
+mattered most — `clean-resolution-step21` **20/20**, the genuine resolution, reproducing the identical
+verbatim evidence every single time. So at this sample size the failure is not evenly distributed: it
+concentrates entirely on the one excerpt whose prose is itself genuinely confusing to read (an action
+that could plausibly, on a fast read, be mistaken for settling the door), and never touches either
+clean case. That is a narrower, more encouraging finding than "the judge hallucinates resolutions" —
+it reads more like "the judge inherits the page's own ambiguity," which is closer to what a verdict
+call is supposed to do than a flaw specific to it.
+
+Also worth recording: the harness itself had a bug caught by this run — `--sample=20` (missing the
+`s`) silently fell back to the samples default (5) instead of erroring, costing two full 5-per-case
+runs before the mistake was visible in the output. Fixed to hard-refuse any unrecognized `--flag`,
+the same policy `cli-flags.ts` already holds the engine to.
+
+**Evidence since (2026-09-17) — widened past doorway, and the encouraging read did not survive it:**
+eight cases added from five other stories/genres already on disk (`alarm-corridor`, `root-and-shadow`,
+`the-cooling-loop2`, `thelastslot`, `interrogation-test`), all resolved via existing run transcripts —
+no new live runs needed. 96 samples total (`--samples=8`, all 12 cases): 80/96 matched, **16/96 false
+`resolved` (16.7%)**, but concentrated entirely in two cases at 8/8 (100%) each, every other case at
+8/8 correct including three more clean `resolved` cases (`alarm-corridor-resolved-logged`,
+`cooling-loop2-resolved-success`, `cooling-loop2-resolved-failure` — the last a confirmed *negative*
+resolution, Elias physically overpowers Sara and the dashboard still fails, worth having on record as
+proof the judge isn't just pattern-matching "success" to `resolved`) and `thelastslot-resolved-paperwork`.
+
+The two 8/8 misses are different failure shapes, neither a repeat of the doorway fabrication:
+
+- **`interrogation-scope-mismatch`** (from `interrogation-test`, run `2026-09-17T08-26-06-060Z` —
+  itself a live `question_state: resolved` this bench case exists to check by hand): the interviewer
+  writes down a narrow procedural note ("witness states no internal movement visible from her
+  position") mid-interrogation, and the judge reads it as the interview's whole account of the
+  missing ledger, even though the interview has not ended. **Real evidence, correctly quoted, scoped
+  to a sub-question rather than the scene's actual question.**
+- **`root-and-shadow-open-combat`** (from `root-and-shadow`, run `2026-09-10T19-34-38-969Z`): the
+  purge-flame genuinely does fire early in the page, killing one Blight-Spore — but a second, larger
+  swarm erupts immediately after, and the page ends mid-fight against it with Kaelen's own line ("we
+  don't move until the rot is truly gone") saying the threat isn't over. The judge cites the early,
+  real, verbatim explosion and never engages with the 1200 words of continued danger after it.
+  **Real evidence, correctly quoted, from the wrong position in the page relative to the actual
+  ending.** (This case's own note was initially wrong too — first written from the page's tail alone,
+  without checking whether the flame appeared earlier; fixed once the 8/8 result made that check
+  necessary. Worth remembering while building more cases: an excerpt has to be read in full, not
+  just at the point being checked.)
+
+So the doorway-only 1.25% read was real but not representative — it happened to hit a story whose
+only sharp ambiguity was one confusing sentence. Two systematic, reproducible failure shapes exist
+(scope-mismatch, recency-blindness) that a single-story sample could not have found. This moves
+enforcement further away, not closer: any gate built on `resolved` alone would need a defense against
+at least these two shapes — the most direct being a shipped version of what this harness proved out
+by hand, a mechanical check that `evidence` is drawn from *near the actual end* of what the judge was
+shown, plus a cheap re-ask (perhaps just the final third of the page) rather than trusting one
+whole-page verdict.
+
+The doorway run ended `done: false` at 64 steps against a `maxSteps` of 24 with 933 words against a
+700 target. Its question — "Does Riven get through the door before Merritt decides what to do about
+them?" — was answered at the midpoint; everything after is epilogue, and item 1's person drift lives
 **entirely** inside that epilogue, which is why this is ordered last: some of its evidence is not
 independent.
 
-**Evidence since, and it is most of the case against acting:** runs three and four both ended
-`done: true`, at 30 and 13 steps, 11% and 18% over target. The pathology was concentrated in the two
-runs that never terminated, and a better author model ended scenes on its own. What has *not* changed
-is the absence below — no run of any model gave the loop a way to know its question was answered —
-but there is now no live overrun to fix, and building a budget policy against evidence this stale
-would be building it blind.
+Runs three and four both ended `done: true` at 30 and 13 steps, and a better author model ends
+scenes on its own — so there is no live overrun to fix, and building a budget policy against stale
+evidence would be building it blind. What has *not* changed is the absence below: no run of any
+model gave the loop a way to know its question was answered.
 
 **Evidence since (2026-08-29, the event-driven stories):** the gap reproduced under the heretic
-author exactly as this entry predicts. The duo control (`alarm-corridor`, same beat, cast of two)
-terminated clean — `done: true` at 17 steps, +9% over target. The four-hander (`alarm-wing`) did
-not: the fault alarm fired in the scene's opening lines and then stayed a background chime for all
-24 steps; the one line that gave it a consequence (Wren: sixty seconds to a full wing evacuation)
-was a fabricated quotation, the mechanical lint correctly flagged it, and the redraft that removed
-the fabrication removed the escalation with it. The scene ended `done: false` at the cap, 1028 words
-(+47%), WREN's answer unwritten — 22 consults for a question whose own event never got to do its
-work. The loop had no way to know the event was being parked; that absence is this entry.
+author exactly as predicted. The duo control (`alarm-corridor`) terminated clean (`done: true`, 17
+steps, +9%); the four-hander (`alarm-wing`) did not — the alarm fired in the opening lines, stayed
+a background chime for all 24 steps, and the scene ended `done: false` at the cap, 1028 words
+(+47%), with 22 consults for a question whose event never got to do its work. The rerun terminated
+(`done: true`, 31 steps, one grant) but overran worse (1485 words, +112%), settling the crate around
+the alarm through deferral paperwork — a real answer, but the loop still had no way to know the
+event chose not to fire.
 
-The rerun (`10-36-42`) terminated — `done: true` at 31 steps with one budget grant — but overran
-worse, not better: 1485 words (+112%) on 27 consults, against the duo control's +9%. The alarm
-stayed a background pulse in both runs; the rerun settled the crate around it, through the
-technician's own deferral paperwork, which is a real answer to the scene question — but the loop
-still has no way to know the event chose not to fire.
+The one thing worth pinning before any budget policy is decided: **the loop has no representation of
+the scene's question having been answered.** `scene_done` is the writer's to declare; budget grants
+are spent against word and step counts, neither of which knows what the scene was for. Half of it is
+now filled as a measurement — the done judge ([`Judge.MD`](Judge.MD)) reads the page against the
+question and logs `done_flagged` without gating — but it has twice passed an `alarm-corridor` ending
+that reads as undecided without flagging, and nobody has yet read a run where it fired. The done
+judge is the instrument any budget policy is measured with; the world timeline (see
+[`Writer.MD`](Writer.MD) and [`Architect.MD`](Architect.MD) for the shipped mechanism) is the
+candidate lever, asking what keeps a scene under pressure toward its question rather than what
+happens once the question is spent.
 
-This is a policy question, not a defect with an obvious fix — whether a scene may outrun its own
-question, and what should happen when it does, is a judgement about pacing. It overlaps "A reaction
-fan-out does not differentiate" under Open design questions, whose live evidence is also a
-post-crisis overrun.
+**Evidence since (2026-09-17) — the fresh `e4b` run this entry was waiting on, and a third silent
+ending path:** the same two doorway runs above (`05-18-22-498Z`, `05-22-55-735Z`) both ended
+`done: false` at the 24-step budget cap, 434 and 403 words — well under both the 700-word target and
+the 1400-word (`HARD_CAP_MULT`) forced-end line, so `hardCap` never went true on either. Both were
+run non-interactively (no viewer, no TTY), where `moreSteps` (`live.ts`) declines automatically and
+silently rather than asking; the loop just exits. Reading the pages by hand, both are unmistakably
+open, not resolved: run one ends with RIVEN still working the pick, MERRITT listening from the crate;
+run two ends with RIVEN mid-approach to the lock, having just stepped back from MERRITT. Neither the
+writer's own `scene_done` nor the word-based hard cap fired on either run, so **the existing done
+judge was never called on either** — this is a third ending shape, distinct from the two already
+described (writer-declared and word-based forced end), and any budget-extension check needs to fire
+at every budget-exhaustion point, including (especially) the non-interactive case where the answer is
+an automatic, unasked no.
 
-The one thing worth pinning before any of that is decided: **the loop has no representation of the
-scene's question having been answered.** `scene_done` is the writer's to declare and it never did;
-budget grants are spent against word count and step count, neither of which knows what the scene was
-for. Whatever the budget policy becomes, that absence is the thing it answers.
+**Built since (2026-09-17) — the observational half, not yet enforcing anything:** the done judge's
+verdict is now a durable, three-way `QuestionState` (`engine/scene-loop.ts`) — `open` / `resolved`
+(with required `evidence`) / `unavailable` (the judge's own "unclear", a schema mismatch twice over,
+or the call itself failing, all folded together, since none of the three is a usable answer) —
+carried on the run result and logged as its own `question_state` event (`Judge.MD`, `GUI-SPEC.md`).
+It is checked at all three places a scene's ending is decided, not only a writer-declared one: the
+existing `scene_done` site, every step-budget exhaustion (before the engine even learns whether an
+extension will be granted — the third silent path above), and the hard cap. `done_flagged` /
+`done_confirmed` still exist, unchanged, for `buildChapterBeatOutcome`'s writer-declared-only reading
+(`run-and-save.ts`). Calibration fixtures are in `tests/engine/scene-loop-consult.test.ts` (resolved,
+open, unclear/unavailable, hard-cap, and budget-exhaustion-with-no-grant). Nothing gates yet — this
+is still step 5 of the block plan, not step 6.
 
-**Half of that absence is now filled, as a measurement.** The done judge
-([`Judge.MD`](Judge.MD)) reads the page back against the scene's question when the writer declares
-it over and logs `done_flagged` when it is not settled there. **Unmeasured, and now worth watching:
-whether it is too lenient.** It has twice passed an `alarm-corridor` ending that reads as undecided
-— the most recent closes with Hale reaching for the ledger and Oduya shielding it — without
-flagging. Both are defensible as the question answered *no*, which the judge is explicitly told
-counts, but a judge that never flags anything is not an instrument. Nobody has yet read a run where
-it fired. What it does not do is act: it gated
-once, and the refusal was a nudge nobody could satisfy — told its question was unanswered, the writer
-wrote four more steps of the same deadlock, never declared done again, and ran out its budget,
-turning a bad ending into no ending. A deadlock breaks when a character chooses differently, which
-is never the writer's to write, so the refusal named a lever the writer does not hold. Re-arm it as
-a gate when a refusal can arrive with one.
+### 3. Nothing re-reads a finished story to ask whether it was worth writing
 
-**The world timeline** below is the candidate for that lever, and it reaches the same absence from
-the other side: it asks what keeps a scene under pressure toward its question rather than what should
-happen once the question is spent. The done judge is the instrument either one is measured with.
+Type: feature
+Why now: `engine/story-audit.ts` ships the mechanical half — a story that cannot run, or that a
+shipped check cannot see. It says nothing about whether the story WORKS: whether a goal can be acted
+toward, whether the scene question can be answered by this cast, whether two goals actually collide.
+Every rule for that already exists, in the architect's authoring prompts, and runs exactly once —
+while a story is being scaffolded. A story authored under an older prompt was never held to the rule
+that came after it, and re-scaffolding is the only way to find out.
+Next action: block 1 below — the judged axis, plumbed with no judge behind it.
+Done when: the viewer shows both axes on a story, and the four Ready-fixes entries this absorbs are
+deleted because their rules have one home and two consumers.
+Depends on: nothing.
 
-**Done when** — deliberately open. Do not start this one until the item above is settled and a fresh
-`e4b` run has been read, since both change what its evidence looks like and only `e4b` still
-produces the failure.
+**Two axes, never one.** `level` stays what it is: offline, deterministic, mechanical, the thing
+`--min-level` gates a batch on. Judged findings ride beside it on their own field with their own
+verdict and never touch it. The reason is not tidiness — a judge fails open, so folding it in would
+mean the same story passes a gate on the run where the judge times out and fails on the run where it
+answers, with nothing about the story having changed. A gate that moves on its own is not a gate.
 
-## Defects
+**The rules already exist; what is missing is a second consumer.** `FIELD_GOAL` and the verify pass
+(`prompts/architect.ts`) hold the ZERO-SUM TEST and the goal wording rules; `newCastAsymmetryJudge`
+(`engine/architect.ts`) already answers "does this cast's asymmetry bite on the tension" against a
+cast sheet, and is reusable unchanged — it takes a tension and a list of `{name, goal, skills,
+restrictions}`, which a loaded story can supply as easily as a proposal can. The work is to give each
+rule ONE home a prompt module owns, and render it into both the architect's stage prompt and the
+audit's request, rather than letting a second copy drift.
 
-Something is demonstrably wrong and the fix is known or nearly known. The split is by what verifies
-it: a code defect falls to `npx tsc --noEmit` and `npm test`, a prompt defect needs a live run.
+**And a mechanical half is already written and unused.** `normalizeSpec` (`engine/story-spec.ts`)
+returns `problems` for a raw story object, and reads a `story.json` straight off disk
+(`docs/mockups/capture/screens.capture.ts` does exactly that). The audit ignores it today. Folding it
+in is a check-for-free before any model is involved.
 
-### In code
+The blocks, each independently pausable:
 
-- **A character is written out of the scene and never declared gone.** Across six `alarm-*` runs the
-  writer emitted `exit` **zero** times, including a run where it narrated Tibbs leaving across seven
-  pieces and thirteen steps — *"Tibbs pushes off the wall and moves toward the exit"* through to
-  *"Tibbs is gone."* — while the loop kept Tibbs in `active`, kept consulting them, and kept naming
-  them in the neglect nudge from a stairwell they had already left. The departure is the problem: it
-  is gradual, so there is never one piece the writer would recognise as *the* exit, and nagging
-  harder about the field fights that. `exit_refused` has also never fired, so nothing in the record
-  distinguishes "declared and refused" from "never declared".
+1. **The judged axis, with no judge behind it.** `StoryOpinion` beside `StoryAudit.level`, a
+   `judgeStory()` that takes its judge injected, and a CLI flag that is off by default. Ships with a
+   fake judge so the plumbing is tested without a model, and proves the outage path first: no judge
+   reachable is `unavailable`, which is not a verdict and changes no level.
+2. **The mechanical content checks.** `normalizeSpec().problems` folded into the existing tiering,
+   plus the string-checkable cast-sheet defects the fourth Ready-fix names: a goal written in the
+   third person naming its own character, an editorial parenthetical rendered verbatim into a
+   prompt, and a missing goal — which nothing checks today, since
+   `characterPsychologyWarnings` covers belief, impulse and voice but not goal. Still offline, still
+   deterministic, so these DO move `level`.
+3. **The judged content checks.** Per character: does the goal name something they can act toward,
+   and is it in their scope. Per story: does the question presuppose its own answer, is it
+   answerable by this cast, is a skill inert in the scene it is authored for, and does the cast's
+   asymmetry bite — the last one reusing `newCastAsymmetryJudge` rather than adding a fifth judge.
+4. **Host and route.** One host-interface method and a `/story/audit` route, shaped like
+   `/story/check`: the mechanical half always, the judged half only when asked for, since it costs a
+   call. `GUI-SPEC.md` gains the route.
+5. **The two viewer surfaces.** A level badge and finding count on the shelf card, riding the
+   `StoryCard` path that already carries `warnings` to the shelf; and a findings panel beside the
+   story editor, where a gap is fixed where it is authored, with the judged half behind a button.
 
-  Partly addressed: the neglect nudge now offers the exit as its second reading (`52c0649`) — "X has
-  gone unconsulted" meant only *you forgot them* when it can equally mean *they left*. **That half is
-  unverified**, because it renders only alongside the nudge and the same commit correctly stops the
-  nudge firing in the four-hander that would have exercised it. Either give it a second carrier or
-  accept it is decoration.
+**What this absorbs.** Four Ready-fixes entries — the ZERO-SUM agency test, the presupposing scene
+question, the inert skill, and the cast-sheet defects — are all the same rules aimed only at the
+architect. They stay listed until their rule has its single home and both consumers read it, and are
+deleted then, not annotated.
 
-  Why it matters beyond tidiness: a POV exit ends the chapter, so an undeclared one silently costs
-  the loop its ending. One `alarm-wing` run had HALE walk downstairs and the scene ran on to the cap.
+**What it deliberately does not do.** No advisor: `Architect.MD` defers the edit-proposing advisor
+until real entries exist to test it against, and nothing here reopens that. No writing to
+`story.json`: the audit reports, the author or the architect edits.
 
-The next two are what remains of a four-item chain in dependency order. The first two links are
-fixed: `attribute()` (`engine/quote-lint.ts`) now checks the name trailing the quote (the ordinary
-post-dialogue form, `"..." NAME says`) before falling back to the nearest preceding name, and
-`lintQuotations` now matches an attributed quote against that character's own grants first, only
-falling back to every grant when the quote cannot be attributed to anybody — so a line granted to
-one character rendered in another's mouth flags as "granted to a different character" instead of
-passing silently. Tests for all four shapes (own line, reassigned line, unattributed line, both
-attribution orders) are in `tests/quote-lint.test.ts`. The per-character match's live-run risk is
-under Measurement owed.
+## Ready fixes
 
-- **`sceneDrift` does not compare `reach`.** The snapshot-desync warning that guards the handoff
-  compares place, question, pov, length and roster — but not the field the capability layer added,
-  so a written chapter whose `reach` was hand-edited afterwards re-authors silently and the warning
-  that exists to report exactly that kind of drift never fires. One comparison, once it is decided
-  what a reach drift means for the chapter that already ran under the old grant.
+Known change, known verification — no live run or design decision needed to start. The four
+architect-prompt items below all have live scaffold evidence and a candidate fix, but still need a
+run to confirm the fix lands; batch them into one prompt-run session with the owner rather than
+running each alone.
+
+### The ZERO-SUM TEST passes goals that have no agency
+
+Type: fix
+Why now: live scaffold evidence — every run of one story ended with the same character conceding,
+because the test cannot tell a goal with no agency from a real contest.
+Next action: add an agency test beside the zero-sum one — each goal must name something that
+character can do themselves toward it; a goal reached by doing nothing, or only through another's
+compliance, fails it.
+Done when: a scaffold run against the new test no longer passes "Convince B to sign" against "get the
+signature on my patient's chart" (only one side can act), nor a goal satisfied by inaction ("not be
+the one who called it", "not get out of bed").
+
+### A scene question may presuppose its own answer
+
+Type: fix
+Why now: live scaffold evidence — the scene stage accepted "Will X yield his clinical authority to
+Y's protocol?", naming the conceding party in advance.
+Next action: add a rule — the question may not name which character concedes or whose authority is
+at stake.
+Done when: a scaffold run against the new rule no longer accepts a scene question that presupposes
+its own answer.
+
+### A skill the scene never touches is decoration, and nothing says so
+
+Type: fix
+Why now: live scaffold evidence — one scaffold produced two bespoke skills, both inert in the
+argument the scene turned out to be. Verify already has a bullet for a restriction that cannot bite
+in this scene; skills have no equivalent.
+Next action: add the equivalent Verify bullet for an unused skill.
+Done when: a scaffold run against the new bullet flags a skill the scene never touches.
+
+### Cast-sheet defects that need prompt work rather than a string check
+
+Type: fix
+Why now: two live scaffolds produced three checkable defects and one that needs judgement. The
+mechanically checkable class (roster/pov/reach/skill-name string checks) is already shipped in
+`normalizeSpec`.
+Next action: prompt work for the checkable three — an editorial parenthetical written into a `goal`
+and rendered verbatim into that character's prompt; a `goal` in the third person naming the character
+to itself while the persona is second person (`CHARACTER_FIELDS` fixes person for `persona` only);
+and a cast sheet whose pronouns disagree with the prose the writer then produces. A fourth class (a
+cast-sheet defect that needs judgement, not a check) stays unfixed by construction — no candidate
+mechanical rule covers it.
+Done when: a scaffold run against the prompt fix no longer produces the three checkable defects.
 
 ### `any` at the JSON boundaries
 
 Type: fix
-Why now: the easy `any`s are gone and the load-bearing ones remain: `readJsonBody`
-(`server/http-util.ts`) still returns `Promise<any>`, `raw: any`/`draft: any` plus ~19
+Why now: a September 2026 sweep (`cd15e05`) removed the easy `any`s and left the load-bearing
+ones: `readJsonBody<T = any>` (`server/infra/http-util.ts`), `raw: any`/`draft: any` plus ~20
 `(x as any)` casts in `engine/story-spec.ts`, `Promise<any>`/`entry: any` in `engine/catalog.ts`,
 and casts in `engine/consult.ts`, `engine/llm-client.ts`, `engine/architect.ts`. Every one defeats
 a zod schema sitting one call away — `String((v as any)?.name ?? "")` hides shape drift that
@@ -183,7 +401,7 @@ Next action: default `readJsonBody` to `Record<string, unknown>` (or `unknown` +
 `REGISTRY` instead of `any`; reuse the inferred `StoryJson`/`CharacterDef` types at the
 `story-spec.ts` cast sites.
 Done when: `npx tsc --noEmit` and `npm test` pass with no `any` outside `resolveLayers`/
-`removedWithMeanings` (`engine/skills.ts`, private, contained) and the documented test doubles.
+`removedWithMeanings` (private, contained) and the documented test doubles.
 
 ### Blind `e as Error` in catches
 
@@ -196,22 +414,22 @@ Next action: `e instanceof Error ? e.message : String(e)` at each site.
 Done when: `npx tsc --noEmit` and `npm test` pass; a thrown string no longer escapes as a
 secondary TypeError.
 
-### `writeScene` is one ~600-line function
+### `writeScene` is one ~700-line function
 
 Type: fix
-Why now: `engine/scene-loop.ts:337` (`writeScene`, running to `runChapter` at :946) owns
-consult/fanout/judge/lint/repeat/exit/deferred/question-state/trim in one `while (!done)`,
-nested four deep (loop → lint-retry → decision → try/catch). Untestable without a full run.
+Why now: `engine/scene-loop.ts:411-1127` owns consult/fanout/judge/lint/repeat/exit/deferred/
+question-state/trim in one `while (!done)`, nested four deep (loop → lint-retry → decision →
+try/catch). Untestable without a full run.
 Next action: extract `runLintLoop()`, `handleConsult()`, `handleSceneEnd()` as helpers over an
 explicit state object; keep `writeScene` as orchestration.
 Done when: `npm test` passes with no behaviour change (the lint/consult suites are the net).
 
-### `applyEdits` is a ~450-line if-chain; `normalizeSpec` a closure over shared state
+### `applyEdits` is a ~300-line if-chain; `normalizeSpec` a ~200-line closure
 
 Type: fix
-Why now: `engine/story-spec.ts` dispatches ~15 `beat_*`/`config.*`/`characters.*`
-branches in one `for` loop inside `applyEdits` (:348), re-normalising per edit; `normalizeSpec`
-(:121) shares state by closure with an inner `readSceneDef` (:172).
+Why now: `engine/story-spec.ts:395-830` dispatches ~15 `beat_*`/`config.*`/`characters.*`
+branches in one `for` loop, re-normalising per edit; `normalizeSpec` (`:179-381`) shares
+`problems`/`characters` by closure with an inner `readSceneDef`.
 Next action: table-driven `Record<pattern, handler>` with small
 `handleSceneEdit`/`handleCharacterEdit`/`handleBeatEdit` functions; split `normalizeSpec` into
 `normalizeCharacters()`/`normalizeScenes()`/`normalizeTimeline()` returning
@@ -221,25 +439,25 @@ Done when: `npx tsc --noEmit` and `npm test` pass with no behaviour change.
 ### The scaffold/handoff mirror is still two copies
 
 Type: fix
-Why now: on main the two interviews live in root `host.ts` (`SCAFFOLD`/`scaffoldBusy`/
-`scaffoldGen` vs `HANDOFF`/`handoffBusy`/`handoffGen`, `scaffoldLast`/`handoffLast`,
-`scaffoldStage`/`handoffStage`) over sessions in `engine/architect.ts` (`ScaffoldSession`,
-`NextChapterSession`) — the same round/abandon/status-409 shape under different names, and the
-same repeated action tails and `if (busy) return 409; if (!SESSION) return 400;` guards across
-`server/scaffold-routes.ts`/`server/next-chapter-routes.ts`/`server/catalog-routes.ts`.
-Next action: generic `runInterviewRound()` + shared busy/abandon guards in `host.ts` (or a shared
-module beside it), with `requireOpenScaffold()`/`requireOpenHandoff()` guards;
-`answerState(res, p)`/`answerOk(res, p)` in the routes.
+Why now: `host/scaffold.ts` vs `host/handoff.ts` — `runScaffoldRound`/`runHandoffRound`,
+`scaffoldOk`/`handoffOk`, `onScaffoldStage`/`onHandoffStage`, publish, and busy-gen-abandon
+bookkeeping are the same shape under different names (the busy reason is already shared as
+`INTERVIEW_BUSY`; the machinery is not). Same for the repeated `if (!r.ok) json(...)` action
+tails in `scaffold-routes.ts`/`next-chapter-routes.ts`/`catalog-routes.ts` and the
+`if (busy) return 409; if (!SESSION) return 400;` guards.
+Next action: generic `runInterviewRound()` + `interviewOk()` in a shared `host/` module, with
+`requireOpenScaffold()`/`requireOpenHandoff()` guards; `answerState(res, p)`/`answerOk(res, p)`
+in the routes.
 Done when: `npm test` passes; a change to generation-guard or status shape needs one edit.
 
 ### GUI wiring duplication and the `tests/gui` typecheck
 
 Type: fix
-Why now: two finds from the same sweep. `server/gui/viewer/character-library.js` repeats one
-`querySelector` shape ~30 times with the confirm strings inline;
-`handoff.js`/`interview.js`/`session.js` arm-timeouts (5000/4000/8000) are unnamed; and
-`npx tsc` fails on `tests/gui/` (Playwright specs, validated by their own runner) while prod is
-clean — `scripts/check.mjs` already defers those diagnostics rather than fixing them.
+Why now: two finds from the same sweep. `server/gui/viewer/character-library.js:471-527`
+repeats one `querySelector` shape ~25 times with the confirm strings inline;
+`handoff.js`/`interview-page.js`/`session.js` arm-timeouts (5000/4000/8000) are unnamed; and
+`npx tsc` fails on `tests/gui/` (DOM lib names plus `RunEvent` drift — `scene_start` without
+`question`, `consult` without `since`) while prod is clean.
 Next action: table-drive the wiring (`[["#charlib-new", "click", createNew], …]` +
 `CONFIRM_DISCARD` const); name the arm timeouts; fix the GUI specs' event shapes (or exclude
 and track separately — owner's call, but decide rather than drift).
@@ -248,654 +466,387 @@ Done when: `npx tsc --noEmit` passes repo-wide and `npm run test:gui` is green.
 ### Script and manifest leftovers
 
 Type: fix
-Why now: small, independent, each with its own verification. (`scripts/check.mjs`'s typecheck is
-already refactored on main — an `isGui` filter, no mutable closure — so it is not listed here.)
-`scripts/make-replay-fixture.mjs` re-reads and re-parses `storyJson` and the `lines` array;
-`run-manifest.ts:gitInfo()` rebuilds `promisify` per call around three `git` spawns;
-`story-writer.ts` carries `temperature: 0.9 / 0.7` and `"budget 10"` literals; `prompts.ts`'s
-header lists seven role files but omits `open-consult` (and the `smooth` surface is unmentioned).
-Next action: single-read fixture builder with a `parseJsonl` helper; hoisted `execAsync` with
-one `git log` call; named `OPEN_TEMPS`/`OPEN_BUDGET` consts; corrected barrel header.
+Why now: small, independent, each with its own verification. `scripts/check.mjs:typecheck()`
+uses a mutable `inGui` closure inside `lines.every()`; `scripts/make-replay-fixture.mjs`
+re-reads and re-parses `storyJson` and the `lines` array; `run-manifest.ts:gitInfo()` spawns
+three `git` processes and rebuilds `promisify` per call; `story-writer.ts` carries
+`temperature: 0.9 / 0.7` and `"budget 10"` literals; `prompts.ts:4-6` header omits `smooth` and
+`open-consult` while claiming an exact surface.
+Next action: `splitGuiErrors()` + `{status, signal, error}` from `check.mjs`; single-read
+fixture builder with a `parseJsonl` helper; hoisted `execAsync` with one `git log` call;
+named `OPEN_TEMPS`/`OPEN_BUDGET` consts; corrected barrel header.
 Done when: `npm test`, `node scripts/check.mjs`, and a fixture rebuild all pass.
 
-### In the architect's prompts
-
-Each has live scaffold evidence and a candidate fix; all four need a run to confirm.
-
-- **The ZERO-SUM TEST passes goals that have no agency.** As written it asks only whether A getting
-  what they want stops B getting what they want. "Convince B to sign" against "get the signature on
-  my patient's chart" passes that, but only one of the two can act — every run of that story ended
-  with the same character conceding, because the other never had a move of their own. The same hole
-  admits goals satisfied by inaction: a live four-hander whose goals were "not be the one who called
-  it", "not get out of bed" and "be gone by five" had nothing that could collide. Candidate: an
-  agency test beside the zero-sum one — each goal must name something that character can do
-  themselves that moves them toward it, and a goal reached by doing nothing, or reachable only
-  through another character's compliance, fails it.
-- **A scene question may presuppose its own answer.** The scene stage asks for the point where
-  colliding goals force a choice, and accepted "Will X yield his clinical authority to Y's protocol?"
-  — which names the conceding party in advance. Candidate rule: the question may not name which
-  character concedes or whose authority is at stake, and is phrased on the disputed outcome, so that
-  either side answering it is a real answer.
-- **A skill the scene never touches is decoration, and nothing says so.** Verify has a bullet for a
-  restriction that cannot bite in this scene and no equivalent for a skill. One live scaffold
-  produced two bespoke skills, both inert in the argument the scene actually turned out to be, and
-  neither drawn from the bible the cast stage says to prefer.
-- **Cast-sheet defects that need prompt work rather than a string check.** From two live scaffolds: an
-  editorial parenthetical written into a `goal` and rendered verbatim into that character's prompt
-  ("be gone by 5:00 PM (or in this case, end his shift/contractual window immediately)"); and a `goal`
-  in the third person naming the character to itself while the persona is second person, since
-  `CHARACTER_FIELDS` fixes the person for `persona` and for no other field. A third needs judgement
-  rather than a check: a cast sheet whose pronouns disagree with the prose the writer then produces
-  from it. The mechanically checkable defect found alongside these (roster/pov/reach/skill-name
-  string checks) now lives in `normalizeSpec`, shipped.
-
-## Measurement owed
+## Evidence to collect
 
 The next action is reading a run, not writing code. These are the owner's, batched. Each names what
-would settle it, and several gate work in the sections below.
+would settle it, and several gate work in the sections above and below.
 
-**In Next:** item 1.
+**In Now:** item 1 (pronoun drift).
 
 - **The quote-lint's per-character match trusts a heuristic attribution, and that trust is
-  unmeasured.** `lintQuotations` (`engine/quote-lint.ts`) now checks an attributed quote against only
-  that character's own grants, flagging a mismatch as "granted to a different character" — the fix
-  for the attribution-blind match logged under Defects. `attribute()` is still a best-effort guess,
-  so a quote correctly granted to its actual speaker but mis-attributed to someone else on the page
-  would now flag as a false reassignment where the old all-speeches match passed it silently. Nobody
-  has yet read a live run for that failure mode. **Done when** a run's quote flags are checked against
-  the page: every "granted to a different character" flag should be a real reassignment, not an
-  attribution miss on a correctly-spoken line.
+  unmeasured.** `attribute()` is a best-effort guess, so a quote correctly granted to its speaker but
+  mis-attributed on the page would now flag as a false reassignment where the old all-speeches match
+  passed silently. **Done when** a run's quote flags are checked against the page: every "granted to
+  a different character" flag should be a real reassignment, not an attribution miss.
 - **The question gates now guard only the judge's re-ask, and that path is unmeasured.** Since
   `14022cf` the writer's consult carries no `question` and no `wants`, so `normalizeConsult`'s
-  `"directed"` branch — `DEGENERATE_QUESTIONS`, the word-bounded `or`, the `wants` floor — runs at
-  exactly one call site: `reviseConsult` (`engine/consult.ts`), where a judge escalating a retry
-  names the fork in words. The churn those gates used to charge the writer is gone and the number is
-  already recorded below (18 refused consults across three stage-2 runs, 0 across two stage-3 runs);
-  what nobody has read a run for is whether a judge's escalation still writes a question that passes
-  them, or whether the gates now only ever fire on the one caller that cannot learn from them. The
-  writer's own refusals are a different gate — a thin situation against `MIN_OPEN_SITUATION_WORDS` —
-  and that is the churn figure worth watching instead. Entered here because the entry it replaces
-  (*"Did the instruction pass fix the consult-gate churn?"*, formerly Next item 1) asked about a
-  field the writer no longer sends.
+  `"directed"` branch (`DEGENERATE_QUESTIONS`, the word-bounded `or`, the `wants` floor) runs at
+  exactly one call site: `reviseConsult`, where a judge escalating a retry names the fork in words.
+  Unmeasured is whether a judge's escalation still writes a question that passes them, or whether the
+  gates now only ever fire on the one caller that cannot learn from them. The writer's own refusals
+  are a different gate (thin situation against `MIN_OPEN_SITUATION_WORDS`) and the churn figure worth
+  watching instead.
 - **A stage-3 consult has never been read for `narration_flag` on invented deeds and stillness.**
-  Stage 3 (the consult is a character and a situation, shipped at `14022cf`) gave up the question
-  field that receipted the writer's stops, leaving THE ONE RULE and the stop-while-the-pressure-is-live
-  rule as the only pressure toward stopping at choices. The failure would be quiet: competent,
-  low-consequence answers that break no rule, pass the judge, pass the lint, and let the scene die
-  politely. The one check that would catch it is the narration lint's deeds-and-stillness read — and
-  until `9fd2410` every quotation hit short-circuited that check for its piece, so it has effectively
-  never run on a stage-3 scene: the one run read as clean put three unasked-for stillnesses on the
-  page ("Jules remains glued to the terminal", "Sara remains anchored to the console", "Kane remains
-  hunched over the lever"). **Done when** a post-`9fd2410` stage-3 run is read for that flag — a
-  clean page closes the question this entry keeps alive; a dirty one reopens the writer's receipt as
-  a defect.
-- **The LLM half of the narration lint has still never fired.** Two of its four checks are mechanical
-  now — quotations against the granted ledger (`engine/quote-lint.ts`) and restricted senses against
-  the CANNOT list (`engine/sense-lint.ts`) — leaving deeds and consult-situation quality to the
-  model. That half returned `{"ok": true}` on all 55 pieces of
-  five live runs — nine completion tokens behind the `{` prefill on every one of the ten most recent,
-  across two stories and two models — and among them it
-  passed "Marsh watches them from his corner" for a character with `restrictions: ["sight"]` — the
-  prompt's own worked example ("no watching, no glancing, no gaze for someone who cannot see"). The
-  per-answer judge and the batch judge do fire on that same cast — the judge caught "eyes
-  half-closed" from that character, and the batch judge twice refused to promote his reaction glances
-  to deeds — so a restricted sense was not beyond the model; it is that the lint asks for a four-part
-  sweep in one call and returns an assertion. Both remaining checks resist the same treatment for the
-  same reason: neither a deed nor a situation has a closed set to match against, which is exactly what
-  made the other two tractable. A drafted piece contradicting an established fact is the same shape of
-  problem and is filed under Parked, with the reason.
+  Stage 3 gave up the question field that receipted the writer's stops, leaving THE ONE RULE and the
+  stop-while-the-pressure-is-live rule as the only pressure toward stopping at choices. The failure
+  would be quiet: competent, low-consequence answers that break no rule, pass the judge and the lint,
+  and let the scene die politely. The one check that would catch it is the narration lint's
+  deeds-and-stillness read — and until `9fd2410` every quotation hit short-circuited that check for
+  its piece, so it has effectively never run on a stage-3 scene. **Done when** a post-`9fd2410`
+  stage-3 run is read for that flag — a clean page closes the question; a dirty one reopens the
+  writer's receipt as a defect.
+- **The LLM half of the narration lint has still never fired.** Quotations and restricted senses are
+  mechanical now; deeds and consult-situation quality are the model's, and that half returned
+  `{"ok": true}` on all 55 pieces of five live runs — passing "Marsh watches them from his corner"
+  for a character with `restrictions: ["sight"]`, the prompt's own worked example. The per-answer
+  judge and batch judge do fire on the same cast, so a restricted sense is not beyond the model; the
+  lint asks for a four-part sweep in one call and returns an assertion. Both remaining checks resist
+  mechanical treatment for the same reason: neither a deed nor a situation has a closed set to match
+  against. The blind-POV probe (2026-08-29) measured neither half — the style clause kept the page
+  sight-clean on its own — so the miss-rate question stays open, and what the run established is that
+  the style clause is the effective first control and the mechanical lint the backstop.
+- **The writer appears to treat short technical dialogue as environmental texture.** Five defective
+  pieces across two cooling-loop chapters (~14% of drafted pieces; 2 of the 13 quoted lines in the
+  accepted chapters were never granted by anybody), every one a line like *"The harmonic is
+  shifting"* generated with nobody consulted — two against a completely empty ledger, before anyone
+  had been consulted about anything. The alarm runs confirm the shape: four quote flags, every one a
+  real fabrication, every redraft clean — except the Wren case, where removing the fabrication
+  removed the scene's only escalation (see the "reaction fan-out" entry under Decisions needed), and
+  one rerun case where the redraft itself fabricated and the piece was accepted with the line on the
+  page. What not to do first: raise `NARRATION_LINT_RETRIES`. Fix the speaker hint, re-measure, and
+  only then ask whether the budget is short; if it still is, a single retry carrying an explicit
+  prohibition on adding any quotation is the cheaper test.
+- **The clarifier can answer a different question than the one asked.** One live observation
+  (telemetry stabilising vs. increasing, answered with what a different system sounded like), against
+  one later near-identical question answered squarely. Two data points, opposite outcomes — worth
+  watching before it is worth building a check for. Nothing checks that a clarification addresses
+  its question.
+- **The writer has one idle-body move per character and reuses it.** Doorway: *"Merritt shifts their
+  weight on the upturned crate"* three times near-verbatim in one chapter; the cooling loop, different
+  cast: *"Marsh leans his head back … squeezes his eyes shut"* variants five times in one chapter.
+  Neither violates a rule — which is why nothing flags it. A vocabulary problem, the writer's rather
+  than any one character's (it replicates across casts). Distinct from the fan-out entry under
+  Decisions needed (several characters answering alike vs. one character rendered alike every time).
+  Count repeated body-move phrasings per chapter before fixing.
+- **Judge-conditioned revision is a real but low and lopsided capability, and the diagnosis feeding
+  it is wrong a meaningful fraction of the time.** Tracing every judge "retry" across nine live
+  doorway runs found 0 of 6 revisions surviving `reviseConsult`; but `scripts/revision-benchmark.ts`
+  replaying the same six cases 5x each in isolation on `google/gemma-4-e4b` found 4/30 usable (13%),
+  25/30 recognising the answer as unusable — 0/6 in production is within binomial variance of ~13%,
+  not evidence of zero capability. Lopsided: all 4 successes came from 1–2 of the 6 cases; the four
+  cases where MERRITT's sight-CANNOT is what made the answer unusable never produced a working
+  revision in 20 tries — a specific weak spot (constructing an open question around a stated sensory
+  restriction), not uniform unreliability. Cross-model, six alternatives (8B–35B, general/roleplay/
+  coding, stock/uncensored/fine-tuned) never produced one surviving revision; every alternative is a
+  worse judge than the story's own small model. A judge's job is refusal, and permissive
+  creative-writing tunes default to accept — the useful next model to try is one selected for
+  critique strength, not size; instruction-following benchmarks have now failed twice as a predictor
+  here (`qwen3-8b` 0/30 even at full reasoning). Caveats: the quill model's 0/30 is a JSON-schema
+  failure over substantively the best reasoning observed — retry it with stricter JSON-mode before
+  writing it off; `qwen3-30b` scored 0/30 in both modes, killing "a bigger model fixes this".
 
-  The blind-POV probe (2026-08-29) measured neither half: the run's writerStyle carried doorway's
-  no-omniscience clause plus an explicit "nothing that is only visible" line, and the page came back
-  sight-clean — every perception in touch, sound or inference, pronoun subjects throughout, zero
-  restricted-sense flags, zero quote flags, zero quoted dialogue at all. So the miss-rate question
-  stays open, and what the run actually established is that the style clause is the effective first
-  control; the mechanical lint is the backstop for the run where the clause fails.
-- **The writer appears to treat short technical dialogue as environmental texture.** That is the
-  narrow form of the hypothesis, and it is the one the evidence supports: the writer may generate a
-  line like *"The harmonic is shifting"*, *"Status update? The loop is screaming on my monitor"* or
-  *"Two minutes"* without treating it as an event that required consulting anybody — the same way it
-  generates a hiss or a vibration. Two of the five cases fired against a **completely empty ledger**,
-  in the scene's opening beats before anyone had been consulted about anything, which is the
-  strongest evidence for the texture reading: there was nobody who could have said them. None of
-  these was punctuation around a granted line — the best similarity between any flagged quote and any
-  granted speech, searching forward as well as backward in case the writer wrote a line before asking
-  for it, was 0.28 against the lint's 0.8 threshold.
+  `scripts/judge-diagnostic.ts` isolated the three sub-skills the judge bundles: with the
+  contradiction handed over, `gemma-4-e4b` jumps from 13% to 13/15 (87%) on repair alone,
+  `qwen2.5-coder-14b` to 15/15, `qwen3-8b` to 13/15 — the pipeline bottleneck is detection, not
+  repair-writing (`glm-4.7-flash` is the exception: 1/15 even handed the diagnosis). But reading the
+  six live retry verdicts against the cast's actual arrays found two of six flatly wrong (retried
+  RIVEN for "no lockpicking skill" while RIVEN lists `lockpicking`; invented a `CANNOT: sight` for a
+  character with `restrictions: []`), two defensible-but-imprecise (the sight-into-hearing collapse,
+  below), and only two unambiguously correct. The diagnostic then isolated the mechanisms: the
+  `seq78` error is fact *application* overridden by narrative content (the same fact scores 20/20 in
+  isolation); the sight-into-hearing collapse is real and deterministic for `gemma-4-e4b` (0/10 on
+  Merritt's hearing/inference cases — `CANNOT: sight` read as removing perception generally); and
+  verdict application is unstable even on the judge's own explicit rules (0/5 on one non-POV-thought
+  case, 4/5 on its structural twin). Consequence: judge-retry-based measurements should not be
+  trusted as evidence about anything else until constraint-interpretation accuracy has its own
+  validated benchmark; the Free Consult findings stand because they were read from first-pass
+  content, not judge behaviour — a now load-bearing distinction.
 
-  **Count defective pieces, not flags.** Seven `narration_quote_flag` events across two cooling-loop
-  chapters are five distinct defective pieces, because a redraft that fabricates again flags a second
-  time. Of the five, three were corrected by the one redraft and two were not: the writer
-  re-fabricated on its only retry, and `retried: true` correlates exactly with reaching the page.
-  Both survivors are in the durable record (`chapters/1.md`, `chapters/2.md`), and chapter 2's is
-  both of that run's flagged quotes merged into one sentence rather than removed.
+  The split judge is built as `--split-judge` (JUDGE verdict call + REPAIR-JUDGE call on retry only;
+  behaviour in [`Judge.MD`](Judge.MD)), measured pre-fix at `gemma-4-e4b` 6/30→9/30 surviving,
+  `qwen2.5-coder-14b` 0/30→14/30 — and the verdict call stopped issuing the two known false-positive
+  retries *entirely* while holding 15/15 on genuine ones (a precision gain the aggregate hides). But
+  roughly half the surviving revisions rest on a wrong or empty diagnosis that `reviseConsult` cannot
+  see (it checks newness and CANNOTs, not truth), and the verdict-call notes came back as bare
+  fragments ("Merritt CANNOT sight") now that the note is the whole input to call two. Two fixes
+  shipped together — the `You asked:` empty-question payload fix (which sat directly on top of the
+  non-POV rule every under-detecting model misses) and a tightened `note` gloss demanding both halves
+  of the collision.
 
-  Rates, with the caveat that both denominators are small and from one story and one model: five of
-  roughly 35 drafted pieces carried an ungranted quotation (~14%), and **two of the 13 quoted lines
-  in the two accepted chapters were never granted by anybody** (~15%). The second is the number that
-  answers the practical question; "seven lint flags" does not.
+  **Evidence since (2026-09-16) — re-run post-fix, `scripts/revision-benchmark.ts`, both models,
+  both modes, 30 samples each:** `gemma-4-e4b` single-call 4/30 (was 6/30), split 13/30 (was 9/30);
+  `qwen2.5-coder-14b` single-call 0/30 (was 0/30), split 17/30 (was 14/30). Single-call held flat or
+  slipped a little (noise-scale, on 30 samples); split-judge gained on both models, and the *gap*
+  between the two modes widened on both — `e4b` 3→9, `qwen2.5-coder-14b` 14→17 — which is the
+  actual claim ("splitting the two sub-skills helps") getting more evidence, not less, after the
+  fixes. Detection alone does not mean the reason was right, though: hand-reading the notes, the one
+  flatly-wrong diagnosis this record already knew about — inventing `CANNOT: sight` for RIVEN, whose
+  `restrictions` array is empty — still recurred (`gemma-4-e4b` single-call, 2 of 5 samples on the
+  `seq78-riven-unchanged` case; `qwen2.5-coder-14b` split, 1 of 5 on the same case), just less often
+  than before. **So: promote the aggregate numbers, keep the caveat.** "No run can settle diagnosis
+  correctness; reading `retry` notes by hand is that check" still holds — this reread is exactly
+  that check, done once, not a replacement for doing it again on a live chapter. **Next candidate
+  step:** a live `--split-judge` chapter run, read for whether the aggregate gain shows up as fewer
+  bad narrations reaching the page, not just a higher benchmark score.
 
-  **Evidence since (2026-08-29, the alarm runs):** four quote flags across the two alarm stories,
-  every one a real fabrication and every redraft clean — two near-variants of Oduya's own voice
-  sample ("The paperwork says Monday,"), one invented ledger passage voiced through Oduya reading
-  aloud, and one invented escalation voiced through Wren. The texture reading holds, and the
-  mechanical half now catches the whole class without a machine-label false positive among them.
-  The Wren case cuts the other way too: the redraft that removed the fabrication removed the
-  scene's only escalation with it (see Next item 2).
+  **Restriction meanings — the verdict-mode result is the strongest single number this record holds,
+  and it is independent of the Now/Ready ordering (diagnostic-level, no live run needed).**
+  (`--cannot-meaning` / `--cannot-none` / `--cannot-testimony`; mechanism in
+  [`Judge.MD`](Judge.MD).) Against `google/gemma-4-e4b`, 20 samples/case: cast-mode hearing baseline
+  0/20→20/20 under `--cannot-meaning` alone (cleanest before/after on record); verdict-mode
+  non-POV-thought cases 0/20→20/20 each under the full arm with zero regression on the accept cases.
+  **A confirmed, repeatable regression:** adding `--cannot-none` collapses the inference case
+  (`merritt-infers-from-sound`) from 10/20 back to 0/20, twice — a change to a *different*
+  character's rendering coinciding with a complete flip on Merritt's hardest case. So the full
+  verdict-mode arm is worth promoting toward a default, `--cannot-meaning` alone in cast mode is
+  real but incomplete, and `--cannot-none` must **not** be bundled with `--cannot-meaning` by
+  default wherever the inference case matters — while the same flag helps verdict mode, a targeted
+  follow-up in its own right. (Earlier CI numbers against hosted models are discarded: an
+  auto-router pool and a shared free-tier quota made both runs uninterpretable; the `callOnce`
+  hardening they forced is the only thing kept.)
+- **Unmeasured: whether the architect's landing judgement is any good.** "Landed" as *written* vs.
+  *changed a decision* came apart in every run; the handoff asks the model (three-state
+  `landed`: true/false/omitted) because no mechanical check can reach the second half. **Done
+  when** live runs are read for whether its landing calls match the page.
+- **No live evidence behind the world-repair mechanism:** no run has yet produced a choice that
+  voids a beat. (Unit-proven only: `adjudicateBeat`'s autonomy invariant replays the stage-3 open-beat
+  case — *Elias overpowers Sara at the lever* — as `questionLive: false` retiring the beat. That is a
+  proof about the pure function, not the wired-in entity.) The effect also needs several runs per
+  condition: characters reasoning differently after a memory lands, read from `thought` fields — the
+  measurement separating a beat that landed from one that mattered.
+- **The one-shot scaffold still spends a quarter of its prompt on the worked example**
+  (~1,870 tokens; the handoff and staged walk no longer carry it). Whether `mode: "oneshot"` can
+  drop or shrink it is what is left — a whole-story proposal has no story yet to demonstrate the
+  format with. **And it now carries the world-event rules too** (`TIMELINE_FIELDS`, ~888 tokens,
+  +28% on the one-shot prompt, for a field usually `[]`). The cheap alternative is a short block
+  (what an event is, field shapes, "usually empty") with the four memory rules left to the staged
+  gate — at the price that a one-shot beat is authored without the rules that stop it misfiring.
+  **Done when** a one-shot proposal that produced a beat has been read; nobody has read one yet.
 
-  The rerun reproduced the acceptance shape live in these stories: the redraft itself fabricated
-  ("Better move it now,"), the second flag came back `retried: true`, and the piece was accepted
-  with the line on the page.
+  **Evidence since (2026-09-17) — the first one-shot proposal that produced a beat has been read:**
+  `the-healer-s-cell` (one-shot scaffold). `story.json`'s timeline came back with exactly one entry —
+  `hold: "the messenger's knock"`, `fired: "A frantic pounding on the heavy oak door of the dungeon
+  corridor."`, `at: 0.6`, `scope: "scene"`, one MARA memory — not the empty-list case this bullet was
+  written against. The chapter run (`2026-09-17T11-12-06-273Z`, 9 steps, 790 words, `done: true`
+  `resolved`, evidence a verbatim quoted line) rendered the `fired` text almost verbatim ("a frantic,
+  rhythmic pounding erupted from the heavy oak door at the end of the corridor") at the position the
+  trigger implies. So `TIMELINE_FIELDS` earned its cost here: one correctly-scoped, well-integrated
+  beat, not a malformed or empty one — on this run the shrink-it case has one point against it.
 
-  What not to do first: raise `NARRATION_LINT_RETRIES`. The attribution entry under Defects is
-  implicated in both failures, so the order is fix the speaker hint, re-measure, and only then ask
-  whether the budget is short. If it still is, a single retry carrying an explicit prohibition on
-  adding any quotation is the cheaper thing to test, and a second retry granted only when the same
-  mechanical invariant fails twice spends generation on demonstrated repeat offenders rather than on
-  everyone.
-- **The clarifier can answer a different question than the one asked.** The single live clarification
-  observed asked whether telemetry was stabilising or the oscillation increasing, and was answered
-  with what a different system sounded like. The answer was accepted and folded in. Nothing checks
-  that a clarification addresses its question. One observation against it since: a near-identical
-  question in a later run ("Are the temperature readings currently increasing or stabilizing?") was
-  answered squarely ("the needle is jumping further into the red zone with every pulse of the
-  alarm"). Two data points, same question shape, opposite outcomes — so this is worth watching before
-  it is worth building a check for.
-- **The writer has one idle-body move per character and reuses it.** A character who is present but
-  not acting gets the same filler every time they appear. Doorway: *"Merritt shifts their weight on
-  the upturned crate"* three times near-verbatim in one chapter, plus two near-misses. The cooling
-  loop, different cast, different story: *"Marsh leans his head back ... squeezes his eyes shut"* /
-  *"closes his eyes"* / *"his eyes squeezed shut"* five times in one chapter. Neither is a rule
-  violation — weight-shifting on a crate is the narration prompt's own example of good involuntary
-  continuity, and a blind man may close his eyes — which is why nothing flags it. It is a vocabulary
-  problem, and it replicates across casts and stories, so it is the writer's and not any one
-  character's. Related to the fan-out differentiation entry under Open design questions, but
-  distinct: that one is several characters answering alike, this one is a single character rendered
-  alike every time. Worth measuring before it is worth fixing — count repeated body-move phrasings
-  per chapter first.
-- **Judge-conditioned revision: a real but low and lopsided capability, not the flat zero it first
-  looked like.** Surfaced chasing the Free Consult spike's v3 (see Directions): traced every judge
-  "retry" verdict across nine live doorway ch.1 runs and found 0 of 6 revisions ever survived
-  `reviseConsult`'s gate — always a menu question, an unchanged repeat, a bare "what do you do?"
-  shrug, or a sight-boundary violation. Read as "the model cannot do this task at all" until
-  `scripts/revision-benchmark.ts` (built for exactly this) replayed the same six real cases 5x each
-  in isolation. On `google/gemma-4-e4b` (the model all nine runs shared for every role): **4/30
-  samples produced a usable revision (13%), 25/30 at least recognized the answer was unusable
-  (verdict=retry)**. So the true per-attempt success rate is low but nonzero — 0/6 in production was
-  within ordinary binomial variance of a ~13% rate (≈38% chance of seeing zero successes in six
-  tries at that rate), not evidence of zero capability. It also explains why `attempt` essentially
-  never reaches 3 without needing to invoke "the model can't do this at all": two independent ~13%
-  events landing consecutively is itself rare.
+  What it did not settle: the implanted memory ("he is the one who signed her arrest warrant") never
+  surfaced, verbatim or paraphrased, in either of Mara's two post-beat consults (`mara.jsonl`, calls
+  3–4) — both `thought` fields stayed on the immediate noise. The scene ended two exchanges after the
+  beat fired, leaving the memory little room to be exercised, so this is not a miss so much as the
+  same gap the world-repair bullet above already names: a fired beat's landing is unverified until
+  `thought` fields are read across several runs, and this is the first read that actually tried.
 
-  The rate is not evenly spread, though, and that is the more useful reading: **all 4 successes
-  came from 1 of the 6 cases** (`seq78`, an open-beat RIVEN situation needing a genuinely new
-  situation plus a freshly-authored question — 3/5) plus a single hit on a second case (`seq38`,
-  1/5). The other four cases — every one where MERRITT's sight-CANNOT is what made the original
-  answer unusable and the fix is an open, non-degenerate question *about* that limitation — never
-  produced a working revision across 20 combined tries. That's a specific, repeatable weak spot
-  (constructing an open question around a stated sensory restriction), not a uniform 13%-everywhere
-  unreliability.
-
-  **Cross-model comparison (same 6 cases, 5 samples each, same benchmark):**
-
-  | model | recognized the issue (retry) | revision survived |
-  | --- | ---: | ---: |
-  | `google/gemma-4-e4b` (the story's own model) | 25/30 (83%) | 4/30 (13%) |
-  | `zai-org/glm-4.7-flash` | 1/30 (3%) | 0/30 (0%) |
-  | `gemma-4-12b-it-qat-uncensored-heretic` | 0/30 (0%) | 0/30 (0%) |
-  | `qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive` | 2/30 (7%) | 0/30 (0%) |
-  | `gemma-the-writer-n-restless-quill-10b-uncensored` | 0/30 (0%)* | 0/30 (0%) |
-  | `qwen/qwen3-8b` (stock, no fine-tune) | 0/30 (0%) | 0/30 (0%) |
-  | `qwen/qwen2.5-coder-14b` (stock, coding-specialized) | 8/30 (27%) | 0/30 (0%) |
-
-  Four for four, every alternative tried is a worse judge than the story's own small model — and
-  a pattern in *why* has emerged that reframes the earlier "abliteration suppresses refusal"
-  reading. Three of the four alternatives are community "uncensored" fine-tunes, and their names
-  say what they're tuned for: `heretic`, `hauhaucs-aggressive`, and a roleplay-branded
-  "the-writer...-quill" model — permissive, in-character creative writing, not rule-checking.
-  A judge's entire job is to refuse: decide an answer is unusable and say so. That is close to
-  the opposite disposition these tunes are optimized to have, so defaulting almost entirely to
-  "accept" (0-7% recognition) may not be a side effect of abliteration specifically so much as a
-  direct consequence of nobody having built these models to critique anything. `glm-4.7-flash`
-  is the one non-"uncensored" alternative tried and still underperforms (3%), so this doesn't
-  fully explain the gap — but it does mean the useful next model to try is one selected for
-  instruction-following/critique strength on its own terms, not "bigger" or "less restricted,"
-  and the four tried so far were not that.
-
-  *`gemma-the-writer-n-restless-quill-10b-uncensored` is a distinct failure mode, not more of the
-  same, and worth separating out: its `note` text is the most substantively correct reasoning
-  observed from any model tested — e.g. catching that "RIVEN's chosen action of speaking presumes
-  they can HEAR a response, which is NOT ESTABLISHED as guaranteed" and that MERRITT's thought
-  "shows knowledge of the task, not its in-the-moment progress sense." But its JSON consistently
-  corrupts the `verdict` key itself (`{"uxxxx: "retry", ...`, repeated near-identically across
-  independent samples, surviving even the one-shot `VERDICT_ONLY` repair), so the benchmark counts
-  it as 0/30 recognized purely on parseability — the reasoning underneath may be the best of the
-  five, undeliverable through a broken schema. Worth a second pass with a stricter JSON-mode
-  setting if this model is considered again, rather than writing it off on this number alone.
-
-  **`qwen/qwen3-8b` (stock, no fine-tune) was a clean miss on the "pick for instruction-following/
-  critique strength" advice above — 0/30, worse than the reasoning-strong-but-JSON-broken model,
-  tying the worst outright-uninterested scores.** General instruction-following/structured-output
-  benchmarks (what that recommendation was based on) apparently do not predict this specific
-  skill — noticing a narrative-continuity contradiction against an established cast fact — at all.
-  The obvious confound was ruled out, not left open: `thinking.writer` defaults to `"low"` for this
-  story, which LM Studio forwards as `reasoning_effort` on the wire (`engine/llm-client.ts:82`), so
-  `--think=<level>` was added to `scripts/revision-benchmark.ts` and the same 30 samples were
-  re-run at `--think=high`. LM Studio's own log showed this model only supports a binary
-  `on`/`off` for reasoning and clamped `"high"` up to `"on"` — full reasoning enabled — and the
-  result was byte-identical: 0/30, every sample "accept" on all six cases, same as the original
-  run. Reasoning budget made no difference; this is a real gap for this model at this size on this
-  task, not a suppressed-thinking artifact. The instruction-following-benchmark-based picks are not
-  vindicated by either result and should not be trusted further without direct measurement — this
-  entry's own throughline, now demonstrated twice.
-
-  **`qwen/qwen2.5-coder-14b` (stock, coding-specialized, `--think=off`)** is the second-best
-  recognizer tried after the story's own model — 8/30 (27%), ahead of every other alternative —
-  but still 0/30 on revision survival, the same complete failure every non-`gemma-4-e4b` model has
-  shown on that specific sub-task regardless of size, specialty, or tuning. Six alternatives across
-  four size classes (8B-35B), three specialties (general instruct, roleplay, coding) and three
-  tunings (stock, uncensored, coding-fine-tuned) have now been tried; not one has produced a single
-  surviving revision. "Recognizing the answer is unusable" and "authoring a valid open, non-menu,
-  non-repeated replacement" keep separating cleanly across every model tested — better recognition
-  (`qwen2.5-coder-14b`'s 27%, `gemma-4-e4b`'s 83%) does not carry over to the harder sub-task at
-  anything like the same rate, and for six of seven models it does not carry over at all.
-
-  **Recognition itself turned out to be less reliable than the 83%/25-of-30 number suggests — this
-  is the more important correction.** Reading the six real retry verdicts against the doorway
-  cast's actual `restrictions`/`skills` arrays (not just the judge's own stated reasoning) found
-  two of six retries were flatly, checkably wrong: `seq6` retried RIVEN for "no listed skills that
-  allow bypassing a mechanical lock" while RIVEN's skills literally list `lockpicking`; `seq78`
-  retried RIVEN for "CANNOT: sight" while RIVEN's `restrictions` array is `[]` — there is no such
-  CANNOT to invoke, and situational darkness ("you are deep inside the dark neighboring building")
-  is not an authored restriction. Two more (`seq121`, `seq38`) are defensible but imprecise: the
-  situation genuinely leaks a sight-only detail to the blind character (Merritt "perceives the
-  minute movements of Riven's hands"; Riven "squatting," a detail with no auditory analogue), but
-  the judge's note over-generalizes the fix to banning perception of the whole event rather than
-  the one leaked detail — the same underlying mechanism (collapsing `CANNOT: sight` into a blanket
-  perception ban) as the clean errors, just landing on a retry that happens to be warranted for a
-  narrower reason than stated. Only two of six (`seq110`, `seq52`, both non-POV thought-only
-  answers) are unambiguously correct against `JUDGE_FORMAT`'s own explicit rule.
-
-  That splits judge failure into two independent stages, not one: **constraint interpretation**
-  (does the verdict/reasoning correctly apply the cast's actual `can`/`CANNOT`/baseline-ability
-  facts) and **repair construction** (does the `revised` field survive `reviseConsult`, covered
-  above). Both have to work for a retry to buy anything, and this run only measured the second one
-  cleanly — the 83% "recognized the issue" figure conflates a real detection with a confidently
-  wrong one, and the two are indistinguishable from the aggregate number alone.
-
-  **Where this leaves things:** judge-retry-based measurements (recognition rate, sustained
-  retries, attempt counts, `RETRY_NUDGE_FIRM`/v3's premise, judge revision acceptance) should not
-  be trusted as evidence about anything else — including the Free Consult character-behavior
-  findings — until the judge's constraint-interpretation accuracy has its own validated benchmark
-  separate from the full retry pipeline. The Free Consult results remain sound specifically because
-  they were read from first-pass consult content (`need` rate, answer tone, scene progression), not
-  from judge/retry behavior — that distinction is now load-bearing, not incidental. A three-part
-  diagnostic (cast fact retrieval, verdict-only classification, repair-only construction, each
-  scored independently) is the next concrete step, tracked as its own entry below rather than
-  folded into this one.
-
-- **Judge diagnostic matrix — cast-fact retrieval, verdict-only classification, and repair-only
-  construction, scored independently.** Follows directly from the entry above: the aggregate
-  "recognized the issue" number conflates correct detection with confidently wrong detection, and
-  a whole-pipeline benchmark can't separate them. `scripts/judge-diagnostic.ts` isolates three
-  sub-skills that the full judge call currently bundles into one completion:
-  - **A. Cast comprehension** — no character answer at all, just closed yes/no questions against
-    the doorway cast's actual `skills`/`restrictions` (e.g. "Can RIVEN pick a mechanical lock
-    without its key?", "Does RIVEN have a restriction on sight?" — the last one aimed directly at
-    the `seq78` confusion). Ground truth is mechanical: read straight from `story.json`.
-  - **C. Repair construction** — a handful of hand-authored, unambiguous contradictions (not the
-    six real cases, whose "correct" fix is itself contested for four of six per the entry above)
-    paired with a known-valid situation/question shape, asking only for the `revised` fields and
-    checking them through the real `reviseConsult`.
-  - **B. Verdict-only classification** was considered and scoped down: grading it against the six
-    real cases needs a ground-truth verdict per case, and the entry above shows four of six don't
-    have an uncontested one. Built instead only where ground truth is mechanical — the two
-    unambiguous non-POV-thought cases (expect `retry`) plus a couple of clearly-fine synthetic
-    answers (expect `accept`) — rather than asserting a contested ground truth to get a bigger N.
-
-  **Run across four models, 5 samples/case (`google/gemma-4-e4b`, `qwen/qwen2.5-coder-14b`,
-  `qwen/qwen3-8b`, `zai-org/glm-4.7-flash`):**
-
-  | model | A. cast comprehension | B. verdict-only | C. repair (diagnosis given) |
-  | --- | ---: | ---: | ---: |
-  | `google/gemma-4-e4b` | 45/55 (82%) | 14/20 (70%) | 13/15 (87%) |
-  | `qwen/qwen2.5-coder-14b` | 50/55 (91%) | 2/20 (10%)* | 15/15 (100%) |
-  | `qwen/qwen3-8b` | 50/55 (91%) | 10/20 (50%) | 13/15 (87%) |
-  | `zai-org/glm-4.7-flash` | 47/55 (85%) | 10/20 (50%) | 1/15 (7%) |
-
-  *`qwen2.5-coder-14b`'s 2/20 is mostly a JSON-formatting artifact, not a reasoning signal —
-  most of its replies came back as `{verdict: "accept"}` (unquoted key), which fails
-  `extractJson`/`parseVerdict` regardless of whether the underlying verdict was right. Not
-  comparable to the other three numbers as-is.
-
-  **Finding 1 — the `seq78` case was misdiagnosed in the entry above, and this benchmark is what
-  caught it.** `riven-sight-restriction` ("Does RIVEN have a restriction on sight?", expect false)
-  scored **20/20 across all four models** — every model, every sample, gets this fact right in
-  isolation, including `gemma-4-e4b`. So `seq78`'s live error ("contradiction with CANNOT: sight
-  -- required" against a character with `restrictions: []`) was never a fact-retrieval gap; the
-  model demonstrably knows the fact when asked cleanly. What's actually happening is closer to
-  fact application overridden by narrative content: the character's own answer said "I am blind
-  in this dark place," and something about that phrase, embedded in the fuller judging task,
-  displaced a fact the same model states correctly in isolation. That's a different, and honestly
-  more concerning, failure mode than "doesn't know the cast" — it means correct knowledge is not
-  reliably load-bearing once it has to compete with salient narrative language in context.
-
-  **Finding 2 — the sight-into-hearing collapse is real, model-specific, and near-total for
-  `gemma-4-e4b` specifically.** `merritt-hearing-baseline` and `merritt-infers-from-sound` (both
-  expect true — Merritt's only restriction is sight, hearing is untouched baseline) scored **0/10
-  for `gemma-4-e4b`** — it says false on both, every single sample, no variance at all. This is a
-  clean, deterministic-looking bug, not stochastic noise, and it's exactly the `seq38`-type
-  mechanism named in the entry above, now isolated from the ambiguous real case: this model
-  specifically treats `CANNOT: sight` as removing perception generally, not just seeing. The other
-  three models mostly get the raw hearing-capability fact right (`qwen2.5-coder-14b` 5/5,
-  `qwen3-8b` 5/5, `glm-4.7-flash` 3/5) but two of them — `qwen2.5-coder-14b` and `qwen3-8b` — still
-  score 0/5 on the *inference* version ("can Merritt conclude from sound alone that work is
-  happening?") despite believing Merritt can hear the sound. That's a narrower, sharper gap than
-  `gemma-4-e4b`'s: not "can't perceive it" but "won't reason from a perception it agrees is real."
-
-  **Finding 3 — verdict classification has a third failure mode, independent of cast semantics
-  entirely: unstable application of the judge's own explicit, unambiguous rules.**
-  `real-seq110-merritt-thought-only-nonpov` and `real-seq52-merritt-thought-only-nonpov` are the
-  same violation (a non-POV thought-only answer, which `JUDGE_FORMAT` forbids in so many words) —
-  `gemma-4-e4b` scored 0/5 on `seq110` and 4/5 on `seq52`. Structurally identical inputs, opposite
-  outcomes, no cast-semantics ambiguity involved at all. `qwen3-8b` and `glm-4.7-flash` show a
-  cleaner but more permissive pattern: 0/10 combined on both real retry cases (always "accept")
-  against 10/10 on the two synthetic clearly-fine answers — a consistent, reproducible
-  under-sensitivity to this exact rule, confirming the "defaults to accept" disposition from the
-  cross-model table above directly, rather than by inference from aggregate retry rates.
-
-  **Finding 4 — repair construction improves dramatically once detection is handed over for
-  free, which locates the earlier bottleneck precisely.** With the contradiction and its reason
-  given rather than self-discovered, `gemma-4-e4b` jumped from 4/30 (13%) in the full bundled
-  judge call to **13/15 (87%)** on repair alone; `qwen2.5-coder-14b` hit 15/15 (100%);
-  `qwen3-8b` hit 13/15 (87%). Three of four models are substantially better at *authoring* a valid
-  revision than the original benchmark suggested — the bottleneck in the full pipeline is
-  concentrated in detection, not repair-writing, for those three. `glm-4.7-flash` is the
-  exception: 1/15 even with the diagnosis handed to it, confirming its weakness is specifically in
-  repair construction itself, not detection (it also scored respectably, 47/55 and 10/20, on the
-  other two axes).
-
-  **What this changes:** splitting the judge's single call into two — one that only decides
-  accept/retry and names the contradiction, a second (invoked only on retry) that authors the
-  revision given the first call's own stated reason — is now a concrete, evidence-backed candidate
-  fix worth prototyping, not a guess. The caveat that keeps it from being a sure thing: this
-  benchmark fed the repair stage a hand-authored, *correct* diagnosis. In a real two-call pipeline
-  the second call would be conditioned on the first call's own reasoning, which Findings 1-3 show
-  is wrong or unstable a meaningful fraction of the time — splitting the calls isolates the
-  cognitive load per call (plausibly still a real improvement) but does not by itself fix a wrong
-  diagnosis feeding a now-more-capable repair stage.
-
-- **The split judge is built as `--split-judge`, and is unmeasured.** The prototype the entry above
-  ends by calling for: the per-answer gate as a JUDGE call over `VERDICT_JUDGE_FORMAT` (the same cast
-  block and decision ladder, revision removed from its job) plus a REPAIR-JUDGE call, made only on a
-  retry, handed the verdict's own `note` as its reason and asked for the situation and question alone
-  — reusing `REPAIR_ONLY_FORMAT`, which the diagnostic wrote and which is no longer diagnostic-only.
-  Run-level CLI toggle, off by default, gated path byte-identical without it; behaviour is in
-  [`Judge.MD`](Judge.MD), under the per-answer gate. Deterministic tests cover the wiring: that a
-  verdict carrying a note and no revision still retries, that the note is what reaches the second
-  call, that the default path makes no second call at all, and that a repair outage keeps the answer
-  in hand under `repair_failed` rather than spending the attempt.
-
-  **Measured in the harness** (`scripts/revision-benchmark.ts --split`, 5 samples over the same six
-  real failures the single-call numbers came from, same `reviseConsult` scoring), against the
-  single-call mode on identical cases:
-
-  | model | mode | recognized | revision survived | of all samples |
-  | --- | --- | ---: | ---: | ---: |
-  | `google/gemma-4-e4b` | single | 28/30 | 6/28 (21%) | 6/30 (20%) |
-  | `google/gemma-4-e4b` | **split** | 17/30 | **9/17 (53%)** | **9/30 (30%)** |
-  | `qwen/qwen2.5-coder-14b` | single | 10/30 | 0/10 (0%) | 0/30 (0%) |
-  | `qwen/qwen2.5-coder-14b` | **split** | 15/30 | **14/15 (93%)** | **14/30 (47%)** |
-
-  **The drop in `gemma-4-e4b`'s recognition rate is the result, not a cost — read per case.** Two of
-  the six cases (`seq6`, `seq78`) are the clean errors this record already identified: retries the
-  judge should never have issued, one citing "no listed skill to bypass a lock" against a RIVEN whose
-  skills list `lockpicking`, one inventing a `CANNOT: sight` against a character with
-  `restrictions: []`. Three (`seq121`, `seq110`, `seq52`) are genuine. Retries by group, out of ten
-  false-positive and fifteen true-positive samples:
-
-  | model | mode | on the 2 false-positive cases | on the 3 genuine cases |
-  | --- | --- | ---: | ---: |
-  | `gemma-4-e4b` | single | 8/10 | 15/15 |
-  | `gemma-4-e4b` | **split** | **0/10** | **15/15** |
-  | `qwen2.5-coder-14b` | single | 3/10 | 5/15 |
-  | `qwen2.5-coder-14b` | **split** | **1/10** | **10/15** |
-
-  `gemma-4-e4b`'s verdict call stopped issuing the false-positive retries *entirely* while holding
-  detection on the genuine ones at 15/15 — so the aggregate 28→17 is almost exactly the eight bad
-  retries going away. That is a precision gain the summary line hides, and it was invisible to every
-  earlier measurement. It also rules out the obvious alternative reading, that `VERDICT_JUDGE_FORMAT`
-  is simply more permissive: a uniformly permissive prompt does not hold 15/15 on the true positives.
-  `qwen2.5-coder-14b` improved on both axes at once.
-
-  **But the notes show the predicted failure mode is real, and the gate cannot see it.** Roughly half
-  of `qwen2.5-coder-14b`'s fourteen surviving revisions rest on a diagnosis that is wrong or empty:
-  four on `seq38` say Merritt "cannot see, so they have no way to perceive the noise of tools on
-  metal" (Finding 2's sight-into-hearing collapse, intact); one on `seq78` says "Merritt cannot see"
-  about a case whose answerer is RIVEN; one on `seq121` says "Riven's private thoughts" for a MERRITT
-  answer; and one on `seq110` is the schema's own placeholder text, `"the contradiction, in one line
-  -- required"`, echoed back verbatim. Every one of those produced a revision that **passed**
-  `reviseConsult`. The gate checks that a revision is new, unforked, non-degenerate and does not reach
-  through a CANNOT — none of which is a check that the repair addresses a contradiction that exists.
-  So the 93% is a repair-construction number, not a correctness number, and the two must not be
-  conflated.
-
-  **A second, new finding: the split made the notes materially worse as prose, exactly when they
-  became load-bearing.** In single-call mode the note is decorative and came back as full sentences
-  ("The character's thought contradicts the established CANNOT (sight) as they perceive the minute
-  movements of Riven's hands"). Under `VERDICT_JUDGE_FORMAT` it is the entire input to call two, and
-  `gemma-4-e4b` returned the bare fragment "Merritt CANNOT sight" on all five `seq110` samples, and
-  "thoughts of non-POV characters" on `seq52`. The gloss said what the note was *for* without
-  demanding the collision be stated.
-
-  **`qwen/qwen3-30b-a3b-2507` scored 0/30 in both modes** — it never issued a single retry on any of
-  the six cases, single-call or split. It is the largest model measured here and the only one at
-  floor, which kills "a bigger model fixes this" as a reading; and since single-call is equally
-  blind, it is not a split artifact. Its LM Studio logs also show `reasoning_effort` is a no-op for
-  it (`No valid custom reasoning fields found`, `reasoning_tokens: 0`) — it is the non-thinking
-  instruct release, so `--think` is not a lever, unlike `qwen3-8b`.
-
-- **A defect in what the judge was shown, found by reading those logs, and fixed.** `judgeRequest`
-  emitted `You asked: ${question}` unconditionally. An open beat carries no question — which is
-  nearly all of them, and all six benchmark cases — so every judge call in every live run rendered
-  a bare `You asked: ` followed immediately by `They are not the point of view: what they think is
-  not yours to write.` The non-POV flag landed exactly in the question's slot and read as the thing
-  the author had asked. That sat directly on top of the rule the under-detecting models all miss
-  (`seq52`, `seq110`, `seq121` are non-POV thought-only violations). It is a plausible mechanism for
-  those misses, not a demonstrated cause — but it was in the shipped prompt, not just the benchmark.
-  Now: the no-question case says so explicitly, and the flag is bracketed `[NOT THE POINT OF VIEW]`
-  like the `[FLAGGED]` line beside it, so it cannot be read as content. `repairOnlyRequest` carried
-  the same bug and took the same fix.
-
-  **Every number above was measured on the pre-fix prompt and is superseded.** Two changes shipped
-  together — this payload fix and a tightened `note` gloss that now demands both halves of the
-  collision (what the answer said, in its own words, and what it collides with, with the observed
-  half-notes named as counterexamples). They are separable in the reading even though they shipped
-  together, because they move different numbers: the payload fix should move **detection on the
-  three non-POV cases**, and the gloss should move **the share of surviving revisions resting on a
-  wrong or empty note**. If detection moves and note quality does not, the gloss did nothing, and
-  the reverse likewise. Re-run `gemma-4-e4b` and `qwen2.5-coder-14b` in both modes to re-establish
-  the table before anything else is concluded.
-
-  **What a live run still owes, and what it cannot settle.** Whether this helps a whole chapter is a
-  different question, worth asking once the baselines are re-established. What no live run can settle
-  is diagnosis correctness, for the same reason the harness cannot score it: `reviseConsult` is
-  mechanical and the only judge of whether a reason is true is the model being judged. Reading the
-  `retry` events' notes by hand is the check, and it is the check.
-
-- **Restriction meanings (`--cannot-meaning`/`--cannot-none`/`--cannot-testimony`) — measured against
-  the story's own model, and the verdict-mode result is the strongest single number this record
-  holds.** Mechanism is in [`Judge.MD`](Judge.MD) under the per-answer gate: a restriction's authored
-  `:: meaning` now travels to the prompt renderers on `CharacterDef.limitMeanings`
-  (`engine/skills.ts`), never inside `limits` itself, so I2 stays literal; three independently
-  switchable arms render it, state an unrestricted character's absence explicitly, and restate the
-  answerer's own limits beside their answer in the judge payload. Built to test Finding 1 and
-  Finding 2 above directly — `merritt-hearing-baseline`/`merritt-infers-from-sound` are Finding 2's
-  own cases, and `riven-sight-restriction` is Finding 1's.
-
-  **First attempt was a CI detour that produced two unusable datasets before a usable one, and both
-  failures are worth recording so neither gets repeated.** With the owner away from the machine that
-  runs `google/gemma-4-e4b`, `scripts/judge-diagnostic.ts` was routed at a hosted OpenAI-compatible
-  provider from a GitHub Actions workflow (`.github/workflows/judge-diagnostic.yml`,
-  `workflow_dispatch` only — confirmed from `engine/provider-llamacpp.ts`'s capability shape that
-  `LLM_PROVIDER=llamacpp` needs no code change to point at one). First run, model `openrouter/free`:
-  every leg completed, but the rate-limit error bodies named at least three different backing models
-  answering different calls in the same run (`poolside/laguna-s-2.1:free`,
-  `poolside/laguna-xs-2.1:free`, `google/gemma-4-26b-a4b-it:free`) — `openrouter/free` is an
-  auto-router across a pool, not one model, so no two legs' numbers were measuring the same thing and
-  the whole run was uninterpretable. Second run pinned to the one confirmed-real id seen in those
-  errors, `google/gemma-4-26b-a4b-it:free` — and every leg scored a flat **0**: OpenRouter's free
-  tier shares one 20-requests/minute quota across whatever free model a key uses, and five matrix
-  legs firing concurrently at the same pinned model exhausted it before any retry window could
-  recover, so every sample in every leg came back `unparseable(ERROR: ...429...)`. (One thing that
-  *did* hold up under this: `scripts/judge-diagnostic.ts`'s `callOnce` had no catch around
-  `agent.generate` before this, so one dropped call would have crashed `main()` and lost every sample
-  already gathered in that mode, not just the failed one — fixed and verified in isolation
-  (a monkeypatched always-throwing `generate` now returns `{ raw: "ERROR: ..." }` from `callOnce`
-  rather than propagating) before the CI runs above, which is the only reason they degraded to a
-  legible `0/N` instead of a crashed job with no output at all.) Lesson for next time: a shared
-  free-tier quota and matrix concurrency are a bad combination regardless of which model is pinned —
-  serialize the legs (`max-parallel: 1`) or use a funded key before trusting a parallel run's numbers.
-
-  **The real measurement** (`google/gemma-4-e4b`, `tests/fixtures/doorway`, `--samples=20`, run
-  2026-09-15 once LM Studio was available again):
-
-  | case (cast mode, expect) | baseline | `--cannot-meaning` | `+ --cannot-none` |
-  | --- | ---: | ---: | ---: |
-  | `merritt-hearing-baseline` (true) | **0/20** | **20/20** | 20/20 |
-  | `merritt-infers-from-sound` (true) | **0/20** | **10/20** | **0/20** |
-  | `riven-sight-restriction` (false) | 20/20 | 20/20 | 20/20 |
-  | other 8 cases | 20/20 each | 20/20 each | 20/20 each |
-  | **total** | **180/220** | **210/220** | **200/220** |
-
-  | case (verdict mode, expect) | baseline | full testimony arm |
-  | --- | ---: | ---: |
-  | `real-seq110-merritt-thought-only-nonpov` (retry) | **0/20** | **20/20** |
-  | `real-seq52-merritt-thought-only-nonpov` (retry) | **0/20** | **20/20** |
-  | `synth-riven-clean-lockpicking` (accept) | 20/20 | 20/20 |
-  | `synth-merritt-clean-speech` (accept) | 20/20 | 20/20 |
-  | **total** | **40/80** | **80/80** |
-
-  (full testimony arm = `--cannot-meaning --cannot-none --cannot-testimony`; `--cannot-testimony`
-  renders into `judgeRequest`'s payload, which cast mode never calls, so it was tested only in
-  verdict mode.)
-
-  **Finding 2's cast-mode floor is not soft — it is a complete, deterministic 0/20 in isolation, on
-  the real model, at double PLANS.md's original sample size.** `merritt-hearing-baseline` recovered
-  to an equally deterministic 20/20 under `--cannot-meaning` alone: every sample wrong, then every
-  sample right, nothing in between. That is the cleanest before/after this record has produced for
-  any intervention.
-
-  **Verdict mode is the decisive result.** The baseline judge never once caught either genuine
-  non-POV thought-only violation across 40 combined samples — a complete miss, worse than any
-  earlier measurement of this rule, including the confounded OpenRouter runs above (which is exactly
-  why those don't count: 13/20 there read as a mild baseline, this reads as a floor). The full arm
-  caught every one of the 40, while the two already-perfect accept cases stayed at 20/20 — complete
-  recovery, zero regression, zero variance in either direction. This is the opposite result from the
-  confounded CI run's reading (`13/20` → `11/20`, apparently a regression); against the real model
-  the same arm is a clean win, which is the whole reason the earlier number was never trustworthy in
-  the first place.
-
-  **A real, repeatable regression — confirmed by a second run, not folded into the headline.**
-  `merritt-infers-from-sound` went 0/20 → 10/20 under `--cannot-meaning` alone, then back to 0/20
-  once `--cannot-none` was added — a complete reversal, not a drift. `--cannot-none` only changes an
-  *unrestricted* character's rendering (`engine/scene-loop.ts`'s `cannotDisplay(..., ENGINE.cannotNone
-  ? P.NO_RESTRICTIONS : undefined)` fires only when a character's own limits list is empty), so
-  RIVEN's line is the only thing that changed between these two runs — MERRITT's CANNOT line is
-  byte-identical in both. A repeat of `--cannot-meaning --cannot-none` alone on this one case landed
-  **0/20 again**, everything else unchanged (still 20/20 including `merritt-hearing-baseline`), which
-  rules out one unlucky draw: two independent 20-sample runs, same result both times. A change to a
-  *different* character's rendering (RIVEN gaining an explicit `CANNOT: (none)` line) is coinciding
-  with a complete, reproducible flip on MERRITT's hardest inference case. The mechanism is still a
-  hypothesis, not demonstrated — plausible reading is that making "CANNOT" more visually salient
-  elsewhere reinforces the over-generalization Finding 2 already describes, rather than curbing it —
-  but the effect itself is no longer in question.
-
-  **What this changes.** The verdict-mode arm (`--cannot-meaning --cannot-none --cannot-testimony`)
-  has gone from an untested prototype to the best-evidenced fix in this document — worth promoting
-  toward a default rather than staying a flag, on this evidence alone. `--cannot-meaning` alone in
-  cast mode is real but incomplete (fixes the clean case, not the inference one). `--cannot-none`
-  should **not** be bundled with `--cannot-meaning` by default wherever the inference case matters —
-  confirmed, not merely suspected, to cost `merritt-infers-from-sound` its partial recovery, for a
-  character the flag does not even touch directly. That it still helps verdict mode (where it also
-  covers RIVEN's own testimony-arm case) and hurts cast mode is itself worth a targeted follow-up:
-  same flag, opposite direction, on two different call sites. All of this was measured against
-  `tests/fixtures/doorway`'s authored meaning (`sight :: Merritt is blind...`) — promoting any arm to
-  a default would mean every story's restrictions need one, which is exactly what
-  `restrictionMeanings`' missing-`:: meaning` warning exists to push authors toward, but is not yet
-  enforced.
-
-## Open design questions
+## Decisions needed
 
 The engine permits something it should not, or has no representation for something it needs, and the
 fix is not decided. Nothing here should be built before its question is answered.
 
-**In Next:** item 2, a scene having no representation of its own question being answered.
+### Whether `--heard-channel` becomes the default
 
-- **The architect hands the writer future knowledge through the scene framing; [HOLD] only contains it.** The writer is built from the architect's title, premise and scene question, and those fields can foreshadow a world event before it fires. For example, "Does the fault alarm empty the wing before anyone settles where the crate goes?" already tells the writer a fault alarm exists, the wing may be emptied, a crate exists, the crate is currently unresolved, and the events are related — future structure known before the first piece is written, even when `[HOLD]` correctly prevents narrating it prematurely. `[HOLD]` is a containment mechanism, not a correct information boundary: it stops early narration, not early knowledge. This is an ARCHITECT problem — the writer-facing scene framing foreshadows hidden world/timeline state. It is distinct from the information-authority problem under The world timeline below, which is about what a character could plausibly perceive, not about what the writer is told. Future architect work should make the writer-facing framing genuinely non-foreshadowing while preserving the hidden world/timeline state. Out of scope for that work, by definition: another character filter, changing `[HOLD]`, adding an arbiter, filtering timeline events, modifying the writer, or modifying character prompts. `[HOLD]` stays as it is.
-- **The handoff prompt grows with the story.** It resends every written chapter, roughly 1,100 tokens
-  each. The round refuses with the numbers rather than letting the model return nothing, so a long
-  story fails loudly instead of silently — but nothing shrinks the input. The open decision is which
-  of summarizing prior chapters, windowing them, or requiring a correspondingly large context window
-  is the answer; the first two both risk dropping exactly the continuity the item below is about.
-- **A later chapter's writer has no continuity but what the handoff formalized.** Chapter *n*'s writer
-  is built from the revised premise, the scene definition, `facts`, the cast summary and the style —
-  and nothing else. No previous prose, no ending, no recap, no note of where anyone physically is,
-  what they are holding, or what they promised each other last chapter. Whatever the handoff fails to
-  promote into a formal field is simply gone: the agents carry no memory across chapters by design, so
-  `story.json` is the entire channel, and the handoff is a lossy encoder with no signal when it drops
-  something. Candidates, cheapest first: give the writer the previous chapter's closing paragraphs
-  verbatim as an opening `[PREVIOUSLY]` block (no new model call, bounded by what is already on disk);
-  add a `standing:` list to the scene definition for positions and held objects, which the handoff
-  fills and the story editor shows; and, only if those fall short, a durable per-character `carrying`
-  field. The risk in all three is the one the asymmetry exists to prevent — continuity that reaches the
-  writer must not reach a character as something they were never told. That risk is the decision to
-  make before any of the three is built.
-- **A reaction fan-out does not differentiate.** Given one situation, several characters return the
-  same beat: in a live four-hander two of them answered a post-crisis fan-out with near-identical
-  shaking hands and a long exhale, and one then repeated his own line almost verbatim in a later
-  fan-out. Four of that scene's six fan-outs came after the crisis had resolved, and the scene
-  overran its 900-word target by 43%. The fix has three possible owners — the fan-out's situation
-  text, a cross-reaction check like the fourth judge variant parked below, or simply not fanning out
-  once the scene's question is answered. Which one it is has to be decided before anything is built.
+Type: decision
+Why now: both halves of the mechanism are now built — verbatim delivery, and a gate that refuses a
+situation retelling what the block carries (`engine/lint/situation-lint.ts`, `Character.MD`) — but the
+only live evidence for either predates the gate. The flag is still off by default, so nothing
+exercises them together.
+Next action: one live run under `--heard-channel` on a story that **declares pronouns**, then read
+the `bad_consult` rate and whether the writer recovers from a recap refusal the way it recovers
+from a restricted-sense one.
+Done when: the promotion is taken or refused on that run's evidence.
+Evidence: the-healer-s-cell `2026-09-18T06-24-52-772Z` (revision `00741a1`,
+`gemma-4-12b-it-qat-uncensored-heretic`, 13 consults, chapter finished on `done_confirmed`).
 
-**From the asymmetry review.** Found by asking how the engine handles stories where several
-characters face interdependent choices without seeing each other's reasoning. Each is a place where
-the engine permits something the asymmetry forbids.
+**What that run already settles.** The delivery half is exact: seven asks carried
+`[WHAT YOU HEARD]`, seven lines were delivered, all seven verbatim matches of granted speech, one
+of them a promoted fan-out reaction rather than an `accept`. The six asks with no block are all
+correct — the opening consult, and five where nothing new had been said since. Nothing was owed
+and missing.
 
-- **A bespoke capability one character holds can only ever be an absence on another, never a CANNOT.**
-  `parseRestrictions` resolves a restriction naming a general skill, a bible skill, one of that
-  character's own skills, or a scene reach grant — so "B cannot sign the line that is A's to sign" is
-  inexpressible, because the capability is A's bespoke skill. Declaring it in B's own `skills` to make
-  it resolvable does not help: precedence then hands it back with a warning, so that branch can never
-  produce a CANNOT. Observed cost, live: with the capability an absence rather than a CANNOT the
-  narration lint had no negative to check against, and the writer put one character's signature on the
-  line the facts reserved for the other. Whether the answer is a story-level skill catalog, a
-  cross-character restriction form, or leaving this to `facts`, is open — it is the same distinction
-  the "a removed special skill is a cannot, not an absence" work was about, and it currently holds
-  only for general and bible skills.
-- **Skill Bible aliases are resolution semantics, not a UI field.** `engine/skills.ts` resolves
-  skills, restrictions and reach **by name**, through `nameKey`/`sameName` — the single funnel every
-  case-insensitive identity comparison goes through. Aliases would change which name a restriction
-  matches, and whether a removed skill reads as a CANNOT or an absence — the same distinction the
-  "a removed special skill is a cannot, not an absence" work settled. Design against that module's
-  invariants (its docstring carries all five) before any editor shows an alias field.
-- **A "Draft · architect" badge on the shelf.** A story reaches the shelf only once `story.json`
-  exists, and the scaffold session is session-only that dies on restart — so the mockup's badge has
-  three readings, ascending in cost: derive it from `chapters.length === 0` (free; cannot see an
-  interview abandoned before accept, because nothing is on disk yet), a session badge while this
-   process holds that story's session (free; vanishes on restart — the new-story card's
-   "continue new story…" already does a version of this), or persisting scaffold drafts to disk
-   (engine work, half-written stories that do not preflight, a directory before a name). Only the
-   owner can say which they wanted; nothing is built until then.
+**What it says about the writer.** Six of the seven heard-carrying asks *also* paraphrased the same
+speech in the situation, so delivery alone did not stop the retelling arriving first; that is what
+the gate now refuses. Steering survived in five of thirteen asks, including a literal decision menu
+("Do you open the door or wait for them to announce themselves?"), which no mechanical check
+addresses. Thirteen asks in one chapter of one story under one model is a direction, not a rate.
+
+**Why the next run needs declared pronouns.** `pronouns` is optional on the schema, and
+the-healer-s-cell declares none. Replayed against that run, the gate refuses six of the seven asks
+with a declared cast and only three without — the writer pronominalises whoever the previous
+sentence named, and an undeclared pronoun resolves to nobody rather than to a guess. The same
+field carries the quote lint's speaker resolution, which on the same replay clears all four of
+that run's false attributions with pronouns declared and three of four without. A promotion run on
+a pronoun-less story would measure the weaker half of both.
+
+### Whether a scene may outrun its own question, and what should happen when it does
+
+**In Now:** item 2 carries the live-evidence read this decision is waiting on. Overlaps the reaction
+fan-out entry below, whose live evidence is also a post-crisis overrun.
+
+### The architect hands the writer future knowledge through the scene framing — `[HOLD]` only contains it
+
+"Does the fault alarm empty the wing before anyone settles where the crate goes?" tells the
+writer the alarm exists, the wing may empty, the crate is unresolved, and the events are related —
+before the first piece is written. This is an ARCHITECT problem (writer-facing framing foreshadows
+hidden timeline state), distinct from the information-authority question below (what a character
+could perceive). Out of scope by definition: another character filter, changing `[HOLD]`, an
+arbiter, filtering events, or touching the writer/character prompts. `[HOLD]` stays as it is.
+
+### The handoff's context is incomplete, and it only grows
+
+The handoff prompt resends every written chapter (~1,100 tokens each); a long story fails loudly
+rather than silently, but nothing shrinks the input. Summarize, window, or require a large context
+window — the first two risk dropping exactly the continuity the next paragraph is about. (The
+chapter-summary review step under Directions is one candidate answer.)
+
+A later chapter's writer has no continuity but what the handoff formalized: no previous prose, no
+ending, no recap, no positions, holdings or promises — whatever the handoff fails to promote into a
+formal field is gone. Candidates, cheapest first: the previous chapter's closing paragraphs verbatim
+as `[PREVIOUSLY]`; a `standing:` list for positions and held objects; only if those fall short, a
+durable per-character `carrying` field. The decision first: continuity reaching the writer must not
+reach a character as something they were never told.
+
+### A reaction fan-out does not differentiate
+
+One situation, several characters, the same beat: two reactors in a live four-hander answered a
+post-crisis fan-out with near-identical shaking hands and long exhales; four of that scene's six
+fan-outs came after the crisis resolved, and the scene overran 900 words by 43%. Three possible
+owners — the fan-out's situation text, a cross-reaction check (cf. the parked fourth judge variant
+under Constraints), or simply not fanning out once the scene's question is answered. Decide before
+building; overlaps "Whether a scene may outrun its own question" above, whose live evidence is also
+a post-crisis overrun.
+
+### Whether visibility into a world event ever needs a model-based agent beyond the shipped gates
+
+Presence, `"scene"`-scoped implantation, the consult situation-bounds check and the fan-out's
+remote-reactor refusal are shipped ([`Character.MD`](Character.MD)); the clarifier's verbatim
+`[WHAT HAS NOT HAPPENED]`/`[ALREADY TRUE]` block is shipped ([`Clarifier.MD`](Clarifier.MD)); why
+`[WORLD]`/`[HOLD]` reaches the shared writer instruction unfiltered by design is now in
+[`Writer.MD`](Writer.MD). Open: if a model-based agent is ever needed beyond these gates, it
+withholds (*"Bob cannot see the envelope"*) but never infers (*"Bob should suspect Y"*). Gating that
+channel by presence would be a larger, riskier change than any shipped gate.
+
+### A bespoke capability one character holds can only ever be an absence on another, never a CANNOT
+
+"B cannot sign the line that is A's to sign" is inexpressible: declaring it in B's own `skills`
+hands it back with a warning, and as an absence the narration lint has no negative to check —
+live cost, one character's signature on the other's line. Whether the answer is a story-level skill
+catalog, a cross-character restriction form, or leaving this to `facts` is open. Same distinction
+as the settled general/bible work; currently holds only for those.
+
+### Skill Bible aliases are resolution semantics, not a UI field
+
+Resolution is by name through `nameKey`/`sameName`; aliases change which name a restriction matches
+and whether a removed skill reads as CANNOT or absence. Design against `engine/skills.ts`'s
+invariants before any editor shows an alias field.
+
+### A "Draft · architect" badge on the shelf
+
+Three readings, ascending in cost: derive from `chapters.length === 0` (free; blind to interviews
+abandoned before accept); a session badge while this process holds the session (free; vanishes on
+restart — the "continue new story…" card already does a version of this); persisting scaffold drafts
+to disk (engine work, half-written stories that do not preflight). Only the owner can say which;
+nothing is built until then.
+
+### A re-consulted character never learns what followed its last answer — and the carrier for that already exists as a flag
+
+A character consulted at step 2 and again at step 24 holds only its answer as decided: no record of
+what the page did with it, nor of the intervening beats. The measurement that opened this
+(`scripts/measure-situation-coverage.ts` against the recorded-run fixture: 16 re-consults, 15 of them
+stale) found the mechanical screen in `engine/lint/situation-coverage.ts` uncalibrated (0/15) but the
+human read 15/15 carrying the decision-relevant intervention — including the one-word "Clear."
+rendered as "a single word of confirmation". That clears the 70% bar fixed before the run, which
+sends this to enforcement, with caveats (one fixture, one story, one model; confirm on a second live
+run). The carrier is already built: `--consult-since` — CLI-only and **off by default** — makes a
+stale consult carry `since` (what its last answer came to, plus perceivable surroundings), joining
+the situation before the gate, and refuses a stale consult without it ([`Writer.MD`](Writer.MD)).
+
+**Evidence since (2026-09-16) — the carrier's accuracy is confirmed, and the run priced in two
+costs the fixture read never saw.** One live `e4b`/doorway run under the flag (`19-52-53-936Z`,
+revision `21ddb86`): the stale refusal fired 5 times and recovered within 1–2 drafts every time —
+no stall, the same 24-step cap the flag-off baseline runs also hit. Its two substantive `since`
+values both check out mechanically against the accepted action they describe, one near-verbatim.
+So the enforcement question this entry was waiting on — does a required `since` actually carry
+what happened — is answered: yes.
+
+What the same run also did: reintroduced the narrator-voice `you`-leak that the three flag-off
+runs read for item 1 under Now stayed clean on (four paragraphs this time, including the scene's
+last two, unflagged by any lint) — `SINCE_FIELD`'s own instruction to address the character as "you"
+in `since` is the likely source, bleeding into the general narration register on this model. And it
+let a CANNOT violation through the gate `since` is supposed to close: MERRITT
+(`restrictions: ["sight"]`, blind) was told "Riven ... maintaining eye contact with you" — sight-
+dependent, unflagged, because `lintRestrictedSituation`'s sight list (`engine/lint/sense-lint.ts`) is
+literal verbs (`watch`/`gaze`/`stare`/gated `look`) and "eye contact" is a noun phrase outside it —
+a gap that predates this flag but that free-authored `since` prose exercises more than the
+structured `action`/`speech` fields ever did.
+
+**The decision:** not "the flag becomes the default" yet. First, either tighten `SINCE_FIELD`'s
+wording so "address them as you" cannot read as licence for the narration voice, or measure whether
+the leak is model-specific; and either extend the sight list to catch sight-idiom noun phrases
+(`eye contact` at minimum) or knowingly accept the gap as pre-existing and out of scope for this
+entry. A second live run, after whichever of those lands, is what actually settles the promotion
+question. If a required, refusal-forced `since` still measures insufficient even then, the fallback
+is a batched authored digest at the next consult, paraphrase-only except the character's own
+verified speech, with a real third-person presence/CANNOT gate; that one costs a model call, which
+is why it is last. The answer itself is never withheld (`answer_unwritten` aside): the gap this
+entry closes is page-consequence, not answer-availability.
+
+### A character is written out of the scene and never declared gone
+
+Across six `alarm-*` runs the writer emitted `exit` **zero** times, including a run where it narrated
+Tibbs leaving across seven pieces and thirteen steps while the loop kept Tibbs in `active`, kept
+consulting them, and kept naming them in the neglect nudge from a stairwell they had already left.
+The departure is gradual, so there is never one piece the writer would recognise as *the* exit, and
+nagging harder about the field fights that. `exit_refused` has also never fired, so nothing
+distinguishes "declared and refused" from "never declared". (The mechanism itself — `exit`, the
+nudge's exit reading (`52c0649`), `exit_refused` — is shipped; see [`Writer.MD`](Writer.MD).) The
+nudge's exit reading is unverified: it renders only alongside the nudge, and the same commit
+correctly stops the nudge firing in the four-hander that would have exercised it. **The decision:**
+either give it a second carrier or accept it is decoration — not yet promotable, because the
+mechanism is still unclear (a single conflated carrier is not the same failure as a missing one).
+Why it matters beyond tidiness: a POV exit ends the chapter, so an undeclared one silently costs the
+loop its ending — one `alarm-wing` run had HALE walk downstairs and the scene ran on to the cap.
+
+### The dedicated character library needs its backend contract
+
+The GUI's character workspace (from `mockups/architect/character-editor.html`) deliberately uses
+`/catalog?kind=characters` and `/catalog/save` where they work and mocks the rest; the mock boundary
+must not become a second browser-only store. `LibraryCharacter` stays the portable half only (`id,
+version, name, hidden, updatedAt, portablePersona, belief, impulse, voice[], skills[],
+restrictions[]` — no `tags`, no `goal`/`knows`/reach (I4), no `model`/retries; `voice` capped as in
+the story schema). Endpoint contract: `GET /characters?includeHidden=`, `POST /characters`, `PUT
+/characters/:id`, `POST /characters/:id/duplicate|hide|restore|import`, `DELETE /characters/:id`
+(real delete, 404 unknown), `POST /characters/assist` (`create`|`revise`, server-constrained fields,
+validated proposal, never persists) — reusing `/catalog/check` validation rather than copying it;
+keep the catalog routes as a compatibility bridge, then move the GUI client and remove the fallbacks.
+Replace mocks in order: schema/migration/tests (+ remove `tags` with its readers); host
+methods/routes delegating writes to the catalog implementation; response-driven lifecycle in the
+GUI; import route (picker excludes hidden); dedicated `characterAssist` prompt (never whole-story
+`suggestEdits` on a partial); real proposal rendering with Apply vs. Save kept separate; route,
+schema, migration, import and GUI tests. **Done when** the full lifecycle works, failures restore
+the row with the server's reason, proposals name every changed field without persisting, and no
+character request or entry contains `tags`.
 
 ### One logging rule for the engine
 
 Type: decision
-Why now: four warning channels with no rule — `warn()`
+Why now: a September 2026 sweep found four warning channels with no rule — `warn()`
 (`engine/warnings.ts`, sink-swappable, the only one tests can capture) vs `console.warn` on the
 engine-state progress path, `console.log` red/yellow status in `engine/scene-loop.ts` and
 `engine/architect.ts`, `console.error` in `engine/architect.ts`, and silent `catch {}` in
-`engine/architect.ts`, `engine/provider-util.ts`, `engine/catalog.ts`.
+`engine/architect.ts`, `engine/providers/provider-util.ts`, `engine/catalog.ts`.
 Next action: decide — route all engine warnings through `warn()`, keep `console.*` for genuine
 user-facing prose echo only, and give silent catches a `console.debug`/`warn` with cause.
 Done when: the rule is one paragraph in `warnings.ts` itself and the stray call sites follow it.
@@ -905,616 +856,150 @@ Done when: the rule is one paragraph in `warnings.ts` itself and the stray call 
 Type: decision
 Why now: intentional but undiscoverable. Validation-shaped answers are 200 with `ok:false`
 (catalog problems, story check/suggest); missing call-shape is 4xx; but `saveStory` persist
-failures (`persistStoryJson` in root `host.ts`) return no `status`, defaulting to 400 where 500
-is correct — and no document states the rule, so each new route re-derives it.
-Next action: document in `server/server.ts` ("validation/problems → 200+ok:false;
+failures (`host/story-store.ts`) return no `status`, defaulting to 400 where 500 is correct —
+and no document states the rule, so each new route re-derives it.
+Next action: document in `server/routes/route-helpers.ts` ("validation/problems → 200+ok:false;
 missing call-shape → 4xx; engine crash → 500"), give persist failures `status: 500`, and mirror
 the paragraph in `GUI-SPEC.md`. Client-visible: the 500 half changes wire behaviour.
 Done when: the paragraph exists, persist failures carry 500, and
-`tests/server-routes.test.ts` pins all three.
+`tests/server/route-contract.test.ts` pins all three.
 
 ## Directions
 
-Big, unbuilt, and shaping rather than corrective. One carries enough design to have its own section
-below: **The world timeline**.
+Big, unbuilt, and shaping rather than corrective.
 
 - **Free Consult — strip authorial behavioral steering from the character prompt (spike).**
-  The character prompt conflates two constraint kinds: epistemic/physical boundaries (`WHAT YOU
-  KNOW`, `HARD LIMITS`, `REACH`, presence, memories, "don't invent world facts") and
-  behavioral-steering prose ("PLAY THE CHARACTER, DO NOT PLAY THE AUTHOR'S INTENTION", "this is
-  your moment", "not a request you owe compliance to", the narrate-remembering suppression, the
-  attempt-3 compliance nudge). v1 is a parallel prompt variant (`FREE_CHARACTER_FORMAT`,
-  `freeCharacterSystem`, `freeAskBlock`, `freeMemoryMarker` in `prompts/consult.ts`) that keeps the
-  JSON protocol and every boundary intact and strips only the steering. `REACTION_OUTWARD` is
-  deliberately excluded from both v1 and v2 — an architectural boundary about interiority
-  propagation, not prose style, and mixing it in would make results uninterpretable. CLI-only
-  (`--free-consult` / `--free-consult-v2`, `ENGINE.freeConsult`, default `false`), fully reversible,
-  no persisted story-level switch, gated consult mechanics untouched — the `--open-consult`
-  precedent.
-
-  **First live comparison (2026-09-11, doorway ch.1, both runs hit the 24-step ceiling before a
-  natural end, so word counts are directly comparable — 637 gated vs. 663 free):** the gated prompt
-  asked `need` 0 times across 17 consults; v1 asked 13 times across 16 — not clustered on one
-  character or moment, but sustained for nearly the entire run (every consult from the third one
-  onward asked, split evenly RIVEN/MERRITT). Read turn-by-turn, v1's dialogue also trended more
-  cooperative/de-escalatory ("I should offer a genuine explanation," "find common ground") against
-  the gated run's more adversarial one ("this feels like a setup," "I don't trust them at all").
-  Recorded as an observed behavioral difference, not yet an attribution — n=1 per condition, a small
-  local model, and a stochastic writer draft that isn't held constant between runs. The likely
-  reading: `FIRST DECIDE: know it, infer it, assume it, or ask?` was already in both prompts, but
-  the removed steering ("this is your moment," "not a request you owe compliance to," the attempt-3
-  nudge) was functioning as an anti-stalling counterweight to it, not just rhetorical flourish —
-  removing it exposed a more assistant-like "ask rather than commit" default underneath.
-
-  **v2** (`FREE_CHARACTER_FORMAT_V2`, `freeCharacterSystemV2`) tested one specific fix rather than
-  reintroducing the removed steering: one paragraph inserted into the `FIRST DECIDE` ladder itself,
-  distinguishing "missing fact -> ask" from "uncertain interpretation -> act on it, carrying the
-  risk of being wrong." v1's `freeAskBlock`/`freeMemoryMarker` are unchanged for v2 — the ladder
-  paragraph is the only variable.
-
-  **Six `--free-consult-v2`-equivalent live comparisons (2026-09-11, doorway ch.1, same 24-step
-  ceiling each time except where noted):**
-
-  | run | consults | `need` | rate | pattern |
-  | --- | ---: | ---: | ---: | --- |
-  | gated (1 run) | 17 | 0 | 0% | never asks |
-  | v1 (1 run) | 16 | 13 | 81% | sustained — asks nearly every consult from the third one on |
-  | v2 batch1 run1 | 13 | 10 | 77% | sustained, same shape as v1 |
-  | v2 batch1 run2 | 16 | 5 | 31% | **scattered** — `CCNCCNCNCCCCCCCNCCCCN`, no sustained streak |
-  | v2 batch1 run3 | 16 | 12 | 75% | sustained, same shape as v1 |
-  | v2 batch2 run1 | 19 | 12 | 63% | sustained; the only run of all nine that reached `"done": true` |
-  | v2 batch2 run2 | 18 | 11 | 61% | sustained |
-  | v2 batch2 run3 | 15 | 10 | 67% | sustained |
-  | v2 pooled (6 runs) | 97 | 60 | 62% | 5 of 6 sustained, 1 scattered |
-
-  ("v2 batch2" was launched as `--free-consult-v3` — see the v3 note below for why its runs
-  landed here instead.) With n=6, the sustained-asking pattern reads as the dominant mode (5/6)
-  rather than a coin flip; the one scattered/low-rate run looks like an occasional outlier, not
-  a second stable regime. One further data point: `v2 batch2 run1` is the only run across all
-  nine (gated + v1 + v2) that reached a natural scene end — Riven finishes picking the lock and
-  steps through, and the corridor settles — at a 63% ask rate. Heavy asking clearly doesn't by
-  itself prevent a scene from resolving.
-
-  **Verdict on v2:** falsified the "it's just anti-stalling rhetoric" reading of the removed
-  lines — `FIRST DECIDE: know it, infer it, assume it, or ask?` plus a stated
-  uncertainty-vs-missing-fact distinction does not reliably reproduce the gated prompt's near-zero
-  ask rate, and with n=6 the sustained-high-rate result looks like the norm, not one arm of a
-  genuine 50/50 split. Whatever "this is your moment" / "not a request you owe compliance to" /
-  the attempt-3 nudge were doing, restating the ladder's own logic more explicitly is at best an
-  unreliable substitute for it.
-
-  **v3** (`freeAskBlockV3`, `--free-consult-v3`) tried to isolate the next-cheapest lever: keep
-  v2's ladder addendum and put back *only* the attempt-3 nudge (`RETRY_NUDGE_FIRM`). **The
-  mechanism never fired.** `RETRY_NUDGE_FIRM` only appends when `opts.attempt >= 3`
-  (`engine/judge-gate.ts:68-154`), and reaching attempt 3 needs two consecutive judge "retry"
-  verdicts whose revised re-ask each survives `reviseConsult`'s own gate — one failure anywhere in
-  that chain breaks out as a `bad_consult` and keeps the standing answer without advancing the
-  attempt counter. Checked the logged `attempt` field across all nine runs plus one earlier
-  historical run: it never exceeded 1 in eight of them and reached 2 exactly once, never 3. So the
-  three `--free-consult-v3` runs sent the character byte-identical prompts to plain v2 the entire
-  time (`freeAskBlockV3` only differs from `freeAskBlock` at attempt >= 3) and are folded into the
-  v2 pool above rather than treated as a v3 result — they're real data, just not data about the
-  pressure hypothesis. Why attempt never reaches 3 turned out to be its own, broader finding, not
-  specific to Free Consult — see "Judge-conditioned revision may be a task this model cannot do at
-  all" under Measurement owed. **Unresolved:** whether the nudge would matter is still untested;
-  it needs that revision defect understood first, since reaching attempt 3 at all currently depends
-  on a step that fails every time it's been tried.
-
-- **"Prefer an existing skill" is still advice, not a rule.** Promotion is built — the architect
-  reads the author's bible on both sides, a bespoke `name :: meaning` in a landed cast is derived as
-  a promotion candidate, and `/scaffold/promote` is the owner's gate
-  ([`Architect.MD`](Architect.MD), *Skill bible → Promotion*). What the gate has not yet bought is
-  the constraint it was supposed to enable: a bespoke skill is still accepted everywhere, so an
-  author who never promotes anything gets the same behaviour as before, and one who promotes
-  diligently still sees the architect coin a fresh synonym whenever it does not recognise a name.
-
-  Making it hard means refusing a bespoke skill whose meaning matches something already in the
-  bible — and *matches* is the problem. Name equality is already enforced. Meaning equality is a
-  judgement, which puts it in the advisory reviewer's territory rather than the schema's. **Done
-  when** a scaffold has been run twice against a bible the first run filled, and the second run's
-  cast is read for whether it reused the promoted names or reinvented them. That measurement is
-  worth more than the rule: if reuse is already high, the rule buys nothing.
-
-  Two smaller things this left behind. **The system prompt is not re-rendered mid-session**, so a
-  skill promoted during a scaffold is accepted by validation immediately but absent from the
-  architect's own list until the next session; re-rendering means rebuilding the agent and losing
-  the conversation. And **`directEdit` still normalizes against the in-code bible** — it
-  re-normalizes the whole spec to change `scene.length`, so it can report a bible problem against
-  the wrong catalog. Fixing it means making `ServerHost.directEdit` async for an advisory-only
-  effect.
-- **Casting from the library, past the opening cast.** The import path itself is built — the tray,
-  the cast gate's own stage prompt, and the adaptation contract the engine enforces rather than
-  requests ([`Architect.MD`](Architect.MD), *Casting from the library*). What is unbuilt is
-  everything that follows from a cast the author picked rather than the architect invented:
-
-  - **The contract has never met a real model.** Preservation is enforced, so it cannot fail
-    quietly — but the notes it emits are the measurement. A run whose proposal reverts nothing says
-    the prompt is carrying the rule; a run that reverts on every character says the prompt is not,
-    and the enforcement is all that stands between the author and a rewritten restriction. **Done
-    when** one imported scaffold is read for which of those it is.
-  - **An imported cast may make the cast judge ask the wrong question.** Its single question is
-    whether the cast's asymmetry bites on the tension. With an imported cast the author has already
-    committed to these people, so a refusal is advice about the *tension*, not the cast — and the
-    gate's overrule wording is written for a cast the architect proposed.
-  - **A tray larger than the opening cast has no representation.** Four chosen, two in scene 1 is
-    the deferred-introduction fork below, and the tray is where it would live.
-
-- **The catalog's advisory reviewer.** Deferred deliberately until real entries exist to test it
-  against, and specified where it will live ([`Architect.MD`](Architect.MD)): architect-shaped rather
-  than judge-shaped, non-blocking, with mechanical validation still running after it. It exists
-  because a catalog amplifies the cast-sheet defects already logged above — one bad character, every
-  story after it.
-- **The GUI redesign's remainder.** Built: the persistent shell (Stories / Workspace / Libraries),
-  the mockup's warm-paper restyle with an authored dark palette, the architect's stepper with the
-  gate-labelled approve and the tension as its text, the story map's scene detail (roster, reach,
-  hold-only beats), the catalog's derived usage lines, and the concept's **voice picker** — a style
-  preset reaches the settings gate, whose voice becomes `writerStyle` while the clauses it derives
-  become `writerStyleConstraints` ([Architect.MD](Architect.MD), *The voice*). What the mockups
-  proposed and nothing carries yet: the **conversation transcript** as the architect's primary UI —
-  needs a host method publishing the session's turns, and the owner has chosen to keep the plain
-  last-round narration until they ask for the history; the tag editor's **description** and
-  **related-tags** fields (schema work on `TagEntry`); the story editor's **`writerStyleConstraints`
-  field** — the settings gate writes the derived half now, and the editor shows only the voice, so
-  the one place an author could correct a clause does not display it; and the shelf's
-  **"Draft · architect" badge** under Open design questions below.
-
-- **The dedicated character library needs its backend contract.** The GUI now has the character
-  workspace from `mockups/architect/character-editor.html`: a full-width list, right-side inspector,
-  local editing draft, safe lifecycle controls and a proposal-only assistant. It deliberately uses the
-  existing `/catalog?kind=characters` and `/catalog/save` routes where they already work, and mocks the
-  rest so the interaction can be reviewed before the persistence design lands. The mock boundary is
-  temporary and must not become a second, browser-only character store.
-
-  **The reusable model.** `LibraryCharacter` remains the portable half only:
-
-  ```text
-  id, version, name, hidden, updatedAt,
-  portablePersona, belief, impulse, voice[], skills[], restrictions[]
-  ```
-
-  `tags` do not belong in this model or in any character-library request. `goal`, `knows`, `model` and
-  retry settings remain story-specific and are not accepted by the character library. `voice` is capped
-  at `VOICE_SAMPLE_CAP` (currently three) in the same way as the story character schema.
-
-  **Endpoint contract to implement.** Keep the existing catalog routes as a compatibility bridge while
-  the dedicated routes are added. Once the dedicated routes exist, move the GUI client to them and remove
-  the optional/fallback calls in `server/gui/viewer/character-library.js`.
-
-  | route | request | response | behaviour |
-  | --- | --- | --- | --- |
-  | `GET /characters?includeHidden=0\|1` | optional `search`, `sort` | `{ ok: true, entries: LibraryCharacter[] }` | default excludes hidden entries; `includeHidden=1` is explicit recovery/browse mode |
-  | `POST /characters` | `{ entry: LibraryCharacterDraft }` | `{ ok: true, entry, problems[] }` | create a new id, set `version: 1`, set `hidden: false`, set `updatedAt` |
-  | `PUT /characters/:id` | `{ entry: LibraryCharacterDraft }` | `{ ok: true, entry, problems[] }` | validate identity and capabilities, bump version and `updatedAt` |
-  | `POST /characters/:id/duplicate` | empty body | `{ ok: true, entry }` | copy every reusable field, allocate a new id, reset lifecycle metadata, append ` Copy` to the name only as a starting value |
-  | `POST /characters/:id/hide` | empty body | `{ ok: true, entry }` | persist `hidden: true`; hidden is the normal removal action |
-  | `POST /characters/:id/restore` | empty body | `{ ok: true, entry }` | persist `hidden: false` |
-  | `DELETE /characters/:id` | empty body | `{ ok: true }` | permanent removal; return `404` for an unknown id. The GUI already deletes for real against `/catalog/delete` — this route only moves it onto the dedicated surface |
-  | `POST /characters/:id/import` | `{ storyDir }` or the active story context | `{ ok: true, character }` | return only the reusable fields needed by the story/scaffold import path; never write `goal` or `knows` here |
-  | `POST /characters/assist` | `{ mode: \"create\"\|\"revise\", instruction, character }` | proposal response below | validate and return a proposal; never persist the character |
-
-  The existing `/catalog/check` validation should be reused or extracted rather than copied. A character
-  save must reject an empty name, normalize list fields, cap voice samples and retain advisory warnings
-  for missing belief, impulse, voice, portable persona or unresolved capabilities. Warnings do not block
-  a save unless the existing catalog policy changes deliberately.
-
-  **Assistant proposal shape.** The assistant receives only the character draft and the instruction;
-  it must not receive a complete `StorySpec` or story transcript. It returns:
-
-  ```json
-  {
-    "ok": true,
-    "proposal": {
-      "draft": { "name": "...", "portablePersona": "...", "belief": "...", "impulse": "...", "voice": [], "skills": [], "restrictions": [] },
-      "changes": [
-        { "field": "portablePersona", "before": "...", "after": "..." }
-      ],
-      "unchanged": ["belief", "voice", "skills", "restrictions"],
-      "note": "..."
-    }
-  }
-  ```
-
-  `mode: "create"` may fill an empty draft; `mode: "revise"` must preserve fields not justified by the
-  instruction. The server must validate the proposed draft with the character schema before returning it.
-  Invalid model output is `{ ok: false, error, issues? }`, not a partial proposal. Applying a proposal in
-  the GUI only replaces the unsaved inspector draft; the user still has to press Save changes. The server
-  must never save from `/characters/assist`.
-
-  **Replace the current mocks in this order.**
-
-  1. Add `hidden` and `updatedAt` to the schema, loader migration and catalog tests, and take `tags` out
-     of `LibraryCharacter` together with its two readers above.
-  2. Add character-specific host methods and routes, initially delegating validation and atomic writes to
-     the existing catalog implementation.
-  3. Change the GUI load, hide, restore and duplicate actions from optimistic/local behaviour to
-     response-driven updates. A failed lifecycle request must restore the previous row and show the
-     server reason. Delete already works this way against `/catalog/delete`; it only needs repointing
-     once the dedicated route exists.
-  4. Add the import route or return the existing scaffold import shape from the character endpoint. The
-     normal picker must exclude hidden characters; a deliberate show-hidden control may expose them.
-  5. Add `characterAssist` to the architect/agent boundary with a dedicated prompt and JSON parser. Do
-     not reuse whole-story `suggestEdits` by passing a partial object through it: that prompt can edit
-     story fields and has the wrong preservation contract.
-  6. Replace the deterministic browser fallback with the real proposal response and render the server's
-     exact `changes` list. Keep Apply proposal and Save changes as two separate actions.
-  7. Add route, schema, migration, import and GUI tests for duplicate independence, hidden filtering,
-     permanent-delete confirmation, proposal non-persistence and unchanged-field preservation.
-
-  **Done when.** A character can be created, edited, duplicated, hidden, restored, permanently deleted
-  after strong confirmation and imported without story-specific fields. A failed request cannot lose a
-  saved character or leave the list claiming an operation succeeded. An assistant proposal visibly names
-  every changed field, does not persist by itself, validates through the same character rules as manual
-  editing and leaves unrelated fields byte-for-byte unchanged. No character request or persisted entry
-  contains `tags`.
-
-- **A chapter-summary review step in the handoff.** The handoff sends every accepted chapter as
-  full prose (~1,100 tokens each). Insert a step before the re-authoring round: the architect
-  compresses the most recently accepted chapter into three fixed fields (progression, scene
-  changes, characters), the author confirms-or-abandons it, and the round runs with the summary
-  in place of that chapter's prose — earlier chapters still travel as full text.
-
-## The world timeline
-
-**Shipped.** The ledger, the zero-inference firing mechanism, the
-architect's world gate, the handoff's re-aim, and `adjudicateBeat`/`adjudicateChapter`
-([`engine/world-repair.ts`](../engine/world-repair.ts),
-[`tests/world-repair.test.ts`](../tests/world-repair.test.ts)) are wired into the handoff: a stranded
-beat is adjudicated mechanically (`questionLive` read from the done judge's verdict — a settled
-question voids it silently, a live one still surfaces to re-aim), and a fired beat is judged by the
-architect's own one-shot reply (`possible`/`questionLive`/`landed`, routed through `adjudicateBeat`
-to catch a contradiction or an unlanded-but-live beat) — see [`Architect.MD`](Architect.MD)'s
-"Stranded world events" and "Fired world events". What is still unmeasured is whether the
-architect's landing judgement is any good, which needs live runs; the removed mechanical reader
-stays removed (see *A mechanical landing check was built and removed*, under *Blocks* below).
-The mechanism was spiked and measured first — see *What the spike established* below before
-designing against this. The architect authors
-a timeline of **world
-events** — a fault alarm firing, an incoming call, the thing in the dark reaching the door — and an
-author-side agent fires them into the writer one at a time, revising what remains when a character's
-choice makes the next one impossible. It exists to keep a chapter under pressure toward the question it has to answer
-**without telling the writer the answer**, which is the fork every previous attempt at story
-direction has been impaled on: a writer given no destination stagnates, and a writer given the
-destination stops protecting who knows what.
-
-### Why this is not the Director again
-
-A planner that decides what happens turns the consult into theatre — if the beats are fixed, a
-character's answer cannot change what comes next, and the asymmetry that is the whole product becomes
-decoration. That is the parent project's failure and it is not this one, because a **world event is
-the one category no character decides**.
-
-That category already exists here and currently has no author but the writer's improvisation.
-[`Writer.MD`](Writer.MD) permits the writer setting, atmosphere, time passing and established facts,
-and says outright that a world-caused removal — a trapdoor, the floor giving way — is the writer's to
-narrate *while the choice that carried them into it still had to be asked for first*. The timeline
-takes ownership of that lane and touches nothing else. No invariant bends: characters still own every
-choice, the writer still consults for them, and the entity never answers a fork.
-
-### One ledger, not two systems
-
-A beat is an obligation with a trigger condition. `must: ["the alarm forces a decision about the
-wing"]` and `fires: "the fault alarm sounds"` are the same row read as a check and as a cause. Build
-them as one structure or the loop ends up with two competing accounts of what the chapter still owes.
-
-The unification is forced by the evidence, not chosen for tidiness. In the four-hander `alarm-wing`
-run the alarm **fired in the scene's opening lines and never landed**: the one line that gave it a
-consequence was a fabricated quotation, the mechanical lint correctly flagged it, and the redraft
-that removed the fabrication removed the escalation with it. The scene ran to the cap, `done: false`,
-1028 words (+47%) across 22 consults. The rerun terminated but overran worse — 1485 words (+112%) on
-27 consults — and the alarm stayed a background pulse in both. An entity that only fires events would
-have marked that beat spent in step one. **Firing and landing are different questions and the entity
-needs both.**
-
-### The entity is author-side, not cast
-
-"Quasi-character" is the right metaphor and the wrong data model. An entry in `characters[]` lands in
-the roster, `/cast`, the preflight cards, the story editor, the handoff, the neglect nudge and
-reaction fan-outs — and this thing has no persona, no goal, no skills, no restrictions, and never
-answers a consult. It belongs with the agents that share the writer's seat and hold one response
-schema each (judge, batch judge, narration judge, clarifier), listed in
-[`CLAUDE.md`](CLAUDE.md)'s agent paragraph.
-
-Give it the writer's blindness deliberately: it sees the timeline, `facts[]`, the scene's question and
-the page so far. **Not personas, not goals, not private knowledge.** An entity that knows what
-characters want and times events against them is the Director wearing a hat, and it would break the
-same asymmetry through a door the consult protocol does not guard.
-
-### A broken timeline needs four repairs, not one
-
-"Revise the next event" is four verbs, and the common case is not the one the word suggests:
-
-| what happened | the repair |
-| --- | --- |
-| **Preempted** — they evacuated before the alarm fired | the beat is void; **replace** it |
-| **Contradicted** — the monster cannot come through a door someone sealed | **revise** it; it comes through differently |
-| **Fired but did not land** — both `alarm-wing` runs | **escalate**: the same beat, with more force, again |
-| **Stranded** — the scene ended with the beat unfired | **re-aim** it at the next chapter, or drop it |
-
-Escalation is the one with live evidence behind it twice, and it is the one a single `revise` verb
-would blur into rewriting a beat that was fine.
-
-### Firing is injected, not offered
-
-The soft version — telling the writer an event is *available* — is what `alarm-wing` already
-produces without any timeline at all, and it produced 24 steps of background chime. Hand the writer
-the event as something that **has happened**, inside `[WRITE]`, the way the length budget already
-arrives (`prompts/writer.ts`).
-
-That creates a contradiction risk, and it is the entity's to absorb rather than the writer's: give it
-the last piece of prose before it decides, for exactly the reason the clarifier is already given one
-— *so a fact it decides on the spot cannot contradict the page*.
-
-### The risk it carries: an entity that can always rescue the ending
-
-If the entity may revise toward a planned outcome without limit, it can always reach that outcome,
-and the characters' choices stop mattering — the theatre problem returns through the side door.
-
-The best run on record is the argument. In the stage-3 scene of the open-beat experiment, *Elias does
-not convince Sara; he and Kane overpower her at the lever and she concedes after* — the scene answered
-its question by a better route than the premise anticipated. An entity steering to a scripted route
-would have prevented exactly that.
-
-So point the entity at the **question**, not the answer: its revision trigger is *is the question
-still live and under pressure*, never *are we on the planned path*. The outcome stays a chapter-level
-obligation the handoff carries. The timeline is the pressure that makes it likely, not the rail that
-guarantees it.
-
-### What the spike established (2026-08-29 → 09-01, deleted in `1d18577`)
-
-Four env-gated experiments ran on `alarm-corridor` (duo) and `alarm-wing` (four-hander), then were
-removed. The code is recoverable from `ad670c6` and `6704279`; what it bought is below.
-
-**Injection works, and withholding is half of it.** A beat handed to the writer as established fact
-— *this happened, nobody chose it, nobody can decline it, write it as already true* — reaches the
-page every time it fired. But injection alone is nearly redundant: the writer already fires the
-event unprompted in line one, because the scene's `question` names it, so pre-firing is obedience
-rather than error. The `[HOLD]` half — naming what the writer may not start until told — is what
-made the beat an event rather than a setting. **Both halves are load-bearing and neither is
-optional.**
-
-**A memory lands, hides, and changes reasoning without being quoted.** A per-character fact
-implanted at the moment the beat fires — a `knows` entry with a trigger, what they always knew and
-had no reason to think about — surfaced in three of four character-instances as a visible shift in
-their own `thought` field, with the wording never appearing in the prose or in their speech. HALE
-went from *"I need Oduya to help stabilize it through the door"* to *"this isn't about paperwork;
-the panel fault needs immediate attention"*; ODUYA went from *"the ledger must accurately record"*
-to *"my name is tied to the failure"*. It goes in `Agent.system`, not history: history is trimmed
-into a rolling digest and a memory summarized away mid-scene is a bug. `fork()` copies `system`, so
-a retry keeps it without learning it was a retry.
-
-**Why the alarm was inert before memories.** Read from `story.json`, needing no run: the two
-characters the scene's question turns on had nothing in `knows` the event could attach to — HALE
-holds the contract, the cage key and the ferry; ODUYA holds the paperwork, the log and head office.
-Neither held a consequence for ignoring a siren. Worse, both `impulse` fields are authored to
-entrench under pressure (*get more precise about the timetable*; *get slower and more procedural*),
-so an event carrying pressure and no stake **tightens** a deadlock rather than breaking it.
-
-**Both memory misfires were authoring, not plumbing**, and both are constraints on the architect:
-
-- *A memory about liability attaches to whatever the character already fears, not the cost you
-  meant.* ODUYA's named exposure in the log; it was written about the building standing occupied and
-  was read as exposure for granting an exception — so ODUYA got more obstructive, the opposite of the
-  intent. A memory must name its specific cost, not a general liability.
-- *A memory that contradicts its own beat loses to the beat.* HALE's said the cage stays shut while a
-  zone is in fault; the beat said the magnetic lock released and the door stands open. HALE reasoned
-  entirely from the open door and showed no uptake at all — the one instance of four with none. **A
-  beat and its memories are one authoring act and must agree about the world.**
-
-**What the spike could not establish, and no successor should claim without more runs:** anything
-about pacing or termination. Step counts swung 12→24 on the duo and 14→24 on the four-hander with
-the code path *unchanged*. Single-run comparisons do not survive that variance. Four runs were also
-wasted on a placeholder beat (`<same beat>` pasted literally from a command template), which is its
-own lesson about handing over run commands with holes in them.
-
-### Open decisions
-
-- **~~Where the timeline lives.~~ Story-level `timeline[]`.** Settled by the memories: an entry is
-  per-(event, character), so it carries a map of memories beside the beat and hold text, which
-  `SceneDef` has no shape for. Story-level is also what lets the handoff re-aim a stranded beat.
-- **~~What it costs per step.~~ Nothing.** Firing, holding and implanting need no model call at all —
-  the spike ran on a fixed fractional trigger with zero inference. Only *repair* needs a model, and
-  repair is rare. This kills the per-step cost concern and means a working timeline ships before any
-  agent exists.
-- **~~Who decides a beat landed.~~ The architect judges it; whether its judgement is any good
-  is unmeasured.** "Landed" meant only *the writer wrote it*; it never meant *it changed a
-  decision*, and those came apart in every run. The *wrote it* half looked mechanical and is not
-  — see block 1 below for the measurements that killed the bigram check — so the handoff asks
-  the model instead: the architect already reads every chapter's full prose, and its
-  `beat_checks` reply carries `landed` as a three-state judgement (true / false / omitted when
-  it cannot tell), routed through `adjudicateBeat` like the other two verdicts. The *changed a
-  decision* half no mechanical check can reach at all; the `done_flagged` verdict from the done
-  judge ([`Judge.MD`](Judge.MD)) is the closest instrument the engine has, but it reads the
-  scene's question, not the beat. **Done when** live runs have been read for whether the
-  architect's landing calls match what the page shows.
-- **~~History or none, for the repair entity.~~ Neither — no model call at all.**
-  [`engine/world-repair.ts`](../engine/world-repair.ts) adjudicates a beat's repair
-  (`void`/`re-aim`/`revise`/`escalate`) as a pure function of the `BeatStanding` the caller supplies —
-  no agent, no history, no inference, same as the firing/holding/implanting logic beside it. What's
-  left of this question is upstream: who computes that `BeatStanding` in the first place — see "Who
-  decides a beat landed" above.
-- **A world event that speaks needs a grant.** Unchanged. An incoming call has a voice on it, and
-  [`engine/quote-lint.ts`](../engine/quote-lint.ts) matches every quoted line against the granted ledger.
-  A fired beat carrying dialogue must reach that ledger or the lint flags the writer for rendering
-  precisely what it was handed — the trap the promote path already solves by being processed just
-  after the lint.
-
-### Blocks
-
-All four repairs are wired and their behaviour has moved to the document that owns it
-([`Architect.MD`](Architect.MD)'s "Stranded world events" and "Fired world events"), alongside the
-rest of this feature: the ledger and the schema to [`Architect.MD`](Architect.MD), what
-the writer receives to [`Writer.MD`](Writer.MD), what a memory is to [`Character.MD`](Character.MD),
-and the events to [`GUI-SPEC.md`](GUI-SPEC.md). What stays here are the two warnings and the
-missing live evidence, not the mechanism.
-
-**A mechanical landing check was built and removed — do not rebuild it the same way.** It scored
-character-bigram Dice between the fired text and every window of the piece the injection asked
-for, at a threshold of `0.8` borrowed from quote-lint's near-verbatim precedent. Measured against
-the `alarm-wing` spike run, the piece that faithfully rendered the beat scores **0.73** — below
-the shipped threshold, so a clean landing read as a failure — while pieces with nothing to do
-with the beat score **0.49–0.64**. The whole dynamic range is 0.49–0.73 and the boundary would
-have to sit in the ~0.09 gap between one true positive and the worst false positive, fitted to a
-single event. Character bigrams have a high floor on any two English passages; that is fine for
-quote-lint, whose true positive is a *copied* string scoring ~1.0, and useless for a world beat,
-which is *rendered*. Content-word coverage of the beat separated better on the same run (0.43 for
-the true landing against 0.00–0.33) but is equally uncalibrated on n=1. Either metric needs
-several beats across several runs before it decides anything, and the model may simply be the
-right instrument here.
-
-**The escalation it drove carried a defect worth not repeating.** A beat awaiting its check and a
-beat that has *failed* one are different states, and the loop conflated them: any turn where the
-writer answered with a consult and no prose — legal, and common — drew the escalated injection,
-*"You were told last turn and the piece did not carry it"*, when there had been no piece. Whatever
-re-injects a beat must key on a check that ran and failed, never on one that has not run yet.
-
-The repairs have no live evidence behind them yet: no run has produced a choice that voids a beat.
-That is why this is last, and why building it against imagined breakage would repeat the landing
-check's mistake.
-
-### Done when
-
-**Not a step count.** The variance above makes any single-run pacing comparison meaningless, and the
-old criterion (`alarm-wing` terminates near target, duo control does not regress) was written before
-that was known. What replaces it:
-
-- ~~**The mechanism, per run and cheap to check:**~~ **Met** (`alarm-corridor`, 2026-09-01, one beat
-  authored into `story.json`, no environment variables): steps 1–5 carry no alarm word at all, the
-  beat fires into step 6 and the alarm appears exactly there, both memories implant, and neither
-  memory's wording reaches the prose. The scene closed `done: true` at 14 steps, 737 words (+5%),
-  nothing flagged and no answer owed.
-- **The effect, and it needs several runs per condition:** characters who received a memory reason
-  differently after it lands than before — read from their own `thought` fields, not from whether
-  they mention the event. That is the measurement that separates a beat that landed from a beat that
-  mattered, and it is the only one that distinguishes this feature from scenery with a volume knob.
-  One instance of each so far, in the same run: ODUYA's memory visibly redirected their reasoning
-  for two replies before their authored `impulse` reasserted; HALE's did not land at all. Both
-  readings, and the constraints drawn from them, are in [`Architect.MD`](Architect.MD).
-- **The guard:** a run where a character's choice voids a beat, and the repair points at the scene's
-  question rather than at the planned path. Without this the entity is a rail. **Proven at the unit
-  level, not yet live:** `adjudicateBeat, the autonomy invariant` in
-  [`tests/world-repair.test.ts`](../tests/world-repair.test.ts) replays the stage-3 open-beat case —
-  *Elias does not convince Sara; he and Kane overpower her at the lever and she concedes after* — as a
-  fixed-input assertion (`questionLive: false` retires the beat rather than reviving or escalating
-  it). That is a proof about the pure function, not evidence that the wired-in entity behaves this way
-  against a real run; the live-run guard is still owed.
-
-### An information authority
-
-Four mechanical gates have shipped, each restrict-only, each documented where it lives: presence
-and `"scene"`-scoped memory implantation ([`Character.MD`](Character.MD)), the consult
-situation-bounds check and the fan-out's remote-reactor refusal (same document's Bounds and
-fan-out sections), and the clarifier's verbatim `[WHAT HAS NOT HAPPENED]` / `[ALREADY TRUE]`
-block ([`Clarifier.MD`](Clarifier.MD)).
-
-What's still open: whether a character's actual visibility into a world event ever needs a
-model-based agent beyond these four gates — and if it does, it stays restrict-only, never an
-inference handed to the character: *"Bob cannot see the envelope"* is a fact such a layer may
-withhold; *"Bob should therefore suspect Y"* is the character's territory, not its.
-
-**Explicitly out of scope:** the writer's own beat delivery. `[WORLD]`/`[HOLD]` reaches the single
-shared writer instruction unfiltered today, and [`Writer.MD`](Writer.MD) already documents that as a
-deliberate, accepted trust ("nothing checks the event reached the page"). Gating that channel by
-presence would be a much larger, riskier change than any shipped gate, and nothing here argues for
-starting there.
-
-## Polish and cost
-
-No defect and no decision owed: smaller quality work, prompt cost, and coverage.
-
-- **The one-shot scaffold still spends a quarter of its prompt on the worked example.**
-  `architectExample()` reads `tests/fixtures/doorway/story.json`, ~1,870 estimated tokens. The handoff
-  no longer carries it (`buildArchitect(d, false)`) and the staged walk embeds each stage's fields
-  inline, so only `mode: "oneshot"` still pays — a whole-story proposal has no story yet to
-  demonstrate the format with. Whether that path can drop or shrink the example is what is left.
-
-  **And it now carries the world-event rules too.** `TIMELINE_FIELDS` is ~888 estimated tokens and
-  `ARCHITECT_FORMAT` went from ~3,217 to ~4,105 with it — 28% growth on every one-shot prompt, for a
-  field the block itself says is usually `[]`. It is shared with the staged world gate rather than
-  duplicated, so the cost is paid once in source; the question is whether the one-shot path should
-  pay it at runtime. The cheap alternative is a short block there (what a world event is, the field
-  shapes, "usually empty") with the four memory rules left to the staged gate — at the price that a
-  beat authored in one-shot mode is authored without the rules that stop it misfiring. Not decided:
-  nobody has yet read a one-shot proposal that produced a beat.
+  (`FREE_CHARACTER_FORMAT`, `--free-consult`/`-v2`, reversible, CLI-only; `REACTION_OUTWARD`
+  excluded from both as an architectural boundary, not prose style.) v1 sustained-asks nearly every
+  consult (13/16 vs. gated 0/17); v2's ladder addendum (missing-fact vs. uncertain-interpretation)
+  did not reliably reproduce the gated near-zero rate — pooled 60/97 across six runs, 5 of 6
+  sustained, the one scattered run reading as outlier. Verdict: the removed lines ("this is your
+  moment", "not a request you owe compliance to", the attempt-3 nudge) were an anti-stalling
+  counterweight, not rhetoric; restating the ladder is at best an unreliable substitute. v3
+  (`--free-consult-v3`, putting back only the attempt-3 nudge) never fired — reaching attempt 3
+  needs two consecutive surviving revisions, and `attempt` never exceeded 1 in eight of ten runs —
+  so its three runs are folded into the v2 pool; whether the nudge matters is still untested and
+  needs the judge-revision work under Evidence to collect first. (The old "model cannot do this task
+  at all" reading is corrected by that entry.)
+- **"Prefer an existing skill" is still advice, not a rule.** Promotion is built (bible read on both
+  sides, derived candidates, `/scaffold/promote` as the owner's gate). What it has not bought is the
+  constraint: a bespoke skill is still accepted everywhere, so diligence buys nothing and the
+  architect still coins synonyms. Making it hard means refusing a bespoke skill whose *meaning*
+  matches the bible — a judgement, so advisory-reviewer's territory, not the schema's. **Done
+  when** a scaffold run twice against a bible the first run filled is read for reuse vs.
+  reinvention; that measurement is worth more than the rule. Left behind: the system prompt is not
+  re-rendered mid-session (promoted skill validates immediately, appears next session), and
+  `directEdit` still normalizes against the in-code bible (fix = making the scaffold's direct
+  edit async for an advisory-only effect).
+- **Casting from the library, past the opening cast.** Import path built (tray, cast gate's own stage
+  prompt, enforced adaptation contract). Unbuilt: (1) the contract has never met a real model —
+  preservation is enforced so it cannot fail quietly, and the revert notes are the measurement
+  (**done when** one imported scaffold is read for prompt-carrying vs. enforcement-standing); (2) an
+  imported cast may make the cast judge ask the wrong question — its refusal is written for a cast
+  the architect proposed, but with an imported cast the author already chose the people, so it reads
+  as advice about the *tension*; (3) a tray larger than the opening cast has no representation
+  (deferred introductions would live there).
+- **The catalog's advisory reviewer.** Deferred until real entries exist; specified in
+  [`Architect.MD`](Architect.MD): architect-shaped not judge-shaped, non-blocking, mechanical
+  validation still last. It exists because a catalog amplifies the cast-sheet defects above — one bad
+  character, every story after it.
+- **The GUI redesign's remainder.** Built: persistent shell, warm-paper restyle, architect stepper,
+  scene detail (roster, reach, hold-only beats), usage lines, voice picker. Unbuilt: the
+  **conversation transcript** as the architect's primary UI (needs a host method publishing turns;
+  owner keeps the plain last-round narration until asked); the tag editor's **description** and
+  **related-tags** fields (schema work on `TagEntry`); the story editor's
+  **`writerStyleConstraints` field** (the settings gate writes the derived half; the editor shows
+  only the voice, so the one place to correct a clause does not display it).
+- **A chapter-summary review step in the handoff.** Before the re-authoring round, the architect
+  compresses the latest accepted chapter into progression / scene changes / characters, the author
+  confirms-or-abandons it, and the round runs with the summary in place of that chapter's prose —
+  earlier chapters still travel as full text. (One candidate answer to the handoff-context entry
+  under Decisions needed.)
 - **The story editor has no view of the session's tension sentence.** It steers the cast and scene
-  stages but lives only in the conversation, so an author editing the story afterwards cannot see
-  what the cast was built to serve.
-- **Keep current-run rendering scoped to one chapter.** No defect has been observed; this is a
-  constraint on whatever aggregate display comes next. Story-level totals are aggregated only when
-  the UI is explicitly showing more than one run, and the grouping section of
-  [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) is what checks it.
-- **`run-and-save.ts`'s write-failure paths have no coverage.** The module exists; the branches are
-  not reachable from a test until `runChapter` is injectable or the artifact writer is split out of
-  `runAndSave`.
-- Keep `liveHistory` growth within a run under observation; it is reset between runs but is currently
-  not bounded during a very long run.
-- **A run's manifest is not surfaced anywhere but the file.** `out/<id>/manifest.json` now records
-  which engine wrote a run ([run-manifest.ts](run-manifest.ts)), and a stale process says so on the
-  console before the first model call. Nothing reads it back: `RunSummary` does not carry `engine` or
-  `engineStale`, so the shelf and the run list cannot group runs by condition or grey out a run whose
-  engine is not the one on disk. That is the display half, and it is worth doing only once more than
-  one condition is routinely being compared.
+  stages but lives only in the conversation.
+- **A run's manifest is not surfaced anywhere but the file.** `out/<id>/manifest.json` records which
+  engine wrote a run and a stale process says so on the console — but `RunSummary` carries neither
+  `engine` nor `engineStale`, so the shelf cannot group runs by condition or grey out a stale-engine
+  run. Worth doing only once more than one condition is routinely compared.
 
-## Parked, with the reason
+## Constraints / rejected ideas
 
-Nothing here is work. Each entry exists to stop a future decision going wrong — a thing already tried
-that does not work, a cost not worth paying yet, or a constraint on whatever comes next.
+Nothing here is work. Each entry exists to stop a future decision going wrong.
 
-- **The two granted-line shapes stay separate — do not unify them.** `engine/quote-lint.ts`'s
-  `GrantedLine` (`character, speech, thought?`) and `engine/fanout.ts`'s `GrantedEntry`
-  (`character, speech, action, thought?`) look like one type copied twice. They are leaf-minimal
+- **The three granted-line shapes stay separate — do not unify them.** `quote-lint.ts`'s
+  `GrantedLine` (`character, speech, thought?, action?`), `heard.ts`'s (`character, speech?`),
+  and `fanout.ts`'s `GrantedEntry` (`character, speech, action, thought?`) look like one type
+  copied three times, and a September 2026 sweep proposed exactly that. They are leaf-minimal
   on purpose: each declares only the fields its module reads. One shared shape would make
   `action`/`speech` optional everywhere, weakening the one place that requires them (the
-  fan-out's narration-lint entries) to satisfy the place that needs least. Fix drift by reading
-  the two, not by merging them.
+  fan-out's narration-lint entries) to satisfy the place that needs least (the heard block).
+  Fix drift by reading the three, not by merging them.
 
-- **A full ports-and-adapters restructuring (`ports/`/`adapters/`/`application/`/`presentation/`
-  folders, view models, DTOs everywhere). Evaluated and rejected, not just deferred.** The
-  decoupling program (six blocks, shipped — behaviour now in CLAUDE.md's file table and its
-  `ServerHost`/`live.ts` invariants, and in GUI-SPEC.md's "shape of it") did the one piece of that
-  proposal that was real: `scaffold-routes.ts` and `next-chapter-routes.ts` held live engine
-  objects (`ScaffoldSession`/`NextChapterSession`) directly, 38% of all route code, and now don't.
-  The rest of the proposal does not apply here and should not be re-proposed: the dependency
-  direction it exists to enforce already holds and is a test (`tests/boundaries.test.ts`); renaming
-  `host`/`engine`/`app` to a generic taxonomy would describe this system worse than the current
-  names; view models for reads that already have presenters (`/cast`, `/stories`, `/run`,
-  `/catalog/usage` — `StoryCard`/`fullCast` under other names) buy nothing; a DTO layer under the
-  story editor ([story-edit.js](../server/gui/viewer/story-edit.js), a faithful round-trip form) is
-  actively harmful — any view model there must be information-preserving and isomorphic or a save
-  silently drops fields; injecting `PROVIDER` is unnecessary ceremony for a monkey-patched
-  import-time singleton in a single-user local tool; multi-client/concurrency architecture has no
-  problem to solve — one process, one run, one GUI is the constraint, not a limitation.
-- **A `knows`/`goal`/`belief` name absent from `characters` — the hallucinated half only.** When the
-  cast-sheet checks moved into `normalizeSpec` (the facts[] reframe, shipped), the original fifth check —
-  "a name in `knows`/`goal`/`belief` absent from `characters`" — was split in two. The **rename** half
-  now lives in `applyEdits`: it holds the `renames` map, so it scans every character's `knows`/`goal`/
-  `belief` for the exact old name and flags a stale reference with zero false positives. The
-  **hallucinated-name** half has no such history and was deliberately left with the model's
-  "anything else" backstop, because the obvious mechanical detector does not work: a proper-noun
-  regex (`/\b[A-Z][a-z]+\b/` + stoplist) run against `tests/fixtures/doorway/story.json` returns **5
-  false positives and 0 true** — `There`, `Get`, `Whoever`, `Head`, `Get` — since those fields are
-  multi-sentence prose where sentence-initial capitals dominate. Do not re-propose that regex. The
-  real detector, if wanted, needs rename history at proposal time or a names-known-to-the-draft graph
-  that `normalizeSpec` does not have; until then it stays a model judgement.
-- **Reach may eventually want scoped targets. Not planned.** A reach entry is today one flat
-  `thing :: meaning` string; scoping it (`camera 3 but not camera 7`, `the lobby doors but not the
-  vault`) would mean *character → interface → capability → scope* instead. Recorded so the flat form
-  is read as the deliberate floor it is, and not as the ceiling.
-- **Small-model coherence limits, observed live and parked.** Two failure classes from the doorway
-  runs that prompt text has not fixed and arguably cannot: the writer contradicting its own
-  established facts (a keyless card-slot lock picked, then opened by "the key turning"; hinges
-  groan-risked, then "well-oiled"), and the judge reading binary forks hyper-literally even with
-  calibration lines in place (rejecting an answer for carrying *extra* fields; rejecting a slide
-  because it stopped short of a literal drop). A fact-ledger check across drafted pieces — one more
-  stateless judge call per piece — is the candidate fix for the first; the second may just be a
-  model-size floor.
-- **Model-specific prompt variants. Parked.** Selecting prompt text by which model is running: no
-  concrete misbehaving model/prompt pair is in hand, so building the selection mechanism now would
-  be speculative infrastructure with nothing to select between. Revisit when a live run names a
-  prompt that needs different wording for a different model.
-- **A fourth judge variant for a shared fork.** Parked because it adds runtime cost rather than
-  closing a gap: a variant beside `newJudge`/`newBatchJudge`/`newNarrationJudge` (0.3, no history,
-  one response schema) asked whether the scene honoured both characters' stated choices at a shared
-  fork — one extra LLM call per multi-character fork if it were ever wanted.
+- **The world timeline is not a planner, and the next thing proposed for it must not become one.**
+  A planner that decides what happens turns the consult into theatre: if the beats are fixed, a
+  character's answer cannot change what comes next and the asymmetry stops being the product. What
+  keeps the shipped timeline clear of that is exactly one property — **a world event is the category
+  no character decides**, the lane [`Writer.MD`](Writer.MD) already gave the writer's improvisation.
+  So the entity gets the writer's blindness deliberately: the timeline, `facts[]`, the scene's
+  question and the page, and **not** personas, goals or private knowledge. Anything that knows what
+  characters want and times events against them is the parent project's Director wearing a hat, and
+  it breaks the same invariant through a door the consult protocol does not guard.
+- **A repair may point at the question, never at a planned outcome.** The companion rule to the one
+  above, and the one that is easy to lose while fixing a beat that failed: an entity free to revise
+  toward a planned ending can always reach it, and the characters' choices stop mattering. The best
+  run on record is the argument — in the stage-3 open-beat scene *Elias does not convince Sara; he
+  and Kane overpower her at the lever and she concedes after*, a better route than the premise
+  anticipated, and a steered entity would have prevented it. The revision trigger stays *is the
+  question still live and under pressure*, never *are we on the planned path*; the outcome is a
+  chapter-level obligation the handoff carries. The timeline is the pressure that makes an ending
+  likely, not the rail that guarantees one.
+- **A mechanical check for whether a fired world event landed on the page was built and removed — do
+  not rebuild it the same way.** Character-bigram Dice scored 0.73 on the faithful rendering against
+  0.49–0.64 on unrelated pieces — the boundary would sit in a ~0.09 gap fitted to a single event.
+  Bigrams have a high floor on any two English passages; fine for quote-lint's copied strings
+  (~1.0), useless for a rendered beat. Content-word coverage separated better on the same run but is
+  equally uncalibrated on n=1. Either metric needs several beats across several runs; the model may
+  simply be the right instrument. (What replaced it — the handoff's `beat_checks` landing judgement —
+  is shipped; see [`Architect.MD`](Architect.MD)'s "Fired world events".)
+- **A full ports-and-adapters restructuring. Evaluated and rejected, not deferred.** The decoupling
+  program shipped the one real piece (route modules no longer hold live engine objects); the rest
+  does not apply — dependency direction already holds under test (`tests/server/boundaries.test.ts`),
+  generic taxonomies describe this system worse, view models for reads with presenters buy nothing, a
+  DTO layer under the story editor is actively harmful (any view model there must be isomorphic or a
+  save silently drops fields), `PROVIDER` injection is ceremony over a monkey-patched singleton, and
+  multi-client architecture has no problem to solve (one process, one run, one GUI).
+- **A `knows`/`goal`/`belief` name absent from `characters` — the hallucinated half only.** The
+  rename half lives in `applyEdits` (holds the `renames` map, zero false positives). The
+  hallucinated-name half stays a model judgement: a proper-noun regex returns 5 false positives and
+  0 true on the doorway fixture (sentence-initial capitals dominate multi-sentence prose). Do not
+  re-propose that regex; the real detector needs rename history or a names-known graph
+  `normalizeSpec` does not have.
+- **Reach may eventually want scoped targets. Not planned.** Today one flat `thing :: meaning`;
+  scoping (`camera 3 but not camera 7`) would mean character → interface → capability → scope. The
+  flat form is the deliberate floor, not the ceiling.
+- **Small-model coherence limits, observed live and parked.** The writer contradicting established
+  facts (keyless lock picked, then "the key turning"; hinges groan-risked, then "well-oiled"), and
+  the judge reading binary forks hyper-literally despite calibration lines (extra fields; a slide
+  stopping short of a literal drop). Candidate for the first: a fact-ledger check per piece (one
+  more stateless judge call); the second may be a model-size floor.
+- **Model-specific prompt variants. Parked.** No concrete misbehaving model/prompt pair in hand;
+  revisit when a live run names one.
+- **A fourth judge variant for a shared fork. Parked.** One extra LLM call per multi-character fork
+  to ask whether the scene honoured both choices — runtime cost, no closing gap; cf. the reaction
+  fan-out entry under Decisions needed as one candidate owner.
 - **There is no moment at which an owner accepts anything.** Overwrite protection and chapter
-  contiguity shipped (Writer.MD, "One run writes one chapter"), but "accepted" still just means "a
-  file the run wrote" — if an explicit acceptance step is ever wanted, it starts there.
+  contiguity shipped, but "accepted" still just means "a file the run wrote".
+- **Keep current-run rendering scoped to one chapter.** No defect observed; a constraint on whatever
+  aggregate display comes next (grouping in [`GUI-CHECKLIST.md`](GUI-CHECKLIST.md) checks it).
+- **`liveHistory` growth within a run is unbounded during a very long run.** Resets between runs, so
+  this is an observation, not a defect: revisit only if a very long run is actually reported to be a
+  problem.
+
+## Research log
+
+Nothing here yet. This is where a shipped or retired item's detailed run-ID history goes once it
+stops gating anything — instead of being deleted outright, so a future reread of this document
+doesn't have to reconstruct why a past call was made. (The world timeline's detailed live-run
+history, retired in this reorganization, was judged not to meet that bar and was left to git history
+instead — the mechanism it backed is shipped and documented in [`Writer.MD`](Writer.MD) and
+[`Architect.MD`](Architect.MD).)

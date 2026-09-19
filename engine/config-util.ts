@@ -16,6 +16,11 @@ export function slugify(s: string): string {
 export const nameKey = (name: string) => name.trim().toLowerCase();
 export const sameName = (a: string, b: string) => nameKey(a) === nameKey(b);
 
+// -- SHARED TEXT HELPERS ----------------------------------------------------
+/** Escape a literal for embedding in a RegExp. Shared by the lint leaves so a fix in one place
+ *  reaches quote/pronoun/sense/situation checks together. */
+export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // -- SHARED TOKEN MATCHING --------------------------------------------------
 /** Lowercase, punctuation to spaces, whitespace collapsed. The match only has to read as such
  *  normalized — case and punctuation are not content. Shared by quote-lint and repeat-lint so
@@ -36,10 +41,6 @@ export function containsTokenRun(outer: string[], inner: string[]): boolean {
   }
   return false;
 }
-// -- SHARED TEXT HELPERS ----------------------------------------------------
-/** Escape a literal for embedding in a RegExp. Shared by the lint leaves so a fix in one place
- *  reaches quote/sense checks together. */
-export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Judging an answer is classification, not composition: a verdict wants to be repeatable, not
  *  creative. Single source so the architect chain and the scene loop cannot drift apart. */

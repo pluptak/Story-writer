@@ -3,27 +3,39 @@ import { esc, tid, parseLines, postJson, reasonOr } from "./util.js";
 import { button, errorLine, hint, thinking, warnLine, confirmDialog, storyNote } from "./ui.js";
 import { loadLibrary } from "./catalog.js";
 import { go } from "./nav.js";
-import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
+import { inspectorEmpty, editorHead, actions, section, editorFooter, tabs, clone, newId, needsSave, saveNotesHtml, catalogPageOpen, catalogPageClose } from "./lib-inspector.js";
 
 // The scaffold's import picker reads the same library through a lazy cache. A write here has to drop
 // it, or the tray keeps offering a character this page has already changed or deleted.
 const invalidateLibrary = loadLibrary.invalidate;
 
 const emptyDraft = () => ({
-  id:"", name:"", portablePersona:"", belief:"", impulse:"", voice:"", origin:"", skills:"", restrictions:"",
+  id:"", name:"", portablePersona:"", belief:"", impulse:"", voice:"", origin:"", skills:"", restrictions:"", pronouns:"",
 });
 
 const draftOf = c => ({
   id:c?.id || "", name:c?.name || "", portablePersona:c?.portablePersona || "",
   belief:c?.belief || "", impulse:c?.impulse || "", voice:(c?.voice || []).join("\n"),
   origin:c?.origin || "", skills:(c?.skills || []).join("\n"), restrictions:(c?.restrictions || []).join("\n"),
+  pronouns:c?.pronouns ? `${c.pronouns.subject}/${c.pronouns.object}/${c.pronouns.possessive}/${c.pronouns.reflexive}` : "",
 });
 
-const entryOf = d => ({
-  id:d.id, name:d.name.trim(), portablePersona:d.portablePersona.trim(), belief:d.belief.trim(),
-  impulse:d.impulse.trim(), voice:parseLines(d.voice).slice(0, 3), origin:d.origin.trim(),
-  skills:parseLines(d.skills), restrictions:parseLines(d.restrictions),
-});
+const entryOf = d => {
+  const pronounsTrimmed = String(d.pronouns || "").trim();
+  let pronouns;
+  if (pronounsTrimmed) {
+    const parts = pronounsTrimmed.split("/").map(p => p.trim()).filter(Boolean);
+    if (parts.length === 4) {
+      pronouns = { subject: parts[0], object: parts[1], possessive: parts[2], reflexive: parts[3] };
+    }
+  }
+  return {
+    id:d.id, name:d.name.trim(), portablePersona:d.portablePersona.trim(), belief:d.belief.trim(),
+    impulse:d.impulse.trim(), voice:parseLines(d.voice).slice(0, 3), origin:d.origin.trim(),
+    skills:parseLines(d.skills), restrictions:parseLines(d.restrictions),
+    ...(pronouns ? { pronouns } : {}),
+  };
+};
 
 const initials = name => String(name || "?").split(/\s+/).filter(Boolean).map(x => x[0]).join("").slice(0, 2).toUpperCase();
 const excerpt = value => String(value || "Start with a short, portable identity.").replace(/\s+/g, " ").trim().slice(0, 100);
@@ -31,10 +43,10 @@ const excerpt = value => String(value || "Start with a short, portable identity.
 // The fields a temporary revision can name -- content only, never id/version/hidden/updatedAt.
 // The assistant's own diff (below) shares this list and these labels, so the two look like one
 // mechanism to the reader even though only this one is a real change history.
-const DIFF_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "origin", "skills", "restrictions"];
+const DIFF_FIELDS = ["name", "portablePersona", "belief", "impulse", "voice", "origin", "skills", "restrictions", "pronouns"];
 const FIELD_LABELS = {
   name:"Name", portablePersona:"Portable persona", belief:"Belief", impulse:"Impulse",
-  voice:"Voice samples", origin:"Origin", skills:"Skills", restrictions:"Restrictions",
+  voice:"Voice samples", origin:"Origin", skills:"Skills", restrictions:"Restrictions", pronouns:"Pronouns",
 };
 // A field's DOM id suffix, where it differs from its own key -- portablePersona's control is
 // #charlib-persona (predates this file's other ids). Every reader of a #charlib-<field> id goes
@@ -43,8 +55,12 @@ const FIELD_DOM_ID = key => key === "portablePersona" ? "persona" : key;
 
 // Arrays (voice/skills/restrictions) render and compare as one line-per-entry block -- the same
 // shape the textarea holds them in -- so a change is never reported for formatting entryOf() would
-// have normalized away anyway (a trailing blank line, inconsistent spacing).
-const displayValue = v => Array.isArray(v) ? v.join("\n") : v;
+// have normalized away anyway (a trailing blank line, inconsistent spacing). pronouns is the one
+// object-shaped field entryOf() produces (or omits) -- rendered back to the same slash form the
+// textbox holds, so two freshly-built objects with identical content compare equal instead of by
+// reference, and esc() downstream always gets a string.
+const displayValue = v => Array.isArray(v) ? v.join("\n")
+  : v && typeof v === "object" ? `${v.subject}/${v.object}/${v.possessive}/${v.reflexive}` : v;
 
 /** What changed between the persisted baseline and the current draft, field by field. Both sides
  *  go through entryOf(draftOf(...)) so the comparison is apples to apples -- a baseline is a
@@ -166,7 +182,7 @@ function listHtml(pageEntries) {
       <span class="lib-avatar">${esc(initials(c.name))}</span>
       <span class="lib-row-copy"><strong>${esc(c.name || "Untitled character")}</strong><span>${esc(excerpt(c.portablePersona))}</span>
         <span class="lib-chips">${c.hidden ? `<i class="lib-hidden-badge" ${tid("character-library.hidden-badge")}>Hidden</i>` : ""}${c.origin ? `<i ${tid("character-library.origin-badge")}>${esc(c.origin)}</i>` : ""}<i>${skillCount} skill${skillCount === 1 ? "" : "s"}</i><i>${voiceCount} voice sample${voiceCount === 1 ? "" : "s"}</i></span></span>
-      <button class="lib-more" data-char-select-id="${esc(c.id)}" aria-label="Open ${esc(c.name)} in editor">•••</button>
+      <button class="lib-more" data-char-select-id="${esc(c.id)}"${tid("character-library.open")} aria-label="Open ${esc(c.name)} in editor">•••</button>
     </div>`;
   }).join("");
 }
@@ -188,7 +204,7 @@ function editorHtml() {
     ${button({label:"Delete", id:"charlib-delete", variant:"danger", extraClass:"small", disabled:s.deletingId === c?.id})}
   `)}
   ${tabs(`<button class="lib-tab active">Overview</button><button class="lib-tab" id="charlib-ai-tab">AI Assistant</button><button class="lib-tab" disabled>Revisions</button>`)}
-  ${s.error ? errorLine(esc(s.error)) : ""}${s.dirty ? warnLine("unsaved changes") : ""}
+  ${s.error ? errorLine(esc(s.error)) : ""}${saveNotesHtml(s)}${s.dirty ? warnLine("unsaved changes") : ""}
   ${section("Essence", "Reusable character identity. Keep story-specific goals and knowledge out of the library.", `
     ${field("charlib-name", "Name", d.name, "input")}
     ${field("charlib-persona", "Portable persona", d.portablePersona, "textarea", "The identity that travels between stories.")}
@@ -199,6 +215,7 @@ function editorHtml() {
   ${section("Capabilities", "Reusable capabilities, one per line. Skills may use <code>name :: meaning</code>.", `
     ${originField(d)}
     ${field("charlib-skills", "Skills", d.skills)}${field("charlib-restrictions", "Restrictions", d.restrictions, "textarea", "One restriction per line.")}
+    ${field("charlib-pronouns", "Pronouns (subject/object/possessive/reflexive)", d.pronouns, "input")}
   `)}
   <div class="lib-assistant"><div><strong>✦ Character assistant</strong></div><p>Create, revise, or review a subset of this character's fields from a plain-language instruction, on its own model.</p>${button({label:"Open AI assistant →", id:"charlib-ai-open", extraClass:"small"})}</div>
   ${editorFooter(`${button({label:"Cancel", id:"charlib-cancel", disabled:!s.dirty || s.saving})}${button({label:s.saving ? "Saving…" : "Save changes", id:"charlib-save", variant:"primary", disabled:!needsSave(s) || s.saving})}`)}
@@ -324,13 +341,16 @@ async function load() {
     s.entries = (j.entries || []).map(c => ({ ...c, hidden: !!c.hidden, updatedAt:c.updatedAt || c.version || 0 }));
     s.loaded = true;
   } catch (e) { s.error = e.message || "could not load characters"; }
+  // A failed load marks itself loaded anyway: it shows its error and waits for
+  // retry, rather than being refetched by the very render it just caused.
+  s.loaded = true;
   s.loading = false; APP.render();
 }
 
 // baseline is a fresh clone of whatever was just selected/created/duplicated/saved -- including a
 // brand-new, never-persisted character, so its own initial draft is what a later edit diffs against
 // (plan: "changes should show edits relative to the initial draft").
-function setSelected(c) { const s = APP.characterLibrary; s.selected = c; s.baseline = clone(c); s.draft = draftOf(c); s.dirty = false; s.changes = []; s.changesOpen = false; s.menuId = ""; s.error = ""; s.assistant = { open:false, mode:"revise", fields:[], instruction:"", loading:false, proposal:null, error:"" }; ensureSelectedVisible(); APP.render(); }
+function setSelected(c) { const s = APP.characterLibrary; s.selected = c; s.baseline = clone(c); s.draft = draftOf(c); s.dirty = false; s.changes = []; s.changesOpen = false; s.menuId = ""; s.error = ""; s.saveIssues = []; s.saveProblems = []; s.assistant = { open:false, mode:"revise", fields:[], instruction:"", loading:false, proposal:null, error:"" }; ensureSelectedVisible(); APP.render(); }
 
 function createNew() { const s = APP.characterLibrary; const c = { ...entryOf({...emptyDraft(), id:newId("chr"), name:"New character"}), hidden:false, version:0, updatedAt:Date.now() }; s.entries.unshift(c); setSelected(c); }
 
@@ -340,7 +360,7 @@ function collectDraft() { const s = APP.characterLibrary; if (!s.draft) return; 
 
 async function save() {
   const s = APP.characterLibrary; collectDraft(); if (!s.draft || !needsSave(s) || s.saving) return;
-  const payload = entryOf(s.draft); if (!payload.name) { s.error = "A character needs a name."; APP.render(); return; }
+  const payload = entryOf(s.draft); if (!payload.name) { s.error = ""; s.saveIssues = ["A character needs a name."]; APP.render(); return; }
   // savingId, not s.selected, is what the response is checked against below -- the user is free to
   // switch to a different character (or none) while this request is in flight, and the save must
   // still land in the list without touching whatever is now on screen.
@@ -350,7 +370,7 @@ async function save() {
     msg => { if (s.selected?.id === savingId) s.error = msg; });
   s.saving = false;
   if (!j?.ok) {
-    if (s.selected?.id === savingId) { s.error = reasonOr(j, "could not save character"); APP.render(); }
+    if (s.selected?.id === savingId) { s.error = reasonOr(j, "could not save character"); s.saveIssues = [...(j?.issues ?? [])]; APP.render(); }
     return;
   }
   invalidateLibrary();
@@ -359,6 +379,7 @@ async function save() {
   const next = { ...j.entry, hidden: !!j.entry.hidden, updatedAt: j.entry.updatedAt || 0 };
   const idx = s.entries.findIndex(c => c.id === next.id); if (idx >= 0) s.entries[idx] = next; else s.entries.unshift(next);
   if (s.selected?.id === savingId) setSelected(next); else APP.render();
+  if (s.selected?.id === savingId) { s.saveProblems = [...(j.problems ?? [])]; s.saveIssues = []; APP.render(); }
   // Create-then-return: the scaffold sent the author here. Arm the one-shot select, clear the
   // flag before navigating (so a failed navigation can't loop), and go back — wireScaffold's
   // return hook fires the same POST the new chip would send once the refetched cache lands it.
