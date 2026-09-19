@@ -884,10 +884,7 @@ Big, unbuilt, and shaping rather than corrective.
   seeded at scene start, writer-mutable by accretion, load-bearing entries unflippable, never
   written back to `story.json`, never dumped whole into the writer prompt; (4) a per-character
   `observe()` projection beside `situation` respecting presence/restrictions/`reach`; (5)
-  story-editor surface; (6) an optional `target` sibling to `action` on `ConsultReply`, resolved
-  by name, sequential before prose renders. The census scoped that last one: over 67 runs, 86.6%
-  of accepted answers carry an `action` and 68.6% of those name a scene entity, so acting on the
-  world is a main path rather than an escape hatch. As each step ships, its behaviour moves into
+  story-editor surface. As each step ships, its behaviour moves into
   the owning surface doc and that part of this entry is deleted.
 
 - **Judge-gate economics — an unexplored saving, queued after the substrate arc.** Measured over

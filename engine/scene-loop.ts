@@ -15,7 +15,7 @@ import {
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
 import { resetConstraintLintWarnings } from "./lint/constraint-lint.ts";
-import { seedStage, parseStageEntry, applyStageEntry, observe } from "./stage.ts";
+import { seedStage, parseStageEntry, applyStageEntry, observe, resolveTarget } from "./stage.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
 import { lintPiece, type LintPieceResult } from "./lint/narration-lint.ts";
 import { quoteGrantedAnywhere } from "./lint/quote-lint.ts";
@@ -317,6 +317,8 @@ export type RunEvent =
   | { t: "model_changed"; model: string }
   | { t: "retry_capped"; character: string; count: number; chapter: number }
   | { t: "constraint_refused"; character: string; constraint: string; match: string;
+      attempt: number; chapter: number }
+  | { t: "target_refused"; character: string; target: string; entity: string;
       attempt: number; chapter: number }
   | { t: "placeholder_refused"; character: string; field: string; match: string;
       attempt: number; chapter: number }
@@ -1094,6 +1096,24 @@ export async function writeScene(run: SceneRun) {
           writer.hear(P.noAnswer(def.name, why));
           dropClarifications();
         } else {
+          // The target resolves before anything folds in — sequential, not parallel, so the
+          // prose and the resolution cannot disagree about one turn. On a match the stage's own
+          // spelling is what the writer is handed, however the character spelled it: one thing
+          // must read as one name across turns. An unmatched target permits unchanged and leaves
+          // the stage alone — naming a thing is not placing it, and an unstaged target is the
+          // normal case in a story that stages nothing.
+          const resolved = reply.target ? resolveTarget(stage, reply.target) : null;
+          // The one refusal: a remote character naming a staged entity — a channel carries
+          // words, never hands. Everything else permits. Not reach: a grant extends what a
+          // character can do, never narrows it. Not the scene constraint: it already works on
+          // the action text, and a verb matcher would fire on nothing useful against a noun.
+          // Not an unmatched target: that is accretion's normal case, not an error. Read fresh
+          // off this reply on every pass, so no refusal rides from an earlier attempt onto a
+          // later clean one.
+          const targetRefused = !!resolved?.matched && scenePresence(sd, def)?.mode === "remote";
+          if (targetRefused)
+            log({ t: "target_refused", character: def.name, target: reply.target ?? "",
+                  entity: resolved!.entity, attempt: usedAttempt, chapter });
           // The permanent record of what was asked is the situation and the shape — none of the
           // standing instructions that went out with it. The nudge is transient pressure for this
           // one answer; writing it permanently into history would bend every later reply.
@@ -1111,28 +1131,35 @@ export async function writeScene(run: SceneRun) {
           if (constraintRefused)
             persistent.hear(P.constraintHeld(reply.action, constraintRefused.constraint,
                                              constraintRefused.meaning));
+          if (targetRefused)
+            persistent.hear(P.targetHeld(reply.target ?? ""));
           keepClarifications();   // before the answer: the writer settled these facts to get it
           const shown = { thought: writerSees(def.name, reply.thought),
-                          speech: reply.speech, action: reply.action, target: landedTarget };
-          writer.hear(constraintRefused
+                          speech: reply.speech, action: reply.action,
+                          target: resolved?.matched ? resolved.entity : landedTarget,
+                          targetFailed: targetRefused };
+          writer.hear((constraintRefused
             ? P.characterAnswered(def.name, P.attemptedBody(shown), req.question,
                 ask?.question ?? "")
               + `\n${P.actAttempted(def.name, reply.action, constraintRefused.constraint)}`
             : P.characterAnswered(def.name, P.answerBody(shown), req.question,
-                ask?.question ?? ""));
+                ask?.question ?? ""))
+            + (targetRefused ? `\n${P.targetAttempted(def.name, resolved!.entity)}` : ""));
           lastAsked.set(nameKey(def.name), steps);
           // An answer joins the lint's ledger as whatever the writer actually got. An
           // answer from the POV character lands as a felt entry, like a fan-out's bundle — without
           // it, the writer rendering that interiority is flagged for using exactly what it was
           // handed. A withheld thought grants nothing: it never reached the desk. A refused act
           // joins marked attempted — the strings stay verbatim so the quote lint still matches,
-          // and the lint reads the marker, not a rewrite, for what failed.
+          // and the lint reads the marker, not a rewrite, for what failed. A refused target
+          // grants nothing: the writer was handed the reach and its failure, never the reach
+          // as made.
           if (reply.speech || reply.action || reply.target || shown.thought) {
             granted.push({
               character: def.name,
               speech: reply.speech,
               action: reply.action,
-              ...(reply.target ? { target: reply.target } : {}),
+              ...(shown.target && !targetRefused ? { target: shown.target } : {}),
               ...(shown.thought ? { thought: shown.thought } : {}),
               ...(constraintRefused && reply.action ? { attempted: true } : {}),
             });

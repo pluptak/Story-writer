@@ -154,6 +154,27 @@ already stripped before the projection is built. The projection is derived from 
 alone, never from anyone's prose: no premise, no draft, no other character's replies reach
 it through this channel.
 
+### The target
+
+Beside `action`, the answer may carry one optional sibling: `target`, the name of the one thing
+in the room the act is aimed at, exactly as the room names it — a name, never an index, and
+normally empty: a small model taught to fill it will fill it with furniture. The repair prompts
+deliberately never ask for one — a repair that asked for a target would teach the model to invent
+one — and a target on its own is not an answer: naming a thing is not doing something, so a
+reply carrying nothing else stalls exactly as a thought-alone reply does.
+
+Before anything folds in, the name resolves against the live stage (`resolveTarget`,
+`engine/stage.ts`): a match — however the character spelled it — lands as the stage's own
+spelling, so one thing reads as one name across turns, and an unmatched name permits unchanged:
+naming is not placing, so nothing is added to the room and nothing warns.
+
+Exactly one thing is refused: a character whose presence is `remote` naming a staged entity. A
+channel carries words, never hands. The refusal is a beat, not an error — the answer is kept, no
+retry is spent, the character is told the reach did not land (`[IT DID NOT LAND]`, the same tag
+the constraint hold uses), and the writer is handed the reach and its failure to write. A
+character naming an unstaged thing — remote or not — permits: the engine refuses only what
+someone authored as impossible.
+
 ### Full control is circumstance, not obedience — the interrogation pattern
 
 One character having full control over another (an interrogation, a captivity, a custody interview)

@@ -6,7 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { seedStage, parseStageEntry, applyStageEntry, observe } from "../../engine/stage.ts";
+import { seedStage, parseStageEntry, applyStageEntry, observe, resolveTarget } from "../../engine/stage.ts";
 import type { StagedEntity } from "../../engine/scene-loop.ts";
 import { parseDraftReply } from "../../engine/scene-loop.ts";
 import { WARN } from "../../engine/warnings.ts";
@@ -69,6 +69,27 @@ describe("applyStageEntry", () => {
     assert.deepEqual(refused,
       { type: "refused", entity: "door", position: "open now", fixed: "shut fast" });
     assert.equal(room[0].position, "shut fast");
+  });
+});
+
+describe("resolveTarget", () => {
+  const ROOM: StagedEntity[] = [{ entity: "steel door", position: "shut fast", fixed: true }];
+
+  it("resolves a case-different spelling to the stage's own name and position", () => {
+    assert.deepEqual(resolveTarget(ROOM, "Steel Door"),
+      { matched: true, entity: "steel door", position: "shut fast" });
+  });
+
+  it("permits an unmatched name and leaves the stage alone — naming is not placing", () => {
+    const room: StagedEntity[] = [...ROOM];
+    assert.deepEqual(resolveTarget(room, "the window"),
+      { matched: false, entity: "the window", position: "" });
+    assert.equal(room.length, 1, "the length is the assertion: an unmatched target accretes nothing");
+  });
+
+  it("an empty target resolves to nothing", () => {
+    assert.deepEqual(resolveTarget(ROOM, ""), { matched: false, entity: "", position: "" });
+    assert.deepEqual(resolveTarget(ROOM, "   "), { matched: false, entity: "", position: "" });
   });
 });
 

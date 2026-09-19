@@ -193,6 +193,8 @@ async function censusEventLog(input: RunInput, t: StoryTallies): Promise<void> {
       bump(t.judge, "retry issued");
     } else if (type === "constraint_refused") {
       bump(t.judge, `constraint_refused [${String(e.constraint ?? "?")}] bars "${String(e.match ?? "")}"`);
+    } else if (type === "target_refused") {
+      bump(t.judge, `target_refused [remote] — "${String(e.target ?? "")}" is "${String(e.entity ?? "")}"`);
     } else if (type === "placeholder_refused") {
       bump(t.judge, `placeholder_refused [${String(e.field ?? "?")}] "${String(e.match ?? "")}"`);
     } else if (type === "judge_failed" || type === "repair_failed" || type === "retry_capped") {

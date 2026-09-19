@@ -21,7 +21,7 @@ have been asked.
 
 WHEN ASKED TO WRITE -- [WRITE]:
 
-  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "stage": ["NAME :: where"], "target": "NAME", "scene_done": false}
+  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "stage": ["NAME :: where"], "scene_done": false}
 
   prose      -- the next piece of the scene, ready for the page. "" if you are only consulting.
                 SHORT. Every [WRITE] gives you a word ceiling; treat it as real. A scene has a fixed
@@ -413,24 +413,35 @@ export const worldBounds = (world: { held?: string[]; established?: string[] } =
       : "");
 };
 
-export const answerBody = (p: { thought: string; speech: string; action: string; target?: string }) =>
+export const answerBody = (p: { thought: string; speech: string; action: string; target?: string;
+                                targetFailed?: boolean }) =>
   [p.thought && `thought: ${p.thought}`,
    p.speech  && `speech: ${p.speech}`,
    p.action  && `action: ${p.action}`,
-   p.target  && `target: ${p.target}`].filter(Boolean).join("\n");
+   p.target  && (p.targetFailed ? `target (reached for, and failed): ${p.target}` : `target: ${p.target}`),
+  ].filter(Boolean).join("\n");
 
 /** The answerBody for an act the scene's own hold stopped: the attempt is what the writer is
  *  handed, marked as failed where it sits, so it can never read as a deed. */
-export const attemptedBody = (p: { thought: string; speech: string; action: string; target?: string }) =>
+export const attemptedBody = (p: { thought: string; speech: string; action: string; target?: string;
+                                   targetFailed?: boolean }) =>
   [p.thought && `thought: ${p.thought}`,
    p.speech  && `speech: ${p.speech}`,
    p.action  && `action (tried, and failed): ${p.action}`,
-   p.target  && `target: ${p.target}`].filter(Boolean).join("\n");
+   p.target  && (p.targetFailed ? `target (reached for, and failed): ${p.target}` : `target: ${p.target}`),
+  ].filter(Boolean).join("\n");
 
 /** A refusal is a beat, not an error: the strain against the hold is writable, the deed is not. */
 export const actAttempted = (name: string, action: string, constraint: string) =>
   `${name} tried "${action}" and ${constraint} held. Write the attempt and its failure — the `
   + `strain, the hold, what stops them — never the deed as done.`;
+
+/** The mirror for a target: the reach crossed a channel, and the distance held. The entity is the
+ *  stage's own spelling — the writer renders one name for one thing — and what may be written is
+ *  the reach and its failure, never the touch as made. */
+export const targetAttempted = (name: string, entity: string) =>
+  `${name} reached for "${entity}" from afar and the distance held. Write the reach and its failure `
+  + `— the words carried, the hands could not follow — never the touch as made.`;
 
 /** The question travels with the answer only when the writer cannot already read it back: the
  *  draft's own `said()` a few messages back carries the original question, so re-echoing an

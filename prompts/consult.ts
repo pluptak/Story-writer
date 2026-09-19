@@ -480,3 +480,12 @@ export const AUTHOR_TOOK_YOUR_ACTION =
 export const constraintHeld = (action: string, name: string, meaning: string) =>
   `[IT DID NOT LAND] You tried "${action}", but ${name} held — ${meaning}. It did not happen. `
   + `Carry on from the attempt having failed, not from it having worked.`;
+
+/** The mirror for a target: a reach sent down a channel from outside the room. A channel
+ *  carries words, never hands — what the character remembers is the reach having failed,
+ *  never the touch. The target is the character's own spelling: this is their memory of
+ *  what they tried. */
+export const targetHeld = (target: string) =>
+  `[IT DID NOT LAND] You reached for "${target}", but you are not there — the channel carries `
+  + `words, never hands. It did not happen. Carry on from the reach having failed, not from it `
+  + `having worked.`;
