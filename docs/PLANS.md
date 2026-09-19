@@ -868,6 +868,37 @@ Done when: the paragraph exists, persist failures carry 500, and
 
 Big, unbuilt, and shaping rather than corrective.
 
+- **Move scene substrate out of the model (staging → observation → target channel).** The
+  character agent does too many jobs in one call: reconstruct where it is and who is present from
+  the writer's `situation` prose, respect capability boundaries, stay in character, decide, and
+  phrase. Goal is workload reduction, not simulation — stop asking the model questions code
+  already knows. No physics, no inventory, no action enum, no tick. Rules throughout:
+  default-allow (the engine refuses only what someone authored as impossible); accretion (state
+  created at first use, authoritative thereafter); names, not indices; nothing required every
+  turn. **Shipped so far:** `scripts/action-census.ts` (`npm run census`), and the mechanical
+  constraint gate — `engine/lint/constraint-lint.ts` wired onto `ConsultReply.action`, its
+  behaviour now in [`Judge.MD`](Judge.MD) and [`Character.MD`](Character.MD). **Remaining:**
+  (1) `staging` on `SceneDef` (coarse free-prose positions, `name :: meaning` convention,
+  load-bearing marker, case-insensitive keys via `sameName`/`nameKey`, never persisted at
+  character level); (2) an architect `staging` stage after `scene`; (3) a run-scoped live stage
+  seeded at scene start, writer-mutable by accretion, load-bearing entries unflippable, never
+  written back to `story.json`, never dumped whole into the writer prompt; (4) a per-character
+  `observe()` projection beside `situation` respecting presence/restrictions/`reach`; (5)
+  story-editor surface; (6) an optional `target` sibling to `action` on `ConsultReply`, resolved
+  by name, sequential before prose renders. The census scoped that last one: over 67 runs, 86.6%
+  of accepted answers carry an `action` and 68.6% of those name a scene entity, so acting on the
+  world is a main path rather than an escape hatch. As each step ships, its behaviour moves into
+  the owning surface doc and that part of this entry is deleted.
+
+- **Judge-gate economics — an unexplored saving, queued after the substrate arc.** Measured over
+  67 runs (`npm run census`): 868 judge accepts vs 22 retries (2.5%), against 241
+  `narration_flag`, 185 `narration_quote_flag` and 69 `bad_consult` from the already-mechanical
+  checks; one story ran 164 answers with zero judge retries. The per-answer model call almost
+  never changes anything while the free checks do the refusing — so a cheaper gate (mechanical
+  first, model only on escalation, or a narrower verdict call) is likely a large saving. Not a
+  plan to act on now: measure again once the constraint gate and staging have moved verdicts,
+  since those change what the judge still catches.
+
 - **Free Consult — strip authorial behavioral steering from the character prompt (spike).**
   (`FREE_CHARACTER_FORMAT`, `--free-consult`/`-v2`, reversible, CLI-only; `REACTION_OUTWARD`
   excluded from both as an architectural boundary, not prose style.) v1 sustained-asks nearly every

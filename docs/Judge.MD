@@ -179,15 +179,22 @@ not write an action it forecloses), and the judge's payload (`CONSTRAINED HERE (
 restated beside the answer under the same `[WHAT IS ESTABLISHED ABOUT name]` /
 `[WHAT name SAID -- their own account, not established fact]` framing `--cannot-testimony` uses).
 
-It is **judge-mediated only — there is no mechanical enforcement.** `quote-lint.ts` and
-`sense-lint.ts` are the engine's only deterministic checks, and both depend on a closed vocabulary
-(the granted ledger; the five perception senses) that a constraint's free-prose name does not have.
-Whether an answer actually honours a constraint is the judge's call to make, the same call it already
-makes for a restriction's meaning — measuring that call is `--cannot-testimony`'s job, not a new
-arm's, since the rendering is unconditional rather than behind a flag: a scene with no `constraint`
-authored renders nothing on any of the three surfaces, so this is safe as a default rather than a
-prototype. The architect does not yet author `constraint` — `normalizeSpec` always emits `{}` — so a
-story gets one only by hand-editing `story.json` until that lands.
+Telling the character is the primary defence; the backstop is mechanical. `lint/constraint-lint.ts`
+reads the answer's `action` against the constraint before the judge ever sees it, with no model call.
+A high-confidence verb hit is **kept as a beat, not retried** — re-asking an unchanged situation
+sends a fresh instance the identical message it just answered, which is the move `reviseConsult`
+refuses on the judge path for the same reason. Instead the character is told the act did not land,
+the writer is handed the attempt and its failure to write, and the granted ledger marks the deed
+`attempted` so the narration lint permits narrating the attempt without letting it pass as done.
+
+The matcher reads the sign, not just the verb: barred verbs come only from negated spans, because a
+constraint's meaning routinely names what the character *can* still do ("bound to the chair, cannot
+reach or handle anything; your head and shoulders can move"). Ambiguous prose permits and warns —
+a miss is acceptable, a false refusal is not, since the answer is kept rather than discarded.
+Whatever the matcher cannot assess stays the judge's call, the same call it already makes for a
+restriction's meaning; measuring that call is `--cannot-testimony`'s job. The rendering is
+unconditional rather than behind a flag: a scene with no `constraint` authored renders nothing on
+any of the three surfaces, so this is safe as a default rather than a prototype.
 
 ### Ceilings
 
@@ -255,7 +262,7 @@ another attempt and checks it before committing; Publish anyway explicitly accep
 flagged draft; Stop chapter discards the pending draft and preserves the already committed page.
 If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
 that committed page intact. Turning interactive off during a pending decision resolves it as stop.
-
+
 Whichever is chosen is written to the run's log as `lint_decision`, because nothing else records it:
 the answer is a human's, not a model's, so no transcript holds it. `scripts/make-replay-fixture.mjs`
 carries those answers into the fixture as `lintDecisions`, in order — without them a replay of a run

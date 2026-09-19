@@ -26,8 +26,13 @@ export type FanoutEvent =
   | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number };
 
-/** One line/deed the writer has actually been granted this scene, for the narration lint. */
-export interface GrantedEntry { character: string; speech: string; action: string; thought?: string }
+/** One line/deed the writer has actually been granted this scene, for the narration lint.
+ *  `attempted` marks a deed the scene's own hold stopped: the lint still permits narrating the
+ *  attempt (it is on the ledger), while the writer's instruction carries that it failed. The
+ *  action string itself stays verbatim — nothing re-matches a mangled one. */
+export interface GrantedEntry {
+  character: string; speech: string; action: string; thought?: string; attempted?: boolean;
+}
 
 export interface FanoutOpts {
   /** The raw `reactors`/`situation`/`question` off the writer's reply. */

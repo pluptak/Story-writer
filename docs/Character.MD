@@ -131,9 +131,15 @@ end and the meaning is the whole of it.
 
 It renders as its own block, **CONSTRAINED HERE**, beside HARD LIMITS — absolute for this scene, but
 explicitly not a standing HARD LIMIT, so the character does not confuse a temporary hold with an
-intrinsic one. There is no mechanical enforcement (`Judge.MD`'s `SceneDef.constraint` section): the
-judge is the only thing that checks an answer against it, the same way it checks a restriction's
-meaning.
+intrinsic one. Telling the character is the primary defence; the backstop is mechanical
+(`engine/constraint-lint.ts`, `Judge.MD`'s `SceneDef.constraint` section): the answer's `action`
+is read against the constraint before the judge ever sees it, and a high-confidence verb hit is
+kept as a beat, not retried — re-asking an unchanged situation buys the same answer twice. The
+character is told the act did not land, the writer is handed the attempt and its failure to
+write, and the granted ledger marks the deed attempted so the lint permits narrating it without
+letting it pass as done. Ambiguous prose still permits — a miss is acceptable, a false refusal
+is not — and whatever the matcher cannot assess stays the judge's call, the same way it checks
+a restriction's meaning.
 
 ### Full control is circumstance, not obedience — the interrogation pattern
 

@@ -10,6 +10,7 @@ import {
   consult, parseVerdict, reviseConsult,
   type CannotCast, type ConsultEvent, type ConsultReply, type ConsultRequest, type Clarifier,
 } from "./consult.ts";
+import { lintConstraintAction } from "./lint/constraint-lint.ts";
 import { type Msg } from "./llm-client.ts";
 import type { CharacterDef } from "./story-format.ts";
 import { cannotDisplay } from "./skills.ts";
@@ -25,6 +26,8 @@ export type GateEvent =
   | { t: "bad_consult"; character: string; why: string; chapter: number }
   | { t: "repair_failed"; character: string; why: string; chapter: number }
   | { t: "retry_capped"; character: string; count: number; chapter: number }
+  | { t: "constraint_refused"; character: string; constraint: string; match: string;
+      attempt: number; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string;
       was: string; wantsRefused: string; chapter: number };
 
@@ -59,12 +62,14 @@ export interface JudgeGateOpts {
 
 /** How the cycle ended: the answer in hand (the last reply, even on a spent budget or unusable
  *  revision), the transport failure message if the consult call itself died, which attempt ran
- *  last, and the request as it finally stood. */
+ *  last, and the request as it finally stood. `constraintRefused` carries a mechanical hit the
+ *  gate kept rather than retried — the caller folds the failure in as content. */
 export interface JudgeGateResult {
   reply: ConsultReply | null;
   failed: string;
   usedAttempt: number;
   req: ConsultRequest;
+  constraintRefused?: { constraint: string; meaning: string; action: string };
 }
 
 /** The split judge's second call: the retry is already decided and its contradiction already named,
@@ -114,6 +119,7 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
   let reply: ConsultReply | null = null;
   let usedAttempt = 1;
   let failed = "";
+  let constraintRefused: JudgeGateResult["constraintRefused"];
 
   for (let attempt = 1; ; attempt++) {
     usedAttempt = attempt;
@@ -125,6 +131,52 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     } catch (e) {
       failed = (e as Error).message;
       break;
+    }
+
+    const retryState = () => {
+      const effectiveCeiling = def.maxRetries ?? o.maxCharacterRetries;
+      const cumulative = o.retryCounts.get(nameKey(def.name)) ?? 0;
+      return { effectiveCeiling, cumulative };
+    };
+    // No retry left: say why and keep the answer in hand. `wanted` is whether this
+    // attempt is being refused at all — an accept breaks silently either way.
+    const overBudget = (wanted: boolean): boolean => {
+      const { effectiveCeiling, cumulative } = retryState();
+      const spent = attempt > o.retries
+        || (effectiveCeiling !== undefined && cumulative >= effectiveCeiling);
+      if (spent && wanted) {
+        if (effectiveCeiling !== undefined && cumulative >= effectiveCeiling) {
+          console.log(`${C.dim}(chapter-wide retry ceiling hit for ${def.name} — force-accepting)${C.reset}`);
+          if (cumulative === effectiveCeiling) {
+            log({ t: "retry_capped", character: def.name, count: cumulative, chapter });
+          }
+        } else {
+          console.log(`${C.dim}(retries spent — taking ${def.name}'s last answer)${C.reset}`);
+        }
+      }
+      return spent;
+    };
+    const spendRetry = (): void => {
+      o.retryCounts.set(nameKey(def.name), retryState().cumulative + 1);
+    };
+
+    // The mechanical backstop runs before the judge: a high-confidence reading of the
+    // answer against the scene's own constraint, logged on the run's event stream. A hit is
+    // kept, not retried — re-asking an unchanged situation buys the same answer twice, so the
+    // failure travels with the result for the caller to fold in as content, and the judge
+    // still weighs the kept answer like any other. Telling the character stays the primary
+    // defence (CONSTRAINED HERE prompt text); this catches what it misses.
+    const hit = lintConstraintAction(reply.action, def.name, o.constraint);
+    // Per-answer, not per-ask: a hit on an earlier attempt must not ride along onto a
+    // later attempt's clean answer, where the caller would fold a legal act as failed.
+    constraintRefused = hit ? {
+      constraint: hit.constraint,
+      meaning: o.constraint.find(c => c.name === hit.constraint)?.meaning ?? "",
+      action: reply.action,
+    } : undefined;
+    if (hit) {
+      log({ t: "constraint_refused", character: def.name, constraint: hit.constraint,
+            match: hit.match, attempt, chapter });
     }
 
     const flags = P.answerFlags(reply);
@@ -169,18 +221,7 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     const note = String(judgeReply.note ?? "").trim();
     log({ t: "judge", character: def.name, verdict, note, attempt, chapter });
 
-    const effectiveCeiling = def.maxRetries ?? o.maxCharacterRetries;
-    const cumulative = o.retryCounts.get(nameKey(def.name)) ?? 0;
-
-    if (verdict === "accept" || attempt > o.retries || (effectiveCeiling !== undefined && cumulative >= effectiveCeiling)) {
-      if (verdict === "retry" && effectiveCeiling !== undefined && cumulative >= effectiveCeiling) {
-        console.log(`${C.dim}(chapter-wide retry ceiling hit for ${def.name} — force-accepting)${C.reset}`);
-        if (cumulative === effectiveCeiling) {
-          log({ t: "retry_capped", character: def.name, count: cumulative, chapter });
-        }
-      } else if (verdict === "retry") {
-        console.log(`${C.dim}(retries spent — taking ${def.name}'s last answer)${C.reset}`);
-      }
+    if (verdict === "accept" || overBudget(verdict === "retry")) {
       break;
     }
     // A revision goes through the same gate as the first ask. It used to skip the check,
@@ -204,7 +245,7 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     }
     // The attempt is abandoned here, and everything it settled goes with it.
     o.dropClarifications();
-    o.retryCounts.set(nameKey(def.name), cumulative + 1);
+    spendRetry();
     const wasAsked = req.question;
     req = revised.req;
     console.log(`${C.yellow}retry ${attempt}/${o.retries} — ${def.name}${C.reset}${note ? ` ${C.dim}(${note})${C.reset}` : ""}`);
@@ -218,5 +259,5 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
           question: req.question, was: wasAsked, wantsRefused: revised.wantsRefused, chapter });
   }
 
-  return { reply, failed, usedAttempt, req };
+  return { reply, failed, usedAttempt, req, ...(constraintRefused ? { constraintRefused } : {}) };
 }

@@ -463,3 +463,9 @@ export const badReaction = {
 export const AUTHOR_TOOK_YOUR_ACTION =
   `[YOU ACTED] What you moved to do just now — you did it; it is real in the scene now. Carry on `
   + `from there.`;
+
+/** The mirror of the above: the act was attempted and the scene's own hold stopped it. What the
+ *  character remembers is the attempt having failed, never the deed as done. */
+export const constraintHeld = (action: string, name: string, meaning: string) =>
+  `[IT DID NOT LAND] You tried "${action}", but ${name} held — ${meaning}. It did not happen. `
+  + `Carry on from the attempt having failed, not from it having worked.`;

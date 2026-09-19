@@ -280,6 +280,8 @@ export type RunEvent =
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }
   | { t: "retry_capped"; character: string; count: number; chapter: number }
+  | { t: "constraint_refused"; character: string; constraint: string; match: string;
+      attempt: number; chapter: number }
   | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
   | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
   | { t: "promote"; character: string; action: string; chapter: number }
@@ -951,7 +953,7 @@ export async function writeScene(run: SceneRun) {
         asked = true;
         if (heard) check!.req.heard = heard;
         sinceBase.set(nameKey(def.name), ENGINE.heardChannel ? granted.length : pieces.length);
-        const { reply, failed, usedAttempt, req } = await judgeGate({
+        const { reply, failed, usedAttempt, req, constraintRefused } = await judgeGate({
           def, agent: persistent, req: check!.req, cast: mechanicalCast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
           retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
@@ -960,12 +962,18 @@ export async function writeScene(run: SceneRun) {
 
         if (RUN.stopped) break;
 
-        const stalled = !!reply && !reply.thought && !reply.speech && !reply.action;
+        // A refused act is an attempt, not a deed: the shape floor reads the answer with
+        // the barred act taken out. An answer left with nothing in it routes into the
+        // stalled path below, never the accepted branch.
+        const landedAction = reply && constraintRefused ? "" : reply?.action ?? "";
+        const stalled = !!reply && !reply.thought && !reply.speech && !landedAction;
         // The only shape floor left: a thought with nothing said and nothing done reaches the
         // writer as nothing from anyone but the POV character. Taken as an accept it is worse
         // than a refusal: it costs the attempts, marks the character as freshly consulted, and
         // hands the writer an answer with nothing in it to write.
-        const shortOf = reply && !stalled ? nonPovThoughtOnly(reply, isPov(def.name)) : null;
+        const shortOf = reply && !stalled
+          ? nonPovThoughtOnly({ speech: reply.speech, action: landedAction }, isPov(def.name))
+          : null;
         if (failed || !reply || stalled || shortOf) {
           const why = failed
             || (stalled ? reply!.note || "did not answer"
@@ -987,22 +995,34 @@ export async function writeScene(run: SceneRun) {
             ...(reply.speech ? { speech: reply.speech } : {}),
             ...(reply.action ? { action: reply.action } : {}),
           }));
+          // The character tried in good faith and the scene stopped the act: what it
+          // remembers is the attempt having failed, never the deed as done.
+          if (constraintRefused)
+            persistent.hear(P.constraintHeld(reply.action, constraintRefused.constraint,
+                                             constraintRefused.meaning));
           keepClarifications();   // before the answer: the writer settled these facts to get it
           const shown = { thought: writerSees(def.name, reply.thought),
                           speech: reply.speech, action: reply.action };
-          writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question,
-            ask?.question ?? ""));
+          writer.hear(constraintRefused
+            ? P.characterAnswered(def.name, P.attemptedBody(shown), req.question,
+                ask?.question ?? "")
+              + `\n${P.actAttempted(def.name, reply.action, constraintRefused.constraint)}`
+            : P.characterAnswered(def.name, P.answerBody(shown), req.question,
+                ask?.question ?? ""));
           lastAsked.set(nameKey(def.name), steps);
           // An answer joins the lint's ledger as whatever the writer actually got. An
           // answer from the POV character lands as a felt entry, like a fan-out's bundle — without
           // it, the writer rendering that interiority is flagged for using exactly what it was
-          // handed. A withheld thought grants nothing: it never reached the desk.
+          // handed. A withheld thought grants nothing: it never reached the desk. A refused act
+          // joins marked attempted — the strings stay verbatim so the quote lint still matches,
+          // and the lint reads the marker, not a rewrite, for what failed.
           if (reply.speech || reply.action || shown.thought) {
             granted.push({
               character: def.name,
               speech: reply.speech,
               action: reply.action,
               ...(shown.thought ? { thought: shown.thought } : {}),
+              ...(constraintRefused && reply.action ? { attempted: true } : {}),
             });
           }
           owed.push(def.name);

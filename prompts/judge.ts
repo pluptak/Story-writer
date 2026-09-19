@@ -253,6 +253,8 @@ those are choices, and they need an answer behind them like any other. Then rest
 the consult's situation. Do not flag prose that merely mentions a character or describes the scene,
 and do not flag an already-granted deed or felt reaction rendered in different words. When in
 doubt about a description, pass it; when in doubt about an invented deed or meaningful stillness, flag it.
+A deed marked tried-but-failed was attempted and stopped: narrating the attempt and its failure is
+correct, narrating it as completed is an invented deed.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
@@ -266,7 +268,7 @@ export function narrationLintSystem(cast: { name: string; can: string[]; reach?:
 export const narrationLintRequest = (p: {
   pov: string;
   prose: string;
-  granted: { character: string; speech: string; action: string; thought?: string }[];
+  granted: { character: string; speech: string; action: string; thought?: string; attempted?: boolean }[];
   consult: { character?: string; reactors?: (string | { name: string; situation?: string })[];
     situation: string; question?: string } | null;
 }) => {
@@ -279,7 +281,7 @@ export const narrationLintRequest = (p: {
   + (p.granted.length
       ? p.granted.map(g => `${g.character}` + (g.speech ? ` -- said: ${g.speech}` : "")
           + (g.thought ? ` -- felt: ${g.thought}` : "")
-          + (g.action ? ` -- did: ${g.action}` : "")).join("\n")
+          + (g.action ? (g.attempted ? ` -- tried but failed: ${g.action}` : ` -- did: ${g.action}`) : "")).join("\n")
       : "(nobody yet)")
   + (p.consult
       ? `\n\n[CONSULT OPENED BY THIS PIECE]\n`

@@ -12,6 +12,7 @@
     "judge-diagnostic": "npx tsx scripts/judge-diagnostic.ts",
     "done-judge-bench": "npx tsx scripts/done-judge-bench.ts",
     "smooth-prototype": "npx tsx scripts/smooth-prototype.ts",
+    "census": "npx tsx scripts/action-census.ts",
     "typecheck": "npx tsc",
     "lint": "eslint .",
     "test:gui": "playwright test",

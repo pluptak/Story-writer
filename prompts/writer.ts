@@ -381,6 +381,18 @@ export const answerBody = (p: { thought: string; speech: string; action: string 
    p.speech  && `speech: ${p.speech}`,
    p.action  && `action: ${p.action}`].filter(Boolean).join("\n");
 
+/** The answerBody for an act the scene's own hold stopped: the attempt is what the writer is
+ *  handed, marked as failed where it sits, so it can never read as a deed. */
+export const attemptedBody = (p: { thought: string; speech: string; action: string }) =>
+  [p.thought && `thought: ${p.thought}`,
+   p.speech  && `speech: ${p.speech}`,
+   p.action  && `action (tried, and failed): ${p.action}`].filter(Boolean).join("\n");
+
+/** A refusal is a beat, not an error: the strain against the hold is writable, the deed is not. */
+export const actAttempted = (name: string, action: string, constraint: string) =>
+  `${name} tried "${action}" and ${constraint} held. Write the attempt and its failure — the `
+  + `strain, the hold, what stops them — never the deed as done.`;
+
 /** The question travels with the answer only when the writer cannot already read it back: the
  *  draft's own `said()` a few messages back carries the original question, so re-echoing an
  *  unchanged one doubles tokens every accepted consult. A retry may have revised what was finally
