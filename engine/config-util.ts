@@ -16,6 +16,26 @@ export function slugify(s: string): string {
 export const nameKey = (name: string) => name.trim().toLowerCase();
 export const sameName = (a: string, b: string) => nameKey(a) === nameKey(b);
 
+// -- SHARED TOKEN MATCHING --------------------------------------------------
+/** Lowercase, punctuation to spaces, whitespace collapsed. The match only has to read as such
+ *  normalized — case and punctuation are not content. Shared by quote-lint and repeat-lint so
+ *  the two agree on what "verbatim" means. */
+export const normText = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+/** True when `inner`'s tokens appear as a contiguous run inside `outer` (either order) — a
+ *  verbatim phrase, not a substring accident where "no" matches inside "know". */
+export function containsTokenRun(outer: string[], inner: string[]): boolean {
+  if (inner.length === 0) return true;
+  if (inner.length > outer.length) return false;
+  for (let s = 0; s <= outer.length - inner.length; s++) {
+    let ok = true;
+    for (let k = 0; k < inner.length; k++)
+      if (outer[s + k] !== inner[k]) { ok = false; break; }
+    if (ok) return true;
+  }
+  return false;
+}
 // -- SHARED TEXT HELPERS ----------------------------------------------------
 /** Escape a literal for embedding in a RegExp. Shared by the lint leaves so a fix in one place
  *  reaches quote/sense checks together. */

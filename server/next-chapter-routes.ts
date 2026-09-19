@@ -12,6 +12,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { json, readJsonBody, requireMethod } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
+/** An empty interview line — the scaffold and handoff "say" actions share the refusal. */
+const EMPTY_SAY = "say something";
+
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleNextChapterRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
@@ -52,7 +55,7 @@ export async function handleNextChapterRoutes(
 
   if (what === "say") {
     const text = String(o.text ?? "").trim();
-    if (!text) { json(res, 400, { ok: false, reason: "say something" }); return true; }
+    if (!text) { json(res, 400, { ok: false, reason: EMPTY_SAY }); return true; }
     const r = await host.handoffSay(text);
     if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
     json(res, 200, r.state);

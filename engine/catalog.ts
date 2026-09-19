@@ -277,6 +277,35 @@ export async function persistedCatalogData(path?: string): Promise<CatalogData> 
   };
 }
 
+/** Strip the legacy `tags` field skill and character entries may still carry — a strictObject
+ *  schema would reject the whole file/save over it. Accepts a catalog ({entries:[...]}) or a
+ *  single entry; anything else passes through untouched so malformed input still reaches
+ *  safeParse and degrades the usual way. */
+function stripLegacyTags<T>(value: T): T {
+  const without = (e: unknown): unknown => {
+    if (e && typeof e === "object" && "tags" in e) {
+      const { tags: _tags, ...rest } = e as Record<string, unknown>;
+      return rest;
+    }
+    return e;
+  };
+  if (value && typeof value === "object" && "entries" in value) {
+    const entries = (value as { entries?: unknown }).entries;
+    if (Array.isArray(entries)) return { ...value, entries: entries.map(without) } as T;
+  }
+  return without(value) as T;
+}
+
+/** Reload and confirm the persist took: find `id` again and check it against `match`.
+ *  Whether the write took is the caller's to confirm — each knows what it expects to find. */
+async function verifyEntry(kind: CatalogKind, path: string | undefined, id: string,
+  match: (e: any) => boolean, reason: string): Promise<{ ok: true; entry: any } | { ok: false; reason: string }> {
+  const reloaded = await loadCatalog(kind, path);
+  const saved = reloaded.entries.find((e: any) => e.id === id);
+  if (!saved || !match(saved)) return { ok: false, reason };
+  return { ok: true, entry: saved };
+}
+
 /** Every entry in one catalog. Missing file returns the seed (if one exists) or an empty catalog, silently.
  *  When the file EXISTS, it wins entirely — the seed is not merged in. We don't merge because that
  *  would resurrect a seed tag the author deliberately deleted, which is worse than a new engine
@@ -307,13 +336,7 @@ export async function loadCatalog(kind: CatalogKind, path?: string): Promise<any
   // Strip tags from skill and character entries — legacy field on both, and strictObject would
   // reject the whole file over it. Shape-guarded so a malformed file still reaches safeParse and
   // degrades to an empty catalog.
-  if ((kind === "skills" || kind === "characters") && raw && typeof raw === "object" && Array.isArray(raw.entries)) {
-    raw = {
-      ...raw,
-      entries: raw.entries.map((e: any) =>
-        e && typeof e === "object" ? (({ tags: _tags, ...rest }) => rest)(e) : e),
-    };
-  }
+  if (kind === "skills" || kind === "characters") raw = stripLegacyTags(raw);
 
   const result = reg.catalog.safeParse(raw);
   if (!result.success) {
@@ -333,10 +356,7 @@ export function checkEntry(kind: CatalogKind, raw: unknown, catalogs?: Catalogs)
 
   // Strip tags from skill and character entries — legacy field on both, strictObject would reject the save.
   let toValidate = raw;
-  if ((kind === "skills" || kind === "characters") && raw && typeof raw === "object" && "tags" in raw) {
-    const { tags: _, ...rest } = raw as any;
-    toValidate = rest;
-  }
+  if (kind === "skills" || kind === "characters") toValidate = stripLegacyTags(raw);
 
   const result = reg.entry.safeParse(toValidate);
   if (!result.success) {
@@ -411,11 +431,9 @@ export async function saveEntry(kind: CatalogKind, raw: unknown, path?: string, 
   }
 
   // Verify the entry was actually saved at the expected version.
-  const reloaded = await loadCatalog(kind, path);
-  const saved = reloaded.entries.find((e: any) => e.id === entry.id);
-  if (!saved || saved.version !== entryToSave.version) {
-    return { ok: false, reason: "saved but does not load: entry not found or version mismatch" };
-  }
+  const verified = await verifyEntry(kind, path, entry.id, e => e.version === entryToSave.version,
+    "saved but does not load: entry not found or version mismatch");
+  if (!verified.ok) return verified;
 
   return { ok: true, entry: entryToSave, problems };
 }
@@ -453,13 +471,8 @@ export async function setVisibility(kind: CatalogKind, id: string, hidden: boole
   }
 
   // Verify the visibility actually took.
-  const reloaded = await loadCatalog(kind, path);
-  const saved = reloaded.entries.find((e: any) => e.id === id);
-  if (!saved || saved.hidden !== hidden) {
-    return { ok: false, reason: "saved but does not load: entry not found or visibility mismatch" };
-  }
-
-  return { ok: true, entry: saved };
+  return verifyEntry(kind, path, id, e => e.hidden === hidden,
+    "saved but does not load: entry not found or visibility mismatch");
 }
 
 /** Remove one entry by id, then persist. Removing an id that is not there is `ok: false` with `missing: true`. */
@@ -494,8 +507,7 @@ export async function deleteEntry(kind: CatalogKind, id: string, path?: string):
   }
 
   // Verify the entry was actually deleted.
-  const reloaded = await loadCatalog(kind, path);
-  if (reloaded.entries.some((e: any) => e.id === id)) {
+  if ((await loadCatalog(kind, path)).entries.some((e: any) => e.id === id)) {
     return { ok: false, reason: "saved but does not load: entry still present" };
   }
 

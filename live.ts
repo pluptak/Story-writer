@@ -5,6 +5,7 @@
 
 import { createInterface } from "node:readline/promises";
 import { C } from "./ansi.ts";
+import { DEFAULT_PORT } from "./cli-flags.ts";
 import { progressDone } from "./engine/engine-state.ts";
 import type { Agent } from "./engine/agent.ts";
 import type { RunEvent } from "./engine/scene-loop.ts";
@@ -104,7 +105,7 @@ export const LIVE = {
   storyLock: null as string | null,   // an open handoff holds the story it will rewrite
   where: "idle",
   meta: null as RunMeta | null,
-  port: 8080,                 // the port actually bound, which is what any message should name
+  port: DEFAULT_PORT,         // the port actually bound, which is what any message should name
 
   awaitingContinue: null as { steps: number; budget: number } | null,
   continueResolve: null as ((n: number) => void) | null,

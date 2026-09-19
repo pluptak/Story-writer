@@ -256,7 +256,7 @@ describe("restriction meanings", () => {
 
   it("leaves an origin-withheld general with an empty meaning — there was nowhere to author one", () => {
     const bird = quietSync(() => resolveOrigin("PIP", "bird", { origins: originsFrom({ bird: ["hearing"] }) }))!;
-    const pairs = quietSync(() => restrictionMeanings("PIP", "", "", "", bird));
+    const pairs = quietSync(() => restrictionMeanings("PIP", "", "", "", { origin: bird }));
     assert.ok(pairs.length > 0, "the origin withholds most of the catalog");
     assert.ok(pairs.every(r => r.meaning === ""), "withheld, not restricted — no authored entry exists");
   });
@@ -306,7 +306,7 @@ describe("restriction meanings", () => {
 describe("injected bible", () => {
   it("resolveSkills with an injected bible resolves a skill not in SPECIAL_SKILL_CATALOG to that bible's meaning with source: bible", () => {
     const customBible = (name: string) => name === "custom-skill" ? "doing something custom" : undefined;
-    const s = resolveSkills("X", "custom-skill", "", "", undefined, { bible: customBible });
+    const s = resolveSkills("X", "custom-skill", "", "", { catalogs: { bible: customBible } });
     const found = s.find(x => x.name === "custom-skill");
     assert.ok(found, "should find the custom skill");
     assert.equal(found!.source, "bible", "should be tagged bible");
@@ -323,7 +323,7 @@ describe("injected bible", () => {
 
   it("removedCapabilities with injected bible: a restriction naming an injected-bible skill IS removed and appears as a CANNOT", () => {
     const customBible = (name: string) => name === "injected-skill" ? "an injected ability" : undefined;
-    const removed = quietSync(() => removedCapabilities("X", "", "injected-skill", "", undefined, { bible: customBible }));
+    const removed = quietSync(() => removedCapabilities("X", "", "injected-skill", "", { catalogs: { bible: customBible } }));
     assert.deepEqual(removed, ["injected-skill"], "should list the removed skill");
   });
 
@@ -336,7 +336,7 @@ describe("injected bible", () => {
 
   it("an authored :: meaning still beats the injected bible's meaning", () => {
     const customBible = (name: string) => name === "lockpicking" ? "bible meaning" : undefined;
-    const s = resolveSkills("X", "lockpicking :: author's meaning", "", "", undefined, { bible: customBible });
+    const s = resolveSkills("X", "lockpicking :: author's meaning", "", "", { catalogs: { bible: customBible } });
     const found = s.find(x => x.name === "lockpicking");
     assert.ok(found, "should find lockpicking");
     assert.equal(found!.meaning, "author's meaning", "author's meaning should win over bible");
@@ -353,7 +353,7 @@ describe("origins", () => {
   });
 
   it("an origin narrows the general layer to its own group, keeping catalog order", () => {
-    const s = resolveSkills("AURA", "", "", "", ai());
+    const s = resolveSkills("AURA", "", "", "", { origin: ai() });
     assert.deepEqual(names(s), ["speech"]);
     assert.ok(s.every(x => x.source === "general"));
     assert.equal(s.find(x => x.name === "speech")!.meaning, SKILL_CATALOG.speech,
@@ -361,37 +361,37 @@ describe("origins", () => {
   });
 
   it("what the origin withholds becomes a cannot, since absence alone is invisible", () => {
-    const limits = removedCapabilities("AURA", "", "", "", ai());
+    const limits = removedCapabilities("AURA", "", "", "", { origin: ai() });
     assert.deepEqual(limits, ["hearing", "sight", "touch", "taste", "smell"]);
   });
 
   it("a withheld general the character declares anyway is not a cannot", () => {
     const limits = quietSync(() =>
-      removedCapabilities("AURA", "sight :: through the lobby cameras", "", "", ai()));
+      removedCapabilities("AURA", "sight :: through the lobby cameras", "", "", { origin: ai() }));
     assert.ok(!limits.includes("sight"));
-    assert.ok(quietSync(() => resolveSkills("AURA", "sight :: through the lobby cameras", "", "", ai()))
+    assert.ok(quietSync(() => resolveSkills("AURA", "sight :: through the lobby cameras", "", "", { origin: ai() }))
       .some(x => x.name === "sight"));
   });
 
   it("restriction-removed comes before origin-withheld, with no duplicates", () => {
-    const limits = quietSync(() => removedCapabilities("AURA", "", "speech", "", ai()));
+    const limits = quietSync(() => removedCapabilities("AURA", "", "speech", "", { origin: ai() }));
     assert.equal(limits[0], "speech");
     assert.equal(limits.filter(x => x === "speech").length, 1);
     assert.ok(limits.includes("sight"));
   });
 
   it("a restriction naming what the origin never granted removes nothing, and says so", () => {
-    const w = warnings(() => resolveSkills("AURA", "", "sight", "", ai()));
+    const w = warnings(() => resolveSkills("AURA", "", "sight", "", { origin: ai() }));
     assert.equal(w.length, 1);
     assert.match(w[0], /nothing to remove/);
-    assert.equal(quietSync(() => removedCapabilities("AURA", "", "sight", "", ai()))
+    assert.equal(quietSync(() => removedCapabilities("AURA", "", "sight", "", { origin: ai() }))
       .filter(x => x === "sight").length, 1, "still one cannot — from the origin, not the restriction");
   });
 
   it("a skills entry overrides an origin-granted meaning, and the warning names the origin", () => {
-    const w = warnings(() => resolveSkills("AURA", "speech :: over the corridor intercom", "", "", ai()));
+    const w = warnings(() => resolveSkills("AURA", "speech :: over the corridor intercom", "", "", { origin: ai() }));
     assert.match(w.join(" "), /redeclares a skill their origin grants/);
-    const s = quietSync(() => resolveSkills("AURA", "speech :: over the corridor intercom", "", "", ai()));
+    const s = quietSync(() => resolveSkills("AURA", "speech :: over the corridor intercom", "", "", { origin: ai() }));
     assert.equal(s.find(x => x.name === "speech")!.meaning, "over the corridor intercom");
   });
 
@@ -418,7 +418,7 @@ describe("origins", () => {
     const w = warnings(() => resolveOrigin("PIP", "bird", { origins }));
     assert.match(w.join(" "), /telepathy/);
     const bird = quietSync(() => resolveOrigin("PIP", "bird", { origins }))!;
-    assert.deepEqual(names(quietSync(() => resolveSkills("PIP", "", "", "", bird))),
+    assert.deepEqual(names(quietSync(() => resolveSkills("PIP", "", "", "", { origin: bird }))),
                      ["hearing", "sight"], "catalog order, not the order the group was written in");
   });
 });
@@ -429,7 +429,7 @@ describe("injected general skills", () => {
   const generals = { hearing: "perceiving sound", recall: "remembering what you lived through" };
 
   it("replaces the general layer, meanings included", () => {
-    const s = resolveSkills("X", "", "", "", undefined, { generals });
+    const s = resolveSkills("X", "", "", "", { catalogs: { generals } });
     assert.deepEqual(names(s), ["hearing", "recall"]);
     assert.equal(s.find(x => x.name === "recall")!.meaning, "remembering what you lived through");
     assert.deepEqual(names(resolveSkills("X", "", "")), Object.keys(SKILL_CATALOG),
@@ -439,7 +439,7 @@ describe("injected general skills", () => {
   it("computes what an origin withholds against the injected list, not the in-code one", () => {
     const bird = quietSync(() => resolveOrigin("PIP", "bird",
       { generals, origins: originsFrom({ bird: ["hearing"] }) }))!;
-    assert.deepEqual(removedCapabilities("PIP", "", "", "", bird, { generals }), ["recall"],
+    assert.deepEqual(removedCapabilities("PIP", "", "", "", { origin: bird, catalogs: { generals } }), ["recall"],
                      "sight is not withheld here — this world never had it to withhold");
   });
 

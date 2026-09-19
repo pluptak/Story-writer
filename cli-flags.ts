@@ -96,8 +96,10 @@ export const SERVE = VALUES.serve === true;
  *  everything and SIGINT/SIGTERM shut the process down gracefully. Implies --serve. */
 export const HEADLESS = VALUES.headless === true;
 export const ARCHITECT_DEBUG = VALUES["architect-debug"] === true;
+/** The port --port falls back to, and the session's initial port until the server binds. */
+export const DEFAULT_PORT = 8080;
 /** A --port= that is not a number falls back rather than failing the run: 0 is not a port here. */
-export const PORT = Number(VALUES.port) || 8080;
+export const PORT = Number(VALUES.port) || DEFAULT_PORT;
 export const ARCHITECT_DEBUG_LOG =
   typeof VALUES["architect-debug-log"] === "string" ? VALUES["architect-debug-log"] : "";
 export const STORY_DIR = POSITIONALS[0] ?? "";

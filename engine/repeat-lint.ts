@@ -18,7 +18,10 @@
  *  and far above coincidental short openings ("He nods." — never stripped). The strip is reported
  *  as an event by the caller, so a wrong call is visible in the run record.
  *
- *  This file imports nothing from the engine: pure text matching, so it stays a leaf. */
+ *  This file imports config-util.ts for the shared token matching: pure text matching, so it
+ *  stays a leaf. */
+
+import { normText, containsTokenRun } from "./config-util.ts";
 
 /** A sentence matched verbatim (its normalized token run occurs in the tail) or near-verbatim
  *  (Dice >= this against the best same-length window of the tail — one word swapped in six still
@@ -36,11 +39,6 @@ export interface RepeatStrip {
   words: number;     // words removed
   whole: boolean;    // true when the entire piece was already on the page
 }
-
-// Identical to quote-lint's: lowercase, punctuation to spaces, whitespace collapsed. The repeat
-// only has to read as such normalized — case and punctuation are not content.
-const norm = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 
 /** Sentence spans with raw offsets. A sentence ends at a terminator run (`.` `?` `!` `…`) followed
  *  by whitespace or the end of the piece — the same terminators salvageProse cuts on. A close
@@ -61,20 +59,6 @@ function sentences(prose: string): { text: string; start: number; end: number }[
   }
   if (from < prose.length) out.push({ text: prose.slice(from), start: from, end: prose.length });
   return out;
-}
-
-/** True when `inner`'s tokens appear as a contiguous run inside `outer` — quote-lint's seqContains,
- *  the verbatim half: a copied sentence, not a substring accident. */
-function runInTokens(outer: string[], inner: string[]): boolean {
-  if (inner.length === 0) return true;
-  if (inner.length > outer.length) return false;
-  for (let s = 0; s <= outer.length - inner.length; s++) {
-    let ok = true;
-    for (let k = 0; k < inner.length; k++)
-      if (outer[s + k] !== inner[k]) { ok = false; break; }
-    if (ok) return true;
-  }
-  return false;
 }
 
 /** The best Dice coefficient between the sentence's tokens and any same-length window of the tail —
@@ -105,7 +89,7 @@ export function stripRepeatedPrefix(
 ): RepeatStrip | null {
   const trimmed = prose.trim();
   if (!trimmed || !pageTail.trim()) return null;
-  const tail = norm(pageTail).split(" ").filter(Boolean);
+  const tail = normText(pageTail).split(" ").filter(Boolean);
   const parts = sentences(trimmed);
 
   // Walk the leading sentences; the first one that is neither verbatim nor near-verbatim in the
@@ -113,9 +97,9 @@ export function stripRepeatedPrefix(
   // than guess.
   let matched = 0;
   while (matched < parts.length) {
-    const tokens = norm(parts[matched].text).split(" ").filter(Boolean);
+    const tokens = normText(parts[matched].text).split(" ").filter(Boolean);
     if (!tokens.length) break;
-    if (!runInTokens(tail, tokens) && bestDice(tail, tokens) < NEAR_VERBATIM_DICE) break;
+    if (!containsTokenRun(tail, tokens) && bestDice(tail, tokens) < NEAR_VERBATIM_DICE) break;
     matched++;
   }
   if (!matched) return null;

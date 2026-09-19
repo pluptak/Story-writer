@@ -124,9 +124,9 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       voice: c.voice,
       origin: c.origin.trim(),
       // Reach empty on both (I4): a character-level view never sees a scene's grant.
-      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
-      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
-      limitMeanings: restrictionMeanings(name, skillsRaw, restrictionsRaw, "", origin, resolvedCatalogs),
+      skills: resolveSkills(name, skillsRaw, restrictionsRaw, "", { origin, catalogs: resolvedCatalogs }),
+      limits: removedCapabilities(name, skillsRaw, restrictionsRaw, "", { origin, catalogs: resolvedCatalogs }),
+      limitMeanings: restrictionMeanings(name, skillsRaw, restrictionsRaw, "", { origin, catalogs: resolvedCatalogs }),
       maxRetries: c.maxRetries,
     });
   }

@@ -82,7 +82,9 @@ async function sendHSay() {
 }
 
 /** Re-run the opening round on the live session: a fresh proposal that keeps the refinements
- *  said so far, unlike abandoning and starting over. Writes nothing. */
+ *  said so far, unlike abandoning and starting over. Writes nothing. Doubles as the retry
+ *  after a failed round, which likewise changed nothing to keep — refinements already said
+ *  stay said either way. */
 async function regenHandoff() {
   if (APP.handoff.busy) return;
   const j = await postHandoff("regenerate", {});
@@ -108,13 +110,9 @@ async function abandonHandoff() {
   go("story");
 }
 
-/** A failed round changed nothing to keep, so retrying re-runs the opening round on the live
- *  session rather than abandoning it. Refinements already said stay said. */
-async function retryHandoff() {
-  if (APP.handoff.busy) return;
-  const j = await postHandoff("regenerate", {});
-  if (j && j.active !== undefined) { APP.handoffRefined = false; APP.render(); }
-}
+/** A failed round changed nothing to keep, so retrying is the opening round again —
+ *  see regenHandoff. */
+const retryHandoff = regenHandoff;
 
 /** Starting the prepared chapter is `/select`, which only answers while the session is parked at
  *  the picker. On success `choose` navigates to the run; a refusal must be said here, since the
