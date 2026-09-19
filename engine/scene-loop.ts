@@ -1132,7 +1132,7 @@ export async function writeScene(run: SceneRun) {
               character: def.name,
               speech: reply.speech,
               action: reply.action,
-              target: reply.target,
+              ...(reply.target ? { target: reply.target } : {}),
               ...(shown.thought ? { thought: shown.thought } : {}),
               ...(constraintRefused && reply.action ? { attempted: true } : {}),
             });

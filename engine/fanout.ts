@@ -23,7 +23,7 @@ export type FanoutEvent =
   | { t: "bad_consult"; character: string; why: string; chapter: number }
   | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
-  | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
+  | { t: "reaction"; character: string; thought: string; speech: string; action: string; target?: string; chapter: number }
   | { t: "batch_judge_failed"; why: string; chapter: number };
 
 /** One line/deed the writer has actually been granted this scene, for the narration lint.
@@ -85,7 +85,7 @@ export async function reactionFanout(o: FanoutOpts): Promise<boolean> {
   }
   log({ t: "reaction_fanout", reactors: rc.reqs.map(r => r.character),
         situation: rc.reqs[0].situation, chapter });
-  const collected: { name: string; thought: string; speech: string; action: string; situation: string }[] = [];
+  const collected: { name: string; thought: string; speech: string; action: string; target?: string; situation: string }[] = [];
   const requests = rc.reqs.map(req => o.heardFor
     ? { ...req, heard: o.heardFor(req.character) } : req);
   // The fan-out's heard blocks attach after the shared gate, which cannot see them — so each
@@ -139,10 +139,11 @@ export async function reactionFanout(o: FanoutOpts): Promise<boolean> {
     // The run record carries the reaction as it was actually given — this is the reader's view
     // of the run, not the writer's desk, and the withholding below is about the writer only.
     log({ t: "reaction", character: def.name, thought: reply.thought, speech: reply.speech,
-          action: reply.action, chapter });
+          action: reply.action, ...(reply.target ? { target: reply.target } : {}), chapter });
     const shownThought = o.writerSees(def.name, reply.thought);
     collected.push({ name: def.name, thought: shownThought, speech: reply.speech,
-                     action: reply.action, situation: req.situation });
+                     action: reply.action, ...(reply.target ? { target: reply.target } : {}),
+                     situation: req.situation });
     // A line the character actually gave is granted — the writer may render exactly it, and
     // the lint needs it on the ledger to tell that from an invented quotation. The felt
     // entry rides along because the bundle hands the writer the interiority to render.
@@ -178,7 +179,10 @@ export async function reactionFanout(o: FanoutOpts): Promise<boolean> {
       name: x.name,
       ...(x.thought ? { thought: x.thought } : {}),
       ...(x.speech ? { speech: x.speech } : {}),
-      ...(o.pendingReactionActions.has(nameKey(x.name)) ? { action: x.action } : {}),
+      // A target belongs to the act it aims at, so it rides the same promotable gate: a target
+      // without its deed would name a thing the writer was never granted the reach for.
+      ...(o.pendingReactionActions.has(nameKey(x.name))
+        ? { action: x.action, ...(x.target ? { target: x.target } : {}) } : {}),
     }));
   // The beat counts as asked only if somebody actually answered it — a fan-out whose every
   // reactor was skipped is an empty turn, and the three-strikes counter has to see it.

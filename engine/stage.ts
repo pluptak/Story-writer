@@ -56,6 +56,24 @@ export function applyStageEntry(stage: StagedEntity[], entity: string, position:
   return { type: "moved", entity: found.entity, from, to: position };
 }
 
+/** Resolve a character's target name against the live stage, by name and never by index. A
+ *  match hands back the stage's own spelling and where it stands, so the writer reads one name
+ *  for one thing however the character spelled it.
+ *
+ *  Read-only, and deliberately: naming a thing is not placing it. Only the writer's `stage` key
+ *  places, because only it supplies a position — accreting a target here would push a
+ *  positionless entity that observe() then filters out of every projection forever, and would
+ *  let "the door" become a second entity beside the staged "steel door". An unmatched target is
+ *  permitted and left alone, which is the normal case in a story that stages nothing. */
+export function resolveTarget(stage: readonly StagedEntity[], target: string): { matched: boolean; entity: string; position: string } {
+  const named = target.trim();
+  if (!named) return { matched: false, entity: "", position: "" };
+  const found = stage.find(e => sameName(e.entity, named));
+  return found
+    ? { matched: true, entity: found.entity, position: found.position }
+    : { matched: false, entity: named, position: "" };
+}
+
 /** What one character perceives of the room: the live stage filtered to their senses.
  *  `reach` is the character's already-resolved grant (sceneReach) — it rides along because a
  *  grant can only extend perception, never narrow it (I1), and I2 already stripped anything
