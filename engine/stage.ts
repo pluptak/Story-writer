@@ -32,6 +32,7 @@ export function parseStageEntry(raw: unknown): { entity: string; position: strin
 export type StageOutcome =
   | { type: "added"; entity: string; position: string }
   | { type: "moved"; entity: string; from: string; to: string }
+  | { type: "kept"; entity: string; kept: string; offered: string }
   | { type: "refused"; entity: string; position: string; fixed: string }
   | { type: "noop" };
 
@@ -41,8 +42,15 @@ export function seedStage(seed: readonly StagedEntity[]): StagedEntity[] {
   return seed.map(e => ({ ...e }));
 }
 
+/** The words of a placement, lowercased and split off punctuation, so a restatement is
+ *  compared by what it names rather than how it is punctuated. */
+const positionWords = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
 /** Fold one parsed placement into the room. Names, not indices: the entry whose key matches
- *  is the entry, whatever its case. */
+ *  is the entry, whatever its case. A restatement that only loses — every word it names is
+ *  already in the standing placement, and it names strictly fewer — is not a move: the fuller
+ *  placement stands and the keep is logged, because overwriting it would erase detail the
+ *  writer merely re-listed. A shorter position that names anything new is still a move. */
 export function applyStageEntry(stage: StagedEntity[], entity: string, position: string): StageOutcome {
   const found = stage.find(e => nameKey(e.entity) === nameKey(entity));
   if (!found) {
@@ -50,6 +58,12 @@ export function applyStageEntry(stage: StagedEntity[], entity: string, position:
     return { type: "added", entity, position };
   }
   if (found.position === position) return { type: "noop" };
+  // Before the fixed check: re-listing a load-bearing entry with less attempts nothing,
+  // and refusing it would tell the writer something untrue.
+  const standing = new Set(positionWords(found.position));
+  const offered = positionWords(position);
+  if (offered.every(w => standing.has(w)) && new Set(offered).size < standing.size)
+    return { type: "kept", entity: found.entity, kept: found.position, offered: position };
   if (found.fixed) return { type: "refused", entity: found.entity, position, fixed: found.position };
   const from = found.position;
   found.position = position;

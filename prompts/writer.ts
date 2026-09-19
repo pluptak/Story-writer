@@ -102,9 +102,11 @@ ${heard ? `    situation  -- CIRCUMSTANCE ONLY. There is no question behind it; 
                 there before -- "NAME :: where" entries, people or objects your prose just put
                 somewhere ("lamp :: on the desk, lit"). Coarse, never coordinates. Omit it entirely when
                 the piece places nothing new -- most replies carry no stage. A name already
-                placed moves only when it is not fixed: an entry the scene fixed cannot be
-                moved, and the attempt is refused -- you will be told, and the old placement
-                stands.
+                placed is listed again only when your prose actually moved it: restating
+                where it already stands can drop what the room said about it, and the
+                fuller placement is the one kept. It moves only when it is not fixed: an
+                entry the scene fixed cannot be moved, and the attempt is refused -- you
+                will be told, and the old placement stands.
 
   Consult when a choice is being made. Do not consult for scenery, for a gesture that carries
   nothing, or for something you have already asked and had answered.

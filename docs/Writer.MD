@@ -339,12 +339,16 @@ reading the exit out of the prose it already consumes, so no separate signal rea
 
 The writer can place what its prose just put somewhere with a `stage` field carrying `"NAME ::
 where"` entries. What lands is authoritative from then on — accretion, not proposal — and is
-recorded on the run's event stream (`stage_added`, `stage_moved`), never written back to
-`story.json`. Most replies carry no `stage` at all. A name already placed moves freely unless
-the scene fixed it: a move against a load-bearing entry is refused as `stage_refused`, the old
-placement stands, and the writer is told to write it where it stands. The manifest itself never
-enters a prompt — dumped wholesale it produces inventory prose — so only refusals reach the
-writer; what the room holds is the engine's to know.
+recorded on the run's event stream (`stage_added`, `stage_moved`, `stage_kept`), never written
+back to `story.json`. Most replies carry no `stage` at all, and a name already placed belongs
+there only when its placement actually changed: a restatement that names nothing new and strictly
+less than the standing placement is not a move — the fuller placement stands, recorded as
+`stage_kept` and silent to the writer, whose gloss asks for the change-only rule and whose log
+measures how often it still slips. A shorter position that names anything new still moves. A
+placed name moves freely unless the scene fixed it: a move against a load-bearing entry is
+refused as `stage_refused`, the old placement stands, and the writer is told to write it where it
+stands. The manifest itself never enters a prompt — dumped wholesale it produces inventory prose —
+so only refusals reach the writer; what the room holds is the engine's to know.
 
 The writer does not place through a target and has no target output key: placing is the `stage`
 field's job, above. What the writer receives is the character's aim — an accepted answer may

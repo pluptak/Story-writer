@@ -70,6 +70,59 @@ describe("applyStageEntry", () => {
       { type: "refused", entity: "door", position: "open now", fixed: "shut fast" });
     assert.equal(room[0].position, "shut fast");
   });
+
+  it("keeps the standing placement when a restatement only loses — the live run's erasure, verbatim", () => {
+    const room: StagedEntity[] = [{
+      entity: "interview form", position: "on the table in front of VALE, unsigned", fixed: false,
+    }];
+    const kept = applyStageEntry(room, "interview form", "on the table, in front of VALE");
+    assert.deepEqual(kept, {
+      type: "kept", entity: "interview form",
+      kept: "on the table in front of VALE, unsigned", offered: "on the table, in front of VALE",
+    });
+    assert.equal(room[0].position, "on the table in front of VALE, unsigned",
+      "whether the form is signed is what the scene's question turns on");
+  });
+
+  it("a shorter position that names anything new is still a move", () => {
+    const room: StagedEntity[] = [{ entity: "form", position: "on the table, unsigned", fixed: false }];
+    assert.deepEqual(applyStageEntry(room, "form", "on the floor"),
+      { type: "moved", entity: "form", from: "on the table, unsigned", to: "on the floor" });
+  });
+
+  it("the same scene's real move is untouched — different words, not fewer", () => {
+    const room: StagedEntity[] = [{
+      entity: "receipt", position: "destination and recipient blank", fixed: false,
+    }];
+    assert.deepEqual(applyStageEntry(room, "receipt", "turned toward MARA"),
+      { type: "moved", entity: "receipt",
+        from: "destination and recipient blank", to: "turned toward MARA" });
+  });
+
+  it("a keep changes nothing — the next genuine move still moves from the standing placement", () => {
+    const room: StagedEntity[] = [{
+      entity: "interview form", position: "on the table in front of VALE, unsigned", fixed: false,
+    }];
+    applyStageEntry(room, "interview form", "on the table, in front of VALE");
+    const moved = applyStageEntry(room, "interview form", "in MARA's hands");
+    assert.deepEqual(moved, { type: "moved", entity: "interview form",
+      from: "on the table in front of VALE, unsigned", to: "in MARA's hands" });
+  });
+
+  it("re-listing a fixed entry with less is a keep, not a refusal — nothing was attempted", () => {
+    const room: StagedEntity[] = [{ entity: "steel door", position: "shut fast", fixed: true }];
+    const kept = applyStageEntry(room, "steel door", "shut");
+    assert.deepEqual(kept, {
+      type: "kept", entity: "steel door", kept: "shut fast", offered: "shut",
+    });
+    assert.equal(room[0].position, "shut fast");
+  });
+
+  it("a position with no words at all keeps the standing placement", () => {
+    const room: StagedEntity[] = [{ entity: "form", position: "on the table, unsigned", fixed: false }];
+    assert.equal(applyStageEntry(room, "form", "...").type, "kept");
+    assert.equal(room[0].position, "on the table, unsigned");
+  });
 });
 
 describe("resolveTarget", () => {
@@ -232,16 +285,44 @@ describe("the writer accreting onto the room", () => {
     assert.match(secondDraft, /\[STAGE REFUSED\]/);
     assert.match(secondDraft, /shut fast/);
   });
+
+  it("a lossy restatement keeps the authored placement, logged and silent; a later real move still moves", async () => {
+    const { r, events, messagesOf } = await runScene({
+      staging: ["interview form :: on the table in front of VALE, unsigned"],
+      drafts: [
+        { prose: "The form waits where it has waited all along.", consult: null, scene_done: false,
+          stage: ["interview form :: on the table, in front of VALE"] },
+        { prose: "Riven takes the form.", consult: null, scene_done: false,
+          stage: ["interview form :: in Riven's hands"] },
+        { prose: "She reads it twice.", consult: null, scene_done: true },
+      ],
+    });
+    assert.equal(r.done, true);
+    const kept = events.filter(e => e.t === "stage_kept") as any[];
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0].kept, "on the table in front of VALE, unsigned");
+    assert.equal(kept[0].offered, "on the table, in front of VALE");
+
+    const secondDraft = messagesOf("writer.draft", 1).join("\n");
+    assert.doesNotMatch(secondDraft, /\[STAGE /,
+      "a keep reaches no prompt — the gloss owns the rule");
+    const moved = events.filter(e => e.t === "stage_moved") as any[];
+    assert.equal(moved.length, 1);
+    assert.equal(moved[0].from, "on the table in front of VALE, unsigned",
+      "the move leaves the fuller placement, not the restatement");
+    assert.equal(moved[0].to, "in Riven's hands");
+  });
 });
 
 describe("the projection beside the situation", () => {
   // The doorway fixture carries its own staged scene; the negative assertion is the one
   // that matters — a character who cannot see must not receive the visible list.
-  async function consultedAs(character: string, situation: string) {
+  async function consultedAs(character: string, situation: string, staging?: string[]) {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
     const agents = new Map(sc.characters.map(def =>
       [def.name.toLowerCase(), newCharacterAgent(def, sc.scenes[0].place, sc.thinking.character)]));
+    const sd = staging ? { ...sc.scenes[0], staging } : sc.scenes[0];
 
     const { fetchMock, messagesOf } = siteFetch({
       "judge.answer": { verdict: "accept" },
@@ -268,7 +349,7 @@ describe("the projection beside the situation", () => {
     armRun();
 
     try {
-      await writeScene(sceneRun(sc, { scene: sc.scenes[0], agents, log: (e) => events.push(e) }));
+      await writeScene(sceneRun(sc, { scene: sd, agents, log: (e) => events.push(e) }));
       return messagesOf("character.consult", 0).join("\n");
     } finally {
       globalThis.fetch = origFetch;

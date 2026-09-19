@@ -324,6 +324,7 @@ export type RunEvent =
       attempt: number; chapter: number }
   | { t: "stage_added"; entity: string; position: string; chapter: number }
   | { t: "stage_moved"; entity: string; from: string; to: string; chapter: number }
+  | { t: "stage_kept"; entity: string; kept: string; offered: string; chapter: number }
   | { t: "stage_refused"; entity: string; position: string; fixed: string; chapter: number }
   | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
   | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
@@ -974,8 +975,10 @@ export async function writeScene(run: SceneRun) {
     // -- STAGE: the writer places what its prose just put somewhere. Accretion only —
     // what lands here is authoritative from then on and every character sees it. A move
     // against a fixed (load-bearing) entry is refused and logged, and the writer is told
-    // the old placement stands. The manifest itself never enters a prompt wholesale:
-    // dumped whole it produces inventory prose, so only refusals reach the writer.
+    // the old placement stands. A restatement that only loses is kept and logged, and
+    // reaches no prompt — the gloss owns that rule. The manifest itself never enters a
+    // prompt wholesale: dumped whole it produces inventory prose, so only refusals reach
+    // the writer.
     if (reply.stage) {
       for (const raw of reply.stage) {
         const parsed = parseStageEntry(raw);
@@ -985,6 +988,9 @@ export async function writeScene(run: SceneRun) {
           log({ t: "stage_added", entity: outcome.entity, position: outcome.position, chapter });
         else if (outcome.type === "moved")
           log({ t: "stage_moved", entity: outcome.entity, from: outcome.from, to: outcome.to, chapter });
+        else if (outcome.type === "kept")
+          log({ t: "stage_kept", entity: outcome.entity, kept: outcome.kept,
+                offered: outcome.offered, chapter });
         else if (outcome.type === "refused") {
           log({ t: "stage_refused", entity: outcome.entity, position: outcome.position,
                 fixed: outcome.fixed, chapter });
