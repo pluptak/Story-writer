@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 
 import { LIVE } from "../live.ts";
-import { json } from "./http-util.ts";
+import { json, requireMethod } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
@@ -25,7 +25,8 @@ export async function handleStoryReadRoutes(
     return true;
   }
 
-  if (path === "/cast" && req.method === "GET") {
+  if (path === "/cast") {
+    if (requireMethod(res, req, "GET")) return true;
     const query = new URLSearchParams((req.url || "").split("?")[1] || "");
     const dir = await host.selectableStory(query.get("dir") || "");
     if (!dir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }

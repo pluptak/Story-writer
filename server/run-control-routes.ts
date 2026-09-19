@@ -7,7 +7,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { C } from "../ansi.ts";
 import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../live.ts";
-import { json, readJsonBody } from "./http-util.ts";
+import { json, readJsonBody, requireMethod } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
 /** Shared reason so viewer matching cannot split on a typo in one copy. */
@@ -17,8 +17,9 @@ const NO_RUN = "no run in progress";
 export async function handleRunControl(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
 ): Promise<boolean> {
-  if (path === "/stop" && req.method === "POST") {
-    if (!LIVE.running) { json(res, 400, { ok: false, reason: NO_RUN }); return true; }
+  if (path === "/stop") {
+    if (requireMethod(res, req, "POST")) return true;
+    if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }
     const first = stopRun();
     releaseForStop();
     if (first) console.log(`\n${C.yellow}Stop requested from the viewer — ending the scene.${C.reset}`);
@@ -26,8 +27,9 @@ export async function handleRunControl(
     json(res, 200, { ok: true, already: !first });
     return true;
 
-  } else if (path === "/consult-me" && req.method === "POST") {
-    if (!LIVE.running) { json(res, 400, { ok: false, reason: NO_RUN }); return true; }
+  } else if (path === "/consult-me") {
+    if (requireMethod(res, req, "POST")) return true;
+    if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }
     if (!LIVE.interactive) { json(res, 400, { ok: false, reason: "interactive is off" }); return true; }
     if (LIVE.readerArmed || LIVE.readerResolve) { json(res, 200, { ok: true, already: true }); return true; }
     LIVE.readerArmed = true;
@@ -35,7 +37,8 @@ export async function handleRunControl(
     json(res, 200, { ok: true });
     return true;
 
-  } else if (path === "/reader-answer" && req.method === "POST") {
+  } else if (path === "/reader-answer") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     if (!LIVE.readerResolve) { json(res, 400, { ok: false, reason: "no reader prompt pending" }); return true; }
     const answer = String(o.answer ?? "").trim();
@@ -45,7 +48,8 @@ export async function handleRunControl(
     r(answer);
     return true;
 
-  } else if (path === "/model" && req.method === "POST") {
+  } else if (path === "/model") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     if (LIVE.running && !LIVE.paused) { json(res, 400, { ok: false, reason: "pause the run before changing its model" }); return true; }
     const model = String(o.model ?? "").trim();
@@ -64,7 +68,8 @@ export async function handleRunControl(
     json(res, 200, { ok: true });
     return true;
 
-  } else if (path === "/interactive" && req.method === "POST") {
+  } else if (path === "/interactive") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     LIVE.interactive = !!o.on;
     if (!LIVE.interactive && LIVE.readerArmed) LIVE.readerArmed = false;
@@ -72,15 +77,17 @@ export async function handleRunControl(
     json(res, 200, { ok: true });
     return true;
 
-  } else if (path === "/pause" && req.method === "POST") {
-    if (!LIVE.running) { json(res, 400, { ok: false, reason: NO_RUN }); return true; }
+  } else if (path === "/pause") {
+    if (requireMethod(res, req, "POST")) return true;
+    if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }
     if (LIVE.pausing || LIVE.paused) { json(res, 200, { ok: true, already: true }); return true; }
     LIVE.pausing = true;
     sseWrite(runState());
     json(res, 200, { ok: true });
     return true;
 
-  } else if (path === "/resume" && req.method === "POST") {
+  } else if (path === "/resume") {
+    if (requireMethod(res, req, "POST")) return true;
     if (!LIVE.pausing && !LIVE.paused) { json(res, 400, { ok: false, reason: "not paused" }); return true; }
     LIVE.pausing = false;
     if (LIVE.pauseResolve) { const r = LIVE.pauseResolve; LIVE.pauseResolve = null; LIVE.paused = false; r(); }
@@ -88,7 +95,8 @@ export async function handleRunControl(
     json(res, 200, { ok: true });
     return true;
 
-  } else if (path === "/continue" && req.method === "POST") {
+  } else if (path === "/continue") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const steps = Number(o.steps) || 0;
     if (LIVE.awaitingContinue && LIVE.continueResolve) {

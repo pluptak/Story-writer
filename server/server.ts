@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 
 import { C } from "../ansi.ts";
 import { LIVE, RUN, sseClients, liveHistory, runState, storyWriteBlocked } from "../live.ts";
-import { HttpError, json, readJsonBody } from "./http-util.ts";
+import { HttpError, json, readJsonBody, requireMethod } from "./http-util.ts";
 import { handleRunControl } from "./run-control-routes.ts";
 import { handleScaffoldRoutes } from "./scaffold-routes.ts";
 import { handleNextChapterRoutes } from "./next-chapter-routes.ts";
@@ -396,7 +396,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
           interactive: LIVE.interactive,
         });
 
-      } else if (path === "/select" && req.method === "POST") {
+      } else if (path === "/select") {
+        if (requireMethod(res, req, "POST")) return;
         const o = await readJsonBody(req);
         if (!LIVE.awaitingPick || !LIVE.pickResolve) { json(res, 400, { ok: false, reason: "the session is not waiting on a choice" }); return; }
         const blocked = storyWriteBlocked();
@@ -412,7 +413,8 @@ export function startServer(port: number, host: ServerHost, bindAddr: string = "
         json(res, 200, { ok: true, dir });
         r({ dir, chapter, replace });
 
-      } else if (path === "/models" && req.method === "GET") {
+      } else if (path === "/models") {
+        if (requireMethod(res, req, "GET")) return;
         const ids = await host.availableModelIds();
         json(res, 200, {
           ids: ids ?? [], reachable: ids !== null,

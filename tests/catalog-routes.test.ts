@@ -628,38 +628,45 @@ describe("route dispatch edge cases", () => {
     assert.equal(r.handled, false);
   });
 
-  it("returns false for /catalog POST (not GET)", async () => {
+  it("refuses /catalog POST with 405 (not GET)", async () => {
     const r = await callRoute(handleCatalogRoutes, "/catalog", {}, makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
-  it("returns false for /catalog/entry POST (not GET)", async () => {
+  it("refuses /catalog/entry POST with 405 (not GET)", async () => {
     const r = await callRoute(handleCatalogRoutes, "/catalog/entry", {}, makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
-  it("returns false for /catalog/check GET (not POST)", async () => {
+  it("refuses /catalog/check GET with 405 (not POST)", async () => {
     const r = await callGet(handleCatalogRoutes, "/catalog/check", makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
-  it("returns false for /catalog/save GET (not POST)", async () => {
+  it("refuses /catalog/save GET with 405 (not POST)", async () => {
     const r = await callGet(handleCatalogRoutes, "/catalog/save", makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
-  it("returns false for /catalog/delete GET (not POST)", async () => {
+  it("refuses /catalog/delete GET with 405 (not POST)", async () => {
     const r = await callGet(handleCatalogRoutes, "/catalog/delete", makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
-  it("returns false for /catalog/visibility GET (not POST)", async () => {
+  it("refuses /catalog/visibility GET with 405 (not POST)", async () => {
     const r = await callGet(handleCatalogRoutes, "/catalog/visibility", makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
-  it("returns false for /catalog/assist GET (not POST)", async () => {
+  it("refuses /catalog/assist GET with 405 (not POST)", async () => {
     const r = await callGet(handleCatalogRoutes, "/catalog/assist", makeHost());
-    assert.equal(r.handled, false);
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 });

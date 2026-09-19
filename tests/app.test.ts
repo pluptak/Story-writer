@@ -194,6 +194,26 @@ describe("startServer's handle", () => {
     liveHandles.splice(liveHandles.indexOf(handle), 1);
   });
 
+  it("known paths refuse wrong methods with 405, not 404", async () => {
+    resetLive();
+    const handle = startServer(0, noopHost);
+    liveHandles.push(handle);
+    const port = await handle.bound;
+    await waitUntilListening(port);
+    const select = await fetch(`http://localhost:${port}/select`, { method: "GET" });
+    assert.equal(select.status, 405);
+    assert.equal(select.headers.get("allow"), "POST");
+    await select.body?.cancel();
+    const models = await fetch(`http://localhost:${port}/models`,
+                               { method: "POST", headers: { "content-type": "application/json" },
+                                 body: JSON.stringify({}) });
+    assert.equal(models.status, 405);
+    assert.equal(models.headers.get("allow"), "GET");
+    await models.body?.cancel();
+    await handle.close();
+    liveHandles.splice(liveHandles.indexOf(handle), 1);
+  });
+
   it("/select refuses while the story-write lock is held, and keeps the pick", async () => {
     resetLive();
     const handle = startServer(0, noopHost);
