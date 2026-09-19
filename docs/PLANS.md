@@ -887,6 +887,25 @@ Big, unbuilt, and shaping rather than corrective.
   story-editor surface. As each step ships, its behaviour moves into
   the owning surface doc and that part of this entry is deleted.
 
+- **Accretion duplicates an entity under a second name — measured live, unfixed.** One doorway
+  chapter into an unstaged room produced seven `stage_added` entries for four things:
+  `Service door :: at the end of the corridor` and later `door :: steel service door with
+  mechanical lock`; `Upturned wooden crates` and later `crates`; `Sodium lamp` and later `lamp`.
+  `applyStageEntry` matches on `nameKey`, so none of those pairs join and the room ends holding
+  both halves — every character then perceives one object twice, under two positions that can
+  drift apart. The canonical-name substitution built for character targets (`resolveTarget`) is
+  the right instrument pointed at the wrong caller: a target names something that already exists,
+  while accretion is where new names enter, and it does no matching beyond exact key equality.
+  Worth noting where this does **not** bite: a story that authors `staging` seeds the room with
+  the names the writer then reuses, and `interrogation-test` showed no duplication across two
+  staged runs. So it is an unstaged-room problem, which is every story but one. Shape of a fix,
+  cheapest first: (a) feed the writer its own accreted names back so it reuses them — the
+  manifest must not be dumped whole, but the names alone are not inventory prose; (b) match a new
+  entity against existing ones by containment rather than equality (`door` inside `Service
+  door`), which risks joining two genuinely different doors; (c) ask the writer to name what it
+  places using the stage's spelling when one exists. (a) is the least engine, the most likely to
+  work, and the easiest to measure — `stage_added` counts per scene should fall.
+
 - **Judge-gate economics — measured, corrected, and now shipping as correctness first.**
   Re-measured over 73 runs (`npm run census`) after the substrate arc: 943 judge accepts vs 27
   retry verdicts, 13 re-asks issued. Reading all 27 retry notes against the engine's own
