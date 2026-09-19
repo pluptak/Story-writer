@@ -9,7 +9,7 @@ import { catalogsFrom, removedCapabilities, resolveOrigin, resolveSkills, restri
 import { nameKey, sameName } from "./config-util.ts";
 import { warn as emitWarn } from "./warnings.ts";
 import { StoryJson, type SceneDef, type ThinkLevel, type TimelineDef } from "./story-schema.ts";
-import { rosterNameNotACharacter, reachNotInRoster, presenceNotInRoster, constraintNotInRoster, timelineBeatProblems, timelineOrderProblems, timelineMemoryWarnings } from "./story-spec.ts";
+import { rosterNameNotACharacter, reachNotInRoster, presenceNotInRoster, constraintNotInRoster, stagingNotInRoster, timelineBeatProblems, timelineOrderProblems, timelineMemoryWarnings } from "./story-spec.ts";
 
 export type { SceneDef } from "./story-schema.ts";
 
@@ -177,6 +177,16 @@ export async function loadStory(dir: string, modelOverride?: string, catalogs?: 
       if (!ch) warn(`Scene ${i + 1} sets a constraint for "${who}", who is not one of the characters — ignored`);
       else if (s.roster.length && !s.roster.some(r => sameName(r, who)))
         warn(constraintNotInRoster(`Scene ${i + 1}`, who) + " — the constraint never reaches a run");
+    }
+    // Staging is one shared list, so an entry naming anything else is an object and is
+    // silent. An entry naming someone in the cast but not in this scene's roster warns: no
+    // projection of this scene would ever place them.
+    for (const entry of s.staging ?? []) {
+      const { text } = splitMeaning(entry);
+      const name = (text.startsWith("!") ? text.slice(1) : text).trim();
+      const ch = characters.find(c => sameName(c.name, name));
+      if (ch && s.roster.length && !s.roster.some(r => sameName(r, name)))
+        warn(stagingNotInRoster(`Scene ${i + 1}`, name) + " - the staging never reaches a run");
     }
   }
 

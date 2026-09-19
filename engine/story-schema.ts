@@ -36,6 +36,10 @@ export const SceneDef = z.strictObject({
    *  handle anything"]}. Judge-mediated only, like a restriction's own meaning — there is no
    *  mechanical enforcement. */
   constraint: z.record(z.string(), z.array(z.string())).default({}),
+  /** Scene-level staging: what is in this scene and where, as "name :: where". People and
+   *  objects in one list — a character is an entity with a position. A leading `!` marks the
+   *  entry load-bearing. Scene-scoped like reach (I4); absent means unstaged. */
+  staging: z.array(z.string()).default([]),
   /** Writer-only overrides for this one scene; unset falls back to `models.writer` / `thinking.writer`. */
   writerModel: z.string().optional(),
   writerThink: thinkLevel.optional(),

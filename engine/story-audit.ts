@@ -179,6 +179,12 @@ export async function auditStory(dir: string, catalogs?: Catalogs): Promise<Stor
     findings.push({ check: "no-timeline", level: "dated",
       what: "no world timeline",
       effect: "nothing in this story happens that no character decided" });
+  sc.scenes.forEach((s, i) => {
+    if (!(s.staging ?? []).length)
+      findings.push({ check: "no-staging", level: "dated", where: `scene ${i + 1}`,
+        what: "the scene stages nothing",
+        effect: "every character reconstructs the room from the writer's prose; no placement is fixed" });
+  });
 
   const worst = findings.reduce<AuditLevel>(
     (acc, f) => (RANK.get(f.level)! < RANK.get(acc)! ? f.level : acc), "current");

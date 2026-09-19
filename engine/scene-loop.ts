@@ -87,6 +87,30 @@ export function sceneReach(sd: SceneDef, def: CharacterDef, catalogs?: Catalogs)
   return resolveReach(def.name, def.skills, def.limits.join(" | "), grant.join(" | "), catalogs);
 }
 
+/** The scene's staging as a shared room: what is in this scene and where, as coarse free
+ *  prose — never coordinates, never resolved against a catalog. A leading `!` on an entry's
+ *  name marks it load-bearing: fixed at runtime, though nothing enforces that until the live
+ *  stage exists. A missing `:: position` warns, like a constraint's missing meaning: with no
+ *  position the entry places nothing. A character's own placement is simply the entry whose
+ *  name matches a roster member — filtering that is observe()'s job, not this reader's. */
+export interface StagedEntity { entity: string; position: string; fixed: boolean }
+export function sceneStage(sd: SceneDef): StagedEntity[] {
+  const out: StagedEntity[] = [];
+  for (const entry of sd.staging ?? []) {
+    const { text, meaning } = splitMeaning(entry);
+    const fixed = text.startsWith("!");
+    const entity = (fixed ? text.slice(1) : text).trim();
+    if (!entity) {
+      warn(`   (staging entry "${entry}" names nothing — ignored)`);
+      continue;
+    }
+    if (!meaning)
+      warn(`   (staging "${entity}" carries no ":: position" — nobody can tell where it is)`);
+    out.push({ entity, position: meaning, fixed });
+  }
+  return out;
+}
+
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
 export function newCharacterAgent(def: CharacterDef, place: string, think: ThinkLevel, reach: Skill[] = [], presence?: Presence, constraint: { name: string; meaning: string }[] = []): Agent {
   const a = new Agent(def.name, def.model, wrapCharacter(def, place, reach, presence, constraint), 0.9);
