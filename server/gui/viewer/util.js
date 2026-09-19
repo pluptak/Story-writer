@@ -51,7 +51,9 @@ export function wireBackdropClose(root, id, onClose) {
 }
 
 const noticeTimers = {};
-/** Set (or clear) the text at a notice slot, `#notice` by default -- auto-clears after 8s so a
+/** A stale refusal lingers this long before auto-clearing. */
+const NOTICE_MS = 8000;
+/** Set (or clear) the text at a notice slot, `#notice` by default -- auto-clears after NOTICE_MS so a
  *  stale refusal doesn't linger. `at: false` means nowhere: the caller renders the refusal itself
  *  (inline, keyed to its own state) and does not want it echoed to a DOM slot too. */
 export function notify(text, at = "notice") {
@@ -60,7 +62,7 @@ export function notify(text, at = "notice") {
   if (!el) return;
   el.textContent = text || "";
   clearTimeout(noticeTimers[at]);
-  if (text) noticeTimers[at] = setTimeout(() => { el.textContent = ""; }, 8000);
+  if (text) noticeTimers[at] = setTimeout(() => { el.textContent = ""; }, NOTICE_MS);
 }
 
 /** POST, and say why if the engine says no. `at` picks which notice slot reports the refusal, or

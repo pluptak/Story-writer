@@ -7,7 +7,9 @@
  * each against the granted-so-far ledger. An unmatched quotation flags with no model call, empty
  * ledger included — the exact case the LLM used to pass as a "free assertion".
  *
- * This file imports nothing from the engine: pure text matching, so it stays a leaf. */
+ *  This file imports config-util.ts for the shared token matching: pure text matching, so it
+ *  stays a leaf. */
+import { normText, containsTokenRun } from "./config-util.ts";
 
 // Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
 export interface GrantedLine { character: string; speech: string; thought?: string; }
@@ -56,37 +58,19 @@ export function extractQuotations(prose: string): { text: string; index: number 
   return out;
 }
 
-const norm = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-
-/** True when `inner`'s tokens appear as a contiguous run inside `outer` (either order). Catches a
- *  quote that is a verbatim phrase of a granted line, or a granted line that is a fragment of a
- *  longer quote — without the substring trap where "no" matches inside "know". */
-function seqContains(outer: string[], inner: string[]): boolean {
-  if (inner.length === 0) return true;
-  if (inner.length > outer.length) return false;
-  for (let s = 0; s <= outer.length - inner.length; s++) {
-    let ok = true;
-    for (let k = 0; k < inner.length; k++)
-      if (outer[s + k] !== inner[k]) { ok = false; break; }
-    if (ok) return true;
-  }
-  return false;
-}
-
 /** A quote matches a granted line when it is near-verbatim: a contiguous token run in either
  *  direction, or (failing that) a Dice-coefficient overlap of at least 0.8 — a lightly edited quote
  *  (one word swapped in six) still passes, a wholly invented one does not. Dice rather than Jaccard
  *  because it does not punish a single substitution as harshly. */
 function matchQuote(q: string, lines: string[]): boolean {
-  const qn = norm(q);
+  const qn = normText(q);
   if (!qn) return true;
   const qt = qn.split(" ");
   for (const sp of lines) {
-    const sn = norm(sp);
+    const sn = normText(sp);
     if (!sn) continue;
     const st = sn.split(" ");
-    if (seqContains(st, qt) || seqContains(qt, st)) return true;
+    if (containsTokenRun(st, qt) || containsTokenRun(qt, st)) return true;
     const set = new Set(st);
     let inter = 0;
     for (const t of qt) if (set.has(t)) inter++;
@@ -98,13 +82,18 @@ function matchQuote(q: string, lines: string[]): boolean {
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** How far past a quote a speaker name may sit and still govern it; how far back the scan
+ *  reads. */
+const AFTER_WINDOW = 60;
+const BEFORE_WINDOW = 120;
+
 /** Best-effort attribution of an unmatched quote. Post-dialogue attribution (`"..." NAME says`) is
  *  the ordinary form in the prose this engine asks for, so the name immediately following the quote
  *  is checked first; only when nothing follows is the nearest preceding name used. Returns "unknown"
  *  when neither direction finds one — the flag still carries the offending quote. */
 function attribute(prose: string, quote: { index: number; text: string }, names: readonly string[]): string {
   const end = quote.index + quote.text.length;
-  const after = prose.slice(end, Math.min(prose.length, end + 60));
+  const after = prose.slice(end, Math.min(prose.length, end + AFTER_WINDOW));
   let bestAfter = Infinity, afterName = "unknown";
   for (const name of names) {
     const m = new RegExp(`\\b${escapeRe(name)}\\b`, "i").exec(after);
@@ -113,7 +102,7 @@ function attribute(prose: string, quote: { index: number; text: string }, names:
   }
   if (afterName !== "unknown") return afterName;
 
-  const before = prose.slice(Math.max(0, quote.index - 120), quote.index);
+  const before = prose.slice(Math.max(0, quote.index - BEFORE_WINDOW), quote.index);
   let best = -1, bestName = "unknown";
   for (const name of names) {
     const re = new RegExp(`\\b${escapeRe(name)}\\b`, "gi");
