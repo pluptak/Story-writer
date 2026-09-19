@@ -169,6 +169,95 @@ under Measurement owed.
   that exists to report exactly that kind of drift never fires. One comparison, once it is decided
   what a reach drift means for the chapter that already ran under the old grant.
 
+### `any` at the JSON boundaries
+
+Type: fix
+Why now: the easy `any`s are gone and the load-bearing ones remain: `readJsonBody`
+(`server/http-util.ts`) still returns `Promise<any>`, `raw: any`/`draft: any` plus ~19
+`(x as any)` casts in `engine/story-spec.ts`, `Promise<any>`/`entry: any` in `engine/catalog.ts`,
+and casts in `engine/consult.ts`, `engine/llm-client.ts`, `engine/architect.ts`. Every one defeats
+a zod schema sitting one call away — `String((v as any)?.name ?? "")` hides shape drift that
+`safeParse` would catch.
+Next action: default `readJsonBody` to `Record<string, unknown>` (or `unknown` + narrow) with
+`str(o, "dir")`/`num(o, "chapter")` helpers; type `loadCatalog` per-kind through the existing
+`REGISTRY` instead of `any`; reuse the inferred `StoryJson`/`CharacterDef` types at the
+`story-spec.ts` cast sites.
+Done when: `npx tsc --noEmit` and `npm test` pass with no `any` outside `resolveLayers`/
+`removedWithMeanings` (`engine/skills.ts`, private, contained) and the documented test doubles.
+
+### Blind `e as Error` in catches
+
+Type: fix
+Why now: `catch {}` + `(e as Error).message` throws a second error on a non-Error throw. Sites:
+`engine/agent.ts`, `engine/architect.ts`, `engine/fanout.ts`, `engine/judge-gate.ts`,
+`engine/catalog.ts`. The correct pattern already exists beside them
+(`engine/scene-loop.ts`, `engine/consult.ts` narrow `StoppedError` first).
+Next action: `e instanceof Error ? e.message : String(e)` at each site.
+Done when: `npx tsc --noEmit` and `npm test` pass; a thrown string no longer escapes as a
+secondary TypeError.
+
+### `writeScene` is one ~600-line function
+
+Type: fix
+Why now: `engine/scene-loop.ts:337` (`writeScene`, running to `runChapter` at :946) owns
+consult/fanout/judge/lint/repeat/exit/deferred/question-state/trim in one `while (!done)`,
+nested four deep (loop → lint-retry → decision → try/catch). Untestable without a full run.
+Next action: extract `runLintLoop()`, `handleConsult()`, `handleSceneEnd()` as helpers over an
+explicit state object; keep `writeScene` as orchestration.
+Done when: `npm test` passes with no behaviour change (the lint/consult suites are the net).
+
+### `applyEdits` is a ~450-line if-chain; `normalizeSpec` a closure over shared state
+
+Type: fix
+Why now: `engine/story-spec.ts` dispatches ~15 `beat_*`/`config.*`/`characters.*`
+branches in one `for` loop inside `applyEdits` (:348), re-normalising per edit; `normalizeSpec`
+(:121) shares state by closure with an inner `readSceneDef` (:172).
+Next action: table-driven `Record<pattern, handler>` with small
+`handleSceneEdit`/`handleCharacterEdit`/`handleBeatEdit` functions; split `normalizeSpec` into
+`normalizeCharacters()`/`normalizeScenes()`/`normalizeTimeline()` returning
+`{value, problems}`.
+Done when: `npx tsc --noEmit` and `npm test` pass with no behaviour change.
+
+### The scaffold/handoff mirror is still two copies
+
+Type: fix
+Why now: on main the two interviews live in root `host.ts` (`SCAFFOLD`/`scaffoldBusy`/
+`scaffoldGen` vs `HANDOFF`/`handoffBusy`/`handoffGen`, `scaffoldLast`/`handoffLast`,
+`scaffoldStage`/`handoffStage`) over sessions in `engine/architect.ts` (`ScaffoldSession`,
+`NextChapterSession`) — the same round/abandon/status-409 shape under different names, and the
+same repeated action tails and `if (busy) return 409; if (!SESSION) return 400;` guards across
+`server/scaffold-routes.ts`/`server/next-chapter-routes.ts`/`server/catalog-routes.ts`.
+Next action: generic `runInterviewRound()` + shared busy/abandon guards in `host.ts` (or a shared
+module beside it), with `requireOpenScaffold()`/`requireOpenHandoff()` guards;
+`answerState(res, p)`/`answerOk(res, p)` in the routes.
+Done when: `npm test` passes; a change to generation-guard or status shape needs one edit.
+
+### GUI wiring duplication and the `tests/gui` typecheck
+
+Type: fix
+Why now: two finds from the same sweep. `server/gui/viewer/character-library.js` repeats one
+`querySelector` shape ~30 times with the confirm strings inline;
+`handoff.js`/`interview.js`/`session.js` arm-timeouts (5000/4000/8000) are unnamed; and
+`npx tsc` fails on `tests/gui/` (Playwright specs, validated by their own runner) while prod is
+clean — `scripts/check.mjs` already defers those diagnostics rather than fixing them.
+Next action: table-drive the wiring (`[["#charlib-new", "click", createNew], …]` +
+`CONFIRM_DISCARD` const); name the arm timeouts; fix the GUI specs' event shapes (or exclude
+and track separately — owner's call, but decide rather than drift).
+Done when: `npx tsc --noEmit` passes repo-wide and `npm run test:gui` is green.
+
+### Script and manifest leftovers
+
+Type: fix
+Why now: small, independent, each with its own verification. (`scripts/check.mjs`'s typecheck is
+already refactored on main — an `isGui` filter, no mutable closure — so it is not listed here.)
+`scripts/make-replay-fixture.mjs` re-reads and re-parses `storyJson` and the `lines` array;
+`run-manifest.ts:gitInfo()` rebuilds `promisify` per call around three `git` spawns;
+`story-writer.ts` carries `temperature: 0.9 / 0.7` and `"budget 10"` literals; `prompts.ts`'s
+header lists seven role files but omits `open-consult` (and the `smooth` surface is unmentioned).
+Next action: single-read fixture builder with a `parseJsonl` helper; hoisted `execAsync` with
+one `git log` call; named `OPEN_TEMPS`/`OPEN_BUDGET` consts; corrected barrel header.
+Done when: `npm test`, `node scripts/check.mjs`, and a fixture rebuild all pass.
+
 ### In the architect's prompts
 
 Each has live scaffold evidence and a candidate fix; all four need a run to confirm.
@@ -794,10 +883,35 @@ the engine permits something the asymmetry forbids.
   exists, and the scaffold session is session-only that dies on restart — so the mockup's badge has
   three readings, ascending in cost: derive it from `chapters.length === 0` (free; cannot see an
   interview abandoned before accept, because nothing is on disk yet), a session badge while this
-  process holds that story's session (free; vanishes on restart — the new-story card's
-  "continue new story…" already does a version of this), or persisting scaffold drafts to disk
-  (engine work, half-written stories that do not preflight, a directory before a name). Only the
-  owner can say which they wanted; nothing is built until then.
+   process holds that story's session (free; vanishes on restart — the new-story card's
+   "continue new story…" already does a version of this), or persisting scaffold drafts to disk
+   (engine work, half-written stories that do not preflight, a directory before a name). Only the
+   owner can say which they wanted; nothing is built until then.
+
+### One logging rule for the engine
+
+Type: decision
+Why now: four warning channels with no rule — `warn()`
+(`engine/warnings.ts`, sink-swappable, the only one tests can capture) vs `console.warn` on the
+engine-state progress path, `console.log` red/yellow status in `engine/scene-loop.ts` and
+`engine/architect.ts`, `console.error` in `engine/architect.ts`, and silent `catch {}` in
+`engine/architect.ts`, `engine/provider-util.ts`, `engine/catalog.ts`.
+Next action: decide — route all engine warnings through `warn()`, keep `console.*` for genuine
+user-facing prose echo only, and give silent catches a `console.debug`/`warn` with cause.
+Done when: the rule is one paragraph in `warnings.ts` itself and the stray call sites follow it.
+
+### The status-shape convention, written down
+
+Type: decision
+Why now: intentional but undiscoverable. Validation-shaped answers are 200 with `ok:false`
+(catalog problems, story check/suggest); missing call-shape is 4xx; but `saveStory` persist
+failures (`persistStoryJson` in root `host.ts`) return no `status`, defaulting to 400 where 500
+is correct — and no document states the rule, so each new route re-derives it.
+Next action: document in `server/server.ts` ("validation/problems → 200+ok:false;
+missing call-shape → 4xx; engine crash → 500"), give persist failures `status: 500`, and mirror
+the paragraph in `GUI-SPEC.md`. Client-visible: the 500 half changes wire behaviour.
+Done when: the paragraph exists, persist failures carry 500, and
+`tests/server-routes.test.ts` pins all three.
 
 ## Directions
 
@@ -1344,6 +1458,14 @@ No defect and no decision owed: smaller quality work, prompt cost, and coverage.
 
 Nothing here is work. Each entry exists to stop a future decision going wrong — a thing already tried
 that does not work, a cost not worth paying yet, or a constraint on whatever comes next.
+
+- **The two granted-line shapes stay separate — do not unify them.** `engine/quote-lint.ts`'s
+  `GrantedLine` (`character, speech, thought?`) and `engine/fanout.ts`'s `GrantedEntry`
+  (`character, speech, action, thought?`) look like one type copied twice. They are leaf-minimal
+  on purpose: each declares only the fields its module reads. One shared shape would make
+  `action`/`speech` optional everywhere, weakening the one place that requires them (the
+  fan-out's narration-lint entries) to satisfy the place that needs least. Fix drift by reading
+  the two, not by merging them.
 
 - **A full ports-and-adapters restructuring (`ports/`/`adapters/`/`application/`/`presentation/`
   folders, view models, DTOs everywhere). Evaluated and rejected, not just deferred.** The
