@@ -10,12 +10,15 @@ import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../live.ts";
 import { json, readJsonBody } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
+/** Shared reason so viewer matching cannot split on a typo in one copy. */
+const NO_RUN = "no run in progress";
+
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleRunControl(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
 ): Promise<boolean> {
   if (path === "/stop" && req.method === "POST") {
-    if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }
+    if (!LIVE.running) { json(res, 400, { ok: false, reason: NO_RUN }); return true; }
     const first = stopRun();
     releaseForStop();
     if (first) console.log(`\n${C.yellow}Stop requested from the viewer — ending the scene.${C.reset}`);
@@ -24,7 +27,7 @@ export async function handleRunControl(
     return true;
 
   } else if (path === "/consult-me" && req.method === "POST") {
-    if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }
+    if (!LIVE.running) { json(res, 400, { ok: false, reason: NO_RUN }); return true; }
     if (!LIVE.interactive) { json(res, 400, { ok: false, reason: "interactive is off" }); return true; }
     if (LIVE.readerArmed || LIVE.readerResolve) { json(res, 200, { ok: true, already: true }); return true; }
     LIVE.readerArmed = true;
@@ -70,7 +73,7 @@ export async function handleRunControl(
     return true;
 
   } else if (path === "/pause" && req.method === "POST") {
-    if (!LIVE.running) { json(res, 400, { ok: false, reason: "no run in progress" }); return true; }
+    if (!LIVE.running) { json(res, 400, { ok: false, reason: NO_RUN }); return true; }
     if (LIVE.pausing || LIVE.paused) { json(res, 200, { ok: true, already: true }); return true; }
     LIVE.pausing = true;
     sseWrite(runState());

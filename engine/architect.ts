@@ -7,7 +7,7 @@ import { C } from "../ansi.ts";
 import { ENGINE } from "./engine-state.ts";
 import { Agent } from "./agent.ts";
 import { extractJson, topLevelObjects, visibleReply } from "./json-extract.ts";
-import { slugify, nameKey } from "./config-util.ts";
+import { slugify, nameKey, JUDGE_TEMPERATURE } from "./config-util.ts";
 import { SKILL_CATALOG, SPECIAL_SKILL_CATALOG, bibleFrom, bibleMeaningOf, splitMeaning, canonSkill, type BibleLookup, type Catalogs } from "./skills.ts";
 import { ROOT, resolveStoryDir, readChapters, readChapterSpec, readChapterCatalogs, readUnfiredBeats, readChapterBeatOutcome, type Defaults } from "./story-format.ts";
 import { normalizeSpec, applyEdits, renderStory, sceneDrift, timelineDrift, canonicalField, ledgerBeatIndex, type StorySpec } from "./story-spec.ts";
@@ -51,9 +51,7 @@ export async function buildArchitect(d: Defaults, withExample = true,
 }
 
 // The three judges in scene-loop.ts run at this temperature for the same reason: a verdict wants to
-// be repeatable, not creative. Kept as its own constant rather than imported, so the architect chain
-// does not take a dependency on the scene loop for one number.
-const JUDGE_TEMPERATURE = 0.3;
+// be repeatable, not creative. Shared via config-util.ts so the two chains cannot drift apart.
 
 /** The cast gate's judge. Stateless and deliberately **not** the architect: the architect wrote the
  *  cast, and self-audit is exactly what the verify pass does badly. Built fresh per call, so it never

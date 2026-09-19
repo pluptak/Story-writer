@@ -7,7 +7,10 @@
  * each against the granted-so-far ledger. An unmatched quotation flags with no model call, empty
  * ledger included — the exact case the LLM used to pass as a "free assertion".
  *
- * This file imports nothing from the engine: pure text matching, so it stays a leaf. */
+ * This file imports only config-util.ts: pure text matching plus shared regex escaping,
+ *  so it stays a leaf. */
+
+import { escapeRe } from "./config-util.ts";
 
 // Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
 export interface GrantedLine { character: string; speech: string; thought?: string; }
@@ -95,8 +98,6 @@ function matchQuote(q: string, lines: string[]): boolean {
   }
   return false;
 }
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Best-effort attribution of an unmatched quote. Post-dialogue attribution (`"..." NAME says`) is
  *  the ordinary form in the prose this engine asks for, so the name immediately following the quote
