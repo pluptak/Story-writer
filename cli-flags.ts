@@ -103,7 +103,8 @@ export interface CliOptions {
 
 export type CliParseResult = { ok: true; options: CliOptions } | { ok: false; error: string };
 
-const DEFAULT_PORT = 8080;
+/** The port --port falls back to, and the session's initial port until the server binds. */
+export const DEFAULT_PORT = 8080;
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;

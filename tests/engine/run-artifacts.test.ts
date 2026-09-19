@@ -438,14 +438,14 @@ describe("prompt construction", () => {
     // writer would silently change with it -- so byte-identity is asserted, not assumed.
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const cast = writerCast(sc.characters, sc.scenes[0].roster);
-    const empty = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle, sc.facts, []);
+    const empty = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle, { facts: sc.facts, constraints: [] });
     // The house style is the last thing in the prompt, so this pins its exact content: no trailing
     // newline, no empty line where a constraint would have gone.
     assert.ok(empty.endsWith(`HOUSE STYLE:\n${sc.writerStyle.trim()}`),
               "with no constraints the block must be the style alone, unchanged");
 
-    const withOnes = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle, sc.facts,
-                                ["No omniscience.", "  ", "Do not narrate what ASTER cannot perceive."]);
+    const withOnes = wrapWriter(sc.premise, sc.scenes[0], cast, sc.writerStyle, { facts: sc.facts,
+      constraints: ["No omniscience.", "  ", "Do not narrate what ASTER cannot perceive."] });
     assert.match(withOnes, /HOUSE STYLE:[\s\S]*No omniscience\./);
     assert.match(withOnes, /Do not narrate what ASTER cannot perceive\./);
     // Blank entries are dropped rather than emitted as empty lines in the middle of the block.

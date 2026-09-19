@@ -56,3 +56,6 @@ export function idOr400(res: ServerResponse, raw: unknown): string | null {
   if (!id) { json(res, 400, { ok: false, reason: "no id" }); return null; }
   return id;
 }
+
+/** An empty interview line — the scaffold and handoff "say" actions share the refusal. */
+export const EMPTY_SAY = "say something";

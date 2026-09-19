@@ -95,8 +95,17 @@ export function newCharacterAgent(def: CharacterDef, place: string, think: Think
 }
 
 // -- WRITER AGENT ----------------------------------------------------------
+/** Trailing options for the writer's system prompt. An object — never two trailing booleans —
+ *  so the consult-since and heard-channel flags cannot be swapped at the call site. */
+export interface WriterOpts {
+  facts?: string[];
+  constraints?: string[];
+  sinceEnforced?: boolean;
+  heard?: boolean;
+}
 /** The system prompt for the writer agent: premise, scene, the cast's skills, facts, and house style. */
-export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[], style: string, facts: string[] = [], constraints: string[] = [], sinceEnforced = false, heard = false): string {
+export function wrapWriter(premise: string, scene: SceneDef, cast: { name: string; can: string[]; reach?: string[]; cannot: string[]; presence?: string; constraint?: string[]; pronouns?: { subject: string; object: string; possessive: string; reflexive: string } }[], style: string, opts: WriterOpts = {}): string {
+  const { facts = [], constraints = [], sinceEnforced = false, heard = false } = opts;
   // The writer gets one HOUSE STYLE block. Joining here rather than in the prompt keeps the
   // preset/constraint split an authoring distinction -- which is where it earns its keep -- and
   // leaves the writer seeing exactly what a story with both typed into one field always saw.
@@ -426,7 +435,8 @@ export async function writeScene(run: SceneRun) {
   const mechanicalCast = roster.map((c, i) => ({
     name: c.name, cannot: c.limits, presenceState: cast[i].presenceState, pronouns: c.pronouns,
   }));
-  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle, facts, writerStyleConstraints, ENGINE.consultSince, ENGINE.heardChannel), 0.8);
+  const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle,
+    { facts, constraints: writerStyleConstraints, sinceEnforced: ENGINE.consultSince, heard: ENGINE.heardChannel }), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
   // A thought reaches the writer only from inside the POV. The narration lint already holds that

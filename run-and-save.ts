@@ -14,6 +14,15 @@ import { persistedCatalogData } from "./engine/catalog.ts";
 import type { StoryConfig, ChapterBeatOutcome } from "./engine/story-format.ts";
 
 const MAX_RUNS = 10;
+/** The console rule printed around the finished prose. */
+const SEPARATOR = "=".repeat(60);
+
+/** One best-effort sidecar write beside an already-safe chapter. Losing it must never cost the
+ *  chapter, so failure is a dim line naming what was lost — never a throw. */
+async function writeSidecar(path: string, lost: string, write: () => Promise<void>): Promise<void> {
+  try { await write(); }
+  catch (e) { console.log(`${C.dim}${lost} — ${(e as Error).message}${C.reset}`); }
+}
 
 /** What one chapter's run established about its beats, for the handoff's repair adjudication —
  *  pure over the run's own events, so tests feed it a RunEvent[] directly. `judged` is whether
@@ -152,38 +161,31 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
     // The definition this chapter was written from, beside the prose rather than in out/, which is
     // rotated. The handoff rewrites story.json between chapters; without this, what produced an
     // older chapter is gone. Copied verbatim: re-rendering would record a normalised story, not the
-    // authored one. Losing it must never cost the chapter that is already safely written.
-    try {
-      await writeFile(joinPath(chaptersDir, `${chapter}.json`),
-                      await readFile(joinPath(sc.dir, "story.json"), "utf8"), "utf8");
-    } catch (e) {
-      console.log(`${C.dim}chapter ${chapter}'s definition was not snapshotted — ${(e as Error).message}${C.reset}`);
-    }
+    // authored one.
+    await writeSidecar(joinPath(chaptersDir, `${chapter}.json`),
+      `chapter ${chapter}'s definition was not snapshotted`,
+      async () => writeFile(joinPath(chaptersDir, `${chapter}.json`),
+        await readFile(joinPath(sc.dir, "story.json"), "utf8"), "utf8"));
 
     // story.json names capabilities; the catalogs say what those names mean, and the author edits
     // them freely between chapters. Without this, deleting a bible entry would change what a name
-    // meant in a chapter already written. Same rule as the definition beside it: losing the snapshot
-    // must never cost the chapter that is already safely written.
-    try {
-      await writeFile(joinPath(chaptersDir, `${chapter}.catalogs.json`),
-                      JSON.stringify(await persistedCatalogData(), null, 2) + "\n", "utf8");
-    } catch (e) {
-      console.log(`${C.dim}chapter ${chapter}'s catalogs were not snapshotted — ${(e as Error).message}${C.reset}`);
-    }
+    // meant in a chapter already written.
+    await writeSidecar(joinPath(chaptersDir, `${chapter}.catalogs.json`),
+      `chapter ${chapter}'s catalogs were not snapshotted`,
+      async () => writeFile(joinPath(chaptersDir, `${chapter}.catalogs.json`),
+        JSON.stringify(await persistedCatalogData(), null, 2) + "\n", "utf8"));
 
     // Which world events this chapter was set up for and never reached. The snapshot beside it is a
     // verbatim copy of story.json and says only what was AIMED here; nothing else on disk says what
     // actually fired, and out/ rotates, so the handoff would have to guess. Written only when there
-    // is something to say, and losing it must never cost the chapter already safely written.
+    // is something to say.
     const stranded = events.filter(e => e.t === "beat_stranded" && e.chapter === chapter)
       .map(e => ({ beat: (e as { beat: string }).beat, at: (e as { at: number }).at }));
     if (stranded.length) {
-      try {
-        await writeFile(joinPath(chaptersDir, `${chapter}.unfired.json`),
-                        JSON.stringify(stranded, null, 2) + "\n", "utf8");
-      } catch (e) {
-        console.log(`${C.dim}chapter ${chapter}'s unfired world events were not recorded — ${(e as Error).message}${C.reset}`);
-      }
+      await writeSidecar(joinPath(chaptersDir, `${chapter}.unfired.json`),
+        `chapter ${chapter}'s unfired world events were not recorded`,
+        () => writeFile(joinPath(chaptersDir, `${chapter}.unfired.json`),
+          JSON.stringify(stranded, null, 2) + "\n", "utf8"));
     }
 
     // What this chapter's run established about its beats, for the handoff's repair adjudication.
@@ -191,14 +193,13 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
     // before this shipped", matching readChapterSpec/readChapterCatalogs's null-on-missing
     // convention. `doneFlagged` is the questionLive proxy — true means the judge said "not
     // answered" (still live) — and `fired` is content-keyed the same way beat_stranded already is.
-    // Losing it, like every sidecar here, must never cost the chapter already safely written.
-    try {
-      const outcome = buildChapterBeatOutcome(events, chapter);
-      await writeFile(joinPath(chaptersDir, `${chapter}.beats.json`),
-                      JSON.stringify(outcome, null, 2) + "\n", "utf8");
-    } catch (e) {
-      console.log(`${C.dim}chapter ${chapter}'s beat outcome was not recorded — ${(e as Error).message}${C.reset}`);
-    }
+    await writeSidecar(joinPath(chaptersDir, `${chapter}.beats.json`),
+      `chapter ${chapter}'s beat outcome was not recorded`,
+      async () => {
+        const outcome = buildChapterBeatOutcome(events, chapter);
+        await writeFile(joinPath(chaptersDir, `${chapter}.beats.json`),
+          JSON.stringify(outcome, null, 2) + "\n", "utf8");
+      });
   } else {
     const why = r.stopped ? "the run was stopped"
       : !r.done ? "the run did not finish"
@@ -209,9 +210,9 @@ export async function runAndSave(sc: StoryConfig, dir: string, chapter = 1,
   setWhere(r.stopped ? `stopped ${dir}` : `finished ${dir}`, false);
 
   if (!opts.serving) {
-    console.log(`\n${C.bold}${"=".repeat(60)}${C.reset}`);
+    console.log(`\n${C.bold}${SEPARATOR}${C.reset}`);
     console.log(r.prose.join("\n\n"));
-    console.log(`${C.bold}${"=".repeat(60)}${C.reset}`);
+    console.log(`${C.bold}${SEPARATOR}${C.reset}`);
   }
   const consults = events.filter(e => e.t === "consult").length;
   const retries  = events.filter(e => e.t === "retry").length;

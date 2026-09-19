@@ -8,13 +8,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { LIVE, isPickAwaited, consumePick } from "../../live.ts";
 import { json, readJsonBody, requireMethod } from "../infra/http-util.ts";
-import { modelOr400 } from "./route-helpers.ts";
+import { modelOr400, EMPTY_SAY } from "./route-helpers.ts";
 import type { ScaffoldRoutesHost, Concept, RegenScope } from "../route-hosts.ts";
 
 const MAX_TAGS = 8;
 const MAX_TAG_LEN = 40;
-const MAX_CAST = 4;      // the cast stage's own ceiling: "Four is the maximum"
-const MAX_IMPORTS = 4;   // the cast stage's ceiling, same as MAX_CAST
+const MAX_CAST_MEMBERS = 4; // the cast stage's own ceiling ("Four is the maximum") — cast size and imports alike
 const MAX_ID_LEN = 200;  // a catalog id is a slug; this only stops an unbounded string
 
 /** The concept goes verbatim into a prompt, so its size is bounded here. */
@@ -25,8 +24,8 @@ function readConcept(o: Record<string, unknown>): { ok: true; concept: Concept }
   const tooLong = tags.find(t => t.length > MAX_TAG_LEN);
   if (tooLong) return { ok: false, reason: `tag "${tooLong.slice(0, 20)}…" is longer than ${MAX_TAG_LEN} characters` };
   const castSize = Number(o.castSize ?? 0);
-  if (!Number.isInteger(castSize) || castSize < 0 || castSize > MAX_CAST)
-    return { ok: false, reason: `castSize must be a whole number from 0 to ${MAX_CAST}` };
+  if (!Number.isInteger(castSize) || castSize < 0 || castSize > MAX_CAST_MEMBERS)
+    return { ok: false, reason: `castSize must be a whole number from 0 to ${MAX_CAST_MEMBERS}` };
   const styleId = String(o.styleId ?? "").trim();
   if (styleId.length > MAX_ID_LEN) return { ok: false, reason: `styleId is longer than ${MAX_ID_LEN} characters` };
   return { ok: true, concept: { tags, castSize, styleId } };
@@ -36,7 +35,7 @@ function readConcept(o: Record<string, unknown>): { ok: true; concept: Concept }
 function readImportIds(o: Record<string, unknown>): { ok: true; ids: string[] } | { ok: false; reason: string } {
   const raw = Array.isArray(o.importIds) ? o.importIds : [];
   const ids = raw.map(x => String(x ?? "").trim()).filter(Boolean);
-  if (ids.length > MAX_IMPORTS) return { ok: false, reason: `at most ${MAX_IMPORTS} imported characters` };
+  if (ids.length > MAX_CAST_MEMBERS) return { ok: false, reason: `at most ${MAX_CAST_MEMBERS} imported characters` };
   return { ok: true, ids };
 }
 
@@ -127,7 +126,7 @@ export async function handleScaffoldRoutes(
 
   if (what === "say") {
     const text = String(o.text ?? "").trim();
-    if (!text) { json(res, 400, { ok: false, reason: "say something" }); return true; }
+    if (!text) { json(res, 400, { ok: false, reason: EMPTY_SAY }); return true; }
     const r = await host.scaffoldSay(text);
     if (!r.ok) { json(res, r.status ?? 400, { ok: false, reason: r.reason }); return true; }
     json(res, 200, r.state);

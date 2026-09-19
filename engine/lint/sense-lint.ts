@@ -172,7 +172,9 @@ const lookIsNotTheAct = (window: string): boolean =>
 
 /** How far after a name a verb may sit and still be governed by it — enough for "Marsh, still in his
  *  corner, watches" and short enough that the next clause's subject does not get borrowed. Sentence
- *  punctuation ends the reach regardless. */
+ *  punctuation ends the reach regardless. Deliberately narrower than situation-lint's 80: verbs here
+ *  are a closed list matched by name, so a wide window borrows freely; reporting frames there needed
+ *  the wider reach for a measured 56-character gap. */
 const SUBJECT_WINDOW = 40;
 
 const hasOtherName = (window: string, character: string, names: readonly string[]): boolean =>

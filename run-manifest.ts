@@ -22,9 +22,29 @@ import { promisify } from "node:util";
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 // Everything whose content can change what a run does. The viewer's static assets are deliberately
-// out: they render a run, they never write one.
-const SOURCE_DIRS = ["engine", "prompts"];
-const SOURCE_FILES = ["prompts.ts", "live.ts", "app.ts", "run-and-save.ts", "run-manifest.ts", "story-writer.ts"];
+// out: they render a run, they never write one (server/ contributes only its .ts routes —
+// fingerprint() reads .ts files alone, so server/gui/ never counts).
+const SOURCE_DIRS = ["engine", "prompts", "host", "server"];
+const SOURCE_FILES = ["prompts.ts", "live.ts", "app.ts", "run-and-save.ts", "run-manifest.ts",
+  "story-writer.ts", "cli-flags.ts", "cli-to-engine.ts", "ansi.ts"];
+
+/** Every .ts file under `dir`, recursively — engine/lint/ and engine/providers/ are engine
+ *  too, and a change there must move the digest. Unreadable directories contribute nothing. */
+function dirSources(root: string, dir: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string) => {
+    let ents;
+    try {
+      ents = readdirSync(join(root, rel), { withFileTypes: true });
+    } catch { return; }
+    for (const e of ents.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (e.isDirectory()) walk(`${rel}/${e.name}`);
+      else if (e.name.endsWith(".ts")) out.push(`${rel}/${e.name}`);
+    }
+  };
+  walk(dir);
+  return out;
+}
 
 /** A short digest over the engine's source. Both the path and the bytes go in, so a file that is
  *  renamed or deleted changes the digest as surely as an edited one. Unreadable files contribute
@@ -32,11 +52,7 @@ const SOURCE_FILES = ["prompts.ts", "live.ts", "app.ts", "run-and-save.ts", "run
 export function fingerprint(root = HERE): string {
   const h = createHash("sha256");
   const files: string[] = [...SOURCE_FILES];
-  for (const d of SOURCE_DIRS) {
-    try {
-      for (const f of readdirSync(join(root, d)).sort()) if (f.endsWith(".ts")) files.push(`${d}/${f}`);
-    } catch { /* a directory that is not there contributes nothing, and says so by its absence */ }
-  }
+  for (const d of SOURCE_DIRS) files.push(...dirSources(root, d));
   for (const rel of files.sort()) {
     h.update(rel);
     try { h.update(readFileSync(join(root, rel))); } catch { /* name only */ }

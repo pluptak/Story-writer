@@ -1,6 +1,7 @@
 // Wiring primitives with no app-state dependency of their own -- the `on(id, fn)` triplet every
 // wire*() re-declares locally, and the backdrop+close-button pair every modal wires. Callers pass
 // the root they already have (the page, or #modalroot); nothing here re-renders or knows APP.
+import { wireBackdropClose } from "./util.js";
 
 /** Click handler by element id. No element, no handler -- pages render conditionally. */
 export const on = (root, id, fn) => {
@@ -23,8 +24,7 @@ export const onInput = (root, id, fn) => {
 /** Backdrop click closes (never submits), and the modal's own `×` button with it -- the two
  *  affordances every dismissible modal wires to the same close. */
 export function wireModalClose(root, { backdropId, closeId, onClose }) {
-  const bd = root.querySelector("#" + backdropId);
-  if (bd) bd.addEventListener("click", e => { if (e.target === bd) onClose(); });
+  wireBackdropClose(root, backdropId, onClose);
   const btn = root.querySelector("#" + closeId);
   if (btn) btn.addEventListener("click", onClose);
 }

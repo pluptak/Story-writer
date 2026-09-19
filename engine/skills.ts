@@ -321,8 +321,12 @@ function reachLayer(who: string, held: (key: string) => boolean, restricted: Rea
  *  Precedence: a skill named directly in BOTH `skills` and `restrictions` is handed back (they HAVE
  *  it). `reachRaw` is the scene's grant for this character; pass nothing for any character-level
  *  view, so reach never leaks outside the scene that granted it (I4). */
-export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", origin?: Origin, catalogs?: Catalogs): Skill[] {
-  return [...resolveLayers(who, skillsRaw, restrictionsRaw, reachRaw, catalogs, origin).values()];
+/** Trailing options for the skill-resolution trio. An object — never two trailing positionals —
+ *  so `origin` and `catalogs` cannot be swapped or skipped past with a stray `undefined`. */
+export interface SkillOpts { origin?: Origin; catalogs?: Catalogs }
+
+export function resolveSkills(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", opts: SkillOpts = {}): Skill[] {
+  return [...resolveLayers(who, skillsRaw, restrictionsRaw, reachRaw, opts.catalogs, opts.origin).values()];
 }
 
 /** Just the reach layer for one character in one scene — what the scene grants them through where
@@ -425,8 +429,8 @@ function removedWithMeanings(who: string, skillsRaw: string, restrictionsRaw: st
  * a `restrictionsRaw` for per-scene reach resolution. Meanings travel beside it on
  * `restrictionMeanings`, never inside these strings.
  */
-export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", origin?: Origin, catalogs?: Catalogs): string[] {
-  return removedWithMeanings(who, skillsRaw, restrictionsRaw, reachRaw, origin, catalogs).map(r => r.name);
+export function removedCapabilities(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", opts: SkillOpts = {}): string[] {
+  return removedWithMeanings(who, skillsRaw, restrictionsRaw, reachRaw, opts.origin, opts.catalogs).map(r => r.name);
 }
 
 /** The same list as `removedCapabilities`, in the same order, each entry carrying what the author
@@ -436,8 +440,8 @@ export function removedCapabilities(who: string, skillsRaw: string, restrictions
  *  This is also where a restriction authored without a `:: meaning` is warned about, because
  *  `loadStory` calls it exactly once per character — the per-scene `resolveReach` path shares
  *  `parseRestrictions` but never comes through here, so the nudge cannot repeat per scene. */
-export function restrictionMeanings(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", origin?: Origin, catalogs?: Catalogs): RemovedCapability[] {
-  return removedWithMeanings(who, skillsRaw, restrictionsRaw, reachRaw, origin, catalogs, true);
+export function restrictionMeanings(who: string, skillsRaw: string, restrictionsRaw: string, reachRaw = "", opts: SkillOpts = {}): RemovedCapability[] {
+  return removedWithMeanings(who, skillsRaw, restrictionsRaw, reachRaw, opts.origin, opts.catalogs, true);
 }
 
 /** A CANNOT list flattened for display, in the same `name -- meaning` idiom `writerCast` already

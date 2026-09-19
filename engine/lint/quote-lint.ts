@@ -10,7 +10,7 @@
  * This file imports only config-util.ts: pure text matching plus shared regex escaping,
  *  so it stays a leaf. */
 
-import { escapeRe } from "../config-util.ts";
+import { escapeRe, normText, containsTokenRun } from "../config-util.ts";
 
 // Re-declared locally to keep this file a leaf (it only needs the three fields it reads).
 export interface GrantedLine { character: string; speech: string; thought?: string; action?: string; }
@@ -52,40 +52,22 @@ export function extractQuotations(prose: string): { text: string; index: number 
   return out;
 }
 
-const norm = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-
-/** True when `inner`'s tokens appear as a contiguous run inside `outer` (either order). Catches a
- *  quote that is a verbatim phrase of a granted line, or a granted line that is a fragment of a
- *  longer quote — without the substring trap where "no" matches inside "know". */
-function seqContains(outer: string[], inner: string[]): boolean {
-  if (inner.length === 0) return true;
-  if (inner.length > outer.length) return false;
-  for (let s = 0; s <= outer.length - inner.length; s++) {
-    let ok = true;
-    for (let k = 0; k < inner.length; k++)
-      if (outer[s + k] !== inner[k]) { ok = false; break; }
-    if (ok) return true;
-  }
-  return false;
-}
-
 /** A quote matches a granted line when it is near-verbatim: a contiguous token run in either
  *  direction, or (failing that) a Dice-coefficient overlap of at least 0.8 — a lightly edited quote
  *  (one word swapped in six) still passes, a wholly invented one does not. Dice rather than Jaccard
  *  because it does not punish a single substitution as harshly. */
 function matchQuote(q: string, lines: string[]): boolean {
-  const qn = norm(q);
+  const qn = normText(q);
   if (!qn) return true;
   const qt = qn.split(" ");
   for (const sp of lines) {
-    const sn = norm(sp);
+    const sn = normText(sp);
     if (!sn) continue;
     const st = sn.split(" ");
-    if (seqContains(st, qt)) return true;
+    if (containsTokenRun(st, qt)) return true;
     if (qt.length >= 8 && qt[0] === "i" && st[0] === "i"
       && !st.some(t => /^(?:not|no|never|neither|nor|without|cannot|t)$/.test(t))
-      && seqContains(st, qt.slice(1))) return true;
+      && containsTokenRun(st, qt.slice(1))) return true;
     if (qt.length < 5) continue;
     for (let i = 0; i + qt.length <= st.length; i++) {
       let edits = 0;
@@ -127,12 +109,17 @@ const PARA = "\n\n";
  *  - **Both fallback windows stop at a paragraph break.** A speaker is never named across one,
  *    and a granted line split into two quoted fragments leaves the second without a tag, so the
  *    scan would otherwise take the next paragraph's opening name as its speaker. */
+/** How far past a quote a speech tag may sit and still govern it; how far back the scan
+ *  reads. Tuned against live prose — see the fallback notes in attribute(). */
+const AFTER_WINDOW = 100;
+const BEFORE_WINDOW = 120;
+
 function attribute(prose: string, quote: { index: number; text: string }, speakers: readonly SpeakerRef[]): { character: string; explicit: boolean } {
   const entries = speakers.map(s => typeof s === "string" ? { name: s } : s);
   const names = entries.map(e => e.name);
   const end = quote.index + quote.text.length;
-  const after = prose.slice(end + 1, Math.min(prose.length, end + 100));
-  const before = prose.slice(Math.max(0, quote.index - 120), quote.index - 1);
+  const after = prose.slice(end + 1, Math.min(prose.length, end + AFTER_WINDOW));
+  const before = prose.slice(Math.max(0, quote.index - BEFORE_WINDOW), quote.index - 1);
   const tags = "said|says|say|asked|asks|replied|replies|whispered|whispers|shouted|shouts|muttered|mutters|told|tells";
   for (const name of names.filter(n => n.trim())) {
     const who = escapeRe(name.trim());
@@ -173,9 +160,9 @@ function attribute(prose: string, quote: { index: number; text: string }, speake
   const paraBefore = prose.lastIndexOf(PARA, Math.max(0, quote.index - 1));
   const paraAfter = prose.indexOf(PARA, end + 1);
   const afterMasked = masked.slice(end + 1,
-    Math.min(masked.length, end + 100, paraAfter < 0 ? masked.length : paraAfter));
+    Math.min(masked.length, end + AFTER_WINDOW, paraAfter < 0 ? masked.length : paraAfter));
   const beforeMasked = masked.slice(
-    Math.max(0, quote.index - 120, paraBefore < 0 ? 0 : paraBefore + PARA.length), quote.index - 1);
+    Math.max(0, quote.index - BEFORE_WINDOW, paraBefore < 0 ? 0 : paraBefore + PARA.length), quote.index - 1);
   let bestAfter = Infinity, afterName = "unknown";
   for (const name of names) {
     const m = new RegExp(`\\b${escapeRe(name)}\\b`, "i").exec(afterMasked);

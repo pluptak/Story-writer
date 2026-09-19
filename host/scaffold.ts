@@ -105,7 +105,9 @@ let scaffoldMissingStyle = "";               // the style id that could not be r
 const SCAFFOLD_ABANDONED = "the interview was abandoned";
 const SCAFFOLD_ABANDONED_WHILE_ACCEPTING =
   "the interview was abandoned while accepting — the story folder may exist on disk";
-const SCAFFOLD_BUSY = "a round is already in flight";
+/** A generation is already running: shared with the handoff, which mirrors this bookkeeping. */
+export const INTERVIEW_BUSY = "a round is already in flight";
+const SCAFFOLD_BUSY = INTERVIEW_BUSY;
 const SCAFFOLD_NOT_OPEN = "no interview is open";
 
 export function scaffoldSnapshot(): ScaffoldState {

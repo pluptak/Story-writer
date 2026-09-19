@@ -10,6 +10,7 @@ import { skillBibleEntries, generalSkillEntries } from "../engine/catalog.ts";
 import { specView } from "../engine/story-spec.ts";
 import type { HandoffRoutesHost, HandoffState, HandoffActionResult, HandoffAcceptResult } from "../server/route-hosts.ts";
 import { loadHostDefaults } from "./defaults.ts";
+import { INTERVIEW_BUSY } from "./scaffold.ts";
 
 async function newHandoffSession(dir: string, model = ""): Promise<NextChapterSession> {
   const entries = await skillBibleEntries();
@@ -81,7 +82,7 @@ async function runHandoffRound(
   resetStage: boolean,
   run: (session: NextChapterSession) => Promise<ScaffoldRound>,
 ): Promise<HandoffActionResult> {
-  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  if (handoffBusy) return { ok: false, reason: INTERVIEW_BUSY, status: 409 };
   const blocked = storyWriteBlocked(LIVE.storyLock);
   if (blocked) return { ok: false, reason: blocked, status: 409 };
   if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
@@ -99,7 +100,7 @@ async function runHandoffRound(
 }
 
 export const handoffStart: HandoffRoutesHost["handoffStart"] = async (dir, model) => {
-  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  if (handoffBusy) return { ok: false, reason: INTERVIEW_BUSY, status: 409 };
   const blocked = storyWriteBlocked();
   if (blocked) return { ok: false, reason: blocked, status: 409 };
   const gen = handoffGen;
@@ -138,7 +139,7 @@ export const handoffRegenerate: HandoffRoutesHost["handoffRegenerate"] = async (
 };
 
 export const handoffAccept: HandoffRoutesHost["handoffAccept"] = async () => {
-  if (handoffBusy) return { ok: false, reason: "a round is already in flight", status: 409 };
+  if (handoffBusy) return { ok: false, reason: INTERVIEW_BUSY, status: 409 };
   const blocked = storyWriteBlocked(LIVE.storyLock);
   if (blocked) return { ok: false, reason: blocked, status: 409 };
   if (!HANDOFF) return { ok: false, reason: "no handoff is open", status: 400 };
