@@ -301,7 +301,9 @@ The story editor renders each scene's `reach` — the scene-scoped capability gr
 inside `StoryJson`'s scenes; it is character-in-place data and never appears on a character card in
 the editor. `constraint` — reach's negative twin ([Judge.MD](Judge.MD)'s `SceneDef.constraint`
 section) — gets its own textarea right below Reach's, same grain, same round-trip, same absence
-from any character card.
+from any character card. `staging` — the scene's shared room list — gets the next textarea down:
+one `NAME :: where` entry per line, kept verbatim since the list is flat rather than per-character,
+round-tripping the same way through `/story/check` and `/story/save`.
 
 ## Character catalog
 
