@@ -485,6 +485,90 @@ describe("the lint decision gate in the loop", () => {
 
 function globalFetchRestore(orig: typeof globalThis.fetch) { globalThis.fetch = orig; }
 
+// -- ANSWERING ITS OWN CONSULT ----------------------------------------------
+describe("the writer answering its own consult", () => {
+  const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));
+  const agentsOf = (sc: Awaited<ReturnType<typeof loadStory>>) =>
+    new Map(sc.characters.map(def =>
+      [def.name.toLowerCase(), newCharacterAgent(def, sc.scenes[0].place, sc.thinking.character)]));
+
+  async function runDrafts(drafts: Record<string, unknown>[], redrafts: Record<string, unknown>[],
+                           consults: Record<string, unknown> | ((call: { n: number }) => Record<string, unknown>),
+                           onDecision?: (p: LintPrompt) => LintDecision) {
+    const sc = await sc0();
+    const events: RunEvent[] = [];
+    let draftCall = 0, redraftCall = 0;
+    const { fetchMock, messagesOf } = siteFetch({
+      "judge.answer": { verdict: "accept" },
+      "judge.narration": { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
+      "writer.draft": () => drafts[draftCall++],
+      "writer.redraft": () => redrafts[redraftCall++],
+      "character.consult": typeof consults === "function" ? consults : () => consults,
+    });
+    const asked: LintPrompt[] = [];
+    const io: SceneIo = {
+      moreSteps: async () => 0,
+      pauseGate: async () => false,
+      readerTake: () => false,
+      readerAnswer: async () => "",
+      lintDecision: async p => { asked.push(p); return onDecision ? onDecision(p) : "stop"; },
+    };
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    const origRetries = NET.retries;
+    ENGINE.stream = false;
+    NET.retries = 0;
+    globalThis.fetch = fetchMock;
+    armRun();
+    try {
+      const r = await writeScene(sceneRun(sc, { scene: sc.scenes[0], agents: agentsOf(sc),
+                                                 log: e => events.push(e), io }));
+      return { r, events, messagesOf, asked };
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      NET.retries = origRetries;
+      armRun();
+      resetLive();
+    }
+  }
+
+  it("tells the redraft to cut the line and keep the consult", async () => {
+    const { messagesOf } = await runDrafts(
+      [{ prose: 'Riven turns. "I kept it in my possession," Riven said.',
+         consult: { character: "RIVEN",
+                    situation: "Riven is asked plainly whether the ledger was set down anywhere tonight, and the whole corridor seems to hold its breath.",
+                    question: "", wants: "" },
+         scene_done: false }],
+      [{ prose: "Riven turns.", consult: null, scene_done: true }],
+      { thought: "Steady.", speech: "I set it down.", action: "" },
+    );
+    const prompt = messagesOf("writer.redraft", 0).join("\n");
+    assert.match(prompt, /Cut the line and keep the consult/);
+    assert.match(prompt, /write what they actually say when the answer arrives next turn/);
+  });
+
+  it("steers the operator to publish when the repeated line was granted", async () => {
+    const line = "One final thing, then.";
+    const { asked, events } = await runDrafts(
+      [{ prose: "Riven enters.",
+         consult: { character: "RIVEN",
+                    situation: "Riven is asked plainly what they mean to say before the corridor empties for the night.",
+                    question: "", wants: "" },
+         scene_done: false },
+       { prose: `Merritt said "${line}" The corridor waits.`, consult: null, scene_done: false }],
+      [{ prose: `Merritt said "${line}" The corridor waits.`, consult: null, scene_done: false }],
+      { thought: "Say it.", speech: line, action: "" },
+    );
+    assert.equal(events.filter(e => e.t === "narration_quote_flag").length, 2);
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].advisory ?? "", /may be unrenderable; prefer publish/);
+    assert.doesNotMatch(asked[0].advisory ?? "", /never chose/);
+  });
+});
+
 // -- THE NARRATION LINT -------------------------------------------------------
 describe("the narration lint", () => {
   const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));

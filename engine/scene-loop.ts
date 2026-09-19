@@ -18,6 +18,7 @@ import { resetConstraintLintWarnings } from "./lint/constraint-lint.ts";
 import { seedStage, parseStageEntry, applyStageEntry, observe } from "./stage.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
 import { lintPiece, type LintPieceResult } from "./lint/narration-lint.ts";
+import { quoteGrantedAnywhere } from "./lint/quote-lint.ts";
 import { stripRepeatedPrefix } from "./lint/repeat-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
 import { nameKey, sameName, JUDGE_TEMPERATURE } from "./config-util.ts";
@@ -309,6 +310,7 @@ export type RunEvent =
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
   | { t: "lint_decision"; choice: LintDecision; chapter: number }
   | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
+  | { t: "narration_consult_quote_flag"; why: string; quote: string; character: string; chapter: number }
   | { t: "narration_pronoun_flag"; why: string; character: string; found: string; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
@@ -845,7 +847,8 @@ export async function writeScene(run: SceneRun) {
           prose: reply.prose, granted: lintGranted, cast: mechanicalCast, pov: sd.pov,
           consult: outgoingConsult, newNarrationJudge,
           log: (e) => {
-            if (e.t === "narration_quote_flag") roundQuotes.push(e.quote);
+            if (e.t === "narration_quote_flag" || e.t === "narration_consult_quote_flag")
+              roundQuotes.push(e.quote);
             log(e);
           },
           chapter,
@@ -861,6 +864,10 @@ export async function writeScene(run: SceneRun) {
 
       const repeatedQuotes = roundQuotes.filter(q => priorQuotes.includes(q));
       priorQuotes.push(...roundQuotes);
+      // A repeated grant may be unrenderable; repeated invented words are something else —
+      // the advisory must not steer the operator to publish words nobody chose.
+      const grantedAgain = repeatedQuotes.filter(q => quoteGrantedAnywhere(q, lintGranted));
+      const inventedAgain = repeatedQuotes.filter(q => !quoteGrantedAnywhere(q, lintGranted));
 
       const retried = lintAttempt >= NARRATION_LINT_RETRIES;
       log({ t: "narration_flag", why: flagged, retried, chapter });
@@ -873,7 +880,8 @@ export async function writeScene(run: SceneRun) {
         if (needsDecision && findings.blocking) {
           let choice: LintDecision;
           const advisory = [findings.advisory,
-            repeatedQuotes.length ? P.quoteFlagRepeated(repeatedQuotes) : null,
+            grantedAgain.length ? P.quoteFlagRepeated(grantedAgain) : null,
+            inventedAgain.length ? P.quoteNeverGranted(inventedAgain) : null,
           ].filter(Boolean).join(". ") || null;
           try {
             choice = await io.lintDecision?.({ prose: reply.prose, blocking: findings.blocking,
@@ -890,7 +898,9 @@ export async function writeScene(run: SceneRun) {
         }
         try {
           draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft",
-            [{ role: "user", content: P.narrationFlagged(flagged) }]);
+            [{ role: "user", content: findings.selfAnswered
+              ? P.answeredOwnConsult(flagged)
+              : P.narrationFlagged(flagged) }]);
           redrafted = true;
           steps++;
           break;

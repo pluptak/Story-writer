@@ -203,6 +203,8 @@ async function censusEventLog(input: RunInput, t: StoryTallies): Promise<void> {
       bump(t.lint, `narration_flag: ${lintFamily(String(e.why ?? ""))}${(e as { retried?: unknown }).retried ? " (retried)" : ""}`);
     } else if (type === "narration_quote_flag") {
       bump(t.lint, `narration_quote_flag [${String(e.character ?? "?")}]`);
+    } else if (type === "narration_consult_quote_flag") {
+      bump(t.lint, `narration_consult_quote_flag [${String(e.character ?? "?")}]`);
     } else if (type === "lint_failed") {
       bump(t.lint, type);
     } else if (type === "schema_mismatch") {

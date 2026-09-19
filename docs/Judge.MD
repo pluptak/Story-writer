@@ -257,6 +257,12 @@ it, and `look` counts only with a directional particle (`look up` flags, bare `l
 and it is addressee-anchored when it reads a consult's situation, which inverts how the same
 spellings read: `you watch` and `your gaze` are the incriminating forms there, where in prose
 `your` before a verb spelling marks a noun.
+An unmatched quote explicitly attributed to a character this same reply consults is the writer
+answering its own question — the line was written before it was chosen, so no grant could cover
+it yet. That hit carries its own why and its own event, and the redraft prompt names the repair
+instead of the rule: cut the line, keep the consult, write the answer when it arrives next turn.
+Only an explicit speech tag carries the accusation; a nearest-name guess still gets today's
+plain hit.
 The three checks run **alongside** each other and their `why` strings join into the one
 `narration_flag`, because there is only one automatic redraft: reported serially, the budget would be spent
 on the first finding and the second accepted unfixed. A mechanical hit also survives an LLM outage,
@@ -280,7 +286,9 @@ another attempt and checks it before committing; Publish anyway explicitly accep
 flagged draft; Stop chapter discards the pending draft and preserves the already committed page.
 When a redraft comes back with the same quote flagged, the advisory carries that redrafting has
 not changed it and the granted line itself may be unrenderable — another redraft cannot fix what
-the grant made unwritable, so the operator decides knowingly. If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
+the grant made unwritable, so the operator decides knowingly. When the repeated line was never
+granted to anyone there is no unrenderable grant behind it: the advisory says instead that the
+prose holds words no character chose, and publishing puts them on the page. If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
 that committed page intact. Turning interactive off during a pending decision resolves it as stop.
 
 Whichever is chosen is written to the run's log as `lint_decision`, because nothing else records it:

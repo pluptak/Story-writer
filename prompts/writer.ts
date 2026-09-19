@@ -344,6 +344,13 @@ export const narrationFlagged = (why: string) =>
   + `That piece was not written to the page. Redraft it from the same [WRITE] instruction, honoring `
   + `THE ONE RULE and what each CANNOT removes.`;
 
+/** The repair for a line the writer put in a consulted character's mouth before asking: the
+ *  finding names the rule broken, this names the fix — the consult stays open, the line goes. */
+export const answeredOwnConsult = (why: string) =>
+  `[NARRATION FLAGGED] ${why}\n\n`
+  + `Cut the line and keep the consult: the character has not answered yet, so those words are `
+  + `yours, not theirs. Ask, and write what they actually say when the answer arrives next turn.`;
+
 /** Operator-facing, not model-facing: when a redraft comes back with the same quote flagged,
  *  the granted line itself may be unrenderable and another redraft cannot fix that. Lives here
  *  beside narrationFlagged because it extends the lint prompt the operator decides on. */
@@ -351,6 +358,15 @@ export const quoteFlagRepeated = (quotes: string[]) =>
   `Redrafting has not changed this — the same line was flagged again`
   + (quotes.length ? ` (${quotes.map(q => `"${q}"`).join(", ")})` : "")
   + `. The granted line itself may be unrenderable; prefer publish [p] or stop [s] over redraft [r].`;
+
+/** Operator-facing, not model-facing: the repeat note when the flagged line was never granted
+ *  to anyone. There is no unrenderable grant behind it — the words were invented on the page,
+ *  and publishing puts unchosen words in a mouth that never chose them. */
+export const quoteNeverGranted = (quotes: string[]) =>
+  `Redrafting has not changed this`
+  + (quotes.length ? ` (${quotes.map(q => `"${q}"`).join(", ")})` : "")
+  + ` — no one granted these words; they were written straight onto the page. Publishing [p] is the wrong reach here — `
+  + `it would put ungranted words in a mouth that never chose them. Prefer stop [s] over publish [p] or redraft [r].`
 
 export const characterAsks = (name: string, question: string) =>
   `[${name} ASKS] ${question}`;

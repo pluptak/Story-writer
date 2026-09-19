@@ -18,6 +18,7 @@ import type { GrantedEntry } from "../fanout.ts";
  *  declared here so this module needs no scene-loop import. */
 export type LintEvent =
   | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
+  | { t: "narration_consult_quote_flag"; why: string; quote: string; character: string; chapter: number }
   | { t: "narration_pronoun_flag"; why: string; character: string; found: string; chapter: number }
   | { t: "schema_mismatch"; call: "lint"; character: string; chapter: number }
   | { t: "lint_failed"; why: string; chapter: number };
@@ -39,6 +40,9 @@ export interface LintPieceOpts {
 export interface LintPieceResult {
   blocking: string | null;
   advisory: string | null;
+  /** The blocking quote finding accuses the writer of answering its own consult — the
+   *  redraft prompt must name that repair, not the generic rule. */
+  selfAnswered: boolean;
 }
 
 export async function lintPiece(o: LintPieceOpts): Promise<LintPieceResult> {
@@ -53,10 +57,18 @@ export async function lintPiece(o: LintPieceOpts): Promise<LintPieceResult> {
   // The cast carries the defs, so the lint gets names with declared pronouns: a pronominal
   // speech tag then resolves against exactly one member instead of falling back to the
   // nearest name (which misread vocatives and possessives as the speaker).
-  const quoteLint = lintQuotations(o.prose, o.granted, o.cast);
+  const consulted = o.consult
+    ? [o.consult.character, ...(o.consult.reactors ?? []).map(r => typeof r === "string" ? r : r.name)]
+        .filter((n): n is string => !!n)
+    : [];
+  const quoteLint = lintQuotations(o.prose, o.granted, o.cast, consulted);
   if (quoteLint && !quoteLint.ok) {
-    log({ t: "narration_quote_flag", why: quoteLint.why, quote: quoteLint.quote,
-          character: quoteLint.character, chapter });
+    if (quoteLint.selfAnswered)
+      log({ t: "narration_consult_quote_flag", why: quoteLint.why, quote: quoteLint.quote,
+            character: quoteLint.character, chapter });
+    else
+      log({ t: "narration_quote_flag", why: quoteLint.why, quote: quoteLint.quote,
+            character: quoteLint.character, chapter });
   }
   const senseLint = lintRestrictedSenses(o.prose, o.cast);
   const pronounLint = lintPronouns(o.prose, o.cast);
@@ -93,5 +105,6 @@ export async function lintPiece(o: LintPieceOpts): Promise<LintPieceResult> {
     blocking: [quoteLint && !isAdvisoryQuoteHit(quoteLint) ? quoteLint.why : null, senseLint?.why]
       .filter((w): w is string => !!w).join(". ") || null,
     advisory: lintWhy,
+    selfAnswered: Boolean(quoteLint && !quoteLint.ok && quoteLint.selfAnswered),
   };
 }
