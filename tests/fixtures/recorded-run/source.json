@@ -1,11 +1,11 @@
 {
-  "run": "2026-09-18T06-14-05-296Z",
+  "run": "2026-09-19T22-58-23-990Z",
   "story": "data/stories/doorway",
   "chapter": 1,
-  "engine": "884ae9d74b13",
+  "engine": "4c4556b9de25",
   "git": {
-    "revision": "00741a1",
-    "branch": "claude/llm-fact-checking-evaluation-zab7ae",
+    "revision": "8619e8d",
+    "branch": "feat/scene-substrate-census",
     "dirty": true
   },
   "models": {
@@ -14,12 +14,10 @@
   },
   "effectiveSteps": 24,
   "budgetGrants": [],
-  "lintDecisions": [
-    "redraft"
-  ],
+  "lintDecisions": [],
   "outcome": {
     "steps": 24,
-    "words": 452,
+    "words": 667,
     "done": false
   }
 }
