@@ -147,6 +147,15 @@ describe("run log contract", () => {
     }
   });
 
+  it("names the methods that ARE allowed, so a 405 is actionable", async () => {
+    const postOnly = await callRoute(handleSessionRoutes, "/select", { dir: "x" }, makeHost(), "GET");
+    assert.equal(postOnly.code, 405);
+    assert.equal(postOnly.headers.Allow, "POST");
+    const getOnly = await callRoute(handleStoryReadRoutes, "/cast", { dir: "x" }, makeHost(), "POST");
+    assert.equal(getOnly.code, 405);
+    assert.equal(getOnly.headers.Allow, "GET");
+  });
+
   it("state reads refuse non-GET methods with 405", async () => {
     const scaffoldPut = await callRoute(handleScaffoldRoutes, "/scaffold", {}, makeHost(), "PUT");
     assert.equal(scaffoldPut.handled, true);

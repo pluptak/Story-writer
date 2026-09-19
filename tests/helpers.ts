@@ -209,12 +209,14 @@ export async function callRoute<H>(handler: RouteHandler<H>, path: string, body:
                                 host: H, method = "POST") {
   const req = fakeRequest(body ?? {}, method);
   let code = 0, sent = "";
+  // Headers are captured because a 405 is only correct if it says which methods ARE allowed.
+  let headers: Record<string, string> = {};
   const res = {
-    writeHead(c: number) { code = c; return res; },
+    writeHead(c: number, h?: Record<string, string>) { code = c; headers = h ?? {}; return res; },
     end(s?: string) { sent = s ?? ""; },
   } as unknown as ServerResponse;
   const handled = await handler(req, res, path, host);
-  return { handled, code, body: sent ? JSON.parse(sent) : null };
+  return { handled, code, headers, body: sent ? JSON.parse(sent) : null };
 }
 
 /** Drive one GET route whose parameters live in the query string. Unlike `callRoute` it sets
