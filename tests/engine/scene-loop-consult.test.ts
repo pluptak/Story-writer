@@ -174,6 +174,7 @@ describe("an answer still owed the page", () => {
     characterReplies?: Record<string, unknown>[];
     lintPayloads?: string[];
     doneReplies?: Record<string, unknown>[];
+    retries?: number;
   }) {
     const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
     const events: RunEvent[] = [];
@@ -194,7 +195,8 @@ describe("an answer still owed the page", () => {
     armRun();
     try {
       const r = await quiet(() => writeScene(sceneRun(sc, {
-        scene: sc.scenes[0], agents, maxSteps: opts.maxSteps, log: e => events.push(e),
+        scene: sc.scenes[0], agents, maxSteps: opts.maxSteps, retries: opts.retries,
+        log: e => events.push(e),
       })));
       // LIVE.writer is captured before the finally's resetLive() clears it.
       return { r, events, calls: calls(), agents, sc, writer: LIVE.writer, seen };
@@ -716,13 +718,16 @@ describe("an answer still owed the page", () => {
   it("a non-POV character's thought-only answer never reaches the writer at all", async () => {
     // MERRITT is not the POV. What the moment lands on them as is theirs; handing it to the writer
     // would only authorize narrating an inner life nobody gave it. With nothing said and nothing
-    // done, the answer arrives as nothing — no answer, not an accepted empty one.
+    // done, the answer arrives as nothing — no answer, not an accepted empty one. consult() buys
+    // the repair in-call, and the gate's reach floor refuses the repeat, spending the retry —
+    // with no budget left the answer is discarded into the same no-answer path as before.
     const REACT = { ...ASK, wants: "reaction" };
     const lintPayloads: string[] = [];
     const thoughtOnly = { thought: "The lock has been sticking for a month; who is this?" };
     const { events, writer, calls } = await runIt({
       maxSteps: 10,
       lintPayloads,
+      retries: 0,
       // Asked once more to let it surface, and it does not — so the answer is the one that stands.
       characterReplies: [thoughtOnly, thoughtOnly],
       writerReplies: [
@@ -732,6 +737,9 @@ describe("an answer still owed the page", () => {
     });
 
     assert.equal(calls.characterCall, 2, "the repair asked them to let it reach the outside");
+    const refused = events.filter(e => e.t === "reach_refused");
+    assert.equal(refused.length, 1, "the gate refused the repeat a fresh fork could not be bought for");
+    assert.match(refused[0].why, /outside the point of view/);
     assert.ok(!events.some(e => e.t === "accept"), "nothing was accepted");
     const heard = (writer?.history ?? []).map(m => String(m.content)).join("\n");
     assert.ok(!heard.includes("The lock has been sticking"), "the thought never reached the writer");

@@ -47,6 +47,13 @@ export const ENGINE = {
   cannotMeaning: false,
   cannotNone: false,
   cannotTestimony: false,
+  /** Flat judge sample (CLI-only, --judge-sample=N, 0..1, default 1): the per-answer judge is
+   *  called for a random N fraction of asks; a skipped ask folds its answer in as accepted and
+   *  logs `judge_sampled_out`, which is the census's denominator — the judged remainder is the
+   *  measurement of what the skips cost. Default 1 calls the judge for every answer and is
+   *  byte-identical to the pre-arm engine. Re-baseline against a full-judge window before
+   *  arming below 1 (docs/PLANS.md, "Judge-gate economics"). */
+  judgeSample: 1,
   /** What the scene loop echoes to the console: the draft prose and the characters' acts and
    *  replies. A headless process echoes because its console is the monitor there is; plain --serve
    *  goes quiet because the viewer is. */
@@ -92,6 +99,7 @@ export interface EngineOptions {
   cannotMeaning: boolean;
   cannotNone: boolean;
   cannotTestimony: boolean;
+  judgeSample: number;
 }
 
 /** Apply a mapped EngineOptions to the singleton. The one impure step, kept beside ENGINE so the
@@ -106,4 +114,5 @@ export function applyEngineOptions(opts: EngineOptions): void {
   ENGINE.cannotMeaning = opts.cannotMeaning;
   ENGINE.cannotNone = opts.cannotNone;
   ENGINE.cannotTestimony = opts.cannotTestimony;
+  ENGINE.judgeSample = opts.judgeSample;
 }

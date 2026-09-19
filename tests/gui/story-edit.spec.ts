@@ -438,8 +438,7 @@ test("a reach grant round-trips through save, and a line with no colon is droppe
   });
 
 test("a constraint round-trips through save, the same grain reach's own field uses",
-  async ({ page, served }) => {
-    const dir = await copyFixtureStory();
+  async ({ page, served }) => {    const dir = await copyFixtureStory();
     registerLive(dir);
     const HOLD = "hands :: bound to the chair, cannot reach or handle anything";
     try {
@@ -460,5 +459,30 @@ test("a constraint round-trips through save, the same grain reach's own field us
       await page.locator("#scene-1-constraint").fill("");
       await page.locator("#edit-save").click();
       await expect.poll(async () => (await readStory(dir)).scenes[0].constraint?.MERRITT).toBeUndefined();
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+test("staging round-trips through save as verbatim lines, blanks dropped",
+  async ({ page, served }) => {
+    const dir = await copyFixtureStory();
+    registerLive(dir);
+    const PLACEMENT = "RIVEN :: by the steel door";
+    try {
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await page.locator("#scene-1-staging").fill(`${PLACEMENT}\n\n!steel door :: shut fast`);
+      await page.locator("#edit-save").click();
+
+      // Staging is scene-scoped (I4) and flat: lines land verbatim under the scene.
+      await expect.poll(async () => (await readStory(dir)).scenes[0].staging)
+        .toEqual([PLACEMENT, "!steel door :: shut fast"]);
+
+      // It comes back as the same text it was typed as.
+      await arrive(page, served, "#/edit?dir=" + encodeURIComponent(dir));
+      await expect(page.locator("#scene-1-staging")).toHaveValue(`${PLACEMENT}\n!steel door :: shut fast`);
+
+      // And clearing it empties the list rather than leaving anything behind.
+      await page.locator("#scene-1-staging").fill("");
+      await page.locator("#edit-save").click();
+      await expect.poll(async () => (await readStory(dir)).scenes[0].staging).toEqual([]);
     } finally { await rm(dir, { recursive: true, force: true }); }
   });

@@ -28,5 +28,6 @@ export function engineOptionsFromCli(cli: CliOptions): EngineOptions {
     cannotMeaning: cli.experiments.cannotMeaning,
     cannotNone: cli.experiments.cannotNone,
     cannotTestimony: cli.experiments.cannotTestimony,
+    judgeSample: cli.experiments.judgeSample,
   };
 }

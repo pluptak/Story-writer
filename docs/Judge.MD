@@ -179,15 +179,65 @@ not write an action it forecloses), and the judge's payload (`CONSTRAINED HERE (
 restated beside the answer under the same `[WHAT IS ESTABLISHED ABOUT name]` /
 `[WHAT name SAID -- their own account, not established fact]` framing `--cannot-testimony` uses).
 
-It is **judge-mediated only — there is no mechanical enforcement.** `quote-lint.ts` and
-`sense-lint.ts` are the engine's only deterministic checks, and both depend on a closed vocabulary
-(the granted ledger; the five perception senses) that a constraint's free-prose name does not have.
-Whether an answer actually honours a constraint is the judge's call to make, the same call it already
-makes for a restriction's meaning — measuring that call is `--cannot-testimony`'s job, not a new
-arm's, since the rendering is unconditional rather than behind a flag: a scene with no `constraint`
-authored renders nothing on any of the three surfaces, so this is safe as a default rather than a
-prototype. The architect does not yet author `constraint` — `normalizeSpec` always emits `{}` — so a
-story gets one only by hand-editing `story.json` until that lands.
+Telling the character is the primary defence; the backstop is mechanical. `lint/constraint-lint.ts`
+reads the answer's `action` against the constraint before the judge ever sees it, with no model call.
+A high-confidence verb hit is **kept as a beat, not retried** — re-asking an unchanged situation
+sends a fresh instance the identical message it just answered, which is the move `reviseConsult`
+refuses on the judge path for the same reason. Instead the character is told the act did not land,
+the writer is handed the attempt and its failure to write, and the granted ledger marks the deed
+`attempted` so the narration lint permits narrating the attempt without letting it pass as done.
+
+The matcher reads the sign, not just the verb: barred verbs come only from negated spans, because a
+constraint's meaning routinely names what the character *can* still do ("bound to the chair, cannot
+reach or handle anything; your head and shoulders can move"). Ambiguous prose permits and warns —
+a miss is acceptable, a false refusal is not, since the answer is kept rather than discarded.
+Whatever the matcher cannot assess stays the judge's call, the same call it already makes for a
+restriction's meaning; measuring that call is `--cannot-testimony`'s job. The rendering is
+unconditional rather than behind a flag: a scene with no `constraint` authored renders nothing on
+any of the three surfaces, so this is safe as a default rather than a prototype.
+
+### Template slots — the opposite call from the constraint gate
+
+A model sometimes emits a literal template slot — "My name is [Name]." — where nothing in
+prompts/ or the story contains one. The judge accepts it (it reads as an answer), it enters
+the granted ledger verbatim, and the writer then does the right thing ("My name is Mara,"),
+which the quote lint correctly flags: no faithful prose ever matches the granted slot. Every
+link behaves correctly and the result is an unwinnable redraft, so the slot must never reach
+the ledger. `engine/lint/placeholder-lint.ts` reads speech, action and thought against a
+conservative pattern — a short bracketed run of letters, never a long or sentence-like aside —
+beside the constraint check, with no model call, logging `placeholder_refused`.
+
+This one retries, deliberately the reverse of the constraint call: a slot is a formatting
+failure, not a choice, so a fresh fork at temperature 0.9 will very likely produce real words
+from the same situation. It reuses the judge path's budget machinery exactly. When the budget
+is spent the answer is discarded, not accepted — a placeholder in the ledger recreates the
+unwinnable redraft — and the scene loop routes it into its no-answer path (`P.noAnswer`),
+which already handles a character that produced nothing usable.
+
+### The reach floor
+
+Beside the placeholder check runs the last mechanical gate, `engine/lint/answer-reach-lint.ts`:
+two answer shapes fold in as nothing and are visible in the reply object without a model call.
+An answer carrying no thought, speech, action or note is the envelope without the content — the
+model emitted the shape and left it blank. A thought-only answer from outside the point of view
+reaches the writer as nothing — what they think is not the writer's to write — and reaches this
+gate only when `consult()`'s own in-call repair failed to surface it once already. Both log
+`reach_refused` and spend the placeholder path's retry budget; a spent budget discards, never
+accepts. An answer that carries a note but no fields is kept on purpose: the note is content —
+"did not answer; kept asking" is a beat, not an envelope. An answer arriving through several
+channels at once is never refused here or anywhere: the judge's own format carries that rule in
+its decision ladder, after eight live retries enforced a shape contract the engine had removed.
+
+### The flat sample
+
+`--judge-sample=N` (0..1, default 1) calls the per-answer judge for a random N fraction of asks.
+A skipped ask folds its answer in exactly as an accepted one — no verdict is invented — and logs
+`judge_sampled_out`, which is the census's denominator: the judged remainder is the measurement
+of what the skips cost, so a falling retry rate on the sample is falling problems, not falling
+detection. The mechanical checks (placeholder, reach, constraint) run before the roll, so a
+mechanical hit is kept even when the judge is skipped. Default 1 is byte-identical to the
+un-armed engine; re-baseline against a full-judge window before arming below 1
+(docs/PLANS.md, "Judge-gate economics").
 
 ### Ceilings
 
@@ -232,6 +282,23 @@ it, and `look` counts only with a directional particle (`look up` flags, bare `l
 and it is addressee-anchored when it reads a consult's situation, which inverts how the same
 spellings read: `you watch` and `your gaze` are the incriminating forms there, where in prose
 `your` before a verb spelling marks a noun.
+An unmatched quote explicitly attributed to a character this same reply consults is the writer
+answering its own question — the line was written before it was chosen, so no grant could cover
+it yet. That hit carries its own why and its own event, and the redraft prompt names the repair
+instead of the rule: cut the line, keep the consult, write the answer when it arrives next turn.
+Only an explicit speech tag carries the accusation; a nearest-name guess still gets today's
+plain hit.
+The **repair** reaches further than that accusation does, because the commoner shape is a line
+invented for someone the reply is not asking — the writer opening a scene in a character's mouth
+before anyone has been consulted. So the redraft prompt routes on attribution rather than on the
+self-answer flag: a blocking quote hit pinned to a named character gets the repair naming that
+character — cut the line, and ask them if their words are what the scene needs next — where only
+a self-answer keeps the "keep the consult" clause, since only then is the invented speaker the
+one being asked. A quote nobody could be pinned to falls back to the general instruction, and so
+does a line **granted to a different character**: that is a distinct sin with a distinct repair
+(give it back, or cut it), and telling the writer those words were never granted would be false.
+Measured over two runs of one story, the general instruction reworded the frame and kept the
+invented line every time; naming the speaker cut it every time.
 The three checks run **alongside** each other and their `why` strings join into the one
 `narration_flag`, because there is only one automatic redraft: reported serially, the budget would be spent
 on the first finding and the second accepted unfixed. A mechanical hit also survives an LLM outage,
@@ -253,9 +320,13 @@ opens this decision; failure is not permission to publish the original flagged p
 The choices are **Redraft again**, **Publish anyway**, and **Stop chapter**. Redraft again requests
 another attempt and checks it before committing; Publish anyway explicitly accepts the current
 flagged draft; Stop chapter discards the pending draft and preserves the already committed page.
-If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
+When a redraft comes back with the same quote flagged, the advisory carries that redrafting has
+not changed it and the granted line itself may be unrenderable — another redraft cannot fix what
+the grant made unwritable, so the operator decides knowingly. When the repeated line was never
+granted to anyone there is no unrenderable grant behind it: the advisory says instead that the
+prose holds words no character chose, and publishing puts them on the page. If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
 that committed page intact. Turning interactive off during a pending decision resolves it as stop.
-
+
 Whichever is chosen is written to the run's log as `lint_decision`, because nothing else records it:
 the answer is a human's, not a model's, so no transcript holds it. `scripts/make-replay-fixture.mjs`
 carries those answers into the fixture as `lintDecisions`, in order — without them a replay of a run

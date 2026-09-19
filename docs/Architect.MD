@@ -18,7 +18,8 @@ It has two modes:
 
 - **Scaffold**: turn a rough idea into a new `story.json` through questions, a proposal, refinements,
   and an explicit accept action. The scaffold itself has two walks: **staged** — the default — runs
-  the idea through a gated checklist (story → cast → settings → technical → scene → world) where each
+  the idea through a gated checklist (story → cast → settings → technical → scene → staging → world) where
+each
   stage is proposed only after the author approved the last; **oneshot** proposes the whole story in
   one round.
 - **Handoff**: run between chapters, read the accepted chapter prose, and re-author the story
@@ -563,7 +564,7 @@ Provenance ends at accept here for the same reason it does for an imported chara
 
 The session runs one of two walks, chosen when it opens.
 
-**Staged (the default) — a gated checklist.** The six gates:
+**Staged (the default) — a gated checklist.** The seven gates:
 
 - **story** — title, premise, the load-bearing *tension*, story-level facts.
 - **cast** — full character objects, authored against that tension, as they walk into scene 1.
@@ -573,6 +574,12 @@ The session runs one of two walks, chosen when it opens.
   model ids continue to come from `defaults.json` or the author.
 - **scene** — scene 1 fully (place, question sharpened against the finished cast, pov, length,
   roster); later scenes may be sketched as question-only provisional entries.
+- **staging** — the room for scene 1: one flat `"NAME :: where"` list, people before furniture.
+  A character is an entity with a position; objects only when the scene will touch them; coarse
+  positions, never coordinates. A leading `!` marks an entry load-bearing. This is not a
+  description and is never narrated directly — completeness is not the goal, so an entity is
+  added only when the scene needs it placed. Optional the way `technical` is: an empty list is
+  a complete "nothing needs placing" answer, not a missing one.
 - **world** — the world-event ledger, `timeline[]`. Last because it depends on everything before it:
   memories are keyed by character, so the cast must exist, and a beat must not be the thing the
   scene's question already names, so the question must exist. **It may propose nothing, and usually

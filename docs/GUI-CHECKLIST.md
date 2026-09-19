@@ -270,6 +270,9 @@ Open `http://localhost:8080/#/edit?dir=<any story>` (or open a story and click *
 - [ ] **Scene editor's Constraint field.** Type `NAME: hands :: bound to the chair` into a scene's
       Constraint textarea (the field right below Reach), save, and reload: the line survives
       round-trip exactly, the same grain reach's own field uses.
+- [ ] **Scene editor's Staging field.** Type `RIVEN :: by the steel door` into a scene's
+      Staging textarea (the field below Constraint), save, and reload: the line survives
+      round-trip exactly, verbatim — the list is flat, so there is no `NAME:` prefix to parse.
 - [ ] **Reach survives a handoff.** With a reach grant saved on the next unwritten scene, run a
       chapter, open the handoff, accept it, then reopen the editor: reach on an untouched scene is
       still there, labelled by scene everywhere it shows.

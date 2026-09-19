@@ -277,11 +277,32 @@ describe("advisory quotations in narration", () => {
       pov: "Merritt", consult: null, chapter: 1,
       newNarrationJudge: () => judge, log: e => events.push(e),
     });
-    assert.deepEqual(why, { blocking: null, advisory: null });
+    assert.deepEqual(why, { blocking: null, advisory: null, selfAnswered: false });
     assert.equal(judge.calls, 1);
     assert.equal(events.length, 1);
     assert.ok(events[0].t === "narration_quote_flag");
     assert.match(events[0].why, /^possible misattribution/);
+  });
+
+  it("emits its own event and marks the result when the writer answers its own consult", async () => {
+    const events: LintEvent[] = [];
+    const judge = new ScriptedAgent(['{"ok":true}']);
+    const result = await lintPiece({
+      prose: '"I kept it in my possession," Mara said.',
+      granted: [],
+      cast: [{ name: "Mara", cannot: [] }],
+      pov: "Vale",
+      consult: { character: "MARA", situation: "Vale asks if the ledger was set down.", question: "" },
+      chapter: 1,
+      newNarrationJudge: () => judge, log: e => events.push(e),
+    });
+    assert.equal(result.selfAnswered, true);
+    assert.match(result.blocking ?? "", /^answered own consult/);
+    assert.equal(events.filter(e => e.t === "narration_consult_quote_flag").length, 1);
+    assert.equal(events.filter(e => e.t === "narration_quote_flag").length, 0);
+    const flagged = events.find(e => e.t === "narration_consult_quote_flag")!;
+    assert.equal(flagged.quote, "I kept it in my possession,");
+    assert.equal(flagged.character, "Mara");
   });
 });
 
@@ -405,5 +426,36 @@ describe("attribution — vocatives and possessives are not the speaker", () => 
     assert.ok(hit && !hit.ok);
     assert.equal(isAdvisoryQuoteHit(hit), false);
     assert.match(hit!.why, /unmatched quotation/);
+  });
+});
+
+describe("answering its own consult", () => {
+  const prose = '"I kept it in my possession," Mara said.';
+
+  it("names the sin when the quote is explicitly attributed to the consulted character", () => {
+    const hit = lintQuotations(prose, [], ["Mara"], ["MARA"]);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.selfAnswered, true);
+    assert.match(hit!.why, /^answered own consult/);
+    assert.equal(isAdvisoryQuoteHit(hit!), false, "it blocks exactly as the plain hit does");
+  });
+
+  it("keeps today's plain hit for a different character than the one consulted", () => {
+    const hit = lintQuotations(prose, [], ["Mara"], ["VALE"]);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.selfAnswered, undefined);
+    assert.match(hit!.why, /^unmatched quotation/);
+  });
+
+  it("keeps today's plain hit with no consult at all", () => {
+    const hit = lintQuotations(prose, [], ["Mara"]);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.selfAnswered, undefined);
+  });
+
+  it("does not escalate a nearest-name guess", () => {
+    const hit = lintQuotations('Mara waited. "I kept it."', [], ["Mara"], ["MARA"]);
+    assert.ok(hit && !hit.ok);
+    assert.equal(hit!.selfAnswered, undefined, "only an explicit speech tag carries the accusation");
   });
 });

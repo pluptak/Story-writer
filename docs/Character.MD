@@ -131,9 +131,53 @@ end and the meaning is the whole of it.
 
 It renders as its own block, **CONSTRAINED HERE**, beside HARD LIMITS — absolute for this scene, but
 explicitly not a standing HARD LIMIT, so the character does not confuse a temporary hold with an
-intrinsic one. There is no mechanical enforcement (`Judge.MD`'s `SceneDef.constraint` section): the
-judge is the only thing that checks an answer against it, the same way it checks a restriction's
-meaning.
+intrinsic one. Telling the character is the primary defence; the backstop is mechanical
+(`engine/constraint-lint.ts`, `Judge.MD`'s `SceneDef.constraint` section): the answer's `action`
+is read against the constraint before the judge ever sees it, and a high-confidence verb hit is
+kept as a beat, not retried — re-asking an unchanged situation buys the same answer twice. The
+character is told the act did not land, the writer is handed the attempt and its failure to
+write, and the granted ledger marks the deed attempted so the lint permits narrating it without
+letting it pass as done. Ambiguous prose still permits — a miss is acceptable, a false refusal
+is not — and whatever the matcher cannot assess stays the judge's call, the same way it checks
+a restriction's meaning.
+
+### The room as they know it
+
+Every consult carries `[THE ROOM AS YOU KNOW IT]` beside the situation: the live stage
+filtered to what this character can perceive (`observe()`, `engine/stage.ts`), so the room
+stops being reconstructed from prose. It is additional context, never a replacement — the
+writer still says what is happening; the stage says what is there. What is filtered out is
+what perception already governs: a `remote` character is not in the room and receives no
+positions, and a character who cannot see receives no list — only the adjacency of touch and
+hearing: where they themselves are, whatever the room places at them, and whatever their own
+placement names (what they sit on, stand beside), matched as strings and deliberately coarse.
+The situation prose stays the authority on what a blind character actually perceives; the
+projection just does their job where a string match can. Reach never narrows the list — a
+grant extends perception, and anything a restriction removes is already stripped before the
+projection is built. The projection is derived from the stage
+alone, never from anyone's prose: no premise, no draft, no other character's replies reach
+it through this channel.
+
+### The target
+
+Beside `action`, the answer may carry one optional sibling: `target`, the name of the one thing
+in the room the act is aimed at, exactly as the room names it — a name, never an index, and
+normally empty: a small model taught to fill it will fill it with furniture. The repair prompts
+deliberately never ask for one — a repair that asked for a target would teach the model to invent
+one — and a target on its own is not an answer: naming a thing is not doing something, so a
+reply carrying nothing else stalls exactly as a thought-alone reply does.
+
+Before anything folds in, the name resolves against the live stage (`resolveTarget`,
+`engine/stage.ts`): a match — however the character spelled it — lands as the stage's own
+spelling, so one thing reads as one name across turns, and an unmatched name permits unchanged:
+naming is not placing, so nothing is added to the room and nothing warns.
+
+Exactly one thing is refused: a character whose presence is `remote` naming a staged entity. A
+channel carries words, never hands. The refusal is a beat, not an error — the answer is kept, no
+retry is spent, the character is told the reach did not land (`[IT DID NOT LAND]`, the same tag
+the constraint hold uses), and the writer is handed the reach and its failure to write. A
+character naming an unstaged thing — remote or not — permits: the engine refuses only what
+someone authored as impossible.
 
 ### Full control is circumstance, not obedience — the interrogation pattern
 

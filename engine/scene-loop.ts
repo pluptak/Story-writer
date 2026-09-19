@@ -14,8 +14,11 @@ import {
   type ConsultEvent, type Clarifier,
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
+import { resetConstraintLintWarnings } from "./lint/constraint-lint.ts";
+import { seedStage, parseStageEntry, applyStageEntry, observe, resolveTarget } from "./stage.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
 import { lintPiece, type LintPieceResult } from "./lint/narration-lint.ts";
+import { quoteGrantedAnywhere } from "./lint/quote-lint.ts";
 import { stripRepeatedPrefix } from "./lint/repeat-lint.ts";
 import { timelineTurn } from "./world-timeline.ts";
 import { nameKey, sameName, JUDGE_TEMPERATURE } from "./config-util.ts";
@@ -85,6 +88,30 @@ export function sceneReach(sd: SceneDef, def: CharacterDef, catalogs?: Catalogs)
   const grant = Object.entries(sd.reach ?? {})
     .find(([who]) => sameName(who, def.name))?.[1] ?? [];
   return resolveReach(def.name, def.skills, def.limits.join(" | "), grant.join(" | "), catalogs);
+}
+
+/** The scene's staging as a shared room: what is in this scene and where, as coarse free
+ *  prose — never coordinates, never resolved against a catalog. A leading `!` on an entry's
+ *  name marks it load-bearing: fixed at runtime, though nothing enforces that until the live
+ *  stage exists. A missing `:: position` warns, like a constraint's missing meaning: with no
+ *  position the entry places nothing. A character's own placement is simply the entry whose
+ *  name matches a roster member — filtering that is observe()'s job, not this reader's. */
+export interface StagedEntity { entity: string; position: string; fixed: boolean }
+export function sceneStage(sd: SceneDef): StagedEntity[] {
+  const out: StagedEntity[] = [];
+  for (const entry of sd.staging ?? []) {
+    const { text, meaning } = splitMeaning(entry);
+    const fixed = text.startsWith("!");
+    const entity = (fixed ? text.slice(1) : text).trim();
+    if (!entity) {
+      warn(`   (staging entry "${entry}" names nothing — ignored)`);
+      continue;
+    }
+    if (!meaning)
+      warn(`   (staging "${entity}" carries no ":: position" — nobody can tell where it is)`);
+    out.push({ entity, position: meaning, fixed });
+  }
+  return out;
 }
 
 /** One character agent: their wrapped system prompt, their model, and the run's character think level. */
@@ -197,6 +224,9 @@ export interface DraftReply {
   consult: DraftConsult | null;
   exit: string;
   promote: string;
+  /** Entities this piece places on the stage — "NAME :: where" entries, or null when the
+   *  piece places nothing. Most replies carry none. */
+  stage: string[] | null;
 }
 
 /** Parse one writer reply: prose (possibly salvaged from a truncated one), the done declaration,
@@ -212,11 +242,16 @@ export function parseDraftReply(raw: string, onProseFallback?: () => void): Draf
     if (recovered) { prose = recovered; salvaged = true; }
   }
   const c = (d.consult && typeof d.consult === "object") ? d.consult as Record<string, unknown> : null;
+  if ("stage" in d && d.stage !== undefined && !Array.isArray(d.stage))
+    warn(`   (writer reply "stage" is not a list — ignored)`);
   return {
     prose,
     salvaged,
     proseWords: prose ? prose.split(/\s+/).filter(Boolean).length : 0,
     sceneDone: d.scene_done === true || String(d.scene_done ?? "").toLowerCase() === "true",
+    stage: Array.isArray(d.stage)
+      ? d.stage.map((e: unknown) => String(e ?? "").trim()).filter((e): e is string => !!e)
+      : null,
     consult: !c ? null : {
       character: String(c.character ?? "").trim(),
       situation: String(c.situation ?? "").trim(),
@@ -268,18 +303,31 @@ export type RunEvent =
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
-  | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
+  | { t: "accept"; character: string; attempt: number; speech: string; action: string; target?: string; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string; was: string; wantsRefused: string; chapter: number }
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "forced_end"; words: number; target: number; chapter: number }
   | { t: "narration_flag"; why: string; retried: boolean; chapter: number }
   | { t: "lint_decision"; choice: LintDecision; chapter: number }
   | { t: "narration_quote_flag"; why: string; quote: string; character: string; chapter: number }
+  | { t: "narration_consult_quote_flag"; why: string; quote: string; character: string; chapter: number }
   | { t: "narration_pronoun_flag"; why: string; character: string; found: string; chapter: number }
   | { t: "reader_ask"; step: number; framing: string; options: string[]; chapter: number }
   | { t: "reader_answer"; answer: string; chapter: number }
   | { t: "model_changed"; model: string }
   | { t: "retry_capped"; character: string; count: number; chapter: number }
+  | { t: "constraint_refused"; character: string; constraint: string; match: string;
+      attempt: number; chapter: number }
+  | { t: "target_refused"; character: string; target: string; entity: string;
+      attempt: number; chapter: number }
+  | { t: "placeholder_refused"; character: string; field: string; match: string;
+      attempt: number; chapter: number }
+  | { t: "reach_refused"; character: string; why: string; attempt: number; chapter: number }
+  | { t: "judge_sampled_out"; character: string; attempt: number; chapter: number }
+  | { t: "stage_added"; entity: string; position: string; chapter: number }
+  | { t: "stage_moved"; entity: string; from: string; to: string; chapter: number }
+  | { t: "stage_kept"; entity: string; kept: string; offered: string; chapter: number }
+  | { t: "stage_refused"; entity: string; position: string; fixed: string; chapter: number }
   | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
   | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
   | { t: "promote"; character: string; action: string; chapter: number }
@@ -438,6 +486,11 @@ export async function writeScene(run: SceneRun) {
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle,
     { facts, constraints: writerStyleConstraints, sinceEnforced: ENGINE.consultSince, heard: ENGINE.heardChannel }), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
+  // The live scene stage: the scene's own staging as this scene's room, free for the
+  // writer to accrete onto and never written back to story.json. Chunk 7 projects it per
+  // character; until then it constrains nothing and is only recorded.
+  const stage = seedStage(sceneStage(sd));
+  resetConstraintLintWarnings();
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
   // A thought reaches the writer only from inside the POV. The narration lint already holds that
   // nobody else's inner life is narratable fact, so a non-POV thought on the writer's desk would
@@ -446,6 +499,13 @@ export async function writeScene(run: SceneRun) {
   // withheld, because a character writing for an audience is not answering as itself.
   const isPov = (name: string) => !!sd.pov && sameName(sd.pov, name);
   const writerSees = (name: string, thought: string) => isPov(name) ? thought : "";
+  // What one character currently perceives of the room: the live stage filtered to their
+  // senses, rendered for the consult payload. Recomputed per ask — the stage accretes as
+  // the scene is written, so a cached projection would go stale.
+  const roomFor = (def: CharacterDef): string => P.roomBlock(observe({
+    name: def.name, limits: def.limits, presence: scenePresence(sd, def),
+    reach: sceneReach(sd, def, catalogs),
+  }, stage));
   LIVE.writer = writer; LIVE.log = log;
 
   // Each author-side helper has its own name, so it gets its own transcript file, stats row and role
@@ -754,6 +814,10 @@ export async function writeScene(run: SceneRun) {
     let reply: DraftReply;
     let stoppedMidLint = false;
 
+    // Quotes the lint has already flagged on this piece: a redraft that comes back with
+    // the same quote flagged means the granted line itself may be unrenderable, and the
+    // operator deciding on the piece should know redrafting cannot fix it.
+    const priorQuotes: string[] = [];
     for (let lintAttempt = 0; ; lintAttempt++) {
       reply = parseDraftReply(draftRaw, () => log({ t: "prose_reply", character: writer.name }));
       if (reply.salvaged)
@@ -782,10 +846,17 @@ export async function writeScene(run: SceneRun) {
 
       let flagged: string | null;
       let findings: LintPieceResult;
+      const roundQuotes: string[] = [];
       try {
         findings = await lintPiece({
           prose: reply.prose, granted: lintGranted, cast: mechanicalCast, pov: sd.pov,
-          consult: outgoingConsult, newNarrationJudge, log, chapter,
+          consult: outgoingConsult, newNarrationJudge,
+          log: (e) => {
+            if (e.t === "narration_quote_flag" || e.t === "narration_consult_quote_flag")
+              roundQuotes.push(e.quote);
+            log(e);
+          },
+          chapter,
         });
         flagged = [findings.blocking, findings.advisory].filter(Boolean).join(". ") || null;
       } catch (e) {
@@ -795,6 +866,13 @@ export async function writeScene(run: SceneRun) {
       if (RUN.stopped) { stoppedMidLint = true; break; }
 
       if (!flagged) break;
+
+      const repeatedQuotes = roundQuotes.filter(q => priorQuotes.includes(q));
+      priorQuotes.push(...roundQuotes);
+      // A repeated grant may be unrenderable; repeated invented words are something else —
+      // the advisory must not steer the operator to publish words nobody chose.
+      const grantedAgain = repeatedQuotes.filter(q => quoteGrantedAnywhere(q, lintGranted));
+      const inventedAgain = repeatedQuotes.filter(q => !quoteGrantedAnywhere(q, lintGranted));
 
       const retried = lintAttempt >= NARRATION_LINT_RETRIES;
       log({ t: "narration_flag", why: flagged, retried, chapter });
@@ -806,9 +884,13 @@ export async function writeScene(run: SceneRun) {
       for (;;) {
         if (needsDecision && findings.blocking) {
           let choice: LintDecision;
+          const advisory = [findings.advisory,
+            grantedAgain.length ? P.quoteFlagRepeated(grantedAgain) : null,
+            inventedAgain.length ? P.quoteNeverGranted(inventedAgain) : null,
+          ].filter(Boolean).join(". ") || null;
           try {
             choice = await io.lintDecision?.({ prose: reply.prose, blocking: findings.blocking,
-              advisory: findings.advisory, chapter }) ?? "stop";
+              advisory, chapter }) ?? "stop";
           } catch (e) {
             // A port outage must not crash the run any more than a lint or writer outage would —
             // the piece stays on hold; the chapter ends preserving what is committed.
@@ -820,8 +902,20 @@ export async function writeScene(run: SceneRun) {
           if (choice === "publish") break;
         }
         try {
+          // The redraft prompt routes on attribution, not on the self-answer flag alone: an
+          // invented line for a NAMED character nobody granted — and was not this reply's
+          // consultee — is the same sin as answering one's own consult, in its commoner form,
+          // and the generic instruction has never once produced a cut line (it produces a
+          // reworded frame around the same invented words). Reassigned stays generic
+          // deliberately: a line granted to a different character is a different sin with a
+          // different repair — give it back, or cut it — and telling the writer those words
+          // were never granted would be false; the finding's own wording already says it.
           draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft",
-            [{ role: "user", content: P.narrationFlagged(flagged) }]);
+            [{ role: "user", content: findings.selfAnswered
+              ? P.answeredOwnConsult(flagged)
+              : findings.quoteCharacter && !findings.quoteReassigned
+              ? P.inventedForSpeaker(flagged, findings.quoteCharacter)
+              : P.narrationFlagged(flagged) }]);
           redrafted = true;
           steps++;
           break;
@@ -880,6 +974,34 @@ export async function writeScene(run: SceneRun) {
           consulting: ask?.character ?? "", salvaged: reply.salvaged, chapter });
     if (reply.prose && ENGINE.echoConsole) console.log(`\n${reply.prose}\n`);
 
+    // -- STAGE: the writer places what its prose just put somewhere. Accretion only —
+    // what lands here is authoritative from then on and every character sees it. A move
+    // against a fixed (load-bearing) entry is refused and logged, and the writer is told
+    // the old placement stands. A restatement that only loses is kept and logged, and
+    // reaches no prompt — the gloss owns that rule. The manifest itself never enters a
+    // prompt wholesale: dumped whole it produces inventory prose, so only refusals reach
+    // the writer.
+    if (reply.stage) {
+      for (const raw of reply.stage) {
+        const parsed = parseStageEntry(raw);
+        if (!parsed) continue;
+        const outcome = applyStageEntry(stage, parsed.entity, parsed.position);
+        if (outcome.type === "added")
+          log({ t: "stage_added", entity: outcome.entity, position: outcome.position, chapter });
+        else if (outcome.type === "moved")
+          log({ t: "stage_moved", entity: outcome.entity, from: outcome.from, to: outcome.to, chapter });
+        else if (outcome.type === "kept")
+          log({ t: "stage_kept", entity: outcome.entity, kept: outcome.kept,
+                offered: outcome.offered, chapter });
+        else if (outcome.type === "refused") {
+          log({ t: "stage_refused", entity: outcome.entity, position: outcome.position,
+                fixed: outcome.fixed, chapter });
+          console.log(`${C.yellow}(stage refused — "${outcome.entity}" is fixed where it is.)${C.reset}`);
+          writer.hear(P.stageRefused(outcome.entity, outcome.position, outcome.fixed));
+        }
+      }
+    }
+
     // -- PROMOTE: the writer turns one deed a reactor volunteered last beat into canon. Done before
     // the consult below, so this beat's own fan-out (if any) can re-arm the offer afterward. The
     // offer is one-shot — read here, then cleared whether or not it was taken.
@@ -910,6 +1032,10 @@ export async function writeScene(run: SceneRun) {
         } : {}),
         reactors: ask.reactors, situation: ask.situation, question: ask.question, cast: mechanicalCast,
         defOf, agents, isActive, isPov, writerSees,
+        roomFor: (name: string) => {
+          const def = defOf(name);
+          return def ? roomFor(def) : "";
+        },
         clarifications, clarify, beginAttempt, keepClarifications, dropClarifications,
         refusalFor: refuseForLater, writer, granted, pendingReactionActions, lastAsked, owed,
         step: steps, chapter, newBatchJudge, log, stopped: () => RUN.stopped,
@@ -951,21 +1077,33 @@ export async function writeScene(run: SceneRun) {
         asked = true;
         if (heard) check!.req.heard = heard;
         sinceBase.set(nameKey(def.name), ENGINE.heardChannel ? granted.length : pieces.length);
-        const { reply, failed, usedAttempt, req } = await judgeGate({
+        const { reply, failed, usedAttempt, req, constraintRefused } = await judgeGate({
           def, agent: persistent, req: check!.req, cast: mechanicalCast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
           retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
-          constraint: sceneConstraint(sd, def),
+          constraint: sceneConstraint(sd, def), room: roomFor(def),
         });
 
         if (RUN.stopped) break;
 
-        const stalled = !!reply && !reply.thought && !reply.speech && !reply.action;
+        // A refused act is an attempt, not a deed: the shape floor reads the answer with
+        // the barred act taken out. An answer left with nothing in it routes into the
+        // stalled path below, never the accepted branch.
+        const landedAction = reply && constraintRefused ? "" : reply?.action ?? "";
+        const landedTarget = reply?.target ?? "";
+        // A target alone is not a landed act: it names a thing, it does not reach for it. A
+        // target with an action is the action's, not a second act, so include it in the gate
+        // condition but do not treat it as a stand-alone act: a reply that has target but
+        // nothing else stalls just like a thought-alone reply, and does not reach accept.
+        const stalled = !!reply && !reply.thought && !reply.speech && !landedAction;
+
         // The only shape floor left: a thought with nothing said and nothing done reaches the
         // writer as nothing from anyone but the POV character. Taken as an accept it is worse
         // than a refusal: it costs the attempts, marks the character as freshly consulted, and
         // hands the writer an answer with nothing in it to write.
-        const shortOf = reply && !stalled ? nonPovThoughtOnly(reply, isPov(def.name)) : null;
+        const shortOf = reply && !stalled
+          ? nonPovThoughtOnly({ speech: reply.speech, action: landedAction }, isPov(def.name))
+          : null;
         if (failed || !reply || stalled || shortOf) {
           const why = failed
             || (stalled ? reply!.note || "did not answer"
@@ -976,6 +1114,24 @@ export async function writeScene(run: SceneRun) {
           writer.hear(P.noAnswer(def.name, why));
           dropClarifications();
         } else {
+          // The target resolves before anything folds in — sequential, not parallel, so the
+          // prose and the resolution cannot disagree about one turn. On a match the stage's own
+          // spelling is what the writer is handed, however the character spelled it: one thing
+          // must read as one name across turns. An unmatched target permits unchanged and leaves
+          // the stage alone — naming a thing is not placing it, and an unstaged target is the
+          // normal case in a story that stages nothing.
+          const resolved = reply.target ? resolveTarget(stage, reply.target) : null;
+          // The one refusal: a remote character naming a staged entity — a channel carries
+          // words, never hands. Everything else permits. Not reach: a grant extends what a
+          // character can do, never narrows it. Not the scene constraint: it already works on
+          // the action text, and a verb matcher would fire on nothing useful against a noun.
+          // Not an unmatched target: that is accretion's normal case, not an error. Read fresh
+          // off this reply on every pass, so no refusal rides from an earlier attempt onto a
+          // later clean one.
+          const targetRefused = !!resolved?.matched && scenePresence(sd, def)?.mode === "remote";
+          if (targetRefused)
+            log({ t: "target_refused", character: def.name, target: reply.target ?? "",
+                  entity: resolved!.entity, attempt: usedAttempt, chapter });
           // The permanent record of what was asked is the situation and the shape — none of the
           // standing instructions that went out with it. The nudge is transient pressure for this
           // one answer; writing it permanently into history would bend every later reply.
@@ -986,29 +1142,51 @@ export async function writeScene(run: SceneRun) {
             thought: reply.thought,
             ...(reply.speech ? { speech: reply.speech } : {}),
             ...(reply.action ? { action: reply.action } : {}),
+            ...(reply.target ? { target: reply.target } : {}),
           }));
+          // The character tried in good faith and the scene stopped the act: what it
+          // remembers is the attempt having failed, never the deed as done.
+          if (constraintRefused)
+            persistent.hear(P.constraintHeld(reply.action, constraintRefused.constraint,
+                                             constraintRefused.meaning));
+          if (targetRefused)
+            persistent.hear(P.targetHeld(reply.target ?? ""));
           keepClarifications();   // before the answer: the writer settled these facts to get it
           const shown = { thought: writerSees(def.name, reply.thought),
-                          speech: reply.speech, action: reply.action };
-          writer.hear(P.characterAnswered(def.name, P.answerBody(shown), req.question,
-            ask?.question ?? ""));
+                          speech: reply.speech, action: reply.action,
+                          target: resolved?.matched ? resolved.entity : landedTarget,
+                          targetFailed: targetRefused };
+          writer.hear((constraintRefused
+            ? P.characterAnswered(def.name, P.attemptedBody(shown), req.question,
+                ask?.question ?? "")
+              + `\n${P.actAttempted(def.name, reply.action, constraintRefused.constraint)}`
+            : P.characterAnswered(def.name, P.answerBody(shown), req.question,
+                ask?.question ?? ""))
+            + (targetRefused ? `\n${P.targetAttempted(def.name, resolved!.entity)}` : ""));
           lastAsked.set(nameKey(def.name), steps);
           // An answer joins the lint's ledger as whatever the writer actually got. An
           // answer from the POV character lands as a felt entry, like a fan-out's bundle — without
           // it, the writer rendering that interiority is flagged for using exactly what it was
-          // handed. A withheld thought grants nothing: it never reached the desk.
-          if (reply.speech || reply.action || shown.thought) {
+          // handed. A withheld thought grants nothing: it never reached the desk. A refused act
+          // joins marked attempted — the strings stay verbatim so the quote lint still matches,
+          // and the lint reads the marker, not a rewrite, for what failed. A refused target
+          // grants nothing: the writer was handed the reach and its failure, never the reach
+          // as made.
+          if (reply.speech || reply.action || reply.target || shown.thought) {
             granted.push({
               character: def.name,
               speech: reply.speech,
               action: reply.action,
+              ...(shown.target && !targetRefused ? { target: shown.target } : {}),
               ...(shown.thought ? { thought: shown.thought } : {}),
+              ...(constraintRefused && reply.action ? { attempted: true } : {}),
             });
           }
           owed.push(def.name);
-          log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
+          log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, target: reply.target, chapter });
           if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
-            + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
+            + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : "")
+            + (reply.target ? ` targeting ${C.dim}${reply.target}${C.reset}` : ""));
         }
       }
     }

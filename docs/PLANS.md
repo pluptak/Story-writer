@@ -868,6 +868,75 @@ Done when: the paragraph exists, persist failures carry 500, and
 
 Big, unbuilt, and shaping rather than corrective.
 
+- **Move scene substrate out of the model (staging → observation → target channel).** The
+  character agent does too many jobs in one call: reconstruct where it is and who is present from
+  the writer's `situation` prose, respect capability boundaries, stay in character, decide, and
+  phrase. Goal is workload reduction, not simulation — stop asking the model questions code
+  already knows. No physics, no inventory, no action enum, no tick. Rules throughout:
+  default-allow (the engine refuses only what someone authored as impossible); accretion (state
+  created at first use, authoritative thereafter); names, not indices; nothing required every
+  turn. **Shipped so far:** `scripts/action-census.ts` (`npm run census`), and the mechanical
+  constraint gate — `engine/lint/constraint-lint.ts` wired onto `ConsultReply.action`, its
+  behaviour now in [`Judge.MD`](Judge.MD) and [`Character.MD`](Character.MD). **Remaining:**
+  (1) `staging` on `SceneDef` (coarse free-prose positions, `name :: meaning` convention,
+  load-bearing marker, case-insensitive keys via `sameName`/`nameKey`, never persisted at
+  character level); (2) an architect `staging` stage after `scene`; (3) a run-scoped live stage
+  seeded at scene start, writer-mutable by accretion, load-bearing entries unflippable, never
+  written back to `story.json`, never dumped whole into the writer prompt; (4) a per-character
+  `observe()` projection beside `situation` respecting presence/restrictions/`reach`; (5)
+  story-editor surface. As each step ships, its behaviour moves into
+  the owning surface doc and that part of this entry is deleted.
+
+- **Accretion duplicates an entity under a second name — measured live, unfixed.** One doorway
+  chapter into an unstaged room produced seven `stage_added` entries for four things:
+  `Service door :: at the end of the corridor` and later `door :: steel service door with
+  mechanical lock`; `Upturned wooden crates` and later `crates`; `Sodium lamp` and later `lamp`.
+  `applyStageEntry` matches on `nameKey`, so none of those pairs join and the room ends holding
+  both halves — every character then perceives one object twice, under two positions that can
+  drift apart. The canonical-name substitution built for character targets (`resolveTarget`) is
+  the right instrument pointed at the wrong caller: a target names something that already exists,
+  while accretion is where new names enter, and it does no matching beyond exact key equality.
+  Worth noting where this does **not** bite: a story that authors `staging` seeds the room with
+  the names the writer then reuses, and `interrogation-test` showed no duplication across two
+  staged runs. So it is an unstaged-room problem, which is every story but one. Shape of a fix,
+  cheapest first: (a) feed the writer its own accreted names back so it reuses them — the
+  manifest must not be dumped whole, but the names alone are not inventory prose; (b) match a new
+  entity against existing ones by containment rather than equality (`door` inside `Service
+  door`), which risks joining two genuinely different doors; (c) ask the writer to name what it
+  places using the stage's spelling when one exists. (a) is the least engine, the most likely to
+  work, and the easiest to measure — `stage_added` counts per scene should fall.
+
+- **Judge-gate economics — measured, corrected, and now shipping as correctness first.**
+  Re-measured over 73 runs (`npm run census`) after the substrate arc: 943 judge accepts vs 27
+  retry verdicts, 13 re-asks issued. Reading all 27 retry notes against the engine's own
+  contracts: 8 were shape refusals ("provided both speech and action when only one was
+  requested") issued while the judge's own prompt forbade shape enforcement in three places —
+  the engine removed wants-keyed shape dictation on purpose (`wants` is inert, carried never
+  required, and "an answer that departs from what was wanted but breaks nothing established is
+  valid", consult.ts) — so ~30% of retries were the judge overriding its design. 1 was a
+  documented false positive (a CANNOT invented for the wrong character), ~9 were
+  constraint/limit work that constraint-lint now does mechanically, 3 were mechanically visible
+  (1 empty envelope, 2 thought-only non-POV repeats), and 2-3 were genuinely soft ("does not
+  advance the open beat"). That is ~9 outputs of harm against ~5 useful re-asks across ~970
+  calls — a net negative with a bill, not an expensive safety net. The gate-predicate idea
+  ("judge only when the scene declares a constraint or the character has limits") was measured
+  and killed before building: the census's "limits or constraint" section found 55 of 1150
+  answers (4.8%) on the selected side of it, all in one story — a story predicate, not a risk
+  predicate, eroding as the architect steers new casts toward authored restrictions, and
+  unfaithful to its own criterion (a real mute character carried outside `limits` would sit in
+  the skipped set). **Shipped:** the shape rule moved into the judge's decision ladder itself
+  (both judge literals) after the prose rules failed 8 times live; the reach floor
+  (`engine/lint/answer-reach-lint.ts`) refuses the empty envelope and the thought-only non-POV
+  repeat on the placeholder path's retry budget; and the flat random sample
+  (`--judge-sample=N`, default 1, byte-identical off) replaces the predicate — linear,
+  corpus-drift-immune, one knob to arm and reverse, and the sample is the measurement.
+  **Remaining:** re-baseline one window against today's engine (the shape fix alone removes ~8
+  of 27 retries and constraint-lint has absorbed ~4 — the next window's rate falls without any
+  gate change), then arm the sample and let two sampled windows answer the real question:
+  whether the per-answer judge earns a call at all, with "does not advance the open beat" as
+  the one failure no mechanical check sees and retirement — not optimisation — as the
+  candidate outcome.
+
 - **Free Consult — strip authorial behavioral steering from the character prompt (spike).**
   (`FREE_CHARACTER_FORMAT`, `--free-consult`/`-v2`, reversible, CLI-only; `REACTION_OUTWARD`
   excluded from both as an architectural boundary, not prose style.) v1 sustained-asks nearly every

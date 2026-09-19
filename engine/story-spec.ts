@@ -81,6 +81,9 @@ export function presenceNotInRoster(prefix: string, who: string): string {
 export function constraintNotInRoster(prefix: string, who: string): string {
   return `${prefix} sets a constraint for "${who}", who is not in its roster`;
 }
+export function stagingNotInRoster(prefix: string, who: string): string {
+  return `${prefix} stages "${who}", who is not in its roster`;
+}
 
 /** The timeline-beat problems that are pure string work, shared by the load path (which warns and
  *  keeps the beat) and the proposal path (which reports it), so the wording has one home — the same
@@ -315,6 +318,21 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       });
       if (ok.length) constraint[ch.name] = ok;
     }
+    const rawStaging = asStrings(s.staging);
+    // Staging is placed, not resolved: positions are free prose, so every entry must carry its
+    // own ":: position". The list is shared, so an entry naming anything else is an object and
+    // is silent — only an entry naming someone in the cast but not in this scene's roster is
+    // reported. Entries — `!` marker included — are kept verbatim; the resolver reads the marker.
+    const staging: SceneDef["staging"] = [];
+    for (const e of rawStaging) {
+      const { text, meaning } = splitMeaning(e);
+      const name = (text.startsWith("!") ? text.slice(1) : text).trim();
+      if (!meaning.trim()) { problems.push(`staging "${e}" carries no ":: position" — dropped`); continue; }
+      const ch = characters.find(c => c.name.toLowerCase() === name.toLowerCase());
+      if (ch && roster.length && !roster.some(r => r.toLowerCase() === name.toLowerCase()))
+        problems.push(stagingNotInRoster(prefix, name));
+      staging.push(e);
+    }
     return {
       place: String(s.place ?? "").trim(),
       question: String(s.question ?? "").trim(),
@@ -324,6 +342,7 @@ export function normalizeSpec(raw: any, catalogs?: Catalogs): { spec: StorySpec;
       reach,
       presence,
       constraint,
+      staging,
       ...(s.writerModel ? { writerModel: String(s.writerModel).trim() } : {}),
       ...(s.writerThink && (THINK_LEVELS as readonly string[]).includes(String(s.writerThink))
         ? { writerThink: String(s.writerThink) as ThinkLevel } : {}),

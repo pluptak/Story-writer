@@ -26,10 +26,20 @@ describe("StoryJson schema", () => {
     assert.equal(r.title, "");
     assert.equal(r.premise, "");
     assert.equal(r.scenes.length, 1);
-    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [], reach: {}, presence: {}, constraint: {} });
+    assert.deepEqual(r.scenes[0], { place: "", question: "", pov: "", length: 700, roster: [], reach: {}, presence: {}, constraint: {}, staging: [] });
     assert.equal(r.config.maxSteps, 24);
     assert.equal(r.config.thinking.writer, "low");
     assert.equal(r.models.default, "qwen3.6-35b-a3b");
+  });
+
+  it("keeps authored staging verbatim and defaults it to empty", () => {
+    const staged = StoryJson.parse({
+      characters: [{ name: "X" }],
+      scenes: [{ staging: ["crate :: on the crate", "!door :: shut fast"] }],
+    });
+    assert.deepEqual(staged.scenes[0].staging, ["crate :: on the crate", "!door :: shut fast"]);
+    const bare = StoryJson.parse({ characters: [{ name: "X" }] });
+    assert.deepEqual(bare.scenes[0].staging, []);
   });
 
   it("keeps only the first three voice samples on load instead of rejecting the whole story", () => {
@@ -315,6 +325,75 @@ describe("loadStory warnings", () => {
       }
     });
   }
+
+    it("warns on staging for nobody in the roster, and round-trips staged scenes intact", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      const story = {
+        title: "T", premise: "A premise.",
+        characters: [{ name: "A" }, { name: "B" }],
+        scenes: [{ question: "Q?", roster: ["A"],
+                   staging: ["A :: by the door", "B :: under the lamp", "crate :: in the corner", "ghost :: nowhere"] }],
+      };
+      await writeFile(join(dir, "story.json"), JSON.stringify(story), "utf8");
+
+      const warns: string[] = [];
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      let sc;
+      try { sc = await loadStory(dir); } finally { WARN.sink = orig; }
+
+      assert.match(warns.join("\n"), /stages "B", who is not in its roster/);
+      assert.ok(!warns.some(w => /crate|ghost/.test(w)),
+        "an entry naming an object is silent — only cast members off-roster warn");
+      assert.deepEqual(sc.scenes, StoryJson.parse(story).scenes,
+        "load warns but never rewrites: the staged scene round-trips byte-identical");
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("loads an unstaged story unchanged and gains no staging warning", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));
+    try {
+      await writeFile(join(dir, "story.json"), JSON.stringify({
+        title: "T", premise: "A premise.",
+        characters: [{ name: "A" }],
+        scenes: [{ question: "Q?", roster: ["A"] }],
+      }), "utf8");
+
+      const warns: string[] = [];
+      const orig = WARN.sink;
+      WARN.sink = (...a: unknown[]) => { warns.push(a.map(String).join(" ")); };
+      let sc;
+      try { sc = await loadStory(dir); } finally { WARN.sink = orig; }
+
+      assert.deepEqual(sc!.scenes[0].staging, []);
+      assert.ok(!warns.some(w => /staging|stages/.test(w)));
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("normalizeSpec keeps a staged list verbatim, reporting only a cast member off-roster", () => {
+    const n = normalizeSpec({
+      title: "T", premise: "A premise.",
+      characters: [{ name: "A" }, { name: "B" }],
+      scenes: [{ question: "Q?", roster: ["A"],
+                 staging: ["A :: by the door", "crate :: in the corner", "B :: under the lamp"] }],
+    });
+    assert.deepEqual(n.spec.scenes[0].staging,
+      ["A :: by the door", "crate :: in the corner", "B :: under the lamp"]);
+    assert.ok(n.problems.some(p => /stages "B", who is not in its roster/.test(p)));
+    assert.ok(!n.problems.some(p => /crate/.test(p)),
+      "an entry naming an object is silent on the proposal path too");
+  });
+
+  it("normalizeSpec drops entries with no :: position", () => {
+    const n = normalizeSpec({
+      title: "T", premise: "A premise.",
+      characters: [{ name: "A" }],
+      scenes: [{ question: "Q?", staging: ["crate", "door :: shut"] }],
+    });
+    assert.deepEqual(n.spec.scenes[0].staging, ["door :: shut"]);
+    assert.ok(n.problems.some(p => /carries no ":: position" — dropped/.test(p)));
+  });
 
   it("accepts whitespace around cast, POV, roster, and presence names", async () => {
     const dir = await mkdtemp(join(tmpdir(), "story-writer-test-"));

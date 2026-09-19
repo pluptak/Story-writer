@@ -358,7 +358,7 @@ export function parseBatchVerdict(o: Record<string, unknown>): Map<string, boole
 /** A character's answer: what they thought/said/did, and any clarification trail. */
 export interface ConsultReply {
   character: string;
-  thought: string; speech: string; action: string; note: string;
+  thought: string; speech: string; action: string; target?: string; note: string;
   clarifications: { question: string; answer: string }[];
   forced: boolean;                                       // ran out of clarifications and answered anyway
   raw: string;
@@ -372,7 +372,7 @@ export type ConsultEvent =
   | { t: "prose_reply"; character: string }
   | { t: "forced"; character: string }
   | { t: "repair"; character: string; why: string }
-  | { t: "answer"; character: string; thought: string; speech: string; action: string;
+  | { t: "answer"; character: string; thought: string; speech: string; action: string; target?: string;
       note: string };
 
 /** How the caller answers a character's request for a missing fact. `null` means the call to answer
@@ -383,15 +383,18 @@ export type Clarifier = (question: string, req: ConsultRequest) => Promise<strin
 export async function consult(
   agent: Agent, req: ConsultRequest,
   opts: { clarifications: number; clarify: Clarifier; attempt?: number; pov?: boolean;
-          log?: (e: ConsultEvent) => void },
+          log?: (e: ConsultEvent) => void; room?: string },
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
   const pov = opts.pov ?? true;
-  const extra: Msg[] = [{ role: "user", content: ENGINE.freeConsult === "v3"
+  // The room rides beside the situation, never inside it: the situation stays the writer's
+  // ground truth alone, and an empty projection renders nothing at all.
+  const ask = ENGINE.freeConsult === "v3"
     ? P.freeAskBlockV3(req, opts.attempt ?? 1, pov)
     : ENGINE.freeConsult
     ? P.freeAskBlock(req, opts.attempt ?? 1, pov)
-    : P.askBlock(req, opts.attempt ?? 1, pov) }];
+    : P.askBlock(req, opts.attempt ?? 1, pov);
+  const extra: Msg[] = [{ role: "user", content: ask + (opts.room ? `\n\n${opts.room}` : "") }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
 
@@ -456,6 +459,7 @@ export async function consult(
     const thought = String(o.thought ?? "").trim();
     const speech  = String(o.speech ?? "").trim();
     const action  = String(o.action ?? "").trim();
+    const target  = String(o.target ?? "").trim();
     const note    = String(o.note ?? "").trim();
     const shortOf = nonPovThoughtOnly({ speech, action }, pov);
     const why = !thought && !speech && !action ? "returned nothing usable"
@@ -470,10 +474,10 @@ export async function consult(
     }
 
     const reply: ConsultReply = {
-      character: req.character, thought, speech, action, note,
+      character: req.character, thought, speech, action, target, note,
       clarifications, forced, raw,
     };
-    log({ t: "answer", character: req.character, thought, speech, action, note });
+    log({ t: "answer", character: req.character, thought, speech, action, target, note });
     return reply;
   }
 }

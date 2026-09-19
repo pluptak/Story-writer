@@ -22,7 +22,8 @@ const CURRENT = {
   writerStyleConstraints: ["keep the corridor cold"],
   facts: ["the door is locked"],
   timeline: [{ chapter: 1, hold: "a knock is coming", fired: "a knock lands" }],
-  scenes: [{ place: "a corridor", question: "Does she open it?", pov: "ADA", length: 400 }],
+  scenes: [{ place: "a corridor", question: "Does she open it?", pov: "ADA", length: 400,
+             staging: ["ADA :: by the door"] }],
   characters: [{
     name: "ADA", persona: "a courier", knows: "the route", goal: "get in",
     belief: "nobody checks", impulse: "when challenged → smile", voice: ["Evening."],
@@ -150,6 +151,13 @@ describe("auditStory — dated: it works, it predates something", () => {
     const a = await auditStory(await story("full"));
     assert.equal(a.level, "current");
     assert.deepEqual(a.findings, []);
+  });
+
+  it("flags a scene with no staging as dated, never worse", async () => {
+    const a = await auditStory(await story("unstaged", s => { s.scenes[0].staging = []; }));
+    assert.equal(a.level, "dated");
+    const f = a.findings.find(x => x.check === "no-staging")!;
+    assert.equal(f.where, "scene 1");
   });
 });
 

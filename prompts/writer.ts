@@ -21,7 +21,7 @@ have been asked.
 
 WHEN ASKED TO WRITE -- [WRITE]:
 
-  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "scene_done": false}
+  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "stage": ["NAME :: where"], "scene_done": false}
 
   prose      -- the next piece of the scene, ready for the page. "" if you are only consulting.
                 SHORT. Every [WRITE] gives you a word ceiling; treat it as real. A scene has a fixed
@@ -98,6 +98,15 @@ ${heard ? `    situation  -- CIRCUMSTANCE ONLY. There is no question behind it; 
                 yours to narrate; the CHOICE that carried them into it (they stepped forward) still
                 had to be asked for first. Once you exit someone, do not consult them again. If the
                 one you exit is the point-of-view character, the chapter ends there.
+  stage      -- optional: a list of things this piece places on the stage that were not
+                there before -- "NAME :: where" entries, people or objects your prose just put
+                somewhere ("lamp :: on the desk, lit"). Coarse, never coordinates. Omit it entirely when
+                the piece places nothing new -- most replies carry no stage. A name already
+                placed is listed again only when your prose actually moved it: restating
+                where it already stands can drop what the room said about it, and the
+                fuller placement is the one kept. It moves only when it is not fixed: an
+                entry the scene fixed cannot be moved, and the attempt is refused -- you
+                will be told, and the old placement stands.
 
   Consult when a choice is being made. Do not consult for scenery, for a gesture that carries
   nothing, or for something you have already asked and had answered.
@@ -311,6 +320,12 @@ export const exitNotWritten = (name: string) =>
   `[NO EXIT] You named ${name} as leaving the scene, but this reply wrote nothing -- nobody is gone `
   + `until it is on the page. Write the departure, or carry on with them still here.`;
 
+/** A staged move the room would not take: the old placement stands, and the prose must
+ *  honor it rather than the placement the reply proposed. */
+export const stageRefused = (entity: string, position: string, fixed: string) =>
+  `[STAGE REFUSED] "${entity} :: ${position}" was not placed -- "${entity}" is fixed where it is `
+  + `(${fixed}). Write it where it stands.`;
+
 /** `why` says how the scene was about to end while an answer was owed: declared done, or run to its
  *  length cap. The instruction is the same; only the framing differs. */
 export const answerStillOwed = (why: "done" | "cap") =>
@@ -330,6 +345,42 @@ export const narrationFlagged = (why: string) =>
   `[NARRATION FLAGGED] ${why}\n\n`
   + `That piece was not written to the page. Redraft it from the same [WRITE] instruction, honoring `
   + `THE ONE RULE and what each CANNOT removes.`;
+
+/** The repair for a line the writer put in a consulted character's mouth before asking: the
+ *  finding names the rule broken, this names the fix — the consult stays open, the line goes. */
+export const answeredOwnConsult = (why: string) =>
+  `[NARRATION FLAGGED] ${why}\n\n`
+  + `Cut the line and keep the consult: the character has not answered yet, so those words are `
+  + `yours, not theirs. Ask, and write what they actually say when the answer arrives next turn.`;
+
+/** The same sin in its commoner form: words in a mouth that never chose them, whoever is being
+ *  asked. The core fix is the same — cut the line; the character has not answered yet — but
+ *  there is no consult to keep, because the speaker this line was invented for is not the one
+ *  the reply asks. So the remedy changes: name the speaker, and send the ask their way if their
+ *  words are what the scene needs. The engine knows who it was; the writer has already failed
+ *  to re-derive it from the quote. */
+export const inventedForSpeaker = (why: string, name: string) =>
+  `[NARRATION FLAGGED] ${why}\n\n`
+  + `Cut the line: ${name} has not answered yet, so those words are yours, not theirs. If what `
+  + `the scene needs next is ${name}'s words, ask ${name} — and write what they actually say `
+  + `when the answer arrives next turn.`;
+
+/** Operator-facing, not model-facing: when a redraft comes back with the same quote flagged,
+ *  the granted line itself may be unrenderable and another redraft cannot fix that. Lives here
+ *  beside narrationFlagged because it extends the lint prompt the operator decides on. */
+export const quoteFlagRepeated = (quotes: string[]) =>
+  `Redrafting has not changed this — the same line was flagged again`
+  + (quotes.length ? ` (${quotes.map(q => `"${q}"`).join(", ")})` : "")
+  + `. The granted line itself may be unrenderable; prefer publish [p] or stop [s] over redraft [r].`;
+
+/** Operator-facing, not model-facing: the repeat note when the flagged line was never granted
+ *  to anyone. There is no unrenderable grant behind it — the words were invented on the page,
+ *  and publishing puts unchosen words in a mouth that never chose them. */
+export const quoteNeverGranted = (quotes: string[]) =>
+  `Redrafting has not changed this`
+  + (quotes.length ? ` (${quotes.map(q => `"${q}"`).join(", ")})` : "")
+  + ` — no one granted these words; they were written straight onto the page. Publishing [p] is the wrong reach here — `
+  + `it would put ungranted words in a mouth that never chose them. Prefer stop [s] over publish [p] or redraft [r].`
 
 export const characterAsks = (name: string, question: string) =>
   `[${name} ASKS] ${question}`;
@@ -376,10 +427,35 @@ export const worldBounds = (world: { held?: string[]; established?: string[] } =
       : "");
 };
 
-export const answerBody = (p: { thought: string; speech: string; action: string }) =>
+export const answerBody = (p: { thought: string; speech: string; action: string; target?: string;
+                                targetFailed?: boolean }) =>
   [p.thought && `thought: ${p.thought}`,
    p.speech  && `speech: ${p.speech}`,
-   p.action  && `action: ${p.action}`].filter(Boolean).join("\n");
+   p.action  && `action: ${p.action}`,
+   p.target  && (p.targetFailed ? `target (reached for, and failed): ${p.target}` : `target: ${p.target}`),
+  ].filter(Boolean).join("\n");
+
+/** The answerBody for an act the scene's own hold stopped: the attempt is what the writer is
+ *  handed, marked as failed where it sits, so it can never read as a deed. */
+export const attemptedBody = (p: { thought: string; speech: string; action: string; target?: string;
+                                   targetFailed?: boolean }) =>
+  [p.thought && `thought: ${p.thought}`,
+   p.speech  && `speech: ${p.speech}`,
+   p.action  && `action (tried, and failed): ${p.action}`,
+   p.target  && (p.targetFailed ? `target (reached for, and failed): ${p.target}` : `target: ${p.target}`),
+  ].filter(Boolean).join("\n");
+
+/** A refusal is a beat, not an error: the strain against the hold is writable, the deed is not. */
+export const actAttempted = (name: string, action: string, constraint: string) =>
+  `${name} tried "${action}" and ${constraint} held. Write the attempt and its failure — the `
+  + `strain, the hold, what stops them — never the deed as done.`;
+
+/** The mirror for a target: the reach crossed a channel, and the distance held. The entity is the
+ *  stage's own spelling — the writer renders one name for one thing — and what may be written is
+ *  the reach and its failure, never the touch as made. */
+export const targetAttempted = (name: string, entity: string) =>
+  `${name} reached for "${entity}" from afar and the distance held. Write the reach and its failure `
+  + `— the words carried, the hands could not follow — never the touch as made.`;
 
 /** The question travels with the answer only when the writer cannot already read it back: the
  *  draft's own `said()` a few messages back carries the original question, so re-echoing an

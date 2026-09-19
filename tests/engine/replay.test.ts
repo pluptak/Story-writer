@@ -3,7 +3,7 @@
  *
  * Every other test in this suite feeds the engine replies someone wrote by hand: well-formed JSON,
  * one behaviour per fixture. This one feeds it what a model actually sent across a whole chapter —
- * 122 calls, with retries, redrafts, a repair and a clarification among them — and checks the same
+ * 89 calls, with retries, redrafts, a repair and a clarification among them — and checks the same
  * prose comes back out. It is the only test that drives `runChapter` end to end.
  *
  * When it fails, it is saying the engine no longer walks a recorded run the way it did. That is
@@ -80,13 +80,16 @@ describe("replaying a recorded chapter", () => {
     const { replay } = await replayedChapter();
 
     // The pair is the key: both characters answer at `character.consult` and are told apart by name
-    // alone. Were that ever to collapse to the site, one of these would eat the other's replies.
-    assert.equal(replay.used("MERRITT|character.consult"), 14);
-    assert.equal(replay.used("RIVEN|character.consult"), 7);
-    // The writer's two sites share one transcript and interleave — 16 drafts against 8 redrafts — so
-    // order alone would hand a redraft's reply to a draft. Per-queue keeps them straight.
-    assert.equal(replay.used("WRITER|writer.draft"), 16);
-    assert.equal(replay.used("WRITER|writer.redraft"), 8);
-    assert.equal(replay.total(), 85);
+    // alone. This recording asks them the same number of times, so the counts alone no longer prove
+    // the queues stayed apart — a collapse to the site would still show 11 and 11. The subtest above
+    // is what catches that: fed each other's replies, the prose would not come back the same.
+    assert.equal(replay.used("MERRITT|character.consult"), 11);
+    assert.equal(replay.used("RIVEN|character.consult"), 11);
+    // The writer's two sites share one transcript and interleave — 17 drafts against 7 redrafts — so
+    // order alone would hand a redraft's reply to a draft. Per-queue keeps them straight, and this
+    // pair is asymmetric, so the count still carries the proof.
+    assert.equal(replay.used("WRITER|writer.draft"), 17);
+    assert.equal(replay.used("WRITER|writer.redraft"), 7);
+    assert.equal(replay.total(), 89);
   });
 });

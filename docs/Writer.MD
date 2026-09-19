@@ -335,6 +335,31 @@ refused as `exit_refused` and the writer is told so. Exiting the **point-of-view
 character ends the chapter: the between-chapters architect handoff re-authors the cast from there,
 reading the exit out of the prose it already consumes, so no separate signal reaches it.
 
+### Placing the room
+
+The writer can place what its prose just put somewhere with a `stage` field carrying `"NAME ::
+where"` entries. What lands is authoritative from then on — accretion, not proposal — and is
+recorded on the run's event stream (`stage_added`, `stage_moved`, `stage_kept`), never written
+back to `story.json`. Most replies carry no `stage` at all, and a name already placed belongs
+there only when its placement actually changed: a restatement that names nothing new and strictly
+less than the standing placement is not a move — the fuller placement stands, recorded as
+`stage_kept` and silent to the writer, whose gloss asks for the change-only rule and whose log
+measures how often it still slips. A shorter position that names anything new still moves. A
+placed name moves freely unless the scene fixed it: a move against a load-bearing entry is
+refused as `stage_refused`, the old placement stands, and the writer is told to write it where it
+stands. The manifest itself never enters a prompt — dumped wholesale it produces inventory prose —
+so only refusals reach the writer; what the room holds is the engine's to know.
+
+The writer does not place through a target and has no target output key: placing is the `stage`
+field's job, above. What the writer receives is the character's aim — an accepted answer may
+carry a `target`, and the name resolves against the same live stage before anything folds in, so
+on a match the writer is handed the stage's own spelling of the thing, however the character
+spelled it, and the prose never has to guess which of several spellings is the one. Exactly one
+thing is refused: a character who is `remote` for the scene naming something the room stages — a
+channel carries words, never hands — logged as `target_refused`. Like a held act, the refusal is
+a beat: the answer stands, the writer is handed the reach and its failure to write, never the
+touch as made. An unstaged target permits and adds nothing.
+
 One run writes one chapter. A run can finish normally, stop when its step budget is exhausted, pause
 for more budget, wait for reader direction, be stopped by the user, be forced closed for running twice
 past its target length (see "Length is a budget, not a suggestion" above), or end because of a

@@ -7,7 +7,12 @@
       "question": "Does Riven get through the door before Merritt decides what to do about them?",
       "pov": "RIVEN",
       "length": 700,
-      "roster": []
+      "roster": [],
+      "staging": [
+        "RIVEN :: by the steel door",
+        "MERRITT :: on the upturned crate",
+        "!steel door :: shut fast"
+      ]
     }
   ],
   "writerStyle": "Close third on the POV character, present tense. Concrete nouns. Let the corridor do the work — sound,\ncold, the smell off the bins — rather than adjectives about mood.\n\nDialogue is sparse and does not explain itself. People talk past each other, answer a question with\na different question, and leave sentences unfinished when the other person already knows the end.\n\nNo omniscience: if the POV character cannot see, hear or reasonably infer it, it does not go on the\npage. Never state what a non-POV character is feeling — show what they do and let it stand.\n\nParagraphs short. Prefer the plain word. Cut any sentence whose only job is to tell the reader how\nto feel about the previous one.",

@@ -56,6 +56,12 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
 DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through to ACCEPT:
 
+  Did the answer arrive through several channels at once -- a thought AND speech, speech AND
+  action, or all three?
+    yes -> ACCEPT. That is one answer in several channels, never a contradiction. Nothing in
+           the ask names a shape, so "only one was requested" is never true, and a retry spent
+           on it refuses a valid answer to repair nothing.
+
   Was the answer actually impossible or inconsistent with what is already established?
     no  -> ACCEPT. Whatever fork they took, however quiet, however inconvenient -- accept it,
            and go and write it.
@@ -68,8 +74,9 @@ DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through t
              none of these -- only surprising, unwelcome, or odd?    ACCEPT
 
 NOT GROUNDS FOR A RETRY, however worded: the wrong fork, the unexpected move, the inconvenient
-choice, the quiet answer, what the writer intended, reaching outside a listed skill, or more
-elaboration than was asked for. A surprising choice is not a broken one.
+choice, the quiet answer, what the writer intended, reaching outside a listed skill, more
+elaboration than was asked for, or the answer arriving through several channels at once. A
+surprising choice is not a broken one.
 
 AN ANSWER HAS TO REACH THE SCENE. Any shape of answer will do: a line, a deed, or both, at
 whatever length the moment deserved. What it cannot be is only a thought, from
@@ -138,6 +145,12 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
 DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through to ACCEPT:
 
+  Did the answer arrive through several channels at once -- a thought AND speech, speech AND
+  action, or all three?
+    yes -> ACCEPT. That is one answer in several channels, never a contradiction. Nothing in
+           the ask names a shape, so "only one was requested" is never true, and a retry spent
+           on it refuses a valid answer to repair nothing.
+
   Was the answer actually impossible or inconsistent with what is already established?
     no  -> ACCEPT. Whatever fork they took, however quiet, however inconvenient -- accept it,
            and go and write it.
@@ -150,8 +163,9 @@ DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through t
              none of these -- only surprising, unwelcome, or odd?    ACCEPT
 
 NOT GROUNDS FOR A RETRY, however worded: the wrong fork, the unexpected move, the inconvenient
-choice, the quiet answer, what the writer intended, reaching outside a listed skill, or more
-elaboration than was asked for. A surprising choice is not a broken one.
+choice, the quiet answer, what the writer intended, reaching outside a listed skill, more
+elaboration than was asked for, or the answer arriving through several channels at once. A
+surprising choice is not a broken one.
 
 AN ANSWER HAS TO REACH THE SCENE. Any shape of answer will do: a line, a deed, or both, at
 whatever length the moment deserved. What it cannot be is only a thought, from
@@ -253,6 +267,8 @@ those are choices, and they need an answer behind them like any other. Then rest
 the consult's situation. Do not flag prose that merely mentions a character or describes the scene,
 and do not flag an already-granted deed or felt reaction rendered in different words. When in
 doubt about a description, pass it; when in doubt about an invented deed or meaningful stillness, flag it.
+A deed marked tried-but-failed was attempted and stopped: narrating the attempt and its failure is
+correct, narrating it as completed is an invented deed.
 
 CRITICAL: If your output is not a JSON object starting with { it will be discarded.`;
 
@@ -266,7 +282,7 @@ export function narrationLintSystem(cast: { name: string; can: string[]; reach?:
 export const narrationLintRequest = (p: {
   pov: string;
   prose: string;
-  granted: { character: string; speech: string; action: string; thought?: string }[];
+  granted: { character: string; speech: string; action: string; thought?: string; attempted?: boolean }[];
   consult: { character?: string; reactors?: (string | { name: string; situation?: string })[];
     situation: string; question?: string } | null;
 }) => {
@@ -279,7 +295,7 @@ export const narrationLintRequest = (p: {
   + (p.granted.length
       ? p.granted.map(g => `${g.character}` + (g.speech ? ` -- said: ${g.speech}` : "")
           + (g.thought ? ` -- felt: ${g.thought}` : "")
-          + (g.action ? ` -- did: ${g.action}` : "")).join("\n")
+          + (g.action ? (g.attempted ? ` -- tried but failed: ${g.action}` : ` -- did: ${g.action}`) : "")).join("\n")
       : "(nobody yet)")
   + (p.consult
       ? `\n\n[CONSULT OPENED BY THIS PIECE]\n`

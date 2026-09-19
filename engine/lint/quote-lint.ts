@@ -24,7 +24,17 @@ export interface SpeakerPronouns { subject: string; object: string; possessive: 
  *  pronouns so a pronominal speech tag can resolve against exactly one member. */
 export type SpeakerRef = string | { name: string; pronouns?: SpeakerPronouns };
 
-export interface QuoteLintHit { ok: false; why: string; quote: string; character: string; }
+export interface QuoteLintHit {
+  ok: false; why: string; quote: string; character: string;
+  /** The quote is explicitly attributed to a character this same reply consults — the
+   *  writer answered its own question, so no grant could cover the line yet. */
+  selfAnswered?: boolean;
+  /** The line matched a DIFFERENT character's grants — a misattribution or a theft, not an
+   *  invention. A distinct sin with a distinct repair (give it back, or cut it); the redraft
+   *  router deliberately keeps it on the generic prompt, where the finding's own wording
+   *  already says what happened. */
+  reassigned?: boolean;
+}
 
 export const isAdvisoryQuoteHit = (h: QuoteLintHit) => h.why.startsWith("possible misattribution");
 
@@ -114,7 +124,7 @@ const PARA = "\n\n";
 const AFTER_WINDOW = 100;
 const BEFORE_WINDOW = 120;
 
-function attribute(prose: string, quote: { index: number; text: string }, speakers: readonly SpeakerRef[]): { character: string; explicit: boolean } {
+function attribute(prose: string, quote: { index: number; text: string }, speakers: readonly SpeakerRef[]): { character: string; explicit: boolean; tagged: boolean } {
   const entries = speakers.map(s => typeof s === "string" ? { name: s } : s);
   const names = entries.map(e => e.name);
   const end = quote.index + quote.text.length;
@@ -125,7 +135,7 @@ function attribute(prose: string, quote: { index: number; text: string }, speake
     const who = escapeRe(name.trim());
     if (new RegExp(`\\b${who}\\s+(?:${tags})(?:\\s+\\w+ly)?\\s*[,：:]?\\s*$`, "i").test(before)
       || new RegExp(`^\\s*[,—]?\\s*(?:${who}\\s+(?:${tags})|(?:${tags})\\s+${who})\\b`, "i").test(after)) {
-      return { character: name, explicit: true };
+      return { character: name, explicit: true, tagged: true };
     }
   }
   // A pronominal tag adjacent to the quote ("she said", "said she"), resolved only when the
@@ -147,9 +157,9 @@ function attribute(prose: string, quote: { index: number; text: string }, speake
     const beforeRe = new RegExp(`\\b(${alt})\\s+(?:${tags})(?:\\s+\\w+ly)?\\s*[,：:]?\\s*$`, "i");
     const afterRe = new RegExp(`^\\s*[,—]?\\s*(?:(${alt})\\s+(?:${tags})|(?:${tags})\\s+(${alt}))\\b`, "i");
     const mb = beforeRe.exec(before);
-    if (mb) return { character: bySubject.get(mb[1].toLowerCase())!, explicit: false };
+    if (mb) return { character: bySubject.get(mb[1].toLowerCase())!, explicit: false, tagged: true };
     const ma = afterRe.exec(after);
-    if (ma) return { character: bySubject.get((ma[1] ?? ma[2]).toLowerCase())!, explicit: false };
+    if (ma) return { character: bySubject.get((ma[1] ?? ma[2]).toLowerCase())!, explicit: false, tagged: true };
   }
   // The fallback windows also stop at a paragraph break, because a speaker is never named
   // across one. Without this, a line split into two quoted fragments loses its tag on the
@@ -169,7 +179,7 @@ function attribute(prose: string, quote: { index: number; text: string }, speake
     // Keep the occurrence closest to the quote (smallest start offset within the window).
     if (m && m.index < bestAfter) { bestAfter = m.index; afterName = name; }
   }
-  if (afterName !== "unknown") return { character: afterName, explicit: false };
+  if (afterName !== "unknown") return { character: afterName, explicit: false, tagged: false };
   let best = -1, bestName = "unknown";
   for (const name of names) {
     const re = new RegExp(`\\b${escapeRe(name)}\\b`, "gi");
@@ -179,7 +189,7 @@ function attribute(prose: string, quote: { index: number; text: string }, speake
       if (m.index > best) { best = m.index; bestName = name; }
     }
   }
-  return { character: bestName, explicit: false };
+  return { character: bestName, explicit: false, tagged: false };
 }
 
 /** The prose with every quoted span blanked to spaces, offsets preserved — so the fallback
@@ -245,6 +255,13 @@ const linesOf = (entries: ReadonlyArray<GrantedLine>, written: boolean): string[
       .filter(q => hasWritingFrame(g.action!, q.index)).map(q => q.text) : []),
   ].filter((s): s is string => !!s));
 
+/** Whether any grant covers this quote — for telling a repeated unrenderable grant from
+ *  repeated invented words at the operator decision. Reads the ledger the way the check does,
+ *  writing-framed action quotes included. */
+export function quoteGrantedAnywhere(quote: string, granted: ReadonlyArray<GrantedLine>): boolean {
+  return matchQuote(quote, linesOf(granted, true));
+}
+
 /** The mechanical quotation check. Returns null when there is nothing to check (no quotes, only
  *  labels, only sourced furniture, or every quote matched a granted line) — the caller then runs
  *  the LLM lint for deeds/senses/situation. Returns a hit the moment one unmatched quote is found.
@@ -253,17 +270,23 @@ const linesOf = (entries: ReadonlyArray<GrantedLine>, written: boolean): string[
  *  line granted to one character rendered in another's mouth is a distinct failure ("granted to a
  *  different character") from a line granted to nobody at all, and the earlier all-speeches match
  *  could not tell them apart. An unattributed quote still matches against every grant, as before:
- *  there is nobody to restrict the check to. */
+ *  there is nobody to restrict the check to.
+ *
+ *  `consulted` names the characters this same reply asks — an unmatched quote explicitly
+ *  attributed to one of them is the writer answering its own question, which carries its own
+ *  why: the line was written before it was chosen, so no grant could cover it yet. Only an
+ *  explicit speech tag carries that accusation; a nearest-name guess does not. */
 export function lintQuotations(
   prose: string,
   granted: ReadonlyArray<GrantedLine>,
   names: readonly SpeakerRef[] = [],
+  consulted: readonly string[] = [],
 ): QuoteLintHit | null {
   const quotes = extractQuotations(prose);
   if (!quotes.length) return null;
   let advisory: QuoteLintHit | null = null;
   for (const q of quotes) {
-    const { character, explicit } = attribute(prose, q, names);
+    const { character, explicit, tagged } = attribute(prose, q, names);
     if (!explicit && isMachineLabel(q.text)) continue;
     if (!explicit && hasSourceFrame(prose, q.index)) continue;
     const written = !explicit && hasWritingFrame(prose, q.index);
@@ -281,11 +304,16 @@ export function lintQuotations(
 
     const others = linesOf(granted.filter(g => !sameCharacter(g.character, character)), written);
     const reassigned = matchQuote(q.text, others);
+    const selfAnswered = tagged && !reassigned && consulted.some(n => sameCharacter(n, character));
     const hit: QuoteLintHit = {
       ok: false,
       quote: q.text,
       character,
-      why: `${reassigned && !explicit ? "possible misattribution" : "unmatched quotation"}: "${q.text}" (near ${character})`
+      ...(selfAnswered ? { selfAnswered: true as const } : {}),
+      ...(reassigned ? { reassigned: true as const } : {}),
+      why: selfAnswered
+        ? `answered own consult: "${q.text}" — ${character} is consulted this same reply, so the line was written before it was chosen and no grant could cover it yet`
+        : `${reassigned && !explicit ? "possible misattribution" : "unmatched quotation"}: "${q.text}" (near ${character})`
         + (reassigned ? " — granted to a different character" : " — no character was granted that line"),
     };
     if (!isAdvisoryQuoteHit(hit)) return hit;

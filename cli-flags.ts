@@ -54,6 +54,10 @@ const OPTIONS = {
   "cannot-meaning": { type: "boolean" },
   "cannot-none": { type: "boolean" },
   "cannot-testimony": { type: "boolean" },
+  // Flat judge sample (CLI-only prototype): the fraction of asks the per-answer judge is called
+  // for; skipped asks fold in as accepted and are logged as judge_sampled_out. Default absent =
+  // 1 (judge every answer, byte-identical). See engine-state.ts judgeSample for the arming rule.
+  "judge-sample": { type: "string" },
   // Architect tracing.
   "architect-debug": { type: "boolean" },
   "architect-debug-log": { type: "string" },
@@ -94,6 +98,7 @@ export interface CliOptions {
     cannotMeaning: boolean;
     cannotNone: boolean;
     cannotTestimony: boolean;
+    judgeSample: number;
   };
   architectDebug: {
     enabled: boolean;
@@ -128,6 +133,17 @@ function parsePort(value: unknown): { ok: true; port: number } | { ok: false; er
   return { ok: true, port: n };
 }
 
+/** Parse `--judge-sample`: the fraction of asks the per-answer judge is called for. Absent means
+ *  1 — judge every answer. Anything outside 0..1 (or not a number) is a refusal, not a fallback,
+ *  so a typo cannot silently half-arm the gate. */
+function parseJudgeSample(value: unknown): { ok: true; sample: number } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, sample: 1 };
+  const n = Number(String(value));
+  if (!Number.isFinite(n) || n < 0 || n > 1)
+    return { ok: false, error: `--judge-sample=${String(value)} is not a fraction (0-1)` };
+  return { ok: true, sample: n };
+}
+
 /** Parse one argument list into structured options. Never throws for a bad command line — it
  *  returns `{ ok: false, error }` so main() prints one line instead of a stack trace. */
 export function parseCli(args = process.argv.slice(2)): CliParseResult {
@@ -148,6 +164,8 @@ export function parseCli(args = process.argv.slice(2)): CliParseResult {
 
   const port = parsePort(parsed.values.port);
   if (!port.ok) return port;
+  const judgeSample = parseJudgeSample(parsed.values["judge-sample"]);
+  if (!judgeSample.ok) return judgeSample;
 
   const values = parsed.values as Record<string, unknown>;
   return {
@@ -184,6 +202,7 @@ export function parseCli(args = process.argv.slice(2)): CliParseResult {
         cannotMeaning: values["cannot-meaning"] === true,
         cannotNone: values["cannot-none"] === true,
         cannotTestimony: values["cannot-testimony"] === true,
+        judgeSample: judgeSample.sample,
       },
       architectDebug: {
         enabled: values["architect-debug"] === true || values["architect-debug-log"] !== undefined,

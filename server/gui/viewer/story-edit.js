@@ -83,6 +83,10 @@ const constraintLines = constraint => Object.entries(constraint || {}).flatMap((
 
 const parseConstraint = parseReach;
 
+/** Staging, the scene's shared room list: one `NAME :: where` entry per line. A flat list,
+ *  not a per-character map, so lines are kept verbatim — no `NAME:` prefix parsing. */
+const stagingLines = staging => (Array.isArray(staging) ? staging : []).join("\n");
+
 /** Deep clone by serialising -- Zod-parsed data is plain JSON anyway. */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -200,6 +204,8 @@ function sceneRowsHtml() {
            reachLines(sc.reach), "textarea")}
       ${fld(`scene-${n}-constraint`, "Constraint — one per line: NAME: thing :: meaning (holds only for this scene)",
            constraintLines(sc.constraint), "textarea")}
+      ${fld(`scene-${n}-staging`, "Staging — one per line: NAME :: where (the room for this scene)",
+           stagingLines(sc.staging), "textarea")}
       ${issuesHtml(`scenes.${i}`)}
     </div>`;
   }).join("");
@@ -528,6 +534,8 @@ function applyField(id, value) {
       APP.editDraft.scenes[idx].reach = parseReach(value);
     } else if (field === "constraint") {
       APP.editDraft.scenes[idx].constraint = parseConstraint(value);
+    } else if (field === "staging") {
+      APP.editDraft.scenes[idx].staging = parseLines(value);
     } else if (field === "length") {
       const n = toNum(value);
       APP.editDraft.scenes[idx].length = n === undefined ? APP.editorConfig.defaults.sceneLength : Math.max(1, n);

@@ -15,7 +15,7 @@ import { ENGINE } from "../../engine/engine-state.ts";
 import { WARN } from "../../engine/warnings.ts";
 import { runDirs, retainedRuns, runLlmLogs, readLlmLog } from "../../engine/preflight.ts";
 import { CONSULT_WANTS } from "../../engine/consult.ts";
-import { wrapCharacter, wrapWriter, writerCast, sceneReach, scenePresence, sceneConstraint } from "../../engine/scene-loop.ts";
+import { wrapCharacter, wrapWriter, writerCast, sceneReach, scenePresence, sceneConstraint, sceneStage } from "../../engine/scene-loop.ts";
 import { judgeRequest } from "../../prompts.ts";
 import { fingerprint, LOADED, writeRunManifest } from "../../run-manifest.ts";
 import { quiet, warnings } from "../helpers.ts";
@@ -734,6 +734,45 @@ describe("constraint boundaries", () => {
     // One established block, one testimony marker -- not one pair per source.
     assert.equal((p.match(/\[WHAT IS ESTABLISHED ABOUT MERRITT\]/g) ?? []).length, 1);
     assert.equal((p.match(/their own account, not established fact/g) ?? []).length, 1);
+  });
+});
+
+// -- STAGING RESOLUTION ------------------------------------------------------
+// What is in the scene and where: one shared list of coarse free prose, never coordinates,
+// never resolved against a catalog. People and objects together — a character is an entity
+// with a position. Nothing reads it yet — this pins the resolution the live stage (Chunk 6)
+// seeds from.
+describe("sceneStage", () => {
+  const sceneOf = (staging: string[]) =>
+    ({ place: "the chapel", question: "Does CARTER answer?", pov: "CARTER", length: 700, roster: ["CARTER"], reach: {}, presence: {}, constraint: {}, staging }) as never;
+
+  it("resolves the shared room verbatim, people and objects together", () => {
+    const sd = sceneOf(["CARTER :: on the upturned crate", "door :: beside the exit"]);
+    assert.deepEqual(sceneStage(sd), [
+      { entity: "CARTER", position: "on the upturned crate", fixed: false },
+      { entity: "door", position: "beside the exit", fixed: false },
+    ]);
+  });
+
+  it("marks leading-! entries load-bearing and strips the marker", () => {
+    const sd = sceneOf(["!steel door :: shut fast"]);
+    const resolved = sceneStage(sd);
+    assert.deepEqual(resolved, [{ entity: "steel door", position: "shut fast", fixed: true }]);
+    assert.ok(!resolved.some(e => e.entity.includes("!")),
+      'nameKey("!door") never leaks to a consumer — the marker is read, not carried');
+  });
+
+  it("a missing :: position warns, and a nameless entry is ignored", () => {
+    const sd = sceneOf(["crate", "! :: nowhere"]);
+    let resolved: ReturnType<typeof sceneStage> = [];
+    const w = warnings(() => { resolved = sceneStage(sd); });
+    assert.match(w.join(" "), /staging "crate" carries no ":: position"/);
+    assert.match(w.join(" "), /names nothing — ignored/);
+    assert.deepEqual(resolved, [{ entity: "crate", position: "", fixed: false }]);
+  });
+
+  it("an empty list stages nothing", () => {
+    assert.deepEqual(sceneStage(sceneOf([])), []);
   });
 });
 

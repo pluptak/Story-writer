@@ -25,7 +25,7 @@ YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
 
   {"need": "Can I reach the door handle from where I am?"}
 
-  {"thought": "...", "speech": "...", "action": "...", "note": ""}
+  {"thought": "...", "speech": "...", "action": "...", "target": "...", "note": ""}
 
 FIRST DECIDE: know it, infer it, assume it, or ask?
 
@@ -62,10 +62,13 @@ const FORMAT_MID = `  OVERRIDE: if the author tells you plainly that no more det
                    fear, suspicion or decision present in your mind at that moment.
                    Good: "They know this lock better than I do."
                    Bad: "I need something physical; searching the satchel is my best option."
-  speech       -- the words you say aloud and nothing else, with no quotation marks around them,
+  speech        -- the words you say aloud and nothing else, with no quotation marks around them,
                    or "" if you say nothing.
-  action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
-  note         -- "" normally. Use it to tell the author something out of character: an assumption
+  action        -- what you physically do, in one or two plain sentences, or "" if you do nothing.
+  target        -- the name of the one thing in the room this act is aimed at, exactly as the room
+                   block spells it, or "". Optional and normally empty: name it only when an action
+                   reaches for something specific, never just to fill the field.
+  note          -- "" normally. Use it to tell the author something out of character: an assumption
                    you had to make that MATERIALLY affects your choice, uncertainty that itself
                    matters to what you do, or something you would need and do not have. Not for
                    every ordinary inference -- a mundane reading you acted on without a second
@@ -328,6 +331,14 @@ export const foldedAsk = (req: { situation: string; wants: string; heard?: { lin
   + heardSpeech(req.heard)
   + (req.wants ? `\nWhat they need from you: ${req.wants}` : "");
 
+/** What the room looks like to the character being asked: the live stage filtered to what
+ *  they can perceive, beside the situation rather than inside it. Empty renders nothing —
+ *  the character then reconstructs the room from prose exactly as before. */
+export const roomBlock = (entries: readonly { entity: string; position: string }[]) =>
+  entries.length
+    ? `[THE ROOM AS YOU KNOW IT]\n${entries.map(e => `- ${e.entity} :: ${e.position}`).join("\n")}`
+    : "";
+
 /** `since` joined onto the situation before the consult gate: one ground-truth channel, not
  *  two, so the CANNOT/presence gate, the narration lint's situation read, and the accepted-answer
  *  fold all read exactly what the character reads. The joiner line addresses them as "you", matching
@@ -463,3 +474,18 @@ export const badReaction = {
 export const AUTHOR_TOOK_YOUR_ACTION =
   `[YOU ACTED] What you moved to do just now — you did it; it is real in the scene now. Carry on `
   + `from there.`;
+
+/** The mirror of the above: the act was attempted and the scene's own hold stopped it. What the
+ *  character remembers is the attempt having failed, never the deed as done. */
+export const constraintHeld = (action: string, name: string, meaning: string) =>
+  `[IT DID NOT LAND] You tried "${action}", but ${name} held — ${meaning}. It did not happen. `
+  + `Carry on from the attempt having failed, not from it having worked.`;
+
+/** The mirror for a target: a reach sent down a channel from outside the room. A channel
+ *  carries words, never hands — what the character remembers is the reach having failed,
+ *  never the touch. The target is the character's own spelling: this is their memory of
+ *  what they tried. */
+export const targetHeld = (target: string) =>
+  `[IT DID NOT LAND] You reached for "${target}", but you are not there — the channel carries `
+  + `words, never hands. It did not happen. Carry on from the reach having failed, not from it `
+  + `having worked.`;
