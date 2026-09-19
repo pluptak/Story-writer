@@ -50,6 +50,9 @@ export interface JudgeGateOpts {
   clarify: Clarifier;
   pov: boolean;
   chapter: number;
+  /** The room as this answerer knows it, rendered — computed per ask from the live stage,
+   *  since the stage accretes as the scene is written. Empty or absent renders nothing. */
+  room?: string;
   /** Chapter-wide retry tally, keyed by lowercased name — mutated as retries are spent. */
   retryCounts: Map<string, number>;
   newJudge: () => Agent;
@@ -130,7 +133,8 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     o.beginAttempt();
     try {
       reply = await consult(agent, req, {
-        clarifications: o.clarifications, attempt, log, clarify: o.clarify, pov: o.pov });
+        clarifications: o.clarifications, attempt, log, clarify: o.clarify, pov: o.pov,
+        room: o.room });
     } catch (e) {
       failed = (e as Error).message;
       break;

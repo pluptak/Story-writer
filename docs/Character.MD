@@ -141,6 +141,19 @@ letting it pass as done. Ambiguous prose still permits — a miss is acceptable,
 is not — and whatever the matcher cannot assess stays the judge's call, the same way it checks
 a restriction's meaning.
 
+### The room as they know it
+
+Every consult carries `[THE ROOM AS YOU KNOW IT]` beside the situation: the live stage
+filtered to what this character can perceive (`observe()`, `engine/stage.ts`), so the room
+stops being reconstructed from prose. It is additional context, never a replacement — the
+writer still says what is happening; the stage says what is there. What is filtered out is
+what perception already governs: a `remote` character is not in the room and receives no
+positions, and a character who cannot see receives only where they themselves are. Reach
+never narrows the list — a grant extends perception, and anything a restriction removes is
+already stripped before the projection is built. The projection is derived from the stage
+alone, never from anyone's prose: no premise, no draft, no other character's replies reach
+it through this channel.
+
 ### Full control is circumstance, not obedience — the interrogation pattern
 
 One character having full control over another (an interrogation, a captivity, a custody interview)

@@ -328,6 +328,14 @@ export const foldedAsk = (req: { situation: string; wants: string; heard?: { lin
   + heardSpeech(req.heard)
   + (req.wants ? `\nWhat they need from you: ${req.wants}` : "");
 
+/** What the room looks like to the character being asked: the live stage filtered to what
+ *  they can perceive, beside the situation rather than inside it. Empty renders nothing —
+ *  the character then reconstructs the room from prose exactly as before. */
+export const roomBlock = (entries: readonly { entity: string; position: string }[]) =>
+  entries.length
+    ? `[THE ROOM AS YOU KNOW IT]\n${entries.map(e => `- ${e.entity} :: ${e.position}`).join("\n")}`
+    : "";
+
 /** `since` joined onto the situation before the consult gate: one ground-truth channel, not
  *  two, so the CANNOT/presence gate, the narration lint's situation read, and the accepted-answer
  *  fold all read exactly what the character reads. The joiner line addresses them as "you", matching

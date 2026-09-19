@@ -44,6 +44,8 @@ export interface FanoutOpts {
   defOf: (name: string) => CharacterDef | undefined;
   agents: Map<string, Agent>;
   heardFor?: (name: string) => ConsultRequest["heard"];
+  /** The room as each reactor knows it, rendered per name from the live stage. */
+  roomFor?: (name: string) => string;
   markHeardSent?: (name: string) => void;
   isActive: (name: string) => boolean;
   isPov: (name: string) => boolean;
@@ -116,6 +118,7 @@ export async function reactionFanout(o: FanoutOpts): Promise<boolean> {
       // Drop consult()'s decision-shaped events — a `reaction` event stands in for them.
       reply = await consult(persistent, req, {
         clarifications: o.clarifications, clarify: o.clarify, pov: o.isPov(def.name),
+        room: o.roomFor?.(def.name),
         log: e => { if (e.t !== "consult" && e.t !== "answer") log(e); },
       });
     } catch (e) {

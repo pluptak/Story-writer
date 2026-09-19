@@ -21,7 +21,7 @@ have been asked.
 
 WHEN ASKED TO WRITE -- [WRITE]:
 
-  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "scene_done": false}
+  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "stage": ["NAME :: where"], "scene_done": false}
 
   prose      -- the next piece of the scene, ready for the page. "" if you are only consulting.
                 SHORT. Every [WRITE] gives you a word ceiling; treat it as real. A scene has a fixed
@@ -98,6 +98,13 @@ ${heard ? `    situation  -- CIRCUMSTANCE ONLY. There is no question behind it; 
                 yours to narrate; the CHOICE that carried them into it (they stepped forward) still
                 had to be asked for first. Once you exit someone, do not consult them again. If the
                 one you exit is the point-of-view character, the chapter ends there.
+  stage      -- optional: a list of things this piece places on the stage that were not
+                there before -- "NAME :: where" entries, people or objects your prose just put
+                somewhere ("lamp :: on the desk, lit"). Coarse, never coordinates. Omit it entirely when
+                the piece places nothing new -- most replies carry no stage. A name already
+                placed moves only when it is not fixed: an entry the scene fixed cannot be
+                moved, and the attempt is refused -- you will be told, and the old placement
+                stands.
 
   Consult when a choice is being made. Do not consult for scenery, for a gesture that carries
   nothing, or for something you have already asked and had answered.
@@ -310,6 +317,12 @@ export const consultExited = (name: string) =>
 export const exitNotWritten = (name: string) =>
   `[NO EXIT] You named ${name} as leaving the scene, but this reply wrote nothing -- nobody is gone `
   + `until it is on the page. Write the departure, or carry on with them still here.`;
+
+/** A staged move the room would not take: the old placement stands, and the prose must
+ *  honor it rather than the placement the reply proposed. */
+export const stageRefused = (entity: string, position: string, fixed: string) =>
+  `[STAGE REFUSED] "${entity} :: ${position}" was not placed -- "${entity}" is fixed where it is `
+  + `(${fixed}). Write it where it stands.`;
 
 /** `why` says how the scene was about to end while an answer was owed: declared done, or run to its
  *  length cap. The instruction is the same; only the framing differs. */

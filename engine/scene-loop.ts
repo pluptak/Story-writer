@@ -14,6 +14,8 @@ import {
   type ConsultEvent, type Clarifier,
 } from "./consult.ts";
 import { judgeGate } from "./judge-gate.ts";
+import { resetConstraintLintWarnings } from "./lint/constraint-lint.ts";
+import { seedStage, parseStageEntry, applyStageEntry, observe } from "./stage.ts";
 import { reactionFanout, type GrantedEntry } from "./fanout.ts";
 import { lintPiece, type LintPieceResult } from "./lint/narration-lint.ts";
 import { stripRepeatedPrefix } from "./lint/repeat-lint.ts";
@@ -221,6 +223,9 @@ export interface DraftReply {
   consult: DraftConsult | null;
   exit: string;
   promote: string;
+  /** Entities this piece places on the stage — "NAME :: where" entries, or null when the
+   *  piece places nothing. Most replies carry none. */
+  stage: string[] | null;
 }
 
 /** Parse one writer reply: prose (possibly salvaged from a truncated one), the done declaration,
@@ -236,11 +241,16 @@ export function parseDraftReply(raw: string, onProseFallback?: () => void): Draf
     if (recovered) { prose = recovered; salvaged = true; }
   }
   const c = (d.consult && typeof d.consult === "object") ? d.consult as Record<string, unknown> : null;
+  if ("stage" in d && d.stage !== undefined && !Array.isArray(d.stage))
+    warn(`   (writer reply "stage" is not a list — ignored)`);
   return {
     prose,
     salvaged,
     proseWords: prose ? prose.split(/\s+/).filter(Boolean).length : 0,
     sceneDone: d.scene_done === true || String(d.scene_done ?? "").toLowerCase() === "true",
+    stage: Array.isArray(d.stage)
+      ? d.stage.map((e: unknown) => String(e ?? "").trim()).filter((e): e is string => !!e)
+      : null,
     consult: !c ? null : {
       character: String(c.character ?? "").trim(),
       situation: String(c.situation ?? "").trim(),
@@ -308,6 +318,9 @@ export type RunEvent =
       attempt: number; chapter: number }
   | { t: "placeholder_refused"; character: string; field: string; match: string;
       attempt: number; chapter: number }
+  | { t: "stage_added"; entity: string; position: string; chapter: number }
+  | { t: "stage_moved"; entity: string; from: string; to: string; chapter: number }
+  | { t: "stage_refused"; entity: string; position: string; fixed: string; chapter: number }
   | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
   | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
   | { t: "promote"; character: string; action: string; chapter: number }
@@ -466,6 +479,11 @@ export async function writeScene(run: SceneRun) {
   const writer = new Agent("WRITER", sd.writerModel ?? writerModel, wrapWriter(premise, sd, cast, writerStyle,
     { facts, constraints: writerStyleConstraints, sinceEnforced: ENGINE.consultSince, heard: ENGINE.heardChannel }), 0.8);
   writer.think = sd.writerThink ?? thinking.writer;
+  // The live scene stage: the scene's own staging as this scene's room, free for the
+  // writer to accrete onto and never written back to story.json. Chunk 7 projects it per
+  // character; until then it constrains nothing and is only recorded.
+  const stage = seedStage(sceneStage(sd));
+  resetConstraintLintWarnings();
   const defOf = (name: string) => roster.find(c => sameName(c.name, name));
   // A thought reaches the writer only from inside the POV. The narration lint already holds that
   // nobody else's inner life is narratable fact, so a non-POV thought on the writer's desk would
@@ -474,6 +492,13 @@ export async function writeScene(run: SceneRun) {
   // withheld, because a character writing for an audience is not answering as itself.
   const isPov = (name: string) => !!sd.pov && sameName(sd.pov, name);
   const writerSees = (name: string, thought: string) => isPov(name) ? thought : "";
+  // What one character currently perceives of the room: the live stage filtered to their
+  // senses, rendered for the consult payload. Recomputed per ask — the stage accretes as
+  // the scene is written, so a cached projection would go stale.
+  const roomFor = (def: CharacterDef): string => P.roomBlock(observe({
+    name: def.name, limits: def.limits, presence: scenePresence(sd, def),
+    reach: sceneReach(sd, def, catalogs),
+  }, stage));
   LIVE.writer = writer; LIVE.log = log;
 
   // Each author-side helper has its own name, so it gets its own transcript file, stats row and role
@@ -924,6 +949,29 @@ export async function writeScene(run: SceneRun) {
           consulting: ask?.character ?? "", salvaged: reply.salvaged, chapter });
     if (reply.prose && ENGINE.echoConsole) console.log(`\n${reply.prose}\n`);
 
+    // -- STAGE: the writer places what its prose just put somewhere. Accretion only —
+    // what lands here is authoritative from then on and every character sees it. A move
+    // against a fixed (load-bearing) entry is refused and logged, and the writer is told
+    // the old placement stands. The manifest itself never enters a prompt wholesale:
+    // dumped whole it produces inventory prose, so only refusals reach the writer.
+    if (reply.stage) {
+      for (const raw of reply.stage) {
+        const parsed = parseStageEntry(raw);
+        if (!parsed) continue;
+        const outcome = applyStageEntry(stage, parsed.entity, parsed.position);
+        if (outcome.type === "added")
+          log({ t: "stage_added", entity: outcome.entity, position: outcome.position, chapter });
+        else if (outcome.type === "moved")
+          log({ t: "stage_moved", entity: outcome.entity, from: outcome.from, to: outcome.to, chapter });
+        else if (outcome.type === "refused") {
+          log({ t: "stage_refused", entity: outcome.entity, position: outcome.position,
+                fixed: outcome.fixed, chapter });
+          console.log(`${C.yellow}(stage refused — "${outcome.entity}" is fixed where it is.)${C.reset}`);
+          writer.hear(P.stageRefused(outcome.entity, outcome.position, outcome.fixed));
+        }
+      }
+    }
+
     // -- PROMOTE: the writer turns one deed a reactor volunteered last beat into canon. Done before
     // the consult below, so this beat's own fan-out (if any) can re-arm the offer afterward. The
     // offer is one-shot — read here, then cleared whether or not it was taken.
@@ -954,6 +1002,10 @@ export async function writeScene(run: SceneRun) {
         } : {}),
         reactors: ask.reactors, situation: ask.situation, question: ask.question, cast: mechanicalCast,
         defOf, agents, isActive, isPov, writerSees,
+        roomFor: (name: string) => {
+          const def = defOf(name);
+          return def ? roomFor(def) : "";
+        },
         clarifications, clarify, beginAttempt, keepClarifications, dropClarifications,
         refusalFor: refuseForLater, writer, granted, pendingReactionActions, lastAsked, owed,
         step: steps, chapter, newBatchJudge, log, stopped: () => RUN.stopped,
@@ -999,7 +1051,7 @@ export async function writeScene(run: SceneRun) {
           def, agent: persistent, req: check!.req, cast: mechanicalCast, retries, maxCharacterRetries,
           clarifications, clarify, pov: isPov(def.name), chapter,
           retryCounts, newJudge, newRepairJudge, beginAttempt, dropClarifications, log,
-          constraint: sceneConstraint(sd, def),
+          constraint: sceneConstraint(sd, def), room: roomFor(def),
         });
 
         if (RUN.stopped) break;

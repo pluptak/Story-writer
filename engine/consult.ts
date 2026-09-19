@@ -383,15 +383,18 @@ export type Clarifier = (question: string, req: ConsultRequest) => Promise<strin
 export async function consult(
   agent: Agent, req: ConsultRequest,
   opts: { clarifications: number; clarify: Clarifier; attempt?: number; pov?: boolean;
-          log?: (e: ConsultEvent) => void },
+          log?: (e: ConsultEvent) => void; room?: string },
 ): Promise<ConsultReply> {
   const log = opts.log ?? (() => {});
   const pov = opts.pov ?? true;
-  const extra: Msg[] = [{ role: "user", content: ENGINE.freeConsult === "v3"
+  // The room rides beside the situation, never inside it: the situation stays the writer's
+  // ground truth alone, and an empty projection renders nothing at all.
+  const ask = ENGINE.freeConsult === "v3"
     ? P.freeAskBlockV3(req, opts.attempt ?? 1, pov)
     : ENGINE.freeConsult
     ? P.freeAskBlock(req, opts.attempt ?? 1, pov)
-    : P.askBlock(req, opts.attempt ?? 1, pov) }];
+    : P.askBlock(req, opts.attempt ?? 1, pov);
+  const extra: Msg[] = [{ role: "user", content: ask + (opts.room ? `\n\n${opts.room}` : "") }];
   const clarifications: { question: string; answer: string }[] = [];
   let forced = false, repaired = false;
 

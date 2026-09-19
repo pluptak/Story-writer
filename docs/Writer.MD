@@ -335,6 +335,17 @@ refused as `exit_refused` and the writer is told so. Exiting the **point-of-view
 character ends the chapter: the between-chapters architect handoff re-authors the cast from there,
 reading the exit out of the prose it already consumes, so no separate signal reaches it.
 
+### Placing the room
+
+The writer can place what its prose just put somewhere with a `stage` field carrying `"NAME ::
+where"` entries. What lands is authoritative from then on — accretion, not proposal — and is
+recorded on the run's event stream (`stage_added`, `stage_moved`), never written back to
+`story.json`. Most replies carry no `stage` at all. A name already placed moves freely unless
+the scene fixed it: a move against a load-bearing entry is refused as `stage_refused`, the old
+placement stands, and the writer is told to write it where it stands. The manifest itself never
+enters a prompt — dumped wholesale it produces inventory prose — so only refusals reach the
+writer; what the room holds is the engine's to know.
+
 One run writes one chapter. A run can finish normally, stop when its step budget is exhausted, pause
 for more budget, wait for reader direction, be stopped by the user, be forced closed for running twice
 past its target length (see "Length is a budget, not a suggestion" above), or end because of a
