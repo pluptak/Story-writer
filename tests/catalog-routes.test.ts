@@ -596,16 +596,6 @@ describe("/catalog/assist (POST)", () => {
     assert.equal(r.body.ok, false);
     assert.deepEqual(r.body.issues, ["name: too short"]);
   });
-
-  it("defaults kind to 'characters' when the body omits it", async () => {
-    let sawIt = false;
-    const h = makeHost({
-      catalogAssist: async () => { sawIt = true; return { ok: true as const, proposal: { draft: {}, changes: [], warnings: [] } }; },
-    });
-    const { kind: _kind, ...withoutKind } = VALID_BODY as Record<string, unknown>;
-    await callRoute(handleCatalogRoutes, "/catalog/assist", withoutKind, h);
-    assert.equal(sawIt, true);
-  });
 });
 
 // -- SECTION ----

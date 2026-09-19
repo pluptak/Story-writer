@@ -10,6 +10,9 @@ import { LIVE, stopRun, releaseForStop, sseWrite, runState } from "../live.ts";
 import { json, readJsonBody, requireMethod } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
+/** Shared reason so viewer matching cannot split on a typo in one copy. */
+const NO_RUN = "no run in progress";
+
 /** Handles the request and returns true, or returns false if `path` is not one of its routes. */
 export async function handleRunControl(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
