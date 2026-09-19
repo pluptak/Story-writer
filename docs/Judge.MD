@@ -214,6 +214,31 @@ is spent the answer is discarded, not accepted — a placeholder in the ledger r
 unwinnable redraft — and the scene loop routes it into its no-answer path (`P.noAnswer`),
 which already handles a character that produced nothing usable.
 
+### The reach floor
+
+Beside the placeholder check runs the last mechanical gate, `engine/lint/answer-reach-lint.ts`:
+two answer shapes fold in as nothing and are visible in the reply object without a model call.
+An answer carrying no thought, speech, action or note is the envelope without the content — the
+model emitted the shape and left it blank. A thought-only answer from outside the point of view
+reaches the writer as nothing — what they think is not the writer's to write — and reaches this
+gate only when `consult()`'s own in-call repair failed to surface it once already. Both log
+`reach_refused` and spend the placeholder path's retry budget; a spent budget discards, never
+accepts. An answer that carries a note but no fields is kept on purpose: the note is content —
+"did not answer; kept asking" is a beat, not an envelope. An answer arriving through several
+channels at once is never refused here or anywhere: the judge's own format carries that rule in
+its decision ladder, after eight live retries enforced a shape contract the engine had removed.
+
+### The flat sample
+
+`--judge-sample=N` (0..1, default 1) calls the per-answer judge for a random N fraction of asks.
+A skipped ask folds its answer in exactly as an accepted one — no verdict is invented — and logs
+`judge_sampled_out`, which is the census's denominator: the judged remainder is the measurement
+of what the skips cost, so a falling retry rate on the sample is falling problems, not falling
+detection. The mechanical checks (placeholder, reach, constraint) run before the roll, so a
+mechanical hit is kept even when the judge is skipped. Default 1 is byte-identical to the
+un-armed engine; re-baseline against a full-judge window before arming below 1
+(docs/PLANS.md, "Judge-gate economics").
+
 ### Ceilings
 
 Retries are bounded by one effective ceiling per character: the story's per-character `maxRetries`

@@ -66,7 +66,8 @@ describe("applyEngineOptions", () => {
       freeConsult: ENGINE.freeConsult, splitJudge: ENGINE.splitJudge,
       consultSince: ENGINE.consultSince, heardChannel: ENGINE.heardChannel,
       cannotMeaning: ENGINE.cannotMeaning, cannotNone: ENGINE.cannotNone,
-      cannotTestimony: ENGINE.cannotTestimony, stream: ENGINE.stream,
+      cannotTestimony: ENGINE.cannotTestimony, judgeSample: ENGINE.judgeSample,
+      stream: ENGINE.stream,
     };
     try {
       applyEngineOptions(engineOptionsFromCli(optionsOf(["--serve", "--split-judge"])));
@@ -79,7 +80,7 @@ describe("applyEngineOptions", () => {
         freeConsult: saved.freeConsult, splitJudge: saved.splitJudge,
         consultSince: saved.consultSince, heardChannel: saved.heardChannel,
         cannotMeaning: saved.cannotMeaning, cannotNone: saved.cannotNone,
-        cannotTestimony: saved.cannotTestimony,
+        cannotTestimony: saved.cannotTestimony, judgeSample: saved.judgeSample,
       });
     }
     assert.equal(ENGINE.echoConsole, saved.echoConsole);

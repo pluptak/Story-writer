@@ -12,6 +12,7 @@ import {
 } from "./consult.ts";
 import { lintConstraintAction } from "./lint/constraint-lint.ts";
 import { lintPlaceholderAnswer } from "./lint/placeholder-lint.ts";
+import { lintAnswerReach } from "./lint/answer-reach-lint.ts";
 import { type Msg } from "./llm-client.ts";
 import type { CharacterDef } from "./story-format.ts";
 import { cannotDisplay } from "./skills.ts";
@@ -31,6 +32,8 @@ export type GateEvent =
       attempt: number; chapter: number }
   | { t: "placeholder_refused"; character: string; field: string; match: string;
       attempt: number; chapter: number }
+  | { t: "reach_refused"; character: string; why: string; attempt: number; chapter: number }
+  | { t: "judge_sampled_out"; character: string; attempt: number; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string;
       was: string; wantsRefused: string; chapter: number };
 
@@ -190,6 +193,26 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
       continue;
     }
 
+    // The reach floor runs beside the placeholder check: a formatting failure a fresh fork
+    // very likely repairs, visible in the reply object without a model call. When the budget
+    // is spent the answer is discarded like a placeholder's — never accepted as nothing.
+    const reach = lintAnswerReach(reply, o.pov);
+    if (reach) {
+      log({ t: "reach_refused", character: def.name, why: reach.why, attempt, chapter });
+      o.dropClarifications();
+      constraintRefused = undefined;
+      if (overBudget(false)) {
+        console.log(`${C.dim}(${def.name} kept returning an answer that cannot reach the scene — taking no answer)${C.reset}`);
+        reply = null;
+        failed = reach.why;
+        break;
+      }
+      spendRetry();
+      console.log(`${C.yellow}retry ${attempt}/${o.retries} — ${def.name}${C.reset}`
+        + `${C.dim} (${reach.why})${C.reset}`);
+      continue;
+    }
+
     // The mechanical backstop runs before the judge: a high-confidence reading of the
     // answer against the scene's own constraint, logged on the run's event stream. A hit is
     // kept, not retried — re-asking an unchanged situation buys the same answer twice, so the
@@ -207,6 +230,15 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     if (hit) {
       log({ t: "constraint_refused", character: def.name, constraint: hit.constraint,
             match: hit.match, attempt, chapter });
+    }
+
+    // -- SAMPLE (--judge-sample): a flat random roll may skip the judge for this answer; the
+    // answer folds in as accepted and the sampled-out event is the census's denominator. The
+    // judged remainder is what makes the saving reversible with evidence: a falling retry rate
+    // on the sample is falling problems, not falling detection.
+    if (ENGINE.judgeSample < 1 && Math.random() >= ENGINE.judgeSample) {
+      log({ t: "judge_sampled_out", character: def.name, attempt, chapter });
+      break;
     }
 
     const flags = P.answerFlags(reply);

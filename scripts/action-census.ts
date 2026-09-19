@@ -22,9 +22,44 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import { runDirs } from "../engine/preflight.ts";
+import { nameKey } from "../engine/config-util.ts";
 
 interface CensusAnswer { character: string; speech: string; action: string; run: string }
 interface RunInput { label: string; storyDir: string; runId: string; logPath: string | null; fixturePath: string | null }
+
+/** What a gate predicate would see, read once per story: which characters carry authored
+ *  limits, and which names any scene constrains. The run log carries no scene index, so the
+ *  constraint join is exact for a single-scene story and an any-scene upper bound otherwise —
+ *  the report says which. A name absent from story.json counts as unknown, not as free. */
+interface GateFacts {
+  limits: Map<string, number>;
+  constrained: Set<string>;
+  sceneCount: number;
+}
+
+async function readGateFacts(storyDir: string): Promise<GateFacts | null> {
+  for (const candidate of [joinPath(storyDir, "story.json"), joinPath(storyDir, "out", "..", "story.json")]) {
+    try {
+      const raw = JSON.parse(await readFile(candidate, "utf8"));
+      const chars = Array.isArray(raw.characters) ? raw.characters : [];
+      const scenes = Array.isArray(raw.scenes) ? raw.scenes : [];
+      const limits = new Map<string, number>();
+      for (const c of chars) {
+        const name = nameKey(String(c?.name ?? ""));
+        if (name) limits.set(name, Array.isArray(c?.limits) ? c.limits.length : 0);
+      }
+      const constrained = new Set<string>();
+      for (const s of scenes) {
+        const constraint = s?.constraint && typeof s.constraint === "object" ? s.constraint : {};
+        for (const who of Object.keys(constraint)) {
+          if (Array.isArray((constraint as Record<string, unknown>)[who])) constrained.add(nameKey(who));
+        }
+      }
+      return { limits, constrained, sceneCount: scenes.length };
+    } catch { /* try next */ }
+  }
+  return null;
+}
 
 const BODY_ONLY_RES = [
   /\bshrug/, /\bnod/, /\bshake\s+(?:his|her|their|my)?\s*head/, /\blook\s+away/,
@@ -150,11 +185,29 @@ interface StoryTallies {
   place: Set<string>;
   judge: Map<string, number>;
   lint: Map<string, number>;
+  gate: GateFacts | null;
+  fromLimited: number;
+  fromFree: number;
+  fromUnknown: number;
+  constrained: number;
 }
 
 function newTallies(story: string, source: string): StoryTallies {
   return { story, source, runs: 0, accepted: 0, withAction: 0, external: 0, bodyOnly: 0,
-           answers: [], corpus: new Set(), place: new Set(), judge: new Map(), lint: new Map() };
+           answers: [], corpus: new Set(), place: new Set(), judge: new Map(), lint: new Map(),
+           gate: null, fromLimited: 0, fromFree: 0, fromUnknown: 0, constrained: 0 };
+}
+
+/** Join one accepted answer against the gate facts: would a "limits or constraint" predicate
+ *  have selected this answer for judging? */
+function classifyGate(t: StoryTallies, character: string): void {
+  const key = nameKey(character);
+  if (!t.gate) return;
+  const limited = (t.gate.limits.get(key) ?? 0) > 0;
+  const constrained = t.gate.constrained.has(key);
+  if (!t.gate.limits.has(key) && !constrained) t.fromUnknown++;
+  else if (limited || constrained) t.fromLimited++;
+  else t.fromFree++;
 }
 
 function bump(map: Map<string, number>, key: string): void {
@@ -180,6 +233,7 @@ async function censusEventLog(input: RunInput, t: StoryTallies): Promise<void> {
                      action: String(e.action ?? ""), attempt: Number(e.attempt ?? 1) });
     } else if (type === "reaction") {
       t.accepted++;
+      classifyGate(t, String(e.character ?? ""));
       const speech = String(e.speech ?? ""), action = String(e.action ?? "");
       t.answers.push({ character: String(e.character ?? ""), speech, action, run: input.label });
       if (action.trim()) {
@@ -197,6 +251,10 @@ async function censusEventLog(input: RunInput, t: StoryTallies): Promise<void> {
       bump(t.judge, `target_refused [remote] — "${String(e.target ?? "")}" is "${String(e.entity ?? "")}"`);
     } else if (type === "placeholder_refused") {
       bump(t.judge, `placeholder_refused [${String(e.field ?? "?")}] "${String(e.match ?? "")}"`);
+    } else if (type === "reach_refused") {
+      bump(t.judge, `reach_refused: ${causeKey(String(e.why ?? ""))}`);
+    } else if (type === "judge_sampled_out") {
+      bump(t.judge, "judge_sampled_out");
     } else if (type === "judge_failed" || type === "repair_failed" || type === "retry_capped") {
       bump(t.judge, type);
     } else if (type === "bad_consult") {
@@ -215,6 +273,7 @@ async function censusEventLog(input: RunInput, t: StoryTallies): Promise<void> {
   }
   for (const p of pending) {
     t.accepted++;
+    classifyGate(t, p.character);
     t.answers.push({ character: p.character, speech: p.speech, action: p.action, run: input.label });
     if (p.action.trim()) {
       t.withAction++;
@@ -247,6 +306,7 @@ async function censusFixture(input: RunInput, t: StoryTallies): Promise<void> {
     if (site !== "character.consult") continue;
     const { speech, action } = parseActionFromConsultResponse(e.response);
     t.accepted++;
+    classifyGate(t, String(e.agent ?? ""));
     t.answers.push({ character: String(e.agent ?? ""), speech, action, run: input.label });
     if (action.trim()) {
       t.withAction++;
@@ -271,15 +331,26 @@ function classifyAction(action: string, t: StoryTallies, situation?: string): vo
 
 function reportText(stories: StoryTallies[]): string {
   const lines: string[] = ["ACTION CENSUS — how often does an answer touch the world?", ""];
-  const total = { accepted: 0, withAction: 0, external: 0, bodyOnly: 0, runs: 0 };
+  const total = { accepted: 0, withAction: 0, external: 0, bodyOnly: 0, runs: 0,
+                  fromLimited: 0, fromFree: 0, fromUnknown: 0 };
   for (const t of stories) {
     total.accepted += t.accepted; total.withAction += t.withAction;
     total.external += t.external; total.bodyOnly += t.bodyOnly; total.runs += t.runs;
+    total.fromLimited += t.fromLimited; total.fromFree += t.fromFree; total.fromUnknown += t.fromUnknown;
     const pct = (n: number, d: number) => d ? `${((100 * n) / d).toFixed(1)}%` : "n/a";
     lines.push(`## ${t.story}  (source: ${t.source}, runs: ${t.runs})`);
     lines.push(`accepted answers: ${t.accepted}; with non-empty action: ${t.withAction} (${pct(t.withAction, t.accepted)})`);
     lines.push(`of those, naming an entity from place/linked-situation: ${t.external} (${pct(t.external, t.withAction)})`);
     lines.push(`matching idle-body patterns (needs no avatar layer; overlaps external): ${t.bodyOnly} (${pct(t.bodyOnly, t.withAction)})`);
+    if (t.gate) {
+      const join = t.gate.sceneCount === 1 ? "single scene" : "any scene";
+      const known = t.fromLimited + t.fromFree;
+      lines.push(`gate predicate "limits or constraint": from a limited or constrained character: ` +
+        `${t.fromLimited}/${known} (${pct(t.fromLimited, known)}), from a free one: ${t.fromFree}, ` +
+        `unmatched by story.json: ${t.fromUnknown} — constraint join: ${join}`);
+    } else {
+      lines.push(`gate predicate "limits or constraint": story.json not readable — not measured`);
+    }
     lines.push("judge rejections:");
     if (!t.judge.size) lines.push("  (none)");
     for (const [k, v] of [...t.judge.entries()].sort((a, b) => b[1] - a[1])) lines.push(`  ${v}x ${k}`);
@@ -293,6 +364,10 @@ function reportText(stories: StoryTallies[]): string {
     `withAction=${total.withAction} (${pct(total.withAction, total.accepted)}) ` +
     `external=${total.external} (${pct(total.external, total.withAction)}) ` +
     `bodyOnly=${total.bodyOnly} (${pct(total.bodyOnly, total.withAction)})`);
+  lines.push(`gate predicate "limits or constraint" TOTAL: would judge ${total.fromLimited} of ` +
+    `${total.fromLimited + total.fromFree} known-origin answers (${pct(total.fromLimited, total.fromLimited + total.fromFree)}), ` +
+    `skip ${total.fromFree} (${pct(total.fromFree, total.fromLimited + total.fromFree)}), ` +
+    `${total.fromUnknown} unmatched`);
   return lines.join("\n");
 }
 
@@ -318,6 +393,7 @@ async function main(): Promise<void> {
       t = newTallies(key, source);
       const place = await readStoryPlaces(input.storyDir);
       for (const w of words(place)) { t.corpus.add(w); t.place.add(w); }
+      t.gate = await readGateFacts(input.storyDir);
       byStory.set(key, t);
     }
     if (input.logPath) await censusEventLog(input, t);
@@ -328,6 +404,8 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(stories.map(t => ({
       story: t.story, source: t.source, runs: t.runs, accepted: t.accepted,
       withAction: t.withAction, external: t.external, bodyOnly: t.bodyOnly,
+      gate: t.gate ? { fromLimited: t.fromLimited, fromFree: t.fromFree,
+                       fromUnknown: t.fromUnknown, sceneCount: t.gate.sceneCount } : null,
       judge: Object.fromEntries(t.judge), lint: Object.fromEntries(t.lint),
       actions: t.answers.map(a => ({ run: a.run, character: a.character, action: a.action })),
     })), null, 2));

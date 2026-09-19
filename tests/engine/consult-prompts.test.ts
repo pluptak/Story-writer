@@ -375,8 +375,18 @@ describe("the retry template", () => {
   it("names the not-grounds plainly, so no euphemism for dislike survives", () => {
     for (const ng of [/the wrong fork/, /the unexpected move/, /the inconvenient\s+choice/,
                        /what the writer intended/, /outside a listed skill/,
-                       /more\s+elaboration than was asked for/]) {
+                       /more\s+elaboration than was asked for/,
+                       /through several channels at once/]) {
       assert.match(P.JUDGE_FORMAT, ng, `missing not-ground: ${ng}`);
+    }
+  });
+
+  it("puts shape in the ladder itself — several channels at once is an ACCEPT rung, not prose", () => {
+    // The judge issued 8 shape retries against three prose rules; the ladder is the operative
+    // algorithm, so the rule lives where the verdict is made. Both judge literals carry it.
+    for (const fmt of [P.JUDGE_FORMAT, P.VERDICT_JUDGE_FORMAT]) {
+      assert.match(fmt, /speech AND\s*\n?\s*action, or all three\?\s*\n\s*yes -> ACCEPT/);
+      assert.match(fmt, /"only one was requested" is never true/);
     }
   });
 

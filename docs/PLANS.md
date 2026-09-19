@@ -887,14 +887,36 @@ Big, unbuilt, and shaping rather than corrective.
   story-editor surface. As each step ships, its behaviour moves into
   the owning surface doc and that part of this entry is deleted.
 
-- **Judge-gate economics — an unexplored saving, queued after the substrate arc.** Measured over
-  67 runs (`npm run census`): 868 judge accepts vs 22 retries (2.5%), against 241
-  `narration_flag`, 185 `narration_quote_flag` and 69 `bad_consult` from the already-mechanical
-  checks; one story ran 164 answers with zero judge retries. The per-answer model call almost
-  never changes anything while the free checks do the refusing — so a cheaper gate (mechanical
-  first, model only on escalation, or a narrower verdict call) is likely a large saving. Not a
-  plan to act on now: measure again once the constraint gate and staging have moved verdicts,
-  since those change what the judge still catches.
+- **Judge-gate economics — measured, corrected, and now shipping as correctness first.**
+  Re-measured over 73 runs (`npm run census`) after the substrate arc: 943 judge accepts vs 27
+  retry verdicts, 13 re-asks issued. Reading all 27 retry notes against the engine's own
+  contracts: 8 were shape refusals ("provided both speech and action when only one was
+  requested") issued while the judge's own prompt forbade shape enforcement in three places —
+  the engine removed wants-keyed shape dictation on purpose (`wants` is inert, carried never
+  required, and "an answer that departs from what was wanted but breaks nothing established is
+  valid", consult.ts) — so ~30% of retries were the judge overriding its design. 1 was a
+  documented false positive (a CANNOT invented for the wrong character), ~9 were
+  constraint/limit work that constraint-lint now does mechanically, 3 were mechanically visible
+  (1 empty envelope, 2 thought-only non-POV repeats), and 2-3 were genuinely soft ("does not
+  advance the open beat"). That is ~9 outputs of harm against ~5 useful re-asks across ~970
+  calls — a net negative with a bill, not an expensive safety net. The gate-predicate idea
+  ("judge only when the scene declares a constraint or the character has limits") was measured
+  and killed before building: the census's "limits or constraint" section found 55 of 1150
+  answers (4.8%) on the selected side of it, all in one story — a story predicate, not a risk
+  predicate, eroding as the architect steers new casts toward authored restrictions, and
+  unfaithful to its own criterion (a real mute character carried outside `limits` would sit in
+  the skipped set). **Shipped:** the shape rule moved into the judge's decision ladder itself
+  (both judge literals) after the prose rules failed 8 times live; the reach floor
+  (`engine/lint/answer-reach-lint.ts`) refuses the empty envelope and the thought-only non-POV
+  repeat on the placeholder path's retry budget; and the flat random sample
+  (`--judge-sample=N`, default 1, byte-identical off) replaces the predicate — linear,
+  corpus-drift-immune, one knob to arm and reverse, and the sample is the measurement.
+  **Remaining:** re-baseline one window against today's engine (the shape fix alone removes ~8
+  of 27 retries and constraint-lint has absorbed ~4 — the next window's rate falls without any
+  gate change), then arm the sample and let two sampled windows answer the real question:
+  whether the per-answer judge earns a call at all, with "does not advance the open beat" as
+  the one failure no mechanical check sees and retirement — not optimisation — as the
+  candidate outcome.
 
 - **Free Consult — strip authorial behavioral steering from the character prompt (spike).**
   (`FREE_CHARACTER_FORMAT`, `--free-consult`/`-v2`, reversible, CLI-only; `REACTION_OUTWARD`

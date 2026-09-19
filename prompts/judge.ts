@@ -56,6 +56,12 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
 DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through to ACCEPT:
 
+  Did the answer arrive through several channels at once -- a thought AND speech, speech AND
+  action, or all three?
+    yes -> ACCEPT. That is one answer in several channels, never a contradiction. Nothing in
+           the ask names a shape, so "only one was requested" is never true, and a retry spent
+           on it refuses a valid answer to repair nothing.
+
   Was the answer actually impossible or inconsistent with what is already established?
     no  -> ACCEPT. Whatever fork they took, however quiet, however inconvenient -- accept it,
            and go and write it.
@@ -68,8 +74,9 @@ DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through t
              none of these -- only surprising, unwelcome, or odd?    ACCEPT
 
 NOT GROUNDS FOR A RETRY, however worded: the wrong fork, the unexpected move, the inconvenient
-choice, the quiet answer, what the writer intended, reaching outside a listed skill, or more
-elaboration than was asked for. A surprising choice is not a broken one.
+choice, the quiet answer, what the writer intended, reaching outside a listed skill, more
+elaboration than was asked for, or the answer arriving through several channels at once. A
+surprising choice is not a broken one.
 
 AN ANSWER HAS TO REACH THE SCENE. Any shape of answer will do: a line, a deed, or both, at
 whatever length the moment deserved. What it cannot be is only a thought, from
@@ -138,6 +145,12 @@ Reply with ONE JSON object -- one of these two shapes -- and nothing else:
 
 DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through to ACCEPT:
 
+  Did the answer arrive through several channels at once -- a thought AND speech, speech AND
+  action, or all three?
+    yes -> ACCEPT. That is one answer in several channels, never a contradiction. Nothing in
+           the ask names a shape, so "only one was requested" is never true, and a retry spent
+           on it refuses a valid answer to repair nothing.
+
   Was the answer actually impossible or inconsistent with what is already established?
     no  -> ACCEPT. Whatever fork they took, however quiet, however inconvenient -- accept it,
            and go and write it.
@@ -150,8 +163,9 @@ DECIDE LIKE THIS -- one clear path to RETRY, and everything else falls through t
              none of these -- only surprising, unwelcome, or odd?    ACCEPT
 
 NOT GROUNDS FOR A RETRY, however worded: the wrong fork, the unexpected move, the inconvenient
-choice, the quiet answer, what the writer intended, reaching outside a listed skill, or more
-elaboration than was asked for. A surprising choice is not a broken one.
+choice, the quiet answer, what the writer intended, reaching outside a listed skill, more
+elaboration than was asked for, or the answer arriving through several channels at once. A
+surprising choice is not a broken one.
 
 AN ANSWER HAS TO REACH THE SCENE. Any shape of answer will do: a line, a deed, or both, at
 whatever length the moment deserved. What it cannot be is only a thought, from

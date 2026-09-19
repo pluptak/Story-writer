@@ -322,6 +322,8 @@ export type RunEvent =
       attempt: number; chapter: number }
   | { t: "placeholder_refused"; character: string; field: string; match: string;
       attempt: number; chapter: number }
+  | { t: "reach_refused"; character: string; why: string; attempt: number; chapter: number }
+  | { t: "judge_sampled_out"; character: string; attempt: number; chapter: number }
   | { t: "stage_added"; entity: string; position: string; chapter: number }
   | { t: "stage_moved"; entity: string; from: string; to: string; chapter: number }
   | { t: "stage_kept"; entity: string; kept: string; offered: string; chapter: number }
