@@ -74,6 +74,15 @@ describe("/next-chapter routes", () => {
     assert.equal((await callRoute(handleNextChapterRoutes, "/next-chapter", {}, host(), "GET")).body.active, false);
   });
 
+  it("refuses wrong methods on known routes with 405, not 404", async () => {
+    const say = await callRoute(handleNextChapterRoutes, "/next-chapter/say", { text: "go on" }, host(), "GET");
+    assert.equal(say.handled, true);
+    assert.equal(say.code, 405);
+    const bare = await callRoute(handleNextChapterRoutes, "/next-chapter", {}, host(), "PUT");
+    assert.equal(bare.handled, true);
+    assert.equal(bare.code, 405);
+  });
+
   it("refuses a story it did not discover, and never opens a session for it", async () => {
     opened.length = 0;
     const r = await callRoute(handleNextChapterRoutes, "/next-chapter/start", { dir: "../elsewhere" }, host());
@@ -589,10 +598,22 @@ describe("handleRunControl", () => {
     assert.equal(r.handled, false);
   });
 
-  it("only handles POST and GET methods", async () => {
+  it("refuses non-POST methods with 405", async () => {
     resetLive(); LIVE.running = true; armRun();
     const rPut = await callRoute(handleRunControl, "/stop", {}, host, "PUT");
-    assert.equal(rPut.handled, false);
+    assert.equal(rPut.handled, true);
+    assert.equal(rPut.code, 405);
+    resetLive();
+  });
+
+  it("mutating POSTs refuse GET with 405, not 404", async () => {
+    resetLive();
+    for (const path of ["/stop", "/consult-me", "/reader-answer", "/model",
+                        "/interactive", "/pause", "/resume", "/continue"]) {
+      const r = await callRoute(handleRunControl, path, {}, host, "GET");
+      assert.equal(r.handled, true, path);
+      assert.equal(r.code, 405, path);
+    }
     resetLive();
   });
 });

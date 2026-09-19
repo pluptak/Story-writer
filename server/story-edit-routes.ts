@@ -6,7 +6,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { storyWriteBlocked } from "../live.ts";
-import { json, readJsonBody } from "./http-util.ts";
+import { json, readJsonBody, requireMethod } from "./http-util.ts";
 import type { ServerHost } from "./server.ts";
 
 /** One refusal for every story-mutating action: a run is reading story.json, or a picked story is
@@ -19,7 +19,8 @@ function writeBlocked(action: string): string {
 export async function handleStoryEditRoutes(
   req: IncomingMessage, res: ServerResponse, path: string, host: ServerHost,
 ): Promise<boolean> {
-  if (path === "/story/edit" && req.method === "GET") {
+  if (path === "/story/edit") {
+    if (requireMethod(res, req, "GET")) return true;
     const query = new URLSearchParams((req.url || "").split("?")[1] || "");
     const dir = await host.selectableStory(query.get("dir") || "");
     if (!dir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
@@ -34,12 +35,14 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/edit-config" && req.method === "GET") {
+  if (path === "/story/edit-config") {
+    if (requireMethod(res, req, "GET")) return true;
     json(res, 200, host.editorConfig());
     return true;
   }
 
-  if (path === "/story/check" && req.method === "POST") {
+  if (path === "/story/check") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const r = host.checkStory(o.story);
     if (!r.ok) {
@@ -50,7 +53,8 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/save" && req.method === "POST") {
+  if (path === "/story/save") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const dir = await host.selectableStory(String(o.dir ?? ""));
     if (!dir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
@@ -65,7 +69,8 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/discard" && req.method === "POST") {
+  if (path === "/story/discard") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     const dir = await host.selectableStory(String(o.dir ?? ""));
     if (!dir) { json(res, 400, { ok: false, reason: "no such story" }); return true; }
@@ -79,7 +84,8 @@ export async function handleStoryEditRoutes(
     return true;
   }
 
-  if (path === "/story/suggest" && req.method === "POST") {
+  if (path === "/story/suggest") {
+    if (requireMethod(res, req, "POST")) return true;
     const o = await readJsonBody(req);
     if (storyWriteBlocked()) { json(res, 409, { ok: false, reason: writeBlocked("suggest") }); return true; }
     const r = await host.suggestEdits(o.spec, String(o.text ?? ""));

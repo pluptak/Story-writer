@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { LIVE, resetLive } from "../live.ts";
 import { handleStoryReadRoutes } from "../server/story-read-routes.ts";
 import type { ServerHost } from "../server/server.ts";
-import { callGet, makeHost as baseHost } from "./helpers.ts";
+import { callGet, callRoute, makeHost as baseHost } from "./helpers.ts";
 
 let castFails = false;
 
@@ -57,6 +57,12 @@ describe("/cast (GET)", () => {
   it("leaves other paths alone", async () => {
     const r = await callGet(handleStoryReadRoutes, "/nope?x=1", makeHost());
     assert.equal(r.handled, false);
+  });
+
+  it("refuses /cast POST with 405 (not GET)", async () => {
+    const r = await callRoute(handleStoryReadRoutes, "/cast", { dir: "doorway" }, makeHost(), "POST");
+    assert.equal(r.handled, true);
+    assert.equal(r.code, 405);
   });
 
   it("refuses a story it did not discover", async () => {

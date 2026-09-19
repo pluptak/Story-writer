@@ -96,6 +96,16 @@ describe("/scaffold routes", () => {
   const post = (path: string, body?: unknown, h: ServerHost = host([])) =>
     quiet(() => callRoute(handleScaffoldRoutes, path, body ?? {}, h));
 
+  it("refuses wrong methods on known routes with 405, not 404", async () => {
+    const h = host([]);
+    const say = await callRoute(handleScaffoldRoutes, "/scaffold/say", { text: "go on" }, h, "GET");
+    assert.equal(say.handled, true);
+    assert.equal(say.code, 405);
+    const bare = await callRoute(handleScaffoldRoutes, "/scaffold", {}, h, "PUT");
+    assert.equal(bare.handled, true);
+    assert.equal(bare.code, 405);
+  });
+
   it("opens a staged checklist and passes one approved gate at a time", async () => {
     const h = host([STORY_STAGE, CAST_STAGE]);
     LIVE.awaitingPick = true;
