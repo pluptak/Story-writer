@@ -29,6 +29,11 @@ export interface QuoteLintHit {
   /** The quote is explicitly attributed to a character this same reply consults — the
    *  writer answered its own question, so no grant could cover the line yet. */
   selfAnswered?: boolean;
+  /** The line matched a DIFFERENT character's grants — a misattribution or a theft, not an
+   *  invention. A distinct sin with a distinct repair (give it back, or cut it); the redraft
+   *  router deliberately keeps it on the generic prompt, where the finding's own wording
+   *  already says what happened. */
+  reassigned?: boolean;
 }
 
 export const isAdvisoryQuoteHit = (h: QuoteLintHit) => h.why.startsWith("possible misattribution");
@@ -305,6 +310,7 @@ export function lintQuotations(
       quote: q.text,
       character,
       ...(selfAnswered ? { selfAnswered: true as const } : {}),
+      ...(reassigned ? { reassigned: true as const } : {}),
       why: selfAnswered
         ? `answered own consult: "${q.text}" — ${character} is consulted this same reply, so the line was written before it was chosen and no grant could cover it yet`
         : `${reassigned && !explicit ? "possible misattribution" : "unmatched quotation"}: "${q.text}" (near ${character})`

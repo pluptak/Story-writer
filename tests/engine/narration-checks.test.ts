@@ -569,6 +569,165 @@ describe("the writer answering its own consult", () => {
   });
 });
 
+// -- ROUTING THE REDRAFT BY ATTRIBUTION ---------------------------------------
+describe("the redraft routed by attribution, not by self-answer", () => {
+  const SITUATION = "The file signed out three days ago is not in the cabinet, and the audit is at dawn.";
+  // The live finding this chunk routes: a first piece invented VALE's opening line while
+  // consulting MARA. The prose below is that run's, verbatim — a synthetic equivalent is how
+  // two checks in this arc shipped inert.
+  const PROSE = "The room smelled of old paper and floor wax. He pushed the form toward her.\n\n"
+    + "\"Tell me where it went,\" Vale said.";
+
+  /** The doorway fixture with the cast the finding happened to: a records office, a form, and
+   *  two people on either side of the counter. */
+  const sc0 = async () => {
+    const sc = await quiet(() => loadStory("tests/fixtures/doorway"));
+    sc.characters = [
+      { name: "VALE", model: "none",
+        persona: "Vale\n\nA records clerk of nineteen years. Keeps the counter between himself and "
+          + "the public the way other people keep a desk tidy — not coldness, just the conviction "
+          + "that the forms must be right before anything else may be.",
+        knows: "Every file that passes the counter is logged; the missing one is not.",
+        goal: "Get the missing file back into the ledger before the morning audit finds the gap.",
+        belief: "A form correctly filled is a small shield against the day going wrong.",
+        impulse: "When pressed, become more procedural, not less — cite the regulation.",
+        voice: ["\"The form first. Then we talk.\""],
+        origin: "", skills: [], limits: [], limitMeanings: [],
+        pronouns: { subject: "he", object: "him", possessive: "his", reflexive: "himself" } },
+      { name: "MARA", model: "none",
+        persona: "Mara\n\nA junior registrar who signed for the file and cannot now produce it. "
+          + "Folds and unfolds the corner of the duplicate carbon as she talks.",
+        knows: "She signed the file out three days ago; who she gave it to is the whole question.",
+        goal: "Leave this room still employed.",
+        belief: "Confession is a bargain you make with a process, not with a person.",
+        impulse: "When cornered, answer the question that was not asked.",
+        voice: ["\"I signed for it. That's not the same as taking it.\""],
+        origin: "", skills: [], limits: [], limitMeanings: [],
+        pronouns: { subject: "she", object: "her", possessive: "her", reflexive: "herself" } },
+    ];
+    return sc;
+  };
+
+  async function runRouting(opts: {
+    drafts: Record<string, unknown>[];
+    redrafts: Record<string, unknown>[];
+    consults: Record<string, unknown>;
+    narration?: (call: { n: number }) => Record<string, unknown>;
+  }) {
+    const sc = await sc0();
+    const sd = { ...sc.scenes[0], pov: "VALE" };
+    const events: RunEvent[] = [];
+    const agents = new Map(sc.characters.map(def =>
+      [def.name.toLowerCase(), newCharacterAgent(def, sc.scenes[0].place, sc.thinking.character)]));
+    let draftCall = 0, redraftCall = 0;
+    const { fetchMock, messagesOf } = siteFetch({
+      "judge.answer": { verdict: "accept" },
+      "judge.narration": opts.narration ?? { ok: true },
+      "judge.done": { status: "resolved", evidence: "the page settles it" },
+      "writer.draft": () => opts.drafts[draftCall++],
+      "writer.redraft": () => opts.redrafts[redraftCall++],
+      "character.consult": () => opts.consults,
+    });
+
+    const origFetch = globalThis.fetch;
+    const origStream = ENGINE.stream;
+    const origRetries = NET.retries;
+    ENGINE.stream = false;
+    NET.retries = 0;
+    globalThis.fetch = fetchMock;
+    armRun();
+    try {
+      await writeScene(sceneRun(sc, { scene: sd, agents, log: e => events.push(e) }));
+      return { messagesOf, events };
+    } finally {
+      globalThis.fetch = origFetch;
+      ENGINE.stream = origStream;
+      NET.retries = origRetries;
+      armRun();
+      resetLive();
+    }
+  }
+
+  it("an invented line for a character this reply does not consult names the speaker and offers the ask", async () => {
+    const { messagesOf } = await runRouting({
+      drafts: [{ prose: PROSE,
+                 consult: { character: "MARA", situation: SITUATION, question: "", wants: "" },
+                 scene_done: false }],
+      redrafts: [{ prose: "He pushed the form toward her.", consult: null, scene_done: true }],
+      consults: { thought: "Careful.", speech: "I already told the morning clerk.", action: "" },
+    });
+    const prompt = messagesOf("writer.redraft", 0).join("\n");
+    assert.match(prompt, /Cut the line: VALE has not answered yet, so those words are yours, not theirs\./);
+    assert.match(prompt, /ask VALE/, "the engine knows who it was; the writer is not left to re-derive it");
+    assert.doesNotMatch(prompt, /keep the consult/,
+      "the consult clause only holds when the invented speaker is the one being asked");
+    assert.match(prompt, /Tell me where it went/, "the finding travels with the prompt");
+  });
+
+  it("the same line in the mouth of the character being asked keeps the answered-own-consult prompt", async () => {
+    const { messagesOf } = await runRouting({
+      drafts: [{ prose: PROSE,
+                 consult: { character: "VALE", situation: SITUATION, question: "", wants: "" },
+                 scene_done: false }],
+      redrafts: [{ prose: "He pushed the form toward her.", consult: null, scene_done: true }],
+      consults: { thought: "Careful.", speech: "I already told the morning clerk.", action: "" },
+    });
+    const prompt = messagesOf("writer.redraft", 0).join("\n");
+    assert.match(prompt, /Cut the line and keep the consult/);
+    assert.doesNotMatch(prompt, /ask VALE/);
+  });
+
+  it("a quote that cannot be attributed stays on the generic prompt", async () => {
+    const { messagesOf } = await runRouting({
+      drafts: [{ prose: "The room smelled of old paper and floor wax. He pushed the form toward her.\n\n"
+                        + "\"Tell me where it went,\" — and the floorboards answered with a creak.",
+                 consult: { character: "MARA", situation: SITUATION, question: "", wants: "" },
+                 scene_done: false }],
+      redrafts: [{ prose: "He pushed the form toward her.", consult: null, scene_done: true }],
+      consults: { thought: "Careful.", speech: "I already told the morning clerk.", action: "" },
+    });
+    const prompt = messagesOf("writer.redraft", 0).join("\n");
+    assert.match(prompt, /Redraft it from the same \[WRITE\] instruction/);
+    assert.doesNotMatch(prompt, /Cut the line/);
+  });
+
+  it("a line granted to a different character stays generic, and the finding says so", async () => {
+    const { messagesOf } = await runRouting({
+      drafts: [
+        { prose: "The room smelled of old paper and floor wax. She slid the duplicate carbon across the desk.",
+          consult: { character: "MARA", situation: SITUATION, question: "", wants: "" },
+          scene_done: false },
+        { prose: PROSE, consult: null, scene_done: false },
+      ],
+      redrafts: [{ prose: "He pushed the form toward her.", consult: null, scene_done: true }],
+      consults: { thought: "It was never filed.", speech: "Tell me where it went.", action: "" },
+    });
+    const prompt = messagesOf("writer.redraft", 0).join("\n");
+    assert.match(prompt, /granted to a different character/);
+    assert.match(prompt, /Redraft it from the same \[WRITE\] instruction/);
+    assert.doesNotMatch(prompt, /Cut the line/);
+  });
+
+  it("a judge finding with no quote hit stays on the generic prompt", async () => {
+    const { messagesOf } = await runRouting({
+      drafts: [{ prose: "The room smelled of old paper and floor wax. He pushed the form toward "
+                        + "her, and Mara wanted only to be somewhere else.",
+                 consult: { character: "MARA", situation: SITUATION, question: "", wants: "" },
+                 scene_done: false }],
+      redrafts: [{ prose: "He pushed the form toward her.", consult: null, scene_done: true }],
+      consults: { thought: "Careful.", speech: "I already told the morning clerk.", action: "" },
+      narration: ({ n }) => n === 0
+        ? { ok: false, why: "the piece tells the reader Mara wants to be somewhere else instead "
+                            + "of showing what she does" }
+        : { ok: true },
+    });
+    const prompt = messagesOf("writer.redraft", 0).join("\n");
+    assert.match(prompt, /Redraft it from the same \[WRITE\] instruction/);
+    assert.match(prompt, /tells the reader Mara wants to be somewhere else/);
+    assert.doesNotMatch(prompt, /Cut the line/);
+  });
+});
+
 // -- THE NARRATION LINT -------------------------------------------------------
 describe("the narration lint", () => {
   const sc0 = () => quiet(() => loadStory("tests/fixtures/doorway"));

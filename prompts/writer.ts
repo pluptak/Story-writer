@@ -351,6 +351,18 @@ export const answeredOwnConsult = (why: string) =>
   + `Cut the line and keep the consult: the character has not answered yet, so those words are `
   + `yours, not theirs. Ask, and write what they actually say when the answer arrives next turn.`;
 
+/** The same sin in its commoner form: words in a mouth that never chose them, whoever is being
+ *  asked. The core fix is the same — cut the line; the character has not answered yet — but
+ *  there is no consult to keep, because the speaker this line was invented for is not the one
+ *  the reply asks. So the remedy changes: name the speaker, and send the ask their way if their
+ *  words are what the scene needs. The engine knows who it was; the writer has already failed
+ *  to re-derive it from the quote. */
+export const inventedForSpeaker = (why: string, name: string) =>
+  `[NARRATION FLAGGED] ${why}\n\n`
+  + `Cut the line: ${name} has not answered yet, so those words are yours, not theirs. If what `
+  + `the scene needs next is ${name}'s words, ask ${name} — and write what they actually say `
+  + `when the answer arrives next turn.`;
+
 /** Operator-facing, not model-facing: when a redraft comes back with the same quote flagged,
  *  the granted line itself may be unrenderable and another redraft cannot fix that. Lives here
  *  beside narrationFlagged because it extends the lint prompt the operator decides on. */

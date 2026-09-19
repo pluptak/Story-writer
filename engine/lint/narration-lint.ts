@@ -43,6 +43,14 @@ export interface LintPieceResult {
   /** The blocking quote finding accuses the writer of answering its own consult — the
    *  redraft prompt must name that repair, not the generic rule. */
   selfAnswered: boolean;
+  /** Who the blocking quote was pinned to, or undefined when the finding is not a quote hit
+   *  or attribution failed ("unknown") — the broader signal selfAnswered is the narrow case
+   *  of: words in a mouth that never chose them, whoever is being asked. */
+  quoteCharacter?: string;
+  /** The pinned line was granted to a DIFFERENT character: a distinct sin with a distinct
+   *  repair, deliberately routed to the generic prompt — telling the writer those words were
+   *  never granted would be false. */
+  quoteReassigned?: boolean;
 }
 
 export async function lintPiece(o: LintPieceOpts): Promise<LintPieceResult> {
@@ -101,10 +109,15 @@ export async function lintPiece(o: LintPieceOpts): Promise<LintPieceResult> {
   }
   // A mechanical hit still stands when the LLM half fails or returns no verdict: neither check
   // needed a model, so an outage cannot take them down with it.
+  // The attribution signal rides only on a quote finding that is actually blocking — an
+  // advisory hit (a possible misattribution) never steers the redraft.
+  const quoteHit = quoteLint && !quoteLint.ok && !isAdvisoryQuoteHit(quoteLint) ? quoteLint : null;
   return {
     blocking: [quoteLint && !isAdvisoryQuoteHit(quoteLint) ? quoteLint.why : null, senseLint?.why]
       .filter((w): w is string => !!w).join(". ") || null,
     advisory: lintWhy,
     selfAnswered: Boolean(quoteLint && !quoteLint.ok && quoteLint.selfAnswered),
+    ...(quoteHit && quoteHit.character !== "unknown" ? { quoteCharacter: quoteHit.character } : {}),
+    ...(quoteHit?.reassigned ? { quoteReassigned: true } : {}),
   };
 }

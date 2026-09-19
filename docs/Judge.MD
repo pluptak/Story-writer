@@ -263,6 +263,17 @@ it yet. That hit carries its own why and its own event, and the redraft prompt n
 instead of the rule: cut the line, keep the consult, write the answer when it arrives next turn.
 Only an explicit speech tag carries the accusation; a nearest-name guess still gets today's
 plain hit.
+The **repair** reaches further than that accusation does, because the commoner shape is a line
+invented for someone the reply is not asking — the writer opening a scene in a character's mouth
+before anyone has been consulted. So the redraft prompt routes on attribution rather than on the
+self-answer flag: a blocking quote hit pinned to a named character gets the repair naming that
+character — cut the line, and ask them if their words are what the scene needs next — where only
+a self-answer keeps the "keep the consult" clause, since only then is the invented speaker the
+one being asked. A quote nobody could be pinned to falls back to the general instruction, and so
+does a line **granted to a different character**: that is a distinct sin with a distinct repair
+(give it back, or cut it), and telling the writer those words were never granted would be false.
+Measured over two runs of one story, the general instruction reworded the frame and kept the
+invented line every time; naming the speaker cut it every time.
 The three checks run **alongside** each other and their `why` strings join into the one
 `narration_flag`, because there is only one automatic redraft: reported serially, the budget would be spent
 on the first finding and the second accepted unfixed. A mechanical hit also survives an LLM outage,

@@ -899,9 +899,19 @@ export async function writeScene(run: SceneRun) {
           if (choice === "publish") break;
         }
         try {
+          // The redraft prompt routes on attribution, not on the self-answer flag alone: an
+          // invented line for a NAMED character nobody granted — and was not this reply's
+          // consultee — is the same sin as answering one's own consult, in its commoner form,
+          // and the generic instruction has never once produced a cut line (it produces a
+          // reworded frame around the same invented words). Reassigned stays generic
+          // deliberately: a line granted to a different character is a different sin with a
+          // different repair — give it back, or cut it — and telling the writer those words
+          // were never granted would be false; the finding's own wording already says it.
           draftRaw = await writer.generate(`${C.magenta}WRITER${C.reset}`, "writer.redraft",
             [{ role: "user", content: findings.selfAnswered
               ? P.answeredOwnConsult(flagged)
+              : findings.quoteCharacter && !findings.quoteReassigned
+              ? P.inventedForSpeaker(flagged, findings.quoteCharacter)
               : P.narrationFlagged(flagged) }]);
           redrafted = true;
           steps++;
