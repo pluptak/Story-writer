@@ -196,6 +196,24 @@ restriction's meaning; measuring that call is `--cannot-testimony`'s job. The re
 unconditional rather than behind a flag: a scene with no `constraint` authored renders nothing on
 any of the three surfaces, so this is safe as a default rather than a prototype.
 
+### Template slots — the opposite call from the constraint gate
+
+A model sometimes emits a literal template slot — "My name is [Name]." — where nothing in
+prompts/ or the story contains one. The judge accepts it (it reads as an answer), it enters
+the granted ledger verbatim, and the writer then does the right thing ("My name is Mara,"),
+which the quote lint correctly flags: no faithful prose ever matches the granted slot. Every
+link behaves correctly and the result is an unwinnable redraft, so the slot must never reach
+the ledger. `engine/lint/placeholder-lint.ts` reads speech, action and thought against a
+conservative pattern — a short bracketed run of letters, never a long or sentence-like aside —
+beside the constraint check, with no model call, logging `placeholder_refused`.
+
+This one retries, deliberately the reverse of the constraint call: a slot is a formatting
+failure, not a choice, so a fresh fork at temperature 0.9 will very likely produce real words
+from the same situation. It reuses the judge path's budget machinery exactly. When the budget
+is spent the answer is discarded, not accepted — a placeholder in the ledger recreates the
+unwinnable redraft — and the scene loop routes it into its no-answer path (`P.noAnswer`),
+which already handles a character that produced nothing usable.
+
 ### Ceilings
 
 Retries are bounded by one effective ceiling per character: the story's per-character `maxRetries`
@@ -260,7 +278,9 @@ opens this decision; failure is not permission to publish the original flagged p
 The choices are **Redraft again**, **Publish anyway**, and **Stop chapter**. Redraft again requests
 another attempt and checks it before committing; Publish anyway explicitly accepts the current
 flagged draft; Stop chapter discards the pending draft and preserves the already committed page.
-If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
+When a redraft comes back with the same quote flagged, the advisory carries that redrafting has
+not changed it and the granted line itself may be unrenderable — another redraft cannot fix what
+the grant made unwritable, so the operator decides knowingly. If nobody can be asked (no viewer and no TTY, or interactive mode is off), stop the chapter with
 that committed page intact. Turning interactive off during a pending decision resolves it as stop.
 
 Whichever is chosen is written to the run's log as `lint_decision`, because nothing else records it:

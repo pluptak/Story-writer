@@ -432,7 +432,9 @@ describe("the lint decision gate in the loop", () => {
         assert.equal(asked.length, 1, "the gate is asked exactly once, after the automatic redraft");
         assert.equal(asked[0].blocking?.includes("unmatched quotation"), true, "the prompt carries the mechanical finding");
         assert.equal(asked[0].prose, flagged, "the prompt shows the flagged piece itself");
-        assert.equal(asked[0].advisory, null, "a clean judge adds nothing to the prompt");
+        assert.match(asked[0].advisory ?? "", /Redrafting has not changed this/,
+          "the same quote twice running tells the operator the grant may be unrenderable");
+        assert.match(asked[0].advisory ?? "", /Not tonight,/);
 
         if (choice === "redraft") {
           assert.deepEqual(r.prose, [clean], "the human's redraft is checked like any other piece");

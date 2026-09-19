@@ -331,6 +331,14 @@ export const narrationFlagged = (why: string) =>
   + `That piece was not written to the page. Redraft it from the same [WRITE] instruction, honoring `
   + `THE ONE RULE and what each CANNOT removes.`;
 
+/** Operator-facing, not model-facing: when a redraft comes back with the same quote flagged,
+ *  the granted line itself may be unrenderable and another redraft cannot fix that. Lives here
+ *  beside narrationFlagged because it extends the lint prompt the operator decides on. */
+export const quoteFlagRepeated = (quotes: string[]) =>
+  `Redrafting has not changed this — the same line was flagged again`
+  + (quotes.length ? ` (${quotes.map(q => `"${q}"`).join(", ")})` : "")
+  + `. The granted line itself may be unrenderable; prefer publish [p] or stop [s] over redraft [r].`;
+
 export const characterAsks = (name: string, question: string) =>
   `[${name} ASKS] ${question}`;
 

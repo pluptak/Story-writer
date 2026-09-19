@@ -282,6 +282,8 @@ export type RunEvent =
   | { t: "retry_capped"; character: string; count: number; chapter: number }
   | { t: "constraint_refused"; character: string; constraint: string; match: string;
       attempt: number; chapter: number }
+  | { t: "placeholder_refused"; character: string; field: string; match: string;
+      attempt: number; chapter: number }
   | { t: "reaction_fanout"; reactors: string[]; situation: string; chapter: number }
   | { t: "reaction"; character: string; thought: string; speech: string; action: string; chapter: number }
   | { t: "promote"; character: string; action: string; chapter: number }
@@ -756,6 +758,10 @@ export async function writeScene(run: SceneRun) {
     let reply: DraftReply;
     let stoppedMidLint = false;
 
+    // Quotes the lint has already flagged on this piece: a redraft that comes back with
+    // the same quote flagged means the granted line itself may be unrenderable, and the
+    // operator deciding on the piece should know redrafting cannot fix it.
+    const priorQuotes: string[] = [];
     for (let lintAttempt = 0; ; lintAttempt++) {
       reply = parseDraftReply(draftRaw, () => log({ t: "prose_reply", character: writer.name }));
       if (reply.salvaged)
@@ -784,10 +790,16 @@ export async function writeScene(run: SceneRun) {
 
       let flagged: string | null;
       let findings: LintPieceResult;
+      const roundQuotes: string[] = [];
       try {
         findings = await lintPiece({
           prose: reply.prose, granted: lintGranted, cast: mechanicalCast, pov: sd.pov,
-          consult: outgoingConsult, newNarrationJudge, log, chapter,
+          consult: outgoingConsult, newNarrationJudge,
+          log: (e) => {
+            if (e.t === "narration_quote_flag") roundQuotes.push(e.quote);
+            log(e);
+          },
+          chapter,
         });
         flagged = [findings.blocking, findings.advisory].filter(Boolean).join(". ") || null;
       } catch (e) {
@@ -797,6 +809,9 @@ export async function writeScene(run: SceneRun) {
       if (RUN.stopped) { stoppedMidLint = true; break; }
 
       if (!flagged) break;
+
+      const repeatedQuotes = roundQuotes.filter(q => priorQuotes.includes(q));
+      priorQuotes.push(...roundQuotes);
 
       const retried = lintAttempt >= NARRATION_LINT_RETRIES;
       log({ t: "narration_flag", why: flagged, retried, chapter });
@@ -808,9 +823,12 @@ export async function writeScene(run: SceneRun) {
       for (;;) {
         if (needsDecision && findings.blocking) {
           let choice: LintDecision;
+          const advisory = [findings.advisory,
+            repeatedQuotes.length ? P.quoteFlagRepeated(repeatedQuotes) : null,
+          ].filter(Boolean).join(". ") || null;
           try {
             choice = await io.lintDecision?.({ prose: reply.prose, blocking: findings.blocking,
-              advisory: findings.advisory, chapter }) ?? "stop";
+              advisory, chapter }) ?? "stop";
           } catch (e) {
             // A port outage must not crash the run any more than a lint or writer outage would —
             // the piece stays on hold; the chapter ends preserving what is committed.

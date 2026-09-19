@@ -11,6 +11,7 @@ import {
   type CannotCast, type ConsultEvent, type ConsultReply, type ConsultRequest, type Clarifier,
 } from "./consult.ts";
 import { lintConstraintAction } from "./lint/constraint-lint.ts";
+import { lintPlaceholderAnswer } from "./lint/placeholder-lint.ts";
 import { type Msg } from "./llm-client.ts";
 import type { CharacterDef } from "./story-format.ts";
 import { cannotDisplay } from "./skills.ts";
@@ -27,6 +28,8 @@ export type GateEvent =
   | { t: "repair_failed"; character: string; why: string; chapter: number }
   | { t: "retry_capped"; character: string; count: number; chapter: number }
   | { t: "constraint_refused"; character: string; constraint: string; match: string;
+      attempt: number; chapter: number }
+  | { t: "placeholder_refused"; character: string; field: string; match: string;
       attempt: number; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string;
       was: string; wantsRefused: string; chapter: number };
@@ -159,6 +162,29 @@ export async function judgeGate(o: JudgeGateOpts): Promise<JudgeGateResult> {
     const spendRetry = (): void => {
       o.retryCounts.set(nameKey(def.name), retryState().cumulative + 1);
     };
+
+    // A template slot is a formatting failure, not a choice — unlike a constraint
+    // violation, a fresh fork on the same situation will very likely produce real words.
+    // So this one retries, reusing the judge path's budget machinery. When the budget is
+    // spent the answer is discarded, not accepted: a placeholder in the ledger recreates
+    // the unwinnable redraft downstream, so the caller routes this into its no-answer path.
+    const slot = lintPlaceholderAnswer(reply, def.name);
+    if (slot) {
+      log({ t: "placeholder_refused", character: def.name, field: slot.field,
+            match: slot.match, attempt, chapter });
+      o.dropClarifications();
+      constraintRefused = undefined;
+      if (overBudget(false)) {
+        console.log(`${C.dim}(${def.name} kept returning a placeholder — taking no answer)${C.reset}`);
+        reply = null;
+        failed = `returned only a placeholder (${slot.match})`;
+        break;
+      }
+      spendRetry();
+      console.log(`${C.yellow}retry ${attempt}/${o.retries} — ${def.name}${C.reset}`
+        + `${C.dim} (placeholder ${slot.match} in ${slot.field})${C.reset}`);
+      continue;
+    }
 
     // The mechanical backstop runs before the judge: a high-confidence reading of the
     // answer against the scene's own constraint, logged on the run's event stream. A hit is
