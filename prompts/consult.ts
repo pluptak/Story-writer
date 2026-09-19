@@ -25,7 +25,7 @@ YOUR REPLY IS ALWAYS ONE OF THESE TWO SHAPES:
 
   {"need": "Can I reach the door handle from where I am?"}
 
-  {"thought": "...", "speech": "...", "action": "...", "note": ""}
+  {"thought": "...", "speech": "...", "action": "...", "target": "...", "note": ""}
 
 FIRST DECIDE: know it, infer it, assume it, or ask?
 
@@ -62,10 +62,13 @@ const FORMAT_MID = `  OVERRIDE: if the author tells you plainly that no more det
                    fear, suspicion or decision present in your mind at that moment.
                    Good: "They know this lock better than I do."
                    Bad: "I need something physical; searching the satchel is my best option."
-  speech       -- the words you say aloud and nothing else, with no quotation marks around them,
+  speech        -- the words you say aloud and nothing else, with no quotation marks around them,
                    or "" if you say nothing.
-  action       -- what you physically do, in one or two plain sentences, or "" if you do nothing.
-  note         -- "" normally. Use it to tell the author something out of character: an assumption
+  action        -- what you physically do, in one or two plain sentences, or "" if you do nothing.
+  target        -- the name of the one thing in the room this act is aimed at, exactly as the room
+                   block spells it, or "". Optional and normally empty: name it only when an action
+                   reaches for something specific, never just to fill the field.
+  note          -- "" normally. Use it to tell the author something out of character: an assumption
                    you had to make that MATERIALLY affects your choice, uncertainty that itself
                    matters to what you do, or something you would need and do not have. Not for
                    every ordinary inference -- a mundane reading you acted on without a second

@@ -358,7 +358,7 @@ export function parseBatchVerdict(o: Record<string, unknown>): Map<string, boole
 /** A character's answer: what they thought/said/did, and any clarification trail. */
 export interface ConsultReply {
   character: string;
-  thought: string; speech: string; action: string; note: string;
+  thought: string; speech: string; action: string; target?: string; note: string;
   clarifications: { question: string; answer: string }[];
   forced: boolean;                                       // ran out of clarifications and answered anyway
   raw: string;
@@ -372,7 +372,7 @@ export type ConsultEvent =
   | { t: "prose_reply"; character: string }
   | { t: "forced"; character: string }
   | { t: "repair"; character: string; why: string }
-  | { t: "answer"; character: string; thought: string; speech: string; action: string;
+  | { t: "answer"; character: string; thought: string; speech: string; action: string; target?: string;
       note: string };
 
 /** How the caller answers a character's request for a missing fact. `null` means the call to answer
@@ -459,6 +459,7 @@ export async function consult(
     const thought = String(o.thought ?? "").trim();
     const speech  = String(o.speech ?? "").trim();
     const action  = String(o.action ?? "").trim();
+    const target  = String(o.target ?? "").trim();
     const note    = String(o.note ?? "").trim();
     const shortOf = nonPovThoughtOnly({ speech, action }, pov);
     const why = !thought && !speech && !action ? "returned nothing usable"
@@ -473,10 +474,10 @@ export async function consult(
     }
 
     const reply: ConsultReply = {
-      character: req.character, thought, speech, action, note,
+      character: req.character, thought, speech, action, target, note,
       clarifications, forced, raw,
     };
-    log({ t: "answer", character: req.character, thought, speech, action, note });
+    log({ t: "answer", character: req.character, thought, speech, action, target, note });
     return reply;
   }
 }

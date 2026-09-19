@@ -21,7 +21,7 @@ have been asked.
 
 WHEN ASKED TO WRITE -- [WRITE]:
 
-  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "stage": ["NAME :: where"], "scene_done": false}
+  {"prose": "...", "consult": {"character": "NAME", "situation": "..."}, "stage": ["NAME :: where"], "target": "NAME", "scene_done": false}
 
   prose      -- the next piece of the scene, ready for the page. "" if you are only consulting.
                 SHORT. Every [WRITE] gives you a word ceiling; treat it as real. A scene has a fixed
@@ -413,17 +413,19 @@ export const worldBounds = (world: { held?: string[]; established?: string[] } =
       : "");
 };
 
-export const answerBody = (p: { thought: string; speech: string; action: string }) =>
+export const answerBody = (p: { thought: string; speech: string; action: string; target?: string }) =>
   [p.thought && `thought: ${p.thought}`,
    p.speech  && `speech: ${p.speech}`,
-   p.action  && `action: ${p.action}`].filter(Boolean).join("\n");
+   p.action  && `action: ${p.action}`,
+   p.target  && `target: ${p.target}`].filter(Boolean).join("\n");
 
 /** The answerBody for an act the scene's own hold stopped: the attempt is what the writer is
  *  handed, marked as failed where it sits, so it can never read as a deed. */
-export const attemptedBody = (p: { thought: string; speech: string; action: string }) =>
+export const attemptedBody = (p: { thought: string; speech: string; action: string; target?: string }) =>
   [p.thought && `thought: ${p.thought}`,
    p.speech  && `speech: ${p.speech}`,
-   p.action  && `action (tried, and failed): ${p.action}`].filter(Boolean).join("\n");
+   p.action  && `action (tried, and failed): ${p.action}`,
+   p.target  && `target: ${p.target}`].filter(Boolean).join("\n");
 
 /** A refusal is a beat, not an error: the strain against the hold is writable, the deed is not. */
 export const actAttempted = (name: string, action: string, constraint: string) =>

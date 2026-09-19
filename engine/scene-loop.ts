@@ -303,7 +303,7 @@ export type RunEvent =
   | { t: "fanout_skip"; character: string; why: string; chapter: number }
   | { t: "context_risk"; model: string; needs: number; has: number }
   | { t: "judge"; character: string; verdict: string; note: string; attempt: number; chapter: number }
-  | { t: "accept"; character: string; attempt: number; speech: string; action: string; chapter: number }
+  | { t: "accept"; character: string; attempt: number; speech: string; action: string; target?: string; chapter: number }
   | { t: "retry"; character: string; attempt: number; situation: string; question: string; was: string; wantsRefused: string; chapter: number }
   | { t: "budget"; added: number; budget: number; chapter: number }
   | { t: "forced_end"; words: number; target: number; chapter: number }
@@ -1070,7 +1070,13 @@ export async function writeScene(run: SceneRun) {
         // the barred act taken out. An answer left with nothing in it routes into the
         // stalled path below, never the accepted branch.
         const landedAction = reply && constraintRefused ? "" : reply?.action ?? "";
+        const landedTarget = reply?.target ?? "";
+        // A target alone is not a landed act: it names a thing, it does not reach for it. A
+        // target with an action is the action's, not a second act, so include it in the gate
+        // condition but do not treat it as a stand-alone act: a reply that has target but
+        // nothing else stalls just like a thought-alone reply, and does not reach accept.
         const stalled = !!reply && !reply.thought && !reply.speech && !landedAction;
+
         // The only shape floor left: a thought with nothing said and nothing done reaches the
         // writer as nothing from anyone but the POV character. Taken as an accept it is worse
         // than a refusal: it costs the attempts, marks the character as freshly consulted, and
@@ -1098,6 +1104,7 @@ export async function writeScene(run: SceneRun) {
             thought: reply.thought,
             ...(reply.speech ? { speech: reply.speech } : {}),
             ...(reply.action ? { action: reply.action } : {}),
+            ...(reply.target ? { target: reply.target } : {}),
           }));
           // The character tried in good faith and the scene stopped the act: what it
           // remembers is the attempt having failed, never the deed as done.
@@ -1106,7 +1113,7 @@ export async function writeScene(run: SceneRun) {
                                              constraintRefused.meaning));
           keepClarifications();   // before the answer: the writer settled these facts to get it
           const shown = { thought: writerSees(def.name, reply.thought),
-                          speech: reply.speech, action: reply.action };
+                          speech: reply.speech, action: reply.action, target: landedTarget };
           writer.hear(constraintRefused
             ? P.characterAnswered(def.name, P.attemptedBody(shown), req.question,
                 ask?.question ?? "")
@@ -1120,19 +1127,21 @@ export async function writeScene(run: SceneRun) {
           // handed. A withheld thought grants nothing: it never reached the desk. A refused act
           // joins marked attempted — the strings stay verbatim so the quote lint still matches,
           // and the lint reads the marker, not a rewrite, for what failed.
-          if (reply.speech || reply.action || shown.thought) {
+          if (reply.speech || reply.action || reply.target || shown.thought) {
             granted.push({
               character: def.name,
               speech: reply.speech,
               action: reply.action,
+              target: reply.target,
               ...(shown.thought ? { thought: shown.thought } : {}),
               ...(constraintRefused && reply.action ? { attempted: true } : {}),
             });
           }
           owed.push(def.name);
-          log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, chapter });
+          log({ t: "accept", character: def.name, attempt: usedAttempt, speech: reply.speech, action: reply.action, target: reply.target, chapter });
           if (ENGINE.echoConsole && ENGINE.echoCast) console.log(`${C.cyan}${def.name}${C.reset} ${C.dim}→${C.reset} `
-            + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : ""));
+            + (reply.speech ? `"${reply.speech}" ` : "") + (reply.action ? `${C.dim}${reply.action}${C.reset}` : "")
+            + (reply.target ? ` targeting ${C.dim}${reply.target}${C.reset}` : ""));
         }
       }
     }

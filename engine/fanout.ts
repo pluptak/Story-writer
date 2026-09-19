@@ -31,7 +31,7 @@ export type FanoutEvent =
  *  attempt (it is on the ledger), while the writer's instruction carries that it failed. The
  *  action string itself stays verbatim — nothing re-matches a mangled one. */
 export interface GrantedEntry {
-  character: string; speech: string; action: string; thought?: string; attempted?: boolean;
+  character: string; speech: string; action: string; target?: string; thought?: string; attempted?: boolean;
 }
 
 export interface FanoutOpts {
