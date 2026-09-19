@@ -159,9 +159,41 @@ describe("observe", () => {
     assert.deepEqual(observe(riven, ROOM), ROOM);
   });
 
-  it("withholds the visible list from a character who cannot see, keeping only where they are", () => {
+  it("with nothing adjacent, a blind character receives only where they themselves are", () => {
     assert.deepEqual(observe(merritt, ROOM),
       [{ entity: "MERRITT", position: "on the upturned crate", fixed: false }]);
+  });
+
+  it("touch adjacency: what their own placement names arrives — what they sit on", () => {
+    const room: StagedEntity[] = [
+      ...ROOM,
+      { entity: "upturned crate", position: "under the high window", fixed: false },
+    ];
+    assert.deepEqual(observe(merritt, room), [
+      { entity: "MERRITT", position: "on the upturned crate", fixed: false },
+      { entity: "upturned crate", position: "under the high window", fixed: false },
+    ]);
+  });
+
+  it("touch adjacency: whoever the room places at them arrives, by the position naming them", () => {
+    const room: StagedEntity[] = [
+      { entity: "RIVEN", position: "at MERRITT's shoulder", fixed: false },
+      { entity: "MERRITT", position: "on the upturned crate", fixed: false },
+      { entity: "steel door", position: "shut fast", fixed: true },
+    ];
+    assert.deepEqual(observe(merritt, room), [
+      { entity: "RIVEN", position: "at MERRITT's shoulder", fixed: false },
+      { entity: "MERRITT", position: "on the upturned crate", fixed: false },
+    ]);
+  });
+
+  it("a blind character with no entry of their own still receives whoever is placed at them", () => {
+    const room: StagedEntity[] = [
+      { entity: "RIVEN", position: "beside MERRITT", fixed: false },
+      { entity: "steel door", position: "shut fast", fixed: true },
+    ];
+    assert.deepEqual(observe(merritt, room),
+      [{ entity: "RIVEN", position: "beside MERRITT", fixed: false }]);
   });
 
   it("withholds the room from a character who is not in it", () => {
@@ -376,5 +408,19 @@ describe("the projection beside the situation", () => {
     assert.doesNotMatch(ask, /RIVEN :: by the steel door/);
     assert.doesNotMatch(ask, /steel door :: shut fast/);
     assert.match(ask, /ticks nearby/, "the situation itself still arrives untouched");
+  });
+
+  it("adjacency reaches a blind character beside the situation: what they sit on, staged", async () => {
+    const ask = await consultedAs("MERRITT",
+      "You sit on the upturned crate while something small and metallic ticks nearby in Riven's hands.",
+      ["RIVEN :: by the steel door",
+       "MERRITT :: on the upturned crate",
+       "upturned crate :: under the high window",
+       "!steel door :: shut fast"]);
+    assert.match(ask, /MERRITT :: on the upturned crate/);
+    assert.match(ask, /upturned crate :: under the high window/,
+      "their own placement names what they sit on");
+    assert.doesNotMatch(ask, /RIVEN ::/, "nothing places RIVEN at them in this staging");
+    assert.doesNotMatch(ask, /steel door/, "the fixed door stays out of adjacency's reach");
   });
 });

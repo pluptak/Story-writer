@@ -12,7 +12,7 @@
  *  Pure: no imports beyond the leaf text utilities, no warnings, no state of its own. The
  *  caller owns the list across the scene and logs what each application did.
  */
-import { nameKey, sameName } from "./config-util.ts";
+import { nameKey, sameName, normText, containsTokenRun } from "./config-util.ts";
 import { canonSkill, splitMeaning } from "./skills.ts";
 import type { StagedEntity } from "./scene-loop.ts";
 import type { Presence } from "./scene-loop.ts";
@@ -92,8 +92,9 @@ export function resolveTarget(stage: readonly StagedEntity[], target: string): {
  *  `reach` is the character's already-resolved grant (sceneReach) — it rides along because a
  *  grant can only extend perception, never narrow it (I1), and I2 already stripped anything
  *  a restriction removes before observe() ever runs, so a sight grant can never smuggle
- *  visibility past a CANNOT. Entries that place nothing are dropped: the resolver warned
- *  about them already and a projection of nowhere is noise. */
+ *  visibility past a CANNOT. A sight-restricted character receives no list — only the
+ *  adjacency of touch and hearing (see below). Entries that place nothing are dropped: the
+ *  resolver warned about them already and a projection of nowhere is noise. */
 export interface Observee {
   name: string;
   limits: readonly string[];
@@ -101,13 +102,27 @@ export interface Observee {
   reach: readonly Skill[];
 }
 
+/** Does free prose name a thing? Token-run containment on normalized text — the shared
+ *  matcher's verbatim reading, so a short name never matches inside a larger word. Coarse
+ *  by design: adjacency stands in for touch and hearing. */
+const mentions = (where: string, what: string) =>
+  containsTokenRun(normText(where).split(" "), normText(what).split(" "));
+
 export function observe(o: Observee, stage: readonly StagedEntity[]): StagedEntity[] {
   const placed = stage.filter(e => e.position.trim());
   // A remote character is not in the room: the channel may carry words, never positions.
   if (o.presence?.mode === "remote") return [];
-  // A character who cannot see does not receive the visible list — only where they
-  // themselves are, which proprioception covers and no sense gate removes.
-  if (o.limits.some(l => canonSkill(l) === "sight"))
-    return placed.filter(e => sameName(e.entity, o.name));
+  // A character who cannot see does not receive the visible list — but touch and hearing
+  // still reach: where they themselves are (proprioception), whatever the room places at
+  // them, and whatever their own placement names (what they sit on, stand beside). String
+  // adjacency, deliberately imprecise; the situation prose stays the authority on what a
+  // blind character actually perceives.
+  if (o.limits.some(l => canonSkill(l) === "sight")) {
+    const own = placed.find(e => sameName(e.entity, o.name));
+    return placed.filter(e =>
+      sameName(e.entity, o.name)
+      || mentions(e.position, o.name)
+      || (!!own && mentions(own.position, e.entity)));
+  }
   return [...placed];
 }
