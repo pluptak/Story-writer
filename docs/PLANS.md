@@ -453,15 +453,18 @@ Done when: `npm test` passes; a change to generation-guard or status shape needs
 ### GUI wiring duplication and the `tests/gui` typecheck
 
 Type: fix
-Why now: two finds from the same sweep. `server/gui/viewer/character-library.js:471-527`
-repeats one `querySelector` shape ~25 times with the confirm strings inline;
-`handoff.js`/`interview-page.js`/`session.js` arm-timeouts (5000/4000/8000) are unnamed; and
-`npx tsc` fails on `tests/gui/` (DOM lib names plus `RunEvent` drift — `scene_start` without
-`question`, `consult` without `since`) while prod is clean.
+Why now: `server/gui/viewer/character-library.js:471-527` repeats one `querySelector` shape ~25
+times with the confirm strings inline, and `handoff.js`/`interview-page.js`/`session.js`
+arm-timeouts (5000/4000/8000) are unnamed.
 Next action: table-drive the wiring (`[["#charlib-new", "click", createNew], …]` +
-`CONFIRM_DISCARD` const); name the arm timeouts; fix the GUI specs' event shapes (or exclude
-and track separately — owner's call, but decide rather than drift).
-Done when: `npx tsc --noEmit` passes repo-wide and `npm run test:gui` is green.
+`CONFIRM_DISCARD` const); name the arm timeouts.
+Done when: `npm run check` and `npm run test:gui` are both green.
+
+The `tests/gui/` typecheck half of this entry is **settled, not outstanding**: the "exclude and
+track separately" option was taken and built. `scripts/check.mjs` splits the GUI-spec diagnostics
+out and reports them as deferred (`99 GUI-spec diagnostic(s) deferred to npm run test:gui`), so a
+missing `@playwright/test` cannot mask a real type error and `npm run check` is the gate rather
+than bare `npx tsc`. Repo-wide `npx tsc --noEmit` is deliberately no longer the bar.
 
 ### Script and manifest leftovers
 
@@ -484,11 +487,24 @@ would settle it, and several gate work in the sections above and below.
 
 **In Now:** item 1 (pronoun drift).
 
-- **The quote-lint's per-character match trusts a heuristic attribution, and that trust is
-  unmeasured.** `attribute()` is a best-effort guess, so a quote correctly granted to its speaker but
-  mis-attributed on the page would now flag as a false reassignment where the old all-speeches match
-  passed silently. **Done when** a run's quote flags are checked against the page: every "granted to
-  a different character" flag should be a real reassignment, not an attribution miss.
+- **Four scene-substrate paths are built, tested and have never run outside a test.**
+  `resolveTarget`'s canonical substitution (it has matched live, but only ever on an
+  already-canonical spelling, so the substitution is exercised and not observable); the
+  remote-target refusal; `stage_refused`; and the blind projection's adjacency. Each needs a
+  staged scene with a cast the corpus does not currently have — a `remote` member, or one who
+  cannot see. `interrogation-test` is the only story authoring a `constraint` and its cast has
+  neither; `tests/fixtures/doorway` has a sightless MERRITT but stages no adjacency for the
+  projection to find, and `data/stories/doorway` stages nothing at all. **Done when** either a
+  story is authored that carries both, or the paths are accepted as fixture-only and said to be.
+
+- **The quote-lint's attribution now steers the writer's redraft, and its accuracy is measured only
+  at small n.** `attribute()` is a best-effort guess, and it carries more weight than when this was
+  written: the redraft prompt routes on it, so a mis-attribution now sends the writer a repair
+  naming the wrong character. Four live runs since have produced no false flag — every quote flagged
+  was genuinely ungranted, and the two redraft routes fired on the right characters — but that is
+  a handful of flags, and none of them exercised the "granted to a different character" branch,
+  which is the one an attribution miss would corrupt. **Done when** a run producing reassignment
+  flags is checked against the page: each should be a real reassignment, not an attribution miss.
 - **The question gates now guard only the judge's re-ask, and that path is unmeasured.** Since
   `14022cf` the writer's consult carries no `question` and no `wants`, so `normalizeConsult`'s
   `"directed"` branch (`DEGENERATE_QUESTIONS`, the word-bounded `or`, the `wants` floor) runs at
@@ -868,24 +884,17 @@ Done when: the paragraph exists, persist failures carry 500, and
 
 Big, unbuilt, and shaping rather than corrective.
 
-- **Move scene substrate out of the model (staging → observation → target channel).** The
-  character agent does too many jobs in one call: reconstruct where it is and who is present from
-  the writer's `situation` prose, respect capability boundaries, stay in character, decide, and
-  phrase. Goal is workload reduction, not simulation — stop asking the model questions code
-  already knows. No physics, no inventory, no action enum, no tick. Rules throughout:
-  default-allow (the engine refuses only what someone authored as impossible); accretion (state
-  created at first use, authoritative thereafter); names, not indices; nothing required every
-  turn. **Shipped so far:** `scripts/action-census.ts` (`npm run census`), and the mechanical
-  constraint gate — `engine/lint/constraint-lint.ts` wired onto `ConsultReply.action`, its
-  behaviour now in [`Judge.MD`](Judge.MD) and [`Character.MD`](Character.MD). **Remaining:**
-  (1) `staging` on `SceneDef` (coarse free-prose positions, `name :: meaning` convention,
-  load-bearing marker, case-insensitive keys via `sameName`/`nameKey`, never persisted at
-  character level); (2) an architect `staging` stage after `scene`; (3) a run-scoped live stage
-  seeded at scene start, writer-mutable by accretion, load-bearing entries unflippable, never
-  written back to `story.json`, never dumped whole into the writer prompt; (4) a per-character
-  `observe()` projection beside `situation` respecting presence/restrictions/`reach`; (5)
-  story-editor surface. As each step ships, its behaviour moves into
-  the owning surface doc and that part of this entry is deleted.
+- **An entity carries no sense of how it is perceivable, so a blind character gets touch and
+  nothing else.** `observe()` gives a sight-restricted character their own placement, whatever the
+  room places at them, and whatever their own placement names — string adjacency, which is touch.
+  Hearing is not modelled at all, so a shut door across the room is withheld from someone who
+  would plainly know it is there. **That floor is deliberate** (see the accepted-limit note in
+  [`Character.MD`](Character.MD)), and it is where the projection stops delivering the workload
+  reduction it was built for: it reduces the character's job for sighted characters only. The
+  fuller fix is entities carrying how they are perceivable rather than the projection inferring it
+  — a schema change plus authoring burden on every staged story, which is why it is a direction and
+  not a fix. Do not reach for it until a story exists that both stages its room and has a cast
+  member who cannot see: none does today, so the change would ship unexercised.
 
 - **Accretion duplicates an entity under a second name — measured live, unfixed.** One doorway
   chapter into an unstaged room produced seven `stage_added` entries for four things:
@@ -1066,7 +1075,16 @@ Nothing here is work. Each entry exists to stop a future decision going wrong.
 
 ## Research log
 
-Nothing here yet. This is where a shipped or retired item's detailed run-ID history goes once it
+**Provider decoupling, confirmed live (2026-09-19/20).** The scene-substrate batch's last chapter
+ran against **llama.cpp** rather than LM Studio with no issue and no per-story change — the
+selection is environmental (`LLM_PROVIDER`, `LLM_BASE_URL`), and nothing outside
+`engine/providers/` names a server. Worth keeping because the adapter split was built on the
+argument that it *would* hold, and this is the first run that shows it holding on a second server
+end to end: the chapter, its judges, its clarifier and its lints all completed. The llama.cpp
+adapter has no native model-state API, so the readiness wait and the "model exists but is not
+loaded" warning are the LM Studio/Ollama paths only; that difference did not surface.
+
+This is where a shipped or retired item's detailed run-ID history goes once it
 stops gating anything — instead of being deleted outright, so a future reread of this document
 doesn't have to reconstruct why a past call was made. (The world timeline's detailed live-run
 history, retired in this reorganization, was judged not to meet that bar and was left to git history
